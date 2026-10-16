@@ -31,7 +31,9 @@ export function createImageGenerationFailure({ error, stage, reason, profile, gp
   error: unknown; stage: ImageGenerationFailure['stage']; reason: ImageGenerationFailure['reason']; profile: string | undefined; gpu: boolean;
   nativeContext: ImageGenerationNativeFailureContext | undefined;
 }): NaidanRpcPublicError {
-  if (error instanceof NaidanRpcPublicError) return error;
+  if (error instanceof NaidanRpcPublicError) {
+    return error;
+  }
   const context = imageErrorContext({ error });
   const frames = nativeContext?.wasmFrames || context.wasmFrames;
   const details = imageGenerationFailureSchema.parse({

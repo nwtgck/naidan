@@ -164,7 +164,9 @@ describe("runProductionLaneComparison", () => {
   it("compares observed Reference and Production inputs even when the earlier template probe was marked failed", async () => {
     const run = structuredClone(baseRun);
     const userGenerationCase = run.templateBehavior?.cases.find(item => item.caseId === "user-generation");
-    if (userGenerationCase === undefined) throw new Error("Expected a user-generation template fixture");
+    if (userGenerationCase === undefined) {
+      throw new Error("Expected a user-generation template fixture");
+    }
     userGenerationCase.status = "failed";
     userGenerationCase.inputIds = undefined;
     userGenerationCase.failureStage = "tokenize";

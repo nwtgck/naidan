@@ -11,7 +11,10 @@ export function docsPublicUrl({ route }: { route: DocsSeoRoute }): string {
   switch (route.kind) {
   case 'root': return `${DOCS_PUBLIC_ORIGIN}${DOCS_BASE}`;
   case 'page': return `${DOCS_PUBLIC_ORIGIN}${docsHref({ locale: route.locale, page: route.page })}`;
-  default: { const unreachable: never = route; throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`); }
+  default: {
+    const unreachable: never = route;
+    throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`);
+  }
   }
 }
 
@@ -21,24 +24,34 @@ export function docsSeoLinks({ route }: { route: DocsSeoRoute }): {
 } {
   let page: DocsPageId;
   switch (route.kind) {
-  case 'root': page = 'index'; break;
-  case 'page': page = route.page; break;
-  default: { const unreachable: never = route; throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`); }
+  case 'root': page = 'index';
+    break;
+  case 'page': page = route.page;
+    break;
+  default: {
+    const unreachable: never = route;
+    throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`);
+  }
   }
   const alternates: Array<{ language: DocsLocale | 'x-default'; href: string }> = DOCS_LOCALES.map(locale => ({
     language: locale,
     href: docsPublicUrl({ route: { kind: 'page', locale, page } }),
   }));
   switch (route.kind) {
-  case 'root': alternates.push({ language: 'x-default', href: docsPublicUrl({ route: { kind: 'root' } }) }); break;
+  case 'root': alternates.push({ language: 'x-default', href: docsPublicUrl({ route: { kind: 'root' } }) });
+    break;
   case 'page': {
     switch (route.page) {
-    case 'index': alternates.push({ language: 'x-default', href: docsPublicUrl({ route: { kind: 'root' } }) }); break;
+    case 'index': alternates.push({ language: 'x-default', href: docsPublicUrl({ route: { kind: 'root' } }) });
+      break;
     default: break;
     }
     break;
   }
-  default: { const unreachable: never = route; throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`); }
+  default: {
+    const unreachable: never = route;
+    throw new Error(`Unknown Docs SEO route: ${String(unreachable)}`);
+  }
   }
   return { canonical: docsPublicUrl({ route }), alternates };
 }
@@ -50,7 +63,9 @@ function escapeXml({ value }: { value: string }): string {
 export function createDocsSitemap(): string {
   const routes: DocsSeoRoute[] = [{ kind: 'root' }];
   for (const locale of DOCS_LOCALES) {
-    for (const page of DOCS_PAGES) routes.push({ kind: 'page', locale, page: page.id });
+    for (const page of DOCS_PAGES) {
+      routes.push({ kind: 'page', locale, page: page.id });
+    }
   }
   const entries = routes.map(route => {
     const { canonical, alternates } = docsSeoLinks({ route });

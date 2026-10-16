@@ -13,9 +13,13 @@ function generateRandomToken({ length }: { length: number }): string {
   while (result.length < length) {
     globalThis.crypto.getRandomValues(randomBytes);
     for (const byte of randomBytes) {
-      if (byte >= RANDOM_BYTE_ACCEPTANCE_LIMIT) continue;
+      if (byte >= RANDOM_BYTE_ACCEPTANCE_LIMIT) {
+        continue;
+      }
       result += RANDOM_TOKEN_ALPHABET[byte % RANDOM_TOKEN_ALPHABET.length]!;
-      if (result.length === length) return result;
+      if (result.length === length) {
+        return result;
+      }
     }
   }
   return result;

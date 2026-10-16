@@ -58,7 +58,9 @@ const PATCH_OPTIONS: PatchOptions = {
 };
 
 function stripGitDiffPrefix({ path }: { path: string }): string {
-  if (path.startsWith('a/') || path.startsWith('b/')) return path.slice(2);
+  if (path.startsWith('a/') || path.startsWith('b/')) {
+    return path.slice(2);
+  }
   return path;
 }
 
@@ -101,7 +103,9 @@ function sectionPaths({ repository, section }: {
   switch (header.operation) {
   case 'create': {
     const path = header.newPath;
-    if (path === undefined || path === '/dev/null') throw new Error('create patch is missing its destination path');
+    if (path === undefined || path === '/dev/null') {
+      throw new Error('create patch is missing its destination path');
+    }
     return {
       sourcePath: undefined,
       destinationPath: repositoryPatchPath({ repository, path, prefixMode: 'git-diff' }),
@@ -109,7 +113,9 @@ function sectionPaths({ repository, section }: {
   }
   case 'delete': {
     const path = header.oldPath;
-    if (path === undefined || path === '/dev/null') throw new Error('delete patch is missing its source path');
+    if (path === undefined || path === '/dev/null') {
+      throw new Error('delete patch is missing its source path');
+    }
     return {
       sourcePath: repositoryPatchPath({ repository, path, prefixMode: 'git-diff' }),
       destinationPath: undefined,
@@ -136,7 +142,9 @@ function sectionPaths({ repository, section }: {
     };
   }
   case 'copy': {
-    if (header.copyFrom === undefined || header.copyTo === undefined) throw new Error('copy patch is missing a pathname');
+    if (header.copyFrom === undefined || header.copyTo === undefined) {
+      throw new Error('copy patch is missing a pathname');
+    }
     return {
       sourcePath: repositoryPatchPath({ repository, path: header.copyFrom, prefixMode: 'literal' }),
       destinationPath: repositoryPatchPath({ repository, path: header.copyTo, prefixMode: 'literal' }),
@@ -152,7 +160,9 @@ function sectionPaths({ repository, section }: {
 function singleStageZeroIndex({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
   const result = new Map<string, GitIndexEntry>();
   for (const entry of entries) {
-    if (entry.stage !== 0) throw new Error('git apply with unmerged index entries is not supported yet');
+    if (entry.stage !== 0) {
+      throw new Error('git apply with unmerged index entries is not supported yet');
+    }
     result.set(entry.path, entry);
   }
   return result;
@@ -198,7 +208,9 @@ function resultingMode({ section, existingMode }: {
   section: TextPatchSection,
   existingMode: number | undefined,
 }): number {
-  if (section.header.newMode === undefined) return existingMode ?? 0o100644;
+  if (section.header.newMode === undefined) {
+    return existingMode ?? 0o100644;
+  }
   switch (section.header.newKind) {
   case 'regular':
     return (section.header.newMode & 0o111) === 0 ? 0o100644 : 0o100755;
@@ -239,7 +251,9 @@ export async function planIndexChanges({ context, repository, sections, reverse 
 
   const readState = async ({ path }: { path: string }): Promise<IndexPatchState> => {
     const cached = states.get(path);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
     const entry = index.get(path);
     if (entry === undefined) {
       const missing = { exists: false, bytes: new Uint8Array(), mode: undefined };
@@ -279,7 +293,9 @@ export async function planIndexChanges({ context, repository, sections, reverse 
       throw new Error(`Unhandled patch format: ${_ex}`);
     }
     }
-    if (section.header.gitBinary) throw new Error('git binary patches are not supported yet');
+    if (section.header.gitBinary) {
+      throw new Error('git binary patches are not supported yet');
+    }
 
     const { sourcePath, destinationPath } = sectionPaths({ repository, section });
     const sourceState = sourcePath === undefined ? undefined : await readState({ path: sourcePath });
@@ -290,10 +306,14 @@ export async function planIndexChanges({ context, repository, sections, reverse 
         : await readState({ path: destinationPath });
     switch (section.header.operation) {
     case 'create': {
-      if (destinationPath === undefined || destinationState === undefined) throw new Error('create patch is missing its destination path');
+      if (destinationPath === undefined || destinationState === undefined) {
+        throw new Error('create patch is missing its destination path');
+      }
       validationPaths.add(destinationPath);
       worktreeAbsentPaths.add(destinationPath);
-      if (destinationState.exists) throw new Error(`${destinationPath}: already exists in index`);
+      if (destinationState.exists) {
+        throw new Error(`${destinationPath}: already exists in index`);
+      }
       const outputBytes = await applySectionBytes({ context, section, sourceBytes: new Uint8Array() });
       const mode = resultingMode({ section, existingMode: undefined });
       states.set(destinationPath, { exists: true, bytes: outputBytes, mode });
@@ -301,9 +321,13 @@ export async function planIndexChanges({ context, repository, sections, reverse 
       break;
     }
     case 'delete': {
-      if (sourcePath === undefined || sourceState === undefined) throw new Error('delete patch is missing its source path');
+      if (sourcePath === undefined || sourceState === undefined) {
+        throw new Error('delete patch is missing its source path');
+      }
       validationPaths.add(sourcePath);
-      if (!sourceState.exists) throw new Error(`${sourcePath}: does not exist in index`);
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: does not exist in index`);
+      }
       await applySectionBytes({ context, section, sourceBytes: sourceState.bytes });
       states.set(sourcePath, { exists: false, bytes: new Uint8Array(), mode: undefined });
       changes.push({ kind: 'delete', path: sourcePath });
@@ -319,8 +343,12 @@ export async function planIndexChanges({ context, repository, sections, reverse 
         validationPaths.add(destinationPath);
         worktreeAbsentPaths.add(destinationPath);
       }
-      if (!sourceState.exists) throw new Error(`${sourcePath}: does not exist in index`);
-      if (destinationPath !== sourcePath && destinationState.exists) throw new Error(`${destinationPath}: already exists in index`);
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: does not exist in index`);
+      }
+      if (destinationPath !== sourcePath && destinationState.exists) {
+        throw new Error(`${destinationPath}: already exists in index`);
+      }
       const outputBytes = await applySectionBytes({ context, section, sourceBytes: sourceState.bytes });
       const mode = resultingMode({ section, existingMode: sourceState.mode });
       if (destinationPath !== sourcePath) {
@@ -338,8 +366,12 @@ export async function planIndexChanges({ context, repository, sections, reverse 
       validationPaths.add(sourcePath);
       validationPaths.add(destinationPath);
       worktreeAbsentPaths.add(destinationPath);
-      if (!sourceState.exists) throw new Error(`${sourcePath}: does not exist in index`);
-      if (destinationState.exists) throw new Error(`${destinationPath}: already exists in index`);
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: does not exist in index`);
+      }
+      if (destinationState.exists) {
+        throw new Error(`${destinationPath}: already exists in index`);
+      }
       const outputBytes = await applySectionBytes({ context, section, sourceBytes: sourceState.bytes });
       const mode = resultingMode({ section, existingMode: sourceState.mode });
       states.set(destinationPath, { exists: true, bytes: outputBytes, mode });
@@ -377,7 +409,9 @@ export async function planWorktreeChanges({ context, repository, sections, rever
 
   const readState = async ({ path }: { path: string }): Promise<WorktreePatchState> => {
     const cached = states.get(path);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
     const absolutePath = worktreeAbsolutePath({ repository, path });
     if (!await pathExists({ files: context.files, path: absolutePath })) {
       const missing = { exists: false, bytes: new Uint8Array(), mode: undefined };
@@ -424,7 +458,9 @@ export async function planWorktreeChanges({ context, repository, sections, rever
       throw new Error(`Unhandled patch format: ${_ex}`);
     }
     }
-    if (section.header.gitBinary) throw new Error('git binary patches are not supported yet');
+    if (section.header.gitBinary) {
+      throw new Error('git binary patches are not supported yet');
+    }
 
     const { sourcePath, destinationPath } = sectionPaths({ repository, section });
     const sourceState = sourcePath === undefined ? undefined : await readState({ path: sourcePath });
@@ -433,13 +469,21 @@ export async function planWorktreeChanges({ context, repository, sections, rever
       : destinationPath === sourcePath
         ? sourceState
         : await readState({ path: destinationPath });
-    if (sourcePath !== undefined) validationPaths.add(sourcePath);
-    if (destinationPath !== undefined) validationPaths.add(destinationPath);
+    if (sourcePath !== undefined) {
+      validationPaths.add(sourcePath);
+    }
+    if (destinationPath !== undefined) {
+      validationPaths.add(destinationPath);
+    }
 
     switch (section.header.operation) {
     case 'create': {
-      if (destinationPath === undefined || destinationState === undefined) throw new Error('create patch is missing its destination path');
-      if (destinationState.exists) throw new Error(`${destinationPath}: already exists in working directory`);
+      if (destinationPath === undefined || destinationState === undefined) {
+        throw new Error('create patch is missing its destination path');
+      }
+      if (destinationState.exists) {
+        throw new Error(`${destinationPath}: already exists in working directory`);
+      }
       const outputBytes = await applySectionBytes({ context, section, sourceBytes: new Uint8Array() });
       const mode = resultingMode({ section, existingMode: undefined });
       states.set(destinationPath, { exists: true, bytes: outputBytes, mode });
@@ -447,8 +491,12 @@ export async function planWorktreeChanges({ context, repository, sections, rever
       break;
     }
     case 'delete': {
-      if (sourcePath === undefined || sourceState === undefined) throw new Error('delete patch is missing its source path');
-      if (!sourceState.exists) throw new Error(`${sourcePath}: No such file or directory`);
+      if (sourcePath === undefined || sourceState === undefined) {
+        throw new Error('delete patch is missing its source path');
+      }
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: No such file or directory`);
+      }
       await applySectionBytes({ context, section, sourceBytes: sourceState.bytes });
       states.set(sourcePath, { exists: false, bytes: new Uint8Array(), mode: undefined });
       changes.push({ kind: 'delete', path: sourcePath });
@@ -459,7 +507,9 @@ export async function planWorktreeChanges({ context, repository, sections, rever
       if (sourcePath === undefined || destinationPath === undefined || sourceState === undefined || destinationState === undefined) {
         throw new Error(`${section.header.operation} patch is missing a pathname`);
       }
-      if (!sourceState.exists) throw new Error(`${sourcePath}: No such file or directory`);
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: No such file or directory`);
+      }
       if (destinationPath !== sourcePath && destinationState.exists) {
         throw new Error(`${destinationPath}: already exists in working directory`);
       }
@@ -477,8 +527,12 @@ export async function planWorktreeChanges({ context, repository, sections, rever
       if (sourcePath === undefined || destinationPath === undefined || sourceState === undefined || destinationState === undefined) {
         throw new Error('copy patch is missing a pathname');
       }
-      if (!sourceState.exists) throw new Error(`${sourcePath}: No such file or directory`);
-      if (destinationState.exists) throw new Error(`${destinationPath}: already exists in working directory`);
+      if (!sourceState.exists) {
+        throw new Error(`${sourcePath}: No such file or directory`);
+      }
+      if (destinationState.exists) {
+        throw new Error(`${destinationPath}: already exists in working directory`);
+      }
       const outputBytes = await applySectionBytes({ context, section, sourceBytes: sourceState.bytes });
       const mode = resultingMode({ section, existingMode: sourceState.mode });
       states.set(destinationPath, { exists: true, bytes: outputBytes, mode });
@@ -528,12 +582,16 @@ export async function validateIndexMatchesWorktree({
     const exists = await pathExists({ files: context.files, path: absolutePath });
     if (existing === undefined) {
       if (exists) {
-        if (worktreeAbsentPaths.has(path)) throw new Error(`${path}: already exists in working directory`);
+        if (worktreeAbsentPaths.has(path)) {
+          throw new Error(`${path}: already exists in working directory`);
+        }
         throw new Error(`${path}: does not match index`);
       }
       continue;
     }
-    if (!exists) throw new Error(`${path}: does not match index`);
+    if (!exists) {
+      throw new Error(`${path}: does not match index`);
+    }
     const worktreeEntry = await hashWorktreeEntry({
       files: context.files,
       repository,

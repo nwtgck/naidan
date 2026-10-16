@@ -21,59 +21,89 @@ const oldName = computed(() => {
 });
 
 function close(): void {
-  if (!saving.value) emit('close');
+  if (!saving.value) {
+    emit('close');
+  }
 }
 
 function restoreFocus(): void {
-  if (previousFocus?.isConnected) previousFocus.focus();
+  if (previousFocus?.isConnected) {
+    previousFocus.focus();
+  }
   previousFocus = undefined;
 }
 
 watch(() => props.model, async model => {
   failure.value = undefined;
   if (!model) {
-    restoreFocus(); return;
+    restoreFocus();
+    return;
   }
-  if (document.activeElement instanceof HTMLElement) previousFocus = document.activeElement;
+  if (document.activeElement instanceof HTMLElement) {
+    previousFocus = document.activeElement;
+  }
   await nextTick();
-  if (!disposed && props.model) dialog.value?.focus();
+  if (!disposed && props.model) {
+    dialog.value?.focus();
+  }
 }, { immediate: true });
 onUnmounted(() => {
-  disposed = true; restoreFocus();
+  disposed = true;
+  restoreFocus();
 });
 
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.key === 'Escape') {
-    event.stopPropagation(); close(); return;
+    event.stopPropagation();
+    close();
+    return;
   }
-  if (event.key !== 'Tab') return;
+  if (event.key !== 'Tab') {
+    return;
+  }
   const elements = Array.from(dialog.value?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]') ?? []);
-  const first = elements[0]; const last = elements.at(-1);
+  const first = elements[0];
+  const last = elements.at(-1);
   if (!first || !last) {
-    event.preventDefault(); return;
+    event.preventDefault();
+    return;
   }
   if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.value)) {
-    event.preventDefault(); last.focus();
+    event.preventDefault();
+    last.focus();
   } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.value)) {
-    event.preventDefault(); first.focus();
+    event.preventDefault();
+    first.focus();
   }
 }
 
 async function confirm(): Promise<void> {
-  if (saving.value || !props.model || !props.current || !props.apply) return;
+  if (saving.value || !props.model || !props.current || !props.apply) {
+    return;
+  }
   const model = props.model;
   const previous = { endpoint: cloneEndpoint({ endpoint: props.current.endpoint }), modelId: props.current.modelId };
-  saving.value = true; failure.value = undefined;
+  saving.value = true;
+  failure.value = undefined;
   try {
     const result = await props.apply({ model, previous });
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     switch (result) {
-    case 'applied': emit('close'); break;
-    case 'changed': failure.value = 'changed'; break;
-    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+    case 'applied': emit('close');
+      break;
+    case 'changed': failure.value = 'changed';
+      break;
+    default: {
+      const exhaustive: never = result;
+      throw new Error(String(exhaustive));
+    }
     }
   } catch {
-    if (!disposed) failure.value = 'failed';
+    if (!disposed) {
+      failure.value = 'failed';
+    }
   } finally {
     saving.value = false;
   }

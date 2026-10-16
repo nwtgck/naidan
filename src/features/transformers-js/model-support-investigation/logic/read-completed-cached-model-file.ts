@@ -26,20 +26,28 @@ export async function readCompletedCachedModelFile({
     ...repositoryPath.split("/"),
   ];
   const fileName = pathParts.pop();
-  if (fileName === undefined || fileName.length === 0) return undefined;
+  if (fileName === undefined || fileName.length === 0) {
+    return undefined;
+  }
 
   try {
     let directory = storageRoot;
     for (const part of pathParts) {
-      if (part.length === 0) continue;
+      if (part.length === 0) {
+        continue;
+      }
       directory = await directory.getDirectoryHandle(part, { create: false });
     }
     await directory.getFileHandle(`.${fileName}.complete`, { create: false });
     const file = await (await directory.getFileHandle(fileName, { create: false })).getFile();
-    if (file.size === 0) return undefined;
+    if (file.size === 0) {
+      return undefined;
+    }
     return new Uint8Array(await file.arrayBuffer());
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }

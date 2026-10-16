@@ -31,10 +31,14 @@ function formatTodo({ entries }: { entries: readonly GitRebaseTodoEntry[] }): st
 }
 
 function parseTodo({ text }: { text: string }): GitRebaseTodoEntry[] {
-  if (text.length === 0) return [];
+  if (text.length === 0) {
+    return [];
+  }
   return text.split('\n').filter(line => line.length > 0).map(line => {
     const match = /^pick ([0-9a-f]{40})(?: (.*))?$/u.exec(line);
-    if (match === null) throw new Error(`unsupported rebase todo line: ${line}`);
+    if (match === null) {
+      throw new Error(`unsupported rebase todo line: ${line}`);
+    }
     return { objectId: match[1]!, subject: match[2] ?? '' };
   });
 }
@@ -48,13 +52,21 @@ export async function readRebaseState({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitRebaseState | undefined> {
   const directory = rebaseDirectory({ repository });
-  if (!await pathExists({ files, path: directory })) return undefined;
+  if (!await pathExists({ files, path: directory })) {
+    return undefined;
+  }
   const headRefName = (await readFileText({ files, path: statePath({ repository, name: 'head-name' }) })).trim();
   const origHeadObjectId = (await readFileText({ files, path: statePath({ repository, name: 'orig-head' }) })).trim();
   const ontoObjectId = (await readFileText({ files, path: statePath({ repository, name: 'onto' }) })).trim();
-  if (!headRefName.startsWith('refs/heads/')) throw new Error('invalid rebase head-name');
-  if (!/^[0-9a-f]{40}$/u.test(origHeadObjectId)) throw new Error('invalid rebase orig-head');
-  if (!/^[0-9a-f]{40}$/u.test(ontoObjectId)) throw new Error('invalid rebase onto');
+  if (!headRefName.startsWith('refs/heads/')) {
+    throw new Error('invalid rebase head-name');
+  }
+  if (!/^[0-9a-f]{40}$/u.test(origHeadObjectId)) {
+    throw new Error('invalid rebase orig-head');
+  }
+  if (!/^[0-9a-f]{40}$/u.test(ontoObjectId)) {
+    throw new Error('invalid rebase onto');
+  }
   const stoppedText = await readOptionalText({ files, path: statePath({ repository, name: 'stopped-sha' }) });
   const stoppedObjectId = stoppedText?.trim();
   if (stoppedObjectId !== undefined && !/^[0-9a-f]{40}$/u.test(stoppedObjectId)) {
@@ -100,9 +112,13 @@ export async function beginRebaseStep({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitRebaseTodoEntry | undefined> {
   const state = await readRebaseState({ files, repository });
-  if (state === undefined) throw new Error('no rebase in progress');
+  if (state === undefined) {
+    throw new Error('no rebase in progress');
+  }
   const step = state.todo[0];
-  if (step === undefined) return undefined;
+  if (step === undefined) {
+    return undefined;
+  }
   const remaining = state.todo.slice(1);
   const done = [...state.done, step];
   await replaceTextViaLock({ files, path: statePath({ repository, name: 'git-rebase-todo' }), text: formatTodo({ entries: remaining }) });
@@ -135,7 +151,9 @@ export async function clearRebaseStoppedState({ files, repository }: {
 }): Promise<void> {
   for (const name of ['stopped-sha', 'message'] as const) {
     const path = statePath({ repository, name });
-    if (await pathExists({ files, path })) await files.unlink({ path });
+    if (await pathExists({ files, path })) {
+      await files.unlink({ path });
+    }
   }
 }
 
@@ -144,7 +162,9 @@ export async function clearRebaseState({ files, repository }: {
   repository: GitRepository,
 }): Promise<void> {
   const directory = rebaseDirectory({ repository });
-  if (!await pathExists({ files, path: directory })) return;
+  if (!await pathExists({ files, path: directory })) {
+    return;
+  }
   for await (const entry of files.readDir({ path: directory })) {
     switch (entry.type) {
     case 'file':

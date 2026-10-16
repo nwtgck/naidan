@@ -22,7 +22,8 @@ function providerWith({ result, output }: { result: ChatGenerationResult, output
     signal,
     run: async ({ writer }) => {
       await writer.text({ type: 'reasoning', text: 'not part of the translation' });
-      await writer.text({ type: 'text', text: output }); return result;
+      await writer.text({ type: 'text', text: output });
+      return result;
     },
   }));
   const provider: LmProvider = { chat, listModels: vi.fn(async () => []) };
@@ -49,7 +50,9 @@ describe('transient read-only prompt translation', () => {
     expect(request.messages).toEqual(imagePromptTranslationMessages({ prompt: value.prompt, language: 'ja' }));
     expect(request.messages[0]!.parts).toEqual([expect.objectContaining({ text: expect.stringContaining('Japanese') })]);
     expect(request.messages[1]!.parts).toEqual([{ type: 'text', text: value.prompt, completeness: 'complete' }]);
-    expect(request.model).toBe('translator'); expect(request.tools).toBeUndefined(); expect(request.readBinaryObject).toBeUndefined();
+    expect(request.model).toBe('translator');
+    expect(request.tools).toBeUndefined();
+    expect(request.readBinaryObject).toBeUndefined();
     expect(value.prompt).toBe(`\
   a cat 🐈
 (weight:1.2)  `);
@@ -61,17 +64,21 @@ describe('transient read-only prompt translation', () => {
       await operation({ chat: provider.chat.bind(provider), signal: signal ?? new AbortController().signal });
     });
     provider.runChatOperation = operation;
-    expect(await translateImagePrompt(args())).toBe('訳'); expect(operation).toHaveBeenCalledTimes(1); expect(chat).toHaveBeenCalledTimes(1);
+    expect(await translateImagePrompt(args())).toBe('訳');
+    expect(operation).toHaveBeenCalledTimes(1);
+    expect(chat).toHaveBeenCalledTimes(1);
   });
 
   it.each([
     { type: 'interrupted', reason: 'limit' }, { type: 'finished', next: 'tool_results' }, { type: 'error', error: new Error('offline') },
   ] satisfies ChatGenerationResult[])('does not claim partial or tool-requested output as a completed translation: $type', async result => {
-    providerWith({ output: 'partial', result }); await expect(translateImagePrompt(args())).rejects.toThrow();
+    providerWith({ output: 'partial', result });
+    await expect(translateImagePrompt(args())).rejects.toThrow();
   });
 
   it('reports an empty response', async () => {
-    providerWith({ output: ' ', result: { type: 'finished', next: 'user' } }); await expect(translateImagePrompt(args())).rejects.toThrow('no translation');
+    providerWith({ output: ' ', result: { type: 'finished', next: 'user' } });
+    await expect(translateImagePrompt(args())).rejects.toThrow('no translation');
   });
 
   it('validates inputs before loading a provider and never creates a fallback request', async () => {
@@ -83,18 +90,25 @@ describe('transient read-only prompt translation', () => {
 
   it('does not start chat after cancellation during provider loading', async () => {
     const { provider, chat } = providerWith({ output: 'late', result: { type: 'finished', next: 'user' } });
-    const pending = Promise.withResolvers<LmProvider>(); mocks.provider.mockReturnValue(pending.promise);
-    const abort = new AbortController(); const operation = translateImagePrompt({ ...args(), signal: abort.signal });
-    abort.abort(); pending.resolve(provider);
-    await expect(operation).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
+    const pending = Promise.withResolvers<LmProvider>();
+    mocks.provider.mockReturnValue(pending.promise);
+    const abort = new AbortController();
+    const operation = translateImagePrompt({ ...args(), signal: abort.signal });
+    abort.abort();
+    pending.resolve(provider);
+    await expect(operation).rejects.toThrow();
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('honors an operation-level abort even if its outer signal is not aborted', async () => {
     const { provider, chat } = providerWith({ output: 'unused', result: { type: 'finished', next: 'user' } });
     provider.runChatOperation = async ({ operation }) => {
-      const abort = new AbortController(); abort.abort(); await operation({ chat: provider.chat.bind(provider), signal: abort.signal });
+      const abort = new AbortController();
+      abort.abort();
+      await operation({ chat: provider.chat.bind(provider), signal: abort.signal });
     };
-    await expect(translateImagePrompt(args())).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
+    await expect(translateImagePrompt(args())).rejects.toThrow();
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('rejects a provider that does not enter its runtime operation', async () => {
@@ -113,13 +127,15 @@ it.each([
     try {
       await operation({ chat: provider.chat, signal: signal ?? new AbortController().signal });
     } catch (error) {
-      operationFailed = true; throw error;
+      operationFailed = true;
+      throw error;
     } finally {
       closed = true;
     }
   };
   await expect(translateImagePrompt(args())).rejects.toThrow();
-  expect(closed).toBe(true); expect(operationFailed).toBe(false);
+  expect(closed).toBe(true);
+  expect(operationFailed).toBe(false);
 });
 
 it('keeps empty successful native output separate from a runtime failure', async () => {
@@ -138,10 +154,12 @@ it('streams escaped text without reasoning and isolates a failing display observ
   expect(await translateImagePrompt({
     ...args(),
     onText({ text: value }) {
-      text.push(value); throw new Error('renderer failed');
+      text.push(value);
+      throw new Error('renderer failed');
     },
   })).toBe('<cat>');
-  expect(text).toContain('<cat>'); expect(text.join('')).not.toContain('not part of the translation');
+  expect(text).toContain('<cat>');
+  expect(text.join('')).not.toContain('not part of the translation');
 });
 
 it('still propagates native errors inside the owned runtime operation', async () => {
@@ -152,7 +170,8 @@ it('still propagates native errors inside the owned runtime operation', async ()
     try {
       await operation({ chat: provider.chat, signal: signal ?? new AbortController().signal });
     } catch (failure) {
-      caught = failure; throw failure;
+      caught = failure;
+      throw failure;
     }
   };
   await expect(translateImagePrompt(args())).rejects.toBe(error);

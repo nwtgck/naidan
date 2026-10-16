@@ -34,11 +34,15 @@ class ArgumentReader {
   }
 
   whitespace(): void {
-    while (/\s/.test(this.source[this.position] ?? '') && this.position < this.source.length) this.position++;
+    while (/\s/.test(this.source[this.position] ?? '') && this.position < this.source.length) {
+      this.position++;
+    }
   }
 
   consume({ token }: { token: string }): void {
-    if (!this.source.startsWith(token, this.position)) throw new Gemma4ToolCallProtocolError();
+    if (!this.source.startsWith(token, this.position)) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     this.position += token.length;
   }
 
@@ -46,25 +50,33 @@ class ArgumentReader {
     // Explicit ASCII subset shared with the input formatter. This is not a
     // claim to support every Unicode interpretation of the metadata's \w+.
     const token = /^[A-Za-z0-9_$.-]+/.exec(this.source.slice(this.position))?.[0];
-    if (!token) throw new Gemma4ToolCallProtocolError();
+    if (!token) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     this.position += token.length;
     return token;
   }
 
   object({ depth }: { depth: number }): { [key: string]: ArgumentValue } {
-    if (depth > MAX_DEPTH) throw new Gemma4ToolCallProtocolError();
+    if (depth > MAX_DEPTH) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     this.consume({ token: '{' });
     const result: { [key: string]: ArgumentValue } = Object.create(null);
     this.whitespace();
     if (this.source[this.position] !== '}') {
       while (true) {
         const key = this.bareToken();
-        if (Object.hasOwn(result, key)) throw new Gemma4ToolCallProtocolError();
+        if (Object.hasOwn(result, key)) {
+          throw new Gemma4ToolCallProtocolError();
+        }
         this.whitespace();
         this.consume({ token: ':' });
         result[key] = this.value({ depth: depth + 1 });
         this.whitespace();
-        if (this.source[this.position] !== ',') break;
+        if (this.source[this.position] !== ',') {
+          break;
+        }
         this.position++;
         this.whitespace();
       }
@@ -78,15 +90,21 @@ class ArgumentReader {
     if (this.source.startsWith(QUOTE, this.position)) {
       this.position += QUOTE.length;
       const end = this.source.indexOf(QUOTE, this.position);
-      if (end < 0) throw new Gemma4ToolCallProtocolError();
+      if (end < 0) {
+        throw new Gemma4ToolCallProtocolError();
+      }
       // Native quotes contain raw characters, not JSON escape sequences.
       const result = this.source.slice(this.position, end);
       this.position = end + QUOTE.length;
       return result;
     }
-    if (this.source[this.position] === '{') return this.object({ depth });
+    if (this.source[this.position] === '{') {
+      return this.object({ depth });
+    }
     if (this.source[this.position] === '[') {
-      if (depth > MAX_DEPTH) throw new Gemma4ToolCallProtocolError();
+      if (depth > MAX_DEPTH) {
+        throw new Gemma4ToolCallProtocolError();
+      }
       this.position++;
       const result: ArgumentValue[] = [];
       this.whitespace();
@@ -94,7 +112,9 @@ class ArgumentReader {
         while (true) {
           result.push(this.value({ depth: depth + 1 }));
           this.whitespace();
-          if (this.source[this.position] !== ',') break;
+          if (this.source[this.position] !== ',') {
+            break;
+          }
           this.position++;
         }
       }
@@ -108,9 +128,13 @@ class ArgumentReader {
       }
     }
     const token = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(this.source.slice(this.position))?.[0];
-    if (!token) throw new Gemma4ToolCallProtocolError();
+    if (!token) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     const value = Number(token);
-    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) throw new Gemma4ToolCallProtocolError();
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     this.position += token.length;
     return value;
   }
@@ -118,14 +142,18 @@ class ArgumentReader {
 
 /** Parses one already-delimited native call body, not a visible-text protocol. */
 export function parseGemma4ToolCallBody({ body }: { body: string }): ToolCall {
-  if (body.length > MAX_PROTOCOL_CHARACTERS) throw new Gemma4ToolCallProtocolError();
+  if (body.length > MAX_PROTOCOL_CHARACTERS) {
+    throw new Gemma4ToolCallProtocolError();
+  }
   const reader = new ArgumentReader({ source: body, position: 0 });
   reader.consume({ token: 'call:' });
   const name = reader.bareToken();
   reader.whitespace();
   const args = reader.object({ depth: 1 });
   reader.whitespace();
-  if (reader.position !== body.length) throw new Gemma4ToolCallProtocolError();
+  if (reader.position !== body.length) {
+    throw new Gemma4ToolCallProtocolError();
+  }
   // Gemma emits its native argument notation rather than JSON. Keep this
   // conversion local; no tool schema defaults or transforms are applied here.
   return exactObject<ToolCall>()({ id: generateId<ToolCallId>(), type: 'function', function: { name, arguments: JSON.stringify(args) } });
@@ -160,7 +188,9 @@ export class Gemma4ToolCallParser {
   }) {
     this.onText = onText;
     this.toolCalls = toolCalls;
-    if (ignoredSpecialTokens.some(token => typeof token !== 'string' || token.length === 0)) throw new Gemma4ToolCallProtocolError();
+    if (ignoredSpecialTokens.some(token => typeof token !== 'string' || token.length === 0)) {
+      throw new Gemma4ToolCallProtocolError();
+    }
     this.controls = [...new Set([...CONTROLS, ...ignoredSpecialTokens])];
   }
 
@@ -176,7 +206,9 @@ export class Gemma4ToolCallParser {
     }
     try {
       if (this.protocol !== undefined) {
-        if (this.protocol.length + output.length > MAX_PROTOCOL_CHARACTERS) throw new Gemma4ToolCallProtocolError();
+        if (this.protocol.length + output.length > MAX_PROTOCOL_CHARACTERS) {
+          throw new Gemma4ToolCallProtocolError();
+        }
         this.protocol += output;
       } else {
         this.pending += output;
@@ -200,7 +232,9 @@ export class Gemma4ToolCallParser {
     }
     try {
       this.streamOrdinary({ final: true });
-      if (this.protocol !== undefined) this.parseProtocol();
+      if (this.protocol !== undefined) {
+        this.parseProtocol();
+      }
       this.closePublicThought();
       this.state = 'flushed';
       this.protocol = undefined;
@@ -235,17 +269,26 @@ export class Gemma4ToolCallParser {
     this.channel = 'ordinary';
     this.channelHeader = '';
     this.publicThought = 'closed';
-    if (wasPublished) this.onText({ text: '</think>' });
+    if (wasPublished) {
+      this.onText({ text: '</think>' });
+    }
   }
 
   private publishText({ text }: { text: string }): void {
-    if (!text) return;
+    if (!text) {
+      return;
+    }
     // Parsing may advance past an opening or closing delimiter before a later
     // error. Only committed text changes the public interval's state.
     switch (this.channel) {
-    case 'thought': this.publicThought = 'open'; break;
-    case 'ordinary': case 'header': case 'other': this.publicThought = 'closed'; break;
-    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    case 'thought': this.publicThought = 'open';
+      break;
+    case 'ordinary': case 'header': case 'other': this.publicThought = 'closed';
+      break;
+    default: {
+      const exhaustive: never = this.channel;
+      throw new Error(`Unhandled channel state: ${exhaustive}`);
+    }
     }
     this.onText({ text });
   }
@@ -266,7 +309,10 @@ export class Gemma4ToolCallParser {
     switch (this.channel) {
     case 'ordinary': case 'thought': case 'other': return character;
     case 'header': break;
-    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = this.channel;
+      throw new Error(`Unhandled channel state: ${exhaustive}`);
+    }
     }
     this.channelHeader += character;
     if (this.channelHeader === 'thought\n') {
@@ -274,7 +320,9 @@ export class Gemma4ToolCallParser {
       this.channel = 'thought';
       return '<think>';
     }
-    if ('thought\n'.startsWith(this.channelHeader)) return '';
+    if ('thought\n'.startsWith(this.channelHeader)) {
+      return '';
+    }
     // Unknown channel labels remain ordinary text, not invented reasoning or
     // executable syntax. Native framing itself stays inside this adapter.
     this.channel = 'other';
@@ -286,7 +334,9 @@ export class Gemma4ToolCallParser {
   private renderControl({ control }: { control: string }): string {
     switch (this.quoteState) {
     case 'inside':
-      if (control === QUOTE) this.quoteState = 'outside';
+      if (control === QUOTE) {
+        this.quoteState = 'outside';
+      }
       // A quoted channel terminator is data, not permission to execute a
       // subsequent call-shaped substring inside the same thought string.
       return control;
@@ -313,7 +363,10 @@ export class Gemma4ToolCallParser {
       case 'header': return '';
       case 'other': return '';
       case 'ordinary': return '';
-      default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = this.channel;
+        throw new Error(`Unhandled channel state: ${exhaustive}`);
+      }
       }
     default: {
       const _ex: never = this.quoteState;
@@ -326,7 +379,10 @@ export class Gemma4ToolCallParser {
     switch (this.channel) {
     case 'thought': return '</think>';
     case 'ordinary': case 'header': case 'other': return '';
-    default: { const exhaustive: never = this.channel; throw new Error(`Unhandled channel state: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = this.channel;
+      throw new Error(`Unhandled channel state: ${exhaustive}`);
+    }
     }
   }
 
@@ -337,7 +393,9 @@ export class Gemma4ToolCallParser {
       const control = this.controls.find(token => this.pending.startsWith(token, position));
       if (control === OPEN && this.toolCalls === 'enabled' && this.channel === 'ordinary' && this.quoteState === 'outside') {
         const remaining = this.pending.length - position;
-        if (remaining > MAX_PROTOCOL_CHARACTERS) throw new Gemma4ToolCallProtocolError();
+        if (remaining > MAX_PROTOCOL_CHARACTERS) {
+          throw new Gemma4ToolCallProtocolError();
+        }
         this.protocol = this.pending.slice(position);
         position = this.pending.length;
         break;
@@ -346,7 +404,9 @@ export class Gemma4ToolCallParser {
         text += this.renderControl({ control });
         position += control.length;
       } else {
-        if (!final && this.controls.some(token => token.startsWith(this.pending.slice(position)))) break;
+        if (!final && this.controls.some(token => token.startsWith(this.pending.slice(position)))) {
+          break;
+        }
         if (final && this.quoteState === 'outside' && [CHANNEL_OPEN, CHANNEL_CLOSE].some(token => token.startsWith(this.pending.slice(position)))) {
           position = this.pending.length;
           break;
@@ -367,7 +427,9 @@ export class Gemma4ToolCallParser {
     while (reader.position < source.length) {
       const control = this.controls.find(token => source.startsWith(token, reader.position));
       if (control === OPEN && this.channel === 'ordinary' && this.quoteState === 'outside') {
-        if (calls.length >= MAX_CALLS) throw new Gemma4ToolCallProtocolError();
+        if (calls.length >= MAX_CALLS) {
+          throw new Gemma4ToolCallProtocolError();
+        }
         reader.consume({ token: OPEN });
         reader.consume({ token: 'call:' });
         const name = reader.bareToken();

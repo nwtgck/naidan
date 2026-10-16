@@ -71,9 +71,13 @@ export const chatDataStore = createChatDataStore({
   },
   onMigration: () => {
     autoTitleScheduler.reset();
-    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) controller.abort();
+    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) {
+      controller.abort();
+    }
     chatRuntimeStore.activeTitleGenerations.clear();
-    for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
+    for (const item of chatRuntimeStore.activeGenerations.values()) {
+      item.controller.abort();
+    }
     chatRuntimeStore.clearActiveGenerations();
     chatRuntimeStore.clearActiveTaskCounts();
     clearChatTmpDirectories();

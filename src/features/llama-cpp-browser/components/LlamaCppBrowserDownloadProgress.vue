@@ -17,23 +17,35 @@ onUnmounted(() => clearInterval(timer));
 const percentage = computed(() => props.progress && props.progress.total > 0 ? Math.min(100, Math.max(0, Math.floor(props.progress.completed / props.progress.total * 100))) : undefined);
 const speed = computed(() => {
   const sample = throughput.value;
-  if (props.progress?.phase !== 'transferring' || sample.bytesPerSecond === undefined) return undefined;
+  if (props.progress?.phase !== 'transferring' || sample.bytesPerSecond === undefined) {
+    return undefined;
+  }
   const bytes = sample.lastAdvanceAt !== undefined && sampledNow.value - sample.lastAdvanceAt >= 10000 ? 0 : sample.bytesPerSecond;
   return `${formatDownloadBytes({ bytes })}/s`;
 });
 const estimateText = computed(() => {
-  if (!props.progress) return undefined;
+  if (!props.progress) {
+    return undefined;
+  }
   const estimate = remainingEstimate({ sample: throughput.value, now: sampledNow.value, remaining: props.progress.total - props.progress.completed, phase: props.progress.phase });
   switch (estimate.status) {
   case 'estimating': return lazyStrings.LlamaCppBrowserHuggingFaceManager__estimating_remaining_time();
   case 'verifying': return lazyStrings.LlamaCppBrowserHuggingFaceManager__performing_final_checks();
   case 'remaining': {
-    if (estimate.seconds < 60) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_seconds_remaining({ seconds: Math.max(5, Math.ceil(estimate.seconds / 5) * 5) });
-    if (estimate.seconds < 3600) return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_minutes_remaining({ minutes: Math.ceil(estimate.seconds / 60) });
-    const minutes = Math.ceil(estimate.seconds / 600) * 10; const hours = Math.floor(minutes / 60);
+    if (estimate.seconds < 60) {
+      return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_seconds_remaining({ seconds: Math.max(5, Math.ceil(estimate.seconds / 5) * 5) });
+    }
+    if (estimate.seconds < 3600) {
+      return lazyStrings.LlamaCppBrowserHuggingFaceManager__about_minutes_remaining({ minutes: Math.ceil(estimate.seconds / 60) });
+    }
+    const minutes = Math.ceil(estimate.seconds / 600) * 10;
+    const hours = Math.floor(minutes / 60);
     return minutes % 60 === 0 ? lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_remaining({ hours }) : lazyStrings.LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining({ hours, minutes: minutes % 60 });
   }
-  default: { const exhaustive: never = estimate; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = estimate;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -121,8 +121,12 @@ const activePreset = computed(() => {
       c.settings.lmParameters === 'replace' &&
       c.settings.providerProfiles === 'replace';
 
-  if (isAppendPreset) return 'append';
-  if (isReplacePreset) return 'replace';
+  if (isAppendPreset) {
+    return 'append';
+  }
+  if (isReplacePreset) {
+    return 'replace';
+  }
   return 'custom';
 });
 
@@ -183,35 +187,51 @@ async function handleExport() {
 
   try {
     const preparing = await ensureStrings.ImportExportModal__compressing_data();
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
     processingMessage.value = preparing;
     const { stream, filename } = await service.exportData(options);
 
     // The download helper owns and cancels a late source when this view closed.
     await downloadReadableStream({ stream, filename, size: undefined, signal: abort.signal });
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
     const message = await ensureStrings.ImportExportModal__export_successful();
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
     addToast({ message, duration: 3000 });
     emit('close');
   } catch (e) {
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
     const message = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__export_failed();
-    if (!isCurrent()) return;
+    if (!isCurrent()) {
+      return;
+    }
     error.value = message;
     mode.value = 'export';
   } finally {
-    if (exportAbort === abort) exportAbort = undefined;
+    if (exportAbort === abort) {
+      exportAbort = undefined;
+    }
   }
 }
 
 async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = target.files;
-  if (!files || files.length === 0) return;
+  if (!files || files.length === 0) {
+    return;
+  }
 
   const file = files[0];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   selectedFile.value = file;
 
@@ -232,7 +252,9 @@ async function handleFileSelect({ event }: { event: Event }) {
 
 async function handleImportExecute() {
   const file = selectedFile.value;
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   mode.value = 'processing';
   processingMessage.value = await ensureStrings.ImportExportModal__verifying_integrity();

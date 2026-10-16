@@ -45,7 +45,9 @@ export function createDownloadVerificationRuntimeArtifactPreparationWorkerClient
           workerProxy({
             // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
             value: (info: ProgressInfo) => {
-              if (session.isActive()) return progressCallback({ info });
+              if (session.isActive()) {
+                return progressCallback({ info });
+              }
             },
           }),
         ),

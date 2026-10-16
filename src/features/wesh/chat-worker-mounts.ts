@@ -56,17 +56,25 @@ export async function buildWorkerMountsForChat({
 
   // Global settings mounts.
   for (const mount of settings.value.mounts) {
-    if (mount.type !== 'volume') continue;
+    if (mount.type !== 'volume') {
+      continue;
+    }
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) continue;
+    if (!handle) {
+      continue;
+    }
     result.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
 
   // Chat group mounts override any global mount sharing the same path.
   for (const mount of chatGroupMounts ?? []) {
-    if (mount.type !== 'volume') continue;
+    if (mount.type !== 'volume') {
+      continue;
+    }
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) continue;
+    if (!handle) {
+      continue;
+    }
     const existing = result.findIndex(m => m.path === mount.mountPath);
     const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
@@ -78,9 +86,13 @@ export async function buildWorkerMountsForChat({
 
   // Chat mounts override any global or chat group mount sharing the same path.
   for (const mount of chatMounts) {
-    if (mount.type !== 'volume') continue;
+    if (mount.type !== 'volume') {
+      continue;
+    }
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) continue;
+    if (!handle) {
+      continue;
+    }
     const existing = result.findIndex(m => m.path === mount.mountPath);
     const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {

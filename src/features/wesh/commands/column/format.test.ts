@@ -29,9 +29,13 @@ function referenceListGridWidth({
   widths: number[],
   separatorWidth: number,
 }): number {
-  if (widths.length === 0) return 0;
+  if (widths.length === 0) {
+    return 0;
+  }
   let width = separatorWidth * (widths.length - 1);
-  for (const columnWidth of widths) width += columnWidth;
+  for (const columnWidth of widths) {
+    width += columnWidth;
+  }
   return width;
 }
 
@@ -46,7 +50,9 @@ function referenceChooseListLayout({
   fillMode: FillMode,
   separatorWidth: number,
 }): { columns: number, widths: number[] } {
-  if (itemWidths.length === 0) return { columns: 0, widths: [] };
+  if (itemWidths.length === 0) {
+    return { columns: 0, widths: [] };
+  }
   for (let columns = itemWidths.length; columns >= 1; columns -= 1) {
     const widths = referenceListColumnWidths({ itemWidths, columns, fillMode });
     if (outputWidth === 0 || referenceListGridWidth({ widths, separatorWidth }) <= outputWidth) {
@@ -54,7 +60,9 @@ function referenceChooseListLayout({
     }
   }
   let maximumWidth = 0;
-  for (const itemWidth of itemWidths) maximumWidth = Math.max(maximumWidth, itemWidth);
+  for (const itemWidth of itemWidths) {
+    maximumWidth = Math.max(maximumWidth, itemWidth);
+  }
   return { columns: 1, widths: [maximumWidth] };
 }
 

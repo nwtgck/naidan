@@ -56,18 +56,28 @@ interface ParsedBlameArguments {
 }
 
 function blameCopySearchMode({ level }: { level: number }): BlameCopySearchMode {
-  if (level <= 0) return 'disabled';
-  if (level === 1) return 'changed-files';
-  if (level === 2) return 'creation-files';
+  if (level <= 0) {
+    return 'disabled';
+  }
+  if (level === 1) {
+    return 'changed-files';
+  }
+  if (level === 2) {
+    return 'creation-files';
+  }
   return 'all-files';
 }
 
 function parseBlameRange({ value }: { value: string }): BlameRange {
   const match = /^([0-9]+),([0-9]+)$/u.exec(value);
-  if (match === null) throw new GitUsageError({ message: `invalid -L parameter '${value}'` });
+  if (match === null) {
+    throw new GitUsageError({ message: `invalid -L parameter '${value}'` });
+  }
   const start = Number.parseInt(match[1]!, 10);
   const end = Number.parseInt(match[2]!, 10);
-  if (start < 1 || end < start) throw new GitUsageError({ message: `invalid -L parameter '${value}'` });
+  if (start < 1 || end < start) {
+    throw new GitUsageError({ message: `invalid -L parameter '${value}'` });
+  }
   return { start, end };
 }
 
@@ -131,7 +141,9 @@ function parseBlameArguments({ args }: { args: readonly string[] }): ParsedBlame
             break;
           case 'following-required': {
             const value = args[index + 1];
-            if (value === undefined) throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+            if (value === undefined) {
+              throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+            }
             rawValue = value;
             index += 1;
             break;
@@ -156,13 +168,19 @@ function parseBlameArguments({ args }: { args: readonly string[] }): ParsedBlame
       }
       continue;
     }
-    if (arg.startsWith('--')) throw new GitUsageError({ message: `unknown option: ${arg}` });
+    if (arg.startsWith('--')) {
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
+    }
     beforeSeparator.push(arg);
   }
 
-  if (afterSeparator.length > 1) throw new GitUsageError({ message: 'too many path arguments' });
+  if (afterSeparator.length > 1) {
+    throw new GitUsageError({ message: 'too many path arguments' });
+  }
   if (afterSeparator.length === 1) {
-    if (beforeSeparator.length > 1) throw new GitUsageError({ message: 'too many revisions specified' });
+    if (beforeSeparator.length > 1) {
+      throw new GitUsageError({ message: 'too many revisions specified' });
+    }
     return {
       revision: beforeSeparator[0] ?? 'HEAD',
       pathOperand: afterSeparator[0]!,
@@ -173,8 +191,12 @@ function parseBlameArguments({ args }: { args: readonly string[] }): ParsedBlame
       porcelain,
     };
   }
-  if (beforeSeparator.length === 0) throw new GitUsageError({ message: 'no path specified' });
-  if (beforeSeparator.length > 1) throw new GitUsageError({ message: 'too many path arguments' });
+  if (beforeSeparator.length === 0) {
+    throw new GitUsageError({ message: 'no path specified' });
+  }
+  if (beforeSeparator.length > 1) {
+    throw new GitUsageError({ message: 'too many path arguments' });
+  }
   return { revision: 'HEAD', pathOperand: beforeSeparator[0]!, range, ignoreWhitespace, detectMoves, copySearchMode: blameCopySearchMode({ level: copySearchLevel }), porcelain };
 }
 
@@ -194,7 +216,9 @@ async function readCommitFile({ context, repository, commit, path, treeCache, ob
     objectReadCache,
   });
   const entry = entries.get(path);
-  if (entry === undefined) return undefined;
+  if (entry === undefined) {
+    return undefined;
+  }
   const object = await readObject({
     files: context.files,
     repository,
@@ -213,9 +237,13 @@ async function readCommitFile({ context, repository, commit, path, treeCache, ob
     throw new Error(`Unhandled blame object type: ${_ex}`);
   }
   }
-  if (object.body.includes(0)) throw new Error(`cannot blame binary file '${path}'`);
+  if (object.body.includes(0)) {
+    throw new Error(`cannot blame binary file '${path}'`);
+  }
   const lines = new TextDecoder().decode(object.body).split('\n');
-  if (lines.at(-1) === '') lines.pop();
+  if (lines.at(-1) === '') {
+    lines.pop();
+  }
   return lines;
 }
 
@@ -240,7 +268,9 @@ function blameLineAlphanumericScore({ line }: { line: string }): number {
   let score = 0;
   for (let index = 0; index < line.length; index += 1) {
     const code = line.charCodeAt(index);
-    if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) score += 1;
+    if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+      score += 1;
+    }
   }
   return score;
 }
@@ -258,11 +288,16 @@ function mapMovedBlameLines({ childLines, normalizedParentLines, normalizedChild
   );
   const parentStartsByLine = new Map<string, number[]>();
   for (let parentLineIndex = 0; parentLineIndex < normalizedParentLines.length; parentLineIndex += 1) {
-    if (usedParentLines.has(parentLineIndex)) continue;
+    if (usedParentLines.has(parentLineIndex)) {
+      continue;
+    }
     const line = normalizedParentLines[parentLineIndex]!;
     const starts = parentStartsByLine.get(line);
-    if (starts === undefined) parentStartsByLine.set(line, [parentLineIndex]);
-    else starts.push(parentLineIndex);
+    if (starts === undefined) {
+      parentStartsByLine.set(line, [parentLineIndex]);
+    } else {
+      starts.push(parentLineIndex);
+    }
   }
   const scorePrefix = new Array<number>(childLines.length + 1).fill(0);
   for (let index = 0; index < childLines.length; index += 1) {
@@ -270,12 +305,16 @@ function mapMovedBlameLines({ childLines, normalizedParentLines, normalizedChild
   }
 
   for (const childStart of activeChildLines) {
-    if (childToParent.has(childStart)) continue;
+    if (childToParent.has(childStart)) {
+      continue;
+    }
     let bestParentStart: number | undefined;
     let bestLength = 0;
     let bestScore = 0;
     for (const parentStart of parentStartsByLine.get(normalizedChildLines[childStart]!) ?? []) {
-      if (usedParentLines.has(parentStart)) continue;
+      if (usedParentLines.has(parentStart)) {
+        continue;
+      }
       let length = 0;
       while (
         activeChildLines.has(childStart + length)
@@ -286,7 +325,9 @@ function mapMovedBlameLines({ childLines, normalizedParentLines, normalizedChild
       ) {
         length += 1;
       }
-      if (length === 0) continue;
+      if (length === 0) {
+        continue;
+      }
       const score = scorePrefix[childStart + length]! - scorePrefix[childStart]!;
       if (score > bestScore || (score === bestScore && length > bestLength)) {
         bestParentStart = parentStart;
@@ -294,7 +335,9 @@ function mapMovedBlameLines({ childLines, normalizedParentLines, normalizedChild
         bestScore = score;
       }
     }
-    if (bestParentStart === undefined || bestScore < 20) continue;
+    if (bestParentStart === undefined || bestScore < 20) {
+      continue;
+    }
     for (let offset = 0; offset < bestLength; offset += 1) {
       const childLineIndex = childStart + offset;
       const parentLineIndex = bestParentStart + offset;
@@ -321,7 +364,9 @@ function hasUnmappedActiveBlameLine({ active, mapped }: {
   mapped: ReadonlyMap<number, number>,
 }): boolean {
   for (const childLineIndex of active.keys()) {
-    if (!mapped.has(childLineIndex)) return true;
+    if (!mapped.has(childLineIndex)) {
+      return true;
+    }
   }
   return false;
 }
@@ -353,8 +398,11 @@ function lineStartsByValue({ lines }: { lines: readonly string[] }): ReadonlyMap
   for (let index = 0; index < lines.length; index += 1) {
     const value = lines[index]!;
     const indexes = starts.get(value);
-    if (indexes === undefined) starts.set(value, [index]);
-    else indexes.push(index);
+    if (indexes === undefined) {
+      starts.set(value, [index]);
+    } else {
+      indexes.push(index);
+    }
   }
   return starts;
 }
@@ -368,7 +416,9 @@ function findCopiedBlameMappings({ childLines, normalizedChildLines, active, alr
 }): Array<{ childLineIndex: number, sourcePath: string, sourceLineIndex: number }> {
   const remaining = new Set<number>();
   for (const childLineIndex of active.keys()) {
-    if (!alreadyMappedChildLines.has(childLineIndex)) remaining.add(childLineIndex);
+    if (!alreadyMappedChildLines.has(childLineIndex)) {
+      remaining.add(childLineIndex);
+    }
   }
   const mappings: Array<{ childLineIndex: number, sourcePath: string, sourceLineIndex: number }> = [];
   const scorePrefix = blameScorePrefix({ lines: childLines });
@@ -386,14 +436,18 @@ function findCopiedBlameMappings({ childLines, normalizedChildLines, active, alr
         ) {
           length += 1;
         }
-        if (length === 0) continue;
+        if (length === 0) {
+          continue;
+        }
         const score = scorePrefix[childStart + length]! - scorePrefix[childStart]!;
         if (best === undefined || score > best.score || (score === best.score && length > best.length)) {
           best = { source, sourceStart, length, score };
         }
       }
     }
-    if (best === undefined || best.score < 40) continue;
+    if (best === undefined || best.score < 40) {
+      continue;
+    }
     for (let offset = 0; offset < best.length; offset += 1) {
       const childLineIndex = childStart + offset;
       remaining.delete(childLineIndex);
@@ -422,7 +476,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
   let childCommitObjectId = targetCommitObjectId;
   let childCommit = await readCachedCommit({ files: context.files, repository, objectId: childCommitObjectId, cache: commitCache });
   const targetLines = await readCommitFile({ context, repository, commit: childCommit, path, treeCache, objectReadCache: commitCache.objectReadCache });
-  if (targetLines === undefined) throw new Error(`no such path '${path}' in ${targetCommitObjectId}`);
+  if (targetLines === undefined) {
+    throw new Error(`no such path '${path}' in ${targetCommitObjectId}`);
+  }
   const attributions = targetLines.map((_, index) => ({
     commitObjectId: targetCommitObjectId,
     sourceLine: index + 1,
@@ -435,7 +491,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
 
   while (activeByPath.size > 0) {
     const parentObjectId = childCommit.parentObjectIds[0];
-    if (parentObjectId === undefined) break;
+    if (parentObjectId === undefined) {
+      break;
+    }
     const parentCommit = await readCachedCommit({ files: context.files, repository, objectId: parentObjectId, cache: commitCache });
     const currentTree = await readPathTree({
       files: context.files,
@@ -464,7 +522,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
 
     for (const activePath of activeByPath.values()) {
       const childLines = await readCommitFile({ context, repository, commit: childCommit, path: activePath.path, treeCache, objectReadCache: commitCache.objectReadCache });
-      if (childLines === undefined) throw new Error(`active blame path '${activePath.path}' disappeared from ${childCommitObjectId}`);
+      if (childLines === undefined) {
+        throw new Error(`active blame path '${activePath.path}' disappeared from ${childCommitObjectId}`);
+      }
       const currentEntry = currentTree.get(activePath.path);
       const parentEntry = parentTree.get(activePath.path);
       const same = currentEntry?.objectId === parentEntry?.objectId && currentEntry?.mode === parentEntry?.mode;
@@ -516,7 +576,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
         }
         for (const [childLineIndex, finalLineIndex] of activePath.lines) {
           const parentLineIndex = childToParent.get(childLineIndex);
-          if (parentLineIndex === undefined) continue;
+          if (parentLineIndex === undefined) {
+            continue;
+          }
           attributions[finalLineIndex] = {
             commitObjectId: parentObjectId,
             sourceLine: parentLineIndex + 1,
@@ -549,7 +611,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
       const changedCandidateSourcePathsUnsorted: string[] = [];
       const allCandidateSourcePathsUnsorted = shouldLoadAllCandidatePaths ? [] as string[] : undefined;
       for (const [sourcePath, parentEntry] of parentTree) {
-        if (parentEntry.mode === 0o160000) continue;
+        if (parentEntry.mode === 0o160000) {
+          continue;
+        }
         allCandidateSourcePathsUnsorted?.push(sourcePath);
         const currentEntry = currentTree.get(sourcePath);
         if (currentEntry?.objectId !== parentEntry.objectId || currentEntry?.mode !== parentEntry.mode) {
@@ -562,7 +626,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
         : sortGitUtf8Strings({ values: allCandidateSourcePathsUnsorted });
       const sourceCache = new Map<string, BlameCopySource | undefined>();
       const loadCopySource = async ({ sourcePath }: { sourcePath: string }): Promise<BlameCopySource | undefined> => {
-        if (sourceCache.has(sourcePath)) return sourceCache.get(sourcePath);
+        if (sourceCache.has(sourcePath)) {
+          return sourceCache.get(sourcePath);
+        }
         const lines = await readCommitFile({ context, repository, commit: parentCommit, path: sourcePath, treeCache, objectReadCache: commitCache.objectReadCache });
         if (lines === undefined) {
           sourceCache.set(sourcePath, undefined);
@@ -600,9 +666,13 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
         }
         const sources: BlameCopySource[] = [];
         for (const sourcePath of candidateSourcePaths) {
-          if (sourcePath === request.excludedSourcePath || sourcePath === request.childPath) continue;
+          if (sourcePath === request.excludedSourcePath || sourcePath === request.childPath) {
+            continue;
+          }
           const source = await loadCopySource({ sourcePath });
-          if (source !== undefined) sources.push(source);
+          if (source !== undefined) {
+            sources.push(source);
+          }
         }
         const mappings = findCopiedBlameMappings({
           childLines: request.childLines,
@@ -613,7 +683,9 @@ async function calculateBlame({ context, repository, targetCommitObjectId, path,
         });
         for (const mapping of mappings) {
           const finalLineIndex = request.active.get(mapping.childLineIndex);
-          if (finalLineIndex === undefined) continue;
+          if (finalLineIndex === undefined) {
+            continue;
+          }
           attributions[finalLineIndex] = {
             commitObjectId: parentObjectId,
             sourceLine: mapping.sourceLineIndex + 1,
@@ -673,7 +745,9 @@ async function readBlameCommitPresentation({ files, repository, objectId, commit
   presentationCache: Map<string, BlameCommitPresentation>,
 }): Promise<BlameCommitPresentation> {
   const cached = presentationCache.get(objectId);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const commit = await readCachedCommit({ files, repository, objectId, cache: commitCache });
   const author = parseAuthorForLog({ author: commit.author });
   const committer = parseAuthorForLog({ author: commit.committer });
@@ -730,7 +804,9 @@ export async function runBlame({ context, args }: {
     operands: [parsed.pathOperand],
     availablePaths: targetTree.keys(),
   }).selected;
-  if (selected.size !== 1) throw new Error(`path '${parsed.pathOperand}' did not match exactly one file`);
+  if (selected.size !== 1) {
+    throw new Error(`path '${parsed.pathOperand}' did not match exactly one file`);
+  }
   const path = selected.values().next().value as string;
   const blame = await calculateBlame({
     context,
@@ -746,7 +822,9 @@ export async function runBlame({ context, args }: {
   });
   const start = parsed.range?.start ?? 1;
   const end = Math.min(parsed.range?.end ?? blame.lines.length, blame.lines.length);
-  if (start > blame.lines.length) throw new GitUsageError({ message: `file ${path} has only ${blame.lines.length} lines` });
+  if (start > blame.lines.length) {
+    throw new GitUsageError({ message: `file ${path} has only ${blame.lines.length} lines` });
+  }
   const emittedMetadata = new Set<string>();
   const presentationCache = new Map<string, BlameCommitPresentation>();
   let previousAttribution: BlameAttribution | undefined;
@@ -783,7 +861,9 @@ export async function runBlame({ context, args }: {
           const next = blame.attributions[lookahead - 1]!;
           if (next.commitObjectId !== attribution.commitObjectId
             || next.sourcePath !== attribution.sourcePath
-            || next.sourceLine !== attribution.sourceLine + groupLength) break;
+            || next.sourceLine !== attribution.sourceLine + groupLength) {
+            break;
+          }
           groupLength += 1;
         }
       }
@@ -801,7 +881,9 @@ export async function runBlame({ context, args }: {
         outputBuffer += `committer-time ${presentation.committerTimestamp}\n`;
         outputBuffer += `committer-tz ${presentation.committerTimezone}\n`;
         outputBuffer += `summary ${presentation.summary}\n`;
-        if (presentation.boundary) outputBuffer += 'boundary\n';
+        if (presentation.boundary) {
+          outputBuffer += 'boundary\n';
+        }
         outputBuffer += `filename ${attribution.sourcePath}\n`;
         emittedMetadata.add(metadataKey);
       }
@@ -819,7 +901,9 @@ export async function runBlame({ context, args }: {
       outputBuffer = '';
     }
   }
-  if (outputBuffer.length > 0) await context.text().print({ text: outputBuffer });
+  if (outputBuffer.length > 0) {
+    await context.text().print({ text: outputBuffer });
+  }
   return { exitCode: 0 };
 }
 

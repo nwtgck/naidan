@@ -34,7 +34,9 @@ export function packageNameFromModuleId(moduleId: string): string | undefined {
   const normalized = moduleId.replaceAll('\\', '/').split('?', 1)[0];
   const marker = '/node_modules/';
   const markerIndex = normalized.lastIndexOf(marker);
-  if (markerIndex < 0) return undefined;
+  if (markerIndex < 0) {
+    return undefined;
+  }
   const remainder = normalized.slice(markerIndex + marker.length);
   const segments = remainder.split('/');
   if (remainder.startsWith('@')) {
@@ -53,10 +55,14 @@ async function findPackageJsonForModule({ moduleId, expectedName }: Readonly<{mo
         return { packageJsonPath, packageJson };
       }
     } catch (error) {
-      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) throw error;
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
+        throw error;
+      }
     }
     const parent = path.dirname(current);
-    if (parent === current) return undefined;
+    if (parent === current) {
+      return undefined;
+    }
     current = parent;
   }
 }
@@ -71,12 +77,20 @@ async function readLicenseText(packageDirectory: string): Promise<string | null>
 }
 
 function normalizeLicense(packageJson: PackageJsonLike): string | null {
-  if (typeof packageJson.license === 'string') return packageJson.license;
-  if (packageJson.license && typeof packageJson.license === 'object' && typeof packageJson.license.type === 'string') return packageJson.license.type;
+  if (typeof packageJson.license === 'string') {
+    return packageJson.license;
+  }
+  if (packageJson.license && typeof packageJson.license === 'object' && typeof packageJson.license.type === 'string') {
+    return packageJson.license.type;
+  }
   if (Array.isArray(packageJson.licenses)) {
     const values = packageJson.licenses.flatMap(item => {
-      if (typeof item === 'string') return [item];
-      if (item && typeof item === 'object' && 'type' in item && typeof item.type === 'string') return [item.type];
+      if (typeof item === 'string') {
+        return [item];
+      }
+      if (item && typeof item === 'object' && 'type' in item && typeof item.type === 'string') {
+        return [item.type];
+      }
       return [];
     });
     return values.length === 0 ? null : `(${values.join(' OR ')})`;
@@ -103,9 +117,13 @@ export async function collectBundledPackageInstances({ chunks }: Readonly<{chunk
   for (const chunk of chunks) {
     for (const moduleId of chunk.moduleIds ?? []) {
       const packageName = packageNameFromModuleId(moduleId);
-      if (!packageName) continue;
+      if (!packageName) {
+        continue;
+      }
       const found = await findPackageJsonForModule({ moduleId, expectedName: packageName });
-      if (!found) throw new Error(`Unable to locate package.json for bundled module ${moduleId}`);
+      if (!found) {
+        throw new Error(`Unable to locate package.json for bundled module ${moduleId}`);
+      }
       const canonical = await fs.realpath(found.packageJsonPath);
       let record = byPackageJson.get(canonical);
       if (!record) {
@@ -127,7 +145,9 @@ export async function collectBundledPackageInstances({ chunks }: Readonly<{chunk
 export function mergeLicenseRecords({ groups }: Readonly<{groups: readonly (readonly LicenseDependencyRecord[])[]}>): LicenseDependencyRecord[] {
   const merged = new Map<string, LicenseDependencyRecord>();
   for (const records of groups) {
-    for (const record of records) merged.set(`${record.name}\0${record.version}`, record);
+    for (const record of records) {
+      merged.set(`${record.name}\0${record.version}`, record);
+    }
   }
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 }

@@ -49,7 +49,9 @@ export function createDocumentMetadataHtmlPlugin(): Plugin {
     transformIndexHtml: {
       order: 'pre',
       handler(html) {
-        if (!html.includes(metadataMarker)) return undefined;
+        if (!html.includes(metadataMarker)) {
+          return undefined;
+        }
         return html.replace(metadataMarker, () => createDocumentMetadataHtml());
       },
     },

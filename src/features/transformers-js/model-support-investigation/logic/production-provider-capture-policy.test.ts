@@ -34,7 +34,9 @@ function captureFixture({ fill }: { fill: ({ trace }: { trace: Trace }) => void 
     const trace = createProductionProviderTrace({ requestId, limits: policy.traceLimits });
     fill({ trace });
     const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
-    if (scenario === 'first-turn') firstSettled = settled;
+    if (scenario === 'first-turn') {
+      firstSettled = settled;
+    }
     return { runId, requestId, scenario, status: 'settled' as const, notStartedReason: undefined, input, trace: trace.snapshot() };
   });
   return {
@@ -140,7 +142,9 @@ describe('fixed Provider capture policy', () => {
     const policy = createProductionProviderCapturePolicy({ plan: 'full-v2' });
     const capture = captureFixture({
       fill: ({ trace }) => {
-        for (let index = 0; index < 4; ++index) trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
+        for (let index = 0; index < 4; ++index) {
+          trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
+        }
         for (let index = 4; index < policy.traceLimits.maximumEvents; ++index) {
           trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } });
         }
@@ -163,7 +167,9 @@ describe('fixed Provider capture policy', () => {
     const populated = encode({ capture });
     expect(populated.length - empty.length).toBeLessThanOrEqual(13 * 2 * TEST_ONLY.eventMetadataCharacters);
     const event = capture.requests[0]?.trace.events[0];
-    if (event === undefined) throw new Error('Missing stress event');
+    if (event === undefined) {
+      throw new Error('Missing stress event');
+    }
     const longestSequence = JSON.stringify({ ...event, sequence: 4097 }, undefined, 2);
     // The actual encoder nests settled events at depth seven (14 spaces).
     const deepestOccurrence = longestSequence.length + 14 * longestSequence.split('\n').length + 2;

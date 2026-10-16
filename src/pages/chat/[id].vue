@@ -36,7 +36,9 @@ async function syncChat() {
   const request = { target: target.value, status: 'loading' as const };
   load.value = request;
   const { id, leafId, messageId } = request.target;
-  if (!id) return;
+  if (!id) {
+    return;
+  }
 
   try {
     if (messageId) {
@@ -50,10 +52,14 @@ async function syncChat() {
         leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
       });
     }
-    if (load.value === request) load.value = { ...request, status: 'ready' };
+    if (load.value === request) {
+      load.value = { ...request, status: 'ready' };
+    }
   } catch (error) {
     console.error('Failed to load chat:', error);
-    if (load.value === request) load.value = { ...request, status: 'error' };
+    if (load.value === request) {
+      load.value = { ...request, status: 'error' };
+    }
   }
 }
 

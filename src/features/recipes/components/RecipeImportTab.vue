@@ -37,7 +37,9 @@ const recipeAnalysisError = ref<string | null>(null);
 
 function getSortedModels({ matchedModelId }: { matchedModelId?: string }) {
   const models = naturalSort({ values: props.availableModels || [] });
-  if (!matchedModelId) return models;
+  if (!matchedModelId) {
+    return models;
+  }
 
   const index = models.indexOf(matchedModelId);
   if (index > -1) {
@@ -101,7 +103,9 @@ watch(recipeJsonInput, () => {
 
 function handleImportRecipes() {
   const toImport = analyzedRecipes.value.filter(r => r.selected);
-  if (toImport.length === 0) return;
+  if (toImport.length === 0) {
+    return;
+  }
 
   emit('import', toImport.map(item => ({
     newName: item.newName,

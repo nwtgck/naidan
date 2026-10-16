@@ -212,7 +212,8 @@ export async function prepareProductionModelCandidate({
           cleanupOutcome = outcome;
           switch (outcome) {
           case 'completed': break;
-          case 'failed': hostSettlement = 'rejected'; break;
+          case 'failed': hostSettlement = 'rejected';
+            break;
           default: {
             const exhaustive: never = outcome;
             throw new Error(`Unhandled disposal outcome: ${exhaustive}`);
@@ -230,7 +231,8 @@ export async function prepareProductionModelCandidate({
           for (const file of observedResult?.files ?? []) {
             const path = downloadResourcePath({ url: file.url });
             if (path === undefined || files.length >= 127) {
-              droppedFiles++; continue;
+              droppedFiles++;
+              continue;
             }
             const bytes = (() => {
               switch (file.status) {

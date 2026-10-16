@@ -11,7 +11,9 @@ describe('createFileProtocolStandaloneReleasePackagingPlugin', () => {
     });
 
     const hook = plugin.writeBundle;
-    if (typeof hook !== 'object' || hook === null) throw new Error('Expected ordered writeBundle hook');
+    if (typeof hook !== 'object' || hook === null) {
+      throw new Error('Expected ordered writeBundle hook');
+    }
     expect(hook.sequential).toBe(true);
   });
 

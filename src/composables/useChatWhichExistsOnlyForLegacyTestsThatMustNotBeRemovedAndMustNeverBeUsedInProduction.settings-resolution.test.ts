@@ -274,7 +274,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     let persisted: ChatMeta = storedMeta;
     vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
       const updated = await updater({ current: persisted });
-      if (updated !== undefined) persisted = updated;
+      if (updated !== undefined) {
+        persisted = updated;
+      }
     });
 
     await updateChatSettings({

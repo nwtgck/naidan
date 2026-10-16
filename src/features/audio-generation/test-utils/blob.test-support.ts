@@ -4,8 +4,11 @@ export function readBlobBytes({ blob }: { blob: Blob }): Promise<Uint8Array<Arra
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) resolve(new Uint8Array(reader.result));
-      else reject(new Error('Expected binary Blob data'));
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(new Uint8Array(reader.result));
+      } else {
+        reject(new Error('Expected binary Blob data'));
+      }
     };
     reader.onerror = () => reject(new Error('Blob read failed'));
     reader.readAsArrayBuffer(blob);

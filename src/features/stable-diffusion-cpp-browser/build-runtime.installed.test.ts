@@ -36,11 +36,16 @@ it('connects the installed bicore image dependency without replacing the llama d
   expect(manifest.capabilities.ggufShards).toBe(true);
   const result = readImageArtifacts({ rootDir, mode: 'hosted', artifactDir: undefined });
   expect(result.configuration.kind).toBe('available');
-  if (result.configuration.kind !== 'available') throw new Error('Install the pinned bicore image dependency with npm ci');
+  if (result.configuration.kind !== 'available') {
+    throw new Error('Install the pinned bicore image dependency with npm ci');
+  }
   expect(result.configuration.artifacts.map(artifact => artifact.profile)).toEqual(['webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi']);
   const prefix = 'stable-diffusion-cpp-runtime/' + result.configuration.sourceCommit + '/';
   for (const artifact of result.configuration.artifacts) {
-    const bytes = result.files.get(artifact.wasmPath); if (!bytes) throw new Error('Missing emitted image Wasm');
+    const bytes = result.files.get(artifact.wasmPath);
+    if (!bytes) {
+      throw new Error('Missing emitted image Wasm');
+    }
     const decoded = gunzipSync(bytes);
     expect(decoded.length).toBe(artifact.wasmBytes);
     expect(createHash('sha256').update(decoded).digest('hex')).toBe(artifact.wasmSha256);

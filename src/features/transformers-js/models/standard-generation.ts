@@ -32,7 +32,9 @@ export function resolveStandardGenerationFraming({ model, tokenizer, inputs, han
   const endTokens = [...new Set(ids)].map(id => {
     const token = tokenizer.decode([id], { skip_special_tokens: false });
     const encoded = tokenizer.encode(token, { add_special_tokens: false });
-    if (token.length === 0 || encoded.length !== 1 || encoded[0] !== id) throw new Error('The standard generation terminator is not an unambiguous atomic token.');
+    if (token.length === 0 || encoded.length !== 1 || encoded[0] !== id) {
+      throw new Error('The standard generation terminator is not an unambiguous atomic token.');
+    }
     return token;
   });
   const protocolTokens = [...endTokens];
@@ -42,10 +44,15 @@ export function resolveStandardGenerationFraming({ model, tokenizer, inputs, han
     switch (handling.outputProtocol) {
     case 'delimited-pythonic': break;
     case 'json-tagged': throw new Error('This standard tool protocol has no structured generation adapter.');
-    default: { const exhaustive: never = handling.outputProtocol; throw new Error(`Unhandled standard tool framing: ${String(exhaustive)}`); }
+    default: {
+      const exhaustive: never = handling.outputProtocol;
+      throw new Error(`Unhandled standard tool framing: ${String(exhaustive)}`);
+    }
     }
     for (const token of [DELIMITED_PYTHONIC_TOOL_CALL_OPEN, DELIMITED_PYTHONIC_TOOL_CALL_CLOSE]) {
-      if (endTokens.includes(token)) throw new Error('A tool boundary cannot also be a model terminator.');
+      if (endTokens.includes(token)) {
+        throw new Error('A tool boundary cannot also be a model terminator.');
+      }
       const encoded = tokenizer.encode(token, { add_special_tokens: false });
       if (encoded.length !== 1 || encoded[0] === tokenizer.unk_token_id || tokenizer.decode(encoded, { skip_special_tokens: false }) !== token) {
         throw new Error('Structured standard tools require atomic native delimiters.');
@@ -77,54 +84,78 @@ export function createStandardGeneration({ emit, endTokens, handling, tools }: {
   let settled = false;
 
   function assertOpen(): void {
-    if (terminal !== undefined || settled) throw new Error('Standard content arrived after generation settlement.');
+    if (terminal !== undefined || settled) {
+      throw new Error('Standard content arrived after generation settlement.');
+    }
   }
   function openText(): void {
-    if (activeText !== undefined) return;
+    if (activeText !== undefined) {
+      return;
+    }
     activeText = nextIndex++;
     emit({ event: { type: 'part_start', index: activeText, kind: 'text' } });
   }
   function closeText({ completeness }: { completeness: 'complete' | 'partial' }): void {
-    if (activeText === undefined) return;
+    if (activeText === undefined) {
+      return;
+    }
     emit({ event: { type: 'part_end', index: activeText, completeness } });
     activeText = undefined;
   }
   return {
     text({ text }: { text: string }): void {
-      if (!text.length) return;
+      if (!text.length) {
+        return;
+      }
       assertOpen();
       if (draft !== undefined) {
-        if (draft.text.length + text.length > maxToolDraftLength) throw new Error('Standard tool draft exceeds its size limit.');
+        if (draft.text.length + text.length > maxToolDraftLength) {
+          throw new Error('Standard tool draft exceeds its size limit.');
+        }
         draft.text += text;
         return;
       }
-      openText(); assistantText += text;
-      if (completedCalls.length > 0 && firstPostCallTextIndex === undefined) firstPostCallTextIndex = activeText;
+      openText();
+      assistantText += text;
+      if (completedCalls.length > 0 && firstPostCallTextIndex === undefined) {
+        firstPostCallTextIndex = activeText;
+      }
       emit({ event: { type: 'text_delta', index: activeText!, text } });
     },
     control({ token }: { token: string }): void {
       assertOpen();
       if (endings.has(token)) {
         if (draft !== undefined) {
-          terminal = 'incomplete'; return;
+          terminal = 'incomplete';
+          return;
         }
-        if (nextIndex === 0) openText();
+        if (nextIndex === 0) {
+          openText();
+        }
         closeText({ completeness: 'complete' });
         terminal = completedCalls.length ? 'tool_results' : 'user';
         return;
       }
       switch (token) {
       case DELIMITED_PYTHONIC_TOOL_CALL_OPEN:
-        if (!tools?.length || handling.outputProtocol !== 'delimited-pythonic') throw new Error('Standard tool call has no admitted declarations and framing.');
-        if (draft !== undefined) throw new Error('Standard tool calls must not nest.');
+        if (!tools?.length || handling.outputProtocol !== 'delimited-pythonic') {
+          throw new Error('Standard tool call has no admitted declarations and framing.');
+        }
+        if (draft !== undefined) {
+          throw new Error('Standard tool calls must not nest.');
+        }
         closeText({ completeness: 'complete' });
         draft = { index: nextIndex++, text: '' };
         emit({ event: { type: 'tool_start', index: draft.index } });
         return;
       case DELIMITED_PYTHONIC_TOOL_CALL_CLOSE: {
-        if (draft === undefined) throw new Error('Standard tool close has no open call.');
+        if (draft === undefined) {
+          throw new Error('Standard tool close has no open call.');
+        }
         const parsed = parseDelimitedPythonicToolCallPayload({ content: draft.text });
-        if (!parsed?.length || parsed.some(call => !allowedTools.has(call.name))) throw new Error('Invalid or undeclared native standard tool call.');
+        if (!parsed?.length || parsed.some(call => !allowedTools.has(call.name))) {
+          throw new Error('Invalid or undeclared native standard tool call.');
+        }
         const calls: ToolCall[] = parsed.map(call => ({
           id: generateId<ToolCallId>(),
           type: 'function',
@@ -135,7 +166,9 @@ export function createStandardGeneration({ emit, endTokens, handling, tools }: {
         validateStandardToolCallsForHandling({ toolCalls: [...completedCalls, ...calls], handling, assistantContent: assistantText });
         for (const [offset, toolCall] of calls.entries()) {
           const index = offset === 0 ? draft.index : nextIndex++;
-          if (offset > 0) emit({ event: { type: 'tool_start', index } });
+          if (offset > 0) {
+            emit({ event: { type: 'tool_start', index } });
+          }
           emit({ event: { type: 'tool_call', index, toolCall } });
           completedCalls.push(toolCall);
         }
@@ -146,7 +179,9 @@ export function createStandardGeneration({ emit, endTokens, handling, tools }: {
       }
     },
     finish({ reason }: { reason: 'aborted' | 'limit' | 'unknown' }): void {
-      if (settled) throw new Error('Standard generation was settled twice.');
+      if (settled) {
+        throw new Error('Standard generation was settled twice.');
+      }
       settled = true;
       closeText({ completeness: 'partial' });
       // Keep the generated order, but do not execute a tool and discover only

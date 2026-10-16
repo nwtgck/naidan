@@ -18,7 +18,9 @@ export function debugRecordFileProtocolStandaloneStartupCheckpoint({
 }): void {
   try {
     const startupDebugState = debugReadFileProtocolStandaloneStartupState();
-    if (startupDebugState === undefined) return;
+    if (startupDebugState === undefined) {
+      return;
+    }
 
     const now = performance.now();
     startupDebugState.checkpoint = checkpoint;
@@ -41,7 +43,9 @@ export function debugRecordFileProtocolStandaloneAppStartupFailure({ error }: {
 }): void {
   try {
     const startupDebugState = debugReadFileProtocolStandaloneStartupState();
-    if (startupDebugState === undefined) return;
+    if (startupDebugState === undefined) {
+      return;
+    }
     startupDebugState.error = error;
     debugRecordFileProtocolStandaloneStartupCheckpoint({
       checkpoint: 'bootstrap-failed',

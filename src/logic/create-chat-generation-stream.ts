@@ -22,7 +22,9 @@ export function createChatGenerationStream({ signal, run }: {
   let claimed = false;
   return {
     [Symbol.asyncIterator](): AsyncIterator<ChatGenerationItem> {
-      if (claimed) throw new Error('A generation stream can only be consumed once.');
+      if (claimed) {
+        throw new Error('A generation stream can only be consumed once.');
+      }
       claimed = true;
       const controller = new AbortController();
       let phase: 'idle' | 'running' | 'finished' | 'abandoned' = 'idle';
@@ -36,7 +38,9 @@ export function createChatGenerationStream({ signal, run }: {
       let childSpace: ReturnType<typeof Promise.withResolvers<void>> | undefined;
       const reservations = new Map<number, { partId: string, index: number, status: 'pending' | 'complete' }>();
       function closeText({ completeness }: { completeness: 'complete' | 'partial' }): void {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
         active.channel.close();
         active.completeness.resolve(completeness);
         active = undefined;
@@ -47,7 +51,10 @@ export function createChatGenerationStream({ signal, run }: {
         case 'idle':
         case 'running':
         case 'finished': return false;
-        default: { const _ex: never = phase; throw new Error(`Unhandled generation phase: ${_ex}`); }
+        default: {
+          const _ex: never = phase;
+          throw new Error(`Unhandled generation phase: ${_ex}`);
+        }
         }
       }
       function requireRunning(): void {
@@ -56,17 +63,25 @@ export function createChatGenerationStream({ signal, run }: {
         case 'idle':
         case 'finished':
         case 'abandoned': throw new Error('Generation is no longer writable.');
-        default: { const _ex: never = phase; throw new Error(`Unhandled generation phase: ${_ex}`); }
+        default: {
+          const _ex: never = phase;
+          throw new Error(`Unhandled generation phase: ${_ex}`);
+        }
         }
       }
       function abandon(): void {
-        if (isAbandoned()) return;
+        if (isAbandoned()) {
+          return;
+        }
         phase = 'abandoned';
         controller.abort(new Error('Generation consumption was abandoned.'));
         closeText({ completeness: 'partial' });
-        for (const child of children) child.cancel();
+        for (const child of children) {
+          child.cancel();
+        }
         children.clear();
-        childSpace?.resolve(); childSpace = undefined;
+        childSpace?.resolve();
+        childSpace = undefined;
         outer.cancel();
       }
       const outer = createAsyncChannel<ChatGenerationItem>({ capacity: 16, onCancel: abandon });
@@ -74,7 +89,9 @@ export function createChatGenerationStream({ signal, run }: {
       const writer: ChatGenerationWriter = {
         finishTextPart({ completeness }): void {
           requireRunning();
-          if (!active) throw new Error('No text part is open.');
+          if (!active) {
+            throw new Error('No text part is open.');
+          }
           closeText({ completeness });
         },
         async text({ type, text }): Promise<void> {
@@ -100,7 +117,8 @@ export function createChatGenerationStream({ signal, run }: {
                   yield* values;
                 } finally {
                   children.delete(channel);
-                  childSpace?.resolve(); childSpace = undefined;
+                  childSpace?.resolve();
+                  childSpace = undefined;
                 }
               },
             };
@@ -109,14 +127,18 @@ export function createChatGenerationStream({ signal, run }: {
           const channel = active.channel;
           // Bound stored text as well as the number of queue entries. Chunk cuts
           // are transport boundaries, never token or semantic boundaries.
-          if (text.length === 0) await channel.send({ value: '' });
+          if (text.length === 0) {
+            await channel.send({ value: '' });
+          }
           for (let offset = 0; offset < text.length; offset += 8192) {
             await channel.send({ value: text.slice(offset, offset + 8192) });
           }
         },
         reserveCall({ key }): void {
           requireRunning();
-          if (reservations.has(key)) return;
+          if (reservations.has(key)) {
+            return;
+          }
           closeText({ completeness: 'complete' });
           const position = index++;
           reservations.set(key, { partId: `part_${position}`, index: position, status: 'pending' });
@@ -127,7 +149,10 @@ export function createChatGenerationStream({ signal, run }: {
           switch (position.status) {
           case 'pending': break;
           case 'complete': throw new Error('A completed tool call cannot receive draft updates.');
-          default: { const _ex: never = position.status; throw new Error(`Unhandled call phase: ${_ex}`); }
+          default: {
+            const _ex: never = position.status;
+            throw new Error(`Unhandled call phase: ${_ex}`);
+          }
           }
           // Bound queued argument bytes as well as queue entries. The first chunk
           // replaces a suffix; following chunks append to that same new suffix.
@@ -154,7 +179,10 @@ export function createChatGenerationStream({ signal, run }: {
           switch (position.status) {
           case 'pending': break;
           case 'complete': throw new Error('A tool call was published twice.');
-          default: { const _ex: never = position.status; throw new Error(`Unhandled call phase: ${_ex}`); }
+          default: {
+            const _ex: never = position.status;
+            throw new Error(`Unhandled call phase: ${_ex}`);
+          }
           }
           // Copy before awaiting delivery; parsers may still own their mutable draft.
           const copy: ToolCall = { ...toolCall, function: { ...toolCall.function } };
@@ -166,7 +194,9 @@ export function createChatGenerationStream({ signal, run }: {
       let producer: Promise<void> | undefined;
       async function produce(): Promise<void> {
         signal?.addEventListener('abort', onAbort, { once: true });
-        if (signal?.aborted) onAbort();
+        if (signal?.aborted) {
+          onAbort();
+        }
         let result: ChatGenerationResult;
         try {
           result = controller.signal.aborted
@@ -180,18 +210,26 @@ export function createChatGenerationStream({ signal, run }: {
           signal?.removeEventListener('abort', onAbort);
         }
         // Cancellation of the consumer discards content; ordinary signal abort does not.
-        if (isAbandoned()) return;
+        if (isAbandoned()) {
+          return;
+        }
         let completeness: 'complete' | 'partial';
         switch (result.type) {
         case 'finished':
           if ([...reservations.values()].some(call => call.status === 'pending')) {
             result = { type: 'interrupted', reason: 'unknown' };
             completeness = 'partial';
-          } else completeness = 'complete';
+          } else {
+            completeness = 'complete';
+          }
           break;
         case 'interrupted':
-        case 'error': completeness = 'partial'; break;
-        default: { const _ex: never = result; throw new Error(`Unhandled result: ${_ex}`); }
+        case 'error': completeness = 'partial';
+          break;
+        default: {
+          const _ex: never = result;
+          throw new Error(`Unhandled result: ${_ex}`);
+        }
         }
         closeText({ completeness });
         phase = 'finished';
@@ -215,7 +253,10 @@ export function createChatGenerationStream({ signal, run }: {
           case 'running':
           case 'finished':
           case 'abandoned': break;
-          default: { const _ex: never = phase; throw new Error(`Unhandled generation phase: ${_ex}`); }
+          default: {
+            const _ex: never = phase;
+            throw new Error(`Unhandled generation phase: ${_ex}`);
+          }
           }
           return iterator.next();
         },

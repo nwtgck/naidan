@@ -63,16 +63,20 @@ function parseSwitchArguments({ args }: { args: readonly string[] }): CheckoutLi
   const detach = parsed.optionValues.detach === true;
   const operands = parsed.positionals;
   if (createBranchName !== undefined) {
-    if (detach)
+    if (detach) {
       throw new Error('options are incompatible');
-    if (operands.length > 1)
+    }
+    if (operands.length > 1) {
       throw new Error('too many arguments');
+    }
     return { createBranchName, detach: false, targetExpression: operands[0] ?? 'HEAD', missingBranchBehavior: 'reject' };
   }
-  if (detach && operands.length === 0)
+  if (detach && operands.length === 0) {
     return { createBranchName: undefined, detach: true, targetExpression: 'HEAD', missingBranchBehavior: 'reject' };
-  if (operands.length !== 1)
+  }
+  if (operands.length !== 1) {
     throw new Error('git switch requires exactly one branch or revision');
+  }
   return { createBranchName: undefined, detach, targetExpression: operands[0]!, missingBranchBehavior: 'reject' };
 }
 

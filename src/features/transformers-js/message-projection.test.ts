@@ -125,7 +125,8 @@ describe('parts to Transformers.js inference input', () => {
   });
 
   it('encodes memory images locally without using fetch or the binary resolver', async () => {
-    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
     const read = vi.fn();
     const result = await prepare({
       messages: [{
@@ -141,7 +142,8 @@ describe('parts to Transformers.js inference input', () => {
     expect(result.messages[0]!.content).toEqual([
       { type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAH/' } }, { type: 'text', text: '' },
     ]);
-    expect(fetch).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('passes the exact binary identifier and signal to the caller resolver', async () => {
@@ -155,7 +157,8 @@ describe('parts to Transformers.js inference input', () => {
   it('does not ignore missing attachments, absent resolvers, or unsupported file kinds', async () => {
     await expect(prepare({ messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'missing' } })] }], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('missing');
     await expect(prepare({ messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('No binary reader');
-    const file = image({ state: { status: 'memory', blob: new Blob(['text']) } }); file.attachment.mimeType = 'text/plain';
+    const file = image({ state: { status: 'memory', blob: new Blob(['text']) } });
+    file.attachment.mimeType = 'text/plain';
     await expect(prepare({ messages: [{ id: messageId, role: 'user', parts: [file] }], readBinaryObject: undefined, signal: undefined })).rejects.toThrow('image attachments only');
   });
 
@@ -168,15 +171,17 @@ describe('parts to Transformers.js inference input', () => {
     const tools = [{ name: 'calculator', description: '', parameters: { type: 'object', properties: { n: { default: null } }, additionalProperties: false } }];
     const result = prepareInferenceRequest({ messages, parameters, tools, readBinaryObject: () => pending.promise, signal: undefined });
     file.attachment.mimeType = 'image/jpeg';
-    call.toolCall.function.arguments = '{}'; parameters.stop[0] = 'changed'; tools[0]!.parameters.additionalProperties = true;
-    messages.push({ id: messageId, role: 'system', parts: [] });
-    pending.resolve(new Blob(['x']));
-    const prepared = await result;
-    expect(prepared.messages).toHaveLength(2);
-    expect(prepared.messages[0]!.content).toEqual([{ type: 'image_url', image_url: { url: 'data:image/png;base64,eA==' } }]);
-    expect(prepared.messages[1]!.tool_calls![0]!.function.arguments).toBe(' { "n": 1 } ');
-    expect(prepared.params!.stop).toEqual([' stop ']);
-    expect(prepared.tools![0]!.function.parameters).toEqual({ type: 'object', properties: { n: { default: null } }, additionalProperties: false });
+    call.toolCall.function.arguments = '{}';
+    parameters.stop[0] = 'changed';
+tools[0]!.parameters.additionalProperties = true;
+messages.push({ id: messageId, role: 'system', parts: [] });
+pending.resolve(new Blob(['x']));
+const prepared = await result;
+expect(prepared.messages).toHaveLength(2);
+expect(prepared.messages[0]!.content).toEqual([{ type: 'image_url', image_url: { url: 'data:image/png;base64,eA==' } }]);
+expect(prepared.messages[1]!.tool_calls![0]!.function.arguments).toBe(' { "n": 1 } ');
+expect(prepared.params!.stop).toEqual([' stop ']);
+expect(prepared.tools![0]!.function.parameters).toEqual({ type: 'object', properties: { n: { default: null } }, additionalProperties: false });
   });
 
   it('does not materialize unspecified settings or declarations', async () => {
@@ -243,16 +248,19 @@ describe('parts to Transformers.js inference input', () => {
   });
 
   it('does not begin resolution for an already aborted request', async () => {
-    const controller = new AbortController(); controller.abort(new Error('stop'));
+    const controller = new AbortController();
+    controller.abort(new Error('stop'));
     const read = vi.fn();
     await expect(prepare({ messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }], readBinaryObject: read, signal: controller.signal })).rejects.toThrow('stop');
     expect(read).not.toHaveBeenCalled();
   });
 
   it('does not publish a request if a resolver returns after cancellation', async () => {
-    const pending = Promise.withResolvers<Blob>(); const controller = new AbortController();
+    const pending = Promise.withResolvers<Blob>();
+    const controller = new AbortController();
     const result = prepare({ messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }], readBinaryObject: () => pending.promise, signal: controller.signal });
-    controller.abort(new Error('stop')); pending.resolve(new Blob(['x']));
+    controller.abort(new Error('stop'));
+    pending.resolve(new Blob(['x']));
     await expect(result).rejects.toThrow('stop');
   });
 });

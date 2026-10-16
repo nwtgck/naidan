@@ -17,7 +17,8 @@ describe('model launch resolution', () => {
 
   it('resolves an explicit quantization and retains the fixed-selection intent', () => {
     const result = resolveModelLaunchTarget({ input: 'hf.co/owner/Model-GGUF:Q8_0', catalog: catalog({ paths: ['Model-Q4_K_M.gguf', 'Model-Q8_0.gguf'] }) });
-    expect(result.requestedVariant).toBe('Q8_0'); expect(result.target.mainFilePath).toBe('Model-Q8_0.gguf');
+    expect(result.requestedVariant).toBe('Q8_0');
+    expect(result.target.mainFilePath).toBe('Model-Q8_0.gguf');
   });
 
   it.each(['Q6_K', 'Q4_K_M'])('never substitutes an unavailable or ambiguous %s', variant => {
@@ -35,7 +36,8 @@ describe('model launch resolution', () => {
     const files = ['Model-Q4_K_M-00001-of-00002.gguf', 'Model-Q4_K_M-00002-of-00002.gguf'].map(path => ({ path, size: 256 }));
     input.models = [{ label: 'Model-Q4_K_M', files, size: 512 }];
     const { target } = resolveModelLaunchTarget({ input: 'owner/Model-GGUF', catalog: input });
-    expect(target.selection.files).toHaveLength(2); expect(target.mainFilePath).toBe(files[0]!.path);
+    expect(target.selection.files).toHaveLength(2);
+    expect(target.mainFilePath).toBe(files[0]!.path);
   });
 
   it('rejects malformed persisted targets without throwing from safeParse', () => {
@@ -46,9 +48,12 @@ describe('model launch resolution', () => {
   });
 
   it('has a memory-only catalog cache which does not fetch on a miss', () => {
-    TEST_ONLY.reset(); expect(readLaunchCatalog({ repository: 'owner/Model-GGUF' })).toBeUndefined();
-    const value = catalog({ paths: ['Model-Q4_K_M.gguf'] }); rememberLaunchCatalog({ catalog: value });
+    TEST_ONLY.reset();
+    expect(readLaunchCatalog({ repository: 'owner/Model-GGUF' })).toBeUndefined();
+    const value = catalog({ paths: ['Model-Q4_K_M.gguf'] });
+    rememberLaunchCatalog({ catalog: value });
     expect(readLaunchCatalog({ repository: value.repository })).toBe(value);
-    TEST_ONLY.reset(); expect(readLaunchCatalog({ repository: value.repository })).toBeUndefined();
+    TEST_ONLY.reset();
+    expect(readLaunchCatalog({ repository: value.repository })).toBeUndefined();
   });
 });

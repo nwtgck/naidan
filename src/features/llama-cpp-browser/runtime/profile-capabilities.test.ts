@@ -10,8 +10,10 @@ vi.mock('@/features/file-protocol-standalone/embedded-binary', () => {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  vi.mocked(checkJspi).mockResolvedValue(undefined); vi.mocked(checkStorage).mockResolvedValue(undefined);
-  vi.mocked(gpuUnavailableReason).mockResolvedValue(undefined); vi.mocked(supportsMemory64).mockReturnValue(true);
+  vi.mocked(checkJspi).mockResolvedValue(undefined);
+  vi.mocked(checkStorage).mockResolvedValue(undefined);
+  vi.mocked(gpuUnavailableReason).mockResolvedValue(undefined);
+  vi.mocked(supportsMemory64).mockReturnValue(true);
 });
 
 describe('hosted runtime capability report', () => {
@@ -23,10 +25,15 @@ describe('hosted runtime capability report', () => {
     { memory64: false, jspi: false, gpu: false, expected: 'cpu-wasm32' },
   ])('recommends $expected using actual feature results', async ({ memory64, jspi, gpu, expected }) => {
     vi.mocked(supportsMemory64).mockReturnValue(memory64);
-    if (!jspi) vi.mocked(checkJspi).mockRejectedValue(new Error('unavailable'));
-    if (!gpu) vi.mocked(gpuUnavailableReason).mockResolvedValue('webgpu');
+    if (!jspi) {
+      vi.mocked(checkJspi).mockRejectedValue(new Error('unavailable'));
+    }
+    if (!gpu) {
+      vi.mocked(gpuUnavailableReason).mockResolvedValue('webgpu');
+    }
     const report = await probeRuntimeProfiles();
-    expect(report.recommended).toBe(expected); expect(report.profiles).toHaveLength(5);
+    expect(report.recommended).toBe(expected);
+    expect(report.profiles).toHaveLength(5);
     expect(checkStorage).toHaveBeenCalledOnce();
   });
 

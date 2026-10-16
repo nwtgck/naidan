@@ -32,7 +32,9 @@ export function resolveSedInPlaceRecoveryPath({
   fullPath: string;
   suffix: string;
 }): string {
-  if (!suffix.includes("*")) return `${fullPath}${suffix}`;
+  if (!suffix.includes("*")) {
+    return `${fullPath}${suffix}`;
+  }
   const expandedSuffix = suffix.replaceAll("*", file);
   return expandedSuffix.startsWith("/")
     ? expandedSuffix
@@ -132,7 +134,9 @@ export async function isSedInputDirectory({
   context: WeshCommandContext;
   file: string;
 }): Promise<boolean> {
-  if (file === "-") return false;
+  if (file === "-") {
+    return false;
+  }
   try {
     const lexicalPath = resolveSedCommandPath({ context, path: file });
     const stat = await context.files.stat({ path: lexicalPath });
@@ -218,7 +222,9 @@ export async function* readSedFiles({
       issue,
       phase: inputReadState.phase,
     });
-    if (!shouldContinue) return;
+    if (!shouldContinue) {
+      return;
+    }
   }
 }
 
@@ -229,7 +235,9 @@ function resolveSedLexicalSymlinkTarget({
   path: string;
   target: string;
 }): string {
-  if (target.startsWith("/")) return target;
+  if (target.startsWith("/")) {
+    return target;
+  }
   const finalSlashIndex = path.lastIndexOf("/");
   return finalSlashIndex < 0
     ? target
@@ -247,11 +255,15 @@ export async function resolveSedFollowSymlinkInput({
   dashIsStdin: boolean;
   resolveSourceName: boolean;
 }): Promise<{ path: string; sourceName: string }> {
-  if (dashIsStdin && file === "-") return { path: file, sourceName: file };
+  if (dashIsStdin && file === "-") {
+    return { path: file, sourceName: file };
+  }
 
   const lexicalFullPath = file.startsWith("/") ? file : `${context.cwd}/${file}`;
   const path = await canonicalizeExistingPath({ context, path: lexicalFullPath });
-  if (!resolveSourceName) return { path, sourceName: file };
+  if (!resolveSourceName) {
+    return { path, sourceName: file };
+  }
 
   let sourceName = file;
   while (true) {

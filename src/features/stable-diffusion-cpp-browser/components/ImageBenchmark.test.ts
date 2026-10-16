@@ -13,7 +13,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 it.each(['import', 'download', 'history-action'])('disables refresh during %s while keeping independent measurement settings editable', async operation => {
@@ -60,10 +61,12 @@ it('edits ZIP contents during measurement but locks them to an export in progres
   expect(bench.includePrompts.value).toBe(true);
   expect(bench.includeInputImages.value).toBe('include');
   expect(wrapper.get('[data-testid="benchmark-clear"]').element.matches(':disabled')).toBe(true);
-  bench.exporting.value = true; await flushPromises();
+  bench.exporting.value = true;
+  await flushPromises();
   expect(prompts.element.matches(':disabled')).toBe(true);
   expect(inputs.element.matches(':disabled')).toBe(true);
-  measuring.value = false; await flushPromises();
+  measuring.value = false;
+  await flushPromises();
   expect(prompts.element.matches(':disabled')).toBe(true);
   expect(inputs.element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="benchmark-clear"]').element.matches(':disabled')).toBe(true);

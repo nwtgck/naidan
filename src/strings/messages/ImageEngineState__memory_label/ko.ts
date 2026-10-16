@@ -8,6 +8,9 @@ export const ImageEngineState__memory_label = ({ measure }: { measure: "wasm" | 
   case "last-cpu-buffers": return "마지막으로 보고된 CPU 런타임 버퍼";
   case "last-non-cpu-buffers": return "마지막으로 보고된 비CPU 런타임 버퍼";
   case "last-unknown-buffers": return "마지막으로 보고된 런타임 버퍼(장치 알 수 없음)";
-  default: { const exhaustive: never = measure; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = measure;
+    throw new Error(String(exhaustive));
+  }
   }
 };

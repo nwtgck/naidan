@@ -8,7 +8,9 @@ class WorkerHandle extends EventTarget {
   state: ServiceWorkerState = 'installed';
   buildId = 'build-b';
   postMessage = vi.fn((data: { type: string }, ports?: MessagePort[]) => {
-    if (data.type === BUILD_ID_MESSAGE) ports?.[0]?.postMessage({ type: BUILD_ID_MESSAGE, buildId: this.buildId });
+    if (data.type === BUILD_ID_MESSAGE) {
+      ports?.[0]?.postMessage({ type: BUILD_ID_MESSAGE, buildId: this.buildId });
+    }
   });
 
   native(): ServiceWorker {
@@ -16,13 +18,15 @@ class WorkerHandle extends EventTarget {
   }
 
   transition({ state }: { state: ServiceWorkerState }): void {
-    this.state = state; this.dispatchEvent(new Event('statechange'));
+    this.state = state;
+    this.dispatchEvent(new Event('statechange'));
   }
 }
 
 function fixture() {
   const old = new WorkerHandle(), next = new WorkerHandle();
-  old.state = 'activated'; old.buildId = 'build-a';
+  old.state = 'activated';
+  old.buildId = 'build-a';
   const registration = { active: old.native(), waiting: next.native() as ServiceWorker | null } as ServiceWorkerRegistration;
   const isIdle = vi.fn().mockReturnValue(false);
   const handoff = createOfflineHandoff({ registration, isIdle });
@@ -31,7 +35,8 @@ function fixture() {
 }
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('worker-owned offline handoff', () => {
@@ -43,18 +48,23 @@ describe('worker-owned offline handoff', () => {
     f.isIdle.mockReturnValue(true);
     const original = f.next.postMessage.getMockImplementation()!;
     f.next.postMessage.mockImplementation((data, ports) => {
-      if (data.type === ACTIVATE_BUILD_MESSAGE) expect(f.handoff.isDraining()).toBe(true);
+      if (data.type === ACTIVATE_BUILD_MESSAGE) {
+        expect(f.handoff.isDraining()).toBe(true);
+      }
       original(data, ports);
     });
-    f.handoff.resume(); f.handoff.resume();
+    f.handoff.resume();
+    f.handoff.resume();
     expect(f.messages()).toEqual([{ type: ACTIVATE_BUILD_MESSAGE, buildId: 'build-b' }]);
     expect(f.handoff.isDraining()).toBe(true);
   });
 
   it('does not drain or activate a different build', async () => {
-    const f = fixture(); f.isIdle.mockReturnValue(true);
+    const f = fixture();
+    f.isIdle.mockReturnValue(true);
     expect(await f.handoff.request({ buildId: 'build-c' })).toBe(false);
-    expect(f.messages()).toEqual([]); expect(f.handoff.isDraining()).toBe(false);
+    expect(f.messages()).toEqual([]);
+    expect(f.handoff.isDraining()).toBe(false);
   });
 
   it('does not substitute a replacement worker after a deferred identity reply', async () => {
@@ -64,7 +74,8 @@ describe('worker-owned offline handoff', () => {
       reply = ports![0]!;
     });
     const operation = f.handoff.request({ buildId: 'build-b' });
-    const newer = new WorkerHandle(); newer.buildId = 'build-c';
+    const newer = new WorkerHandle();
+    newer.buildId = 'build-c';
     Object.assign(f.registration, { waiting: newer.native() });
     reply.postMessage({ type: BUILD_ID_MESSAGE, buildId: 'build-b' });
     expect(await operation).toBe(false);
@@ -73,17 +84,23 @@ describe('worker-owned offline handoff', () => {
   });
 
   it('releases a superseded target and never activates its successor implicitly', async () => {
-    const f = fixture(); await f.handoff.request({ buildId: 'build-b' });
-    const newer = new WorkerHandle(); newer.buildId = 'build-c';
+    const f = fixture();
+    await f.handoff.request({ buildId: 'build-b' });
+    const newer = new WorkerHandle();
+    newer.buildId = 'build-c';
     Object.assign(f.registration, { waiting: newer.native() });
     f.next.transition({ state: 'redundant' });
-    f.isIdle.mockReturnValue(true); f.handoff.resume();
-    expect(f.messages()).toEqual([]); expect(newer.postMessage).not.toHaveBeenCalled();
+    f.isIdle.mockReturnValue(true);
+    f.handoff.resume();
+    expect(f.messages()).toEqual([]);
+    expect(newer.postMessage).not.toHaveBeenCalled();
     expect(f.handoff.isDraining()).toBe(false);
   });
 
   it('does not reopen admission just because the target moved from waiting to active', async () => {
-    const f = fixture(); f.isIdle.mockReturnValue(true); await f.handoff.request({ buildId: 'build-b' });
+    const f = fixture();
+    f.isIdle.mockReturnValue(true);
+    await f.handoff.request({ buildId: 'build-b' });
     Object.assign(f.registration, { active: f.next.native(), waiting: null });
     f.next.transition({ state: 'activating' });
     expect(f.handoff.isDraining()).toBe(true);
@@ -93,12 +110,14 @@ describe('worker-owned offline handoff', () => {
   });
 
   it('does not keep admission closed if postMessage synchronously failed', async () => {
-    const f = fixture(); vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const f = fixture();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     await f.handoff.request({ buildId: 'build-b' });
     f.next.postMessage.mockImplementation(() => {
       throw new Error('terminated');
     });
-    f.isIdle.mockReturnValue(true); f.handoff.resume();
+    f.isIdle.mockReturnValue(true);
+    f.handoff.resume();
     expect(f.handoff.isDraining()).toBe(false);
   });
 
@@ -107,12 +126,14 @@ describe('worker-owned offline handoff', () => {
     await f.handoff.request({ buildId: 'build-b' });
     await f.handoff.request({ buildId: 'build-b' });
     expect(f.next.postMessage).toHaveBeenCalledTimes(1);
-    f.isIdle.mockReturnValue(true); f.handoff.resume();
+    f.isIdle.mockReturnValue(true);
+    f.handoff.resume();
     expect(f.messages()).toHaveLength(1);
   });
 
   it('cannot prepare a handoff without an installed waiting worker', async () => {
-    const f = fixture(); f.next.state = 'installing';
+    const f = fixture();
+    f.next.state = 'installing';
     expect(await f.handoff.request({ buildId: 'build-b' })).toBe(false);
     expect(f.next.postMessage).not.toHaveBeenCalled();
   });
@@ -120,19 +141,25 @@ describe('worker-owned offline handoff', () => {
 
 describe('shared precache activation boundary', () => {
   it('does not wait for normal active or absent workers', async () => {
-    const f = fixture(); await waitForActiveCleanup({ registration: f.registration });
+    const f = fixture();
+    await waitForActiveCleanup({ registration: f.registration });
     Object.assign(f.registration, { active: null });
     await waitForActiveCleanup({ registration: f.registration });
   });
 
   it('waits until an activating worker finishes cleanup and releases its listener', async () => {
-    const f = fixture(); f.old.state = 'activating';
-    const remove = vi.spyOn(f.old, 'removeEventListener'); let finished = false;
+    const f = fixture();
+    f.old.state = 'activating';
+    const remove = vi.spyOn(f.old, 'removeEventListener');
+    let finished = false;
     const operation = waitForActiveCleanup({ registration: f.registration }).then(() => {
       finished = true;
     });
-    await Promise.resolve(); expect(finished).toBe(false);
-    f.old.transition({ state: 'activated' }); await operation;
-    expect(finished).toBe(true); expect(remove).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    f.old.transition({ state: 'activated' });
+    await operation;
+    expect(finished).toBe(true);
+    expect(remove).toHaveBeenCalledOnce();
   });
 });

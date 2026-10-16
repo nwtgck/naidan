@@ -104,11 +104,17 @@ export class OpenAIProvider implements LmProvider {
         if (snapshot.parameters) {
           const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
         unhandled satisfies Record<PropertyKey, never>;
-        body.temperature = temperature; body.top_p = topP; body.max_completion_tokens = maxCompletionTokens;
-        body.presence_penalty = presencePenalty; body.frequency_penalty = frequencyPenalty; body.stop = stop;
+        body.temperature = temperature;
+        body.top_p = topP;
+        body.max_completion_tokens = maxCompletionTokens;
+        body.presence_penalty = presencePenalty;
+        body.frequency_penalty = frequencyPenalty;
+        body.stop = stop;
         body.reasoning_effort = reasoning.effort;
         }
-        if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+        if (snapshot.tools?.length) {
+          body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+        }
         let response: Response;
         try {
           response = await fetcher(url, {
@@ -118,7 +124,9 @@ export class OpenAIProvider implements LmProvider {
             signal,
           });
         } catch (error) {
-          if (signal.aborted) throw error;
+          if (signal.aborted) {
+            throw error;
+          }
           const message = `Network error or CORS issue: ${error instanceof Error ? error.message : String(error)}. Please check if the server is running and your endpoint URL is correct.`;
           addErrorEvent({ source: 'OpenAIProvider', message, details: { error, url, method: 'POST' } });
           throw new Error(message);
@@ -126,7 +134,9 @@ export class OpenAIProvider implements LmProvider {
         if (!response.ok) {
           const unsupportedReasoning = body.reasoning_effort === 'none' && await isReasoningRejection({ response, parameter: 'reasoning_effort' });
           const message = `OpenAI API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
-          if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
+          if (unsupportedReasoning) {
+            throw new UnsupportedReasoningError({ message });
+          }
           addErrorEvent({ source: 'OpenAIProvider', message, details: { status: response.status, url } });
           throw new Error(message);
         }
@@ -135,7 +145,9 @@ export class OpenAIProvider implements LmProvider {
         async function completeCalls(): Promise<void> {
           const ids = new Set<string>();
           for (const call of drafts) {
-            if (!call.id || !call.name || ids.has(call.id)) throw new Error('Incomplete or duplicate tool call in a completed response.');
+            if (!call.id || !call.name || ids.has(call.id)) {
+              throw new Error('Incomplete or duplicate tool call in a completed response.');
+            }
             ids.add(call.id);
           }
           for (const call of drafts) {
@@ -154,10 +166,16 @@ export class OpenAIProvider implements LmProvider {
               throw new UnsupportedReasoningError({ message: 'The endpoint rejected reasoning_effort=none in its generation stream.' });
             }
             const chunk = OpenAIChatChunkSchema.parse(raw);
-            if (chunk.choices.length > 1) throw new Error('Multiple generated choices are not supported in one assistant message.');
+            if (chunk.choices.length > 1) {
+              throw new Error('Multiple generated choices are not supported in one assistant message.');
+            }
             const choice = chunk.choices[0];
-            if (!choice) continue; // Usage-only event.
-            if (choice.index !== undefined && choice.index !== 0) throw new Error('Unexpected choice index.');
+            if (!choice) {
+              continue;
+            } // Usage-only event.
+            if (choice.index !== undefined && choice.index !== 0) {
+              throw new Error('Unexpected choice index.');
+            }
             const delta = choice.delta;
             if (delta) {
               if (delta.reasoning !== undefined && delta.reasoning !== null && delta.reasoning_content !== undefined && delta.reasoning_content !== null && delta.reasoning !== delta.reasoning_content) {
@@ -165,16 +183,23 @@ export class OpenAIProvider implements LmProvider {
               }
               const reasoning = delta.reasoning ?? delta.reasoning_content;
               // Empty deltas are API keep-alives/placeholders, not declared empty parts.
-              if (reasoning) await writer.text({ type: 'reasoning', text: reasoning });
-              if (delta.content) await writer.text({ type: 'text', text: delta.content });
+              if (reasoning) {
+                await writer.text({ type: 'reasoning', text: reasoning });
+              }
+              if (delta.content) {
+                await writer.text({ type: 'text', text: delta.content });
+              }
               for (const piece of delta.tool_calls ?? []) {
                 let draft = currentByIndex.get(piece.index);
                 if (!draft || (piece.id && draft.id && draft.id !== piece.id)) {
                   draft = { key: drafts.length, id: piece.id, name: '', arguments: '' };
-                  drafts.push(draft); currentByIndex.set(piece.index, draft);
+                  drafts.push(draft);
+                  currentByIndex.set(piece.index, draft);
                   writer.reserveCall({ key: draft.key });
                 }
-                if (piece.id) draft.id = piece.id;
+                if (piece.id) {
+                  draft.id = piece.id;
+                }
                 // Delta text is never deduplicated because two equal fragments can be intentional.
                 const argumentsOffset = draft.arguments.length;
                 draft.name += piece.function?.name ?? '';
@@ -200,7 +225,9 @@ export class OpenAIProvider implements LmProvider {
           // A socket closing by itself is not a model-level completion event.
           return { type: 'interrupted', reason: 'unknown' } satisfies ChatGenerationResult;
         } catch (error) {
-          if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
+          if (!signal.aborted && !isUnsupportedReasoningError({ error })) {
+            addErrorEvent({ source: 'OpenAIProvider', message: 'Failed to read or validate the generation stream', details: { error: error instanceof Error ? error : String(error) } });
+          }
           throw error;
         }
       },

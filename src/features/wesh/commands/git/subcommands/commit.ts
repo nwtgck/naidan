@@ -83,8 +83,9 @@ export async function runCommit({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   const separatorIndex = args.indexOf('--');
-  if (separatorIndex >= 0 && separatorIndex !== args.length - 1)
+  if (separatorIndex >= 0 && separatorIndex !== args.length - 1) {
     throw new Error('commit pathspecs are not supported yet');
+  }
   const parsedArgs = separatorIndex < 0 ? args : args.slice(0, separatorIndex);
   const parsed = parseStandardArgv({ args: parsedArgs, catalog: COMMIT_ARGV_CATALOG, policy: COMMIT_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
@@ -110,8 +111,9 @@ export async function runCommit({ context, args }: {
     }
     }
   }
-  if (parsed.positionals.length > 0)
+  if (parsed.positionals.length > 0) {
     throw new GitUsageError({ message: `unknown option: ${parsed.positionals[0]}` });
+  }
   let message: string | undefined;
   let messageFile: string | undefined;
   for (const occurrence of parsed.deferred) {
@@ -145,9 +147,12 @@ export async function runCommit({ context, args }: {
   const amend = parsed.optionValues.amend === true;
   const noEdit = parsed.optionValues.noEdit === true;
   const allowEmpty = parsed.optionValues.allowEmpty === true;
-  if (all) await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
-  if (message !== undefined && messageFile !== undefined)
+  if (all) {
+    await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
+  }
+  if (message !== undefined && messageFile !== undefined) {
     throw new Error('options -m and -F cannot be used together');
+  }
   const repository = await discoverRepositoryFromContext({ context });
   const config = await readEffectiveConfig({
     files: context.files,
@@ -169,24 +174,30 @@ export async function runCommit({ context, args }: {
   const previousCommit = head.objectId === undefined
     ? undefined
     : await readCommit({ files: context.files, repository, objectId: head.objectId });
-  if (amend && previousCommit === undefined)
+  if (amend && previousCommit === undefined) {
     throw new Error('You have nothing to amend.');
+  }
   const reusePreviousMessage = message === undefined && amend && noEdit;
-  if (reusePreviousMessage)
+  if (reusePreviousMessage) {
     message = previousCommit!.message;
-  if (message === undefined)
+  }
+  if (message === undefined) {
     throw new Error('no commit message specified');
+  }
   if (!reusePreviousMessage) {
     message = cleanupMessage({ text: message });
-    if (message.length === 0)
+    if (message.length === 0) {
       throw new Error('Aborting commit due to empty commit message.');
+    }
   }
   const authorOverride = amend ? parseCommitAuthor({ value: previousCommit!.author }) : undefined;
-  if (authorOverride === undefined)
+  if (authorOverride === undefined) {
     resolveGitIdentity({ env: context.env, config, role: 'AUTHOR' });
+  }
   resolveGitIdentity({ env: context.env, config, role: 'COMMITTER' });
-  if (authorOverride === undefined)
+  if (authorOverride === undefined) {
     resolveGitTimestamp({ env: context.env, role: 'AUTHOR' });
+  }
   resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
   let indexEntries = await readIndex({ files: context.files, repository });
   if (all) {

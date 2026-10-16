@@ -118,15 +118,25 @@ function snapshotInvocationProperty({ object, key }: {
   key: string,
 }): GenerationInvocationProperty {
   const descriptor = object === undefined ? undefined : Object.getOwnPropertyDescriptor(object, key);
-  if (descriptor === undefined) return Object.freeze({ status: 'omitted' });
-  if (!Object.hasOwn(descriptor, 'value')) return Object.freeze({ status: 'not-recorded', reason: 'accessor' });
+  if (descriptor === undefined) {
+    return Object.freeze({ status: 'omitted' });
+  }
+  if (!Object.hasOwn(descriptor, 'value')) {
+    return Object.freeze({ status: 'not-recorded', reason: 'accessor' });
+  }
   const value: unknown = descriptor.value;
-  if (value === undefined) return Object.freeze({ status: 'undefined' });
-  if (value === null) return Object.freeze({ status: 'null' });
+  if (value === undefined) {
+    return Object.freeze({ status: 'undefined' });
+  }
+  if (value === null) {
+    return Object.freeze({ status: 'null' });
+  }
   if (typeof value === 'number' && !Number.isFinite(value)) {
     return Object.freeze({ status: 'not-recorded', reason: 'non-finite-number' });
   }
-  if (typeof value === 'number' || typeof value === 'boolean') return Object.freeze({ status: 'value', value });
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return Object.freeze({ status: 'value', value });
+  }
   // Required settings are numeric/boolean. Do not copy arbitrary strings or
   // objects, traverse a prototype, or execute getters just for diagnostics.
   return Object.freeze({ status: 'not-recorded', reason: 'unsupported-value' });
@@ -184,7 +194,9 @@ function emitGenerationObservation({
   observationSink: GenerationStrategyObservationSink | undefined,
   emit: ({ sink }: { sink: GenerationStrategyObservationSink }) => void,
 }): void {
-  if (observationSink === undefined) return;
+  if (observationSink === undefined) {
+    return;
+  }
   try {
     emit({ sink: observationSink });
   } catch {
@@ -234,7 +246,9 @@ function detectStandardReasoningProtocol({
       formattedMessages as any,
       { ...templateOptions, tokenize: false, return_dict: false },
     );
-    if (typeof renderedGenerationPrompt !== 'string') return 'generated-output';
+    if (typeof renderedGenerationPrompt !== 'string') {
+      return 'generated-output';
+    }
     const preliminaryProtocol = detectReasoningStreamProtocol({
       renderedGenerationPrompt,
       renderedConversationPrompt: undefined,
@@ -255,7 +269,9 @@ function detectStandardReasoningProtocol({
       formattedMessages as any,
       { ...templateOptions, add_generation_prompt: false, tokenize: false, return_dict: false },
     );
-    if (typeof renderedConversationPrompt !== 'string') return 'generated-output';
+    if (typeof renderedConversationPrompt !== 'string') {
+      return 'generated-output';
+    }
     return detectReasoningStreamProtocol({
       renderedGenerationPrompt,
       renderedConversationPrompt,
@@ -321,7 +337,10 @@ const standardGenerationStrategy: GenerationStrategy = {
       switch (toolHandling.outputProtocol) {
       case 'delimited-pythonic': break;
       case 'json-tagged': throw new Error('This standard tool history has no reviewed structured input adapter.');
-      default: { const exhaustive: never = toolHandling.outputProtocol; throw new Error(`Unhandled standard history framing: ${String(exhaustive)}`); }
+      default: {
+        const exhaustive: never = toolHandling.outputProtocol;
+        throw new Error(`Unhandled standard history framing: ${String(exhaustive)}`);
+      }
       }
     }
     const templateOptions: Record<string, unknown> = {
@@ -380,16 +399,24 @@ const standardGenerationStrategy: GenerationStrategy = {
       switch (reasoningProtocol) {
       case 'generated-output': break;
       case 'prompt-open-think':
-        if (model.config.model_type !== 'lfm2') throw new Error('Prefilled standard reasoning requires a model-specific structured adapter.');
+        if (model.config.model_type !== 'lfm2') {
+          throw new Error('Prefilled standard reasoning requires a model-specific structured adapter.');
+        }
         break;
-      default: { const exhaustive: never = reasoningProtocol; throw new Error(`Unhandled standard reasoning framing: ${String(exhaustive)}`); }
+      default: {
+        const exhaustive: never = reasoningProtocol;
+        throw new Error(`Unhandled standard reasoning framing: ${String(exhaustive)}`);
+      }
       }
       const { endTokens, protocolTokens } = resolveStandardGenerationFraming({ model, tokenizer, inputs, handling: toolHandling, tools });
       const structured = (() => {
         switch (reasoningProtocol) {
         case 'prompt-open-think': return createLfm2Generation({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
         case 'generated-output': return createStandardGeneration({ emit: onGenerationEvent, endTokens, handling: toolHandling, tools });
-        default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = reasoningProtocol;
+          throw new Error(String(exhaustive));
+        }
         }
       })();
       const streamer = new NativeProtocolStreamer({
@@ -398,7 +425,10 @@ const standardGenerationStrategy: GenerationStrategy = {
           switch (reasoningProtocol) {
           case 'prompt-open-think': return [...new Set([...protocolTokens, ...lfm2ReasoningProtocolTokens])];
           case 'generated-output': return protocolTokens;
-          default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = reasoningProtocol;
+            throw new Error(String(exhaustive));
+          }
           }
         })(),
         onText: ({ text }) => structured.text({ text }),
@@ -470,7 +500,9 @@ const standardGenerationStrategy: GenerationStrategy = {
       toolCallParser.flush();
       const parsedToolCalls = toolCallParser.drainToolCalls();
       validateStandardToolCallsForHandling({ toolCalls: parsedToolCalls, handling: toolHandling, assistantContent });
-      if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
+      if (parsedToolCalls.length > 0) {
+        onToolCalls({ toolCalls: parsedToolCalls });
+      }
     }
     void result;
   },
@@ -537,7 +569,9 @@ const gptOssGenerationStrategy: GenerationStrategy = {
         generationCapture,
       }),
     });
-    if (runtimeState.generationStateOwner === stateOwner) runtimeState.gptOssPastKeyValues = generatedCache;
+    if (runtimeState.generationStateOwner === stateOwner) {
+      runtimeState.gptOssPastKeyValues = generatedCache;
+    }
   },
 };
 
@@ -562,7 +596,9 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       throw new Error('Gemma 4 processor not loaded');
     }
 
-    for (const tool of tools ?? []) validateGemma4ToolName({ name: tool.function.name });
+    for (const tool of tools ?? []) {
+      validateGemma4ToolName({ name: tool.function.name });
+    }
     const { images, templateMessages } = await buildGemma4TemplateInput({ messages });
     const processor = runtimeState.gemma4Processor;
     const prompt = renderThinkingTemplate({
@@ -678,7 +714,9 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     // Validate the whole batch before publishing any executable call. Native
     // syntax can express values that its history template cannot preserve.
     validateGemma4ToolCallsForTemplate({ toolCalls });
-    if (toolCalls.length > 0) onToolCalls({ toolCalls });
+    if (toolCalls.length > 0) {
+      onToolCalls({ toolCalls });
+    }
     console.log('[transformersJsWorker] gemma4 raw output start');
     console.log(rawStreamOutput);
     console.log('[transformersJsWorker] gemma4 raw output end');
@@ -736,12 +774,18 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     // rendered message suffixes. Prepare the full input exactly once.
     const images: RawImage[] = [];
     for (const message of messages) {
-      if (typeof message.content === 'string') continue;
+      if (typeof message.content === 'string') {
+        continue;
+      }
       for (const part of message.content) {
         switch (part.type) {
         case 'text': break;
-        case 'image_url': images.push(await RawImage.read(part.image_url.url)); break;
-        default: { const exhaustive: never = part; throw new Error(`Unhandled Qwen content part: ${String(exhaustive)}`); }
+        case 'image_url': images.push(await RawImage.read(part.image_url.url));
+          break;
+        default: {
+          const exhaustive: never = part;
+          throw new Error(`Unhandled Qwen content part: ${String(exhaustive)}`);
+        }
         }
       }
     }
@@ -757,7 +801,9 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
       && canReuseQwenSequenceCache({ cache: sequenceCache, model, inputs, tensorClass: Tensor });
     if (observationSink !== undefined) {
       const cacheDecision: GenerationStrategyCacheDecision = (() => {
-        if (hasImages) return { status: 'not-reused', reason: 'qwen3_5-image-cache-reuse-unverified' };
+        if (hasImages) {
+          return { status: 'not-reused', reason: 'qwen3_5-image-cache-reuse-unverified' };
+        }
         if (tools?.length) {
           return { status: 'not-reused', reason: 'qwen3_5-tools-disable-no-tool-continuation' };
         }
@@ -814,12 +860,20 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
           case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
           case 'result':
             switch (event.result.type) {
-            case 'finished': cacheableCompletion = event.result.next === 'user'; break;
-            case 'interrupted': cacheableCompletion = false; break;
-            default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+            case 'finished': cacheableCompletion = event.result.next === 'user';
+              break;
+            case 'interrupted': cacheableCompletion = false;
+              break;
+            default: {
+              const exhaustive: never = event.result;
+              throw new Error(`Unhandled Qwen result: ${exhaustive}`);
+            }
             }
             break;
-          default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
+          default: {
+            const exhaustive: never = event;
+            throw new Error(`Unhandled Qwen event: ${exhaustive}`);
+          }
           }
           onGenerationEvent({ event });
         },
@@ -851,7 +905,9 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
         throw error;
       }
       structured.finish({ reason: 'unknown' });
-      if (runtimeState.generationStateOwner !== cacheGeneration || !cacheableCompletion) return;
+      if (runtimeState.generationStateOwner !== cacheGeneration || !cacheableCompletion) {
+        return;
+      }
       runtimeState.qwen3_5SequenceCache = !hasImages && !tools?.length
         ? retainQwenSequenceCache({ model, sequences: result.sequences, pastKeyValues: result.past_key_values, inputs, tensorClass: Tensor })
         : undefined;
@@ -903,11 +959,15 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     toolCallParser.flush();
     reasoningStream.flush();
     const parsedToolCalls = toolCallParser.drainToolCalls();
-    if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
+    if (parsedToolCalls.length > 0) {
+      onToolCalls({ toolCalls: parsedToolCalls });
+    }
 
     // A reset, interrupt, replacement Load or later request revokes this
     // invocation's right to publish continuation state after its await.
-    if (runtimeState.generationStateOwner !== cacheGeneration) return;
+    if (runtimeState.generationStateOwner !== cacheGeneration) {
+      return;
+    }
     runtimeState.qwen3_5SequenceCache = !hasImages && !tools?.length
       ? retainQwenSequenceCache({ model, sequences: result.sequences, pastKeyValues: result.past_key_values, inputs, tensorClass: Tensor })
       : undefined;
@@ -1008,10 +1068,14 @@ async function generateWithModel({
   try {
     result = await (Reflect.apply(nativeGenerate, model, [kwargs]) as ReturnType<TextGenerationModel['generate']>);
   } catch (error) {
-    if (invocation !== undefined) recordGenerationCapture({ record: () => invocation?.recordNativeCall({ phase: 'rejected' }) });
+    if (invocation !== undefined) {
+      recordGenerationCapture({ record: () => invocation?.recordNativeCall({ phase: 'rejected' }) });
+    }
     throw error;
   } finally {
-    if (nativeStreamHook !== undefined) recordGenerationCapture({ record: () => nativeStreamHook?.restore() });
+    if (nativeStreamHook !== undefined) {
+      recordGenerationCapture({ record: () => nativeStreamHook?.restore() });
+    }
   }
   if (invocation !== undefined) {
     recordGenerationCapture({

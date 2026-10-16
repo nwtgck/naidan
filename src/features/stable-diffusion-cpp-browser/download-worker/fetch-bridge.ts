@@ -12,7 +12,10 @@ export function createImageDownloadFetchBridge({ signal }: { signal: AbortSignal
   const connections = new Set<{ channel: MessageChannel, dispose(): Promise<void> }>();
   let disposed = false;
   const open: ImageDownloadFetch = async ({ request }) => {
-    signal.throwIfAborted(); if (disposed) throw new Error('Download fetch bridge closed');
+    signal.throwIfAborted();
+    if (disposed) {
+      throw new Error('Download fetch bridge closed');
+    }
     const validated = requestSchema.parse(request);
     const channel = new MessageChannel();
     const server = servePrivacyStreamWithFetcher({
@@ -25,10 +28,14 @@ export function createImageDownloadFetchBridge({ signal }: { signal: AbortSignal
     return workerTransfer({ value: channel.port2, transferables: [channel.port2] });
   };
   function dispose(): void {
-    if (disposed) return; disposed = true;
+    if (disposed) {
+      return;
+    }
+    disposed = true;
     for (const connection of connections) {
       void connection.dispose().catch(() => undefined);
-      connection.channel.port1.close(); connection.channel.port2.close();
+      connection.channel.port1.close();
+      connection.channel.port2.close();
     }
     connections.clear();
   }

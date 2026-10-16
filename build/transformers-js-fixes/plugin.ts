@@ -29,7 +29,9 @@ export function createTransformersJsFixesPlugin({ projectRoot }: { projectRoot: 
     name: `naidan-transformers-js-fixes-${TRANSFORMERS_JS_FIXES_PROVENANCE.transformedWebSha256}`,
     enforce: 'pre',
     transform(code, id) {
-      if (normalizePath(id.split(/[?#]/u, 1)[0] ?? id) !== target) return undefined;
+      if (normalizePath(id.split(/[?#]/u, 1)[0] ?? id) !== target) {
+        return undefined;
+      }
       const result = applyTransformersJsFixes({ code, version: installed.version });
       return {
         code: result.code,

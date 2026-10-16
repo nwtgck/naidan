@@ -70,8 +70,12 @@ export function selectHttpEndpointSeed({
   preferred: Endpoint | undefined,
   fallback: Endpoint | undefined,
 }): HttpEndpoint | undefined {
-  if (preferred !== undefined && isHttpEndpoint(preferred)) return preferred;
-  if (fallback !== undefined && isHttpEndpoint(fallback)) return fallback;
+  if (preferred !== undefined && isHttpEndpoint(preferred)) {
+    return preferred;
+  }
+  if (fallback !== undefined && isHttpEndpoint(fallback)) {
+    return fallback;
+  }
   return undefined;
 }
 
@@ -117,7 +121,9 @@ function areHttpHeadersEqual({
   leftHeaders: [string, string][] | undefined,
   rightHeaders: [string, string][] | undefined,
 }): boolean {
-  if (leftHeaders === rightHeaders) return true;
+  if (leftHeaders === rightHeaders) {
+    return true;
+  }
   if (
     leftHeaders === undefined
     || rightHeaders === undefined
@@ -141,11 +147,14 @@ export function areEndpointModelNamespacesEqual({
   right: Endpoint,
 }): boolean {
   if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
-    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
+    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') {
+      return false;
+    }
     const { type: _leftType, registrationId: leftId, ...leftRest } = left;
     const { type: _rightType, registrationId: rightId, ...rightRest } = right;
-    leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
-    return leftId === rightId;
+    leftRest satisfies Record<PropertyKey, never>;
+rightRest satisfies Record<PropertyKey, never>;
+return leftId === rightId;
   }
   switch (left.type) {
   case 'openai': {
@@ -274,11 +283,14 @@ export function areEndpointsEqual({
   right: Endpoint,
 }): boolean {
   if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
-    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
+    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') {
+      return false;
+    }
     const { type: _leftType, registrationId: leftId, ...leftRest } = left;
     const { type: _rightType, registrationId: rightId, ...rightRest } = right;
-    leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
-    return leftId === rightId;
+    leftRest satisfies Record<PropertyKey, never>;
+rightRest satisfies Record<PropertyKey, never>;
+return leftId === rightId;
   }
   switch (left.type) {
   case 'openai': {
@@ -406,7 +418,9 @@ export function areOptionalEndpointsEqual({
   left: Endpoint | undefined,
   right: Endpoint | undefined,
 }): boolean {
-  if (left === undefined || right === undefined) return left === right;
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
   return areEndpointsEqual({ left, right });
 }
 

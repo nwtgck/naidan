@@ -6,7 +6,9 @@ const _scanPromises = new Map<VolumeId, Promise<void>>();
 
 function getExtension({ filename }: { filename: string }): string | undefined {
   const dot = filename.lastIndexOf('.');
-  if (dot === -1 || dot === filename.length - 1) return undefined;
+  if (dot === -1 || dot === filename.length - 1) {
+    return undefined;
+  }
   return filename.slice(dot).toLowerCase();
 }
 
@@ -35,11 +37,15 @@ async function _doScan({
     const item = queue.shift()!;
     try {
       for await (const [name, entry] of item.dir.entries()) {
-        if (signal.aborted || fileCount >= maxFiles) break;
+        if (signal.aborted || fileCount >= maxFiles) {
+          break;
+        }
         switch (entry.kind) {
         case 'file': {
           const ext = getExtension({ filename: name });
-          if (ext) extensions.add(ext);
+          if (ext) {
+            extensions.add(ext);
+          }
           fileCount++;
           break;
         }

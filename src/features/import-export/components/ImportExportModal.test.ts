@@ -17,8 +17,12 @@ vi.mock('@/strings', async importOriginal => {
     ...actual,
     ensureStrings: new Proxy(actual.ensureStrings, {
       get(target, property, receiver) {
-        if (property === 'ImportExportModal__compressing_data') return mocks.compressingData;
-        if (property === 'ImportExportModal__export_successful') return mocks.exportSuccessful;
+        if (property === 'ImportExportModal__compressing_data') {
+          return mocks.compressingData;
+        }
+        if (property === 'ImportExportModal__export_successful') {
+          return mocks.exportSuccessful;
+        }
         return Reflect.get(target, property, receiver);
       },
     }),
@@ -86,7 +90,8 @@ describe('ImportExportModal.vue', () => {
       filename: 'naidan-data-test.zip',
       stream: new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode('zip')); controller.close();
+          controller.enqueue(new TextEncoder().encode('zip'));
+          controller.close();
         },
       }),
     }));

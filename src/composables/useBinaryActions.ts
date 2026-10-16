@@ -36,7 +36,9 @@ export function useBinaryActions() {
 
   const downloadBinaryObject = async ({ obj, memoryBlob }: { obj: Pick<BinaryObject, 'id' | 'name'>; memoryBlob: Blob | undefined }) => {
     const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: obj.id });
-    if (!blob) return;
+    if (!blob) {
+      return;
+    }
 
     downloadBlob({ blob, filename: obj.name || idToRaw({ id: obj.id }) });
   };

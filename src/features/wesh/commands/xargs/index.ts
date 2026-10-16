@@ -353,7 +353,9 @@ function normalizeXargsDeprecatedOptionalShortBundles({
   let index = 0;
   while (index < args.length) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (token === '--') {
       normalized.push(...args.slice(index));
@@ -366,7 +368,9 @@ function normalizeXargsDeprecatedOptionalShortBundles({
         token,
         nextToken: args[index + 1],
       });
-      if (result === undefined) continue;
+      if (result === undefined) {
+        continue;
+      }
       specialConsumeCount = result.consumeCount;
       break;
     }
@@ -397,7 +401,9 @@ function normalizeXargsDeprecatedOptionalShortBundles({
 
       for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
         const short = shortBody[shortIndex];
-        if (short === undefined) continue;
+        if (short === undefined) {
+          continue;
+        }
 
         if (shortIndex > 0 && XARGS_DEPRECATED_OPTIONAL_SHORT_OPTIONS.has(short)) {
           normalized.push(
@@ -409,7 +415,9 @@ function normalizeXargsDeprecatedOptionalShortBundles({
         }
 
         const option = XARGS_SHORT_OPTIONS.get(short);
-        if (option === undefined) break;
+        if (option === undefined) {
+          break;
+        }
         switch (option.kind) {
         case 'flag':
           continue;
@@ -452,7 +460,9 @@ function splitXargsArguments({
   let index = 0;
   while (index < args.length) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (token === '--') {
       return {
@@ -467,7 +477,9 @@ function splitXargsArguments({
         token,
         nextToken: args[index + 1],
       });
-      if (result === undefined) continue;
+      if (result === undefined) {
+        continue;
+      }
       specialConsumeCount = result.consumeCount;
       break;
     }
@@ -493,9 +505,13 @@ function splitXargsArguments({
       index += 1;
       for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
         const short = shortBody[shortIndex];
-        if (short === undefined) continue;
+        if (short === undefined) {
+          continue;
+        }
         const option = XARGS_SHORT_OPTIONS.get(short);
-        if (option === undefined) break;
+        if (option === undefined) {
+          break;
+        }
         switch (option.kind) {
         case 'flag':
           continue;
@@ -533,17 +549,27 @@ function shellQuote({
   characterLocaleMode: WeshCharacterLocaleMode,
 }): string {
   const isSafePrintableWord = ({ value }: { value: string }): boolean => {
-    if (value.length === 0) return false;
+    if (value.length === 0) {
+      return false;
+    }
     for (const char of value) {
       const codePoint = char.codePointAt(0)!;
-      if (codePoint > 0x7f && characterLocaleMode === 'unicode') continue;
-      if (!/[A-Za-z0-9_+,./:@%-]/u.test(char)) return false;
+      if (codePoint > 0x7f && characterLocaleMode === 'unicode') {
+        continue;
+      }
+      if (!/[A-Za-z0-9_+,./:@%-]/u.test(char)) {
+        return false;
+      }
     }
     return true;
   };
   const quotePrintable = ({ value }: { value: string }): string => {
-    if (value.length === 0) return "''";
-    if (isSafePrintableWord({ value })) return value;
+    if (value.length === 0) {
+      return "''";
+    }
+    if (isSafePrintableWord({ value })) {
+      return value;
+    }
     if (
       value.includes('\'')
       && !value.includes('"')
@@ -581,8 +607,12 @@ function shellQuote({
   };
   const isPrintableCharacter = ({ char }: { char: string }): boolean => {
     const codePoint = char.codePointAt(0)!;
-    if (codePoint < 0x20 || codePoint === 0x7f) return false;
-    if (characterLocaleMode === 'ascii' && codePoint > 0x7f) return false;
+    if (codePoint < 0x20 || codePoint === 0x7f) {
+      return false;
+    }
+    if (characterLocaleMode === 'ascii' && codePoint > 0x7f) {
+      return false;
+    }
     return !/\p{C}/u.test(char);
   };
 
@@ -592,12 +622,16 @@ function shellQuote({
   let printable = '';
   let escaped: number[] = [];
   const flushPrintable = (): void => {
-    if (printable.length === 0) return;
+    if (printable.length === 0) {
+      return;
+    }
     segments.push({ kind: 'printable', value: printable });
     printable = '';
   };
   const flushEscaped = (): void => {
-    if (escaped.length === 0) return;
+    if (escaped.length === 0) {
+      return;
+    }
     segments.push({ kind: 'escaped', bytes: escaped });
     escaped = [];
   };
@@ -624,7 +658,9 @@ function shellQuote({
   flushPrintable();
   flushEscaped();
 
-  if (segments.length === 0) return "''";
+  if (segments.length === 0) {
+    return "''";
+  }
   if (segments.every(segment => segment.kind === 'printable')) {
     return quotePrintable({ value: text });
   }
@@ -929,7 +965,9 @@ async function* createBatchedInvocations({
       }
       throw error;
     }
-    if (next.done) break;
+    if (next.done) {
+      break;
+    }
     const item = next.value;
     sawItem = true;
     const itemBytes = 1 + getArgumentBytes({ value: item });
@@ -983,7 +1021,9 @@ function replaceTemplateArgs({
   value: string,
 }): string[] {
   return args.map((arg) => {
-    if (!arg.includes(placeholder)) return arg;
+    if (!arg.includes(placeholder)) {
+      return arg;
+    }
     const replaced = arg.replaceAll(placeholder, value);
     const nulIndex = replaced.indexOf('\0');
     return nulIndex === -1 ? replaced : replaced.slice(0, nulIndex);
@@ -1069,7 +1109,9 @@ async function* createLineInvocations({
         yield invocation;
       }
     }
-    for (const item of lineItems) groupedItems.push(item);
+    for (const item of lineItems) {
+      groupedItems.push(item);
+    }
     lineCount += 1;
   }
 
@@ -1089,9 +1131,15 @@ function normalizeXargsExitCode({
 }: {
   exitCode: number,
 }): number {
-  if (exitCode === 0) return 0;
-  if (exitCode === 255) return 124;
-  if (exitCode >= 1 && exitCode <= 254) return 123;
+  if (exitCode === 0) {
+    return 0;
+  }
+  if (exitCode === 255) {
+    return 124;
+  }
+  if (exitCode >= 1 && exitCode <= 254) {
+    return 123;
+  }
   return exitCode;
 }
 
@@ -1375,7 +1423,9 @@ Maximum parallelism (--max-procs must be no greater): ${MAX_AUTOMATIC_PARALLELIS
       const textChunks = iterateCommandDataTextChunks({ chunks: byteChunks });
       let ignoredNulWarningWritten = false;
       const writeIgnoredNulWarning = async (): Promise<void> => {
-        if (ignoredNulWarningWritten) return;
+        if (ignoredNulWarningWritten) {
+          return;
+        }
         ignoredNulWarningWritten = true;
         await context.text().error({ text: XARGS_IGNORED_NUL_WARNING });
       };

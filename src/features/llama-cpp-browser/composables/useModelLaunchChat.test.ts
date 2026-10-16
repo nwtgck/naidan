@@ -44,7 +44,8 @@ vi.mock('@/features/llama-cpp-browser', () => ({
     getState: () => getState(),
     subscribe: vi.fn(() => () => {}),
     subscribeModelList: ({ listener }: { listener: () => void }) => {
-      modelListListener = listener; return () => {
+      modelListListener = listener;
+      return () => {
         modelListListener = undefined;
       };
     },
@@ -65,7 +66,8 @@ vi.mock('@/00-storage/service', () => ({
     getModelLaunch: () => launchEnabled ? activeLaunch : undefined,
     prepareModelLaunchChat: (args: { request: ModelLaunchChatRequest }) => prepare(args),
     captureModelLaunchStorage: () => {
-      const version = storageVersion; return () => version === storageVersion;
+      const version = storageVersion;
+      return () => version === storageVersion;
     },
     loadChat: async () => currentChat.value,
   },
@@ -81,27 +83,37 @@ const base = resolveModelLaunchTarget({ input: catalog.repository, catalog });
 const scopes: ReturnType<typeof effectScope>[] = [];
 
 function mountState() {
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const state = scope.run(() => useModelLaunchChat({ chat: computed(() => currentChat.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' as const }, modelId: activeLaunch.target.modelId })) }))!;
   return { scope, state };
 }
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
-  vi.clearAllMocks(); installed.clear(); launchEnabled = true; modelListListener = undefined; storageVersion = 0;
-  vi.mocked(isModelLaunchTargetReady).mockReset().mockImplementation(async ({ target }) => installed.has(target.modelId)); TEST_ONLY.reset(); rememberLaunchCatalog({ catalog });
+  vi.clearAllMocks();
+  installed.clear();
+  launchEnabled = true;
+  modelListListener = undefined;
+  storageVersion = 0;
+  vi.mocked(isModelLaunchTargetReady).mockReset().mockImplementation(async ({ target }) => installed.has(target.modelId));
+  TEST_ONLY.reset();
+  rememberLaunchCatalog({ catalog });
   currentChat.value = { id: toChatId({ raw: 'launch-chat' }), groupId: toChatGroupId({ raw: 'launch-cg' }), title: null, root: { items: [] }, debugEnabled: false, createdAt: 1, updatedAt: 1 };
   activeLaunch = { version: 1, input: catalog.repository, ...base, chatGroupId: toChatGroupId({ raw: 'launch-cg' }), phase: 'active' };
   prepareModel.mockResolvedValue('ready');
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
   download.mockImplementation(async ({ selection }: { selection: DownloadSelection }) => {
-    const path = selection.files[0]!.path; installed.add(`hf.co/${selection.repository}:${encodeURIComponent(path)}`);
+    const path = selection.files[0]!.path;
+    installed.add(`hf.co/${selection.repository}:${encodeURIComponent(path)}`);
   });
   queue = createDownloadQueue({ download });
   prepare.mockImplementation(async ({ request }: { request: ModelLaunchChatRequest }): Promise<Chat> => {
-    activeLaunch = { ...activeLaunch, target: request.target, chatGroupId: request.newChatGroupId, phase: 'active' }; return { ...currentChat.value!, groupId: request.newChatGroupId };
+    activeLaunch = { ...activeLaunch, target: request.target, chatGroupId: request.newChatGroupId, phase: 'active' };
+    return { ...currentChat.value!, groupId: request.newChatGroupId };
   });
-  initialize.mockResolvedValue('applied'); inspect.mockResolvedValue(catalog);
+  initialize.mockResolvedValue('applied');
+  inspect.mockResolvedValue(catalog);
 });
 
 afterEach(() => scopes.splice(0).forEach(scope => scope.stop()));
@@ -117,8 +129,12 @@ function metadataOwner({ router, content }: { router: Router, content: ReturnTyp
 
 describe('model guide document metadata', () => {
   it('retains the model title after the real coordinator removes the query and opens the saved chat without user actions', async () => {
-    entryTestOnly.reset(); document.head.innerHTML = ''; launchEnabled = false; currentChat.value = null;
-    const metadata = Promise.withResolvers<RepositoryCatalog>(); inspect.mockReturnValueOnce(metadata.promise);
+    entryTestOnly.reset();
+    document.head.innerHTML = '';
+    launchEnabled = false;
+    currentChat.value = null;
+    const metadata = Promise.withResolvers<RepositoryCatalog>();
+    inspect.mockReturnValueOnce(metadata.promise);
     prepare.mockImplementationOnce(async ({ request }: { request: ModelLaunchChatRequest }): Promise<Chat> => {
       activeLaunch = { version: 1, input: request.input, target: request.target, requestedVariant: request.requestedVariant, chatGroupId: request.newChatGroupId, phase: 'active' };
       launchEnabled = true;
@@ -127,7 +143,8 @@ describe('model guide document metadata', () => {
     });
     const Entry = defineComponent({
       setup() {
-        const route = useRoute(); return () => h(LlamaCppBrowserModelLaunchEntry, { input: route.query['llama-cpp-browser-model'] });
+        const route = useRoute();
+        return () => h(LlamaCppBrowserModelLaunchEntry, { input: route.query['llama-cpp-browser-model'] });
       },
     });
     const Guide = defineComponent({
@@ -141,33 +158,39 @@ describe('model guide document metadata', () => {
     await router.push('/?llama-cpp-browser-model=owner/Model-GGUF:Q4_K_M');
     const Content = defineComponent({
       setup() {
-        useModelLaunchCoordinator(); return () => h(RouterView);
+        useModelLaunchCoordinator();
+        return () => h(RouterView);
       },
     });
     const wrapper = metadataOwner({ router, content: Content });
     using _cleanup = {
       [Symbol.dispose]() {
-        wrapper.unmount(); entryTestOnly.reset();
+        wrapper.unmount();
+        entryTestOnly.reset();
       },
     };
     await flushPromises();
     expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
     expect(wrapper.find('[data-testid="model-launch-entry"]').exists()).toBe(true);
-    metadata.resolve(catalog); await flushPromises();
+    metadata.resolve(catalog);
+    await flushPromises();
     expect(router.currentRoute.value.path).toMatch(/^\/chat\//);
     expect(router.currentRoute.value.query['llama-cpp-browser-model']).toBeUndefined();
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(true);
     await flushPromises();
     expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
     expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(modelLaunchMetadata({ repository: catalog.repository, variant: 'Q4_K_M' }).description);
-    expect(download).not.toHaveBeenCalled(); expect(prepareModel).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
+    expect(prepareModel).not.toHaveBeenCalled();
   });
 
   it('keeps the guide title through download and returns to Naidan when verification exposes the composer, before warmup completes', async () => {
     const transfer = Promise.withResolvers<void>();
-    const warmup = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(warmup.promise);
+    const warmup = Promise.withResolvers<'ready'>();
+    prepareModel.mockReturnValueOnce(warmup.promise);
     download.mockImplementationOnce(async () => {
-      await transfer.promise; installed.add(base.target.modelId);
+      await transfer.promise;
+      installed.add(base.target.modelId);
     });
     const { state } = mountState();
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/chat/:id', component: { template: '<div />' } }] });
@@ -176,15 +199,18 @@ describe('model guide document metadata', () => {
     const wrapper = metadataOwner({ router, content: Content });
     using _cleanup = {
       [Symbol.dispose]() {
-        wrapper.unmount(); warmup.resolve('ready');
+        wrapper.unmount();
+        warmup.resolve('ready');
       },
     };
     await flushPromises();
     expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
-    await wrapper.get('[data-testid="model-launch-download"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="model-launch-download"]').trigger('click');
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('hidden');
     expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
-    transfer.resolve(); await flushPromises();
+    transfer.resolve();
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('visible');
     expect(state.warmup.value).toBe('loading');
     expect(document.title).toBe('Naidan');
@@ -194,70 +220,120 @@ describe('model guide document metadata', () => {
 
 describe('model launch chat workflow', () => {
   it('checks local files but never downloads or fetches metadata on mount', async () => {
-    const { state } = mountState(); await flushPromises();
-    expect(state.readiness.value).toBe('missing'); expect(state.maySend.value).toBe(false);
-    expect(download).not.toHaveBeenCalled(); expect(inspect).not.toHaveBeenCalled(); expect(initialize).not.toHaveBeenCalled();
+    const { state } = mountState();
+    await flushPromises();
+    expect(state.readiness.value).toBe('missing');
+    expect(state.maySend.value).toBe(false);
+    expect(download).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(initialize).not.toHaveBeenCalled();
   });
 
   it('downloads once on explicit action, reports readiness, and initializes only after verification', async () => {
     const gate = Promise.withResolvers<void>();
     download.mockImplementationOnce(async () => {
-      await gate.promise; installed.add(base.target.modelId);
+      await gate.promise;
+      installed.add(base.target.modelId);
     });
-    const { state } = mountState(); await flushPromises();
-    const action = state.adoptAndDownload(); await state.adoptAndDownload(); await action; await flushPromises();
-    expect(download).toHaveBeenCalledOnce(); expect(state.job.value?.status).toBe('downloading'); expect(state.maySend.value).toBe(false); expect(initialize).not.toHaveBeenCalled();
-    gate.resolve(); await vi.waitFor(() => expect(state.maySend.value).toBe(true));
-    expect(state.readiness.value).toBe('ready'); expect(initialize).toHaveBeenCalledOnce();
+    const { state } = mountState();
+    await flushPromises();
+    const action = state.adoptAndDownload();
+    await state.adoptAndDownload();
+    await action;
+    await flushPromises();
+    expect(download).toHaveBeenCalledOnce();
+    expect(state.job.value?.status).toBe('downloading');
+    expect(state.maySend.value).toBe(false);
+    expect(initialize).not.toHaveBeenCalled();
+    gate.resolve();
+    await vi.waitFor(() => expect(state.maySend.value).toBe(true));
+    expect(state.readiness.value).toBe('ready');
+    expect(initialize).toHaveBeenCalledOnce();
   });
 
   it('does not mutate shared settings merely because an unpinned selector changed', async () => {
-    const { state } = mountState(); await flushPromises();
-    state.selectPath({ path: 'Model-Q8_0.gguf' }); await flushPromises();
-    expect(prepare).not.toHaveBeenCalled(); expect(download).not.toHaveBeenCalled();
-    expect(activeLaunch.target.modelId).toBe(base.target.modelId); expect(state.maySend.value).toBe(false);
-    await state.adoptAndDownload(); await flushPromises();
-    expect(prepare).toHaveBeenCalledOnce(); expect(prepare.mock.calls[0]![0].request.mode).toBe('retarget');
+    const { state } = mountState();
+    await flushPromises();
+    state.selectPath({ path: 'Model-Q8_0.gguf' });
+    await flushPromises();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
+    expect(activeLaunch.target.modelId).toBe(base.target.modelId);
+    expect(state.maySend.value).toBe(false);
+    await state.adoptAndDownload();
+    await flushPromises();
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(prepare.mock.calls[0]![0].request.mode).toBe('retarget');
     expect(activeLaunch.target.mainFilePath).toBe('Model-Q8_0.gguf');
   });
 
   it('uses an already installed newly selected model without a payload download', async () => {
-    const other = targetForChoice({ catalog, path: 'Model-Q8_0.gguf' }); installed.add(other.modelId);
-    const { state } = mountState(); await flushPromises(); state.selectPath({ path: other.mainFilePath }); await flushPromises();
-    expect(state.maySend.value).toBe(false); await state.adoptAndDownload(); await flushPromises();
-    expect(download).not.toHaveBeenCalled(); expect(state.maySend.value).toBe(true);
+    const other = targetForChoice({ catalog, path: 'Model-Q8_0.gguf' });
+    installed.add(other.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    state.selectPath({ path: other.mainFilePath });
+    await flushPromises();
+    expect(state.maySend.value).toBe(false);
+    await state.adoptAndDownload();
+    await flushPromises();
+    expect(download).not.toHaveBeenCalled();
+    expect(state.maySend.value).toBe(true);
   });
 
   it('cannot change a URL-pinned quantization through the card selector action', async () => {
     activeLaunch = { ...activeLaunch, requestedVariant: 'Q4_K_M' };
-    const { state } = mountState(); await flushPromises(); state.selectPath({ path: 'Model-Q8_0.gguf' });
+    const { state } = mountState();
+    await flushPromises();
+    state.selectPath({ path: 'Model-Q8_0.gguf' });
     expect(state.selectedPath.value).toBe('Model-Q4_K_M.gguf');
   });
 
   it('keeps a page-owned download alive when its card unmounts, without applying stale global changes', async () => {
-    const gate = Promise.withResolvers<void>(); download.mockImplementationOnce(async () => {
-      await gate.promise; installed.add(base.target.modelId);
+    const gate = Promise.withResolvers<void>();
+    download.mockImplementationOnce(async () => {
+      await gate.promise;
+      installed.add(base.target.modelId);
     });
-    const { scope, state } = mountState(); await flushPromises(); await state.adoptAndDownload(); await flushPromises();
-    scope.stop(); gate.resolve(); await flushPromises();
-    expect(queue.jobs.value[0]?.status).toBe('complete'); expect(initialize).not.toHaveBeenCalled();
+    const { scope, state } = mountState();
+    await flushPromises();
+    await state.adoptAndDownload();
+    await flushPromises();
+    scope.stop();
+    gate.resolve();
+    await flushPromises();
+    expect(queue.jobs.value[0]?.status).toBe('complete');
+    expect(initialize).not.toHaveBeenCalled();
   });
 
   it('allows chat after file verification even if writing global defaults fails', async () => {
-    installed.add(base.target.modelId); initialize.mockRejectedValueOnce(new Error('quota'));
-    const { state } = mountState(); await flushPromises();
-    expect(state.defaultWarning.value).toBe(true); expect(state.maySend.value).toBe(true);
+    installed.add(base.target.modelId);
+    initialize.mockRejectedValueOnce(new Error('quota'));
+    const { state } = mountState();
+    await flushPromises();
+    expect(state.defaultWarning.value).toBe(true);
+    expect(state.maySend.value).toBe(true);
   });
 
   it('invalidates readiness when files are removed and does not refresh metadata', async () => {
-    installed.add(base.target.modelId); const { state } = mountState(); await flushPromises(); expect(state.maySend.value).toBe(true);
-    installed.clear(); await state.refresh(); expect(state.maySend.value).toBe(false); expect(inspect).not.toHaveBeenCalled();
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    expect(state.maySend.value).toBe(true);
+    installed.clear();
+    await state.refresh();
+    expect(state.maySend.value).toBe(false);
+    expect(inspect).not.toHaveBeenCalled();
   });
 
   it('repairs a saved incomplete reservation without automatically downloading', async () => {
     activeLaunch = { ...activeLaunch, phase: 'reserved' };
-    const { state } = mountState(); expect(state.maySend.value).toBe(false); await flushPromises();
-    expect(prepare).toHaveBeenCalledOnce(); expect(state.launch.value?.phase).toBe('active'); expect(download).not.toHaveBeenCalled();
+    const { state } = mountState();
+    expect(state.maySend.value).toBe(false);
+    await flushPromises();
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(state.launch.value?.phase).toBe('active');
+    expect(download).not.toHaveBeenCalled();
   });
 });
 
@@ -267,14 +343,16 @@ describe('model launch card rendering', () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
     await router.push('/');
     const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' }, global: { plugins: [router] } });
-    await flushPromises(); return { wrapper, state };
+    await flushPromises();
+    return { wrapper, state };
   }
 
   it('shows quantization choices for an unpinned link and exposes an explicit download button', async () => {
     const { wrapper } = await renderCard();
     expect(wrapper.find('[data-testid="model-launch-quantization"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(true);
-    expect(download).not.toHaveBeenCalled(); wrapper.unmount();
+    expect(download).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it('hides only the central quantization selector when the link specifies a variant', async () => {
@@ -298,36 +376,72 @@ describe('model launch card rendering', () => {
 
 describe('automatic local preparation', () => {
   it('prepares only once after files are verified and does not block sending during the load', async () => {
-    const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
-    const { state } = mountState(); await flushPromises();
-    expect(prepareModel).toHaveBeenCalledOnce(); expect(state.warmup.value).toBe('loading'); expect(state.maySend.value).toBe(true);
-    await state.refresh(); await flushPromises(); expect(prepareModel).toHaveBeenCalledOnce();
-    gate.resolve('ready'); await flushPromises(); expect(state.warmup.value).toBe('ready');
-    expect(download).not.toHaveBeenCalled(); expect(inspect).not.toHaveBeenCalled();
+    const gate = Promise.withResolvers<'ready'>();
+    prepareModel.mockReturnValueOnce(gate.promise);
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    expect(prepareModel).toHaveBeenCalledOnce();
+    expect(state.warmup.value).toBe('loading');
+    expect(state.maySend.value).toBe(true);
+    await state.refresh();
+    await flushPromises();
+    expect(prepareModel).toHaveBeenCalledOnce();
+    gate.resolve('ready');
+    await flushPromises();
+    expect(state.warmup.value).toBe('ready');
+    expect(download).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
   });
 
   it('waits until a hidden tab becomes visible', async () => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' }); installed.add(base.target.modelId);
-    const { state } = mountState(); await flushPromises(); expect(prepareModel).not.toHaveBeenCalled();
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }); document.dispatchEvent(new Event('visibilitychange')); await flushPromises();
-    expect(prepareModel).toHaveBeenCalledOnce(); expect(state.warmup.value).toBe('ready');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    expect(prepareModel).not.toHaveBeenCalled();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flushPromises();
+    expect(prepareModel).toHaveBeenCalledOnce();
+    expect(state.warmup.value).toBe('ready');
   });
 
   it('cancels only its own preparation when leaving and ignores late success', async () => {
-    const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
-    const { scope, state } = mountState(); await flushPromises(); const signal: AbortSignal = prepareModel.mock.calls[0]![0].signal;
-    scope.stop(); expect(signal.aborted).toBe(true); gate.resolve('ready'); await flushPromises(); expect(state.warmup.value).not.toBe('ready');
+    const gate = Promise.withResolvers<'ready'>();
+    prepareModel.mockReturnValueOnce(gate.promise);
+    installed.add(base.target.modelId);
+    const { scope, state } = mountState();
+    await flushPromises();
+    const signal: AbortSignal = prepareModel.mock.calls[0]![0].signal;
+    scope.stop();
+    expect(signal.aborted).toBe(true);
+    gate.resolve('ready');
+    await flushPromises();
+    expect(state.warmup.value).not.toBe('ready');
   });
 
   it('does not spin when another operation owns the worker', async () => {
-    prepareModel.mockResolvedValueOnce('skipped-busy'); installed.add(base.target.modelId); const { state } = mountState(); await flushPromises();
-    expect(state.warmup.value).toBe('deferred'); await state.refresh(); window.dispatchEvent(new Event('focus')); await flushPromises();
-    expect(prepareModel).toHaveBeenCalledOnce(); expect(state.maySend.value).toBe(true);
+    prepareModel.mockResolvedValueOnce('skipped-busy');
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    expect(state.warmup.value).toBe('deferred');
+    await state.refresh();
+    window.dispatchEvent(new Event('focus'));
+    await flushPromises();
+    expect(prepareModel).toHaveBeenCalledOnce();
+    expect(state.maySend.value).toBe(true);
   });
 
   it('does not prevent a normal send after speculative preparation failed', async () => {
-    prepareModel.mockRejectedValueOnce(new Error('device lost')); installed.add(base.target.modelId); const { state } = mountState(); await flushPromises();
-    expect(state.warmup.value).toBe('failed'); expect(state.maySend.value).toBe(true); expect(download).not.toHaveBeenCalled();
+    prepareModel.mockRejectedValueOnce(new Error('device lost'));
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    expect(state.warmup.value).toBe('failed');
+    expect(state.maySend.value).toBe(true);
+    expect(download).not.toHaveBeenCalled();
   });
 });
 
@@ -346,7 +460,8 @@ describe('stable file verification and focused setup', () => {
     expect(state.composerVisibility.value).toBe('hidden');
     expect(wrapper.find('[data-testid="model-launch-checking"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
-    gate.resolve(true); await flushPromises();
+    gate.resolve(true);
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('visible');
     expect(wrapper.find('[data-testid="model-launch-ready"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
@@ -360,14 +475,17 @@ describe('stable file verification and focused setup', () => {
     const readyNode = wrapper.get('[data-testid="model-launch-ready"]').element;
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
-    const check = state.refresh(); await flushPromises();
+    const check = state.refresh();
+    await flushPromises();
     expect(state.verification.value).toBe('checking');
     expect(state.readiness.value).toBe('ready');
     expect(state.maySend.value).toBe(false);
     expect(state.composerVisibility.value).toBe('visible');
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="model-launch-ready"]').element).toBe(readyNode);
-    gate.resolve(true); await check; await flushPromises();
+    gate.resolve(true);
+    await check;
+    await flushPromises();
     expect(state.maySend.value).toBe(true);
     expect(prepareModel).toHaveBeenCalledOnce();
     wrapper.unmount();
@@ -379,12 +497,15 @@ describe('stable file verification and focused setup', () => {
     expect(button.text()).toBe('Start with this model');
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
-    const check = state.refresh(); await flushPromises();
+    const check = state.refresh();
+    await flushPromises();
     expect(wrapper.get('[data-testid="model-launch-download"]').element).toBe(button.element);
     expect(button.attributes('disabled')).toBeDefined();
     await state.adoptAndDownload();
     expect(download).not.toHaveBeenCalled();
-    gate.resolve(false); await check; await flushPromises();
+    gate.resolve(false);
+    await check;
+    await flushPromises();
     expect(button.attributes('disabled')).toBeUndefined();
     expect(state.composerVisibility.value).toBe('hidden');
     wrapper.unmount();
@@ -395,9 +516,12 @@ describe('stable file verification and focused setup', () => {
     const { wrapper, state } = await renderCard();
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
-    const check = state.refresh(); await flushPromises();
+    const check = state.refresh();
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('visible');
-    gate.resolve(false); await check; await flushPromises();
+    gate.resolve(false);
+    await check;
+    await flushPromises();
     expect(state.readiness.value).toBe('missing');
     expect(state.composerVisibility.value).toBe('hidden');
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(true);
@@ -408,7 +532,8 @@ describe('stable file verification and focused setup', () => {
     installed.add(base.target.modelId);
     const { wrapper, state } = await renderCard();
     vi.mocked(isModelLaunchTargetReady).mockRejectedValueOnce(new Error('storage unavailable'));
-    await state.refresh(); await flushPromises();
+    await state.refresh();
+    await flushPromises();
     expect(state.readiness.value).toBe('failed');
     expect(state.maySend.value).toBe(false);
     expect(state.composerVisibility.value).toBe('hidden');
@@ -420,13 +545,17 @@ describe('stable file verification and focused setup', () => {
 
   it('ignores a late successful check for a formerly selected model', async () => {
     installed.add(base.target.modelId);
-    const { state } = mountState(); await flushPromises();
+    const { state } = mountState();
+    await flushPromises();
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
     const check = state.refresh();
-    state.selectPath({ path: 'Model-Q8_0.gguf' }); await flushPromises();
+    state.selectPath({ path: 'Model-Q8_0.gguf' });
+    await flushPromises();
     expect(state.readiness.value).toBe('missing');
-    gate.resolve(true); await check; await flushPromises();
+    gate.resolve(true);
+    await check;
+    await flushPromises();
     expect(state.selectedTarget.value?.mainFilePath).toBe('Model-Q8_0.gguf');
     expect(state.readiness.value).toBe('missing');
     expect(state.composerVisibility.value).toBe('hidden');
@@ -434,13 +563,16 @@ describe('stable file verification and focused setup', () => {
   });
 
   it('keeps only the latest concurrent verification result', async () => {
-    const { state } = mountState(); await flushPromises();
+    const { state } = mountState();
+    await flushPromises();
     const old = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(old.promise);
     const first = state.refresh();
     installed.add(base.target.modelId);
     await state.refresh();
-    old.resolve(false); await first; await flushPromises();
+    old.resolve(false);
+    await first;
+    await flushPromises();
     expect(state.readiness.value).toBe('ready');
     expect(state.verification.value).toBe('idle');
     expect(state.maySend.value).toBe(true);
@@ -453,17 +585,20 @@ describe('stable file verification and focused setup', () => {
       await gate.promise;
     });
     const { wrapper, state } = await renderCard();
-    await wrapper.get('[data-testid="model-launch-download"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="model-launch-download"]').trigger('click');
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('hidden');
     expect(wrapper.text()).toContain('Downloading model');
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
     const pause = wrapper.get('[data-testid="llama-download-pause"]');
     expect(pause.attributes('disabled')).toBeUndefined();
-    await pause.trigger('click'); await flushPromises();
+    await pause.trigger('click');
+    await flushPromises();
     expect(state.job.value?.status).toBe('paused');
     expect(wrapper.findAll('[data-testid="llama-download-resume"]')).toHaveLength(1);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
-    await wrapper.get('[data-testid="llama-download-resume"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="llama-download-resume"]').trigger('click');
+    await flushPromises();
     expect(download).toHaveBeenCalledTimes(2);
     expect(state.composerVisibility.value).toBe('visible');
     expect(wrapper.find('[data-testid="llama-download-job"]').exists()).toBe(false);
@@ -473,7 +608,8 @@ describe('stable file verification and focused setup', () => {
   it('shows one retry for a failed transfer, not a second Start button', async () => {
     download.mockRejectedValueOnce(new Error('network'));
     const { wrapper } = await renderCard();
-    await wrapper.get('[data-testid="model-launch-download"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="model-launch-download"]').trigger('click');
+    await flushPromises();
     expect(wrapper.findAll('[data-testid="llama-download-resume"]')).toHaveLength(1);
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
     wrapper.unmount();
@@ -483,27 +619,32 @@ describe('stable file verification and focused setup', () => {
     const transfer = Promise.withResolvers<void>();
     download.mockImplementationOnce(() => transfer.promise);
     const { wrapper, state } = await renderCard();
-    await state.adoptAndDownload(); await flushPromises();
+    await state.adoptAndDownload();
+    await flushPromises();
     const check = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValue(check.promise);
-    transfer.resolve(); await flushPromises();
+    transfer.resolve();
+    await flushPromises();
     expect(state.job.value?.status).toBe('complete');
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
     expect(state.composerVisibility.value).toBe('hidden');
-    check.resolve(true); await flushPromises();
+    check.resolve(true);
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('visible');
     wrapper.unmount();
   });
 
   it('keeps ordinary chats visible even when they have no local model files', async () => {
     launchEnabled = false;
-    const { state } = mountState(); await flushPromises();
+    const { state } = mountState();
+    await flushPromises();
     expect(state.visible.value).toBe(false);
     expect(state.composerVisibility.value).toBe('visible');
   });
 
   it('restores the ordinary composer when the user selects a different endpoint', async () => {
-    const scope = effectScope(); scopes.push(scope);
+    const scope = effectScope();
+    scopes.push(scope);
     const state = scope.run(() => useModelLaunchChat({
       chat: computed(() => currentChat.value),
       resolved: computed(() => ({ endpoint: { type: 'openai' as const, url: 'https://example.invalid' }, modelId: 'chosen-model' })),
@@ -530,7 +671,8 @@ describe('model-list notifications after preload', () => {
     expect(state.verification.value).toBe('checking');
     expect(state.composerVisibility.value).toBe('visible');
     expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(false);
-    gate.resolve(true); await flushPromises();
+    gate.resolve(true);
+    await flushPromises();
     expect(prepareModel).toHaveBeenCalledOnce();
     wrapper.unmount();
   });
@@ -548,7 +690,8 @@ describe('composer scope boundaries', () => {
       replies: { items: [] },
     };
     currentChat.value = { ...currentChat.value!, root: { items: [node] } };
-    const { state } = mountState(); await flushPromises();
+    const { state } = mountState();
+    await flushPromises();
     expect(state.composerVisibility.value).toBe('visible');
     expect(state.maySend.value).toBe(false);
     expect(prepareModel).not.toHaveBeenCalled();
@@ -556,12 +699,15 @@ describe('composer scope boundaries', () => {
 
   it('does not reuse a ready result after the underlying storage provider was replaced', async () => {
     installed.add(base.target.modelId);
-    const { state } = mountState(); await flushPromises();
+    const { state } = mountState();
+    await flushPromises();
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
     const check = state.refresh();
     storageVersion++;
-    gate.resolve(true); await check; await flushPromises();
+    gate.resolve(true);
+    await check;
+    await flushPromises();
     expect(state.readiness.value).toBe('checking');
     expect(state.maySend.value).toBe(false);
     expect(state.composerVisibility.value).toBe('hidden');
@@ -570,30 +716,45 @@ describe('composer scope boundaries', () => {
 
 describe('operation-scoped model loading display', () => {
   it('renders measured weights progress and indeterminate initialization without advertising readiness early', async () => {
-    const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
-    const { state, scope } = mountState(); await flushPromises();
+    const gate = Promise.withResolvers<'ready'>();
+    prepareModel.mockReturnValueOnce(gate.promise);
+    installed.add(base.target.modelId);
+    const { state, scope } = mountState();
+    await flushPromises();
     const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' } });
     const callback = prepareModel.mock.calls[0]![0].onProgress;
-    callback({ progress: { phase: 'loading', completed: 0.37, total: 1 } }); await flushPromises();
+    callback({ progress: { phase: 'loading', completed: 0.37, total: 1 } });
+    await flushPromises();
     expect(wrapper.get('[data-testid="model-launch-loading"]').text()).toContain('Loading model');
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('37');
-    callback({ progress: { phase: 'loading', completed: 1, total: 1 } }); await flushPromises();
+    callback({ progress: { phase: 'loading', completed: 1, total: 1 } });
+    await flushPromises();
     expect(wrapper.find('[data-testid="model-launch-ready"]').exists()).toBe(false);
-    callback({ progress: { phase: 'initializing', completed: 0, total: 0 } }); await flushPromises();
+    callback({ progress: { phase: 'initializing', completed: 0, total: 0 } });
+    await flushPromises();
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
     expect(wrapper.find('[data-testid="model-load-percentage"]').exists()).toBe(false);
-    scope.stop(); const before = state.warmupProgress.value;
+    scope.stop();
+    const before = state.warmupProgress.value;
     callback({ progress: { phase: 'loading', completed: 0.99, total: 1 } });
     expect(state.warmupProgress.value).toBe(before);
-    gate.resolve('ready'); await flushPromises(); wrapper.unmount();
+    gate.resolve('ready');
+    await flushPromises();
+    wrapper.unmount();
   });
 
   it('does not accept late load progress after the storage provider changes', async () => {
-    const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
-    const { state } = mountState(); await flushPromises(); const callback = prepareModel.mock.calls[0]![0].onProgress;
+    const gate = Promise.withResolvers<'ready'>();
+    prepareModel.mockReturnValueOnce(gate.promise);
+    installed.add(base.target.modelId);
+    const { state } = mountState();
+    await flushPromises();
+    const callback = prepareModel.mock.calls[0]![0].onProgress;
     storageVersion++;
     callback({ progress: { phase: 'loading', completed: 0.5, total: 1 } });
-    expect(state.warmupProgress.value).toBeUndefined(); gate.resolve('ready'); await flushPromises();
+    expect(state.warmupProgress.value).toBeUndefined();
+    gate.resolve('ready');
+    await flushPromises();
     expect(state.warmup.value).not.toBe('ready');
   });
 });

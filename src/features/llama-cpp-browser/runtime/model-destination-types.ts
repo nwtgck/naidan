@@ -13,13 +13,19 @@ export function destinationKey({ destination }: { destination: ModelDestination 
   switch (target.kind) {
   case 'opfs': return 'opfs';
   case 'host': return `host/${encodeURIComponent(target.directoryId)}`;
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 export function hostModelReference({ directoryId, repository, modelPath }: { directoryId: string, repository: string, modelPath: string | undefined }): string {
-  modelDestinationSchema.parse({ kind: 'host', directoryId }); modelSourceRepositorySchema.parse(repository);
-  if (modelPath !== undefined) modelSourceFileSchema.shape.path.parse(modelPath);
+  modelDestinationSchema.parse({ kind: 'host', directoryId });
+  modelSourceRepositorySchema.parse(repository);
+  if (modelPath !== undefined) {
+    modelSourceFileSchema.shape.path.parse(modelPath);
+  }
   return hostModelSelector({ directoryId, repository, selector: modelPath });
 }
 
@@ -27,17 +33,25 @@ export function hostModelReference({ directoryId, repository, modelPath }: { dir
  * Canonical storage references above still require a GGUF file path.
  */
 export function hostModelSelector({ directoryId, repository, selector }: { directoryId: string, repository: string, selector: string | undefined }): string {
-  modelDestinationSchema.parse({ kind: 'host', directoryId }); modelSourceRepositorySchema.parse(repository);
-  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) throw new Error('Invalid linked model selector');
+  modelDestinationSchema.parse({ kind: 'host', directoryId });
+  modelSourceRepositorySchema.parse(repository);
+  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
+    throw new Error('Invalid linked model selector');
+  }
   return `host/${encodeURIComponent(directoryId)}/${repository}${selector === undefined ? '' : `:${encodeURIComponent(selector)}`}`;
 }
 
 export function parseHostModelSelector({ name }: { name: string }): { destination: Extract<ModelDestination, { kind: 'host' }>, repository: string, selector: string | undefined } {
   const match = /^host\/([^/]+)\/([^:]+)(?::(.+))?$/.exec(name);
-  if (!match) throw new Error('Invalid linked model selector');
-  const directoryId = decodeURIComponent(match[1]!); const repository = match[2]!;
+  if (!match) {
+    throw new Error('Invalid linked model selector');
+  }
+  const directoryId = decodeURIComponent(match[1]!);
+  const repository = match[2]!;
   const selector = match[3] === undefined ? undefined : decodeURIComponent(match[3]);
-  if (hostModelSelector({ directoryId, repository, selector }) !== name) throw new Error('Non-canonical linked model selector');
+  if (hostModelSelector({ directoryId, repository, selector }) !== name) {
+    throw new Error('Non-canonical linked model selector');
+  }
   return { destination: { kind: 'host', directoryId }, repository, selector };
 }
 
@@ -53,24 +67,36 @@ export function parseHostModelReference({ name }: { name: string }): { destinati
  */
 export function parsePublicHostModelReference({ name }: { name: string }): { alias: string, repository: string, selector: string | undefined } {
   const match = /^host\/([^/]+)\/(.+)$/.exec(name);
-  if (!match) throw new Error('Invalid public linked model reference');
+  if (!match) {
+    throw new Error('Invalid public linked model reference');
+  }
   const alias = decodeURIComponent(match[1]!);
-  if (encodeURIComponent(alias) !== match[1]) throw new Error('Invalid public linked model reference');
+  if (encodeURIComponent(alias) !== match[1]) {
+    throw new Error('Invalid public linked model reference');
+  }
   // Public selectors are readable relative names. Only the root alias is encoded;
   // a literal '%2F' in a filename must not turn into a path separator here.
-  const value = match[2]!; const colon = value.indexOf(':');
+  const value = match[2]!;
+  const colon = value.indexOf(':');
   const repository = modelSourceRepositorySchema.parse(colon < 0 ? value : value.slice(0, colon));
   const selector = colon < 0 ? undefined : value.slice(colon + 1);
-  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) throw new Error('Invalid public linked model selector');
+  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
+    throw new Error('Invalid public linked model selector');
+  }
   return { alias, repository, selector };
 }
 
 export function isHostDestination(destination: ModelDestination | undefined): destination is Extract<ModelDestination, { kind: 'host' }> {
-  if (!destination) return false;
+  if (!destination) {
+    return false;
+  }
   switch (destination.kind) {
   case 'host': return true;
   case 'opfs': return false;
-  default: { const exhaustive: never = destination; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = destination;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

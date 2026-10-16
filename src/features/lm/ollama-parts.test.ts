@@ -45,26 +45,32 @@ describe('Ollama structured generation contract', () => {
   it('gives completed calls without server IDs distinct stable IDs and makes one request', async () => {
     const { node, result, fetcher } = await run({ messages: [], records: [{ message: { tool_calls: [{ function: { name: 'f', arguments: { n: 1 } } }, { function: { name: 'g', arguments: ' {"n": 2} ' } }] }, done: true }] });
     const calls = node.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-    expect(calls).toHaveLength(2); expect(calls[0]!.id).not.toBe(calls[1]!.id);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.id).not.toBe(calls[1]!.id);
     expect(calls.map(call => call.function.arguments)).toEqual(['{"n":1}', ' {"n": 2} ']);
-    expect(result).toEqual({ type: 'finished', next: 'tool_results' }); expect(fetcher).toHaveBeenCalledOnce();
+    expect(result).toEqual({ type: 'finished', next: 'tool_results' });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it('preserves an already completed call even when a later line fails', async () => {
     const { node, result } = await run({ messages: [], records: [{ message: { tool_calls: [{ id: 'c', function: { name: 'f', arguments: {} } }] } }, { message: { content: 1 } }] });
-    expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { id: 'c' } }); expect(result.type).toBe('error');
+    expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { id: 'c' } });
+    expect(result.type).toBe('error');
   });
 
   it('treats a token limit as partial without appending a notice', async () => {
     const { node, result } = await run({ messages: [], records: [{ message: { content: 'unfinished' }, done: true, done_reason: 'length' }] });
-    expect(node.parts[0]).toMatchObject({ text: 'unfinished', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
+    expect(node.parts[0]).toMatchObject({ text: 'unfinished', completeness: 'partial' });
+    expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
 
   it('does not declare EOF or an unrelated record a normal generation end', async () => {
     const eof = await run({ messages: [], records: [{ message: { content: 'A' } }] });
-    expect(eof.result).toEqual({ type: 'interrupted', reason: 'unknown' }); expect(eof.node.parts[0]).toMatchObject({ completeness: 'partial' });
+    expect(eof.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(eof.node.parts[0]).toMatchObject({ completeness: 'partial' });
     const invalid = await run({ messages: [], records: [{ message: { content: 'A' } }, { unrelated: true }] });
-    expect(invalid.result.type).toBe('error'); expect(invalid.node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
+    expect(invalid.result.type).toBe('error');
+    expect(invalid.node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
   });
 
   it('copies reasoning and tool names into the next request without changing the history', async () => {
@@ -77,7 +83,8 @@ describe('Ollama structured generation contract', () => {
     const provider: LmProvider = new OllamaProvider({
       endpoint: 'https://example.invalid',
       fetcher: async (_url, init) => {
-        request = JSON.parse(String(init?.body)); return new Response('{"message":{"content":"A"},"done":true}');
+        request = JSON.parse(String(init?.body));
+        return new Response('{"message":{"content":"A"},"done":true}');
       },
     });
     const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };

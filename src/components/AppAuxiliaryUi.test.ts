@@ -153,7 +153,8 @@ describe('AppAuxiliaryUi', () => {
     route.path = '/';
     route.fullPath = '/';
     route.query = {};
-    push.mockClear(); replace.mockClear();
+    push.mockClear();
+    replace.mockClear();
     timingMocks.snapshot.mockReset().mockReturnValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
@@ -163,16 +164,20 @@ describe('AppAuxiliaryUi', () => {
 
   it('opens performance inside Settings, restores the origin and retains the mounted results host', async () => {
     route.query = { settings: 'llama-cpp-browser' };
-    const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body }); await flushPromises();
+    const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body });
+    await flushPromises();
     const button = wrapper.get<HTMLButtonElement>('[data-testid="settings-open-model-support-investigation-stub"]');
     button.element.focus();
-    await wrapper.vm.TEST_ONLY.openLlamaCppPerformance({ defaultModel: 'local.gguf' }); await flushPromises();
+    await wrapper.vm.TEST_ONLY.openLlamaCppPerformance({ defaultModel: 'local.gguf' });
+    await flushPromises();
     expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(false);
     expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('true');
-    wrapper.vm.TEST_ONLY.closeLlamaCppPerformance(); await flushPromises();
+    wrapper.vm.TEST_ONLY.closeLlamaCppPerformance();
+    await flushPromises();
     expect(wrapper.get('[data-testid="settings-modal-host"]').isVisible()).toBe(true);
     expect(document.activeElement).toBe(button.element);
-    delete route.query.settings; await flushPromises();
+    delete route.query.settings;
+    await flushPromises();
     expect(wrapper.find('[data-testid="llama-performance-stub"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="llama-performance-stub"]').attributes('data-open')).toBe('false');
     wrapper.unmount();
@@ -184,12 +189,17 @@ describe('AppAuxiliaryUi', () => {
     const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
     await flushPromises();
     expect(replace).toHaveBeenCalledWith({ path: '/', query: { ...route.query, settings: 'llama-cpp-browser' }, hash: undefined });
-    route.query = { ...route.query, settings: 'llama-cpp-browser' }; await flushPromises();
+    route.query = { ...route.query, settings: 'llama-cpp-browser' };
+    await flushPromises();
     wrapper.vm.TEST_ONLY.closeSettings();
     expect(push).toHaveBeenCalledWith({ path: '/', query: { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', leaf: 'message-1' } });
-    delete route.query.settings; await flushPromises(); expect(replace).toHaveBeenCalledTimes(1);
-    preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'settings', claim: () => true }; await flushPromises();
-    expect(replace).toHaveBeenCalledTimes(2); wrapper.unmount();
+    delete route.query.settings;
+    await flushPromises();
+    expect(replace).toHaveBeenCalledTimes(1);
+    preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'settings', claim: () => true };
+    await flushPromises();
+    expect(replace).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
   });
 
   it('preserves the pending cold-link path and query before initial navigation settles', async () => {
@@ -197,13 +207,17 @@ describe('AppAuxiliaryUi', () => {
     vi.mocked(useRouter).mockReturnValue({ push, replace, currentRoute: shallowRef(START_LOCATION), options: { history: { location: '/chat/chat-1?leaf=message-2' } }, resolve: vi.fn().mockReturnValue(pendingRoute) } as unknown as ReturnType<typeof useRouter>);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'settings', claim: () => true });
     const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
-    await flushPromises(); expect(replace).toHaveBeenCalledWith({ ...pendingRoute, query: { ...pendingRoute.query, settings: 'llama-cpp-browser' } }); wrapper.unmount();
+    await flushPromises();
+    expect(replace).toHaveBeenCalledWith({ ...pendingRoute, query: { ...pendingRoute.query, settings: 'llama-cpp-browser' } });
+    wrapper.unmount();
   });
 
   it('does not open settings for a preset assigned to ordinary onboarding', async () => {
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo', target: 'onboarding', claim: () => true });
     const wrapper = mount(AppAuxiliaryUi, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset } } });
-    await flushPromises(); expect(replace).not.toHaveBeenCalled(); wrapper.unmount();
+    await flushPromises();
+    expect(replace).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it('does not mount closed auxiliary overlays', async () => {
@@ -283,10 +297,13 @@ describe('AppAuxiliaryUi', () => {
 
   it.each(['throws', 'malformed'] as const)('opens the investigation even when optional timing %s', async mode => {
     route.query = { settings: 'developer' };
-    if (mode === 'throws') timingMocks.snapshot.mockImplementation(() => {
-      throw new Error('Timing unavailable');
-    });
-    else timingMocks.snapshot.mockReturnValue({ format: 'invalid' });
+    if (mode === 'throws') {
+      timingMocks.snapshot.mockImplementation(() => {
+        throw new Error('Timing unavailable');
+      });
+    } else {
+      timingMocks.snapshot.mockReturnValue({ format: 'invalid' });
+    }
     const wrapper = mount(AppAuxiliaryUi);
     await flushPromises();
     await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');

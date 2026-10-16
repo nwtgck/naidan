@@ -744,7 +744,9 @@ describe('parseBashArgv', () => {
       args: ['+e', '+u', '+n', '+o', 'pipefail', '+O', 'extglob', '-c', 'true'],
     });
     expect(parsed.kind).toBe('run');
-    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    if (parsed.kind !== 'run') {
+      throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    }
 
     expect(applyBashStartupEnvironmentOptions({
       plan: parsed,
@@ -771,7 +773,9 @@ describe('parseBashArgv', () => {
   it('warns for invalid SHELLOPTS names without misreporting valid unsupported options', () => {
     const parsed = parseBashArgv({ args: ['-c', 'true'] });
     expect(parsed.kind).toBe('run');
-    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    if (parsed.kind !== 'run') {
+      throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    }
 
     const applied = applyBashStartupEnvironmentOptions({
       plan: parsed,
@@ -788,7 +792,9 @@ describe('parseBashArgv', () => {
   it('matches Bash colon-unit extraction for adjacent SHELLOPTS separators', () => {
     const parsed = parseBashArgv({ args: ['-c', 'true'] });
     expect(parsed.kind).toBe('run');
-    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    if (parsed.kind !== 'run') {
+      throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+    }
 
     const cases = [
       { shellopts: ':', warningCount: 1 },

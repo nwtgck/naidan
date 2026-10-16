@@ -14,14 +14,16 @@ function visibleStatusEntries({ entries }: {
         mode: number | undefined;
     }>();
   for (const entry of entries) {
-    if (entry.renameSourcePath === undefined)
+    if (entry.renameSourcePath === undefined) {
       continue;
+    }
     renameSources.set(entry.renameSourcePath, { objectId: entry.indexObjectId, mode: entry.indexMode });
   }
   const visible = entries.filter(entry => {
     const source = renameSources.get(entry.path);
-    if (source === undefined)
+    if (source === undefined) {
       return true;
+    }
     return !(entry.indexStatus === 'D'
             && entry.headObjectId === source.objectId
             && entry.headMode === source.mode);
@@ -42,14 +44,20 @@ function createStatusPathProjection({ context, repository }: {
   context: WeshCommandContext,
   repository: GitRepository,
 }): ({ path }: { path: string }) => string {
-  if (!repositoryCwdIsInsideWorktree({ context, repository })) return ({ path }) => path;
+  if (!repositoryCwdIsInsideWorktree({ context, repository })) {
+    return ({ path }) => path;
+  }
   const cwdRelative = relativeToWorktree({ repository, absolutePath: context.cwd });
-  if (cwdRelative.length === 0) return ({ path }) => path;
+  if (cwdRelative.length === 0) {
+    return ({ path }) => path;
+  }
   const from = cwdRelative.split('/');
   return ({ path }) => {
     const to = path.split('/');
     let common = 0;
-    while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+    while (common < from.length && common < to.length && from[common] === to[common]) {
+      common += 1;
+    }
     return [...from.slice(common).map(() => '..'), ...to.slice(common)].join('/');
   };
 }
@@ -71,8 +79,9 @@ export function renderShortStatus({ context, repository, entries, quoteNonAscii 
   const projectPath = createStatusPathProjection({ context, repository });
   return visibleStatusEntries({ entries }).map(entry => {
     const path = quoteGitPath({ path: projectPath({ path: entry.path }), quoteNonAscii, quoteSpaces: true });
-    if (entry.worktreeStatus === '?' && entry.indexStatus === ' ')
+    if (entry.worktreeStatus === '?' && entry.indexStatus === ' ') {
       return `?? ${path}\n`;
+    }
     if (entry.renameSourcePath !== undefined) {
       const source = quoteGitPath({ path: projectPath({ path: entry.renameSourcePath }), quoteNonAscii, quoteSpaces: true });
       return `R${entry.worktreeStatus} ${source} -> ${path}\n`;
@@ -95,8 +104,9 @@ export function renderPorcelainV1({ entries, nul, quoteNonAscii }: {
         : `${entry.indexStatus}${entry.worktreeStatus}`;
     const path = nul ? entry.path : quoteGitPath({ path: entry.path, quoteNonAscii, quoteSpaces: true });
     if (entry.renameSourcePath !== undefined) {
-      if (nul)
+      if (nul) {
         return `${prefix} ${path}\0${entry.renameSourcePath}\0`;
+      }
       const source = quoteGitPath({ path: entry.renameSourcePath, quoteNonAscii, quoteSpaces: true });
       return `${prefix} ${source} -> ${path}\n`;
     }
@@ -164,8 +174,9 @@ export function renderPorcelainV2({ context, repository, entries, nul, quoteNonA
   return visibleStatusEntries({ entries }).map(entry => {
     const displayPath = projectPath({ path: entry.path });
     const path = nul ? displayPath : quoteGitPath({ path: displayPath, quoteNonAscii, quoteSpaces: false });
-    if (entry.worktreeStatus === '?' && entry.indexStatus === ' ')
+    if (entry.worktreeStatus === '?' && entry.indexStatus === ' ') {
       return `? ${path}${separator}`;
+    }
     if (entry.unmergedEntries !== undefined) {
       const byStage = new Map(entry.unmergedEntries.map(stageEntry => [stageEntry.stage, stageEntry]));
       const base = byStage.get(1);
@@ -229,20 +240,27 @@ function unmergedLongStatusLabel({ entry }: {
   const has1 = stages.has(1);
   const has2 = stages.has(2);
   const has3 = stages.has(3);
-  if (has1 && has2 && has3)
+  if (has1 && has2 && has3) {
     return 'both modified:   ';
-  if (!has1 && has2 && has3)
+  }
+  if (!has1 && has2 && has3) {
     return 'both added:      ';
-  if (has1 && has2 && !has3)
+  }
+  if (has1 && has2 && !has3) {
     return 'deleted by them: ';
-  if (has1 && !has2 && has3)
+  }
+  if (has1 && !has2 && has3) {
     return 'deleted by us:   ';
-  if (has1 && !has2 && !has3)
+  }
+  if (has1 && !has2 && !has3) {
     return 'both deleted:    ';
-  if (!has1 && has2 && !has3)
+  }
+  if (!has1 && has2 && !has3) {
     return 'added by us:     ';
-  if (!has1 && !has2 && has3)
+  }
+  if (!has1 && !has2 && has3) {
     return 'added by them:   ';
+  }
   throw new Error(`invalid unmerged index stages for ${entry.path}`);
 }
 
@@ -251,13 +269,14 @@ export async function printLongStatus({ context, status }: {
     status: GitStatus;
 }): Promise<void> {
   const text = context.text();
-  if (status.branchName === undefined)
+  if (status.branchName === undefined) {
     await text.print({ text: 'HEAD detached\n' });
-  else
+  } else {
     await text.print({ text: `On branch ${status.branchName}\n` });
-  if (!status.hasCommits)
+  }
+  if (!status.hasCommits) {
     await text.print({ text: '\nNo commits yet\n' });
-  else if (status.upstreamName !== undefined) {
+  } else if (status.upstreamName !== undefined) {
     if (status.upstreamObjectId === undefined) {
       await text.print({
         text: `Your branch is based on '${status.upstreamName}', but the upstream is gone.\n`
@@ -362,8 +381,9 @@ Untracked files:
   (use "git add <file>..." to include in what will be committed)
 `,
     });
-    for (const entry of untracked)
+    for (const entry of untracked) {
       await text.print({ text: `\t${renderPath({ path: entry.path })}\n` });
+    }
   }
   if (staged.length === 0) {
     await text.print({
@@ -379,21 +399,27 @@ Untracked files:
 export function formatPorcelainV1Branch({ status }: {
     status: GitStatus;
 }): string {
-  if (status.branchName === undefined)
+  if (status.branchName === undefined) {
     return 'HEAD (no branch)';
+  }
   const prefix = status.hasCommits ? status.branchName : `No commits yet on ${status.branchName}`;
-  if (status.upstreamName === undefined)
+  if (status.upstreamName === undefined) {
     return prefix;
+  }
   let suffix = `${prefix}...${status.upstreamName}`;
-  if (status.upstreamObjectId === undefined)
+  if (status.upstreamObjectId === undefined) {
     return `${suffix} [gone]`;
+  }
   const divergence: string[] = [];
-  if ((status.ahead ?? 0) > 0)
+  if ((status.ahead ?? 0) > 0) {
     divergence.push(`ahead ${status.ahead}`);
-  if ((status.behind ?? 0) > 0)
+  }
+  if ((status.behind ?? 0) > 0) {
     divergence.push(`behind ${status.behind}`);
-  if (divergence.length > 0)
+  }
+  if (divergence.length > 0) {
     suffix += ` [${divergence.join(', ')}]`;
+  }
   return suffix;
 }
 

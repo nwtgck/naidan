@@ -22,10 +22,14 @@ export function useImageGenerationWorkspaceNavigation() {
 }
 
 export function registerImageGenerationNavigation({ navigation }: { navigation: ImageGenerationNavigation }): () => void {
-  if (active.value) throw new Error('An Image Generation navigation owner is already mounted.');
+  if (active.value) {
+    throw new Error('An Image Generation navigation owner is already mounted.');
+  }
   active.value = navigation;
   return () => {
-    if (active.value === navigation) active.value = undefined;
+    if (active.value === navigation) {
+      active.value = undefined;
+    }
   };
 }
 

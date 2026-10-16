@@ -166,9 +166,13 @@ function tensorInputsFromUnknown({ value }: { value: unknown }): Record<string, 
   }
   const result: Record<string, TransformersTensor> = {};
   for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== "string") continue;
+    if (typeof key !== "string") {
+      continue;
+    }
     const tensor = Reflect.get(value, key);
-    if (tensor instanceof TransformersTensor) result[key] = tensor;
+    if (tensor instanceof TransformersTensor) {
+      result[key] = tensor;
+    }
   }
   if (result.input_ids === undefined) {
     throw new Error("Tokenizer model input dictionary did not contain a Transformers.js input_ids Tensor");
@@ -261,7 +265,9 @@ function buildCandidateTextInput({ tokenizer, strategy, templateCase, observedIn
 function disposeCandidateTextInput({ input }: { input: CandidateTextInput }): void {
   const disposed = new Set<TransformersTensor>();
   for (const tensor of Object.values(input.modelInputs)) {
-    if (disposed.has(tensor)) continue;
+    if (disposed.has(tensor)) {
+      continue;
+    }
     disposed.add(tensor);
     tensor.dispose();
   }
@@ -335,7 +341,9 @@ function optionalJsonValue({ value, label }: {
   value: unknown,
   label: string,
 }): ModelSupportInvestigationJsonValue | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   return parseInvestigationJson({ value, label });
 }
 
@@ -383,7 +391,9 @@ function reconstructProductionTextStreamerChunks({
     callback_function: (output: string) => chunks.push(output),
   });
   streamer.put([inputTokenIds.map(BigInt)]);
-  for (const tokenId of generatedTokenIds) streamer.put([[BigInt(tokenId)]]);
+  for (const tokenId of generatedTokenIds) {
+    streamer.put([[BigInt(tokenId)]]);
+  }
   streamer.end();
   return chunks;
 }
@@ -552,7 +562,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         const target = run.runtimeTarget;
         const repository = run.repository;
         const revision = (() => {
-          if (target === undefined) return undefined;
+          if (target === undefined) {
+            return undefined;
+          }
           switch (target.revisionIdentity) {
           case 'exact-resolved-revision':
           case 'local-immutable-revision':
@@ -654,10 +666,14 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         };
         switch (runtimeTarget.source) {
         case "repository":
-          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          if (repository === undefined) {
+            throw new Error("Repository RuntimeTarget requires repository evidence");
+          }
           return await inspectModelDeclarations({ repository, repositoryFetch: investigationFetch, autoClasses });
         case "local-cache": {
-          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          if (cache === undefined) {
+            throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          }
           const storageRoot = await navigator.storage.getDirectory();
           return await inspectCachedModelDeclarations({
             runtimeTarget,
@@ -696,10 +712,14 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         );
         switch (runtimeTarget.source) {
         case "repository":
-          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          if (repository === undefined) {
+            throw new Error("Repository RuntimeTarget requires repository evidence");
+          }
           return await inspectModelFilePlan({ repository, declarations, cache, getModelFiles });
         case "local-cache":
-          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          if (cache === undefined) {
+            throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          }
           return await inspectLocalModelFilePlan({ runtimeTarget, declarations, cache, getModelFiles });
         default: {
           const _ex: never = runtimeTarget.source;
@@ -738,7 +758,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       modelId: runtimeTarget.normalizedModelId,
       revision: runtimeTarget.loaderRevisionOption ?? undefined,
       onMatchObservation: ({ observation }) => {
-        if (!modelLoadActive) return;
+        if (!modelLoadActive) {
+          return;
+        }
         modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
       },
     });
@@ -797,7 +819,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
                 at: new Date().toISOString(),
                 nowMs: performance.now(),
               });
-              if (progress === undefined) return;
+              if (progress === undefined) {
+                return;
+              }
               publishProgress({ progress });
             },
           });
@@ -805,7 +829,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           modelLoadActive = false;
           env.fetch = previousFetch;
           const finalLoadProgress = modelLoadProgress.flush();
-          if (finalLoadProgress !== undefined) publishProgress({ progress: finalLoadProgress });
+          if (finalLoadProgress !== undefined) {
+            publishProgress({ progress: finalLoadProgress });
+          }
         }
       },
       observeLoadedModel: ({ model }) => {

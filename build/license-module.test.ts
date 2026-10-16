@@ -109,7 +109,9 @@ function evaluateSystemRegisterDefault({ source }: {
       }>,
     ) {
       const registration = declare((name, value) => {
-        if (name === 'default') defaultExport = value;
+        if (name === 'default') {
+          defaultExport = value;
+        }
       }, {});
       expect(registration.setters).toHaveLength(0);
       registration.execute();

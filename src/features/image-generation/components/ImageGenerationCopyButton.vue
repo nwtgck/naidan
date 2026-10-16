@@ -8,31 +8,44 @@ const state = ref<'idle' | 'copying' | 'copied' | 'failed'>('idle');
 let epoch = 0, disposed = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 watch(() => props.text, () => {
-  epoch++; state.value = 'idle'; clearTimeout(timer);
+  epoch++;
+  state.value = 'idle';
+  clearTimeout(timer);
 }, { flush: 'sync' });
 
 async function copy(): Promise<void> {
   const text = props.text;
-  if (!text || state.value === 'copying') return;
+  if (!text || state.value === 'copying') {
+    return;
+  }
   const token = ++epoch;
-  clearTimeout(timer); state.value = 'copying';
+  clearTimeout(timer);
+  state.value = 'copying';
   try {
     // Invoke before any other await to keep the user's clipboard activation.
     await navigator.clipboard.writeText(text);
-    if (disposed || token !== epoch) return;
+    if (disposed || token !== epoch) {
+      return;
+    }
     state.value = 'copied';
     timer = setTimeout(() => {
-      if (!disposed && token === epoch) state.value = 'idle';
+      if (!disposed && token === epoch) {
+        state.value = 'idle';
+      }
     }, 1800);
   } catch {
     // A permission denial must not escape as an unhandled UI promise, nor
     // show success on a different prompt after the user changed sessions.
-    if (!disposed && token === epoch) state.value = 'failed';
+    if (!disposed && token === epoch) {
+      state.value = 'failed';
+    }
   }
 }
 
 onScopeDispose(() => {
-  disposed = true; epoch++; clearTimeout(timer);
+  disposed = true;
+  epoch++;
+  clearTimeout(timer);
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

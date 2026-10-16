@@ -56,7 +56,8 @@ it('rejects a mismatched local identity before publishing its fixed route', asyn
 });
 
 it('does not begin authentication or network work after parent cancellation', async () => {
-  const identity = await api.createNaidanPipingIdentity(), stop = new AbortController(), reason = new Error('already stopped'); stop.abort(reason);
+  const identity = await api.createNaidanPipingIdentity(), stop = new AbortController(), reason = new Error('already stopped');
+  stop.abort(reason);
   await expect(api.NaidanPipingDuplexSession.connectPinned({
     piping: { baseUrl: 'https://relay.example', policy: 'https-only', requestTimeoutMs: 1000, handshakeResponseTimeoutMs: 1000 },
     identity,

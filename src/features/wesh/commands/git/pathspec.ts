@@ -21,9 +21,13 @@ function parseGitPathspec({ operand }: { operand: string }): ParsedGitPathspec {
   if (!operand.startsWith(':')) {
     return { operand, pattern: operand, mode: 'default', exclude: false, top: false };
   }
-  if (!operand.startsWith(':(')) throw new Error(`pathspec magic is not supported yet: ${operand}`);
+  if (!operand.startsWith(':(')) {
+    throw new Error(`pathspec magic is not supported yet: ${operand}`);
+  }
   const close = operand.indexOf(')');
-  if (close < 0) throw new Error(`invalid pathspec magic: ${operand}`);
+  if (close < 0) {
+    throw new Error(`invalid pathspec magic: ${operand}`);
+  }
   const magic = operand.slice(2, close).split(',').filter(value => value.length > 0);
   let mode: GitPathspecMatchMode = 'default';
   let exclude = false;
@@ -142,17 +146,29 @@ function calculatePathspecSelection({ repository, cwd, operands, availablePaths 
   const positives = specs.filter(spec => !spec.exclude);
   const excludes = specs.filter(spec => spec.exclude);
   const rawMatches = new Map<ParsedGitPathspec, string[]>();
-  for (const spec of specs) rawMatches.set(spec, matchOnePathspec({ repository, cwd, pathspec: spec, paths }));
+  for (const spec of specs) {
+    rawMatches.set(spec, matchOnePathspec({ repository, cwd, pathspec: spec, paths }));
+  }
   const excluded = new Set<string>();
   for (const spec of excludes) {
-    for (const path of rawMatches.get(spec)!) excluded.add(path);
+    for (const path of rawMatches.get(spec)!) {
+      excluded.add(path);
+    }
   }
   const selected = new Set<string>();
   if (positives.length === 0) {
-    for (const path of paths) if (!excluded.has(path)) selected.add(path);
+    for (const path of paths) {
+      if (!excluded.has(path)) {
+        selected.add(path);
+      }
+    }
   } else {
     for (const spec of positives) {
-      for (const path of rawMatches.get(spec)!) if (!excluded.has(path)) selected.add(path);
+      for (const path of rawMatches.get(spec)!) {
+        if (!excluded.has(path)) {
+          selected.add(path);
+        }
+      }
     }
   }
 
@@ -182,13 +198,19 @@ export function selectedDirectoryPathForPathspec({ repository, cwd, operand, mat
   matchedPaths: readonly string[],
 }): string | undefined {
   const pathspec = parseGitPathspec({ operand });
-  if (pathspec.exclude) return undefined;
+  if (pathspec.exclude) {
+    return undefined;
+  }
   const baseCwd = pathspec.top ? repository.worktreePath : cwd;
   const absolutePath = normalizePath({ cwd: baseCwd, path: pathspec.pattern });
   const relativePath = relativeToWorktree({ repository, absolutePath });
-  if (relativePath.length === 0) return undefined;
+  if (relativePath.length === 0) {
+    return undefined;
+  }
   const hasWildcards = pathspec.mode !== 'literal' && /[*?[]/u.test(relativePath);
-  if (hasWildcards || matchedPaths.length === 0 || matchedPaths.includes(relativePath)) return undefined;
+  if (hasWildcards || matchedPaths.length === 0 || matchedPaths.includes(relativePath)) {
+    return undefined;
+  }
   return relativePath;
 }
 

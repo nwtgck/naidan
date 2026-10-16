@@ -13,7 +13,8 @@ function fixture() {
     createTensorPlacementReader: () => ({ read, capability: 'legacy-synchronous-getters' as const }),
     module: {
       addFunction: (fn: typeof callback) => {
-        callback = fn; return 10;
+        callback = fn;
+        return 10;
       },
       removeFunction: remove,
     },
@@ -24,34 +25,49 @@ function fixture() {
 
 describe('bounded metadata census', () => {
   it('never requests node completion, normalizes wasm32 pointers, and snapshots without aliases', () => {
-    const test = fixture(); test.census.setPhase({ value: 'decode' });
+    const test = fixture();
+    test.census.setPhase({ value: 'decode' });
     expect(test.call({ tensor: -1 })).toBe(0);
     expect(test.read).toHaveBeenCalledWith({ tensor: 4294967295n });
-    expect(test.call({ ask: 0 })).toBe(1); expect(test.read).toHaveBeenCalledOnce();
+    expect(test.call({ ask: 0 })).toBe(1);
+    expect(test.read).toHaveBeenCalledOnce();
     const report = backendCensusSchema.parse(test.census.snapshot());
     expect(report).toMatchObject({ timing: 'not-a-speed-measurement', placementMeaning: 'destination-buffer-not-execution-backend', observedNodes: 1 });
-    test.call(); expect(report.entries[0]?.nodes).toBe(1);
-    test.census.release(); test.census.release(); expect(test.remove).toHaveBeenCalledOnce();
+    test.call();
+    expect(report.entries[0]?.nodes).toBe(1);
+    test.census.release();
+    test.census.release();
+    expect(test.remove).toHaveBeenCalledOnce();
   });
 
   it('bounds prefill observations without starving decode observations', () => {
-    const test = fixture(); test.census.setPhase({ value: 'prefill' });
-    for (let i = 0; i < 25005; i++) test.call();
-    test.census.setPhase({ value: 'decode' }); test.call();
+    const test = fixture();
+    test.census.setPhase({ value: 'prefill' });
+    for (let i = 0; i < 25005; i++) {
+      test.call();
+    }
+    test.census.setPhase({ value: 'decode' });
+    test.call();
     expect(test.census.snapshot()).toMatchObject({ observedNodes: 25006, droppedNodes: 5, errors: 0 });
     expect(test.census.snapshot().entries.map(entry => entry.phase)).toEqual(['prefill', 'decode']);
   });
 
   it('bounds unique shapes and never unwinds an observer exception through native code', () => {
-    const test = fixture(); const normal = test.read.getMockImplementation()!;
+    const test = fixture();
+    const normal = test.read.getMockImplementation()!;
     let size = 0;
     test.read.mockImplementation(() => ({ ...normal(), shape: [++size, 1, 1, 1] }));
-    for (let i = 0; i < 515; i++) test.call();
-    expect(test.census.snapshot().entries).toHaveLength(512); expect(test.census.snapshot().droppedNodes).toBe(3);
+    for (let i = 0; i < 515; i++) {
+      test.call();
+    }
+    expect(test.census.snapshot().entries).toHaveLength(512);
+    expect(test.census.snapshot().droppedNodes).toBe(3);
     test.read.mockImplementation(() => {
       throw new Error('observer');
     });
-    expect(test.call()).toBe(0); expect(test.census.snapshot().errors).toBe(1);
-    test.census.reset(); expect(test.census.snapshot()).toMatchObject({ observedNodes: 0, droppedNodes: 0, errors: 0, entries: [] });
+    expect(test.call()).toBe(0);
+    expect(test.census.snapshot().errors).toBe(1);
+    test.census.reset();
+    expect(test.census.snapshot()).toMatchObject({ observedNodes: 0, droppedNodes: 0, errors: 0, entries: [] });
   });
 });

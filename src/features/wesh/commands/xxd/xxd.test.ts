@@ -46,9 +46,13 @@ describe('wesh xxd', () => {
   async function readFile({ path }: { path: string }): Promise<Uint8Array> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
     let dir = rootHandle;
-    for (const segment of segments) dir = await dir.getDirectoryHandle(segment);
+    for (const segment of segments) {
+      dir = await dir.getDirectoryHandle(segment);
+    }
     const file = await (await dir.getFileHandle(fileName)).getFile();
     return new Uint8Array(await file.arrayBuffer());
   }
@@ -494,7 +498,9 @@ zz
     const stdin = createReadHandleFromStream({
       source: new ReadableStream<Uint8Array>({
         start(controller) {
-          for (const byte of input) controller.enqueue(Uint8Array.of(byte));
+          for (const byte of input) {
+            controller.enqueue(Uint8Array.of(byte));
+          }
           controller.close();
         },
       }),

@@ -10,7 +10,10 @@ export function componentLabel({ slot }: { slot: ModelSlot }): string | undefine
   case 'clipL': return lazyStrings.stableDiffusionCppBrowser__clip_l_file();
   case 'clipG': return lazyStrings.stableDiffusionCppBrowser__clip_g_file();
   case 't5': return lazyStrings.stableDiffusionCppBrowser__t5_file();
-  default: { const exhaustive: never = slot; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = slot;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

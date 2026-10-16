@@ -47,10 +47,14 @@ export function parsePatchBackupStyle({
     { name: 'nil', style: 'existing' },
   ] as const satisfies readonly { name: string, style: BackupStyle }[];
 
-  if (value.length === 0) return { ok: true, value: 'simple' };
+  if (value.length === 0) {
+    return { ok: true, value: 'simple' };
+  }
 
   const exact = aliases.find(alias => alias.name === value);
-  if (exact !== undefined) return { ok: true, value: exact.style };
+  if (exact !== undefined) {
+    return { ok: true, value: exact.style };
+  }
 
   const prefixMatches = aliases.filter(alias => alias.name.startsWith(value));
   if (prefixMatches.length === 1) {
@@ -180,7 +184,9 @@ export function patchDirectoryOperandsBeforeTerminal({
     || token.startsWith('--directory=')
     || (token.startsWith('-') && !token.startsWith('--') && token.slice(1).includes('d'))
   ));
-  if (!hasPotentialDirectoryOption) return [];
+  if (!hasPotentialDirectoryOption) {
+    return [];
+  }
 
   const full = parseStandardArgv({ args, spec: patchArgvSpec });
   if (!full.occurrences.some((occurrence) => isPatchDirectoryOccurrence(occurrence))) {
@@ -197,7 +203,9 @@ export function patchDirectoryOperandsBeforeTerminal({
     ));
     while (observedDirectoryCount < prefixDirectories.length) {
       const occurrence = prefixDirectories[observedDirectoryCount];
-      if (occurrence === undefined) break;
+      if (occurrence === undefined) {
+        break;
+      }
       directories.push(String(occurrence.value));
       observedDirectoryCount += 1;
     }
@@ -205,8 +213,12 @@ export function patchDirectoryOperandsBeforeTerminal({
     const terminalDiagnostic = parsedPrefix.diagnostics.find((diagnostic) => (
       diagnostic.kind !== 'missing_option_value' || end === args.length
     ));
-    if (terminalDiagnostic !== undefined) break;
-    if (parsedPrefix.optionValues.help === true || parsedPrefix.optionValues.version === true) break;
+    if (terminalDiagnostic !== undefined) {
+      break;
+    }
+    if (parsedPrefix.optionValues.help === true || parsedPrefix.optionValues.version === true) {
+      break;
+    }
   }
 
   return directories;

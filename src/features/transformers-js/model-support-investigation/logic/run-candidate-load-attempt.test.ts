@@ -561,10 +561,14 @@ describe("runCandidateLoadAttempt", () => {
     const firstInput = { strategy: "chat-template-tensor-dict" };
     const secondInput = { strategy: "observed-token-ids-transformers-tensor" };
     const disposeInput = vi.fn(async ({ input }: { input: { strategy: string } }) => {
-      if (input === firstInput) throw new Error("input cleanup failed");
+      if (input === firstInput) {
+        throw new Error("input cleanup failed");
+      }
     });
     const generateMinimumToken = vi.fn(async ({ input }: { input: { strategy: string } }) => {
-      if (input === firstInput) throw new TypeError("first adapter rejected the model input shape");
+      if (input === firstInput) {
+        throw new TypeError("first adapter rejected the model input shape");
+      }
       return { generatedTokenIds: [42], generatedText: "answer", modelType: "llama" };
     });
     const result = await runCandidateLoadAttempt({

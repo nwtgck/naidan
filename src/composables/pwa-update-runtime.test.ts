@@ -10,19 +10,25 @@ const start = vi.mocked(createPWAUpdateController);
 const dispose = vi.fn();
 
 beforeEach(async () => {
-  TEST_ONLY.reset(); start.mockReset(); dispose.mockReset(); useGlobalEvents().clearEvents();
+  TEST_ONLY.reset();
+  start.mockReset();
+  dispose.mockReset();
+  useGlobalEvents().clearEvents();
   start.mockReturnValue({ dispose });
   vi.stubGlobal('navigator', { serviceWorker: {} });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
 afterEach(() => {
-  TEST_ONLY.reset(); vi.unstubAllGlobals(); vi.restoreAllMocks();
+  TEST_ONLY.reset();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('page-scoped PWA runtime', () => {
   it('registers once even if PWAManager is remounted', () => {
-    startPWAUpdateRuntime(); startPWAUpdateRuntime();
+    startPWAUpdateRuntime();
+    startPWAUpdateRuntime();
     expect(start).toHaveBeenCalledOnce();
     expect(start.mock.calls[0]![0].pageBuildId).toBe(__PWA_BUILD_ID__);
   });
@@ -35,11 +41,15 @@ describe('page-scoped PWA runtime', () => {
   });
 
   it('ignores environments without service workers', () => {
-    vi.stubGlobal('navigator', {}); startPWAUpdateRuntime(); expect(start).not.toHaveBeenCalled();
+    vi.stubGlobal('navigator', {});
+    startPWAUpdateRuntime();
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('disposes page-level listeners when the test runtime is reset', () => {
-    startPWAUpdateRuntime(); TEST_ONLY.reset(); expect(dispose).toHaveBeenCalledOnce();
+    startPWAUpdateRuntime();
+    TEST_ONLY.reset();
+    expect(dispose).toHaveBeenCalledOnce();
     expect(usePWAUpdate().status.value).toBe('idle');
   });
 

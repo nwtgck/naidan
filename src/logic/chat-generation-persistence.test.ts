@@ -23,7 +23,8 @@ async function* items({ values }: { values: ChatGenerationItem[] }): AsyncGenera
 
 describe('generation, execution, and persisted model history', () => {
   it('rebuilds the same next request after storing reasoning, literal text, calls, and tool results', async () => {
-    const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'chat' });
+    const store = new MemoryStorageProvider();
+    const chatId = toChatId({ raw: 'chat' });
     const first = assistant({ id: 'first' });
     const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 12, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'Calculate', completeness: 'complete' }], replies: { items: [first] } };
     const content: ChatContent = { root: { items: [user] }, currentLeafId: first.id };
@@ -54,15 +55,20 @@ describe('generation, execution, and persisted model history', () => {
     });
     expect(await generate({ node: first })).toEqual({ type: 'finished', next: 'tool_results' });
     const toolNode: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 14, modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [] } };
-    first.replies.items.push(toolNode); content.currentLeafId = toolNode.id;
+    first.replies.items.push(toolNode);
+    content.currentLeafId = toolNode.id;
     const execute = vi.fn<Tool['execute']>(async ({ args }) => ({ status: 'success', content: String(z.object({ n: z.number() }).parse(args).n * 2) }));
     await executeChatToolCalls({ calls: first.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall), tools: [{ name: 'double', description: 'Double', parametersSchema: z.object({ n: z.number().default(4) }), execute }], node: toolNode, signal: controller.signal, approvalContext: undefined, onEvent: () => {}, onChange: () => {}, persistContent: async ({ text }) => ({ type: 'text', text }) });
     expect(execute).toHaveBeenCalledTimes(1);
-    const second = assistant({ id: 'second' }); toolNode.replies.items.push(second); content.currentLeafId = second.id;
+    const second = assistant({ id: 'second' });
+    toolNode.replies.items.push(second);
+    content.currentLeafId = second.id;
     const before = buildChatGenerationMessages({ chat: content, excludedMessageId: second.id, systemPromptMessages: ['system'] });
     await store.saveChatContent({ id: chatId, content });
     const loaded = await store.loadChatContent({ id: chatId });
-    if (!loaded) throw new Error('Missing saved chat.');
+    if (!loaded) {
+      throw new Error('Missing saved chat.');
+    }
     expect(buildChatGenerationMessages({ chat: loaded, excludedMessageId: second.id, systemPromptMessages: ['system'] })).toEqual(before);
     expect(before[2]?.parts).toMatchObject([
       { type: 'reasoning', text: '  Check\n', completeness: 'complete' },
@@ -80,8 +86,10 @@ describe('generation, execution, and persisted model history', () => {
   });
 
   it('keeps received partial text and a localized interruption in an unselected branch', async () => {
-    const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'chat' });
-    const stopped = assistant({ id: 'stopped' }); const other = assistant({ id: 'other' });
+    const store = new MemoryStorageProvider();
+    const chatId = toChatId({ raw: 'chat' });
+    const stopped = assistant({ id: 'stopped' });
+    const other = assistant({ id: 'other' });
     const controller = new AbortController();
     await consumeChatGeneration({
       onToolCallDraftsChange: undefined,

@@ -37,7 +37,8 @@ function snapshot(): PerformanceSnapshot {
 
 describe('portable performance results', () => {
   it('writes an actual readable ZIP, keeping messages in per-attempt outputs rather than metrics', async () => {
-    const source = snapshot(); const archive = await performanceArchive({ snapshot: source });
+    const source = snapshot();
+    const archive = await performanceArchive({ snapshot: source });
     const zip = await JSZip.loadAsync(await archive.arrayBuffer());
     const records = await zip.file('trials.jsonl')!.async('string');
     expect(JSON.parse(records).input).toBeUndefined();
@@ -80,8 +81,11 @@ describe('portable performance results', () => {
   });
 
   it('exports all-failed plans and missing values without inventing numeric zero', async () => {
-    const source = snapshot(); source.trials[0]!.status = 'failed'; source.trials[0]!.summary = undefined;
-    source.trials[0]!.exclusion = ['failed', 'missing-summary']; source.modelErrors.push({ modelIndex: 0, error: 'test failure' });
+    const source = snapshot();
+source.trials[0]!.status = 'failed';
+source.trials[0]!.summary = undefined;
+    source.trials[0]!.exclusion = ['failed', 'missing-summary'];
+    source.modelErrors.push({ modelIndex: 0, error: 'test failure' });
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toEqual([]);
     expect(await zip.file('summary.csv')!.async('string')).toContain('"failed;missing-summary","300","","","","",""');
@@ -89,28 +93,34 @@ describe('portable performance results', () => {
   });
 
   it('quotes formula-like metadata and rejects path-like run identifiers', async () => {
-    const source = snapshot(); source.plan.models[0]!.name = '=1+1';
-    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
-    expect(await zip.file('summary.csv')!.async('string')).toContain('"\'=1+1"');
-    source.trials[0]!.id = '../invalid'; await expect(performanceArchive({ snapshot: source })).rejects.toThrow();
+    const source = snapshot();
+source.plan.models[0]!.name = '=1+1';
+const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+expect(await zip.file('summary.csv')!.async('string')).toContain('"\'=1+1"');
+    source.trials[0]!.id = '../invalid';
+    await expect(performanceArchive({ snapshot: source })).rejects.toThrow();
   });
 
   it('does not export a mutating run', async () => {
-    const source = snapshot(); source.status = 'running';
+    const source = snapshot();
+    source.status = 'running';
     await expect(performanceArchive({ snapshot: source })).rejects.toThrow('Stop measurement');
   });
 
   it('uses non-EOG intervals, not event/decode counts; one token and zero duration stay missing', () => {
-    const source = snapshot(); const trial = source.trials[0]!;
+    const source = snapshot();
+    const trial = source.trials[0]!;
     expect(trialRates({ trial }).generationTokensPerSecond).toBe(10);
     trial.summary!.performance!.nonEogTokens = 1;
     expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
-    trial.summary!.performance!.nonEogTokens = 2; trial.summary!.performance!.lastNonEogSampleMs = 100;
-    expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
+    trial.summary!.performance!.nonEogTokens = 2;
+trial.summary!.performance!.lastNonEogSampleMs = 100;
+expect(trialRates({ trial }).generationTokensPerSecond).toBeUndefined();
   });
 
   it('separates allocation fallback conditions instead of averaging them together', () => {
-    const source = snapshot(); const first = source.trials[0]!;
+    const source = snapshot();
+    const first = source.trials[0]!;
     source.trials.push({ ...first, id: 'attempt_two', summary: performanceReport() });
     source.trials[1]!.summary!.performance!.contextTokens = 2048;
     expect(summarizePerformance({ snapshot: source })).toHaveLength(2);
@@ -150,28 +160,36 @@ it('writes an English README and explicitly describes observations that were not
   expect(zip.file('README-ja.md')).toBeNull();
   const readme = await zip.file('README.md')!.async('string');
   expect(Array.from(readme).every(char => char.charCodeAt(0) < 128)).toBe(true);
-  expect(readme).toContain('NOT collected'); expect(readme).toContain('not GPU kernel time');
-  expect(zip.file('findings.json')).not.toBeNull(); expect(zip.file('backend-placement.json')).not.toBeNull();
+  expect(readme).toContain('NOT collected');
+  expect(readme).toContain('not GPU kernel time');
+  expect(zip.file('findings.json')).not.toBeNull();
+  expect(zip.file('backend-placement.json')).not.toBeNull();
 });
 
 it('keeps chronological drift distinct from output changes, missing data, and excluded attempts', () => {
-  const source = snapshot(); const base = source.trials[0]!;
+  const source = snapshot();
+  const base = source.trials[0]!;
   const before = source.plan.steps.find(step => step.position === 'before')!;
   const after = source.plan.steps.find(step => step.position === 'after')!;
   source.trials = [before, after].map((step, index) => ({ ...base, id: `attempt_${index}`, stepId: step.id, summary: performanceReport() }));
-  for (const trial of source.trials) trial.summary!.performance!.preparationEvents = [{ event: 'model-reused', observedMs: 0 }];
+  for (const trial of source.trials) {
+trial.summary!.performance!.preparationEvents = [{ event: 'model-reused', observedMs: 0 }];
+  }
   source.trials[1]!.summary!.performance!.lastNonEogSampleMs = 300;
   expect(performanceFindings({ snapshot: source })).toMatchObject([{ reasons: [], afterToBeforeRatio: 0.5 }]);
   source.trials[1]!.exclusion = ['page-hidden'];
   expect(performanceFindings({ snapshot: source })[0]!.afterToBeforeRatio).toBeUndefined();
-  source.trials[1]!.exclusion = []; source.trials[1]!.output = { ...base.output!, content: 'different' };
-  expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('different-generated-output');
-  source.trials.pop(); expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('missing-attempt');
+  source.trials[1]!.exclusion = [];
+source.trials[1]!.output = { ...base.output!, content: 'different' };
+expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('different-generated-output');
+source.trials.pop();
+expect(performanceFindings({ snapshot: source })[0]!.reasons).toContain('missing-attempt');
 });
 
 it('exports partial memory evidence with model attribution even without a terminal summary', async () => {
   const source = snapshot(), trial = source.trials[0]!;
-  trial.status = 'failed'; trial.summary = undefined;
+  trial.status = 'failed';
+  trial.summary = undefined;
   trial.memoryDiagnostics = {
     samples: [{ kind: 'naidan-llama-cpp-memory', instanceId: 'core-one', profile: 'cpu-wasm32', checkpoint: 'model-load-failed', capacityBytes: 65536, timestamp: 10 }],
     droppedSamples: 2,
@@ -198,16 +216,19 @@ it.each([
   ['_ordinary_id', '_ordinary_id'],
   ['ordinary_id', 'ordinary_id'],
 ])('keeps JSON/file joins canonical when the CSV attempt ID is %s', async (id, csvId) => {
-  const source = snapshot(); source.trials[0]!.id = id;
-  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
-  expect(JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim()).id).toBe(id);
-  expect(zip.file(`outputs/${id}.json`)).not.toBeNull();
-  expect((await zip.file('summary.csv')!.async('string')).split('\r\n')[1]!.startsWith(`"${csvId}",`)).toBe(true);
-  expect(await zip.file('README.md')!.async('string')).toContain('only when the resulting ID matches trials.jsonl');
+  const source = snapshot();
+source.trials[0]!.id = id;
+const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+expect(JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim()).id).toBe(id);
+expect(zip.file(`outputs/${id}.json`)).not.toBeNull();
+expect((await zip.file('summary.csv')!.async('string')).split('\r\n')[1]!.startsWith(`"${csvId}",`)).toBe(true);
+expect(await zip.file('README.md')!.async('string')).toContain('only when the resulting ID matches trials.jsonl');
 });
 
 it('keeps flash request/resolution and retry boundaries in the existing failed-attempt history', async () => {
-  const source = snapshot(); const trial = source.trials[0]!; trial.status = 'failed';
+  const source = snapshot();
+  const trial = source.trials[0]!;
+  trial.status = 'failed';
   trial.memoryDiagnostics = {
     samples: [],
     droppedSamples: 0,
@@ -233,7 +254,10 @@ it('keeps flash request/resolution and retry boundaries in the existing failed-a
 });
 
 it('exports a loaded descriptor with lossless counts after cancellation without a terminal summary', async () => {
-  const source = snapshot(); const trial = source.trials[0]!; trial.status = 'cancelled'; trial.summary = undefined;
+  const source = snapshot();
+  const trial = source.trials[0]!;
+  trial.status = 'cancelled';
+  trial.summary = undefined;
   trial.memoryDiagnostics = { samples: [], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [{ observedMs: 1, loadedModelDescriptor: { source: 'loaded-model-native-api', architecture: 'qwen35', fileType: 15, parameterCount: '9007199254740993', tensorBytes: '18446744073709551615' } }], droppedNativeSettings: 0 };
   const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
   const record = JSON.parse((await zip.file('trials.jsonl')!.async('string')).trim());
@@ -244,7 +268,8 @@ it('exports a loaded descriptor with lossless counts after cancellation without 
 });
 
 it('keeps app and runtime identity beside native model and Flash Attention observations in one archive', async () => {
-  const source = snapshot(); const trial = source.trials[0]!;
+  const source = snapshot();
+  const trial = source.trials[0]!;
   source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree: 'dirty' };
   source.environment.runtimeBuild = {
     sourceCommit: 'b'.repeat(40),

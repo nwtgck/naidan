@@ -8,12 +8,18 @@ const emit = defineEmits<{ select: [checked: boolean], remove: [] }>();
 const player = ref<HTMLAudioElement>();
 
 function select({ event }: { event: Event }): void {
-  if (!props.disabled && event.target instanceof HTMLInputElement) emit('select', event.target.checked);
+  if (!props.disabled && event.target instanceof HTMLInputElement) {
+    emit('select', event.target.checked);
+  }
 }
 
 onBeforeUnmount(() => {
-  if (!player.value) return;
-  player.value.pause(); player.value.removeAttribute('src'); player.value.load();
+  if (!player.value) {
+    return;
+  }
+  player.value.pause();
+  player.value.removeAttribute('src');
+  player.value.load();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

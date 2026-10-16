@@ -18,13 +18,19 @@ function getStandardOptionLookup({
   spec: StandardArgvParserSpec,
 }): StandardOptionLookup {
   const cached = optionLookupCache.get(spec);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
 
   const shortOptions = new Map<string, ArgvOptionSpec>();
   const longOptions = new Map<string, ArgvOptionSpec>();
   for (const option of spec.options) {
-    if (option.short !== undefined) shortOptions.set(option.short, option);
-    if (option.long !== undefined) longOptions.set(option.long, option);
+    if (option.short !== undefined) {
+      shortOptions.set(option.short, option);
+    }
+    if (option.long !== undefined) {
+      longOptions.set(option.long, option);
+    }
   }
 
   const lookup = { shortOptions, longOptions };
@@ -66,10 +72,14 @@ export function stopStandardArgvAtFirstEarlyExit({
 }): string[] {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     for (const earlyExitOption of earlyExitOptions) {
-      if (token !== earlyExitOption.token) continue;
+      if (token !== earlyExitOption.token) {
+        continue;
+      }
 
       const prefix = args.slice(0, index + 1);
       const parsedPrefix = parseStandardArgv({ args: prefix, spec });
@@ -95,7 +105,9 @@ function hasRepeatedValueOccurrenceKey({
   for (const occurrence of parsed.occurrences) {
     switch (occurrence.kind) {
     case 'value':
-      if (seenValueKeys.has(occurrence.key)) return true;
+      if (seenValueKeys.has(occurrence.key)) {
+        return true;
+      }
       seenValueKeys.add(occurrence.key);
       break;
     case 'flag':
@@ -123,12 +135,16 @@ export function findFirstStandardSemanticIssue<T>({
   findSemanticIssue: ({ parsed }: { parsed: ParsedStandardArgv }) => T | undefined,
 }): T | undefined {
   const fullIssue = findSemanticIssue({ parsed });
-  if (fullIssue === undefined && !hasRepeatedValueOccurrenceKey({ parsed })) return undefined;
+  if (fullIssue === undefined && !hasRepeatedValueOccurrenceKey({ parsed })) {
+    return undefined;
+  }
 
   for (let end = 1; end <= args.length; end += 1) {
     const parsedPrefix = parseStandardArgv({ args: args.slice(0, end), spec });
     const prefixIssue = findSemanticIssue({ parsed: parsedPrefix });
-    if (prefixIssue !== undefined) return prefixIssue;
+    if (prefixIssue !== undefined) {
+      return prefixIssue;
+    }
   }
 
   return fullIssue;
@@ -146,11 +162,15 @@ export function standardSemanticIssuePrecedesDiagnostic<T>({
   parsed: ParsedStandardArgv,
   findSemanticIssue: ({ parsed }: { parsed: ParsedStandardArgv }) => T | undefined,
 }): boolean {
-  if (parsed.diagnostics[0] === undefined) return false;
+  if (parsed.diagnostics[0] === undefined) {
+    return false;
+  }
   if (
     findSemanticIssue({ parsed }) === undefined
     && !hasRepeatedValueOccurrenceKey({ parsed })
-  ) return false;
+  ) {
+    return false;
+  }
 
   for (let end = 1; end <= args.length; end += 1) {
     const parsedPrefix = parseStandardArgv({ args: args.slice(0, end), spec });
@@ -161,8 +181,12 @@ export function standardSemanticIssuePrecedesDiagnostic<T>({
 
     // When both first become observable in the same token, the semantic issue
     // came from an occurrence parsed before the parser reached its diagnostic.
-    if (prefixSemanticIssue !== undefined) return true;
-    if (prefixDiagnostic !== undefined) return false;
+    if (prefixSemanticIssue !== undefined) {
+      return true;
+    }
+    if (prefixDiagnostic !== undefined) {
+      return false;
+    }
   }
 
   return false;
@@ -187,7 +211,9 @@ export function stopStandardOptionParsingAtFirstPositional({
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (spec.stopAtDoubleDash && token === '--') {
       return args;
@@ -196,12 +222,16 @@ export function stopStandardOptionParsingAtFirstPositional({
     let handledSpecial = false;
     for (const specialParser of spec.specialTokenParsers) {
       const result = specialParser({ token, nextToken: args[index + 1] });
-      if (result === undefined) continue;
+      if (result === undefined) {
+        continue;
+      }
       index += Math.max(result.consumeCount - 1, 0);
       handledSpecial = true;
       break;
     }
-    if (handledSpecial) continue;
+    if (handledSpecial) {
+      continue;
+    }
 
     if (token.startsWith('--') && token.length > 2) {
       const optionBody = token.slice(2);
@@ -223,9 +253,13 @@ export function stopStandardOptionParsingAtFirstPositional({
       const body = token.slice(1);
       for (let bodyIndex = 0; bodyIndex < body.length; bodyIndex += 1) {
         const short = body[bodyIndex];
-        if (short === undefined) continue;
+        if (short === undefined) {
+          continue;
+        }
         const option = shortOptions.get(short);
-        if (option === undefined) break;
+        if (option === undefined) {
+          break;
+        }
 
         switch (option.kind) {
         case 'flag':

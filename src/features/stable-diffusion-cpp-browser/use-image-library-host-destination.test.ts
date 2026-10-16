@@ -39,7 +39,9 @@ beforeEach(() => {
       ],
     },
   });
-  handles.clear(); handles.set('selected', new MemoryDirectory('models')); handles.set('other', new MemoryDirectory('other models'));
+  handles.clear();
+  handles.set('selected', new MemoryDirectory('models'));
+  handles.set('other', new MemoryDirectory('other models'));
   mocks.get.mockImplementation(async ({ id }: { id: string }) => handles.get(id));
   mocks.delete.mockImplementation(async ({ id }: { id: string }) => {
     handles.delete(id);
@@ -52,9 +54,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
-  for (const scope of scopes.splice(0)) scope.stop();
-  vi.unstubAllGlobals(); Reflect.deleteProperty(window, 'showDirectoryPicker');
+  wrapper?.unmount();
+  wrapper = undefined;
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, 'showDirectoryPicker');
 });
 
 it('allows the catalog to download into a linked folder without OPFS', async () => {
@@ -65,13 +71,15 @@ it('allows the catalog to download into a linked folder without OPFS', async () 
   expect(wrapper.get<HTMLOptionElement>('option[value="selected"]').element.disabled).toBe(false);
   const download = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
   expect(download.element.disabled).toBe(false);
-  await download.trigger('click'); await flushPromises();
+  await download.trigger('click');
+  await flushPromises();
   expect(mocks.download).toHaveBeenCalledOnce();
   expect(mocks.download.mock.calls[0]?.[0].destination).toEqual({ kind: 'host', directoryId: 'selected' });
 });
 
 async function harness() {
-  const blocked = ref(false), scope = effectScope(); scopes.push(scope);
+  const blocked = ref(false), scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   await library.refresh();
   library.hostDirectories.selectDestination({ id: 'selected' });
@@ -88,13 +96,19 @@ function waitForAbort({ signal }: ImageRecipeDownloadRequest): Promise<void> {
 it.each(['paused', 'failed'] as const)('requires a new explicit download after unlinking the %s destination', async state => {
   const { library } = await harness();
   const folder = handles.get('selected')!;
-  const partial = new MemoryFile('partial.gguf'); partial.data = new Uint8Array([1, 2, 3]);
+  const partial = new MemoryFile('partial.gguf');
+  partial.data = new Uint8Array([1, 2, 3]);
   folder.children.set(partial.name, partial);
-  if (state === 'paused') mocks.download.mockImplementationOnce(waitForAbort);
-  else mocks.download.mockRejectedValueOnce(new Error('Transfer failed'));
+  if (state === 'paused') {
+    mocks.download.mockImplementationOnce(waitForAbort);
+  } else {
+    mocks.download.mockRejectedValueOnce(new Error('Transfer failed'));
+  }
   const downloading = library.downloadRecipe({ recipeId, selections: {} });
   await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-  if (state === 'paused') library.cancelDownload();
+  if (state === 'paused') {
+    library.cancelDownload();
+  }
   await downloading;
   expect(library.downloadState.value).toBe(state);
   expect(mocks.download.mock.calls[0]?.[0].destination).toEqual({ kind: 'host', directoryId: 'selected' });
@@ -117,7 +131,8 @@ it('forgets the aborted intent when unlinking its destination during a transfer'
   mocks.download.mockImplementationOnce(waitForAbort);
   const downloading = library.downloadRecipe({ recipeId, selections: {} });
   await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-  await library.hostDirectories.remove({ id: 'selected' }); await downloading;
+  await library.hostDirectories.remove({ id: 'selected' });
+  await downloading;
   expect(library.downloading.value).toBe(false);
   expect(library.hostDirectories.destination.value).toBe('opfs');
   await library.resumeDownload();
@@ -136,10 +151,12 @@ it('invalidates the old destination even when an independent save starts during 
   });
   const removing = library.hostDirectories.remove({ id: 'selected' });
   await vi.waitFor(() => expect(update).toHaveBeenCalledOnce());
-  blocked.value = true; pending.resolve();
+  blocked.value = true;
+  pending.resolve();
   await vi.waitFor(() => expect(library.hostDirectories.destination.value).toBe('opfs'));
   expect(library.downloadRecipeId.value).toBe('');
-  blocked.value = false; await removing;
+  blocked.value = false;
+  await removing;
   await library.resumeDownload();
   expect(mocks.download).toHaveBeenCalledOnce();
 });
@@ -194,7 +211,8 @@ it('keeps each queued destination fixed while the user selects another linked fo
   const second = library.downloadRecipe({ recipeId, selections: {} });
   library.hostDirectories.selectDestination({ id: 'opfs' });
   expect(library.downloadQueue.value.map(job => job.destination)).toEqual(['models', 'other models']);
-  pending.resolve(); await Promise.all([first, second]);
+  pending.resolve();
+  await Promise.all([first, second]);
   expect(mocks.download.mock.calls.map(call => call[0].destination)).toEqual([
     { kind: 'host', directoryId: 'selected' }, { kind: 'host', directoryId: 'other' },
   ]);
@@ -223,6 +241,7 @@ it('keeps an unavailable restored root through scans and rejects downloads rathe
   await flushPromises();
   expect(library.hostDirectories.destination.value).toBe('not-registered');
   await library.downloadRecipe({ recipeId, selections: {} });
-  expect(mocks.download).not.toHaveBeenCalled(); expect(library.downloadState.value).toBe('failed');
+  expect(mocks.download).not.toHaveBeenCalled();
+  expect(library.downloadState.value).toBe('failed');
   expect(library.hostDirectories.destination.value).toBe('not-registered');
 });

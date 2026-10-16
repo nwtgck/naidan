@@ -67,7 +67,9 @@ describe('Worker-owned Load receipt slot', () => {
     const old = slot.begin({ owner });
     const nextOwner = { runId: 'run-two', workerEpoch: 2 };
     const next = slot.begin({ owner: nextOwner });
-    for (const load of order === 'old-first' ? [old, next] : [next, old]) load.finish({ receipt: receipt() });
+    for (const load of order === 'old-first' ? [old, next] : [next, old]) {
+      load.finish({ receipt: receipt() });
+    }
     expect(slot.snapshot({ owner })).toBeUndefined();
     expect(slot.snapshot({ owner: nextOwner })).toBeUndefined();
     slot.begin({ owner: nextOwner }).finish({ receipt: receipt() });

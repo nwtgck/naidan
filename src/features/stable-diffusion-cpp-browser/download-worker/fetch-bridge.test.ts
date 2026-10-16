@@ -21,7 +21,8 @@ beforeEach(() => {
     storage: { getDirectory: async () => root },
     locks: {
       request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-        options.signal?.throwIfAborted(); return run();
+        options.signal?.throwIfAborted();
+        return run();
       },
     },
   });
@@ -50,7 +51,8 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
       headers: new Headers(),
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
     };
@@ -65,7 +67,8 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
   await writer.download({ files }, () => undefined, bridge.open);
   expect(calls.fetch).toHaveBeenCalledTimes(6);
   const saved = (await listImageRepositories({ signal: undefined })).flatMap(repo => repo.files);
-  expect(saved).toHaveLength(3); expect(saved.every(file => file.receipt)).toBe(true);
+  expect(saved).toHaveLength(3);
+  expect(saved.every(file => file.receipt)).toBe(true);
 });
 
 it('aborts a pending broker response when the owning download is paused', async () => {
@@ -82,5 +85,7 @@ it('aborts a pending broker response when the owning download is paused', async 
   const pending = writer.download({ files }, () => undefined, bridge.open);
   const rejected = expect(pending).rejects.toThrow();
   await vi.waitFor(() => expect(calls.fetch).toHaveBeenCalledOnce());
-  controller.abort(); writer.cancel(); await rejected;
+  controller.abort();
+  writer.cancel();
+  await rejected;
 });

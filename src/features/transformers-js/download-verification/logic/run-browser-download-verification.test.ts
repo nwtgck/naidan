@@ -65,7 +65,9 @@ describe('runBrowserDownloadVerification', () => {
     const parent = new AbortController();
     const originalAddEventListener = parent.signal.addEventListener.bind(parent.signal);
     vi.spyOn(parent.signal, 'addEventListener').mockImplementation((type, listener, options) => {
-      if (type === 'abort') parent.abort('close-race');
+      if (type === 'abort') {
+        parent.abort('close-race');
+      }
       originalAddEventListener(type, listener, options);
     });
 
@@ -91,7 +93,9 @@ describe('runBrowserDownloadVerification', () => {
 
   it('uses credential-free no-referrer requests and avoids GET when HEAD is sufficient', async () => {
     const browserFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'GET') return metadataResponse();
+      if (init?.method === 'GET') {
+        return metadataResponse();
+      }
       return responseWithUrl({
         url: 'https://cdn.example.test/artifact',
         init: {
@@ -185,7 +189,9 @@ describe('runBrowserDownloadVerification', () => {
 
   it('falls back to a bounded Range request when HEAD does not prove range support', async () => {
     const browserFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) return metadataResponse();
+      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) {
+        return metadataResponse();
+      }
       if (init?.method === 'HEAD') {
         return responseWithUrl({
           url: 'https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx_data',
@@ -231,7 +237,9 @@ describe('runBrowserDownloadVerification', () => {
 
   it('stops consuming a server response that ignores Range at the per-file byte budget', async () => {
     const browserFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) return metadataResponse();
+      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) {
+        return metadataResponse();
+      }
       if (init?.method === 'HEAD') {
         return responseWithUrl({ url: 'https://huggingface.co/artifact', init: { status: 405 } });
       }
@@ -280,7 +288,9 @@ describe('runBrowserDownloadVerification', () => {
       }),
     });
     const browserFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'GET') return metadata.clone();
+      if (init?.method === 'GET') {
+        return metadata.clone();
+      }
       return responseWithUrl({
         url: 'https://cdn.example.test/artifact',
         init: { status: 200, headers: { 'content-length': '1000', 'accept-ranges': 'bytes' } },
@@ -301,7 +311,9 @@ describe('runBrowserDownloadVerification', () => {
 describe('runBrowserDownloadVerification transport failures', () => {
   it('preserves bytes consumed before a Range response stream fails', async () => {
     const browserFetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) return metadataResponse();
+      if (init?.method === 'GET' && new Headers(init.headers).get('Range') === null) {
+        return metadataResponse();
+      }
       if (init?.method === 'HEAD') {
         return responseWithUrl({ url: 'https://huggingface.co/artifact', init: { status: 405 } });
       }

@@ -162,7 +162,9 @@ function canEvaluateWithoutFullStat({
     case 'exec':
       break;
     case 'printf':
-      if (findPrintfRequiresFullStat({ tokens: current.tokens })) return false;
+      if (findPrintfRequiresFullStat({ tokens: current.tokens })) {
+        return false;
+      }
       break;
     case 'empty':
     case 'size':
@@ -202,7 +204,9 @@ function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
 }
 
 function basename({ path }: { path: string }): string {
-  if (path === '/') return '/';
+  if (path === '/') {
+    return '/';
+  }
   const end = path.endsWith('/') ? path.length - 1 : path.length;
   const separatorIndex = path.lastIndexOf('/', end - 1);
   return path.slice(separatorIndex + 1, end);
@@ -217,7 +221,9 @@ function parseFindPrintfFormat({
   let literal = '';
 
   const flushLiteral = (): void => {
-    if (literal.length === 0) return;
+    if (literal.length === 0) {
+      return;
+    }
     tokens.push({ kind: 'literal', value: literal });
     literal = '';
   };
@@ -334,13 +340,20 @@ async function renderFindPrintf({
       break;
     case 'directive': {
       switch (token.directive) {
-      case 'path': output += entry.displayPath; break;
-      case 'relativePath': output += entry.relativePath; break;
-      case 'startPath': output += entry.startPath; break;
-      case 'basename': output += entry.name; break;
-      case 'dirname': output += dirnamePath({ path: entry.displayPath }); break;
-      case 'size': output += String(entry.size); break;
-      case 'type': output += findTypeCharacter({ type: entry.type }); break;
+      case 'path': output += entry.displayPath;
+        break;
+      case 'relativePath': output += entry.relativePath;
+        break;
+      case 'startPath': output += entry.startPath;
+        break;
+      case 'basename': output += entry.name;
+        break;
+      case 'dirname': output += dirnamePath({ path: entry.displayPath });
+        break;
+      case 'size': output += String(entry.size);
+        break;
+      case 'type': output += findTypeCharacter({ type: entry.type });
+        break;
       case 'linkTarget': {
         switch (entry.type) {
         case 'symlink':
@@ -360,8 +373,10 @@ async function renderFindPrintf({
         }
         break;
       }
-      case 'depth': output += String(entry.depth); break;
-      case 'mtimeSeconds': output += (entry.mtime / 1000).toFixed(10); break;
+      case 'depth': output += String(entry.depth);
+        break;
+      case 'mtimeSeconds': output += (entry.mtime / 1000).toFixed(10);
+        break;
       default: {
         const _ex: never = token.directive;
         throw new Error(`Unhandled find -printf directive: ${_ex}`);
@@ -386,8 +401,12 @@ function consumeGlobCharacterClass({
   startIndex: number,
 }): { source: string, endIndex: number } | undefined {
   let index = startIndex + 1;
-  if (pattern[index] === '!' || pattern[index] === '^') index += 1;
-  if (pattern[index] === ']') index += 1;
+  if (pattern[index] === '!' || pattern[index] === '^') {
+    index += 1;
+  }
+  if (pattern[index] === ']') {
+    index += 1;
+  }
 
   while (index < pattern.length) {
     const marker = pattern[index + 1];
@@ -432,7 +451,9 @@ function globToRegExp({
 
   for (let index = 0; index < normalizedPattern.length; index++) {
     const char = normalizedPattern[index];
-    if (char === undefined) continue;
+    if (char === undefined) {
+      continue;
+    }
 
     switch (char) {
     case '*':
@@ -599,8 +620,12 @@ function anchorFindRegex({
 }
 
 function oppositeAsciiCase({ character }: { character: string }): string | undefined {
-  if (character >= 'A' && character <= 'Z') return character.toLowerCase();
-  if (character >= 'a' && character <= 'z') return character.toUpperCase();
+  if (character >= 'A' && character <= 'Z') {
+    return character.toLowerCase();
+  }
+  if (character >= 'a' && character <= 'z') {
+    return character.toUpperCase();
+  }
   return undefined;
 }
 
@@ -612,7 +637,9 @@ function consumeRegExpEscape({
   startIndex: number,
 }): { text: string, endIndex: number } {
   const escaped = source[startIndex + 1];
-  if (escaped === undefined) return { text: '\\', endIndex: startIndex };
+  if (escaped === undefined) {
+    return { text: '\\', endIndex: startIndex };
+  }
 
   if ((escaped === 'p' || escaped === 'P' || escaped === 'u') && source[startIndex + 2] === '{') {
     const closeIndex = source.indexOf('}', startIndex + 3);
@@ -658,8 +685,12 @@ function consumeRegExpBracket({
   startIndex: number,
 }): { source: string, endIndex: number } | undefined {
   let index = startIndex + 1;
-  if (source[index] === '^') index += 1;
-  if (source[index] === ']') index += 1;
+  if (source[index] === '^') {
+    index += 1;
+  }
+  if (source[index] === ']') {
+    index += 1;
+  }
 
   while (index < source.length) {
     if (source[index] === '\\') {
@@ -697,11 +728,15 @@ function normalizeAsciiCaseInsensitiveRange({
   ) {
     return undefined;
   }
-  if (foldedStart > foldedEnd) return '';
+  if (foldedStart > foldedEnd) {
+    return '';
+  }
 
   const upperStart = foldedStart.toUpperCase();
   const upperEnd = foldedEnd.toUpperCase();
-  if (foldedStart === foldedEnd) return `${foldedStart}${upperStart}`;
+  if (foldedStart === foldedEnd) {
+    return `${foldedStart}${upperStart}`;
+  }
   return `${foldedStart}-${foldedEnd}${upperStart}-${upperEnd}`;
 }
 
@@ -932,13 +967,17 @@ function parseFindAgeNumber({
   value: string,
 }): number | undefined {
   const lower = value.toLowerCase();
-  if (lower === 'inf' || lower === 'infinity') return Number.POSITIVE_INFINITY;
+  if (lower === 'inf' || lower === 'infinity') {
+    return Number.POSITIVE_INFINITY;
+  }
 
   const hexadecimal = value.match(/^0[xX]([0-9a-fA-F]*)(?:\.([0-9a-fA-F]*))?(?:[pP]([+-]?\d+))?$/);
   if (hexadecimal !== null) {
     const wholeDigits = hexadecimal[1] ?? '';
     const fractionalDigits = hexadecimal[2] ?? '';
-    if (wholeDigits.length === 0 && fractionalDigits.length === 0) return undefined;
+    if (wholeDigits.length === 0 && fractionalDigits.length === 0) {
+      return undefined;
+    }
     let significand = wholeDigits.length === 0 ? 0 : Number.parseInt(wholeDigits, 16);
     for (let index = 0; index < fractionalDigits.length; index += 1) {
       const digit = Number.parseInt(fractionalDigits[index]!, 16);
@@ -1066,7 +1105,9 @@ function findEarlyExitRequest({
 }): 'help' | 'version' | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token !== '--help' && token !== '--version') continue;
+    if (token !== '--help' && token !== '--version') {
+      continue;
+    }
 
     const prefix = splitFindLeadingOptions({ args: args.slice(0, index) });
     const parsedPrefix = parseFindLikeArgv({ args: prefix.remainingArgs });
@@ -1076,7 +1117,9 @@ function findEarlyExitRequest({
       symlinkMode: resolveFindLeadingSymlinkMode({ leadingOptions: prefix.leadingOptions }),
       dateExpressionBaseTime: Date.now(),
     });
-    if (!expressionPrefix.ok) continue;
+    if (!expressionPrefix.ok) {
+      continue;
+    }
 
     switch (token) {
     case '--help':
@@ -1220,7 +1263,9 @@ function tokenizeFindExpression({
 
   while (index < tokens.length) {
     const token = tokens[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (token === '-maxdepth' || token === '-mindepth') {
       const valueToken = tokens[index + 1];
@@ -1229,7 +1274,9 @@ function tokenizeFindExpression({
       }
 
       const parsed = parseNonNegativeInteger({ value: valueToken, optionName: token });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
 
       switch (token) {
       case '-maxdepth':
@@ -1266,7 +1313,9 @@ function tokenizeFindExpression({
 
   function next(): string | undefined {
     const token = expressionTokens[index];
-    if (token !== undefined) index += 1;
+    if (token !== undefined) {
+      index += 1;
+    }
     return token;
   }
 
@@ -1424,7 +1473,9 @@ function tokenizeFindExpression({
       const precedence = binaryOperatorPrecedence({ operator });
       while (true) {
         const current = operators.at(-1);
-        if (current === undefined) break;
+        if (current === undefined) {
+          break;
+        }
         switch (current.kind) {
         case 'binary':
           if (binaryOperatorPrecedence({ operator: current.operator }) >= precedence) {
@@ -1453,7 +1504,9 @@ function tokenizeFindExpression({
         }
 
         const token = peek();
-        if (token === undefined) return 'missing expression';
+        if (token === undefined) {
+          return 'missing expression';
+        }
         if (token === '(') {
           next();
           operators.push({ kind: 'open-group' });
@@ -1462,7 +1515,9 @@ function tokenizeFindExpression({
         }
 
         const expr = parsePrimaryLeaf();
-        if (typeof expr === 'string') return expr;
+        if (typeof expr === 'string') {
+          return expr;
+        }
         expressions.push(expr);
         reducePendingNegations();
         expectOperand = false;
@@ -1471,7 +1526,9 @@ function tokenizeFindExpression({
 
       const token = peek();
       if (token === ')') {
-        if (openGroupCount === 0) break;
+        if (openGroupCount === 0) {
+          break;
+        }
         while (operators.at(-1)?.kind !== 'open-group') {
           reduceTopOperator();
         }
@@ -1513,14 +1570,20 @@ function tokenizeFindExpression({
           return canStartPrimary({ token }) ? 'and' as const : undefined;
         }
       })();
-      if (operator === undefined) break;
+      if (operator === undefined) {
+        break;
+      }
 
       pushBinaryOperator({ operator });
       expectOperand = true;
     }
 
-    if (expectOperand) return 'missing expression';
-    if (openGroupCount > 0) return "expected ')'";
+    if (expectOperand) {
+      return 'missing expression';
+    }
+    if (openGroupCount > 0) {
+      return "expected ')'";
+    }
     while (operators.length > 0) {
       reduceTopOperator();
     }
@@ -1532,12 +1595,16 @@ function tokenizeFindExpression({
 
   function parsePrimaryLeaf(): FindExpression | string {
     const token = next();
-    if (token === undefined) return 'missing expression';
+    if (token === undefined) {
+      return 'missing expression';
+    }
 
     switch (token) {
     case '-name': {
       const pattern = next();
-      if (pattern === undefined) return "missing argument to '-name'";
+      if (pattern === undefined) {
+        return "missing argument to '-name'";
+      }
       return {
         kind: 'name',
         pattern,
@@ -1548,7 +1615,9 @@ function tokenizeFindExpression({
     }
     case '-iname': {
       const pattern = next();
-      if (pattern === undefined) return "missing argument to '-iname'";
+      if (pattern === undefined) {
+        return "missing argument to '-iname'";
+      }
       return {
         kind: 'name',
         pattern,
@@ -1559,7 +1628,9 @@ function tokenizeFindExpression({
     }
     case '-path': {
       const pattern = next();
-      if (pattern === undefined) return "missing argument to '-path'";
+      if (pattern === undefined) {
+        return "missing argument to '-path'";
+      }
       return {
         kind: 'path',
         pattern,
@@ -1569,7 +1640,9 @@ function tokenizeFindExpression({
     case '-lname':
     case '-ilname': {
       const pattern = next();
-      if (pattern === undefined) return `missing argument to '${token}'`;
+      if (pattern === undefined) {
+        return `missing argument to '${token}'`;
+      }
       const caseInsensitive = token === '-ilname';
       return {
         kind: 'linkName',
@@ -1581,50 +1654,70 @@ function tokenizeFindExpression({
     }
     case '-regex': {
       const pattern = next();
-      if (pattern === undefined) return "missing argument to '-regex'";
+      if (pattern === undefined) {
+        return "missing argument to '-regex'";
+      }
       const parsed = parseFindRegex({
         value: pattern,
         caseInsensitive: false,
         syntax: regexSyntax,
         characterLocaleMode,
       });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return { kind: 'regex', pattern: parsed.value };
     }
     case '-iregex': {
       const pattern = next();
-      if (pattern === undefined) return "missing argument to '-iregex'";
+      if (pattern === undefined) {
+        return "missing argument to '-iregex'";
+      }
       const parsed = parseFindRegex({
         value: pattern,
         caseInsensitive: true,
         syntax: regexSyntax,
         characterLocaleMode,
       });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return { kind: 'regex', pattern: parsed.value };
     }
     case '-regextype': {
       const typeToken = next();
-      if (typeToken === undefined) return "missing argument to '-regextype'";
+      if (typeToken === undefined) {
+        return "missing argument to '-regextype'";
+      }
       const parsed = parseFindRegexType({ value: typeToken });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       regexSyntax = parsed.value;
       return { kind: 'true' };
     }
     case '-type': {
       const typeToken = next();
-      if (typeToken === undefined) return "missing argument to '-type'";
+      if (typeToken === undefined) {
+        return "missing argument to '-type'";
+      }
       const parsed = parseFindTypes({ value: typeToken });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return { kind: 'type', expected: parsed.expected };
     }
     case '-empty':
       return { kind: 'empty' };
     case '-size': {
       const sizeToken = next();
-      if (sizeToken === undefined) return "missing argument to '-size'";
+      if (sizeToken === undefined) {
+        return "missing argument to '-size'";
+      }
       const parsed = parseFindSize({ value: sizeToken });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return {
         kind: 'size',
         comparison: parsed.comparison,
@@ -1636,7 +1729,9 @@ function tokenizeFindExpression({
     case '-mmin':
     case '-mtime': {
       const value = next();
-      if (value === undefined) return `missing argument to '${token}'`;
+      if (value === undefined) {
+        return `missing argument to '${token}'`;
+      }
       const ageOptions = (() => {
         switch (token) {
         case '-mmin':
@@ -1654,7 +1749,9 @@ function tokenizeFindExpression({
         optionName: token,
         ...ageOptions,
       });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return {
         kind: 'age',
         comparison: parsed.comparison,
@@ -1665,14 +1762,20 @@ function tokenizeFindExpression({
     }
     case '-perm': {
       const permToken = next();
-      if (permToken === undefined) return "missing argument to '-perm'";
+      if (permToken === undefined) {
+        return "missing argument to '-perm'";
+      }
       const parsed = parseFindPerm({ value: permToken });
-      if (!parsed.ok) return parsed.message;
+      if (!parsed.ok) {
+        return parsed.message;
+      }
       return { kind: 'perm', matchMode: parsed.matchMode, mode: parsed.mode };
     }
     case '-newer': {
       const referencePath = next();
-      if (referencePath === undefined) return "missing argument to '-newer'";
+      if (referencePath === undefined) {
+        return "missing argument to '-newer'";
+      }
       return {
         kind: 'newer',
         referencePath,
@@ -1681,7 +1784,9 @@ function tokenizeFindExpression({
     }
     case '-newermt': {
       const value = next();
-      if (value === undefined) return "missing argument to '-newermt'";
+      if (value === undefined) {
+        return "missing argument to '-newermt'";
+      }
       const thresholdMtime = parseDateExpressionMilliseconds({
         value,
         baseTime: dateExpressionBaseTime,
@@ -1697,9 +1802,13 @@ function tokenizeFindExpression({
       return { kind: 'print0' };
     case '-printf': {
       const value = next();
-      if (value === undefined) return "missing argument to '-printf'";
+      if (value === undefined) {
+        return "missing argument to '-printf'";
+      }
       const parsedFormat = parseFindPrintfFormat({ value });
-      if (!parsedFormat.ok) return parsedFormat.message;
+      if (!parsedFormat.ok) {
+        return parsedFormat.message;
+      }
       return { kind: 'printf', tokens: parsedFormat.tokens };
     }
     case '-prune':
@@ -1732,7 +1841,9 @@ function tokenizeFindExpression({
 
       while (true) {
         const arg = next();
-        if (arg === undefined) return `missing terminating ';' for ${execPredicate}`;
+        if (arg === undefined) {
+          return `missing terminating ';' for ${execPredicate}`;
+        }
         if (arg === ';' || arg === '+') {
           switch (arg) {
           case ';':
@@ -1751,15 +1862,23 @@ function tokenizeFindExpression({
         argv.push(arg);
       }
 
-      if (argv.length === 0) return `missing command for ${execPredicate}`;
+      if (argv.length === 0) {
+        return `missing command for ${execPredicate}`;
+      }
       const command = argv[0];
-      if (command === undefined) return `missing command for ${execPredicate}`;
-      if (mode === undefined) return `missing terminating ';' for ${execPredicate}`;
+      if (command === undefined) {
+        return `missing command for ${execPredicate}`;
+      }
+      if (mode === undefined) {
+        return `missing terminating ';' for ${execPredicate}`;
+      }
       switch (mode) {
       case 'batch': {
         let placeholderIndex = -1;
         for (let argumentIndex = 0; argumentIndex < argv.length; argumentIndex += 1) {
-          if (argv[argumentIndex] !== '{}') continue;
+          if (argv[argumentIndex] !== '{}') {
+            continue;
+          }
           if (placeholderIndex !== -1) {
             return `only one '{}' is supported with '${execPredicate} ... {} +'`;
           }
@@ -1895,20 +2014,26 @@ async function resolveFindExpressionReferences({
     }
     case 'binary-left': {
       const left = results.pop();
-      if (left === undefined) throw new Error('find reference resolution result stack is empty');
+      if (left === undefined) {
+        throw new Error('find reference resolution result stack is empty');
+      }
       frames.push({ kind: 'binary-combine', operator: frame.operator, left });
       frames.push({ kind: 'evaluate', expr: frame.right });
       break;
     }
     case 'binary-combine': {
       const right = results.pop();
-      if (right === undefined) throw new Error('find reference resolution result stack is empty');
+      if (right === undefined) {
+        throw new Error('find reference resolution result stack is empty');
+      }
       results.push({ kind: frame.operator, left: frame.left, right });
       break;
     }
     case 'not-combine': {
       const resolved = results.pop();
-      if (resolved === undefined) throw new Error('find reference resolution result stack is empty');
+      if (resolved === undefined) {
+        throw new Error('find reference resolution result stack is empty');
+      }
       results.push({ kind: 'not', expr: resolved });
       break;
     }
@@ -2002,7 +2127,9 @@ async function evaluateExpression({
     }
     case 'after-left': {
       const left = results.pop();
-      if (left === undefined) throw new Error('find evaluation result stack is empty');
+      if (left === undefined) {
+        throw new Error('find evaluation result stack is empty');
+      }
       switch (frame.operator) {
       case 'and':
         if (!left.matched || left.shouldQuit) {
@@ -2037,7 +2164,9 @@ async function evaluateExpression({
     }
     case 'combine': {
       const right = results.pop();
-      if (right === undefined) throw new Error('find evaluation result stack is empty');
+      if (right === undefined) {
+        throw new Error('find evaluation result stack is empty');
+      }
       switch (frame.operator) {
       case 'and':
         results.push({
@@ -2075,7 +2204,9 @@ async function evaluateExpression({
     }
     case 'not-combine': {
       const inner = results.pop();
-      if (inner === undefined) throw new Error('find evaluation result stack is empty');
+      if (inner === undefined) {
+        throw new Error('find evaluation result stack is empty');
+      }
       results.push({
         matched: !inner.matched,
         actionInvoked: inner.actionInvoked,
@@ -2174,9 +2305,12 @@ async function evaluateLeafExpression({
       : size / unitSize;
     let matched: boolean;
     switch (expr.comparison) {
-    case 'eq': matched = measuredSize === expr.count; break;
-    case 'lt': matched = measuredSize < expr.count; break;
-    case 'gt': matched = measuredSize > expr.count; break;
+    case 'eq': matched = measuredSize === expr.count;
+      break;
+    case 'lt': matched = measuredSize < expr.count;
+      break;
+    case 'gt': matched = measuredSize > expr.count;
+      break;
     default: {
       const _ex: never = expr.comparison;
       throw new Error(`Unhandled size comparison: ${_ex}`);
@@ -2190,9 +2324,12 @@ async function evaluateLeafExpression({
     switch (expr.rounding) {
     case 'ceilExact':
       switch (expr.comparison) {
-      case 'eq': matched = fractionalAge > expr.count - 1 && fractionalAge <= expr.count; break;
-      case 'lt': matched = fractionalAge < expr.count; break;
-      case 'gt': matched = fractionalAge > expr.count; break;
+      case 'eq': matched = fractionalAge > expr.count - 1 && fractionalAge <= expr.count;
+        break;
+      case 'lt': matched = fractionalAge < expr.count;
+        break;
+      case 'gt': matched = fractionalAge > expr.count;
+        break;
       default: {
         const _ex: never = expr.comparison;
         throw new Error(`Unhandled age comparison: ${_ex}`);
@@ -2201,9 +2338,12 @@ async function evaluateLeafExpression({
       break;
     case 'floorAll':
       switch (expr.comparison) {
-      case 'eq': matched = fractionalAge >= expr.count && fractionalAge < expr.count + 1; break;
-      case 'lt': matched = fractionalAge < expr.count; break;
-      case 'gt': matched = fractionalAge >= expr.count + 1; break;
+      case 'eq': matched = fractionalAge >= expr.count && fractionalAge < expr.count + 1;
+        break;
+      case 'lt': matched = fractionalAge < expr.count;
+        break;
+      case 'gt': matched = fractionalAge >= expr.count + 1;
+        break;
       default: {
         const _ex: never = expr.comparison;
         throw new Error(`Unhandled age comparison: ${_ex}`);
@@ -2221,9 +2361,12 @@ async function evaluateLeafExpression({
     const permissionBits = entry.mode & 0o7777;
     let matched: boolean;
     switch (expr.matchMode) {
-    case 'exact': matched = permissionBits === expr.mode; break;
-    case 'all': matched = (permissionBits & expr.mode) === expr.mode; break;
-    case 'any': matched = expr.mode === 0 || (permissionBits & expr.mode) !== 0; break;
+    case 'exact': matched = permissionBits === expr.mode;
+      break;
+    case 'all': matched = (permissionBits & expr.mode) === expr.mode;
+      break;
+    case 'any': matched = expr.mode === 0 || (permissionBits & expr.mode) !== 0;
+      break;
     default: {
       const _ex: never = expr.matchMode;
       throw new Error(`Unhandled permission match mode: ${_ex}`);
@@ -2538,7 +2681,9 @@ async function flushPendingExecBatch({
   pending: PendingExecBatch,
   context: WeshCommandContext,
 }): Promise<number> {
-  if (pending.entries.length === 0) return 0;
+  if (pending.entries.length === 0) {
+    return 0;
+  }
 
   const entries = pending.entries;
   pending.entries = [];
@@ -2586,7 +2731,9 @@ async function executeFindSubcommand({
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message !== `Command not found: ${command}`) throw error;
+    if (message !== `Command not found: ${command}`) {
+      throw error;
+    }
     await context.text().error({
       text: `find: '${command}': No such file or directory\n`,
     });
@@ -2594,10 +2741,16 @@ async function executeFindSubcommand({
   } finally {
     if (cwd !== undefined) {
       context.setCwd({ path: context.cwd });
-      if (originalPwd === undefined) context.unsetEnv({ key: 'PWD' });
-      else context.setEnv({ key: 'PWD', value: originalPwd });
-      if (originalOldPwd === undefined) context.unsetEnv({ key: 'OLDPWD' });
-      else context.setEnv({ key: 'OLDPWD', value: originalOldPwd });
+      if (originalPwd === undefined) {
+        context.unsetEnv({ key: 'PWD' });
+      } else {
+        context.setEnv({ key: 'PWD', value: originalPwd });
+      }
+      if (originalOldPwd === undefined) {
+        context.unsetEnv({ key: 'OLDPWD' });
+      } else {
+        context.setEnv({ key: 'OLDPWD', value: originalOldPwd });
+      }
     }
   }
 }
@@ -2665,7 +2818,9 @@ function hasUnsafeExecDirPath({
 }: {
   pathValue: string | undefined,
 }): boolean {
-  if (pathValue === undefined) return false;
+  if (pathValue === undefined) {
+    return false;
+  }
   return pathValue.split(':').some((entry) => entry.length === 0 || !entry.startsWith('/'));
 }
 
@@ -2871,7 +3026,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
       expr: resolvedExpression,
     });
     const isNotFoundError = ({ error }: { error: unknown }): boolean => {
-      if (error instanceof DOMException) return error.name === 'NotFoundError';
+      if (error instanceof DOMException) {
+        return error.name === 'NotFoundError';
+      }
       return error instanceof Error && error.message.includes('NotFoundError');
     };
 
@@ -2916,7 +3073,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
         } catch (error: unknown) {
           switch (physicalEntry.type) {
           case 'symlink':
-            if (isNotFoundError({ error })) return physicalEntry;
+            if (isNotFoundError({ error })) {
+              return physicalEntry;
+            }
             break;
           case 'directory':
           case 'file':
@@ -3004,7 +3163,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
       relativePath: string,
       depth: number,
     }): Promise<void> => {
-      if (shouldQuit) return;
+      if (shouldQuit) {
+        return;
+      }
 
       try {
         const finalizedEntry = await createFindEntry({
@@ -3095,7 +3256,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
                 relativePath: relativePath.length === 0 ? child.name : `${relativePath}/${child.name}`,
                 depth: depth + 1,
               });
-              if (shouldQuit) break;
+              if (shouldQuit) {
+                break;
+              }
             }
           } finally {
             activeDirectoryPaths.delete(directoryEntry.fullPath);
@@ -3149,7 +3312,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
         await context.text().error({ text: `find: ${path}: ${message}\n` });
         exitCode = 1;
       }
-      if (shouldQuit) break;
+      if (shouldQuit) {
+        break;
+      }
     }
 
     for (const pendingExecBatch of pendingExecBatches.values()) {

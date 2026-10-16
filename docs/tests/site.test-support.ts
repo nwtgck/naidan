@@ -49,21 +49,33 @@ class MemorySocket extends Duplex {
 
 function responseBody({ wire }: { wire: Buffer }): Buffer {
   const separator = wire.indexOf('\r\n\r\n');
-  if (separator < 0) throw new Error('Incomplete in-process HTTP response');
+  if (separator < 0) {
+    throw new Error('Incomplete in-process HTTP response');
+  }
   const head = wire.subarray(0, separator).toString('latin1');
   const content = wire.subarray(separator + 4);
-  if (!/\r\ntransfer-encoding: chunked\r\n/i.test(`\r\n${head}\r\n`)) return content;
+  if (!/\r\ntransfer-encoding: chunked\r\n/i.test(`\r\n${head}\r\n`)) {
+    return content;
+  }
   const chunks: Buffer[] = [];
   let offset = 0;
   for (;;) {
     const line = content.indexOf('\r\n', offset);
-    if (line < 0) throw new Error('Incomplete chunked response');
+    if (line < 0) {
+      throw new Error('Incomplete chunked response');
+    }
     const size = Number.parseInt(content.subarray(offset, line).toString('ascii'), 16);
-    if (!Number.isFinite(size)) throw new Error('Invalid chunked response');
-    if (size === 0) return Buffer.concat(chunks);
+    if (!Number.isFinite(size)) {
+      throw new Error('Invalid chunked response');
+    }
+    if (size === 0) {
+      return Buffer.concat(chunks);
+    }
     const start = line + 2;
     const end = start + size;
-    if (end + 2 > content.length) throw new Error('Incomplete chunked response');
+    if (end + 2 > content.length) {
+      throw new Error('Incomplete chunked response');
+    }
     chunks.push(content.subarray(start, end));
     offset = end + 2;
   }
@@ -96,7 +108,9 @@ export async function startSiteDev({ root }: { root: string }) {
       });
       const headers = new Headers();
       for (const [name, value] of Object.entries(outgoing.getHeaders())) {
-        if (value !== undefined) headers.set(name, String(value));
+        if (value !== undefined) {
+          headers.set(name, String(value));
+        }
       }
       return new Response(responseBody({ wire: Buffer.concat(socket.chunks) }).toString('utf8'), { status: outgoing.statusCode, headers });
     },

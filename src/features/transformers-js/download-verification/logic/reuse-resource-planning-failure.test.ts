@@ -36,7 +36,9 @@ it('never reclassifies a post-plan required resource failure as repairable missi
       operation.assertHealthy();
       throw new Error('Required operation unexpectedly succeeded');
     } catch (error) {
-      if (!(error instanceof Error)) throw error;
+      if (!(error instanceof Error)) {
+        throw error;
+      }
       // Model/cache failure originated in the real ownership helper; emulate
       // only Comlink's Error reconstruction at this client factory boundary.
       throw Object.assign(new Error(error.message), { name: error.name });
@@ -69,7 +71,9 @@ it('never reclassifies a post-plan required resource failure as repairable missi
         ],
       }),
     });
-    if (!reuse.reused) startFreshDownload();
+    if (!reuse.reused) {
+      startFreshDownload();
+    }
   })();
   await expect(operation).rejects.toThrow('RequiredDownloadedModelResourceError');
   expect(verifyDownloadedModelCandidate).toHaveBeenCalledOnce();
@@ -192,7 +196,9 @@ it('keeps planning failure distinct from repairable missing files through revisi
         }],
       }),
     });
-    if (!reuse.reused) startFreshDownload();
+    if (!reuse.reused) {
+      startFreshDownload();
+    }
   })();
   await expect(operation).rejects.toThrow('DownloadedModelResourcePlanningError: No Production candidate could be planned');
   expect(startFreshDownload).not.toHaveBeenCalled();

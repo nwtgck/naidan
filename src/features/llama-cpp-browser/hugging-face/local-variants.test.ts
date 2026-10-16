@@ -25,15 +25,18 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function writeFiles({ repository, paths, destination }: { repository: string, paths: string[], destination: ModelDestination }) {
   const folder = await repositoryFolder({ repository, create: true, destination });
   for (const path of paths) {
     const writer = await (await selectedFile({ folder, path, create: true })).createWritable();
-    const bytes = new Uint8Array(128); bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
-    await writer.write(bytes); await writer.close();
+    const bytes = new Uint8Array(128);
+    bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+    await writer.write(bytes);
+    await writer.close();
   }
   return folder;
 }
@@ -132,7 +135,8 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
   ])('lists and resolves $variant with exact-file compatibility', async ({ path, variant }) => {
     await writeFiles({ repository, paths: [path], destination });
     const models = await repositoryDirectories({ repository, destination });
-    expect(models).toHaveLength(1); expect(models[0]?.name).toBe(name({ selector: variant }));
+    expect(models).toHaveLength(1);
+    expect(models[0]?.name).toBe(name({ selector: variant }));
     expect((await resolve({ selector: variant })).modelPath).toBe(path);
     const listed = await publicModels();
     expect(listed).toHaveLength(1);
@@ -162,7 +166,8 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
 
   it.each(['Q4_K_M', 'custom:100%', 'nested/Q4'])('rejects exact path versus variant collision for %s', async selector => {
     const path = `${selector}.gguf`;
-    const parts = path.split('/'); const leaf = parts.pop()!;
+    const parts = path.split('/');
+    const leaf = parts.pop()!;
     const collision = [...parts, `${prefix}${leaf}.gguf`].join('/');
     await writeFiles({ repository, paths: [path, collision], destination });
     expect((await listHuggingFaceModels({ destination })).map(model => model.name)).not.toContain(name({ selector: path }));
@@ -193,7 +198,9 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
     await writeFiles({ repository, paths, destination });
     expect(await publicModels()).toEqual([]);
     await expect(resolve({ selector: 'Q4' })).rejects.toThrow('unsupported-input');
-    for (const path of paths) expect((await resolve({ selector: path })).modelPath).toBe(path);
+    for (const path of paths) {
+      expect((await resolve({ selector: path })).modelPath).toBe(path);
+    }
   });
 
   it('omits incomplete split groups without hiding an unrelated complete model', async () => {
@@ -220,7 +227,9 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
       const selected = await resolvePublic({ name: `${publicPrefix}:${variant}` });
       expect(selected.modelPath).toBe(path);
     }
-    if (kind === 'opfs') await expect(resolve({ selector: 'Q%20A' })).rejects.toThrow('unsupported-input');
+    if (kind === 'opfs') {
+      await expect(resolve({ selector: 'Q%20A' })).rejects.toThrow('unsupported-input');
+    }
   });
 });
 
@@ -281,5 +290,6 @@ it('publishes the registered folder alias and shared quantization label together
   const models = await listHostStoredModels({ directories, signal: undefined });
   expect(models[0]?.name).toBe('host/models-for-browser/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M');
   const selected = await selectHostModel({ name: resolveHostModelName({ name: models[0]!.name, directories }) });
-  expect(selected.id).toBe(models[0]?.id); expect(selected.modelPath).toBe(path);
+  expect(selected.id).toBe(models[0]?.id);
+  expect(selected.modelPath).toBe(path);
 });

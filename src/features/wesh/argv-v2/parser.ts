@@ -40,7 +40,9 @@ export function parseStandardArgv<TDeferred>({
 
   for (let argvIndex = 0; argvIndex < args.length;) {
     const token = args[argvIndex];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (token === '--') {
       for (let restIndex = argvIndex + 1; restIndex < args.length; restIndex += 1) {
@@ -312,7 +314,9 @@ export function parseStandardArgv<TDeferred>({
             deferred,
             occurrences,
           });
-          if (following !== undefined) nextArgvIndex += 1;
+          if (following !== undefined) {
+            nextArgvIndex += 1;
+          }
           bodyOffset = analysis.nextBodyOffset;
           continue;
         }

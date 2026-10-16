@@ -10,7 +10,9 @@ type Session = { release(): Promise<void> };
 function constructorSection({ code }: { code: string }) {
   const from = code.indexOf('async function constructSessions(');
   const to = code.indexOf('function replaceTensors(', from);
-  if (from < 0 || to <= from) throw new Error('Missing reviewed session constructor');
+  if (from < 0 || to <= from) {
+    throw new Error('Missing reviewed session constructor');
+  }
   return code.slice(from, to);
 }
 

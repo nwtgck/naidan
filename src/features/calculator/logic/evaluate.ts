@@ -62,7 +62,9 @@ function validateArgumentCount({ functionName, shape, actual, span }: {
   span: SourceSpan,
 }): void {
   const { minimum, maximum } = getArgumentCountRange({ shape });
-  if (actual >= minimum && actual <= maximum) return;
+  if (actual >= minimum && actual <= maximum) {
+    return;
+  }
   const expected = minimum === maximum ? String(minimum) : `${minimum} through ${maximum}`;
   failCalculatorInput({
     code: 'invalid_argument_count',
@@ -130,11 +132,16 @@ function evaluateExpressionUnchecked({ expression, runtime, depth }: {
       const operand = evaluateExpression({ expression: item.operand, runtime, depth: depth + 1 });
       runtime.consumeOperations({ count: 1, span: item.operatorSpan });
       switch (item.operator) {
-      case '+': result = addNumericValues({ left: result, right: operand }); break;
-      case '-': result = subtractNumericValues({ left: result, right: operand }); break;
-      case '*': result = multiplyNumericValues({ left: result, right: operand }); break;
-      case '/': result = divideNumericValues({ numerator: result, denominator: operand, span: item.operatorSpan }); break;
-      case '%': result = moduloNumericValues({ left: result, right: operand, span: item.operatorSpan }); break;
+      case '+': result = addNumericValues({ left: result, right: operand });
+        break;
+      case '-': result = subtractNumericValues({ left: result, right: operand });
+        break;
+      case '*': result = multiplyNumericValues({ left: result, right: operand });
+        break;
+      case '/': result = divideNumericValues({ numerator: result, denominator: operand, span: item.operatorSpan });
+        break;
+      case '%': result = moduloNumericValues({ left: result, right: operand, span: item.operatorSpan });
+        break;
       default: {
         const _exhaustive: never = item.operator;
         throw new Error(`Unhandled calculator sequence operator: ${String(_exhaustive)}`);
@@ -186,7 +193,9 @@ function evaluateExpression({ expression, runtime, depth }: {
   try {
     return evaluateExpressionUnchecked({ expression, runtime, depth });
   } catch (error) {
-    if (!(error instanceof NumericLimitError)) throw error;
+    if (!(error instanceof NumericLimitError)) {
+      throw error;
+    }
     return failCalculatorInput({
       code: 'limit_exceeded',
       message: error.message,

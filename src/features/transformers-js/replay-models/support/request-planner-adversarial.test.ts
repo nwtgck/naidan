@@ -38,7 +38,9 @@ const REVISION = 'a'.repeat(40);
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {
+    cleanup();
+  }
   vi.unstubAllGlobals();
 });
 
@@ -78,8 +80,11 @@ async function harness({ config, progress }: { config: Record<string, unknown>; 
   const originalGpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} });
   cleanups.push(() => {
-    if (originalGpu) Object.defineProperty(navigator, 'gpu', originalGpu);
-    else Reflect.deleteProperty(navigator, 'gpu');
+    if (originalGpu) {
+      Object.defineProperty(navigator, 'gpu', originalGpu);
+    } else {
+      Reflect.deleteProperty(navigator, 'gpu');
+    }
   });
   let runtime: WebModule;
   try {
@@ -101,7 +106,9 @@ async function harness({ config, progress }: { config: Record<string, unknown>; 
   runtime.env.customCache = {
     async match(request) {
       requests.push(request);
-      if (!request.includes('/onnx/')) return new Response('{}');
+      if (!request.includes('/onnx/')) {
+        return new Response('{}');
+      }
       await release.promise;
       // Tiny synthetic bodies let the real loader reach an instrumented ORT
       // boundary. They never claim to be valid ONNX or real model weights.
@@ -239,8 +246,12 @@ describe('actual web bundle request planner adversarial investigation', () => {
     const delayed = Promise.withResolvers<void>();
     const seen: string[] = [];
     h.runtime.env.customCache.match = async request => {
-      if (!request.includes('/onnx/')) return new Response('{}');
-      if (request.endsWith('_data')) await delayed.promise;
+      if (!request.includes('/onnx/')) {
+        return new Response('{}');
+      }
+      if (request.endsWith('_data')) {
+        await delayed.promise;
+      }
       const path = `onnx/${request.split('/onnx/')[1]}`;
       seen.push(path);
       return await barrier.observe({ request: { path, url: `https://huggingface.co/fixture/delay/resolve/${REVISION}/${path}` } });
@@ -292,9 +303,13 @@ describe('actual web bundle request planner adversarial investigation', () => {
       ...h.options,
       revision: 'b'.repeat(40),
       progress_callback: info => {
-        if (info.status !== 'initiate' || !info.file?.startsWith('onnx/')) return;
+        if (info.status !== 'initiate' || !info.file?.startsWith('onnx/')) {
+          return;
+        }
         secondInitiated.push(info.file);
-        if (secondInitiated.length === expectedPaths.length) secondEnteredModelFiles.resolve();
+        if (secondInitiated.length === expectedPaths.length) {
+          secondEnteredModelFiles.resolve();
+        }
       },
     });
     // getModelFile emits initiate immediately before its synchronous in-flight
@@ -326,7 +341,9 @@ describe('actual web bundle request planner adversarial investigation', () => {
       h.runtime.env.customCache.match = async () => undefined;
       // Emulate upstream responses locally. Never delegate to native fetch.
       const remoteProbe = vi.fn<typeof fetch>(async () => {
-        if (status === 'transport-error') throw new Error('Synthetic transport failure');
+        if (status === 'transport-error') {
+          throw new Error('Synthetic transport failure');
+        }
         return new Response(undefined, { status });
       });
       h.runtime.env.fetch = remoteProbe;

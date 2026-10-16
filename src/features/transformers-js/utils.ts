@@ -37,7 +37,9 @@ export function urlToPath({ url }: { url: string }): string | null {
           throw new Error(`Unhandled path part: ${_ex}`);
         }
         }
-        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
+        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') {
+          startIndex++;
+        }
 
         const cleanParts = pathParts.slice(startIndex);
         const resolved = `${OPFS_MODELS_DIR}/user/${cleanParts.join('/')}`;
@@ -65,7 +67,9 @@ export function urlToPath({ url }: { url: string }): string | null {
         throw new Error(`Unhandled path part: ${_ex}`);
       }
       }
-      if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
+      if (parts[startIndex] === 'user' || parts[startIndex] === 'local') {
+        startIndex++;
+      }
       const resolved = `${OPFS_MODELS_DIR}/user/${parts.slice(startIndex).join('/')}`;
       return resolved;
     }
@@ -83,7 +87,9 @@ async function removeEntryIfPresent({ directory, name }: {
   try {
     await directory.removeEntry(name);
   } catch (error) {
-    if ((error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError') return;
+    if ((error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError') {
+      return;
+    }
     throw error;
   }
 }
@@ -137,18 +143,28 @@ async function writeResponseBody({ fileHandle, response }: {
  */
 export function expectedDecodedResponseByteLength({ response }: { response: Response }): number | undefined {
   const encoding = response.headers.get('content-encoding')?.trim().toLowerCase();
-  if (encoding !== undefined && encoding !== '' && encoding !== 'identity') return undefined;
+  if (encoding !== undefined && encoding !== '' && encoding !== 'identity') {
+    return undefined;
+  }
   const header = response.headers.get('content-length');
-  if (header === null || !/^\d+$/u.test(header.trim())) return undefined;
+  if (header === null || !/^\d+$/u.test(header.trim())) {
+    return undefined;
+  }
   const value = Number(header);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 /** Full-file persistence never promotes a range or an unsuccessful response. */
 export function fullResourceResponseError({ response }: { response: Response }): Error | undefined {
-  if (!response.ok) return new Error(`HTTP ${response.status} ${response.statusText}`);
-  if (response.status !== 200) return new Error(`Full resource response requires HTTP 200, received HTTP ${response.status}`);
-  if (response.headers.has('Content-Range')) return new Error('Full resource response must not include Content-Range');
+  if (!response.ok) {
+    return new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+  if (response.status !== 200) {
+    return new Error(`Full resource response requires HTTP 200, received HTTP ${response.status}`);
+  }
+  if (response.headers.has('Content-Range')) {
+    return new Error('Full resource response must not include Content-Range');
+  }
   return undefined;
 }
 
@@ -165,7 +181,9 @@ async function cancelResponseBodyBounded({ response }: { response: Response }): 
       }),
     ]);
   } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
   }
 }
 
@@ -179,7 +197,9 @@ export async function rejectResourceResponse({ response, error }: { response: Re
 
 export async function assertFullResourceResponse({ response }: { response: Response }): Promise<void> {
   const error = fullResourceResponseError({ response });
-  if (error !== undefined) await rejectResourceResponse({ response, error });
+  if (error !== undefined) {
+    await rejectResourceResponse({ response, error });
+  }
 }
 
 /**
@@ -211,7 +231,9 @@ async function writeDirectUnderLease({ path, response, lease }: {
   const root = await navigator.storage.getDirectory();
   let currentDir = root;
   for (const part of pathParts) {
-    if (!part) continue;
+    if (!part) {
+      continue;
+    }
     currentDir = await currentDir.getDirectoryHandle(part, { create: true });
   }
 
@@ -224,7 +246,9 @@ async function writeDirectUnderLease({ path, response, lease }: {
   const receivedByteLength = await writeResponseBody({ fileHandle, response });
   const file = await fileHandle.getFile();
   const expectedByteLength = expectedDecodedResponseByteLength({ response });
-  if (file.size === 0) throw new Error(`OPFS file is empty: ${path}`);
+  if (file.size === 0) {
+    throw new Error(`OPFS file is empty: ${path}`);
+  }
   if (file.size !== receivedByteLength) {
     throw new Error(`OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${file.size}`);
   }
@@ -254,7 +278,9 @@ export async function writeIncompleteOpfsFile({ path, response, lease }: {
       const parts = path.split('/').filter(part => part.length > 0);
       const name = parts.pop()!;
       let directory = await navigator.storage.getDirectory();
-      for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: false });
+      for (const part of parts) {
+        directory = await directory.getDirectoryHandle(part, { create: false });
+      }
       await removeEntryIfPresent({ directory, name: `.${name}.complete` });
       await removeEntryIfPresent({ directory, name });
     } catch (cleanupError) {
@@ -265,7 +291,9 @@ export async function writeIncompleteOpfsFile({ path, response, lease }: {
     // Actual pipeTo/write/abort and storage cleanup have already settled; this
     // deadline must never release a still-running writer's storage lease.
     try {
-      if (!response.body?.locked) await cancelResponseBodyBounded({ response });
+      if (!response.body?.locked) {
+        await cancelResponseBodyBounded({ response });
+      }
     } catch { /* The original write/verification error remains authoritative. */ }
     throw error;
   }
@@ -300,7 +328,9 @@ export async function writeToOpfsWithStagingUnderLease({ path, response, lease }
   const root = await navigator.storage.getDirectory();
   let currentDir = root;
   for (const part of pathParts) {
-    if (!part) continue;
+    if (!part) {
+      continue;
+    }
     currentDir = await currentDir.getDirectoryHandle(part, { create: true });
   }
 
@@ -310,7 +340,9 @@ export async function writeToOpfsWithStagingUnderLease({ path, response, lease }
     const receivedByteLength = await writeResponseBody({ fileHandle: stagingHandle, response });
     const stagedFile = await stagingHandle.getFile();
     const expectedByteLength = expectedDecodedResponseByteLength({ response });
-    if (stagedFile.size === 0) throw new Error(`Staged OPFS file is empty: ${path}`);
+    if (stagedFile.size === 0) {
+      throw new Error(`Staged OPFS file is empty: ${path}`);
+    }
     if (stagedFile.size !== receivedByteLength) {
       throw new Error(`Staged OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${stagedFile.size}`);
     }

@@ -267,7 +267,9 @@ function deriveToolTemplateProvenance({
   }
   const generationPromptPrefixMatch = firstMismatchIndex === undefined;
   const toolResultContinuationInputIds = (() => {
-    if (toolResultContinuation === undefined) return undefined;
+    if (toolResultContinuation === undefined) {
+      return undefined;
+    }
     const status = toolResultContinuation.status;
     switch (status) {
     case 'passed':

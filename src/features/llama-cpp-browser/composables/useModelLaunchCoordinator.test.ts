@@ -31,7 +31,14 @@ const catalog: RepositoryCatalog = { repository: 'owner/Model-GGUF', revision: '
 const hosts: ReturnType<typeof mount>[] = [];
 
 beforeEach(() => {
-  vi.clearAllMocks(); provider = new MemoryStorageProvider(); storageCurrent = true; initialized.value = true; interaction.value = 'enabled'; TEST_ONLY.reset(); window.history.replaceState({}, ''); inspect.mockResolvedValue(catalog);
+  vi.clearAllMocks();
+  provider = new MemoryStorageProvider();
+  storageCurrent = true;
+  initialized.value = true;
+  interaction.value = 'enabled';
+  TEST_ONLY.reset();
+  window.history.replaceState({}, '');
+  inspect.mockResolvedValue(catalog);
 });
 
 afterEach(() => {
@@ -40,14 +47,17 @@ afterEach(() => {
 
 async function start({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }, { path: '/elsewhere', component: { template: '<div />' } }] });
-  await router.push(path); await router.isReady();
+  await router.push(path);
+  await router.isReady();
   const wrapper = mount(defineComponent({
     setup() {
-      useModelLaunchCoordinator(); return {};
+      useModelLaunchCoordinator();
+      return {};
     },
     template: '<div />',
   }), { global: { plugins: [router] } });
-  hosts.push(wrapper); return router;
+  hosts.push(wrapper);
+  return router;
 }
 
 describe('direct-chat model link coordinator', () => {
@@ -64,73 +74,100 @@ describe('direct-chat model link coordinator', () => {
   it('does not process before startup permits interaction', async () => {
     interaction.value = 'blocked-by-startup';
     const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF' });
-    await flushPromises(); expect(inspect).not.toHaveBeenCalled();
+    await flushPromises();
+    expect(inspect).not.toHaveBeenCalled();
     interaction.value = 'enabled';
     await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
   });
 
   it('does not steal navigation after a late metadata response, even if the transport ignores abort', async () => {
-    const pending = Promise.withResolvers<RepositoryCatalog>(); inspect.mockReturnValueOnce(pending.promise);
+    const pending = Promise.withResolvers<RepositoryCatalog>();
+    inspect.mockReturnValueOnce(pending.promise);
     const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF' });
     await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
-    await router.push('/elsewhere'); pending.resolve(catalog); await flushPromises();
-    expect(prepare).not.toHaveBeenCalled(); expect(router.currentRoute.value.path).toBe('/elsewhere');
+    await router.push('/elsewhere');
+    pending.resolve(catalog);
+    await flushPromises();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/elsewhere');
   });
 
   it('does not transfer an old metadata result to a different storage provider', async () => {
-    const pending = Promise.withResolvers<RepositoryCatalog>(); inspect.mockReturnValueOnce(pending.promise);
+    const pending = Promise.withResolvers<RepositoryCatalog>();
+    inspect.mockReturnValueOnce(pending.promise);
     const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF' });
-    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce()); storageCurrent = false;
-    pending.resolve(catalog); await flushPromises(); expect(prepare).not.toHaveBeenCalled(); expect(router.currentRoute.value.path).toBe('/');
+    await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
+    storageCurrent = false;
+    pending.resolve(catalog);
+    await flushPromises();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/');
   });
 
   it.each(['/?llama-cpp-browser-model=', '/?llama-cpp-browser-model=one&llama-cpp-browser-model=two', '/?llama-cpp-browser-model=https://external.example/model'])('rejects invalid source %s without a download or storage write', async path => {
-    const router = await start({ path }); await flushPromises();
-    expect(modelLaunchEntryState.value.status).toBe('failed'); expect(inspect).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled(); expect(router.currentRoute.value.path).toBe('/');
+    const router = await start({ path });
+    await flushPromises();
+    expect(modelLaunchEntryState.value.status).toBe('failed');
+    expect(inspect).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/');
   });
 
   it('reuses a saved reservation when navigation is denied, even if settings query changes', async () => {
-    const pending = Promise.withResolvers<RepositoryCatalog>(); inspect.mockReturnValueOnce(pending.promise);
+    const pending = Promise.withResolvers<RepositoryCatalog>();
+    inspect.mockReturnValueOnce(pending.promise);
     const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF' });
     const removeGuard = router.beforeEach(to => to.path.startsWith('/chat/') ? false : true);
-    pending.resolve(catalog); await vi.waitFor(() => expect(modelLaunchEntryState.value.status).toBe('failed'));
+    pending.resolve(catalog);
+    await vi.waitFor(() => expect(modelLaunchEntryState.value.status).toBe('failed'));
     const first = prepare.mock.calls[0]![0].request;
-    removeGuard(); await router.replace({ query: { ...router.currentRoute.value.query, settings: 'llama-cpp-browser' } });
+    removeGuard();
+    await router.replace({ query: { ...router.currentRoute.value.query, settings: 'llama-cpp-browser' } });
     await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
     expect(prepare.mock.calls[1]![0].request.chatId).toBe(first.chatId);
-    expect(inspect).toHaveBeenCalledOnce(); expect((await provider.loadHierarchy())?.items).toHaveLength(1);
+    expect(inspect).toHaveBeenCalledOnce();
+    expect((await provider.loadHierarchy())?.items).toHaveLength(1);
   });
 
   it('retains the parameter on storage failure and retries the same reserved identifiers', async () => {
     prepare.mockRejectedValueOnce(new Error('quota'));
     const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF' });
     await vi.waitFor(() => expect(modelLaunchEntryState.value.status).toBe('failed'));
-    expect(router.currentRoute.value.query['llama-cpp-browser-model']).toBeDefined(); const first = prepare.mock.calls[0]![0].request;
-    retryModelLaunch(); await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+    expect(router.currentRoute.value.query['llama-cpp-browser-model']).toBeDefined();
+    const first = prepare.mock.calls[0]![0].request;
+    retryModelLaunch();
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
     expect(prepare.mock.calls[1]![0].request.chatId).toBe(first.chatId);
   });
 
   it('accepts a later identical link as a new chat in the same chat group', async () => {
     const source = '/?llama-cpp-browser-model=owner/Model-GGUF';
-    const router = await start({ path: source }); await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+    const router = await start({ path: source });
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
     const first = router.currentRoute.value.path;
-    await router.push(source); await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
-    expect(router.currentRoute.value.path).not.toBe(first); expect((await provider.loadHierarchy())?.items).toHaveLength(1);
+    await router.push(source);
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+    expect(router.currentRoute.value.path).not.toBe(first);
+    expect((await provider.loadHierarchy())?.items).toHaveLength(1);
   });
 });
 
 it('distinguishes metadata waiting from durable chat creation without guessing a target early', async () => {
-  const metadata = Promise.withResolvers<RepositoryCatalog>(); const saving = Promise.withResolvers<void>();
+  const metadata = Promise.withResolvers<RepositoryCatalog>();
+  const saving = Promise.withResolvers<void>();
   inspect.mockReturnValueOnce(metadata.promise);
   prepare.mockImplementationOnce(async ({ request }) => {
-    await saving.promise; return prepareModelLaunchChat({ provider, request });
+    await saving.promise;
+    return prepareModelLaunchChat({ provider, request });
   });
   const router = await start({ path: '/?llama-cpp-browser-model=owner/Model-GGUF:Q4_K_M' });
   await flushPromises();
   expect(modelLaunchEntryState.value).toMatchObject({ status: 'checking', phase: 'metadata' });
   expect(prepare).not.toHaveBeenCalled();
-  metadata.resolve(catalog); await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+  metadata.resolve(catalog);
+  await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
   expect(modelLaunchEntryState.value).toMatchObject({ status: 'checking', phase: 'opening-chat' });
   expect(router.currentRoute.value.path).toBe('/');
-  saving.resolve(); await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+  saving.resolve();
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
 });

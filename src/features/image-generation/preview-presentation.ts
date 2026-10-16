@@ -9,13 +9,18 @@ export function previewDisplaySize({ frame, maxEdge }: {
   maxEdge: PreviewSettings['maxEdge'],
 }): { width: number, height: number } {
   const { width, height } = frame;
-  if (maxEdge === 0) return { width, height };
+  if (maxEdge === 0) {
+    return { width, height };
+  }
   const ratio = maxEdge / Math.max(width, height);
   const scale = (() => {
     switch (frame.mode) {
     case 'projection': return ratio;
     case 'vae': return Math.min(1, ratio);
-    default: { const exhaustive: never = frame.mode; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = frame.mode;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };

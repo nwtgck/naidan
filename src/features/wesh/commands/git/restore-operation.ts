@@ -21,8 +21,9 @@ export async function executeRestore({ context, request }: {
   const repository = await discoverRepositoryFromContext({ context });
   const currentIndex = await readIndex({ files: context.files, repository });
   for (const entry of currentIndex) {
-    if (entry.stage !== 0)
+    if (entry.stage !== 0) {
       throw new Error(`unmerged index entry is not supported yet: ${entry.path}`);
+    }
   }
   const sourceEntries = request.sourceExpression !== undefined
     ? await readCommitIndex({ context, repository, revisionExpression: request.sourceExpression })
@@ -56,10 +57,11 @@ export async function executeRestore({ context, request }: {
   if (request.staged) {
     for (const path of selectedPaths) {
       const sourceEntry = sourceByPath.get(path);
-      if (sourceEntry === undefined)
+      if (sourceEntry === undefined) {
         currentByPath.delete(path);
-      else
+      } else {
         currentByPath.set(path, sourceEntry);
+      }
     }
     await writeIndex({ files: context.files, repository, entries: [...currentByPath.values()] });
   }

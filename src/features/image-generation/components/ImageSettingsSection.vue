@@ -4,7 +4,9 @@ defineProps<{ title: string | undefined, summary: string | undefined, embedded?:
 const open = defineModel<boolean>('open', { default: false });
 
 function toggle({ event }: { event: Event }): void {
-  if (event.target instanceof HTMLDetailsElement) open.value = event.target.open;
+  if (event.target instanceof HTMLDetailsElement) {
+    open.value = event.target.open;
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

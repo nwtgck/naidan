@@ -56,7 +56,9 @@ describe('read-only message display', () => {
 `,
       '\\<think>escaped\\</think>',
     ];
-    for (const text of values) expect(splitDisplayedThinking({ text })).toEqual([{ type: 'text', text, offset: 0, completeness: 'complete' }]);
+    for (const text of values) {
+      expect(splitDisplayedThinking({ text })).toEqual([{ type: 'text', text, offset: 0, completeness: 'complete' }]);
+    }
   });
 
   it('returns to tag interpretation after a fence closes', () => {
@@ -85,7 +87,8 @@ describe('read-only message display', () => {
     const second: AssistantMessageNode['parts'][number] = { type: 'reasoning', text: 'R', completeness: 'partial' };
     const message = assistant({ parts: [first, second] });
     const key = getAssistantDisplayParts({ message })[1]!.key;
-    first.text = 'A'; second.text += ' more';
+    first.text = 'A';
+    second.text += ' more';
     expect(getAssistantDisplayParts({ message })[1]!.key).toBe(key);
   });
 
@@ -107,7 +110,9 @@ A<think>理由🙂
       const message = assistant({ parts: [{ type: 'text', text: raw.slice(0, i), completeness: 'partial' }] });
       getAssistantDisplayParts({ message });
       const first = message.parts[0];
-      if (first?.type !== 'text') throw new Error('Missing fixture part.');
+      if (first?.type !== 'text') {
+        throw new Error('Missing fixture part.');
+      }
       first.text += raw.slice(i);
       expect(getDisplayedMessageText({ message })).toBe('AB');
       expect(first.text).toBe(raw);

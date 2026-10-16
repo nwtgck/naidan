@@ -44,7 +44,9 @@ function parentPath({ path }: { path: string }): string {
 function basename({ path }: { path: string }): string {
   const parts = path.split('/').filter(part => part.length > 0);
   const name = parts[parts.length - 1];
-  if (name === undefined) throw new Error(`invalid path: ${path}`);
+  if (name === undefined) {
+    throw new Error(`invalid path: ${path}`);
+  }
   return name;
 }
 
@@ -53,7 +55,9 @@ async function resolveMoveDestination({ files, sourceAbsolutePath, requestedDest
   sourceAbsolutePath: string,
   requestedDestinationAbsolutePath: string,
 }): Promise<string> {
-  if (!await pathExists({ files, path: requestedDestinationAbsolutePath })) return requestedDestinationAbsolutePath;
+  if (!await pathExists({ files, path: requestedDestinationAbsolutePath })) {
+    return requestedDestinationAbsolutePath;
+  }
   const stat = await files.lstat({ path: requestedDestinationAbsolutePath });
   switch (stat.type) {
   case 'directory':
@@ -71,7 +75,9 @@ async function resolveMoveDestination({ files, sourceAbsolutePath, requestedDest
 }
 
 async function assertDirectory({ files, path }: { files: GitFiles, path: string }): Promise<void> {
-  if (!await pathExists({ files, path })) throw new Error(`destination parent does not exist: ${path}`);
+  if (!await pathExists({ files, path })) {
+    throw new Error(`destination parent does not exist: ${path}`);
+  }
   const stat = await files.lstat({ path });
   switch (stat.type) {
   case 'directory':
@@ -112,7 +118,9 @@ async function planDirectoryMove({ files, sourceAbsolutePath, destinationAbsolut
   }): Promise<void> => {
     for await (const entry of files.readDir({ path: sourceDirectoryPath })) {
       const destinationPath = joinPath({ base: destinationDirectoryPath, child: entry.name });
-      if (await pathExists({ files, path: destinationPath })) throw new Error(`destination exists: ${destinationPath}`);
+      if (await pathExists({ files, path: destinationPath })) {
+        throw new Error(`destination exists: ${destinationPath}`);
+      }
       switch (entry.type) {
       case 'directory':
         directories.push({ sourcePath: entry.fullPath, destinationPath });
@@ -185,7 +193,9 @@ export async function runMv({ context, args }: {
   }
   const operands = parsed.positionals;
   const verbose = parsed.optionValues.verbose === true;
-  if (operands.length !== 2) throw new GitUsageError({ message: 'usage: git mv [--] <source> <destination>', prefix: 'none' });
+  if (operands.length !== 2) {
+    throw new GitUsageError({ message: 'usage: git mv [--] <source> <destination>', prefix: 'none' });
+  }
 
   const sourceAbsolutePath = normalizePath({ cwd: context.cwd, path: operands[0]! });
   const requestedDestinationAbsolutePath = normalizePath({ cwd: context.cwd, path: operands[1]! });
@@ -203,9 +213,13 @@ export async function runMv({ context, args }: {
   }
 
   const entries = await readIndex({ files: context.files, repository });
-  if (entries.some(entry => entry.stage !== 0)) throw new Error('git mv with unmerged index entries is not supported yet');
+  if (entries.some(entry => entry.stage !== 0)) {
+    throw new Error('git mv with unmerged index entries is not supported yet');
+  }
   const sourceEntries = entries.filter(entry => entry.path === sourcePath || entry.path.startsWith(`${sourcePath}/`));
-  if (sourceEntries.length === 0) throw new Error(`bad source, source=${sourcePath}, destination=${destinationPath}`);
+  if (sourceEntries.length === 0) {
+    throw new Error(`bad source, source=${sourcePath}, destination=${destinationPath}`);
+  }
   if (entries.some(entry => entry.path === destinationPath || entry.path.startsWith(`${destinationPath}/`))) {
     throw new Error(`destination exists, source=${sourcePath}, destination=${destinationPath}`);
   }
@@ -245,15 +259,18 @@ export async function runMv({ context, args }: {
     files: context.files,
     repository,
     entries: entries.map(entry => {
-      if (entry.path === sourcePath) return { ...entry, path: destinationPath };
+      if (entry.path === sourcePath) {
+        return { ...entry, path: destinationPath };
+      }
       if (entry.path.startsWith(`${sourcePath}/`)) {
         return { ...entry, path: `${destinationPath}${entry.path.slice(sourcePath.length)}` };
       }
       return entry;
     }),
   });
-  if (verbose)
+  if (verbose) {
     await context.text().print({ text: `Renaming ${sourcePath} to ${destinationPath}\n` });
+  }
   return { exitCode: 0 };
 }
 

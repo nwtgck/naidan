@@ -97,7 +97,9 @@ export async function commitFullHistoryManipulationForChat({
   systemPrompt: SystemPrompt | undefined,
 }): Promise<void> {
   const chat = getLiveChatById({ chatId });
-  if (chat === null) return;
+  if (chat === null) {
+    return;
+  }
 
   // Snapshot the complete proposed branch before any storage awaits. Only these
   // copies become the new branch; the editor and existing replies remain intact.
@@ -108,9 +110,14 @@ export async function commitFullHistoryManipulationForChat({
     switch (behavior) {
     case 'override': return { behavior, content };
     case 'append':
-      if (content === null) throw new Error('An append prompt must contain text.');
+      if (content === null) {
+        throw new Error('An append prompt must contain text.');
+      }
       return { behavior, content };
-    default: { const _ex: never = behavior; throw new Error(`Unhandled prompt: ${_ex}`); }
+    default: {
+      const _ex: never = behavior;
+      throw new Error(`Unhandled prompt: ${_ex}`);
+    }
     }
   })();
 
@@ -120,13 +127,19 @@ export async function commitFullHistoryManipulationForChat({
     case 'assistant':
     case 'system':
     case 'tool': continue;
-    default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = message;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
     for (const part of message.parts) {
       switch (part.type) {
       case 'attachment': break;
       case 'text': continue;
-      default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+      default: {
+        const _ex: never = part;
+        throw new Error(`Unhandled user part: ${_ex}`);
+      }
       }
       const attachment = part.attachment;
       switch (attachment.status) {
@@ -309,7 +322,10 @@ async function editMessageInTarget({
         switch (part.type) {
         case 'text': return [];
         case 'attachment': return [part.attachment];
-        default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled user part: ${_ex}`);
+        }
         }
       }),
       lmParameters,

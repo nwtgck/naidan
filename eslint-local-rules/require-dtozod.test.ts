@@ -16,7 +16,9 @@ const eslint = new ESLint({
 
 async function lint({ code, filePath }: { code: string, filePath: string }) {
   const [result] = await eslint.lintText(code, { filePath: path.resolve(filePath) });
-  if (!result) throw new Error('Missing lint result');
+  if (!result) {
+    throw new Error('Missing lint result');
+  }
   return result.messages;
 }
 

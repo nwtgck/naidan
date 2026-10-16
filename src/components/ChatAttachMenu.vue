@@ -31,14 +31,18 @@ function handleFileInputChange({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = Array.from(target.files ?? []);
   target.value = '';
-  if (files.length > 0) emit('files-selected', files);
+  if (files.length > 0) {
+    emit('files-selected', files);
+  }
 }
 
 function handleFolderInputChange({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = Array.from(target.files ?? []);
   target.value = '';
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    return;
+  }
   const folderName = files[0]!.webkitRelativePath.split('/')[0] ?? 'folder';
   emit('folder-copy', folderName, files);
 }

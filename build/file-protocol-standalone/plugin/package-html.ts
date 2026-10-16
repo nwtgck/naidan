@@ -19,7 +19,9 @@ function findSafeInsertionOffset({ dom, html }: Readonly<{
   const firstScript = document.head.querySelector('script');
   if (firstScript !== null) {
     const scriptLocation = dom.nodeLocation(firstScript);
-    if (hasStartOffset(scriptLocation)) return scriptLocation.startOffset;
+    if (hasStartOffset(scriptLocation)) {
+      return scriptLocation.startOffset;
+    }
   }
 
   const headLocation = dom.nodeLocation(document.head);
@@ -28,7 +30,9 @@ function findSafeInsertionOffset({ dom, html }: Readonly<{
     && 'endTag' in headLocation
     ? headLocation.endTag
     : undefined;
-  if (hasStartOffset(endTagLocation)) return endTagLocation.startOffset;
+  if (hasStartOffset(endTagLocation)) {
+    return endTagLocation.startOffset;
+  }
 
   // Keep the argument part of this helper's contract explicit: callers insert
   // into the original source only when JSDOM supplied a structural source offset.
@@ -79,10 +83,14 @@ export function assertPackageLocaleMetadata({ html, expectedLocale }: Readonly<{
   try {
     const metas = [...dom.window.document.querySelectorAll(`meta[name=${JSON.stringify(PACKAGE_LOCALE_META_NAME)}]`)];
     if (expectedLocale === undefined) {
-      if (metas.length !== 0) throw new Error(`Expected no package locale metadata, found ${metas.length}`);
+      if (metas.length !== 0) {
+        throw new Error(`Expected no package locale metadata, found ${metas.length}`);
+      }
       return;
     }
-    if (metas.length !== 1) throw new Error(`Expected exactly one package locale metadata element, found ${metas.length}`);
+    if (metas.length !== 1) {
+      throw new Error(`Expected exactly one package locale metadata element, found ${metas.length}`);
+    }
     if (metas[0]?.getAttribute('content') !== expectedLocale) {
       throw new Error(`Package locale metadata mismatch: expected ${expectedLocale}`);
     }

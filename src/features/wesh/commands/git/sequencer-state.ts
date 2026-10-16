@@ -53,10 +53,14 @@ function formatTodo({ entries }: { entries: readonly GitSequencerTodoEntry[] }):
 }
 
 function parseTodo({ text }: { text: string }): GitSequencerTodoEntry[] {
-  if (text.length === 0) return [];
+  if (text.length === 0) {
+    return [];
+  }
   return text.split('\n').filter(line => line.length > 0).map(line => {
     const match = /^(pick|revert) ([0-9a-f]{40})(?: (.*))?$/u.exec(line);
-    if (match === null) throw new Error(`unsupported sequencer todo line: ${line}`);
+    if (match === null) {
+      throw new Error(`unsupported sequencer todo line: ${line}`);
+    }
     return {
       kind: kindFromVerb({ verb: match[1]! }),
       objectId: match[2]!,
@@ -72,7 +76,9 @@ function parseOptions({ text }: { text: string }): { mainlineParentNumber: numbe
     const match = /^\s*mainline = ([0-9]+)$/u.exec(line);
     if (match !== null) {
       mainlineParentNumber = Number.parseInt(match[1]!, 10);
-      if (mainlineParentNumber < 1) throw new Error('invalid sequencer mainline');
+      if (mainlineParentNumber < 1) {
+        throw new Error('invalid sequencer mainline');
+      }
     }
   }
   return { mainlineParentNumber };
@@ -94,8 +100,12 @@ function formatOptions({ kind, mainlineParentNumber }: {
     throw new Error(`Unhandled sequencer kind: ${_ex}`);
   }
   }
-  if (mainlineParentNumber !== undefined) lines.push(`\tmainline = ${mainlineParentNumber}`);
-  if (lines.length === 0) return undefined;
+  if (mainlineParentNumber !== undefined) {
+    lines.push(`\tmainline = ${mainlineParentNumber}`);
+  }
+  if (lines.length === 0) {
+    return undefined;
+  }
   return `[options]\n${lines.join('\n')}\n`;
 }
 
@@ -104,13 +114,19 @@ export async function readSequencerState({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitSequencerState | undefined> {
   const directory = sequencerDirectory({ repository });
-  if (!await pathExists({ files, path: directory })) return undefined;
+  if (!await pathExists({ files, path: directory })) {
+    return undefined;
+  }
   const headObjectId = (await readFileText({ files, path: statePath({ repository, name: 'head' }) })).trim();
-  if (!/^[0-9a-f]{40}$/u.test(headObjectId)) throw new Error('invalid sequencer head');
+  if (!/^[0-9a-f]{40}$/u.test(headObjectId)) {
+    throw new Error('invalid sequencer head');
+  }
   const abortSafetyPath = statePath({ repository, name: 'abort-safety' });
   if (await pathExists({ files, path: abortSafetyPath })) {
     const abortSafetyObjectId = (await readFileText({ files, path: abortSafetyPath })).trim();
-    if (abortSafetyObjectId !== headObjectId) throw new Error('sequencer abort-safety does not match head');
+    if (abortSafetyObjectId !== headObjectId) {
+      throw new Error('sequencer abort-safety does not match head');
+    }
   }
   const optionsPath = statePath({ repository, name: 'opts' });
   const options = await pathExists({ files, path: optionsPath })
@@ -130,8 +146,12 @@ export async function writeSequencerState({ files, repository, headObjectId, tod
   todo: readonly GitSequencerTodoEntry[],
   mainlineParentNumber?: number,
 }): Promise<void> {
-  if (!/^[0-9a-f]{40}$/u.test(headObjectId)) throw new Error(`invalid sequencer head object id: ${headObjectId}`);
-  if (todo.length === 0) throw new Error('sequencer todo must not be empty');
+  if (!/^[0-9a-f]{40}$/u.test(headObjectId)) {
+    throw new Error(`invalid sequencer head object id: ${headObjectId}`);
+  }
+  if (todo.length === 0) {
+    throw new Error('sequencer todo must not be empty');
+  }
   const directory = sequencerDirectory({ repository });
   await files.mkdir({ path: directory, recursive: true });
   await replaceTextViaLock({ files, path: statePath({ repository, name: 'head' }), text: `${headObjectId}\n` });
@@ -148,9 +168,13 @@ export async function advanceSequencer({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitSequencerTodoEntry | undefined> {
   const state = await readSequencerState({ files, repository });
-  if (state === undefined) throw new Error('no sequencer in progress');
+  if (state === undefined) {
+    throw new Error('no sequencer in progress');
+  }
   const current = state.todo[0];
-  if (current === undefined) return undefined;
+  if (current === undefined) {
+    return undefined;
+  }
   const remaining = state.todo.slice(1);
   await replaceTextViaLock({ files, path: statePath({ repository, name: 'todo' }), text: formatTodo({ entries: remaining }) });
   return current;
@@ -161,7 +185,9 @@ export async function clearSequencerState({ files, repository }: {
   repository: GitRepository,
 }): Promise<void> {
   const directory = sequencerDirectory({ repository });
-  if (!await pathExists({ files, path: directory })) return;
+  if (!await pathExists({ files, path: directory })) {
+    return;
+  }
   for await (const entry of files.readDir({ path: directory })) {
     switch (entry.type) {
     case 'file':

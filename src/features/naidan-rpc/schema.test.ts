@@ -42,7 +42,8 @@ it('unknown capability fields are not exposed through a loose object schema', ()
       throw new Error('Unknown proxy');
     },
   });
-  expect(projection.value).toEqual({ value: 5 }); expect(projection.accepted.size).toBe(0);
+  expect(projection.value).toEqual({ value: 5 });
+  expect(projection.accepted.size).toBe(0);
 });
 
 it('source validation rejects duplicate or locked streams without reading any producer', () => {
@@ -52,16 +53,19 @@ it('source validation rejects duplicate or locked streams without reading any pr
     pull() {
       reads++;
     },
-  }, { highWaterMark: 0 }); let id = 1;
+  }, { highWaterMark: 0 });
+  let id = 1;
   expect(() => pack({ plan, value: { a: source, b: source }, allocate: () => id++ })).toThrow();
   const reader = source.getReader();
   expect(() => pack({ plan, value: { a: source, b: new ReadableStream() }, allocate: () => id++ })).toThrow();
-  expect(reads).toBe(0); reader.releaseLock();
+  expect(reads).toBe(0);
+  reader.releaseLock();
 });
 
 it('contract names cannot turn a client into a thenable or expose prototype properties', () => {
   const method = procedure({ input: z.object({}), result: z.number(), notifications: {} });
-  for (const name of ['then', 'constructor', 'prototype', '__proto__', 'x/y'])
+  for (const name of ['then', 'constructor', 'prototype', '__proto__', 'x/y']) {
     expect(() => contract({ name: 'valid', methods: { [name]: method } })).toThrow();
+  }
   expect(() => expose({ contract: contract({ name: 'valid', methods: { run: method } }), allowedMethods: [], implementation: {} as never })).toThrow();
 });

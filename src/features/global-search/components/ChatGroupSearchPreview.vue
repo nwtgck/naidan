@@ -27,7 +27,9 @@ const { sidebarItems } = useCurrentChatState();
 
 const chats = computed<ChatSummary[]>(() => {
   for (const item of sidebarItems.value) {
-    if (item.type !== 'chat_group' || idToRaw({ id: item.chatGroup.id }) !== props.groupId) continue;
+    if (item.type !== 'chat_group' || idToRaw({ id: item.chatGroup.id }) !== props.groupId) {
+      continue;
+    }
     return item.chatGroup.items
       .map(chatItem => chatItem.chat)
       .sort((left, right) => right.updatedAt - left.updatedAt);
@@ -57,7 +59,9 @@ function formatTime({ timestamp }: { timestamp: number }) {
 }
 
 function navigate({ direction }: { direction: 'up' | 'down' }) {
-  if (chats.value.length === 0) return;
+  if (chats.value.length === 0) {
+    return;
+  }
   const currentIndex = chats.value.findIndex(c => c.id === selectedChatId.value);
   let nextIndex = currentIndex;
 
@@ -79,7 +83,9 @@ function navigate({ direction }: { direction: 'up' | 'down' }) {
     selectedChatId.value = nextChat.id;
     // Ensure the selected item is visible
     nextTick(() => {
-      if (!chatListContainer.value) return;
+      if (!chatListContainer.value) {
+        return;
+      }
       const el = chatListContainer.value.querySelector(`[data-group-chat-id="${idToRaw({ id: nextChat.id })}"]`);
       if (el instanceof HTMLElement) {
         scrollIntoViewSafe({
@@ -111,7 +117,9 @@ defineExpose({
 });
 
 const selectedSearchResultItem = computed<Extract<SearchResultItem, { type: 'chat' }> | undefined>(() => {
-  if (!selectedChat.value) return undefined;
+  if (!selectedChat.value) {
+    return undefined;
+  }
   return {
     type: 'chat',
     chatId: idToRaw({ id: selectedChat.value.id }),
@@ -123,7 +131,9 @@ const selectedSearchResultItem = computed<Extract<SearchResultItem, { type: 'cha
 });
 
 watch(chats, nextChats => {
-  if (nextChats.some(chat => chat.id === selectedChatId.value)) return;
+  if (nextChats.some(chat => chat.id === selectedChatId.value)) {
+    return;
+  }
   selectedChatId.value = nextChats[0]?.id ?? null;
 }, { immediate: true });
 

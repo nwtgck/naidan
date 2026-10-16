@@ -10,15 +10,20 @@ export function createDownloadProgressEmitter({ callback }: { callback: Transfor
   const intervalMs = 150;
 
   function flush(): void {
-    if (closed || busy || pending.size === 0) return;
+    if (closed || busy || pending.size === 0) {
+      return;
+    }
     const entry = [...pending.entries()].find(([, info]) => info.status !== 'progress' && info.status !== 'progress_total') ?? pending.entries().next().value;
-    if (entry === undefined) return;
+    if (entry === undefined) {
+      return;
+    }
     const [key, info] = entry;
     const terminalOrStage = info.status !== 'progress' && info.status !== 'progress_total';
     const delay = intervalMs - (Date.now() - lastSent);
     if (!terminalOrStage && delay > 0) {
       timer ??= setTimeout(() => {
-        timer = undefined; flush();
+        timer = undefined;
+        flush();
       }, delay);
       return;
     }
@@ -35,7 +40,9 @@ export function createDownloadProgressEmitter({ callback }: { callback: Transfor
 
   return {
     publish({ info }: { info: ProgressInfo }): void {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       // Scalar snapshots only: never retain response bodies or stream chunks.
       const { status, progress, loaded, total, name, file, downloadTiming, downloadCumulativeTiming, downloadTotalKind, ...unhandled } = info;
       unhandled satisfies Record<PropertyKey, never>;
@@ -45,7 +52,9 @@ export function createDownloadProgressEmitter({ callback }: { callback: Transfor
     close(): void {
       closed = true;
       pending.clear();
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       timer = undefined;
       // The prefetch RPC result carries authoritative per-file terminal states.
       // Closing never waits for an observer which may never acknowledge.

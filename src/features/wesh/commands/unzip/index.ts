@@ -270,7 +270,9 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) continue;
+    if (token === undefined) {
+      continue;
+    }
 
     if (token === '--') {
       return {
@@ -309,7 +311,9 @@ function analyzeOptionsBeforeArchive({ args }: { args: readonly string[] }): Unz
         quietCount += 1;
         continue;
       }
-      if (short !== 'd') continue;
+      if (short !== 'd') {
+        continue;
+      }
 
       destinationSelectionCount += 1;
       const attachedValue = shortBody.slice(shortIndex + 1);
@@ -385,7 +389,9 @@ function splitUnzipArgs({
 
   for (let index = archiveIndex + 1; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) continue;
+    if (token === undefined) {
+      continue;
+    }
 
     if (!destinationSelected) {
       const destinationOption = parsePostArchiveDestinationOption({ token });

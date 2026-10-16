@@ -566,7 +566,9 @@ describe('createPrivacyFetchBrokerClient', () => {
     vi.mocked(brokerWindow.postMessage).mockImplementation((message: unknown, _origin?: string | WindowPostMessageOptions, transfer?: Transferable[]) => {
       const parsed = streamRequestSchema.parse(message);
       const port = Array.isArray(transfer) ? transfer[0] : undefined;
-      if (!(port instanceof MessagePort)) throw new Error('Missing stream port');
+      if (!(port instanceof MessagePort)) {
+        throw new Error('Missing stream port');
+      }
       const { type: _type, protocol: _protocol, ...request } = parsed;
       servePrivacyStream({ port, request });
     });

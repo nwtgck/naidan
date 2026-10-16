@@ -26,7 +26,9 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
     throw new Error('Unsupported or incomplete GGUF metadata');
   }
   function skip({ bytes }: { bytes: number }): void {
-    if (!Number.isSafeInteger(bytes) || bytes < 0 || offset + bytes > limit) fail();
+    if (!Number.isSafeInteger(bytes) || bytes < 0 || offset + bytes > limit) {
+      fail();
+    }
     offset += bytes;
   }
   async function read({ bytes }: { bytes: number }): Promise<DataView> {
@@ -37,7 +39,9 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
       windowStart = start;
       window = new Uint8Array(await file.slice(start, Math.min(limit, Math.max(offset, start + chunkBytes))).arrayBuffer());
       signal?.throwIfAborted();
-      if (window.length < bytes) fail();
+      if (window.length < bytes) {
+        fail();
+      }
     }
     return new DataView(window.buffer, window.byteOffset + start - windowStart, bytes);
   }
@@ -46,21 +50,28 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
   }
   async function count(): Promise<number> {
     const value = (await read({ bytes: 8 })).getBigUint64(0, true);
-    if (value > BigInt(Number.MAX_SAFE_INTEGER)) fail();
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+      fail();
+    }
     return Number(value);
   }
   async function string({ retain }: { retain: boolean }): Promise<string | undefined> {
     const bytes = await count();
     if (!retain) {
-      skip({ bytes }); return undefined;
+      skip({ bytes });
+      return undefined;
     }
-    if (bytes > maxStringBytes) fail();
+    if (bytes > maxStringBytes) {
+      fail();
+    }
     const data = await read({ bytes });
     return decoder.decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
   }
   async function checkpoint(): Promise<void> {
     signal?.throwIfAborted();
-    if (++steps > maxItems) fail();
+    if (++steps > maxItems) {
+      fail();
+    }
     // Large tokenizer string arrays can precede an interesting key. Remain
     // cancellable without creating an unbounded array of promises or strings.
     if (steps % 2048 === 0) {
@@ -74,7 +85,8 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
     const size = sizes[type];
     if (size !== undefined) {
       if (!retain) {
-        skip({ bytes: size }); return undefined;
+        skip({ bytes: size });
+        return undefined;
       }
       const data = await read({ bytes: size });
       switch (type) {
@@ -86,11 +98,18 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
       case 5: return data.getInt32(0, true);
       case 6: return data.getFloat32(0, true);
       case 7: {
-        const flag = data.getUint8(0); if (flag > 1) fail(); return flag === 1;
+        const flag = data.getUint8(0);
+        if (flag > 1) {
+          fail();
+        }
+        return flag === 1;
       }
       case 10: case 11: {
         const number = Number(type === 10 ? data.getBigUint64(0, true) : data.getBigInt64(0, true));
-        if (!Number.isSafeInteger(number)) fail(); return number;
+        if (!Number.isSafeInteger(number)) {
+          fail();
+        }
+        return number;
       }
       case 12: return data.getFloat64(0, true);
       default: return fail();
@@ -99,14 +118,24 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
     switch (type) {
     case 8: return string({ retain });
     case 9: {
-      if (depth >= 4) fail();
-      const element = await u32(); const length = await count();
-      if (length > maxItems) fail();
+      if (depth >= 4) {
+        fail();
+      }
+      const element = await u32();
+      const length = await count();
+      if (length > maxItems) {
+        fail();
+      }
       const elementSize = sizes[element];
-      if (elementSize !== undefined) skip({ bytes: length * elementSize });
-      else {
-        if (element !== 8 && element !== 9) fail();
-        for (let index = 0; index < length; index++) await value({ type: element, retain: false, depth: depth + 1 });
+      if (elementSize !== undefined) {
+        skip({ bytes: length * elementSize });
+      } else {
+        if (element !== 8 && element !== 9) {
+          fail();
+        }
+        for (let index = 0; index < length; index++) {
+          await value({ type: element, retain: false, depth: depth + 1 });
+        }
       }
       // Arrays are deliberately not exposed to callers (e.g. tokenizer vocab).
       return undefined;
@@ -114,21 +143,33 @@ export async function readAudioGgufMetadata({ file, keys, signal }: {
     default: return fail();
     }
   }
-  if (!Number.isSafeInteger(file.size) || file.size < 24) fail();
+  if (!Number.isSafeInteger(file.size) || file.size < 24) {
+    fail();
+  }
   const header = await read({ bytes: 24 });
-  if (header.getUint32(0, true) !== 0x46554747 || ![2, 3].includes(header.getUint32(4, true))) fail();
+  if (header.getUint32(0, true) !== 0x46554747 || ![2, 3].includes(header.getUint32(4, true))) {
+    fail();
+  }
   const entries = header.getBigUint64(16, true);
-  if (entries > BigInt(maxItems)) fail();
+  if (entries > BigInt(maxItems)) {
+    fail();
+  }
   for (let index = 0; index < Number(entries); index++) {
     const key = await string({ retain: true });
-    if (key === undefined) fail();
+    if (key === undefined) {
+      fail();
+    }
     const type = await u32();
     const selected = wanted.has(key);
     const entry = await value({ type, retain: selected, depth: 0 });
     if (selected) {
-      if (entry !== undefined) values.set(key, entry);
+      if (entry !== undefined) {
+        values.set(key, entry);
+      }
       wanted.delete(key);
-      if (wanted.size === 0) break;
+      if (wanted.size === 0) {
+        break;
+      }
     }
   }
   return values;

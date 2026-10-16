@@ -185,9 +185,15 @@ export function compactedMessageKey({ key, state }: {
 
 function scriptKindForModule({ moduleId }: { moduleId: string }): ts.ScriptKind {
   const filePath = stripModuleQuery({ moduleId });
-  if (filePath.endsWith('.tsx')) return ts.ScriptKind.TSX;
-  if (filePath.endsWith('.jsx')) return ts.ScriptKind.JSX;
-  if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) return ts.ScriptKind.JS;
+  if (filePath.endsWith('.tsx')) {
+    return ts.ScriptKind.TSX;
+  }
+  if (filePath.endsWith('.jsx')) {
+    return ts.ScriptKind.JSX;
+  }
+  if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) {
+    return ts.ScriptKind.JS;
+  }
   return ts.ScriptKind.TS;
 }
 
@@ -419,7 +425,9 @@ function compactMessageCalls({ allowedBindingNames, code, magicString, moduleId,
   sourceFile: ts.SourceFile;
   state: BoundaryStringsCompactionState;
 }): boolean {
-  if (!code.includes('__') || allowedBindingNames.size === 0) return false;
+  if (!code.includes('__') || allowedBindingNames.size === 0) {
+    return false;
+  }
   const checker = createTypeChecker({ moduleId, sourceCode: code, sourceFile });
   const importedSymbols = importedAllowedSymbols({ allowedBindingNames, checker, sourceFile });
   let changed = false;
@@ -459,7 +467,9 @@ function compactMessageImplementation({ key, magicString, sourceFile, state }: {
   state: BoundaryStringsCompactionState;
 }): boolean {
   const compaction = state.compactionByMessageKey.get(key);
-  if (compaction === undefined) return false;
+  if (compaction === undefined) {
+    return false;
+  }
   const messageFunction = findMessageFunction({ key, sourceFile });
   if (messageFunction.parameters.length === 0) {
     if (compaction.parameterIdsByName.size !== 0) {
@@ -498,7 +508,9 @@ function compactMessageImplementation({ key, magicString, sourceFile, state }: {
   }
   if (parameter.type !== undefined && ts.isTypeLiteralNode(parameter.type)) {
     for (const member of parameter.type.members) {
-      if (!ts.isPropertySignature(member) || member.name === undefined) continue;
+      if (!ts.isPropertySignature(member) || member.name === undefined) {
+        continue;
+      }
       const parameterName = staticPropertyName({ name: member.name });
       const parameterId = parameterName === undefined ? undefined : compaction.parameterIdsByName.get(parameterName);
       if (parameterId !== undefined) {
@@ -516,7 +528,9 @@ export function compactBoundaryStringsModule({ allowedBindingNames, code, module
   state: BoundaryStringsCompactionState;
 }): { code: string; map: ReturnType<MagicString['generateMap']> } | undefined {
   const messageKey = messageKeyFromLocaleModuleId({ moduleId });
-  if (messageKey === undefined && allowedBindingNames.length === 0) return undefined;
+  if (messageKey === undefined && allowedBindingNames.length === 0) {
+    return undefined;
+  }
   const sourceFile = parseTypeScript({ code, moduleId });
   const magicString = new MagicString(code);
   const implementationChanged = messageKey === undefined
@@ -530,7 +544,9 @@ export function compactBoundaryStringsModule({ allowedBindingNames, code, module
     sourceFile,
     state,
   });
-  if (!implementationChanged && !callsChanged) return undefined;
+  if (!implementationChanged && !callsChanged) {
+    return undefined;
+  }
   return {
     code: magicString.toString(),
     map: magicString.generateMap({ hires: true, includeContent: true, source: moduleId }),

@@ -21,7 +21,9 @@ export function validateSingleTextPartsContract({ contract }: { contract: Single
   const { endTokenIds, ...unhandled } = contract;
   unhandled satisfies Record<PropertyKey, never>;
   z.array(z.string().regex(/^(?:0|[1-9][0-9]*)$/u).max(20)).min(1).parse(endTokenIds);
-  if (new Set(endTokenIds).size !== endTokenIds.length) throw new Error('Duplicate plain-text end token');
+  if (new Set(endTokenIds).size !== endTokenIds.length) {
+    throw new Error('Duplicate plain-text end token');
+  }
 }
 
 function singleTextTermination({ invocation, contract }: { invocation: Invocation; contract: SingleTextPartsReplayContract }) {
@@ -29,7 +31,10 @@ function singleTextTermination({ invocation, contract }: { invocation: Invocatio
     switch (event.operation) {
     case 'put': return event.groups.flat();
     case 'end': return [];
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   const ends = generated.flatMap((id, index) => contract.endTokenIds.includes(id) ? [index] : []);
@@ -86,7 +91,9 @@ export function verifySingleTextPartsObservation({ recordedEvents, invocation, c
   };
   snapshot({ completeness: 'partial' });
   for (const event of finalized) {
-    if (event.text.length === 0) continue;
+    if (event.text.length === 0) {
+      continue;
+    }
     applied += event.text;
     snapshot({ completeness: 'partial' });
   }
@@ -102,7 +109,10 @@ export function verifySingleTextPartsObservation({ recordedEvents, invocation, c
     expect(finalized.filter(event => event.streamEnd)).toHaveLength(1);
     expected.push({ kind: 'generation_interrupted', reason: 'unknown', sequence: expected.length, phase: 'before-settlement' });
     break;
-  default: { const exhaustive: never = completeness; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = completeness;
+    throw new Error(String(exhaustive));
+  }
   }
   expect(observedEvents, 'plain-text parts, every native delivery and native termination').toEqual(expected);
 }
@@ -118,17 +128,23 @@ export function projectSingleTextReplayInput({ input, precedingEvents }: {
   return {
     ...checked,
     messages: checked.messages.map(message => {
-      if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) return message;
+      if (typeof message !== 'object' || message === null || Array.isArray(message) || !('parts' in message)) {
+        return message;
+      }
       const current = assistantPartsSchema.parse(message);
       const precedingPart = (() => {
-        if (precedingEvents === undefined) return undefined;
+        if (precedingEvents === undefined) {
+          return undefined;
+        }
         const events = precedingEvents;
         const starts = events.filter(event => event.kind === 'assistant_message');
         const revisions = events.filter(event => event.kind === 'part_text');
         const last = revisions.at(-1);
         if (starts.length !== 1 || !last || last.partType !== 'text' || last.index !== 0
         || revisions.some(event => event.messageId !== starts[0]!.messageId || event.partId !== last.partId || event.partType !== 'text' || event.index !== 0)
-        || events.some(event => event.kind === 'part_call')) return undefined;
+        || events.some(event => event.kind === 'part_call')) {
+          return undefined;
+        }
         return { id: last.partId, type: 'text', text: last.text, completeness: last.completeness };
       })();
       expect(precedingPart, 'continuation keeps the immediately preceding applied part exactly').toEqual(current.parts[0]);

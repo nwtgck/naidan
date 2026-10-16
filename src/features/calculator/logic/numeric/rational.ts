@@ -71,8 +71,12 @@ export function createRational({ numerator, denominator, decimalExponent }: {
   denominator: bigint,
   decimalExponent: number,
 }): Rational {
-  if (denominator === 0n) throw new Error('Rational denominator must not be zero.');
-  if (numerator === 0n) return { numerator: 0n, denominator: 1n, decimalExponent: 0 };
+  if (denominator === 0n) {
+    throw new Error('Rational denominator must not be zero.');
+  }
+  if (numerator === 0n) {
+    return { numerator: 0n, denominator: 1n, decimalExponent: 0 };
+  }
   let normalizedNumerator = denominator < 0n ? -numerator : numerator;
   let normalizedDenominator = denominator < 0n ? -denominator : denominator;
   let normalizedExponent = decimalExponent;
@@ -113,7 +117,9 @@ export function absoluteRational({ rational }: { rational: Rational }): Rational
 }
 
 function adjustedRationalExponent({ rational }: { rational: Rational }): number {
-  if (rational.numerator === 0n) return 0;
+  if (rational.numerator === 0n) {
+    return 0;
+  }
   const numeratorDigits = decimalDigitCount({ value: rational.numerator });
   const denominatorDigits = decimalDigitCount({ value: rational.denominator });
   const base = numeratorDigits - denominatorDigits;
@@ -147,7 +153,9 @@ function ensureCrossProductAllowed({ factors }: { factors: readonly bigint[] }):
 function compareAbsoluteRationals({ left, right }: { left: Rational, right: Rational }): number {
   const leftAdjusted = adjustedRationalExponent({ rational: left });
   const rightAdjusted = adjustedRationalExponent({ rational: right });
-  if (leftAdjusted !== rightAdjusted) return leftAdjusted < rightAdjusted ? -1 : 1;
+  if (leftAdjusted !== rightAdjusted) {
+    return leftAdjusted < rightAdjusted ? -1 : 1;
+  }
   ensureCrossProductAllowed({ factors: [left.numerator, right.denominator] });
   ensureCrossProductAllowed({ factors: [right.numerator, left.denominator] });
   return compareScaledIntegerMagnitudes({
@@ -159,10 +167,18 @@ function compareAbsoluteRationals({ left, right }: { left: Rational, right: Rati
 }
 
 export function compareRationals({ left, right }: { left: Rational, right: Rational }): number {
-  if (left.numerator === 0n) return right.numerator === 0n ? 0 : right.numerator < 0n ? 1 : -1;
-  if (right.numerator === 0n) return left.numerator < 0n ? -1 : 1;
-  if (left.numerator < 0n && right.numerator >= 0n) return -1;
-  if (left.numerator >= 0n && right.numerator < 0n) return 1;
+  if (left.numerator === 0n) {
+    return right.numerator === 0n ? 0 : right.numerator < 0n ? 1 : -1;
+  }
+  if (right.numerator === 0n) {
+    return left.numerator < 0n ? -1 : 1;
+  }
+  if (left.numerator < 0n && right.numerator >= 0n) {
+    return -1;
+  }
+  if (left.numerator >= 0n && right.numerator < 0n) {
+    return 1;
+  }
   const comparison = compareAbsoluteRationals({
     left: absoluteRational({ rational: left }),
     right: absoluteRational({ rational: right }),
@@ -216,7 +232,9 @@ export function divideRationals({ numerator, denominator }: {
   numerator: Rational,
   denominator: Rational,
 }): Rational {
-  if (denominator.numerator === 0n) throw new Error('Cannot divide Rational by zero.');
+  if (denominator.numerator === 0n) {
+    throw new Error('Cannot divide Rational by zero.');
+  }
   const numeratorGcd = greatestCommonDivisor({ left: numerator.numerator, right: denominator.numerator });
   const denominatorGcd = greatestCommonDivisor({ left: numerator.denominator, right: denominator.denominator });
   const leftNumerator = numerator.numerator / numeratorGcd;
@@ -268,7 +286,9 @@ export function rationalToFiniteDecimal({ rational }: { rational: Rational }): D
   denominator = twos.remaining;
   const fives = countAndRemoveFactor({ value: denominator, factor: 5n });
   denominator = fives.remaining;
-  if (denominator !== 1n) return undefined;
+  if (denominator !== 1n) {
+    return undefined;
+  }
   const scale = Math.max(twos.count, fives.count);
   const coefficient = rational.numerator
     * smallPower({ base: 2n, exponent: scale - twos.count })
@@ -290,7 +310,9 @@ export function rationalToDecimal({ rational, significantDigits }: {
       });
     }
   } catch (error) {
-    if (!(error instanceof NumericLimitError)) throw error;
+    if (!(error instanceof NumericLimitError)) {
+      throw error;
+    }
   }
   return divideIntegerRatioToDecimal({
     numerator: rational.numerator,
@@ -338,7 +360,9 @@ function materializeRatio({ rational }: { rational: Rational }): {
 
 export function rationalToInteger({ rational }: { rational: Rational }): bigint | undefined {
   const materialized = materializeRatio({ rational });
-  if (materialized.numerator % materialized.denominator !== 0n) return undefined;
+  if (materialized.numerator % materialized.denominator !== 0n) {
+    return undefined;
+  }
   return materialized.numerator / materialized.denominator;
 }
 
@@ -351,9 +375,15 @@ function truncateRatioToInteger({ numerator, denominator, mode }: {
   const absolute = absoluteBigInt({ value: numerator });
   let quotient = absolute / denominator;
   const remainder = absolute % denominator;
-  if (mode === 'floor' && negative && remainder !== 0n) quotient += 1n;
-  if (mode === 'ceil' && !negative && remainder !== 0n) quotient += 1n;
-  if (mode === 'round_half_away' && remainder * 2n >= denominator) quotient += 1n;
+  if (mode === 'floor' && negative && remainder !== 0n) {
+    quotient += 1n;
+  }
+  if (mode === 'ceil' && !negative && remainder !== 0n) {
+    quotient += 1n;
+  }
+  if (mode === 'round_half_away' && remainder * 2n >= denominator) {
+    quotient += 1n;
+  }
   return negative ? -quotient : quotient;
 }
 
@@ -367,7 +397,9 @@ export function truncateRationalToInteger({ rational, mode }: {
       return rationalFromDecimal({ decimal: truncateDecimalToInteger({ decimal: finite, mode }) });
     }
   } catch (error) {
-    if (!(error instanceof NumericLimitError)) throw error;
+    if (!(error instanceof NumericLimitError)) {
+      throw error;
+    }
   }
 
   const zero = createRational({ numerator: 0n, denominator: 1n, decimalExponent: 0 });
@@ -391,7 +423,9 @@ export function truncateRationalToInteger({ rational, mode }: {
       return zero;
     case 'round_half_away': {
       const half = createRational({ numerator: 1n, denominator: 2n, decimalExponent: 0 });
-      if (compareRationals({ left: absolute, right: half }) < 0) return zero;
+      if (compareRationals({ left: absolute, right: half }) < 0) {
+        return zero;
+      }
       return createRational({
         numerator: rational.numerator < 0n ? -1n : 1n,
         denominator: 1n,
@@ -429,7 +463,9 @@ export function roundRationalToDecimalPlaces({ rational, decimalPlaces }: {
       });
     }
   } catch (error) {
-    if (!(error instanceof NumericLimitError)) throw error;
+    if (!(error instanceof NumericLimitError)) {
+      throw error;
+    }
   }
   const shifted = createRational({
     numerator: rational.numerator,
@@ -455,16 +491,24 @@ export function powerRationalInteger({ base, exponent, consumeOperation }: {
   exponent: number,
   consumeOperation: () => void,
 }): Rational {
-  if (!Number.isSafeInteger(exponent)) throw new Error(`Invalid rational exponent: ${exponent}`);
-  if (exponent === 0) return createRational({ numerator: 1n, denominator: 1n, decimalExponent: 0 });
+  if (!Number.isSafeInteger(exponent)) {
+    throw new Error(`Invalid rational exponent: ${exponent}`);
+  }
+  if (exponent === 0) {
+    return createRational({ numerator: 1n, denominator: 1n, decimalExponent: 0 });
+  }
   let remaining = Math.abs(exponent);
   let factor = base;
   let result = createRational({ numerator: 1n, denominator: 1n, decimalExponent: 0 });
   while (remaining > 0) {
     consumeOperation();
-    if (remaining % 2 === 1) result = multiplyRationals({ left: result, right: factor });
+    if (remaining % 2 === 1) {
+      result = multiplyRationals({ left: result, right: factor });
+    }
     remaining = Math.floor(remaining / 2);
-    if (remaining > 0) factor = multiplyRationals({ left: factor, right: factor });
+    if (remaining > 0) {
+      factor = multiplyRationals({ left: factor, right: factor });
+    }
   }
   return exponent > 0
     ? result
@@ -483,7 +527,9 @@ export function perfectRationalRoot({ rational, degree, consumeOperation }: {
   degree: 2 | 3,
   consumeOperation: () => void,
 }): Rational | undefined {
-  if (rational.numerator < 0n && degree === 2) return undefined;
+  if (rational.numerator < 0n && degree === 2) {
+    return undefined;
+  }
   const exponentRemainder = positiveModulo({ value: rational.decimalExponent, divisor: degree });
   const adjustedNumerator = absoluteBigInt({ value: rational.numerator }) * powerOfTen({
     exponent: exponentRemainder,
@@ -497,7 +543,9 @@ export function perfectRationalRoot({ rational, degree, consumeOperation }: {
   const denominatorPower = degree === 2
     ? denominatorRoot * denominatorRoot
     : denominatorRoot * denominatorRoot * denominatorRoot;
-  if (numeratorPower !== adjustedNumerator || denominatorPower !== rational.denominator) return undefined;
+  if (numeratorPower !== adjustedNumerator || denominatorPower !== rational.denominator) {
+    return undefined;
+  }
   return createRational({
     numerator: rational.numerator < 0n ? -numeratorRoot : numeratorRoot,
     denominator: denominatorRoot,
@@ -508,9 +556,13 @@ export function perfectRationalRoot({ rational, degree, consumeOperation }: {
 export function serializeRational({ rational }: { rational: Rational }): string {
   try {
     const finite = rationalToFiniteDecimal({ rational });
-    if (finite !== undefined) return serializeDecimalExact({ decimal: finite });
+    if (finite !== undefined) {
+      return serializeDecimalExact({ decimal: finite });
+    }
   } catch (error) {
-    if (!(error instanceof NumericLimitError)) throw error;
+    if (!(error instanceof NumericLimitError)) {
+      throw error;
+    }
   }
   const result = rational.decimalExponent === 0
     ? `${rational.numerator}/${rational.denominator}`

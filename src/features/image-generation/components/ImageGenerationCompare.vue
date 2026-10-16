@@ -10,22 +10,36 @@ import ImageHistoryImage from './ImageHistoryImage.vue';
 const props = defineProps<{ view: ImageGenerationWorkspaceView }>();
 const values = shallowRef<ImageGenerationComparisonImage[]>([]), failure = ref(''), loading = ref(false), identical = ref(false);
 watch(() => [props.view.store.value, props.view.selection.value] as const, async ([store, selection], _previous, onCleanup) => {
-  let active = true; onCleanup(() => {
+  let active = true;
+  onCleanup(() => {
     active = false;
-  }); values.value = []; failure.value = ''; loading.value = false;
-  if (!store || selection.length !== 2) return;
+  });
+  values.value = [];
+  failure.value = '';
+  loading.value = false;
+  if (!store || selection.length !== 2) {
+    return;
+  }
   loading.value = true;
   try {
     const loaded = await Promise.all(selection.map(async tile => {
       const result = await promiseAllKeyed({ asset: loadImageGenerationAsset({ store, sessionId: tile.sessionId, assetId: tile.id }), run: loadImageGenerationRun({ store, sessionId: tile.sessionId, runId: tile.runId }) });
-      if (!result.asset || !result.run) throw new Error('A selected image record is unavailable.');
+      if (!result.asset || !result.run) {
+        throw new Error('A selected image record is unavailable.');
+      }
       return { asset: result.asset, run: result.run };
     }));
-    if (active) values.value = loaded;
+    if (active) {
+      values.value = loaded;
+    }
   } catch (error) {
-    if (active) failure.value = error instanceof Error ? error.message : String(error);
+    if (active) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
-    if (active) loading.value = false;
+    if (active) {
+      loading.value = false;
+    }
   }
 }, { immediate: true });
 const rows = computed(() => {

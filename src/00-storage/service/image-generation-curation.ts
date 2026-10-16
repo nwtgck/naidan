@@ -9,7 +9,9 @@ import { markImageGenerationBinariesDeleted } from './image-generation/deletions
 
 async function sessionDirectory({ directory, sessionId }: { directory: FileSystemDirectoryHandle, sessionId: string }): Promise<FileSystemDirectoryHandle> {
   const session = await imageGenerationSessionDirectory({ directory, sessionId });
-  if (!session) throw new Error('Image Generation session does not exist.');
+  if (!session) {
+    throw new Error('Image Generation session does not exist.');
+  }
   return session;
 }
 
@@ -21,10 +23,14 @@ export async function listImageGenerationRunAssets({ store, sessionId, runId }: 
     operation: async ({ directory }) => {
       const session = await sessionDirectory({ directory, sessionId: rawSessionId });
       const run = await (await imageGenerationRunTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id: rawRunId });
-      if (!run || run.execution.type === 'running' || run.execution.type === 'queued') throw new Error('Wait for this run to finish before editing all its outputs.');
+      if (!run || run.execution.type === 'running' || run.execution.type === 'queued') {
+        throw new Error('Wait for this run to finish before editing all its outputs.');
+      }
       const assets = await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).list();
       const annotations = await (await imageGenerationAnnotationsTable({ directory: session, sessionId: rawSessionId, create: false })).list();
-      if (assets.warningCount || annotations.warningCount) throw new Error('Some image records are unreadable. Reload before editing the whole run.');
+      if (assets.warningCount || annotations.warningCount) {
+        throw new Error('Some image records are unreadable. Reload before editing the whole run.');
+      }
       const byId = new Map(annotations.items.map(item => [item.assetId, item]));
       return assets.items.filter(item => item.runId === rawRunId).map(dto => ({
         ...imageGenerationAssetSummaryToDomain({ dto }),
@@ -42,10 +48,14 @@ export async function setImageGenerationAssetState({ store, sessionId, assetId, 
     store,
     operation: async ({ directory }) => {
       const session = await sessionDirectory({ directory, sessionId: rawSessionId });
-      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id })) throw new Error('The saved image no longer exists.');
+      if (!await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id })) {
+        throw new Error('The saved image no longer exists.');
+      }
       const table = await imageGenerationAnnotationsTable({ directory: session, sessionId: rawSessionId, create: true });
       const current = await table.load({ id }) ?? { assetId: id, sessionId: rawSessionId, revision: 0, state: 'active' as const, tags: [] };
-      if (current.state === 'deleting' || current.state === 'deleted') throw new Error('A deleted image cannot be restored.');
+      if (current.state === 'deleting' || current.state === 'deleted') {
+        throw new Error('A deleted image cannot be restored.');
+      }
       const next = ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse({ ...current, revision: expectedRevision + 1, state });
       assertImageGenerationReplacement({ current, next, expectedRevision });
       await table.write({ record: next, assertCurrent() {}, async beforeCommit() {} });
@@ -67,9 +77,13 @@ export async function deleteImageGenerationAsset({ store, sessionId, assetId, ex
     operation: async ({ directory }) => {
       const session = await sessionDirectory({ directory, sessionId: rawSessionId });
       const asset = await (await imageGenerationAssetTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id });
-      if (!asset) throw new Error('The saved image no longer exists.');
+      if (!asset) {
+        throw new Error('The saved image no longer exists.');
+      }
       const run = await (await imageGenerationRunTable({ directory: session, sessionId: rawSessionId, create: false })).load({ id: asset.runId });
-      if (!run || run.execution.type === 'running' || run.execution.type === 'queued') throw new Error('Wait for this run to finish before permanently deleting its outputs.');
+      if (!run || run.execution.type === 'running' || run.execution.type === 'queued') {
+        throw new Error('Wait for this run to finish before permanently deleting its outputs.');
+      }
       const table = await imageGenerationAnnotationsTable({ directory: session, sessionId: rawSessionId, create: true });
       let current = await table.load({ id }) ?? { assetId: id, sessionId: rawSessionId, revision: 0, state: 'active' as const, tags: [] };
       switch (current.state) {
@@ -82,11 +96,16 @@ export async function deleteImageGenerationAsset({ store, sessionId, assetId, ex
         current = next;
         break;
       }
-      default: { const exhaustive: never = current.state; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = current.state;
+        throw new Error(String(exhaustive));
+      }
       }
       const ids = [...new Set([asset.result.binaryObjectId, ...asset.previews.map(image => image.binaryObjectId)])];
       await markImageGenerationBinariesDeleted({ directory, ids });
-      for (const raw of ids) await removeBinary({ binaryObjectId: toBinaryObjectId({ raw }) });
+      for (const raw of ids) {
+        await removeBinary({ binaryObjectId: toBinaryObjectId({ raw }) });
+      }
       const next = ExperimentalImageGenerationAssetAnnotationsSchemaDto.parse({ ...current, state: 'deleted', tags: [], revision: current.revision + 1 });
       await table.write({ record: next, assertCurrent() {}, async beforeCommit() {} });
     },

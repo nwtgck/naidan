@@ -21,7 +21,10 @@ export function createGenerationYieldPacing({ mode, now }: {
     switch (mode) {
     case 'coalesced': return now();
     case 'per-token': return 0;
-    default: { const exhaustive: never = mode; throw new Error(`Unknown generation pacing: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(`Unknown generation pacing: ${exhaustive}`);
+    }
     }
   };
   let lastYieldAt = readClock();
@@ -29,13 +32,16 @@ export function createGenerationYieldPacing({ mode, now }: {
   return {
     counters,
     shouldYield(): boolean {
-      if (waiting) throw new Error('Complete the requested generation yield before continuing');
+      if (waiting) {
+        throw new Error('Complete the requested generation yield before continuing');
+      }
       decodedSinceYield++;
       counters.checks++;
       counters.maximumDecodesBetweenYields = Math.max(counters.maximumDecodesBetweenYields, decodedSinceYield);
       let needed: boolean;
       switch (mode) {
-      case 'per-token': needed = true; break;
+      case 'per-token': needed = true;
+        break;
       case 'coalesced': {
         const at = now();
         const elapsed = at - lastYieldAt;
@@ -48,16 +54,23 @@ export function createGenerationYieldPacing({ mode, now }: {
         needed = !firstYieldCompleted || clockInvalid || decodedSinceYield >= 4 || elapsed >= 8;
         break;
       }
-      default: { const exhaustive: never = mode; throw new Error(`Unknown generation pacing: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = mode;
+        throw new Error(`Unknown generation pacing: ${exhaustive}`);
+      }
       }
       if (needed) {
         waiting = true;
         counters.requestedYields++;
-      } else counters.coalescedYields++;
+      } else {
+        counters.coalescedYields++;
+      }
       return needed;
     },
     yielded(): void {
-      if (!waiting) throw new Error('No generation yield is pending');
+      if (!waiting) {
+        throw new Error('No generation yield is pending');
+      }
       waiting = false;
       decodedSinceYield = 0;
       firstYieldCompleted = true;

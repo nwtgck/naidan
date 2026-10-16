@@ -10,15 +10,25 @@ import { promiseAllKeyed } from '@/utils/promise';
 const stops: AbortController[] = [], jobs: Promise<EstablishedPipingKeys>[] = [], releases: (() => void)[] = [];
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] }); vi.setSystemTime(0);
+  vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
+  vi.setSystemTime(0);
   vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No network in handshake response tests'));
 });
 
 afterEach(async () => {
-  for (const stop of stops.splice(0)) stop.abort();
-  for (const release of releases.splice(0)) release();
-  for (const result of await Promise.allSettled(jobs.splice(0))) if (result.status === 'fulfilled') result.value.keys.dispose();
-  vi.useRealTimers(); vi.restoreAllMocks();
+  for (const stop of stops.splice(0)) {
+    stop.abort();
+  }
+  for (const release of releases.splice(0)) {
+    release();
+  }
+  for (const result of await Promise.allSettled(jobs.splice(0))) {
+    if (result.status === 'fulfilled') {
+      result.value.keys.dispose();
+    }
+  }
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure, onSend }: {
@@ -32,20 +42,28 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure, onS
   const sends = { a: 0, b: 0 }, reads = { a: 0, b: 0 };
   const waiting = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
   const send = ({ side, queue }: { side: 'a' | 'b'; queue: Uint8Array[] }) => async ({ bytes, signal }: { bytes: Uint8Array; signal?: AbortSignal }) => {
-    sends[side]++; waiting.get(`send/${side}/${sends[side]}`)?.resolve();
+    sends[side]++;
+    waiting.get(`send/${side}/${sends[side]}`)?.resolve();
     await onSend?.({ side, count: sends[side], bytes, signal });
-    if (!(side === dropFrom && sends[side] === dropAt)) queue.push(bytes.slice());
+    if (!(side === dropFrom && sends[side] === dropAt)) {
+      queue.push(bytes.slice());
+    }
     pulse.fire();
   };
   const receive = ({ side, queue }: { side: 'a' | 'b'; queue: Uint8Array[] }) => async ({ signal }: { signal: AbortSignal }) => {
-    reads[side]++; waiting.get(`${side}/${reads[side]}`)?.resolve();
+    reads[side]++;
+    waiting.get(`${side}/${reads[side]}`)?.resolve();
     for (;;) {
-      signal.throwIfAborted(); const revision = pulse.revision, bytes = queue.shift();
-      if (bytes !== undefined) return bytes;
+      signal.throwIfAborted();
+      const revision = pulse.revision, bytes = queue.shift();
+      if (bytes !== undefined) {
+        return bytes;
+      }
       await pulse.wait({ revision, signal });
     }
   };
-  const stopA = new AbortController(), stopB = new AbortController(); stops.push(stopA, stopB);
+  const stopA = new AbortController(), stopB = new AbortController();
+  stops.push(stopA, stopB);
   const a = establishVerifiedNaidanPipingKeys({
     role: 'initiator',
     identity: identities.a,
@@ -68,7 +86,9 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure, onS
     responseTimeoutMs: 1000,
     onResponseFailure: onFailure,
   });
-  jobs.push(a, b); void a.catch(() => {}); void b.catch(() => {});
+  jobs.push(a, b);
+  void a.catch(() => {});
+  void b.catch(() => {});
   return {
     a,
     b,
@@ -76,12 +96,20 @@ async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure, onS
     stopA,
     stopB,
     whenSending({ side, count }: { side: 'a' | 'b'; count: number }) {
-      if (sends[side] >= count) return Promise.resolve();
-      const gate = Promise.withResolvers<void>(); waiting.set(`send/${side}/${count}`, gate); return gate.promise;
+      if (sends[side] >= count) {
+        return Promise.resolve();
+      }
+      const gate = Promise.withResolvers<void>();
+      waiting.set(`send/${side}/${count}`, gate);
+      return gate.promise;
     },
     whenReading({ side, count }: { side: 'a' | 'b'; count: number }) {
-      if (reads[side] >= count) return Promise.resolve();
-      const gate = Promise.withResolvers<void>(); waiting.set(`${side}/${count}`, gate); return gate.promise;
+      if (reads[side] >= count) {
+        return Promise.resolve();
+      }
+      const gate = Promise.withResolvers<void>();
+      waiting.set(`${side}/${count}`, gate);
+      return gate.promise;
     },
   };
 }
@@ -108,7 +136,8 @@ it('accepted status0 leaves local and remote human approval untimed', async () =
   const aShown = Promise.withResolvers<void>(), bShown = Promise.withResolvers<void>();
   const aApproval = Promise.withResolvers<boolean>(), bApproval = Promise.withResolvers<boolean>();
   releases.push(() => {
-    aApproval.resolve(false); bApproval.resolve(false);
+    aApproval.resolve(false);
+    bApproval.resolve(false);
   });
   const pair = await start({
     known: false,
@@ -116,80 +145,115 @@ it('accepted status0 leaves local and remote human approval untimed', async () =
     dropAt: 0,
     onFailure: undefined,
     verifyA: () => {
-      aShown.resolve(); return aApproval.promise;
+      aShown.resolve();
+      return aApproval.promise;
     },
     verifyB: () => {
-      bShown.resolve(); return bApproval.promise;
+      bShown.resolve();
+      return bApproval.promise;
     },
   });
   await Promise.all([aShown.promise, bShown.promise]);
-  expect(vi.getTimerCount()).toBe(0); await vi.advanceTimersByTimeAsync(100_000);
-  aApproval.resolve(true); await pair.whenReading({ side: 'a', count: 3 });
-  expect(vi.getTimerCount()).toBe(0); await vi.advanceTimersByTimeAsync(100_000);
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(100_000);
+  aApproval.resolve(true);
+  await pair.whenReading({ side: 'a', count: 3 });
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(100_000);
   bApproval.resolve(true);
-  const keys = await promiseAllKeyed({ a: pair.a, b: pair.b }); expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
+  const keys = await promiseAllKeyed({ a: pair.a, b: pair.b });
+  expect(keys.a.keys.contextId).toEqual(keys.b.keys.contextId);
 });
 
 it('lost status0 times out status delivery while its sender may legitimately wait for a person', async () => {
-  const shown = Promise.withResolvers<void>(), approval = Promise.withResolvers<boolean>(); releases.push(() => approval.resolve(false));
+  const shown = Promise.withResolvers<void>(), approval = Promise.withResolvers<boolean>();
+  releases.push(() => approval.resolve(false));
   const pair = await start({
     known: false,
     dropFrom: 'b',
     dropAt: 2,
     verifyA: async () => true,
     verifyB: () => {
-      shown.resolve(); return approval.promise;
+      shown.resolve();
+      return approval.promise;
     },
     onFailure: undefined,
   });
-  let bSettled = false; void pair.b.then(() => {
+  let bSettled = false;
+  void pair.b.then(() => {
     bSettled = true;
   }, () => {
     bSettled = true;
   });
-  await shown.promise; await vi.advanceTimersByTimeAsync(1000);
-  await expect(pair.a).rejects.toMatchObject({ stage: 'status' }); expect(bSettled).toBe(false);
+  await shown.promise;
+  await vi.advanceTimersByTimeAsync(1000);
+  await expect(pair.a).rejects.toMatchObject({ stage: 'status' });
+  expect(bSettled).toBe(false);
 });
 
 it.each(['verify-completes', 'verify-fails'] as const)('timeout retains and joins already-running MAC crypto: %s', async outcome => {
-  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(); releases.push(() => release.resolve());
-  const verify = crypto.subtle.verify.bind(crypto.subtle); let hold = true;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  releases.push(() => release.resolve());
+  const verify = crypto.subtle.verify.bind(crypto.subtle);
+  let hold = true;
   vi.spyOn(crypto.subtle, 'verify').mockImplementation(async (...args) => {
     const result = await verify(...args);
     if (hold) {
-      hold = false; entered.resolve(); await release.promise;
-      if (outcome === 'verify-fails') throw new Error('Late native verification failure');
+      hold = false;
+      entered.resolve();
+      await release.promise;
+      if (outcome === 'verify-fails') {
+        throw new Error('Late native verification failure');
+      }
     }
     return result;
   });
   const failure = vi.fn();
   const pair = await start({ known: true, dropFrom: undefined, dropAt: 0, verifyA: undefined, verifyB: undefined, onFailure: failure });
-  let completed = 0; void pair.a.then(() => {
-    completed++;
-  }, () => {
-    completed++;
-  }); void pair.b.then(() => {
+  let completed = 0;
+  void pair.a.then(() => {
     completed++;
   }, () => {
     completed++;
   });
-  await entered.promise; await vi.advanceTimersByTimeAsync(1000);
-  expect(failure).toHaveBeenCalled(); expect(completed).toBeLessThan(2);
-  release.resolve(); const result = await Promise.allSettled([pair.a, pair.b]);
-  const failed = result.filter(item => item.status === 'rejected'); expect(failed.length).toBeGreaterThan(0);
-  for (const item of failed) if (item.status === 'rejected') expect(item.reason).toMatchObject({ name: 'HandshakeResponseUnconfirmedError', stage: 'confirmation' });
+  void pair.b.then(() => {
+    completed++;
+  }, () => {
+    completed++;
+  });
+  await entered.promise;
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(failure).toHaveBeenCalled();
+  expect(completed).toBeLessThan(2);
+  release.resolve();
+  const result = await Promise.allSettled([pair.a, pair.b]);
+  const failed = result.filter(item => item.status === 'rejected');
+  expect(failed.length).toBeGreaterThan(0);
+  for (const item of failed) {
+    if (item.status === 'rejected') {
+      expect(item.reason).toMatchObject({ name: 'HandshakeResponseUnconfirmedError', stage: 'confirmation' });
+    }
+  }
 });
 
 it('late MAC semantic commit checks wall expiry even before the delayed timer callback runs', async () => {
-  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(); releases.push(() => release.resolve());
-  const verify = crypto.subtle.verify.bind(crypto.subtle); let hold = true;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  releases.push(() => release.resolve());
+  const verify = crypto.subtle.verify.bind(crypto.subtle);
+  let hold = true;
   vi.spyOn(crypto.subtle, 'verify').mockImplementation(async (...args) => {
-    const result = await verify(...args); if (hold) {
-      hold = false; entered.resolve(); await release.promise;
-    } return result;
+    const result = await verify(...args);
+    if (hold) {
+      hold = false;
+      entered.resolve();
+      await release.promise;
+    }
+    return result;
   });
   const pair = await start({ known: true, dropFrom: undefined, dropAt: 0, verifyA: undefined, verifyB: undefined, onFailure: undefined });
-  await entered.promise; vi.setSystemTime(1000); release.resolve();
+  await entered.promise;
+  vi.setSystemTime(1000);
+  release.resolve();
   const result = await Promise.allSettled([pair.a, pair.b]);
   expect(result.some(item => item.status === 'rejected' && item.reason instanceof HandshakeResponseUnconfirmedError)).toBe(true);
 });
@@ -206,14 +270,17 @@ it('a throwing immediate-shutdown callback is retained as retirement failure alo
       throw cleanup;
     },
   });
-  await pair.whenReading({ side: 'a', count: 1 }); await vi.advanceTimersByTimeAsync(1000);
+  await pair.whenReading({ side: 'a', count: 1 });
+  await vi.advanceTimersByTimeAsync(1000);
   await expect(pair.a).rejects.toBeInstanceOf(PipingRetirementError);
   await expect(pair.a).rejects.toMatchObject({ cause: cleanup, logicalError: { name: 'HandshakeResponseUnconfirmedError', stage: 'noise-2' } });
 });
 
 it.each(['timer-first', 'resume-before-timer'] as const)('anchors before registration await and joins delayed send: %s', async order => {
   const identity = await createNaidanPipingIdentity(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  releases.push(() => release.resolve()); const stop = new AbortController(); stops.push(stop);
+  releases.push(() => release.resolve());
+  const stop = new AbortController();
+  stops.push(stop);
   const failure = vi.fn(), receive = vi.fn(async () => new Uint8Array());
   const job = establishVerifiedNaidanPipingKeys({
     role: 'initiator',
@@ -226,31 +293,44 @@ it.each(['timer-first', 'resume-before-timer'] as const)('anchors before registr
     onResponseFailure: failure,
     channel: {
       async send() {
-        entered.resolve(); await release.promise;
+        entered.resolve();
+        await release.promise;
       },
       receive,
     },
   });
-  jobs.push(job); void job.catch(() => {}); let settled = false; void job.then(() => {
+  jobs.push(job);
+  void job.catch(() => {});
+  let settled = false;
+  void job.then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
   await entered.promise;
   if (order === 'timer-first') {
-    await vi.advanceTimersByTimeAsync(1000); expect(failure).toHaveBeenCalledOnce();
-  } else vi.setSystemTime(1000);
-  expect(settled).toBe(false); release.resolve();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(failure).toHaveBeenCalledOnce();
+  } else {
+    vi.setSystemTime(1000);
+  }
+  expect(settled).toBe(false);
+  release.resolve();
   await expect(job).rejects.toMatchObject({ name: 'HandshakeResponseUnconfirmedError', stage: 'noise-2' });
   expect(receive).not.toHaveBeenCalled();
 });
 
 it('local ephemeral-key preparation has no response deadline before prepared registration', async () => {
   const identity = await createNaidanPipingIdentity(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  releases.push(() => release.resolve()); const stop = new AbortController(); stops.push(stop);
+  releases.push(() => release.resolve());
+  const stop = new AbortController();
+  stops.push(stop);
   const generate = crypto.subtle.generateKey.bind(crypto.subtle);
   vi.spyOn(crypto.subtle, 'generateKey').mockImplementation(async (...args) => {
-    const value = await generate(...args); entered.resolve(); await release.promise; return value;
+    const value = await generate(...args);
+    entered.resolve();
+    await release.promise;
+    return value;
   });
   const sent = Promise.withResolvers<void>();
   const job = establishVerifiedNaidanPipingKeys({
@@ -272,9 +352,14 @@ it('local ephemeral-key preparation has no response deadline before prepared reg
       },
     },
   });
-  jobs.push(job); void job.catch(() => {});
-  await entered.promise; expect(vi.getTimerCount()).toBe(0); await vi.advanceTimersByTimeAsync(100_000);
-  release.resolve(); await sent.promise; await vi.advanceTimersByTimeAsync(1000);
+  jobs.push(job);
+  void job.catch(() => {});
+  await entered.promise;
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(100_000);
+  release.resolve();
+  await sent.promise;
+  await vi.advanceTimersByTimeAsync(1000);
   await expect(job).rejects.toMatchObject({ stage: 'noise-2' });
 });
 
@@ -293,15 +378,18 @@ it('preserves a sequential flight retirement failure after its owner has cancell
     onResponseFailure: undefined,
     channel: {
       send: ({ signal }) => new Promise((_resolve, reject) => {
-        signal!.addEventListener('abort', () => reject(cleanup), { once: true }); entered.resolve();
+        signal!.addEventListener('abort', () => reject(cleanup), { once: true });
+        entered.resolve();
       }),
       receive: async () => {
         throw new Error('Must not receive after failed POST');
       },
     },
   });
-  jobs.push(job); void job.catch(() => {});
-  await entered.promise; stop.abort(new Error('Caller cancelled'));
+  jobs.push(job);
+  void job.catch(() => {});
+  await entered.promise;
+  stop.abort(new Error('Caller cancelled'));
   await expect(job).rejects.toBe(cleanup);
 });
 
@@ -321,7 +409,8 @@ it('joins both mutual flights and preserves a later cleanup failure over the fir
         await new Promise<void>((_resolve, reject) => signal!.addEventListener('abort', () => reject(cleanup), { once: true }));
       }
       if (side === 'b' && count === 2) {
-        await entered.promise; bytes[bytes.length - 1]! ^= 1;
+        await entered.promise;
+bytes[bytes.length - 1]! ^= 1;
       }
     },
   });

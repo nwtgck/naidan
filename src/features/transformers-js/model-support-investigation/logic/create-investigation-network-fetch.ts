@@ -27,8 +27,12 @@ export class ModelSupportInvestigationNetworkPolicyError extends Error {
 }
 
 function requestUrl({ input }: { input: RequestInfo | URL }): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
   return input.url;
 }
 
@@ -63,10 +67,14 @@ interface BoundedByteRange {
 
 function boundedSingleRange({ value }: { value: string }): BoundedByteRange | undefined {
   const match = /^bytes=(\d+)-(\d+)$/u.exec(value.trim());
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const start = Number(match[1]);
   const end = Number(match[2]);
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) return undefined;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) {
+    return undefined;
+  }
   return { start, end, length: end - start + 1 };
 }
 
@@ -74,18 +82,30 @@ function contentRangeMatchesRequest({ response, requestedRange }: {
   response: Response;
   requestedRange: BoundedByteRange;
 }): boolean {
-  if (response.status !== 206) return false;
+  if (response.status !== 206) {
+    return false;
+  }
   const value = response.headers.get('content-range');
-  if (value === null) return false;
+  if (value === null) {
+    return false;
+  }
   const match = /^bytes (\d+)-(\d+)\/(?:\d+|\*)$/u.exec(value.trim());
-  if (match === null) return false;
+  if (match === null) {
+    return false;
+  }
   const start = Number(match[1]);
   const end = Number(match[2]);
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return false;
-  if (start !== requestedRange.start || end > requestedRange.end || end < start) return false;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+    return false;
+  }
+  if (start !== requestedRange.start || end > requestedRange.end || end < start) {
+    return false;
+  }
   const responseLength = end - start + 1;
   const contentLength = response.headers.get('content-length');
-  if (contentLength === null) return responseLength <= requestedRange.length;
+  if (contentLength === null) {
+    return responseLength <= requestedRange.length;
+  }
   const parsedContentLength = Number(contentLength);
   return Number.isSafeInteger(parsedContentLength)
     && parsedContentLength >= 0
@@ -94,7 +114,9 @@ function contentRangeMatchesRequest({ response, requestedRange }: {
 }
 
 async function cancelResponseBody({ response }: { response: Response }): Promise<void> {
-  if (response.body === null) return;
+  if (response.body === null) {
+    return;
+  }
   try {
     await response.body.cancel();
   } catch {

@@ -7,9 +7,13 @@ export function metadataSizeProbeTransport({ originalFetch }: { originalFetch: t
   return async (input, init) => {
     const request = new Request(input, init);
     const response = await originalFetch(input, init);
-    if (response.status !== 200) return response;
+    if (response.status !== 200) {
+      return response;
+    }
     if (request.headers.has('Range')) {
-      if (request.headers.get('Range') !== 'bytes=0-0') throw new Error('Unexpected fixture metadata range');
+      if (request.headers.get('Range') !== 'bytes=0-0') {
+        throw new Error('Unexpected fixture metadata range');
+      }
       const bytes = new Uint8Array(await response.arrayBuffer());
       return new Response(bytes.slice(0, 1), {
         status: 206,

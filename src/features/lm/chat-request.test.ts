@@ -27,7 +27,8 @@ describe('remote chat request projection', () => {
   it('distinguishes missing assistant text from an explicitly empty text part', async () => {
     const messages: ChatMessage[] = [{ id, role: 'assistant', parts: [] }, { id, role: 'assistant', parts: [text({ value: '' })] }];
     const result = await buildApiChatMessages({ messages, readBinaryObject: undefined, signal: undefined });
-    expect(result[0]?.content).toBeUndefined(); expect(result[1]?.content).toBe('');
+    expect(result[0]?.content).toBeUndefined();
+    expect(result[1]?.content).toBe('');
   });
 
   it('resolves images and text attachments at the API boundary in source order', async () => {
@@ -47,15 +48,20 @@ describe('remote chat request projection', () => {
   it('reconstructs stored tool errors using the same format as live errors', async () => {
     const m: ChatMessage = { id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'c' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } } }] };
     const [result] = await buildApiChatMessages({ messages: [m], readBinaryObject: async () => new Blob(['説明']), signal: undefined });
-    expect(result?.content).toBe('Error [invalid_arguments]: 説明'); expect(result?.tool_call_id).toBe('c');
+    expect(result?.content).toBe('Error [invalid_arguments]: 説明');
+    expect(result?.tool_call_id).toBe('c');
   });
 
   it('captures mutable messages, tool schemas, and parameters before any async read', () => {
-    const part = text({ value: 'A' }); const parameters = { ...EMPTY_LM_PARAMETERS, stop: ['stop'], reasoning: { effort: 'low' as const } };
+    const part = text({ value: 'A' });
+    const parameters = { ...EMPTY_LM_PARAMETERS, stop: ['stop'], reasoning: { effort: 'low' as const } };
     const schema = { type: 'object', properties: { value: { type: 'string' } } };
     const snapshot = snapshotChatRequest({ messages: [{ id, role: 'user', parts: [part] }], parameters, tools: [{ name: 'f', description: 'D', parameters: schema }] });
-    part.text = 'B'; parameters.stop.push('changed'); schema.properties.value.type = 'number';
-    expect(snapshot.messages[0]?.parts[0]).toMatchObject({ text: 'A' }); expect(snapshot.parameters?.stop).toEqual(['stop']);
+    part.text = 'B';
+    parameters.stop.push('changed');
+    schema.properties.value.type = 'number';
+    expect(snapshot.messages[0]?.parts[0]).toMatchObject({ text: 'A' });
+    expect(snapshot.parameters?.stop).toEqual(['stop']);
     expect(snapshot.tools?.[0]?.parameters).toEqual({ type: 'object', properties: { value: { type: 'string' } } });
   });
 });

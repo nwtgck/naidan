@@ -14,7 +14,9 @@ const temporaryRoots: string[] = [];
 const ortExternals = ['onnxruntime-web/webgpu', 'onnxruntime-common'];
 
 afterEach(async () => {
-  for (const directory of temporaryRoots.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of temporaryRoots.splice(0)) {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 async function temporaryRoot() {
@@ -40,7 +42,9 @@ function assertPatchedConsumers({ code }: { code: string }) {
   expect(sessionSection.includes('bufferOrPathPromise')).toBe(false);
   const preparation = code.match(/const info\s*=\s*typeConfig\.optional_configs[\s\S]*?return new this\(config, \.\.\.info\);/u)?.[0];
   expect(preparation).toBeDefined();
-  if (preparation === undefined) throw new Error('Optional preparation barrier was not emitted');
+  if (preparation === undefined) {
+    throw new Error('Optional preparation barrier was not emitted');
+  }
   expect(preparation.indexOf('await get_optional_configs')).toBeGreaterThanOrEqual(0);
   expect(preparation.indexOf('typeConfig.sessions(')).toBeGreaterThan(preparation.indexOf('await get_optional_configs'));
   expect(preparation.indexOf('await constructSessions(')).toBeGreaterThan(preparation.indexOf('typeConfig.sessions('));
@@ -83,10 +87,14 @@ it('applies the same transformation to a real Vite production Worker bundle', as
       lib: { entry: path.join(projectRoot, 'build/transformers-js-fixes/fixtures/browser-entry.ts'), formats: ['es'] },
     },
   });
-  if ('close' in result) throw new Error('Unexpected watcher');
+  if ('close' in result) {
+    throw new Error('Unexpected watcher');
+  }
   const files = (Array.isArray(result) ? result : [result]).flatMap(output => output.output);
   const worker = files.find(file => file.type === 'asset' && file.fileName.endsWith('.js'));
-  if (worker === undefined || worker.type !== 'asset') throw new Error('Worker bundle not emitted');
+  if (worker === undefined || worker.type !== 'asset') {
+    throw new Error('Worker bundle not emitted');
+  }
   assertPatchedConsumers({ code: typeof worker.source === 'string' ? worker.source : new TextDecoder().decode(worker.source) });
 }, 30_000);
 
@@ -112,7 +120,9 @@ it('serves the module Worker and unoptimized dependency with the production tran
   const worker = await server.transformRequest('/build/transformers-js-fixes/fixtures/worker-entry.ts?worker_file&type=module');
   expect(worker?.code.includes('transformers.web.js')).toBe(true);
   const dependency = await server.transformRequest('/node_modules/@huggingface/transformers/dist/transformers.web.js');
-  if (dependency === null) throw new Error('Dependency was not served');
+  if (dependency === null) {
+    throw new Error('Dependency was not served');
+  }
   assertPatchedConsumers({ code: dependency.code });
 }, 30_000);
 
@@ -148,7 +158,9 @@ it('uses the optimizer plugin for cold and warm dependency caches and rejects a 
   const fixture = await optimizerFixture();
   const cold = await optimizeDeps(await resolveConfig(fixture.config(), 'serve'));
   const file = cold.optimized['@huggingface/transformers']?.file;
-  if (file === undefined) throw new Error('Transformers dependency was not optimized');
+  if (file === undefined) {
+    throw new Error('Transformers dependency was not optimized');
+  }
   assertPatchedConsumers({ code: await readFile(file, 'utf8') });
   const before = await stat(file);
   const warm = await optimizeDeps(await resolveConfig(fixture.config(), 'serve'));

@@ -23,14 +23,18 @@ const LIMIT_NAMES = [
 ] as const;
 
 function adapterInfoRecord({ value }: { value: unknown }): Record<string, string> {
-  if (typeof value !== "object" || value === null) return {};
+  if (typeof value !== "object" || value === null) {
+    return {};
+  }
   const record = value as Record<string, unknown>;
   return Object.fromEntries(["vendor", "architecture", "device", "description"]
     .flatMap(key => typeof record[key] === "string" ? [[key, record[key]]] : []));
 }
 
 function limitsRecord({ value }: { value: object | undefined }): Record<string, number> {
-  if (value === undefined) return {};
+  if (value === undefined) {
+    return {};
+  }
   const knownLimits = value as Partial<Record<(typeof LIMIT_NAMES)[number], unknown>>;
   return Object.fromEntries(LIMIT_NAMES.flatMap(key => typeof knownLimits[key] === "number" ? [[key, knownLimits[key]]] : []));
 }

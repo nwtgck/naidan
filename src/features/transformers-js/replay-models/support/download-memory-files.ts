@@ -30,9 +30,12 @@ export function createMemoryFiles() {
       async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions) {
         const path = `${prefix}${name}/`;
         if (options?.create) {
-          mutate({ operation: 'create-directory', path }); directories.add(path);
+          mutate({ operation: 'create-directory', path });
+          directories.add(path);
         }
-        if (!directories.has(path)) throw new DOMException(`Missing directory ${path}`, 'NotFoundError');
+        if (!directories.has(path)) {
+          throw new DOMException(`Missing directory ${path}`, 'NotFoundError');
+        }
         return directory({ prefix: path });
       },
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the native FileSystemDirectoryHandle API.
@@ -40,15 +43,21 @@ export function createMemoryFiles() {
         const path = `${prefix}${name}`;
         if (options?.create) {
           mutate({ operation: 'create-file', path });
-          if (!files.has(path)) files.set(path, new Uint8Array());
+          if (!files.has(path)) {
+            files.set(path, new Uint8Array());
+          }
         }
-        if (!files.has(path)) throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+        if (!files.has(path)) {
+          throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+        }
         return {
           kind: 'file',
           name,
           async getFile() {
             const bytes = files.get(path);
-            if (!bytes) throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+            if (!bytes) {
+              throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+            }
             record({ operation: 'stat', path, bytes: bytes.byteLength });
             const snapshot = Uint8Array.from(bytes);
             const file = new File([snapshot], name);
@@ -68,7 +77,8 @@ export function createMemoryFiles() {
               value: () => new ReadableStream<Uint8Array>({
                 pull(controller) {
                   record({ operation: 'body-read', path, bytes: snapshot.byteLength });
-                  controller.enqueue(Uint8Array.from(snapshot)); controller.close();
+                  controller.enqueue(Uint8Array.from(snapshot));
+                  controller.close();
                 },
               }, { highWaterMark: 0 }),
             });
@@ -85,12 +95,15 @@ export function createMemoryFiles() {
               close() {
                 mutate({ operation: 'writer-close', path });
                 const error = writerCloseErrors.get(path);
-                if (error) throw error;
+                if (error) {
+                  throw error;
+                }
                 const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
                 const bytes = new Uint8Array(total);
                 let offset = 0;
                 for (const chunk of chunks) {
-                  bytes.set(chunk, offset); offset += chunk.byteLength;
+                  bytes.set(chunk, offset);
+                  offset += chunk.byteLength;
                 }
                 files.set(path, bytes);
               },
@@ -105,7 +118,9 @@ export function createMemoryFiles() {
       async removeEntry(name: string) {
         const path = `${prefix}${name}`;
         mutate({ operation: 'remove', path });
-        if (!files.delete(path)) throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+        if (!files.delete(path)) {
+          throw new DOMException(`Missing file ${path}`, 'NotFoundError');
+        }
       },
       async *entries() {
         for (const path of directories) {
@@ -129,7 +144,8 @@ export function createMemoryFiles() {
     writerCloseErrors,
     root: directory({ prefix: '' }),
     enter({ nextPhase, mutationPolicy }: { nextPhase: string, mutationPolicy: typeof policy }) {
-      phase = nextPhase; policy = mutationPolicy;
+      phase = nextPhase;
+      policy = mutationPolicy;
     },
   };
 }

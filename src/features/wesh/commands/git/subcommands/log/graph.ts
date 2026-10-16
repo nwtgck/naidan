@@ -36,18 +36,28 @@ function planGraph({ entries }: { entries: readonly GitLogGraphEntry[] }): Plann
     let laneIndex = lanes.indexOf(entry.objectId);
     if (laneIndex < 0) {
       const hasVisiblePendingLane = lanes.some(objectId => remainingObjectIds.has(objectId));
-      if (hasVisiblePendingLane) unsupportedTopology();
+      if (hasVisiblePendingLane) {
+        unsupportedTopology();
+      }
       lanes = [entry.objectId];
       laneIndex = 0;
     }
     remainingObjectIds.delete(entry.objectId);
-    if (lanes.length < 1 || lanes.length > 2 || laneIndex > 1) unsupportedTopology();
+    if (lanes.length < 1 || lanes.length > 2 || laneIndex > 1) {
+      unsupportedTopology();
+    }
 
-    if (entry.parentObjectIds.length > 2) unsupportedTopology();
+    if (entry.parentObjectIds.length > 2) {
+      unsupportedTopology();
+    }
     if (entry.parentObjectIds.length === 2) {
-      if (laneIndex !== 0 || lanes.length !== 1) unsupportedTopology();
+      if (laneIndex !== 0 || lanes.length !== 1) {
+        unsupportedTopology();
+      }
       const [firstParent, secondParent] = entry.parentObjectIds;
-      if (firstParent === undefined || secondParent === undefined || firstParent === secondParent) unsupportedTopology();
+      if (firstParent === undefined || secondParent === undefined || firstParent === secondParent) {
+        unsupportedTopology();
+      }
       planned.push({ entry, shape: { type: "expand" } });
       lanes = [firstParent, secondParent];
       continue;
@@ -55,7 +65,9 @@ function planGraph({ entries }: { entries: readonly GitLogGraphEntry[] }): Plann
 
     const parentObjectId = entry.parentObjectIds[0];
     if (parentObjectId === undefined) {
-      if (lanes.length !== 1 || laneIndex !== 0) unsupportedTopology();
+      if (lanes.length !== 1 || laneIndex !== 0) {
+        unsupportedTopology();
+      }
       planned.push({
         entry,
         shape: {
@@ -71,7 +83,9 @@ function planGraph({ entries }: { entries: readonly GitLogGraphEntry[] }): Plann
 
     const existingParentLane = lanes.indexOf(parentObjectId);
     if (existingParentLane >= 0 && existingParentLane !== laneIndex) {
-      if (lanes.length !== 2 || laneIndex !== 0 || existingParentLane !== 1) unsupportedTopology();
+      if (lanes.length !== 2 || laneIndex !== 0 || existingParentLane !== 1) {
+        unsupportedTopology();
+      }
       planned.push({ entry, shape: { type: "collapse-left" } });
       lanes = [parentObjectId];
       continue;
@@ -97,8 +111,12 @@ function stablePrefix({ laneCount, preserveColumnWidth }: {
   laneCount: 0 | 1 | 2,
   preserveColumnWidth: boolean,
 }): string {
-  if (laneCount === 0) return preserveColumnWidth ? "  " : "";
-  if (laneCount === 1) return "| ";
+  if (laneCount === 0) {
+    return preserveColumnWidth ? "  " : "";
+  }
+  if (laneCount === 1) {
+    return "| ";
+  }
   return "| | ";
 }
 
@@ -114,8 +132,11 @@ function graphPrefixes({ shape }: { shape: GitLogGraphShape }): {
     return { first: "* | ", transition: "|/  ", stable: "| " };
   case "normal": {
     let first: string;
-    if (shape.beforeLaneCount === 1) first = "* ";
-    else first = shape.laneIndex === 0 ? "* | " : "| * ";
+    if (shape.beforeLaneCount === 1) {
+      first = "* ";
+    } else {
+      first = shape.laneIndex === 0 ? "* | " : "| * ";
+    }
     return {
       first,
       transition: undefined,
@@ -133,7 +154,9 @@ export function renderGitLogGraph({ entries }: { entries: readonly GitLogGraphEn
   const planned = planGraph({ entries });
   const output: string[] = [];
   for (const { entry, shape } of planned) {
-    if (entry.lines.length === 0) throw new Error("log graph entry has no output lines");
+    if (entry.lines.length === 0) {
+      throw new Error("log graph entry has no output lines");
+    }
     const prefixes = graphPrefixes({ shape });
     for (let lineIndex = 0; lineIndex < entry.lines.length; lineIndex += 1) {
       const prefix = lineIndex === 0
@@ -143,7 +166,9 @@ export function renderGitLogGraph({ entries }: { entries: readonly GitLogGraphEn
           : prefixes.stable;
       output.push(`${prefix}${entry.lines[lineIndex]!}`);
     }
-    if (prefixes.transition !== undefined && entry.lines.length === 1) output.push(prefixes.transition);
+    if (prefixes.transition !== undefined && entry.lines.length === 1) {
+      output.push(prefixes.transition);
+    }
   }
   return output.length === 0 ? "" : `${output.join("\n")}\n`;
 }

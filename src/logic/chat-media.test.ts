@@ -74,7 +74,8 @@ describe('collectChatMedia', () => {
   });
 
   it('does not join a split metadata fence or parse reasoning as generated images', () => {
-    const block = imageBlock({ id: 'not-an-image' }); const middle = Math.floor(block.length / 2);
+    const block = imageBlock({ id: 'not-an-image' });
+    const middle = Math.floor(block.length / 2);
     const message: MessageNode = {
       id: toMessageId({ raw: 'a' }),
       role: 'assistant',

@@ -9,12 +9,17 @@ const props = defineProps<{ view: ImageLibraryView, disabled: boolean }>();
 const { downloadState, downloadProgress, downloading } = props.view;
 const progress = computed<DownloadProgress | undefined>(() => {
   const value = downloadProgress.value;
-  if (!value || value.total === 0) return undefined;
+  if (!value || value.total === 0) {
+    return undefined;
+  }
   const phase = (() => {
     switch (value.phase) {
     case 'transferring': return 'transferring';
     case 'checking': case 'verifying': case 'complete': return 'verifying';
-    default: { const exhaustive: never = value.phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = value.phase;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return { completed: value.completed, total: value.total, processed: value.processed, phase };
@@ -27,14 +32,20 @@ const status = computed(() => {
     switch (phase) {
     case 'checking': return lazyStrings.llamaCppBrowserDownloads__checking_hugging_face();
     case 'transferring': case 'verifying': case 'complete': case undefined: return lazyStrings.stableDiffusionCppBrowser__downloading_selected();
-    default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   case 'complete': return lazyStrings.stableDiffusionCppBrowser__download_complete();
   case 'paused': return lazyStrings.llamaCppBrowserDownloads__paused();
   case 'failed': return lazyStrings.stableDiffusionCppBrowser__download_failed();
   case 'incomplete': return lazyStrings.stableDiffusionCppBrowser__downloaded_but_incomplete();
-  default: { const exhaustive: never = downloadState.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = downloadState.value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

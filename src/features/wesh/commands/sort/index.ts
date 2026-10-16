@@ -76,7 +76,9 @@ function createBufferedSortWriter({
   let bufferedLength = 0;
 
   const flush = async (): Promise<void> => {
-    if (bufferedLength === 0) return;
+    if (bufferedLength === 0) {
+      return;
+    }
     const data = new Uint8Array(bufferedLength);
     let offset = 0;
     for (const chunk of chunks) {
@@ -91,11 +93,15 @@ function createBufferedSortWriter({
   return {
     async write({ values }: { values: readonly Uint8Array[] }): Promise<void> {
       for (const value of values) {
-        if (value.byteLength === 0) continue;
+        if (value.byteLength === 0) {
+          continue;
+        }
         chunks.push(value);
         bufferedLength += value.byteLength;
       }
-      if (bufferedLength >= maxBufferLength) await flush();
+      if (bufferedLength >= maxBufferLength) {
+        await flush();
+      }
     },
     flush,
   };
@@ -128,7 +134,9 @@ function compareSortRecordBytes({
   const length = Math.min(left.byteLength, right.byteLength);
   for (let index = 0; index < length; index += 1) {
     const difference = left[index]! - right[index]!;
-    if (difference !== 0) return difference;
+    if (difference !== 0) {
+      return difference;
+    }
   }
   return left.byteLength - right.byteLength;
 }
@@ -236,13 +244,21 @@ function compareUnicodeScalarValues({
   while (leftIndex < left.length && rightIndex < right.length) {
     const leftCodePoint = left.codePointAt(leftIndex)!;
     const rightCodePoint = right.codePointAt(rightIndex)!;
-    if (leftCodePoint < rightCodePoint) return -1;
-    if (leftCodePoint > rightCodePoint) return 1;
+    if (leftCodePoint < rightCodePoint) {
+      return -1;
+    }
+    if (leftCodePoint > rightCodePoint) {
+      return 1;
+    }
     leftIndex += leftCodePoint > 0xffff ? 2 : 1;
     rightIndex += rightCodePoint > 0xffff ? 2 : 1;
   }
-  if (leftIndex < left.length) return 1;
-  if (rightIndex < right.length) return -1;
+  if (leftIndex < left.length) {
+    return 1;
+  }
+  if (rightIndex < right.length) {
+    return -1;
+  }
   return 0;
 }
 
@@ -290,17 +306,29 @@ function compareAbsoluteNumericKeys({
   left: SortNumericKey,
   right: SortNumericKey,
 }): number {
-  if (left.integerDigits.length < right.integerDigits.length) return -1;
-  if (left.integerDigits.length > right.integerDigits.length) return 1;
-  if (left.integerDigits < right.integerDigits) return -1;
-  if (left.integerDigits > right.integerDigits) return 1;
+  if (left.integerDigits.length < right.integerDigits.length) {
+    return -1;
+  }
+  if (left.integerDigits.length > right.integerDigits.length) {
+    return 1;
+  }
+  if (left.integerDigits < right.integerDigits) {
+    return -1;
+  }
+  if (left.integerDigits > right.integerDigits) {
+    return 1;
+  }
 
   const fractionalLength = Math.max(left.fractionalDigits.length, right.fractionalDigits.length);
   for (let index = 0; index < fractionalLength; index += 1) {
     const leftDigit = left.fractionalDigits[index] ?? '0';
     const rightDigit = right.fractionalDigits[index] ?? '0';
-    if (leftDigit < rightDigit) return -1;
-    if (leftDigit > rightDigit) return 1;
+    if (leftDigit < rightDigit) {
+      return -1;
+    }
+    if (leftDigit > rightDigit) {
+      return 1;
+    }
   }
   return 0;
 }
@@ -316,9 +344,15 @@ function compareNumeric({
 }): number {
   const leftKey = parseNumericKey({ value: normalizeText({ value: left, normalization }) });
   const rightKey = parseNumericKey({ value: normalizeText({ value: right, normalization }) });
-  if (leftKey.sign < rightKey.sign) return -1;
-  if (leftKey.sign > rightKey.sign) return 1;
-  if (leftKey.sign === 0) return 0;
+  if (leftKey.sign < rightKey.sign) {
+    return -1;
+  }
+  if (leftKey.sign > rightKey.sign) {
+    return 1;
+  }
+  if (leftKey.sign === 0) {
+    return 0;
+  }
   const absoluteComparison = compareAbsoluteNumericKeys({ left: leftKey, right: rightKey });
   return leftKey.sign === -1 ? -absoluteComparison : absoluteComparison;
 }
@@ -375,10 +409,18 @@ function compareGeneralNumeric({
   const rightKey = parseGeneralNumericKey({ value: normalizeText({ value: right, normalization }) });
   const rankDifference = getGeneralNumericRankOrder({ rank: leftKey.rank })
     - getGeneralNumericRankOrder({ rank: rightKey.rank });
-  if (rankDifference !== 0) return rankDifference;
-  if (leftKey.rank !== 'finite' || rightKey.rank !== 'finite') return 0;
-  if (leftKey.numericValue < rightKey.numericValue) return -1;
-  if (leftKey.numericValue > rightKey.numericValue) return 1;
+  if (rankDifference !== 0) {
+    return rankDifference;
+  }
+  if (leftKey.rank !== 'finite' || rightKey.rank !== 'finite') {
+    return 0;
+  }
+  if (leftKey.numericValue < rightKey.numericValue) {
+    return -1;
+  }
+  if (leftKey.numericValue > rightKey.numericValue) {
+    return 1;
+  }
   return 0;
 }
 
@@ -405,7 +447,9 @@ function parseHumanNumericKey({ value }: { value: string }): {
   numericValue: number,
 } {
   const match = trimLeadingBlanks({ value }).match(/^(-?(?:\d+(?:\.\d*)?|\.\d+))([kKMGTPEZYRQ]?)(?:i?[bB])?/);
-  if (match === null) return { unitRank: 0, numericValue: 0 };
+  if (match === null) {
+    return { unitRank: 0, numericValue: 0 };
+  }
 
   return {
     unitRank: getHumanNumericUnitRank({ suffix: match[2] ?? '' }),
@@ -426,16 +470,26 @@ function compareHumanNumeric({
   const rightKey = parseHumanNumericKey({ value: normalizeText({ value: right, normalization }) });
   const leftSign = Math.sign(leftKey.numericValue);
   const rightSign = Math.sign(rightKey.numericValue);
-  if (leftSign < rightSign) return -1;
-  if (leftSign > rightSign) return 1;
-  if (leftSign === 0) return 0;
+  if (leftSign < rightSign) {
+    return -1;
+  }
+  if (leftSign > rightSign) {
+    return 1;
+  }
+  if (leftSign === 0) {
+    return 0;
+  }
 
   if (leftKey.unitRank !== rightKey.unitRank) {
     const rankComparison = leftKey.unitRank < rightKey.unitRank ? -1 : 1;
     return leftSign < 0 ? -rankComparison : rankComparison;
   }
-  if (leftKey.numericValue < rightKey.numericValue) return -1;
-  if (leftKey.numericValue > rightKey.numericValue) return 1;
+  if (leftKey.numericValue < rightKey.numericValue) {
+    return -1;
+  }
+  if (leftKey.numericValue > rightKey.numericValue) {
+    return 1;
+  }
   return 0;
 }
 
@@ -478,28 +532,50 @@ function compareMonth({
   });
 
   if (leftMonth !== undefined && rightMonth !== undefined) {
-    if (leftMonth < rightMonth) return -1;
-    if (leftMonth > rightMonth) return 1;
+    if (leftMonth < rightMonth) {
+      return -1;
+    }
+    if (leftMonth > rightMonth) {
+      return 1;
+    }
     return 0;
   }
 
-  if (leftMonth !== undefined) return 1;
-  if (rightMonth !== undefined) return -1;
+  if (leftMonth !== undefined) {
+    return 1;
+  }
+  if (rightMonth !== undefined) {
+    return -1;
+  }
   return 0;
 }
 
 function getVersionCharacterOrder({ char }: { char: string }): number {
-  if (char === '~') return -1;
-  if (char === '' || /\d/.test(char)) return 0;
-  if (/[A-Za-z]/.test(char)) return char.codePointAt(0) ?? 0;
+  if (char === '~') {
+    return -1;
+  }
+  if (char === '' || /\d/.test(char)) {
+    return 0;
+  }
+  if (/[A-Za-z]/.test(char)) {
+    return char.codePointAt(0) ?? 0;
+  }
   return 0x100 + (char.codePointAt(0) ?? 0);
 }
 
 function getVersionSpecialRank({ value }: { value: string }): number {
-  if (value === '') return -4;
-  if (value === '.') return -3;
-  if (value === '..') return -2;
-  if (value.startsWith('.')) return -1;
+  if (value === '') {
+    return -4;
+  }
+  if (value === '.') {
+    return -3;
+  }
+  if (value === '..') {
+    return -2;
+  }
+  if (value.startsWith('.')) {
+    return -1;
+  }
   return 0;
 }
 
@@ -511,7 +587,9 @@ function compareVersionChunks({
   right: string,
 }): number {
   const specialDifference = getVersionSpecialRank({ value: left }) - getVersionSpecialRank({ value: right });
-  if (specialDifference !== 0) return specialDifference;
+  if (specialDifference !== 0) {
+    return specialDifference;
+  }
 
   let leftIndex = 0;
   let rightIndex = 0;
@@ -524,13 +602,23 @@ function compareVersionChunks({
       const rightChar = right[rightIndex] ?? '';
       const orderDifference = getVersionCharacterOrder({ char: leftChar })
         - getVersionCharacterOrder({ char: rightChar });
-      if (orderDifference !== 0) return orderDifference;
-      if (leftChar !== '') leftIndex += 1;
-      if (rightChar !== '') rightIndex += 1;
+      if (orderDifference !== 0) {
+        return orderDifference;
+      }
+      if (leftChar !== '') {
+        leftIndex += 1;
+      }
+      if (rightChar !== '') {
+        rightIndex += 1;
+      }
     }
 
-    while (left[leftIndex] === '0') leftIndex += 1;
-    while (right[rightIndex] === '0') rightIndex += 1;
+    while (left[leftIndex] === '0') {
+      leftIndex += 1;
+    }
+    while (right[rightIndex] === '0') {
+      rightIndex += 1;
+    }
 
     let firstDigitDifference = 0;
     while (/\d/.test(left[leftIndex] ?? '') && /\d/.test(right[rightIndex] ?? '')) {
@@ -540,9 +628,15 @@ function compareVersionChunks({
       leftIndex += 1;
       rightIndex += 1;
     }
-    if (/\d/.test(left[leftIndex] ?? '')) return 1;
-    if (/\d/.test(right[rightIndex] ?? '')) return -1;
-    if (firstDigitDifference !== 0) return firstDigitDifference;
+    if (/\d/.test(left[leftIndex] ?? '')) {
+      return 1;
+    }
+    if (/\d/.test(right[rightIndex] ?? '')) {
+      return -1;
+    }
+    if (firstDigitDifference !== 0) {
+      return firstDigitDifference;
+    }
   }
   return 0;
 }
@@ -600,7 +694,9 @@ function splitFields({
   line: string,
   separator: string | undefined,
 }): Array<{ start: number, end: number }> {
-  if (line.length === 0) return [];
+  if (line.length === 0) {
+    return [];
+  }
 
   if (separator === undefined) {
     const spans: Array<{ start: number, end: number }> = [];
@@ -611,7 +707,9 @@ function splitFields({
         index++;
       }
       if (index === line.length) {
-        if (spans.length === 0) spans.push({ start: 0, end: line.length });
+        if (spans.length === 0) {
+          spans.push({ start: 0, end: line.length });
+        }
         break;
       }
 
@@ -661,7 +759,9 @@ function getSpanBase({
   span: { start: number, end: number },
   ignoreLeadingBlanks: boolean,
 }): number {
-  if (!ignoreLeadingBlanks) return span.start;
+  if (!ignoreLeadingBlanks) {
+    return span.start;
+  }
 
   let index = span.start;
   while (index < span.end && (line[index] === ' ' || line[index] === '\t')) {
@@ -794,15 +894,23 @@ function parseKeyToken({
   };
 
   const startPart = parsePart({ part: parts[0]! });
-  if (!startPart.ok) return startPart;
+  if (!startPart.ok) {
+    return startPart;
+  }
 
   const endPart = parts[1] === undefined ? undefined : parsePart({ part: parts[1] });
-  if (endPart !== undefined && !endPart.ok) return endPart;
+  if (endPart !== undefined && !endPart.ok) {
+    return endPart;
+  }
 
   const modifiers = new Set<string>();
-  for (const modifier of startPart.value.modifiers) modifiers.add(modifier);
+  for (const modifier of startPart.value.modifiers) {
+    modifiers.add(modifier);
+  }
   if (endPart !== undefined) {
-    for (const modifier of endPart.value.modifiers) modifiers.add(modifier);
+    for (const modifier of endPart.value.modifiers) {
+      modifiers.add(modifier);
+    }
   }
 
   let mode: SortMode | undefined;
@@ -890,7 +998,9 @@ function collectKeySpecs({
     case 'special':
       continue;
     case 'value':
-      if (occurrence.key !== 'key') continue;
+      if (occurrence.key !== 'key') {
+        continue;
+      }
       if (typeof occurrence.value !== 'string') {
         results.push({ ok: false, message: `invalid key definition: '${String(occurrence.value)}'` });
         continue;
@@ -917,7 +1027,9 @@ function collectGlobalSortModes({
     case 'flag':
     case 'special':
       for (const effect of occurrence.effects) {
-        if (effect.key !== 'mode') continue;
+        if (effect.key !== 'mode') {
+          continue;
+        }
         switch (effect.value) {
         case 'numeric':
         case 'general-numeric':
@@ -956,7 +1068,9 @@ function validateSortPreHelpSemantics({
     case 'value':
       switch (occurrence.key) {
       case 'outputPath':
-        if (typeof occurrence.value === 'string') outputPaths.add(occurrence.value);
+        if (typeof occurrence.value === 'string') {
+          outputPaths.add(occurrence.value);
+        }
         break;
       case 'fieldSeparator':
         if (typeof occurrence.value === 'string') {
@@ -974,7 +1088,9 @@ function validateSortPreHelpSemantics({
     case 'flag':
     case 'special':
       for (const effect of occurrence.effects) {
-        if (effect.key !== 'checkMode') continue;
+        if (effect.key !== 'checkMode') {
+          continue;
+        }
         switch (effect.value) {
         case 'strict':
         case 'silent':
@@ -992,9 +1108,15 @@ function validateSortPreHelpSemantics({
     }
   }
 
-  if (outputPaths.size > 1) return { ok: false, message: 'multiple output files specified' };
-  if (fieldSeparators.size > 1) return { ok: false, message: 'incompatible field separators' };
-  if (checkModes.size > 1) return { ok: false, message: "options '-cC' are incompatible" };
+  if (outputPaths.size > 1) {
+    return { ok: false, message: 'multiple output files specified' };
+  }
+  if (fieldSeparators.size > 1) {
+    return { ok: false, message: 'incompatible field separators' };
+  }
+  if (checkModes.size > 1) {
+    return { ok: false, message: "options '-cC' are incompatible" };
+  }
 
   return { ok: true };
 }
@@ -1006,7 +1128,9 @@ function findSortPreHelpSemanticIssue({
 }): string | undefined {
   const keyError = collectKeySpecs({ occurrences: parsed.occurrences })
     .find((result) => !result.ok && !result.message.startsWith('incompatible ordering options'));
-  if (keyError !== undefined && !keyError.ok) return keyError.message;
+  if (keyError !== undefined && !keyError.ok) {
+    return keyError.message;
+  }
 
   const semantics = validateSortPreHelpSemantics({ parsed });
   return semantics.ok ? undefined : semantics.message;
@@ -1046,7 +1170,9 @@ function resolveSortOptions({
 
   const keySpecsResult = collectKeySpecs({ occurrences: parsed.occurrences });
   for (const result of keySpecsResult) {
-    if (!result.ok) return result;
+    if (!result.ok) {
+      return result;
+    }
   }
 
   const keySpecs = keySpecsResult
@@ -1157,7 +1283,9 @@ function resolveKeyText({
 }): string {
   const fields = splitFields({ line, separator: keySpec.fieldSeparator });
   const startSpan = fields[keySpec.startField - 1];
-  if (startSpan === undefined) return '';
+  if (startSpan === undefined) {
+    return '';
+  }
 
   const start = getSpanPosition({
     line,
@@ -1184,7 +1312,9 @@ function resolveKeyText({
     kind: 'end',
   });
 
-  if (end <= start) return '';
+  if (end <= start) {
+    return '';
+  }
   return line.slice(start, end);
 }
 
@@ -1326,7 +1456,9 @@ async function openSortRecordIterator({
   if (usesStdin && !stdinAvailable.value) {
     return createEmptyAsyncIterator();
   }
-  if (usesStdin) stdinAvailable.value = false;
+  if (usesStdin) {
+    stdinAvailable.value = false;
+  }
 
   const stream = usesStdin
     ? openHandleReadStream({ handle: context.stdin })
@@ -1350,7 +1482,9 @@ async function closeIterator({
 }
 
 function needsByteStringComparison({ options }: { options: SortResolvedOptions }): boolean {
-  if (options.keySpecs.length > 0) return true;
+  if (options.keySpecs.length > 0) {
+    return true;
+  }
   switch (options.characterLocaleMode) {
   case 'ascii':
     return options.mode !== 'lexical'

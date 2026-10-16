@@ -35,7 +35,9 @@ it('releases fulfilled native session siblings after model construction fails an
   await expect(load).rejects.toBe(failure);
   await new Promise<void>(resolve => setImmediate(resolve));
   expect(h.sessions).toHaveBeenCalledTimes(3);
-  for (const release of releases) expect(release).toHaveBeenCalledOnce();
+  for (const release of releases) {
+    expect(release).toHaveBeenCalledOnce();
+  }
   expect(completed.sort()).toEqual([1, 3]);
 
   const followupReleases = [vi.fn(async () => undefined), vi.fn(async () => undefined), vi.fn(async () => undefined)];
@@ -43,10 +45,16 @@ it('releases fulfilled native session siblings after model construction fails an
     .mockResolvedValueOnce({ inputNames: [], outputNames: [], release: followupReleases[1] })
     .mockResolvedValueOnce({ inputNames: [], outputNames: [], release: followupReleases[2] });
   const next = await h.runtime.AutoModelForImageTextToText.from_pretrained(modelId, options);
-  for (const release of followupReleases) expect(release).not.toHaveBeenCalled();
+  for (const release of followupReleases) {
+    expect(release).not.toHaveBeenCalled();
+  }
   await next.dispose();
-  for (const release of followupReleases) expect(release).toHaveBeenCalledOnce();
-  for (const release of releases) expect(release).toHaveBeenCalledOnce();
+  for (const release of followupReleases) {
+    expect(release).toHaveBeenCalledOnce();
+  }
+  for (const release of releases) {
+    expect(release).toHaveBeenCalledOnce();
+  }
   expect(h.sessions).toHaveBeenCalledTimes(6);
   expect(h.transport).not.toHaveBeenCalled();
   expect(h.mutations).not.toHaveBeenCalled();

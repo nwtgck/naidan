@@ -154,7 +154,9 @@ describe('SmolLM2 1.7B Download replay', () => {
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       for (const path of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing persisted metadata: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing persisted metadata: ${path}`);
+        }
         expect(digest({ bytes: saved }), path).toBe(digest({ bytes: h.archive.files.get(path)! }));
         expect(h.fs.files.has(`${base}.${path}.complete`), path).toBe(true);
       }
@@ -217,13 +219,17 @@ describe('SmolLM2 1.7B Download replay', () => {
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       for (const path of expectedPaths) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing service-downloaded model artifact: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing service-downloaded model artifact: ${path}`);
+        }
         expect(readSyntheticModelBody({ bytes: saved }), path).toEqual({ modelId, revision, path });
         expect(h.fs.files.has(`${base}onnx/.${path.slice('onnx/'.length)}.complete`), path).toBe(true);
       }
       for (const path of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing service-downloaded metadata: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing service-downloaded metadata: ${path}`);
+        }
         expect(digest({ bytes: saved }), path).toBe(digest({ bytes: h.archive.files.get(path)! }));
         expect(h.fs.files.has(`${base}.${path}.complete`), path).toBe(true);
       }
@@ -299,7 +305,9 @@ describe('SmolLM2 1.7B Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('An incomplete candidate must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('An incomplete candidate must not produce an accepted model');
+      }
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(failure.message).toContain(missingPath);
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
@@ -354,9 +362,13 @@ describe('SmolLM2 1.7B Download replay', () => {
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
       expect(h.fs.activity.slice(activityBoundary).filter(item => item.operation === 'body-read' && item.path.startsWith(`${base}onnx/`))).toEqual([]);
       expect(outcome.status).toBe('failed');
-      if (outcome.status !== 'failed') throw new Error('Corrupt shared optional configuration must not produce an accepted model');
+      if (outcome.status !== 'failed') {
+        throw new Error('Corrupt shared optional configuration must not produce an accepted model');
+      }
       expect(outcome.error).toMatchObject({ name: 'TransformersJsOptionalConfigurationError', cause: expect.any(SyntaxError) });
-      if (!(outcome.error instanceof Error)) throw new Error('Expected a diagnosable optional configuration error');
+      if (!(outcome.error instanceof Error)) {
+        throw new Error('Expected a diagnosable optional configuration error');
+      }
       expect(outcome.error.message).toContain('generation_config.json');
     });
 
@@ -404,7 +416,9 @@ describe('SmolLM2 1.7B Download replay', () => {
       const restoreSpies: Array<() => void> = [];
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          for (const restore of restoreSpies.reverse()) restore();
+          for (const restore of restoreSpies.reverse()) {
+            restore();
+          }
           await h.close();
         },
       };
@@ -472,9 +486,13 @@ describe('SmolLM2 1.7B Download replay', () => {
       expect(h.offlineNonRuntimeFetchCalls).toEqual([]);
       expect(h.fs.files.has(markerPath)).toBe(true);
       expect(outcome.status, diagnostic).toBe('failed');
-      if (outcome.status !== 'failed') throw new Error('An OPFS read failure must not produce an accepted model');
+      if (outcome.status !== 'failed') {
+        throw new Error('An OPFS read failure must not produce an accepted model');
+      }
       expect(outcome.error).toBeInstanceOf(Error);
-      if (!(outcome.error instanceof Error)) throw new Error('Expected the original metadata I/O cause to remain diagnosable');
+      if (!(outcome.error instanceof Error)) {
+        throw new Error('Expected the original metadata I/O cause to remain diagnosable');
+      }
       expect(outcome.error).toMatchObject({
         name: 'RequiredDownloadedModelResourceError',
         failure: 'io',
@@ -598,7 +616,9 @@ describe('SmolLM2 1.7B Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('Missing required metadata must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('Missing required metadata must not produce an accepted model');
+      }
       // tokenizer_config remains present, so the upstream registry lists tokenizer.json.
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
@@ -630,7 +650,9 @@ describe('SmolLM2 1.7B Download replay', () => {
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const original = h.archive.files.get('tokenizer_config.json');
-      if (original === undefined) throw new Error('Missing original tokenizer configuration fixture');
+      if (original === undefined) {
+        throw new Error('Missing original tokenizer configuration fixture');
+      }
       const shadowConfig = z.object({ chat_template: z.string() }).passthrough().parse(JSON.parse(new TextDecoder().decode(original)));
       shadowConfig.chat_template = '{{ "local metadata must not override the selected immutable revision" }}';
       const shadowBytes = new TextEncoder().encode(JSON.stringify(shadowConfig));

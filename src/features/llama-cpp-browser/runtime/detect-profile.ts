@@ -12,9 +12,14 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     // Explicit choices remain explicit; model/load failures are not fallback triggers.
     return profile;
   case 'auto': break;
-  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = profile;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
   }
-  if (typeof WebAssembly === 'undefined') throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
+  if (typeof WebAssembly === 'undefined') {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
   let memory64 = false;
   try {
     memory64 = WebAssembly.validate(memory64Probe);
@@ -31,7 +36,9 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
       // does not mean an adapter with the required features can be obtained.
       if (adapter?.features.has('shader-f16')) {
         // Prefer the larger address space when available, then JSPI over Asyncify.
-        if (jspi) return memory64 ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
+        if (jspi) {
+          return memory64 ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
+        }
         return 'webgpu-wasm32-asyncify';
       }
     } catch {
@@ -45,8 +52,9 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
 export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
   const memory64 = supportsMemory64();
   let sharedReason: ProfileUnavailableReason | undefined;
-  if (typeof WebAssembly === 'undefined') sharedReason = 'wasm';
-  else {
+  if (typeof WebAssembly === 'undefined') {
+    sharedReason = 'wasm';
+  } else {
     try {
       await checkStorage();
     } catch {
@@ -56,19 +64,29 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
   let jspi = false;
   if (!sharedReason) {
     try {
-      await checkJspi(); jspi = true;
+      await checkJspi();
+      jspi = true;
     } catch { /* CPU and Asyncify remain available. */ }
   }
   const gpuReason = sharedReason ? undefined : await gpuUnavailableReason();
   const profiles: ProfileCapabilities['profiles'] = profileSchema.options.map(profile => {
     let reason = sharedReason;
-    if (!reason) switch (profile) {
-    case 'cpu-wasm32': break;
-    case 'cpu-wasm64': reason = memory64 ? undefined : 'memory64'; break;
-    case 'webgpu-wasm32-asyncify': reason = gpuReason; break;
-    case 'webgpu-wasm32-jspi': reason = gpuReason ?? (jspi ? undefined : 'jspi'); break;
-    case 'webgpu-wasm64-jspi': reason = gpuReason ?? (!memory64 ? 'memory64' : jspi ? undefined : 'jspi'); break;
-    default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+    if (!reason) {
+      switch (profile) {
+      case 'cpu-wasm32': break;
+      case 'cpu-wasm64': reason = memory64 ? undefined : 'memory64';
+        break;
+      case 'webgpu-wasm32-asyncify': reason = gpuReason;
+        break;
+      case 'webgpu-wasm32-jspi': reason = gpuReason ?? (jspi ? undefined : 'jspi');
+        break;
+      case 'webgpu-wasm64-jspi': reason = gpuReason ?? (!memory64 ? 'memory64' : jspi ? undefined : 'jspi');
+        break;
+      default: {
+        const exhaustive: never = profile;
+        throw new Error(`Unhandled profile: ${exhaustive}`);
+      }
+      }
     }
     return reason ? { profile, status: 'unavailable', reason } : { profile, status: 'available' };
   });

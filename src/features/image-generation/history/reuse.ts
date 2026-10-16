@@ -39,7 +39,10 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
     switch (purpose.type) {
     case 'draft': return { schema: draftParametersSchema, states: purpose.loraStates, draft: true };
     case 'history': return { schema: parametersSchema, states: undefined, draft: false };
-    default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = purpose;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const parameters = options.schema.parse(record.request.parameters);
@@ -50,13 +53,20 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
   for (const model of record.request.models) {
     const file = findFile({ location: model.file });
     const companions: { path: string, file: File }[] = [];
-    if (!file) missing.push(model.file.name);
+    if (!file) {
+      missing.push(model.file.name);
+    }
     for (const companion of model.companions) {
       const file = findFile({ location: companion.file });
-      if (!file) missing.push(companion.file.name);
-      else companions.push({ path: companion.path, file });
+      if (!file) {
+        missing.push(companion.file.name);
+      } else {
+        companions.push({ path: companion.path, file });
+      }
     }
-    if (file) models.push(modelFileSchema.parse({ slot: model.slot, path: model.path, file, companions }));
+    if (file) {
+      models.push(modelFileSchema.parse({ slot: model.slot, path: model.path, file, companions }));
+    }
   }
   const modelFilesMissing = missing.length > 0;
   const loras: ImageLoraSelection[] = [];
@@ -67,8 +77,11 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
     if (!file) {
       // An unavailable disabled adapter is informational. An enabled adapter
       // requires explicit re-selection or acknowledgement before generation.
-      if (!enabled) missingInactive.push(lora.file.name);
-      else missing.push(lora.file.name);
+      if (!enabled) {
+        missingInactive.push(lora.file.name);
+      } else {
+        missing.push(lora.file.name);
+      }
       continue;
     }
     // History represents disabled selections as zero strength. Restore the
@@ -79,7 +92,9 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
   }
   async function input({ image }: { image: { binaryObjectId: BinaryObjectId, name: string } }): Promise<File> {
     const blob = await getImage({ binaryObjectId: image.binaryObjectId });
-    if (!blob) throw new Error(`Image generation input is missing: ${image.name}`);
+    if (!blob) {
+      throw new Error(`Image generation input is missing: ${image.name}`);
+    }
     return new File([blob], image.name, { type: blob.type });
   }
   const imageInputs: ImageInputs = {
@@ -87,7 +102,9 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
     strength: record.request.imageInputs.strength,
     referenceImages: [],
   };
-  for (const image of record.request.imageInputs.referenceImages) imageInputs.referenceImages.push(await input({ image }));
+  for (const image of record.request.imageInputs.referenceImages) {
+    imageInputs.referenceImages.push(await input({ image }));
+  }
   return { parameters, preview, models: modelFilesMissing ? [] : models, loras, imageInputs: imageInputsSchema.parse(imageInputs), missing, missingInactive };
 }
 

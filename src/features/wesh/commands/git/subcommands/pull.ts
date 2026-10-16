@@ -94,13 +94,15 @@ export async function runPull({ context, args }: {
   const rebase = parsed.optionValues.rebase === true;
   const quiet = parsed.optionValues.quiet === true;
   const operands = parsed.positionals;
-  if (operands.length > 2)
+  if (operands.length > 2) {
     throw new Error('too many arguments');
+  }
   const repository = await discoverRepositoryFromContext({ context });
   const head = await readHead({ files: context.files, repository });
   const currentBranch = branchNameFromHead({ head });
-  if (head.objectId === undefined || currentBranch === undefined)
+  if (head.objectId === undefined || currentBranch === undefined) {
     throw new Error('pull currently requires an attached branch with commits');
+  }
   const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const configuredRemote = getConfigValue({ config, key: `branch.${currentBranch}.remote` });
   const configuredMerge = getConfigValue({ config, key: `branch.${currentBranch}.merge` });
@@ -111,20 +113,23 @@ export async function runPull({ context, args }: {
   const fetchResult = await fetchLocalRemote({ files: context.files, repository, remoteName, config });
   if (!quiet) {
     const changed = fetchResult.branchUpdates.filter(update => update.oldObjectId !== update.newObjectId);
-    if (changed.length > 0)
+    if (changed.length > 0) {
       await context.text().error({ text: `From ${fetchResult.sourcePath}\n` });
+    }
   }
   const targetObjectId = await readRef({
     files: context.files,
     repository,
     refName: `refs/remotes/${remoteName}/${remoteBranch}`,
   });
-  if (targetObjectId === undefined)
+  if (targetObjectId === undefined) {
     throw new Error(`couldn't find remote ref ${remoteBranch}`);
+  }
   const graphCache = createGitCommitGraphCache();
   if (await isAncestor({ files: context.files, repository, cache: graphCache, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
-    if (!quiet)
+    if (!quiet) {
       await context.text().print({ text: 'Already up to date.\n' });
+    }
     return { exitCode: 0 };
   }
   const canFastForward = await isAncestor({
@@ -141,8 +146,9 @@ export async function runPull({ context, args }: {
     }
     if (rebase) {
       const preflightFailure = await validateRebaseStartWorktree({ context, repository, headObjectId: head.objectId });
-      if (preflightFailure !== undefined)
+      if (preflightFailure !== undefined) {
         return preflightFailure;
+      }
       const bases = await findMergeBases({
         files: context.files,
         repository,

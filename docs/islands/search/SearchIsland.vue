@@ -25,14 +25,18 @@ const currentHref = docsHref({ locale: props.locale, page: props.currentPage });
 
 function pageForResult({ href }: { href: string }): DocsPageId {
   const page = DOCS_PAGES.find(candidate => docsHref({ locale: props.locale, page: candidate.id }) === href);
-  if (!page) throw new Error(`Unregistered Docs search result: ${href}`);
+  if (!page) {
+    throw new Error(`Unregistered Docs search result: ${href}`);
+  }
   return page.id;
 }
 
 const resultsLabel = computed(() => {
   const typed = query.value.trim();
   if (typed !== displayedQuery.value) {
-    if (displayedQuery.value) return messages.search_ui_previous_results({ query: displayedQuery.value });
+    if (displayedQuery.value) {
+      return messages.search_ui_previous_results({ query: displayedQuery.value });
+    }
     return messages.search_ui_purpose_title;
   }
   return typed ? messages.search_ui_title : messages.search_ui_purpose_title;
@@ -54,7 +58,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', shortcutListener);
-  if (dialog.value?.open) dialog.value.close();
+  if (dialog.value?.open) {
+    dialog.value.close();
+  }
   restorePage();
   disposeWorker();
 });
@@ -69,7 +75,9 @@ defineExpose({
 
 function disposeWorker(): void {
   try {
-    if (searchRemote) releaseSearchWorker({ remote: searchRemote });
+    if (searchRemote) {
+      releaseSearchWorker({ remote: searchRemote });
+    }
   } finally {
     searchRemote = undefined;
     searchWorker?.terminate();
@@ -87,7 +95,9 @@ function workerFailed({ error }: { error: unknown }): void {
 }
 
 function submitSearch(): void {
-  if (!dialog.value?.open) return;
+  if (!dialog.value?.open) {
+    return;
+  }
   const currentRequestId = ++requestId;
   if (!query.value.trim()) {
     results.value = [...props.purpose];
@@ -104,7 +114,9 @@ function submitSearch(): void {
       searchWorker = worker;
       searchRemote = wrapSearchWorker({ worker });
       worker.onerror = event => {
-        if (worker !== searchWorker) return;
+        if (worker !== searchWorker) {
+          return;
+        }
         if (!dialog.value?.open || !query.value.trim()) {
           disposeWorker();
           return;
@@ -116,9 +128,13 @@ function submitSearch(): void {
     const isCurrent = () => remote === searchRemote && currentRequestId === requestId && !!dialog.value?.open;
     const request: SearchWorkerRequest = { requestId: currentRequestId, locale: props.locale, query: query.value };
     void remote.search({ request }).then(value => {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       const response = parseWorkerResponse({ value, locale: props.locale });
-      if (response.requestId !== currentRequestId) throw new Error('Mismatched Docs search response ID');
+      if (response.requestId !== currentRequestId) {
+        throw new Error('Mismatched Docs search response ID');
+      }
       switch (response.kind) {
       case 'results':
         results.value = response.results;
@@ -136,7 +152,9 @@ function submitSearch(): void {
       }
       }
     }).catch(error => {
-      if (isCurrent()) workerFailed({ error });
+      if (isCurrent()) {
+        workerFailed({ error });
+      }
     });
   } catch (error) {
     workerFailed({ error });
@@ -144,14 +162,18 @@ function submitSearch(): void {
 }
 
 function restorePage(): void {
-  if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow;
+  if (previousOverflow !== undefined) {
+    document.body.style.overflow = previousOverflow;
+  }
   previousOverflow = undefined;
   previousFocus?.focus();
   previousFocus = undefined;
 }
 
 function closeSearch(): void {
-  if (!dialog.value?.open) return;
+  if (!dialog.value?.open) {
+    return;
+  }
   dialog.value.close();
   requestId += 1;
   status.value = 'idle';
@@ -161,7 +183,9 @@ function closeSearch(): void {
 }
 
 function openSearch(): void {
-  if (!dialog.value || dialog.value.open) return;
+  if (!dialog.value || dialog.value.open) {
+    return;
+  }
   const focused = document.activeElement;
   previousFocus = focused instanceof HTMLElement ? focused : undefined;
   previousOverflow = document.body.style.overflow;
@@ -172,10 +196,15 @@ function openSearch(): void {
 }
 
 function onShortcut({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+  if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') {
+    return;
+  }
   event.preventDefault();
-  if (dialog.value?.open) closeSearch();
-  else openSearch();
+  if (dialog.value?.open) {
+    closeSearch();
+  } else {
+    openSearch();
+  }
 }
 
 function onCancel({ event }: { event: Event }): void {
@@ -184,9 +213,13 @@ function onCancel({ event }: { event: Event }): void {
 }
 
 function onBackdrop({ event }: { event: MouseEvent }): void {
-  if (event.target !== dialog.value || !dialog.value) return;
+  if (event.target !== dialog.value || !dialog.value) {
+    return;
+  }
   const bounds = dialog.value.getBoundingClientRect();
-  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeSearch();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+    closeSearch();
+  }
 }
 
 function focusResult({ offset }: { offset: number }): void {
@@ -194,7 +227,9 @@ function focusResult({ offset }: { offset: number }): void {
 }
 
 function onInputKeydown({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing || event.key !== 'ArrowDown' || !results.value.length) return;
+  if (event.isComposing || event.key !== 'ArrowDown' || !results.value.length) {
+    return;
+  }
   event.preventDefault();
   focusResult({ offset: 0 });
 }
@@ -202,11 +237,16 @@ function onInputKeydown({ event }: { event: KeyboardEvent }): void {
 function moveResult({ event, offset }: { event: KeyboardEvent; offset: number }): void {
   const links = [...(resultList.value?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
   const current = links.indexOf(event.target as HTMLAnchorElement);
-  if (current < 0) return;
+  if (current < 0) {
+    return;
+  }
   event.preventDefault();
   const next = current + offset;
-  if (next < 0) input.value?.focus();
-  else links[next]?.focus();
+  if (next < 0) {
+    input.value?.focus();
+  } else {
+    links[next]?.focus();
+  }
 }
 </script>
 

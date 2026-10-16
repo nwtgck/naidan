@@ -112,7 +112,9 @@ export function useChatDisplayFlow({
             displayParts.push({ type: 'tool_call_draft', key: `draft-${draft.partId}`, draft });
           }
           const sourcePart = node.parts[partIndex];
-          if (sourcePart !== undefined) displayParts.push(...getAssistantPartDisplayParts({ part: sourcePart }));
+          if (sourcePart !== undefined) {
+            displayParts.push(...getAssistantPartDisplayParts({ part: sourcePart }));
+          }
         }
         for (const part of displayParts) {
           const key = JSON.stringify([idToRaw({ id: node.id }), part.key]);
@@ -121,7 +123,9 @@ export function useChatDisplayFlow({
             nodeAtoms.push({ type: 'thinking', key, node, content: part.text, isCompleted: part.completeness === 'complete' || !isLive, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
             break;
           case 'text':
-            if (part.text.length) nodeAtoms.push({ type: 'content', key, node, content: part.text, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+            if (part.text.length) {
+              nodeAtoms.push({ type: 'content', key, node, content: part.text, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+            }
             break;
           case 'tool_call_draft':
             nodeAtoms.push({ type: 'tool_calls', key, node, toolCalls: [], toolCallDrafts: [part.draft], isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
@@ -142,11 +146,17 @@ export function useChatDisplayFlow({
             case undefined:
               nodeAtoms.push({ type: 'tool_calls', key, node, toolCalls: [part.toolCall], isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
               break;
-            default: { const _ex: never = last; throw new Error(`Unhandled flow atom: ${_ex}`); }
+            default: {
+              const _ex: never = last;
+              throw new Error(`Unhandled flow atom: ${_ex}`);
+            }
             }
             break;
           }
-          default: { const _ex: never = part; throw new Error(`Unhandled display part: ${_ex}`); }
+          default: {
+            const _ex: never = part;
+            throw new Error(`Unhandled display part: ${_ex}`);
+          }
           }
         }
         // Empty stopped/error messages still need their footer and diagnostic UI.
@@ -162,7 +172,9 @@ export function useChatDisplayFlow({
           nodeAtoms[0]!.isFirstInNode = true;
           nodeAtoms[0]!.isFirstInTurn = isFirstInTurn;
           nodeAtoms[nodeAtoms.length - 1]!.isLastInNode = true;
-          for (const atom of nodeAtoms) yield atom;
+          for (const atom of nodeAtoms) {
+            yield atom;
+          }
         }
         break;
       }
@@ -177,20 +189,29 @@ export function useChatDisplayFlow({
           let call: ToolCall | undefined;
           findCall: for (let j = nodeIdx - 1; j >= 0 && !call; j--) {
             const previous = nodeArray[j];
-            if (previous === undefined) continue;
+            if (previous === undefined) {
+              continue;
+            }
             switch (previous.role) {
             case 'user': break findCall;
             case 'system':
             case 'tool': continue;
             case 'assistant':
               for (const previousPart of previous.parts) {
-                if (previousPart.type === 'tool_call' && previousPart.toolCall.id === result.toolCallId) call = previousPart.toolCall;
+                if (previousPart.type === 'tool_call' && previousPart.toolCall.id === result.toolCallId) {
+                  call = previousPart.toolCall;
+                }
               }
               break;
-            default: { const _ex: never = previous; throw new Error(`Unhandled message: ${_ex}`); }
+            default: {
+              const _ex: never = previous;
+              throw new Error(`Unhandled message: ${_ex}`);
+            }
             }
           }
-          if (call) toolCalls.push({ id: result.toolCallId, nodeId, call, result });
+          if (call) {
+            toolCalls.push({ id: result.toolCallId, nodeId, call, result });
+          }
         }
         if (toolCalls.length === node.parts.length && toolCalls.length > 0) {
           yield { type: 'tool_group', key: JSON.stringify([idToRaw({ id: nodeId }), 'tools']), id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
@@ -200,7 +221,10 @@ export function useChatDisplayFlow({
         }
         break;
       }
-      default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled role: ${_ex}`);
+      }
       }
       prevRole = role;
     }
@@ -220,7 +244,10 @@ export function useChatDisplayFlow({
       case 'tool_group': return true;
       case 'content':
       case 'waiting': return false;
-      default: { const _ex: never = atom; return _ex; }
+      default: {
+        const _ex: never = atom;
+        return _ex;
+      }
       }
     };
 
@@ -310,7 +337,10 @@ export function useChatDisplayFlow({
           case 'thinking':
           case 'content':
           case 'waiting': return {};
-          default: { const _ex: never = atom; throw new Error(`Unhandled flow atom: ${_ex}`); }
+          default: {
+            const _ex: never = atom;
+            throw new Error(`Unhandled flow atom: ${_ex}`);
+          }
           }
         })(),
         isFirstInNode: atom.isFirstInNode,
@@ -320,7 +350,10 @@ export function useChatDisplayFlow({
         flow: { position: 'standalone', nesting: 'none' },
       };
     }
-    default: { const _ex: never = type; return _ex; }
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
     }
   };
 
@@ -366,7 +399,10 @@ export function useChatDisplayFlow({
         break;
       case 'process_sequence':
         break;
-      default: { const _ex: never = type; return _ex; }
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
       }
     });
     return { thinkingSteps, toolCallCount: seenToolIds.size, toolNames: [...new Set(toolNames)], isCurrentlyThinking: false, isCurrentlyToolRunning: false, isWaiting: false };
@@ -375,7 +411,9 @@ export function useChatDisplayFlow({
 
   const chatFlow = computed<ChatFlowItem[]>(() => {
     const chatVal = chat.value;
-    if (!chatVal) return [];
+    if (!chatVal) {
+      return [];
+    }
 
     const atoms = { [Symbol.iterator]: () => yieldAtoms({ nodes: { [Symbol.iterator]: () => getChatBranchIterator({ chat: chatVal }) } }) };
     const items = Array.from(yieldGroupedItems({ atomIterator: atoms }));
@@ -387,9 +425,13 @@ export function useChatDisplayFlow({
 
       let position: SequencePosition = 'standalone';
       if (isAI({ item })) {
-        if (isAI({ item: prev }) && isAI({ item: next })) position = 'middle';
-        else if (isAI({ item: prev })) position = 'end';
-        else if (isAI({ item: next })) position = 'start';
+        if (isAI({ item: prev }) && isAI({ item: next })) {
+          position = 'middle';
+        } else if (isAI({ item: prev })) {
+          position = 'end';
+        } else if (isAI({ item: next })) {
+          position = 'start';
+        }
       }
       return { ...item, flow: { position, nesting: 'none' } };
     });

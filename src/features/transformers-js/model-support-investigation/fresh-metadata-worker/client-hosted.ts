@@ -52,7 +52,9 @@ export function createFreshMetadataWorkerClient() {
       const interruption = Promise.withResolvers<never>();
       const onAbort = () => interruption.reject(operationSignal.reason);
       operationSignal.addEventListener('abort', onAbort, { once: true });
-      if (operationSignal.aborted) onAbort();
+      if (operationSignal.aborted) {
+        onAbort();
+      }
       const timer = setTimeout(() => deadline.abort(new Error('Fresh metadata Worker deadline exceeded')), FRESH_METADATA_TIMEOUT_MS);
       try {
         const input = freshMetadataRequestSchema.parse({ modelId, revision, maximumBytes, repositoryFiles });
@@ -61,10 +63,14 @@ export function createFreshMetadataWorkerClient() {
         const result = await Promise.race([
           remote.run(input, workerProxy({
             value: ({ summary: value }: { summary: FreshMetadataSummary }) => {
-              if (!accepting || operationSignal.aborted) return;
+              if (!accepting || operationSignal.aborted) {
+                return;
+              }
               try {
                 const next = freshMetadataSummarySchema.parse(value);
-                if (next.modelId !== modelId || next.revision !== revision || next.maximumBytes !== maximumBytes) throw new Error('Fresh metadata observation identity mismatch');
+                if (next.modelId !== modelId || next.revision !== revision || next.maximumBytes !== maximumBytes) {
+                  throw new Error('Fresh metadata observation identity mismatch');
+                }
                 summary = next;
                 onObservation({ summary });
               } catch (error) {
@@ -76,10 +82,14 @@ export function createFreshMetadataWorkerClient() {
           interruption.promise,
         ]);
         const parsed = freshMetadataResultSchema.parse(result);
-        if (parsed.summary.modelId !== modelId || parsed.summary.revision !== revision || parsed.summary.maximumBytes !== maximumBytes) throw new Error('Fresh metadata result identity mismatch');
+        if (parsed.summary.modelId !== modelId || parsed.summary.revision !== revision || parsed.summary.maximumBytes !== maximumBytes) {
+          throw new Error('Fresh metadata result identity mismatch');
+        }
         return parsed;
       } catch {
-        if (signal.aborted) throw signal.reason;
+        if (signal.aborted) {
+          throw signal.reason;
+        }
         return { summary: { ...summary, status: deadline.signal.aborted ? 'timeout' : 'failed', reason: 'Fresh metadata Worker did not complete; retained HTTP observations are partial.' }, files: [] };
       } finally {
         accepting = false;

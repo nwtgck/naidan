@@ -20,7 +20,8 @@ class MockWorker extends EventTarget {
   static instances: MockWorker[] = [];
 
   constructor() {
-    super(); MockWorker.instances.push(this);
+    super();
+    MockWorker.instances.push(this);
   }
 
   terminate = mocks.terminate;
@@ -39,7 +40,8 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     vi.useFakeTimers();
     const openStream = vi.fn(async () => new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode('streamed bytes')); controller.close();
+        controller.enqueue(new TextEncoder().encode('streamed bytes'));
+        controller.close();
       },
     }));
     const remote: IModelSupportInvestigationEvidenceWorker = {
@@ -78,7 +80,8 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
           signal: undefined,
           openStream: async () => new ReadableStream<Uint8Array>({
             pull() {
-              entered.resolve(); return new Promise<void>(() => undefined);
+              entered.resolve();
+              return new Promise<void>(() => undefined);
             },
             cancel: cancelled,
           }, { highWaterMark: 0 }),

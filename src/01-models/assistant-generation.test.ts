@@ -14,9 +14,11 @@ function call({ id }: { id: string }): ToolCall {
 
 describe('assistant generation content', () => {
   it('keeps empty parts, original tags, repeated deltas, and reasoning boundaries', () => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     state.beginPart({ partId: 'r1', index: 0, type: 'reasoning' });
-    state.appendText({ partId: 'r1', text: ' ' }); state.appendText({ partId: 'r1', text: ' ' });
+    state.appendText({ partId: 'r1', text: ' ' });
+    state.appendText({ partId: 'r1', text: ' ' });
     state.closePart({ partId: 'r1', completeness: 'complete' });
     state.beginPart({ partId: 'r2', index: 1, type: 'reasoning' });
     state.closePart({ partId: 'r2', completeness: 'complete' });
@@ -45,7 +47,8 @@ describe('assistant generation content', () => {
   });
 
   it('orders completed calls by position without modifying arguments or keeping mutable aliases', () => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     const second = call({ id: 'B' });
     state.addToolCall({ partId: 'b', index: 4, toolCall: second });
     state.addToolCall({ partId: 'a', index: 1, toolCall: call({ id: 'A' }) });
@@ -56,13 +59,15 @@ describe('assistant generation content', () => {
   });
 
   it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])('rejects invalid position %s before changing history', index => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     expect(() => state.beginPart({ partId: 'p', index, type: 'text' })).toThrow('position');
     expect(message.parts).toEqual([]);
   });
 
   it('does not reuse IDs, positions, or completed call IDs', () => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     state.beginPart({ partId: 'p', index: 0, type: 'text' });
     expect(() => state.beginPart({ partId: 'p', index: 1, type: 'text' })).toThrow('part ID');
     expect(() => state.addToolCall({ partId: 'c', index: 0, toolCall: call({ id: 'call' }) })).toThrow('position');
@@ -72,16 +77,19 @@ describe('assistant generation content', () => {
   });
 
   it('rejects resumed partial content and prior interruption without altering them', () => {
-    const message = node(); message.parts.push({ type: 'text', text: 'prior', completeness: 'partial' });
+    const message = node();
+    message.parts.push({ type: 'text', text: 'prior', completeness: 'partial' });
     expect(() => createAssistantGeneration({ node: message })).toThrow('new assistant');
     expect(message.parts[0]).toMatchObject({ text: 'prior', completeness: 'partial' });
-    const empty = node(); empty.interruption = { type: 'cancelled' };
+    const empty = node();
+    empty.interruption = { type: 'cancelled' };
     expect(() => createAssistantGeneration({ node: empty })).toThrow('new assistant');
     expect(empty.interruption).toEqual({ type: 'cancelled' });
   });
 
   it('prevents repeated close, later deltas, and implicit new parts', () => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     expect(() => state.appendText({ partId: 'missing', text: 'A' })).toThrow('Unknown');
     state.beginPart({ partId: 'p', index: 0, type: 'text' });
     state.appendText({ partId: 'p', text: 'A' });
@@ -104,7 +112,8 @@ describe('assistant generation content', () => {
   });
 
   it('retains completed calls and open partial text on interruption without inventing a cause', () => {
-    const message = node(); const state = createAssistantGeneration({ node: message });
+    const message = node();
+    const state = createAssistantGeneration({ node: message });
     state.beginPart({ partId: 'p', index: 0, type: 'text' });
     state.appendText({ partId: 'p', text: 'received' });
     state.addToolCall({ partId: 'c', index: 2, toolCall: call({ id: 'C' }) });
@@ -115,7 +124,8 @@ describe('assistant generation content', () => {
   });
 
   it('uses the reactive history node for every mutation', () => {
-    const message = reactive(node()); const state = createAssistantGeneration({ node: message });
+    const message = reactive(node());
+    const state = createAssistantGeneration({ node: message });
     const observations: string[] = [];
     const stop = watch(() => message.parts.filter(part => part.type === 'text').map(part => `${part.text}:${part.completeness}`).join(''), text => observations.push(text), { flush: 'sync' });
     state.beginPart({ partId: 'p', index: 0, type: 'text' });
@@ -126,7 +136,8 @@ describe('assistant generation content', () => {
   });
 
   it('keeps a live text stream attached to its part when a completed call arrives earlier', () => {
-    const message = reactive(node()); const state = createAssistantGeneration({ node: message });
+    const message = reactive(node());
+    const state = createAssistantGeneration({ node: message });
     state.beginPart({ partId: 'answer', index: 2, type: 'text' });
     state.appendText({ partId: 'answer', text: 'A' });
     const textPart = message.parts[0];
@@ -142,17 +153,25 @@ describe('assistant generation content', () => {
   });
 
   it.each(['remove', 'replace'] as const)('rejects an external %s without redirecting an accepted stream', change => {
-    const message = reactive(node()); const state = createAssistantGeneration({ node: message });
+    const message = reactive(node());
+    const state = createAssistantGeneration({ node: message });
     state.beginPart({ partId: 'answer', index: 0, type: 'text' });
     state.appendText({ partId: 'answer', text: 'accepted' });
     const original = message.parts[0];
     switch (change) {
-    case 'remove': message.parts.splice(0, 1); break;
-    case 'replace': message.parts[0] = { type: 'text', text: 'replacement', completeness: 'partial' }; break;
-    default: { const _ex: never = change; throw new Error(String(_ex)); }
+    case 'remove': message.parts.splice(0, 1);
+      break;
+    case 'replace': message.parts[0] = { type: 'text', text: 'replacement', completeness: 'partial' };
+      break;
+    default: {
+      const _ex: never = change;
+      throw new Error(String(_ex));
+    }
     }
     expect(() => state.appendText({ partId: 'answer', text: 'wrong' })).toThrow('outside its owner');
     expect(original).toMatchObject({ text: 'accepted', completeness: 'partial' });
-    if (change === 'replace') expect(message.parts[0]).toMatchObject({ text: 'replacement' });
+    if (change === 'replace') {
+      expect(message.parts[0]).toMatchObject({ text: 'replacement' });
+    }
   });
 });

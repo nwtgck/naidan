@@ -25,7 +25,10 @@ function providerFeatureKind({ scenario }: { scenario: CaptureScenario }): Inves
   case 'natural-tool-minimal': case 'natural-tool-representative': return 'tool-probe';
   case 'structured-tool-history': return 'tool-result';
   case 'image': return 'multimodal';
-  default: { const exhaustive: never = scenario; return exhaustive; }
+  default: {
+    const exhaustive: never = scenario;
+    return exhaustive;
+  }
   }
 }
 
@@ -71,25 +74,43 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
       switch (request.status) {
       case 'settled':
         switch (request.outcome) {
-        case 'rejected': outcome = 'failed'; detail = 'The Provider request rejected.'; break;
-        case 'fulfilled': outcome = 'observed'; detail = 'The Provider request fulfilled; response correctness was not certified.'; break;
-        case undefined: outcome = 'not-recorded'; detail = 'The settlement outcome was not recorded.'; break;
-        default: { const exhaustive: never = request.outcome; throw new Error('Unhandled Provider outcome: ' + exhaustive); }
+        case 'rejected': outcome = 'failed';
+          detail = 'The Provider request rejected.';
+          break;
+        case 'fulfilled': outcome = 'observed';
+          detail = 'The Provider request fulfilled; response correctness was not certified.';
+          break;
+        case undefined: outcome = 'not-recorded';
+          detail = 'The settlement outcome was not recorded.';
+          break;
+        default: {
+          const exhaustive: never = request.outcome;
+          throw new Error('Unhandled Provider outcome: ' + exhaustive);
+        }
         }
         break;
       case 'awaiting-settlement':
-        outcome = 'not-run'; detail = 'The request started, but settlement was not observed at the cutoff.';
+        outcome = 'not-run';
+        detail = 'The request started, but settlement was not observed at the cutoff.';
         break;
       case 'not-started':
         switch (request.notStartedReason) {
-        case 'scope-not-selected': outcome = 'not-selected'; break;
+        case 'scope-not-selected': outcome = 'not-selected';
+          break;
         case undefined: case 'not-yet-started': case 'first-settlement-unavailable': case 'legacy-script-stopped':
-        case 'runtime-unavailable': case 'aborted': case 'deadline': case 'disposed': outcome = 'blocked'; break;
-        default: { const exhaustive: never = request.notStartedReason; throw new Error('Unhandled Provider not-started reason: ' + exhaustive); }
+        case 'runtime-unavailable': case 'aborted': case 'deadline': case 'disposed': outcome = 'blocked';
+          break;
+        default: {
+          const exhaustive: never = request.notStartedReason;
+          throw new Error('Unhandled Provider not-started reason: ' + exhaustive);
+        }
         }
         detail = request.notStartedReason;
         break;
-      default: { const exhaustive: never = request.status; throw new Error('Unhandled Provider request status: ' + exhaustive); }
+      default: {
+        const exhaustive: never = request.status;
+        throw new Error('Unhandled Provider request status: ' + exhaustive);
+      }
       }
       results.push({
         id: `provider-${request.requestId}`,
@@ -113,18 +134,23 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
           needsAttention: true,
         });
         break;
-      default: { const exhaustive: never = request.completeness; throw new Error('Unhandled Provider completeness: ' + exhaustive); }
+      default: {
+        const exhaustive: never = request.completeness;
+        throw new Error('Unhandled Provider completeness: ' + exhaustive);
+      }
       }
     }
-    if (run.loadAttempts.length === 0) results.push({
-      id: 'reference-not-selected',
-      kind: 'reference-load',
-      context: 'Reference',
-      outcome: 'not-selected',
-      detail: 'This investigation used the ordinary Provider route; the separate Reference comparison was not executed.',
-      comparisonMismatch: false,
-      needsAttention: false,
-    });
+    if (run.loadAttempts.length === 0) {
+      results.push({
+        id: 'reference-not-selected',
+        kind: 'reference-load',
+        context: 'Reference',
+        outcome: 'not-selected',
+        detail: 'This investigation used the ordinary Provider route; the separate Reference comparison was not executed.',
+        comparisonMismatch: false,
+        needsAttention: false,
+      });
+    }
   } else {
     const production = run.productionLane.observation ?? run.productionLane.partialObservation;
     add({ id: 'production-first-turn', kind: 'first-turn', context: 'Production', observation: production?.firstTurn, selected: plan?.generation, comparisonMismatch: false });
@@ -151,7 +177,9 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
   // A stage can finish collecting evidence while a nested check fails. Only
   // actual stage failures/blockers are repeated here, with their own reasons.
   for (const step of run.steps) {
-    if (step.status !== 'failed' && step.status !== 'blocked') continue;
+    if (step.status !== 'failed' && step.status !== 'blocked') {
+      continue;
+    }
     add({
       id: `stage-${step.id}`,
       kind: 'stage',
@@ -180,7 +208,9 @@ export function investigationFeatureResults({ run }: { run: ModelSupportInvestig
       selected: plan?.capabilityProbes,
       comparisonMismatch: probe?.status === 'observed' && !probe.exactMatch,
     });
-    if (probe === undefined) continue;
+    if (probe === undefined) {
+      continue;
+    }
     switch (probe.status) {
     case 'observed':
       add({ id: `${attempt.attemptId}-parser`, kind: 'tool-parser', context, observation: probe.parserObservation, selected: plan?.capabilityProbes, comparisonMismatch: false });

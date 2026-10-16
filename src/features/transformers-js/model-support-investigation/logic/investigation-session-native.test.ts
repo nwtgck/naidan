@@ -147,7 +147,9 @@ describe('Session native evidence retention and actual Evidence Worker export', 
     const pendingRelease = Promise.withResolvers<void>();
     const retirement = first.retire({ dispose: () => pendingRelease.promise });
     const snapshot = recallInvestigationSession({ seededTarget: 'fixture/first' });
-    if (snapshot?.view !== 'results') throw new Error('Missing retained results');
+    if (snapshot?.view !== 'results') {
+      throw new Error('Missing retained results');
+    }
     const reopened = createInvestigationSessionView({ initialSnapshot: snapshot });
     expect(reopened.initialReadiness).toBe('waiting-for-teardown');
     const run = snapshot.runs[0]![1];
@@ -163,7 +165,8 @@ describe('Session native evidence retention and actual Evidence Worker export', 
       async [Symbol.asyncDispose]() {
         pendingRelease.resolve();
         await releaseWorkerRemote({ remote });
-        channel.port1.close(); channel.port2.close();
+        channel.port1.close();
+        channel.port2.close();
       },
     };
     for (const retained of [snapshot, structuredClone(snapshot)]) {
@@ -191,7 +194,9 @@ describe('Session native evidence retention and actual Evidence Worker export', 
     view.remember({ snapshot: first });
     view.remember({ snapshot: second });
     const reopenedFirst = recallInvestigationSession({ seededTarget: 'fixture/first' });
-    if (reopenedFirst?.view !== 'results') throw new Error('Missing first batch');
+    if (reopenedFirst?.view !== 'results') {
+      throw new Error('Missing first batch');
+    }
     view.remember({ snapshot: reopenedFirst });
     const measure = (snapshot: Extract<InvestigationSessionSnapshot, { view: 'results' }>) => measureInvestigationProviderRetention({ runs: new Map(snapshot.runs), nativeEvidence: new Map(snapshot.nativeEvidence) });
     expect(measure(reopenedFirst)).toEqual(measure(first));
@@ -205,7 +210,9 @@ describe('Session native evidence retention and actual Evidence Worker export', 
       const restored = readProductionProviderCaptureEvidence({ json: await zip.file(prefix + 'production-provider/capture.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
       expect(Object.hasOwn(restored.requests[0]!.trace, 'failure')).toBe(true);
       expect(restored.format).toBe(index === 0 ? 'production-provider-capture-v2' : 'production-provider-capture-v3');
-      if (index === 1) expect(restored.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', partType: 'reasoning', text: '  reason\n' }));
+      if (index === 1) {
+        expect(restored.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', partType: 'reasoning', text: '  reason\n' }));
+      }
     }
   });
 });

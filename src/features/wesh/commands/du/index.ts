@@ -135,7 +135,9 @@ export const duCommandImplementation: WeshCommandImplementation = {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       await context.text().error({ text: `du: ${message}\n` });
-      if (!parsed.helpRequested) return { exitCode: 1 };
+      if (!parsed.helpRequested) {
+        return { exitCode: 1 };
+      }
       patterns = [];
     }
 

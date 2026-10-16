@@ -54,7 +54,9 @@ function splitTopLevelAlternatives({ source }: { source: string }): readonly str
     }
     index += 1;
   }
-  if (alternatives.length === 0) return [];
+  if (alternatives.length === 0) {
+    return [];
+  }
   alternatives.push(source.slice(startIndex));
   return alternatives;
 }
@@ -84,15 +86,23 @@ function readLiteralPrefix({ source }: { source: string }): LiteralPrefix {
 
 function hasAmbiguousLiteralPrefixAlternation({ source }: { source: string }): boolean {
   const alternatives = splitTopLevelAlternatives({ source });
-  if (alternatives.length < 2) return false;
+  if (alternatives.length < 2) {
+    return false;
+  }
   const prefixes = alternatives.map((alternative) => readLiteralPrefix({ source: alternative }));
   for (let leftIndex = 0; leftIndex < prefixes.length; leftIndex += 1) {
     const left = prefixes[leftIndex]!;
-    if (!left.complete || left.value.length === 0) continue;
+    if (!left.complete || left.value.length === 0) {
+      continue;
+    }
     for (let rightIndex = 0; rightIndex < prefixes.length; rightIndex += 1) {
-      if (leftIndex === rightIndex) continue;
+      if (leftIndex === rightIndex) {
+        continue;
+      }
       const right = prefixes[rightIndex]!;
-      if (right.value.startsWith(left.value)) return true;
+      if (right.value.startsWith(left.value)) {
+        return true;
+      }
     }
   }
   return false;
@@ -106,14 +116,20 @@ function consumeCharacterClass({
   startIndex: number,
 }): number {
   let index = startIndex + 1;
-  if (source[index] === '^') index += 1;
-  if (source[index] === ']') index += 1;
+  if (source[index] === '^') {
+    index += 1;
+  }
+  if (source[index] === ']') {
+    index += 1;
+  }
   while (index < source.length) {
     if (source[index] === '\\') {
       index += 2;
       continue;
     }
-    if (source[index] === ']') return index + 1;
+    if (source[index] === ']') {
+      return index + 1;
+    }
     index += 1;
   }
   return source.length;
@@ -126,12 +142,20 @@ function consumeGroupPrefix({
   source: string,
   startIndex: number,
 }): number {
-  if (source[startIndex + 1] !== '?') return startIndex + 1;
+  if (source[startIndex + 1] !== '?') {
+    return startIndex + 1;
+  }
   const marker = source[startIndex + 2];
-  if (marker === ':' || marker === '=' || marker === '!') return startIndex + 3;
-  if (marker !== '<') return startIndex + 1;
+  if (marker === ':' || marker === '=' || marker === '!') {
+    return startIndex + 3;
+  }
+  if (marker !== '<') {
+    return startIndex + 1;
+  }
   const lookbehindMarker = source[startIndex + 3];
-  if (lookbehindMarker === '=' || lookbehindMarker === '!') return startIndex + 4;
+  if (lookbehindMarker === '=' || lookbehindMarker === '!') {
+    return startIndex + 4;
+  }
   const nameEnd = source.indexOf('>', startIndex + 3);
   return nameEnd === -1 ? startIndex + 1 : nameEnd + 1;
 }
@@ -153,12 +177,18 @@ function parseQuantifier({
   if (first === '?') {
     return { endIndex: startIndex + 1, isVariable: true, repeatsMoreThanOnce: false };
   }
-  if (first !== '{') return undefined;
+  if (first !== '{') {
+    return undefined;
+  }
 
   let index = startIndex + 1;
   const minimumStart = index;
-  while (/\d/.test(source[index] ?? '')) index += 1;
-  if (index === minimumStart) return undefined;
+  while (/\d/.test(source[index] ?? '')) {
+    index += 1;
+  }
+  if (index === minimumStart) {
+    return undefined;
+  }
   const minimum = Number(source.slice(minimumStart, index));
   if (source[index] === '}') {
     return {
@@ -167,11 +197,17 @@ function parseQuantifier({
       repeatsMoreThanOnce: minimum > 1,
     };
   }
-  if (source[index] !== ',') return undefined;
+  if (source[index] !== ',') {
+    return undefined;
+  }
   index += 1;
   const maximumStart = index;
-  while (/\d/.test(source[index] ?? '')) index += 1;
-  if (source[index] !== '}') return undefined;
+  while (/\d/.test(source[index] ?? '')) {
+    index += 1;
+  }
+  if (source[index] !== '}') {
+    return undefined;
+  }
   const maximum = index === maximumStart
     ? Number.POSITIVE_INFINITY
     : Number(source.slice(maximumStart, index));
@@ -264,7 +300,9 @@ export function hasPotentiallyUnsafeBacktrackingStructure({
       frame.containsVariableQuantifier ||= quantifier.isVariable
         || frame.lastAtom.containsVariableQuantifier;
       index = quantifier.endIndex;
-      if (source[index] === '?') index += 1;
+      if (source[index] === '?') {
+        index += 1;
+      }
       continue;
     }
     switch (character) {

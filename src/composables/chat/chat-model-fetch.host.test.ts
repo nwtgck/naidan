@@ -60,7 +60,9 @@ describe('linked host model selection survives temporary unavailability', () => 
     { selected: 'host/root%3Aone/owner/repo:weights%3Aoriginal%2Fmodel.gguf', listed: [] },
   ])('preserves exact identity $selected without substituting another source', async ({ selected, listed }) => {
     const chat = mocks.currentChatRef.value;
-    if (!chat) throw new Error('Expected chat fixture');
+    if (!chat) {
+      throw new Error('Expected chat fixture');
+    }
     chat.modelId = selected;
     mocks.listModels.mockResolvedValue(listed);
 
@@ -74,19 +76,24 @@ describe('linked host model selection survives temporary unavailability', () => 
 
   it('preserves a saved RPC Host file selection after the catalog adopts variant names', async () => {
     const chat = mocks.currentChatRef.value;
-    if (!chat) throw new Error('Expected chat fixture');
+    if (!chat) {
+      throw new Error('Expected chat fixture');
+    }
     const selected = 'host/Models/owner/repo:repo-Q4_K_M.gguf';
     chat.modelId = selected;
     mocks.endpoint.value = { type: 'naidan_rpc', registrationId: undefined };
     mocks.listModels.mockResolvedValue(['host/Models/owner/repo:Q4_K_M']);
     await fetchModelsForChat({ chatId: chat.id, errorSource: 'test' });
-    expect(chat.modelId).toBe(selected); expect(chat.updatedAt).toBe(123);
+    expect(chat.modelId).toBe(selected);
+    expect(chat.updatedAt).toBe(123);
     expect(mocks.triggerCurrentChat).not.toHaveBeenCalled();
   });
 
   it('still clears unavailable names on other model providers', async () => {
     const chat = mocks.currentChatRef.value;
-    if (!chat) throw new Error('Expected chat fixture');
+    if (!chat) {
+      throw new Error('Expected chat fixture');
+    }
     chat.modelId = 'host/root-a/owner/repo:model.gguf';
     mocks.endpoint.value = { type: 'openai', url: 'https://example.invalid/v1' };
     mocks.listModels.mockResolvedValue([]);

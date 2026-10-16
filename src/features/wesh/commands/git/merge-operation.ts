@@ -33,15 +33,17 @@ export async function continueMerge({ context }: {
   const entries = await readIndex({ files: context.files, repository });
   const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
-    for (const path of unmergedPaths)
+    for (const path of unmergedPaths) {
       await context.text().print({ text: `U\t${path}\n` });
+    }
     await context.text().error({ text: 'error: Committing is not possible because you have unmerged files.\n' });
     await context.text().error({ text: 'fatal: Exiting because of an unresolved conflict.\n' });
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error('cannot continue merge on an unborn branch');
+  }
   const treeObjectId = await writeTreeFromIndex({ files: context.files, repository, entries });
   const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const created = await createCommit({
@@ -85,11 +87,13 @@ export async function abortMerge({ context }: {
     files: context.files,
     path: joinPath({ base: repository.gitDirPath, child: 'ORIG_HEAD' }),
   })).trim();
-  if (!/^[0-9a-f]{40}$/u.test(origHeadText))
+  if (!/^[0-9a-f]{40}$/u.test(origHeadText)) {
     throw new Error('invalid ORIG_HEAD');
+  }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error('cannot abort merge on an unborn branch');
+  }
   const currentEntries = await readIndex({ files: context.files, repository });
   const origCommit = await readCommit({ files: context.files, repository, objectId: origHeadText });
   const origEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: origCommit.treeObjectId });

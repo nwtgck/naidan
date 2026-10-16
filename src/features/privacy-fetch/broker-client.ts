@@ -196,7 +196,9 @@ function createPrivacyFetchBrokerClient({
     }
 
     disposed = true;
-    for (const disposeStream of activeStreams) disposeStream();
+    for (const disposeStream of activeStreams) {
+      disposeStream();
+    }
     activeStreams.clear();
     windowObject.removeEventListener('message', handleMessage);
     if (!readyResolved) {
@@ -261,12 +263,20 @@ function createPrivacyFetchBrokerClient({
   return {
     // TODO: Unify fetch and fetchStream around the streaming transport, buffering only for callers that need the complete body.
     async fetchStream({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchStreamResponse> {
-      if (disposed) throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
+      if (disposed) {
+        throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
+      }
       await waitForBrokerReady({ signal: request.signal });
-      if (disposed) throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
-      if (request.signal?.aborted) throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
+      if (disposed) {
+        throw createPrivacyFetchError({ code: 'broker_disposed', message: 'Privacy fetch broker is disposed' });
+      }
+      if (request.signal?.aborted) {
+        throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
+      }
       const contentWindow = iframe?.contentWindow;
-      if (!contentWindow) throw createPrivacyFetchError({ code: 'broker_unavailable', message: 'Privacy fetch broker is unavailable' });
+      if (!contentWindow) {
+        throw createPrivacyFetchError({ code: 'broker_unavailable', message: 'Privacy fetch broker is unavailable' });
+      }
       const { signal: _signal, headers, ...requestFields } = request;
       const fields = { ...requestFields, ...(headers === undefined ? {} : { headers: normalizePrivacyFetchHeaders({ headers }) }) };
       if (!streamRequestSchema.safeParse({ protocol: PRIVACY_FETCH_PROTOCOL, type: 'stream-request', ...fields }).success) {

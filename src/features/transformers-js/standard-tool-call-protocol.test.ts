@@ -163,13 +163,23 @@ function contentTokenizer({ mode, ids, specialIds }: {
       for (const message of messages) {
         let content = message.content;
         if (message.tool_calls !== undefined) {
-          if (mode === 'native-pythonic') content = `${open}[__naidan_tool_protocol_probe__(value="__naidan_tool_protocol_probe_value__")]${close}`;
-          if (mode === 'native-json') content = '<tool_call>{"name":"__naidan_tool_protocol_probe__","arguments":{"value":"__naidan_tool_protocol_probe_value__"}}</tool_call>';
+          if (mode === 'native-pythonic') {
+            content = `${open}[__naidan_tool_protocol_probe__(value="__naidan_tool_protocol_probe_value__")]${close}`;
+          }
+          if (mode === 'native-json') {
+            content = '<tool_call>{"name":"__naidan_tool_protocol_probe__","arguments":{"value":"__naidan_tool_protocol_probe_value__"}}</tool_call>';
+          }
         }
         if (message.role === 'assistant') {
-          if (mode === 'dropped') content = '';
-          if (mode === 'escaped') content = content.replaceAll('<', '&lt;');
-          if (mode === 'duplicated') content += content;
+          if (mode === 'dropped') {
+            content = '';
+          }
+          if (mode === 'escaped') {
+            content = content.replaceAll('<', '&lt;');
+          }
+          if (mode === 'duplicated') {
+            content += content;
+          }
         }
         rendered += `<|im_start|>${message.role}\n${content}<|im_end|>\n`;
       }
@@ -272,7 +282,9 @@ describe('verified standard tool content history', () => {
       [messages[2]!, messages[1]!],
       [messages[1]!, messages[2]!, messages[1]!, messages[2]!],
     ];
-    for (const input of invalid) expect(() => formatStandardMessagesForToolHandling({ messages: input, handling })).toThrow(/tool result|tool history/);
+    for (const input of invalid) {
+      expect(() => formatStandardMessagesForToolHandling({ messages: input, handling })).toThrow(/tool result|tool history/);
+    }
   });
 });
 

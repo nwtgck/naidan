@@ -53,7 +53,9 @@ class MockWorker extends EventTarget {
     mocks.workerInstances.push(this);
     if (url.pathname.endsWith('/worker/bootstrap.ts') && mocks.productionAutoReady) {
       queueMicrotask(() => {
-        if (this.active) this.startup.start();
+        if (this.active) {
+          this.startup.start();
+        }
       });
     }
   }
@@ -63,7 +65,9 @@ vi.stubGlobal("Worker", MockWorker);
 let readonlyFiles: ReturnType<typeof createMemoryFiles>;
 
 afterEach(() => {
-  for (const worker of mocks.workerInstances) worker.dispatchEvent(new Event('error'));
+  for (const worker of mocks.workerInstances) {
+    worker.dispatchEvent(new Event('error'));
+  }
   expect(globalThis.fetch).not.toHaveBeenCalled();
   expect(readonlyFiles.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 });
@@ -332,7 +336,9 @@ function attemptCheckpoint({ candidateId }: {
 async function completeProductionReply({ onGenerationEvent }: {
   onGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7],
 }) {
-  if (onGenerationEvent === undefined) throw new Error('Expected the structured generation callback');
+  if (onGenerationEvent === undefined) {
+    throw new Error('Expected the structured generation callback');
+  }
   await onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
   await onGenerationEvent({ event: { type: 'text_delta', index: 0, text: 'production' } });
   await onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
@@ -542,7 +548,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        for (const client of clients) await client.dispose();
+        for (const client of clients) {
+          await client.dispose();
+        }
         lateResult.resolve({ summary: firstSummary, files: [] });
         await flow;
         vi.useRealTimers();
@@ -1307,7 +1315,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let lateGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7];
     const planning = remote({
       runPartialInvestigation: vi.fn(async (_request, event, checkpoint) => {
-        latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
+        latePlanningEvent = event;
+        latePlanningCheckpoint = checkpoint;
+        return planningRun();
       }),
     });
     const production = ordinaryProductionRemote();
@@ -1318,9 +1328,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce(production);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
-    const onEvent = vi.fn(); const onCheckpoint = vi.fn();
+    const onEvent = vi.fn();
+    const onCheckpoint = vi.fn();
     await client.runPartialInvestigation({ modelId: 'org/model', configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
-    const events = onEvent.mock.calls.length; const checkpoints = onCheckpoint.mock.calls.length;
+    const events = onEvent.mock.calls.length;
+    const checkpoints = onCheckpoint.mock.calls.length;
     latePlanningEvent?.({ event: { stepId: 'repository-information', status: 'running', detail: 'stale planning' } });
     latePlanningCheckpoint?.({ run: planningRun() });
     await lateGenerationEvent?.({ event: { type: 'text_delta', index: 0, text: 'stale generation' } });
@@ -1346,9 +1358,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce(candidate);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
-    const onCheckpoint = vi.fn(); const onEvent = vi.fn();
+    const onCheckpoint = vi.fn();
+    const onEvent = vi.fn();
     const result = await client.runPartialInvestigation({ modelId: 'org/model', configuration: modelLoadOnlyConfiguration(), onCheckpoint, onEvent });
-    const checkpoints = onCheckpoint.mock.calls.length; const events = onEvent.mock.calls.length;
+    const checkpoints = onCheckpoint.mock.calls.length;
+    const events = onEvent.mock.calls.length;
     lateEvent?.({ event: { stage: 'model-load', status: 'running', detail: 'stale candidate', at: '2026-08-31T00:00:00.000Z' } });
     lateCheckpoint?.({ attempt: attemptCheckpoint({ candidateId: 'webgpu-q4f16' }) });
     expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
@@ -1372,7 +1386,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const outcome = operation.then(run => ({ run, error: undefined }), error => ({ run: undefined, error }));
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await client.dispose(); await outcome;
+        await client.dispose();
+        await outcome;
       },
     };
     await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
@@ -1427,7 +1442,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await client.dispose(); vi.useRealTimers();
+        await client.dispose();
+        vi.useRealTimers();
       },
     };
     await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
@@ -1447,7 +1463,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     const entered = Promise.withResolvers<void>();
     production.generateText.mockImplementation(() => {
-      entered.resolve(); return new Promise(() => undefined);
+      entered.resolve();
+      return new Promise(() => undefined);
     });
     const { client, operation } = await startPublicProviderHost({
       production,
@@ -1458,7 +1475,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await client.dispose(); vi.useRealTimers();
+        await client.dispose();
+        vi.useRealTimers();
       },
     };
     await entered.promise;
@@ -1475,7 +1493,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     const entered = Promise.withResolvers<void>();
     production.generateText.mockImplementation(() => {
-      entered.resolve(); return new Promise(() => undefined);
+      entered.resolve();
+      return new Promise(() => undefined);
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
@@ -1500,7 +1519,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     const entered = Promise.withResolvers<void>();
     production.generateText.mockImplementation(() => {
-      entered.resolve(); return new Promise(() => undefined);
+      entered.resolve();
+      return new Promise(() => undefined);
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
@@ -1532,7 +1552,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     production.loadDownloadedModel.mockImplementation((_model, _revision, progress) => {
       lateProgress = progress;
       progress({ status: 'progress', file: 'model.onnx', loaded: 42, total: 100 });
-      entered.resolve(); return new Promise(() => undefined);
+      entered.resolve();
+      return new Promise(() => undefined);
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
@@ -1562,7 +1583,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const entered = Promise.withResolvers<void>();
     production.loadDownloadedModel.mockImplementation((_model, _revision, progress) => {
       progress({ status: 'initiate', file: 'tokenizer.json' });
-      entered.resolve(); return new Promise(() => undefined);
+      entered.resolve();
+      return new Promise(() => undefined);
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
@@ -1706,12 +1728,14 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       onUpdate: () => undefined,
       runTarget: async ({ target }) => {
         visited.push(target);
-        if (target === 'org/model') return client.runPartialInvestigation({
-          modelId: target,
-          configuration: createDefaultInvestigationConfiguration(),
-          onEvent: vi.fn(),
-          onCheckpoint: vi.fn(),
-        });
+        if (target === 'org/model') {
+          return client.runPartialInvestigation({
+            modelId: target,
+            configuration: createDefaultInvestigationConfiguration(),
+            onEvent: vi.fn(),
+            onCheckpoint: vi.fn(),
+          });
+        }
         expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
         return { ...partialRun(), modelId: target };
       },

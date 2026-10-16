@@ -90,7 +90,9 @@ function collectionFixture({ capture }: { capture: Native }): ProductionProvider
 it('refuses nested revision-selection accessors without executing them during evidence admission', async () => {
   const native = collectionFixture({ capture: nativeFixture() });
   const lifetime = native.epochs[0]!.lifetime;
-  if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+  if (lifetime.status !== 'observed') {
+    throw new Error('Expected the test lifetime');
+  }
   const getter = vi.fn(() => 'discover-cached');
   lifetime.value.loadRequests[0]!.revisionSelection = Object.defineProperty({ kind: 'discover-cached' as const }, 'kind', { enumerable: true, get: getter });
   await expect(createProductionProviderNativeEvidence({
@@ -170,14 +172,17 @@ beforeEach(() => {
 afterEach(() => {
   expect(globalThis.fetch).not.toHaveBeenCalled();
   expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('native capture post-run export', () => {
   it('round-trips the optional fixed session failure category without manufacturing categories for old events', async () => {
     const native = collectionFixture({ capture: nativeFixture() });
     const lifetime = native.epochs[0]!.lifetime;
-    if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+    if (lifetime.status !== 'observed') {
+      throw new Error('Expected the test lifetime');
+    }
     const owner = { runId: context.runId, workerEpoch: context.workerEpoch };
     const ledger = createLoadDiagnosticLedger({ owner });
     const operation = createLoadDiagnosticOperation({ owner, loadOrdinal: 1, resourceNames: 'omit', sink: ({ packet }) => ledger.observe({ packet }) });
@@ -199,7 +204,9 @@ describe('native capture post-run export', () => {
   it.each(['runId', 'workerEpoch'] as const)('rejects a diagnostic owner with a foreign %s', async field => {
     const native = collectionFixture({ capture: nativeFixture() });
     const lifetime = native.epochs[0]!.lifetime;
-    if (lifetime.status !== 'observed') throw new Error('Expected the test lifetime');
+    if (lifetime.status !== 'observed') {
+      throw new Error('Expected the test lifetime');
+    }
     lifetime.value.loadDiagnostics = createLoadDiagnosticLedger({
       owner: {
         runId: field === 'runId' ? 'foreign-run' : context.runId,
@@ -269,7 +276,9 @@ describe('native capture post-run export', () => {
     const capture = nativeFixture();
     const baseline = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     const input = capture.events.find(event => event.kind === 'inputs');
-    if (input?.kind !== 'inputs') throw new Error('Expected inputs');
+    if (input?.kind !== 'inputs') {
+      throw new Error('Expected inputs');
+    }
     input.values.push({ name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: Array.from({ length: 8 }, () => [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]) } });
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     const extraBytes = new TextEncoder().encode(sidecar.json).byteLength - new TextEncoder().encode(baseline.json).byteLength;
@@ -291,13 +300,17 @@ describe('native capture post-run export', () => {
   ])('rejects forged encoded image metadata $name $snapshot', async field => {
     const capture = nativeFixture();
     const input = capture.events.find(event => event.kind === 'inputs');
-    if (input?.kind !== 'inputs') throw new Error('Expected inputs');
+    if (input?.kind !== 'inputs') {
+      throw new Error('Expected inputs');
+    }
     input.values.push({ name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[1, 2]] } });
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     // Modify only the input value in the independently decoded wire document.
     const encoded = JSON.parse(sidecar.json) as { epochs: Array<{ collection: { result: { capture: { events: Array<{ kind: string; values?: unknown[] }> } } } }> };
     const event = encoded.epochs[0]!.collection.result.capture.events.find(event => event.kind === 'inputs');
-    if (!event?.values) throw new Error('Missing encoded inputs');
+    if (!event?.values) {
+      throw new Error('Missing encoded inputs');
+    }
     event.values[event.values.length - 1] = field;
     await expect(verifyProductionProviderNativeEvidenceSidecar({ evidence: { ...sidecar, json: JSON.stringify(encoded) }, provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES })).rejects.toThrow();
   });
@@ -305,7 +318,9 @@ describe('native capture post-run export', () => {
   it('exports validated image size metadata without refusing its whole epoch', async () => {
     const capture = nativeFixture();
     const input = capture.events.find(event => event.kind === 'inputs');
-    if (input?.kind !== 'inputs') throw new Error('Missing input fixture');
+    if (input?.kind !== 'inputs') {
+      throw new Error('Missing input fixture');
+    }
     // Untrusted protocol input deliberately enters through the export validator.
     input.values.push({ name: 'original_sizes', snapshot: { status: 'not-recorded', reason: 'excluded-field' } });
     Reflect.set(input.values.at(-1)!, 'snapshot', { status: 'image-sizes', values: [[1, 1], [2, 3]] });
@@ -370,7 +385,9 @@ describe('native capture post-run export', () => {
     const capture = nativeFixture();
     capture.incompleteReasons = ['tensor-limit'];
     const input = capture.events.find(event => event.kind === 'inputs');
-    if (input?.kind !== 'inputs') throw new Error('Missing fixture input');
+    if (input?.kind !== 'inputs') {
+      throw new Error('Missing fixture input');
+    }
     input.values[0]!.snapshot = { status: 'not-recorded', reason: 'tensor-limit' };
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(sidecar.summary.recording).toBe('partial');
@@ -443,7 +460,9 @@ describe('native capture post-run export', () => {
   it('retains only immutable Blob binaries across structured cloning and source tensor mutation', async () => {
     const capture = nativeFixture();
     const event = capture.events[1];
-    if (event?.kind !== 'inputs' || event.values[0]?.snapshot.status !== 'captured') throw new Error('Expected test tensor');
+    if (event?.kind !== 'inputs' || event.values[0]?.snapshot.status !== 'captured') {
+      throw new Error('Expected test tensor');
+    }
     const source = event.values[0].snapshot.bytes;
     const sidecar = await createProductionProviderNativeEvidence({ native: collectionFixture({ capture }), provider: providerFixture(), maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
     expect(sidecar.binaries[0]!.blob).toBeInstanceOf(Blob);
@@ -466,7 +485,9 @@ describe('native capture post-run export', () => {
     // Inspect the data graph actually passed to the asynchronous sealer, not
     // heap/GC timing. Shared immutable strings are intentionally unrestricted.
     function collectObjects({ value, objects }: { value: unknown; objects: Set<object> }): void {
-      if (typeof value !== 'object' || value === null || objects.has(value)) return;
+      if (typeof value !== 'object' || value === null || objects.has(value)) {
+        return;
+      }
       objects.add(value);
       if (ArrayBuffer.isView(value)) {
         objects.add(value.buffer);
@@ -476,7 +497,9 @@ describe('native capture post-run export', () => {
           collectObjects({ value: entry, objects });
         }
       } else {
-        for (const entry of Object.values(value)) collectObjects({ value: entry, objects });
+        for (const entry of Object.values(value)) {
+          collectObjects({ value: entry, objects });
+        }
       }
     }
     const sources = new Set<object>();
@@ -506,7 +529,9 @@ describe('native capture post-run export', () => {
     capture.calls.push({ context: secondContext, loadIdentity: { ...load, requestedRevision: { status: 'provided', value: 'revision-b' } }, outcome: 'fulfilled', invocations: [] });
     const native = collectionFixture({ capture });
     const lifetime = native.epochs[0]!.lifetime;
-    if (lifetime.status !== 'observed') throw new Error('Expected test lifetime');
+    if (lifetime.status !== 'observed') {
+      throw new Error('Expected test lifetime');
+    }
     const withIssued = { ...native, epochs: [{ ...native.epochs[0]!, lifetime: { ...lifetime, value: { ...lifetime.value, issuedCalls: [context, secondContext] } } }] };
     await expect(createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: withIssued, provider: providerFixture() })).rejects.toThrow(/^Invalid native capture evidence$/u);
   });
@@ -520,7 +545,9 @@ describe('native capture post-run export', () => {
     capture.calls.push({ context: secondContext, loadIdentity: { ...load }, outcome: 'fulfilled', invocations: [] });
     const native = collectionFixture({ capture });
     const lifetime = native.epochs[0]!.lifetime;
-    if (lifetime.status !== 'observed') throw new Error('Expected test lifetime');
+    if (lifetime.status !== 'observed') {
+      throw new Error('Expected test lifetime');
+    }
     const exported = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: { ...native, epochs: [{ ...native.epochs[0]!, lifetime: { ...lifetime, value: { ...lifetime.value, issuedCalls: [context, secondContext] } } }] }, provider });
     const readBinary = vi.fn(async ({ reference }: { reference: { path: string } }) => new Uint8Array(await exported.binaries.find(binary => binary.path === reference.path)!.blob.arrayBuffer()));
     await expect(verifyProductionProviderNativeEvidence({ json: exported.json, provider, readBinary })).resolves.toEqual({ referencedPaths: exported.binaries.map(binary => binary.path), summary: exported.summary });
@@ -536,7 +563,9 @@ describe('native capture post-run export', () => {
     const exported = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: collectionFixture({ capture: nativeFixture() }), provider });
     const readBinary = vi.fn(async ({ reference }: { reference: { path: string; byteLength: number; sha256: string } }) => {
       const binary = exported.binaries.find(binary => binary.path === reference.path);
-      if (binary === undefined || binary.sha256 !== reference.sha256 || binary.byteLength !== reference.byteLength) throw new Error('Invalid manifest reference');
+      if (binary === undefined || binary.sha256 !== reference.sha256 || binary.byteLength !== reference.byteLength) {
+        throw new Error('Invalid manifest reference');
+      }
       return new Uint8Array(await binary.blob.arrayBuffer());
     });
     const verified = await verifyProductionProviderNativeEvidence({ json: exported.json, provider, readBinary });
@@ -600,7 +629,9 @@ describe('native capture post-run export', () => {
     capture.calls[0]!.loadIdentity = { status: 'ready', workerLoadOrdinal: 1, requestedModelId: provider.modelId, cleanModelId: 'fixture/model', requestedRevision: { status: 'omitted' }, autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', selectedCandidate: { device: 'webgpu', dtype: 'q4f16' }, resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' } };
     const native = collectionFixture({ capture });
     const lifetime = native.epochs[0]!.lifetime;
-    if (lifetime.status !== 'observed') throw new Error('Expected test lifetime');
+    if (lifetime.status !== 'observed') {
+      throw new Error('Expected test lifetime');
+    }
     const exported = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: { ...native, epochs: [{ ...native.epochs[0]!, lifetime: { ...lifetime, value: { ...lifetime.value, loadRequests: [{ requestedModelId: provider.modelId, requestedRevision: undefined }] } } }] }, provider });
     const readBinary = async ({ reference }: { reference: { path: string } }) => new Uint8Array(await exported.binaries.find(binary => binary.path === reference.path)!.blob.arrayBuffer());
     await expect(verifyProductionProviderNativeEvidence({ json: exported.json, provider, readBinary })).resolves.toEqual({ referencedPaths: exported.binaries.map(binary => binary.path), summary: exported.summary });
@@ -658,7 +689,9 @@ describe('native capture post-run export', () => {
   it('emits exact binary windows and empty tensors with identity, stream grouping and explicit limitations', async () => {
     const capture = nativeFixture();
     const input = capture.events[1];
-    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') throw new Error('Expected test tensor');
+    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') {
+      throw new Error('Expected test tensor');
+    }
     input.values[0].snapshot.bytes = Uint8Array.of(99, 5, 6, 88).subarray(1, 3);
     const result = await createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: collectionFixture({ capture }), provider: providerFixture() });
     const document = JSON.parse(result.json);
@@ -680,7 +713,9 @@ describe('native capture post-run export', () => {
   it('copies bytes before hash awaits and never invokes opaque byte-array properties', async () => {
     const capture = nativeFixture();
     const input = capture.events[1];
-    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') throw new Error('Expected test tensor');
+    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') {
+      throw new Error('Expected test tensor');
+    }
     const source = input.values[0].snapshot.bytes;
     const getter = vi.fn(() => {
       throw new Error('Secret getter must not run');
@@ -711,7 +746,9 @@ describe('native capture post-run export', () => {
     const capture = nativeFixture();
     const original = collectionFixture({ capture });
     const epoch = original.epochs[0]!;
-    if (epoch.lifetime.status !== 'observed') throw new Error('Expected host lifetime');
+    if (epoch.lifetime.status !== 'observed') {
+      throw new Error('Expected host lifetime');
+    }
     epoch.lifetime.value.issuedCalls.push({ ...context, generationCallId: 2 });
     const provider = providerFixture();
     const request = provider.requests[0]!;
@@ -761,7 +798,9 @@ describe('native capture post-run export', () => {
   it('rejects shared backing and dishonest dimensions without hashing invalid bytes', async () => {
     const capture = nativeFixture();
     const input = capture.events[1];
-    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') throw new Error('Expected test tensor');
+    if (input?.kind !== 'inputs' || input.values[0]?.snapshot.status !== 'captured') {
+      throw new Error('Expected test tensor');
+    }
     Reflect.set(input.values[0].snapshot, 'bytes', new Uint8Array(new SharedArrayBuffer(2)));
     await expect(createProductionProviderNativeEvidence({ maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES, native: collectionFixture({ capture }), provider: providerFixture() })).rejects.toThrow(/^Invalid native capture evidence$/u);
     input.values[0].snapshot.bytes = Uint8Array.of(5, 6);

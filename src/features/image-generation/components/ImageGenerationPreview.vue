@@ -16,13 +16,19 @@ watch(maxPreviews, value => {
 });
 
 function editPreviewLimit({ event }: { event: Event }): void {
-  if (event.target instanceof HTMLInputElement) previewLimitDraft.value = event.target.value;
+  if (event.target instanceof HTMLInputElement) {
+    previewLimitDraft.value = event.target.value;
+  }
 }
 
 function commitPreviewLimit({ event }: { event: Event }): void {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
-  if (Number.isFinite(input.valueAsNumber)) maxPreviews.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  if (Number.isFinite(input.valueAsNumber)) {
+    maxPreviews.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  }
   previewLimitDraft.value = String(maxPreviews.value);
   input.value = previewLimitDraft.value;
 }
@@ -31,13 +37,17 @@ const viewerIndex = ref<number>();
 const previewSettingsOpen = ref(false);
 const previewSettingsId = useId();
 watch(() => props.active, active => {
-  if (!active) viewerIndex.value = undefined;
+  if (!active) {
+    viewerIndex.value = undefined;
+  }
 });
 watch(() => props.view.historySaving.supported.value, () => {
   viewerIndex.value = undefined;
 });
 watch(previewSnapshots, (current, previous) => {
-  if (viewerIndex.value === undefined) return;
+  if (viewerIndex.value === undefined) {
+    return;
+  }
   const selected = previous[viewerIndex.value];
   const nextIndex = current.findIndex(item => item.id === selected?.id);
   viewerIndex.value = nextIndex < 0 ? undefined : nextIndex;

@@ -17,14 +17,18 @@ function entryEquals({ left, right }: {
   left: GitIndexEntry | undefined,
   right: GitIndexEntry | undefined,
 }): boolean {
-  if (left === undefined || right === undefined) return left === right;
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
   return left.objectId === right.objectId && left.mode === right.mode;
 }
 
 function entryMap({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
   const result = new Map<string, GitIndexEntry>();
   for (const entry of entries) {
-    if (entry.stage !== 0) throw new Error(`three-tree merge requires stage-0 entries: ${entry.path}`);
+    if (entry.stage !== 0) {
+      throw new Error(`three-tree merge requires stage-0 entries: ${entry.path}`);
+    }
     result.set(entry.path, entry);
   }
   return result;
@@ -41,22 +45,31 @@ export function mergeThreeTrees({ baseEntries, oursEntries, theirsEntries }: {
   const result: GitIndexEntry[] = [];
   const conflicts: GitTreeMergeConflict[] = [];
   const pathSet = new Set(base.keys());
-  for (const path of ours.keys()) pathSet.add(path);
-  for (const path of theirs.keys()) pathSet.add(path);
+  for (const path of ours.keys()) {
+    pathSet.add(path);
+  }
+  for (const path of theirs.keys()) {
+    pathSet.add(path);
+  }
   const paths = sortGitPaths({ paths: pathSet });
   for (const path of paths) {
     const baseEntry = base.get(path);
     const oursEntry = ours.get(path);
     const theirsEntry = theirs.get(path);
     let selected: GitIndexEntry | undefined;
-    if (entryEquals({ left: oursEntry, right: theirsEntry })) selected = oursEntry;
-    else if (entryEquals({ left: oursEntry, right: baseEntry })) selected = theirsEntry;
-    else if (entryEquals({ left: theirsEntry, right: baseEntry })) selected = oursEntry;
-    else {
+    if (entryEquals({ left: oursEntry, right: theirsEntry })) {
+      selected = oursEntry;
+    } else if (entryEquals({ left: oursEntry, right: baseEntry })) {
+      selected = theirsEntry;
+    } else if (entryEquals({ left: theirsEntry, right: baseEntry })) {
+      selected = oursEntry;
+    } else {
       conflicts.push({ path, base: baseEntry, ours: oursEntry, theirs: theirsEntry });
       continue;
     }
-    if (selected !== undefined) result.push({ ...selected, stage: 0 });
+    if (selected !== undefined) {
+      result.push({ ...selected, stage: 0 });
+    }
   }
   return { entries: result, conflicts };
 }

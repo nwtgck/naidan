@@ -23,7 +23,9 @@ async function readCloneContentPolicyConfig({ context }: {
   for (const entry of await readGlobalConfigEntries({ files: context.files, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env })) {
     config.set(entry.key, entry.value);
   }
-  for (const entry of readCommandConfigEntries({ env: context.env })) config.set(entry.key, entry.value);
+  for (const entry of readCommandConfigEntries({ env: context.env })) {
+    config.set(entry.key, entry.value);
+  }
   return config;
 }
 
@@ -32,7 +34,9 @@ function assertContentPolicyConfig({ config, cleanMutation }: {
   cleanMutation: boolean;
 }): void {
   assertSupportedWorktreeContentConfig({ config });
-  if (cleanMutation) assertSupportedSafeCrlfClean({ config });
+  if (cleanMutation) {
+    assertSupportedSafeCrlfClean({ config });
+  }
 }
 
 export async function assertSupportedRepositoryContentPolicy({ context, cleanMutation = false }: {

@@ -40,7 +40,9 @@ watch([selected, available, detailLoading, () => props.active, () => props.disab
   imageDeleteContextRevision++;
 }, { flush: 'sync' });
 watch(() => props.active && available.value, visible => {
-  if (!visible) viewerIndex.value = undefined;
+  if (!visible) {
+    viewerIndex.value = undefined;
+  }
 });
 const viewerFrames = computed(() => selected.value ? [selected.value.result, ...selected.value.previews] : []);
 const requestedSettingsHtml = computed(() => jsonToHighlightedHtml({
@@ -65,21 +67,31 @@ watch(selected, () => {
 
 async function copySelectedPrompt(): Promise<void> {
   const prompt = selected.value?.request.parameters.prompt;
-  if (prompt === undefined) return;
+  if (prompt === undefined) {
+    return;
+  }
   const revision = ++promptCopyRevision;
   promptCopied.value = false;
   promptCopyError.value = '';
   try {
     await navigator.clipboard.writeText(prompt);
-    if (revision !== promptCopyRevision) return;
+    if (revision !== promptCopyRevision) {
+      return;
+    }
     promptCopied.value = true;
     setTimeout(() => {
-      if (revision === promptCopyRevision) promptCopied.value = false;
+      if (revision === promptCopyRevision) {
+        promptCopied.value = false;
+      }
     }, 2000);
   } catch (cause) {
-    if (revision !== promptCopyRevision) return;
+    if (revision !== promptCopyRevision) {
+      return;
+    }
     const message = await ensureStrings.volumes__failed_to_copy({ errorMessage: cause instanceof Error ? cause.message : String(cause) });
-    if (revision === promptCopyRevision) promptCopyError.value = message;
+    if (revision === promptCopyRevision) {
+      promptCopyError.value = message;
+    }
   }
 }
 
@@ -95,14 +107,18 @@ function dateLabel({ timestamp }: { timestamp: number }): string {
 }
 
 async function removeSelected(): Promise<void> {
-  if (!selected.value || deleting.value || deletingImage.value || detailLoading.value || props.recordDeleteDisabled || !props.active || !available.value) return;
+  if (!selected.value || deleting.value || deletingImage.value || detailLoading.value || props.recordDeleteDisabled || !props.active || !available.value) {
+    return;
+  }
   const id = selected.value.id;
   deleting.value = true;
   deleteError.value = '';
   try {
     await props.view.remove({ id });
   } catch (cause) {
-    if (selected.value?.id === id) deleteError.value = cause instanceof Error ? cause.message : String(cause);
+    if (selected.value?.id === id) {
+      deleteError.value = cause instanceof Error ? cause.message : String(cause);
+    }
   } finally {
     deleting.value = false;
   }
@@ -110,20 +126,28 @@ async function removeSelected(): Promise<void> {
 
 async function removeSelectedImage(): Promise<void> {
   const record = selected.value;
-  if (!record || deletingImage.value || deleting.value || detailLoading.value || props.disabled || !props.active || !available.value) return;
+  if (!record || deletingImage.value || deleting.value || detailLoading.value || props.disabled || !props.active || !available.value) {
+    return;
+  }
   const id = record.id, binaryObjectId = record.result.binaryObjectId;
   const contextRevision = imageDeleteContextRevision;
   const title = await ensureStrings.ImageGenerationHistory__delete_image_file();
   const message = await ensureStrings.ImageGenerationHistory__deleting_image_file_affects_other_records();
-  if (contextRevision !== imageDeleteContextRevision || selected.value !== record || props.disabled || !props.active || !available.value) return;
+  if (contextRevision !== imageDeleteContextRevision || selected.value !== record || props.disabled || !props.active || !available.value) {
+    return;
+  }
   const confirmed = await showConfirm({ title, message, confirmButtonText: title, confirmButtonVariant: 'danger' });
-  if (!confirmed || contextRevision !== imageDeleteContextRevision || deletingImage.value || deleting.value || detailLoading.value || props.disabled || !props.active || !available.value || selected.value !== record || selected.value.result.binaryObjectId !== binaryObjectId) return;
+  if (!confirmed || contextRevision !== imageDeleteContextRevision || deletingImage.value || deleting.value || detailLoading.value || props.disabled || !props.active || !available.value || selected.value !== record || selected.value.result.binaryObjectId !== binaryObjectId) {
+    return;
+  }
   deletingImage.value = true;
   imageDeleteError.value = '';
   try {
     await props.view.removeImage({ id, binaryObjectId });
   } catch (cause) {
-    if (selected.value === record) imageDeleteError.value = cause instanceof Error ? cause.message : String(cause);
+    if (selected.value === record) {
+      imageDeleteError.value = cause instanceof Error ? cause.message : String(cause);
+    }
   } finally {
     deletingImage.value = false;
   }

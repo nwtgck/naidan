@@ -158,9 +158,13 @@ function assertLinkContracts({
     if (hasRelToken(link, 'modulepreload') || hasRelToken(link, 'preload')) {
       throw new Error(`[${pluginName}] Standalone HTML must not contain preload links: ${link.outerHTML}`);
     }
-    if (!hasRelToken(link, 'stylesheet')) continue;
+    if (!hasRelToken(link, 'stylesheet')) {
+      continue;
+    }
     const href = link.getAttribute('href');
-    if (href === null) throw new Error(`[${pluginName}] Standalone stylesheet link is missing href.`);
+    if (href === null) {
+      throw new Error(`[${pluginName}] Standalone stylesheet link is missing href.`);
+    }
     const stylesheetFileName = resolveFileProtocolStandaloneHtmlReference({
       reference: href,
       htmlFileName,
@@ -197,7 +201,9 @@ export type FileProtocolStandaloneHtmlStylesheetReference = FileProtocolStandalo
 }>;
 
 function isHtmlSourceRange(value: unknown): value is FileProtocolStandaloneHtmlSourceRange {
-  if (value === null || typeof value !== 'object') return false;
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
   return 'startOffset' in value
     && typeof value.startOffset === 'number'
     && 'endOffset' in value
@@ -207,7 +213,9 @@ function isHtmlSourceRange(value: unknown): value is FileProtocolStandaloneHtmlS
 function isAttributeLocationMap(
   value: unknown,
 ): value is Readonly<Record<string, FileProtocolStandaloneHtmlSourceRange>> {
-  if (value === null || typeof value !== 'object') return false;
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
   return Object.values(value).every(isHtmlSourceRange);
 }
 
@@ -276,7 +284,9 @@ export function assertFileProtocolStandaloneHtmlBeforeRewrite({
     });
     const executableScripts = Array.from(document.querySelectorAll('script')).filter(isExecutableScript);
     const preRuntimeScripts = executableScripts.filter(isPreRuntimeScript);
-    for (const script of preRuntimeScripts) assertValidPreRuntimeScript(script);
+    for (const script of preRuntimeScripts) {
+      assertValidPreRuntimeScript(script);
+    }
     const applicationScripts = executableScripts.filter(script => !isPreRuntimeScript(script));
     if (applicationScripts.length !== 1) {
       throw new Error(`[${pluginName}] Expected exactly one Vite application entry script; found ${applicationScripts.length}.`);
@@ -323,7 +333,9 @@ export function assertFileProtocolStandaloneHtmlAfterRewrite({
     });
     const executableScripts = Array.from(document.querySelectorAll('script')).filter(isExecutableScript);
     const preRuntimeScripts = executableScripts.filter(isPreRuntimeScript);
-    for (const script of preRuntimeScripts) assertValidPreRuntimeScript(script);
+    for (const script of preRuntimeScripts) {
+      assertValidPreRuntimeScript(script);
+    }
     const generatedScripts = executableScripts.filter(script => !isPreRuntimeScript(script));
     const actualIds = generatedScripts.map(script => script.id);
     if (JSON.stringify(actualIds) !== JSON.stringify(FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS)) {

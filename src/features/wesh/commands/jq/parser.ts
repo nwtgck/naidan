@@ -302,7 +302,9 @@ class JqParser {
   private resolveVariableName({ name }: { name: string }): string {
     for (let index = this.variableRenameScopes.length - 1; index >= 0; index -= 1) {
       const renamed = this.variableRenameScopes[index]?.get(name);
-      if (renamed !== undefined) return renamed;
+      if (renamed !== undefined) {
+        return renamed;
+      }
     }
     return name;
   }
@@ -326,9 +328,13 @@ class JqParser {
       };
     }
     const lexed = lexJq({ source });
-    if (!lexed.ok) return lexed;
+    if (!lexed.ok) {
+      return lexed;
+    }
     const nestingMessage = validateJqStructuralNesting({ tokens: lexed.tokens });
-    if (nestingMessage !== undefined) return { ok: false, message: nestingMessage };
+    if (nestingMessage !== undefined) {
+      return { ok: false, message: nestingMessage };
+    }
     const parser = new JqParser({
       tokens: lexed.tokens,
       interpolationDepth: this.interpolationDepth + 1,
@@ -352,13 +358,19 @@ class JqParser {
   parse(): { ok: true, program: JqProgram } | { ok: false, message: string } {
     while (true) {
       const token = this.peek();
-      if (!(token.kind === 'keyword' && token.value === 'def')) break;
+      if (!(token.kind === 'keyword' && token.value === 'def')) {
+        break;
+      }
       const definition = this.parseDefinition();
-      if (!definition.ok) return definition;
+      if (!definition.ok) {
+        return definition;
+      }
     }
 
     const filter = this.parseComma();
-    if (!filter.ok) return filter;
+    if (!filter.ok) {
+      return filter;
+    }
     const trailing = this.peek();
     switch (trailing.kind) {
     case 'eof':
@@ -478,7 +490,9 @@ class JqParser {
           throw new Error(`Unhandled jq definition parameter: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
         }
         }
-        if (this.matchPunctuation({ value: ')' })) break;
+        if (this.matchPunctuation({ value: ')' })) {
+          break;
+        }
         if (!this.matchPunctuation({ value: ';' })) {
           return { ok: false, message: "expected ';' or ')' after user-defined filter parameter" };
         }
@@ -531,8 +545,11 @@ class JqParser {
       this.filterParameterScopes.pop();
     }
     if (!body.ok || !this.matchPunctuation({ value: ';' })) {
-      if (previousDefinition === undefined) overloads.delete(parameters.length);
-      else overloads.set(parameters.length, previousDefinition);
+      if (previousDefinition === undefined) {
+        overloads.delete(parameters.length);
+      } else {
+        overloads.set(parameters.length, previousDefinition);
+      }
       return body.ok
         ? { ok: false, message: "expected ';' after user-defined filter body" }
         : body;
@@ -559,7 +576,9 @@ class JqParser {
 
     while (true) {
       const operand = this.parseAlternative();
-      if (!operand.ok) return operand;
+      if (!operand.ok) {
+        return operand;
+      }
       operands.push(operand.filter);
 
       const token = this.peek();
@@ -616,13 +635,17 @@ class JqParser {
       }
       }
 
-      if (operator === undefined) break;
+      if (operator === undefined) {
+        break;
+      }
       operators.push(operator);
       this.index += 1;
     }
 
     let filter = operands.at(-1);
-    if (filter === undefined) throw new Error('jq assignment parser produced no operand');
+    if (filter === undefined) {
+      throw new Error('jq assignment parser produced no operand');
+    }
     for (let index = operators.length - 1; index >= 0; index -= 1) {
       const left = operands[index];
       const operator = operators[index];
@@ -678,11 +701,15 @@ class JqParser {
 
   private parseCommaSequence(): ParseResult {
     let left = this.parseAssignment();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
 
     while (this.matchOperator({ value: ',' })) {
       const right = this.parseAssignment();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: { kind: 'comma', left: left.filter, right: right.filter },
@@ -700,7 +727,9 @@ class JqParser {
     const variableScopeDepth = this.variableRenameScopes.length;
     try {
       let left = allowComma ? this.parseCommaSequence() : this.parseAssignment();
-      if (!left.ok) return left;
+      if (!left.ok) {
+        return left;
+      }
       const bindings: Array<{ binding: JqFilter, name: string }> = [];
 
       while (true) {
@@ -732,13 +761,19 @@ class JqParser {
           bindings.push({ binding: left.filter, name: renamedName });
           this.pushVariableRename({ sourceName: variable.value, renamedName });
           left = allowComma ? this.parseCommaSequence() : this.parseAssignment();
-          if (!left.ok) return left;
+          if (!left.ok) {
+            return left;
+          }
           continue;
         }
 
-        if (!this.matchOperator({ value: '|' })) break;
+        if (!this.matchOperator({ value: '|' })) {
+          break;
+        }
         const right = allowComma ? this.parseCommaSequence() : this.parseAssignment();
-        if (!right.ok) return right;
+        if (!right.ok) {
+          return right;
+        }
         left = {
           ok: true,
           filter: { kind: 'pipe', left: left.filter, right: right.filter },
@@ -748,7 +783,9 @@ class JqParser {
       let filter = left.filter;
       for (let index = bindings.length - 1; index >= 0; index -= 1) {
         const binding = bindings[index];
-        if (binding === undefined) throw new Error('jq binding parser frame mismatch');
+        if (binding === undefined) {
+          throw new Error('jq binding parser frame mismatch');
+        }
         filter = {
           kind: 'bind',
           binding: binding.binding,
@@ -764,10 +801,14 @@ class JqParser {
 
   private parseAlternative(): ParseResult {
     let left = this.parseOr();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
     while (this.matchOperator({ value: '//' })) {
       const right = this.parseOr();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: {
@@ -783,10 +824,14 @@ class JqParser {
 
   private parseOr(): ParseResult {
     let left = this.parseAnd();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
     while (this.matchKeyword({ value: 'or' })) {
       const right = this.parseAnd();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: { kind: 'binary', operator: 'or', left: left.filter, right: right.filter },
@@ -797,10 +842,14 @@ class JqParser {
 
   private parseAnd(): ParseResult {
     let left = this.parseComparison();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
     while (this.matchKeyword({ value: 'and' })) {
       const right = this.parseComparison();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: { kind: 'binary', operator: 'and', left: left.filter, right: right.filter },
@@ -811,7 +860,9 @@ class JqParser {
 
   private parseComparison(): ParseResult {
     let left = this.parseAddition();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
 
     while (true) {
       const token = this.peek();
@@ -834,10 +885,14 @@ class JqParser {
       }
       }
       const operator = comparisonOperator({ operator: token.value });
-      if (operator === undefined) return left;
+      if (operator === undefined) {
+        return left;
+      }
       this.index += 1;
       const right = this.parseAddition();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: { kind: 'binary', operator, left: left.filter, right: right.filter },
@@ -849,7 +904,9 @@ class JqParser {
 
   private parseAddition(): ParseResult {
     let left = this.parseMultiplicative();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
 
     while (true) {
       const token = this.peek();
@@ -909,7 +966,9 @@ class JqParser {
       }
       this.index += 1;
       const right = this.parseMultiplicative();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: {
@@ -926,7 +985,9 @@ class JqParser {
 
   private parseMultiplicative(): ParseResult {
     let left = this.parseUnary();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
 
     while (true) {
       const token = this.peek();
@@ -988,7 +1049,9 @@ class JqParser {
       }
       this.index += 1;
       const right = this.parseUnary();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       left = {
         ok: true,
         filter: { kind: 'binary', operator, left: left.filter, right: right.filter },
@@ -1009,7 +1072,9 @@ class JqParser {
       return this.parseNestedPrefix({
         parse: () => {
           const value = this.parseMultiplicative();
-          if (!value.ok) return value;
+          if (!value.ok) {
+            return value;
+          }
           return { ok: true, filter: { kind: 'unary', operator: 'neg', value: value.filter } };
         },
       });
@@ -1019,7 +1084,9 @@ class JqParser {
 
   private parsePostfix(): ParseResult {
     const parsed = this.parsePrimary();
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     let filter = parsed.filter;
     let grouped = parsed.grouped === true;
 
@@ -1056,7 +1123,9 @@ class JqParser {
         switch (token.value) {
         case '[': {
           const suffix = this.parseBracketSuffix({ input: filter });
-          if (!suffix.ok) return suffix;
+          if (!suffix.ok) {
+            return suffix;
+          }
           filter = suffix.filter;
           grouped = false;
           continue;
@@ -1184,7 +1253,9 @@ class JqParser {
           switch (next.value) {
           case '[': {
             const suffix = this.parseBracketSuffix({ input: filter });
-            if (!suffix.ok) return suffix;
+            if (!suffix.ok) {
+              return suffix;
+            }
             filter = suffix.filter;
             continue;
           }
@@ -1277,9 +1348,13 @@ class JqParser {
         this.index += 1;
         {
           const nested = this.parseComma();
-          if (!nested.ok) return nested;
+          if (!nested.ok) {
+            return nested;
+          }
           const close = this.consumePunctuation({ value: ')' });
-          if (!close.ok) return close;
+          if (!close.ok) {
+            return close;
+          }
           return { ok: true, filter: nested.filter, grouped: true };
         }
       case '[':
@@ -1300,7 +1375,9 @@ class JqParser {
     input: JqFilter,
   }): ParseResult {
     const open = this.consumePunctuation({ value: '[' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
 
     if (this.matchPunctuation({ value: ']' })) {
       return { ok: true, filter: { kind: 'iterate', input, optional: false } };
@@ -1309,12 +1386,16 @@ class JqParser {
     let start: JqFilter | undefined;
     if (!this.matchOperator({ value: ':' })) {
       const first = this.parseComma();
-      if (!first.ok) return first;
+      if (!first.ok) {
+        return first;
+      }
       start = first.filter;
 
       if (!this.matchOperator({ value: ':' })) {
         const close = this.consumePunctuation({ value: ']' });
-        if (!close.ok) return close;
+        if (!close.ok) {
+          return close;
+        }
         const staticIndex = literalIndex({ filter: start });
         switch (staticIndex?.kind) {
         case 'number':
@@ -1344,11 +1425,15 @@ class JqParser {
     const next = this.peek();
     if (!(next.kind === 'punctuation' && next.value === ']')) {
       const parsedEnd = this.parsePipe();
-      if (!parsedEnd.ok) return parsedEnd;
+      if (!parsedEnd.ok) {
+        return parsedEnd;
+      }
       end = parsedEnd.filter;
     }
     const close = this.consumePunctuation({ value: ']' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
     return {
       ok: true,
       filter: { kind: 'slice', input, start, end, optional: false },
@@ -1376,7 +1461,9 @@ class JqParser {
     }
     }
     for (let scopeIndex = this.filterParameterScopes.length - 1; scopeIndex >= 0; scopeIndex -= 1) {
-      if (this.filterParameterScopes[scopeIndex]?.has(token.value) !== true) continue;
+      if (this.filterParameterScopes[scopeIndex]?.has(token.value) !== true) {
+        continue;
+      }
       this.index += 1;
       const following = this.peek();
       if (following.kind === 'punctuation' && following.value === '(') {
@@ -1400,9 +1487,13 @@ class JqParser {
         }
         while (true) {
           const argument = this.parseComma();
-          if (!argument.ok) return argument;
+          if (!argument.ok) {
+            return argument;
+          }
           args.push(argument.filter);
-          if (this.matchPunctuation({ value: ')' })) break;
+          if (this.matchPunctuation({ value: ')' })) {
+            break;
+          }
           if (!this.matchPunctuation({ value: ';' })) {
             return { ok: false, message: "expected ';' or ')' after function argument" };
           }
@@ -1448,9 +1539,13 @@ class JqParser {
         }
         while (true) {
           const argument = this.parseComma();
-          if (!argument.ok) return argument;
+          if (!argument.ok) {
+            return argument;
+          }
           args.push(argument.filter);
-          if (this.matchPunctuation({ value: ')' })) break;
+          if (this.matchPunctuation({ value: ')' })) {
+            break;
+          }
           if (!this.matchPunctuation({ value: ';' })) {
             return { ok: false, message: "expected ';' or ')' after function argument" };
           }
@@ -1468,9 +1563,13 @@ class JqParser {
     if (!this.matchPunctuation({ value: ')' })) {
       while (true) {
         const argument = this.parseComma();
-        if (!argument.ok) return argument;
+        if (!argument.ok) {
+          return argument;
+        }
         args.push(argument.filter);
-        if (this.matchPunctuation({ value: ')' })) break;
+        if (this.matchPunctuation({ value: ')' })) {
+          break;
+        }
         if (!this.matchPunctuation({ value: ';' })) {
           return { ok: false, message: "expected ';' or ')' after function argument" };
         }
@@ -1482,21 +1581,29 @@ class JqParser {
 
   private parseArrayLiteral(): ParseResult {
     const open = this.consumePunctuation({ value: '[' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
     if (this.matchPunctuation({ value: ']' })) {
       return { ok: true, filter: { kind: 'array', items: [] } };
     }
 
     const value = this.parseComma();
-    if (!value.ok) return value;
+    if (!value.ok) {
+      return value;
+    }
     const close = this.consumePunctuation({ value: ']' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
     return { ok: true, filter: { kind: 'array', items: [value.filter] } };
   }
 
   private parseObjectLiteral(): ParseResult {
     const open = this.consumePunctuation({ value: '{' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
     const entries: JqObjectEntry[] = [];
 
     if (this.matchPunctuation({ value: '}' })) {
@@ -1505,13 +1612,17 @@ class JqParser {
 
     while (true) {
       const parsedKey = this.parseObjectKey();
-      if (!parsedKey.ok) return parsedKey;
+      if (!parsedKey.ok) {
+        return parsedKey;
+      }
       const { key, shorthand } = parsedKey;
 
       let value: JqFilter;
       if (this.matchOperator({ value: ':' })) {
         const parsedValue = this.parsePipe({ allowComma: false });
-        if (!parsedValue.ok) return parsedValue;
+        if (!parsedValue.ok) {
+          return parsedValue;
+        }
         value = parsedValue.filter;
       } else if (shorthand !== undefined) {
         value = {
@@ -1525,7 +1636,9 @@ class JqParser {
       }
 
       entries.push({ key, value });
-      if (this.matchPunctuation({ value: '}' })) break;
+      if (this.matchPunctuation({ value: '}' })) {
+        break;
+      }
       if (!this.matchOperator({ value: ',' })) {
         return { ok: false, message: "expected ',' or '}' in object" };
       }
@@ -1552,7 +1665,9 @@ class JqParser {
         parts: token.parts,
         parseInterpolation: ({ source }) => this.parseStringInterpolation({ source }),
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       if (parsed.filter.kind === 'literal' && typeof parsed.filter.value === 'string') {
         return {
           ok: true,
@@ -1571,9 +1686,13 @@ class JqParser {
       case '(': {
         this.index += 1;
         const filter = this.parseComma();
-        if (!filter.ok) return filter;
+        if (!filter.ok) {
+          return filter;
+        }
         const close = this.consumePunctuation({ value: ')' });
-        if (!close.ok) return close;
+        if (!close.ok) {
+          return close;
+        }
         return {
           ok: true,
           key: { kind: 'dynamic', filter: filter.filter },
@@ -1615,12 +1734,16 @@ class JqParser {
     }[] = [];
 
     const initialCondition = this.parseComma();
-    if (!initialCondition.ok) return initialCondition;
+    if (!initialCondition.ok) {
+      return initialCondition;
+    }
     if (!this.matchKeyword({ value: 'then' })) {
       return { ok: false, message: "expected 'then'" };
     }
     const initialThenBranch = this.parseComma();
-    if (!initialThenBranch.ok) return initialThenBranch;
+    if (!initialThenBranch.ok) {
+      return initialThenBranch;
+    }
     branches.push({
       condition: initialCondition.filter,
       thenBranch: initialThenBranch.filter,
@@ -1628,12 +1751,16 @@ class JqParser {
 
     while (this.matchKeyword({ value: 'elif' })) {
       const condition = this.parseComma();
-      if (!condition.ok) return condition;
+      if (!condition.ok) {
+        return condition;
+      }
       if (!this.matchKeyword({ value: 'then' })) {
         return { ok: false, message: "expected 'then'" };
       }
       const thenBranch = this.parseComma();
-      if (!thenBranch.ok) return thenBranch;
+      if (!thenBranch.ok) {
+        return thenBranch;
+      }
       branches.push({
         condition: condition.filter,
         thenBranch: thenBranch.filter,
@@ -1644,7 +1771,9 @@ class JqParser {
       return { ok: false, message: "expected 'else' or 'elif'" };
     }
     const parsedElse = this.parseComma();
-    if (!parsedElse.ok) return parsedElse;
+    if (!parsedElse.ok) {
+      return parsedElse;
+    }
     if (!this.matchKeyword({ value: 'end' })) {
       return { ok: false, message: "expected 'end'" };
     }
@@ -1652,7 +1781,9 @@ class JqParser {
     let filter = parsedElse.filter;
     for (let index = branches.length - 1; index >= 0; index -= 1) {
       const branch = branches[index];
-      if (branch === undefined) throw new Error('jq conditional branch is missing');
+      if (branch === undefined) {
+        throw new Error('jq conditional branch is missing');
+      }
       filter = {
         kind: 'conditional',
         condition: branch.condition,
@@ -1694,7 +1825,9 @@ class JqParser {
       return this.parseNestedPrefix({
         parse: () => {
           const body = this.parsePipe();
-          if (!body.ok) return body;
+          if (!body.ok) {
+            return body;
+          }
           return { ok: true, filter: { kind: 'label', id, name: variable.value, body: body.filter } };
         },
       });
@@ -1737,7 +1870,9 @@ class JqParser {
   private parseReduce(): ParseResult {
     this.index += 1;
     const generator = this.parseAssignment();
-    if (!generator.ok) return generator;
+    if (!generator.ok) {
+      return generator;
+    }
     if (!this.matchKeyword({ value: 'as' })) {
       return { ok: false, message: "expected 'as' in reduce expression" };
     }
@@ -1764,9 +1899,13 @@ class JqParser {
     this.index += 1;
 
     const open = this.consumePunctuation({ value: '(' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
     const initial = this.parseComma();
-    if (!initial.ok) return initial;
+    if (!initial.ok) {
+      return initial;
+    }
     if (!this.matchPunctuation({ value: ';' })) {
       return { ok: false, message: "expected ';' in reduce expression" };
     }
@@ -1779,9 +1918,13 @@ class JqParser {
     } finally {
       this.variableRenameScopes.pop();
     }
-    if (!update.ok) return update;
+    if (!update.ok) {
+      return update;
+    }
     const close = this.consumePunctuation({ value: ')' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
 
     return {
       ok: true,
@@ -1798,7 +1941,9 @@ class JqParser {
   private parseForeach(): ParseResult {
     this.index += 1;
     const generator = this.parseAssignment();
-    if (!generator.ok) return generator;
+    if (!generator.ok) {
+      return generator;
+    }
     if (!this.matchKeyword({ value: 'as' })) {
       return { ok: false, message: "expected 'as' in foreach expression" };
     }
@@ -1825,9 +1970,13 @@ class JqParser {
     this.index += 1;
 
     const open = this.consumePunctuation({ value: '(' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
     const initial = this.parseComma();
-    if (!initial.ok) return initial;
+    if (!initial.ok) {
+      return initial;
+    }
     if (!this.matchPunctuation({ value: ';' })) {
       return { ok: false, message: "expected first ';' in foreach expression" };
     }
@@ -1840,15 +1989,21 @@ class JqParser {
       update = this.parseComma();
       if (update.ok && this.matchPunctuation({ value: ';' })) {
         const parsedExtract = this.parseComma();
-        if (!parsedExtract.ok) return parsedExtract;
+        if (!parsedExtract.ok) {
+          return parsedExtract;
+        }
         extract = parsedExtract.filter;
       }
     } finally {
       this.variableRenameScopes.pop();
     }
-    if (!update.ok) return update;
+    if (!update.ok) {
+      return update;
+    }
     const close = this.consumePunctuation({ value: ')' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
 
     return {
       ok: true,
@@ -1868,7 +2023,9 @@ class JqParser {
     return this.parseNestedPrefix({
       parse: () => {
         const body = this.parseOr();
-        if (!body.ok) return body;
+        if (!body.ok) {
+          return body;
+        }
 
         if (!this.matchKeyword({ value: 'catch' })) {
           return {
@@ -1882,7 +2039,9 @@ class JqParser {
         }
 
         const catchBranch = this.parseOr();
-        if (!catchBranch.ok) return catchBranch;
+        if (!catchBranch.ok) {
+          return catchBranch;
+        }
         return {
           ok: true,
           filter: {
@@ -1924,7 +2083,9 @@ class JqParser {
     value: Extract<JqToken, { kind: 'operator' }>['value'],
   }): boolean {
     const token = this.peek();
-    if (!(token.kind === 'operator' && token.value === value)) return false;
+    if (!(token.kind === 'operator' && token.value === value)) {
+      return false;
+    }
     this.index += 1;
     return true;
   }
@@ -1935,7 +2096,9 @@ class JqParser {
     value: Extract<JqToken, { kind: 'keyword' }>['value'],
   }): boolean {
     const token = this.peek();
-    if (!(token.kind === 'keyword' && token.value === value)) return false;
+    if (!(token.kind === 'keyword' && token.value === value)) {
+      return false;
+    }
     this.index += 1;
     return true;
   }
@@ -1946,7 +2109,9 @@ class JqParser {
     value: Extract<JqToken, { kind: 'punctuation' }>['value'],
   }): boolean {
     const token = this.peek();
-    if (!(token.kind === 'punctuation' && token.value === value)) return false;
+    if (!(token.kind === 'punctuation' && token.value === value)) {
+      return false;
+    }
     this.index += 1;
     return true;
   }
@@ -1956,7 +2121,9 @@ class JqParser {
   }: {
     value: Extract<JqToken, { kind: 'punctuation' }>['value'],
   }): { ok: true } | { ok: false, message: string } {
-    if (this.matchPunctuation({ value })) return { ok: true };
+    if (this.matchPunctuation({ value })) {
+      return { ok: true };
+    }
     return { ok: false, message: `expected '${value}'` };
   }
 }
@@ -2130,7 +2297,9 @@ function validateJqStructuralNesting({
       case ')':
       case ']':
       case '}':
-        if (delimiterDepth > 0) delimiterDepth -= 1;
+        if (delimiterDepth > 0) {
+          delimiterDepth -= 1;
+        }
         break;
       case ';':
         break;
@@ -2149,7 +2318,9 @@ function validateJqStructuralNesting({
         }
         break;
       case 'end':
-        if (conditionalDepth > 0) conditionalDepth -= 1;
+        if (conditionalDepth > 0) {
+          conditionalDepth -= 1;
+        }
         break;
       case 'true':
       case 'false':
@@ -2199,9 +2370,13 @@ function parseJqProgramAtInterpolationDepth({
   interpolationDepth: number,
 }): { ok: true, program: JqProgram } | { ok: false, message: string } {
   const lexed = lexJq({ source });
-  if (!lexed.ok) return lexed;
+  if (!lexed.ok) {
+    return lexed;
+  }
   const nestingMessage = validateJqStructuralNesting({ tokens: lexed.tokens });
-  if (nestingMessage !== undefined) return { ok: false, message: nestingMessage };
+  if (nestingMessage !== undefined) {
+    return { ok: false, message: nestingMessage };
+  }
   return new JqParser({ tokens: lexed.tokens, interpolationDepth }).parse();
 }
 
@@ -2218,10 +2393,14 @@ function staticSliceBound({
 }: {
   filter: JqFilter | undefined,
 }): { supported: true, value: number | undefined } | { supported: false } {
-  if (filter === undefined) return { supported: true, value: undefined };
+  if (filter === undefined) {
+    return { supported: true, value: undefined };
+  }
   switch (filter.kind) {
   case 'literal':
-    if (filter.value === null) return { supported: true, value: undefined };
+    if (filter.value === null) {
+      return { supported: true, value: undefined };
+    }
     return typeof filter.value === 'number'
       ? { supported: true, value: filter.value }
       : { supported: false };
@@ -2374,7 +2553,9 @@ export function extractPathExpression({
     }
     case 'append': {
       const parent = results.pop();
-      if (parent === undefined) throw new Error('jq path extraction result stack is empty');
+      if (parent === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       results.push({
         expression: parent.expression === undefined
           ? undefined
@@ -2384,7 +2565,9 @@ export function extractPathExpression({
     }
     case 'slice': {
       const parent = results.pop();
-      if (parent === undefined) throw new Error('jq path extraction result stack is empty');
+      if (parent === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       if (parent.expression === undefined) {
         results.push(parent);
         break;
@@ -2414,7 +2597,9 @@ export function extractPathExpression({
     }
     case 'dynamic_index': {
       const parent = results.pop();
-      if (parent === undefined) throw new Error('jq path extraction result stack is empty');
+      if (parent === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       results.push({
         expression: parent.expression === undefined
           ? undefined
@@ -2429,7 +2614,9 @@ export function extractPathExpression({
     }
     case 'iterate': {
       const parent = results.pop();
-      if (parent === undefined) throw new Error('jq path extraction result stack is empty');
+      if (parent === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       results.push({
         expression: parent.expression === undefined
           ? undefined
@@ -2439,7 +2626,9 @@ export function extractPathExpression({
     }
     case 'comma_left': {
       const left = results.pop();
-      if (left === undefined) throw new Error('jq path extraction result stack is empty');
+      if (left === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       if (left.expression === undefined) {
         results.push(left);
         break;
@@ -2450,7 +2639,9 @@ export function extractPathExpression({
     }
     case 'comma_combine': {
       const right = results.pop();
-      if (right === undefined) throw new Error('jq path extraction result stack is empty');
+      if (right === undefined) {
+        throw new Error('jq path extraction result stack is empty');
+      }
       results.push({
         expression: right.expression === undefined
           ? undefined

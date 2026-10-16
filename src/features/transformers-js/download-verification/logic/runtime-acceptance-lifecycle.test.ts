@@ -112,17 +112,19 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       onUpdate: () => undefined,
       runTarget: async ({ target }) => {
         visited.push(target);
-        if (target === 'fixture/lifecycle') await withCacheAcceptanceDeadline({
-          controller,
-          timeoutMs: 100,
-          start: () => completeDownloadVerificationRuntimeEvidence({
-            evidence: input(),
-            signal: controller.signal,
-            storageRoot: {} as FileSystemDirectoryHandle,
-            reuseRevision: async args => await reuseDownloadedProductionRevision({ ...args, inspectCachedRevisions: async () => inventory() }),
-            inspectCachedRevisions: async () => inventory(),
-          }),
-        });
+        if (target === 'fixture/lifecycle') {
+          await withCacheAcceptanceDeadline({
+            controller,
+            timeoutMs: 100,
+            start: () => completeDownloadVerificationRuntimeEvidence({
+              evidence: input(),
+              signal: controller.signal,
+              storageRoot: {} as FileSystemDirectoryHandle,
+              reuseRevision: async args => await reuseDownloadedProductionRevision({ ...args, inspectCachedRevisions: async () => inventory() }),
+              inspectCachedRevisions: async () => inventory(),
+            }),
+          });
+        }
         expect(mocks.dispose).toHaveBeenCalledOnce();
         const checkpoint = createInitialInvestigationCheckpoint({ modelId: target, runId: target, now: () => '2026-09-08T00:00:00.000Z' });
         return { ...checkpoint.run, status: 'passed', error: undefined };
@@ -177,7 +179,9 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       },
     };
     await vi.waitFor(() => expect(mocks.verify).toHaveBeenCalledTimes(1));
-    if (cancellation === 'user') controller.abort(reason);
+    if (cancellation === 'user') {
+      controller.abort(reason);
+    }
     await vi.waitFor(() => expect(mocks.dispose).toHaveBeenCalledTimes(1));
     expect(await outcome).toEqual({ status: 'rejected', error: controller.signal.reason });
     expect(onProgress.mock.calls.map(([event]) => event.progress.phase)).toEqual(['cache-inventory', 'revision-acceptance', 'candidate-acceptance', 'runtime']);

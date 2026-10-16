@@ -29,7 +29,10 @@ const selectedValue = computed(() => {
   switch (kind) {
   case 'opfs': return 'opfs';
   case 'host': return hostChoiceValue({ id: destination.value });
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const selected = computed(() => {
@@ -37,7 +40,10 @@ const selected = computed(() => {
   switch (kind) {
   case 'opfs': return undefined;
   case 'host': return entries.value.find(entry => entry.id === destination.value);
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const missingDestination = computed(() => {
@@ -45,7 +51,10 @@ const missingDestination = computed(() => {
   switch (kind) {
   case 'opfs': return false;
   case 'host': return selected.value === undefined;
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const layout = computed(() => {
@@ -57,13 +66,18 @@ const layout = computed(() => {
 });
 
 function selectDestination({ event }: { event: Event }): void {
-  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) return;
+  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const value = event.target.value;
   if (value === 'opfs') {
-    props.view.selectDestination({ id: 'opfs', kind: 'opfs' }); return;
+    props.view.selectDestination({ id: 'opfs', kind: 'opfs' });
+    return;
   }
   const entry = entries.value.find(entry => hostChoiceValue({ id: entry.id }) === value);
-  if (entry) props.view.selectDestination({ id: entry.id, kind: 'host' });
+  if (entry) {
+    props.view.selectDestination({ id: entry.id, kind: 'host' });
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

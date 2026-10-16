@@ -19,11 +19,15 @@ function parseFiniteDecimalLexeme({ lexeme }: { lexeme: string }): {
   readonly exponent: number,
 } | undefined {
   const match = lexeme.match(/^([+-])?(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/u);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const integer = match[2] ?? "0";
   const fraction = match[3] ?? match[4] ?? "";
   const explicitExponent = Number(match[5] ?? "0");
-  if (!Number.isSafeInteger(explicitExponent)) return undefined;
+  if (!Number.isSafeInteger(explicitExponent)) {
+    return undefined;
+  }
   const rawDigits = `${integer}${fraction}`;
   const nonZeroIndex = rawDigits.search(/[1-9]/u);
   const coefficient = nonZeroIndex === -1 ? "0" : rawDigits.slice(nonZeroIndex);
@@ -67,7 +71,9 @@ function formatDecimal({
 
 export function createJqNumberOrigin({ lexeme }: { lexeme: string }): JqNumberOrigin | undefined {
   const parsed = parseFiniteDecimalLexeme({ lexeme });
-  if (parsed === undefined) return undefined;
+  if (parsed === undefined) {
+    return undefined;
+  }
   return {
     lexeme,
     canonical: formatDecimal(parsed),
@@ -84,10 +90,18 @@ export function compareJqNumberOrigins({
 }): number {
   const leftZero = left.coefficient === "0";
   const rightZero = right.coefficient === "0";
-  if (leftZero && rightZero) return 0;
-  if (leftZero) return right.negative ? 1 : -1;
-  if (rightZero) return left.negative ? -1 : 1;
-  if (left.negative !== right.negative) return left.negative ? -1 : 1;
+  if (leftZero && rightZero) {
+    return 0;
+  }
+  if (leftZero) {
+    return right.negative ? 1 : -1;
+  }
+  if (rightZero) {
+    return left.negative ? -1 : 1;
+  }
+  if (left.negative !== right.negative) {
+    return left.negative ? -1 : 1;
+  }
 
   const direction = left.negative ? -1 : 1;
   const leftAdjusted = left.exponent + left.coefficient.length - 1;
@@ -98,7 +112,9 @@ export function compareJqNumberOrigins({
   const width = Math.max(left.coefficient.length, right.coefficient.length);
   const leftDigits = left.coefficient.padEnd(width, "0");
   const rightDigits = right.coefficient.padEnd(width, "0");
-  if (leftDigits === rightDigits) return 0;
+  if (leftDigits === rightDigits) {
+    return 0;
+  }
   return leftDigits < rightDigits ? -direction : direction;
 }
 
@@ -147,7 +163,9 @@ export function copyJsonChildNumberOrigins({
   target: JsonContainer,
 }): void {
   const map = jqNumberOrigins.get(source as object);
-  if (map === undefined || map.size === 0) return;
+  if (map === undefined || map.size === 0) {
+    return;
+  }
   jqNumberOrigins.set(target as object, new Map(map));
 }
 

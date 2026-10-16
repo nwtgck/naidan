@@ -116,7 +116,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       interruption: extra.error === undefined ? undefined : { type: 'error', message: extra.error },
     };
     case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
-    default: { const unhandled: never = role; throw new Error(`Unhandled role: ${unhandled}`); }
+    default: {
+      const unhandled: never = role;
+      throw new Error(`Unhandled role: ${unhandled}`);
+    }
     }
   };
 
@@ -645,8 +648,12 @@ not-json
     // Mock storageService.getBinaryObject to return valid objects
     const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
-      if (idToRaw({ id: binaryObjectId }) === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
-      if (idToRaw({ id: binaryObjectId }) === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
+      if (idToRaw({ id: binaryObjectId }) === 'obj-1') {
+        return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
+      }
+      if (idToRaw({ id: binaryObjectId }) === 'obj-2') {
+        return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
+      }
       return null;
     });
 

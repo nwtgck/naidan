@@ -557,7 +557,9 @@ describe('LFM2.5 2.6B Provider / history', () => {
   it("system-user-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM2.5 2.6B input verified; no generation replay';
     const nativeInputs: Array<{
       input: { type: string; location: string; dims: number[]; data: unknown } | undefined;
@@ -652,7 +654,9 @@ describe('LFM2.5 2.6B Provider / history', () => {
   it("multi-turn-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM2.5 2.6B input verified; no generation replay';
     const nativeInputs: Array<{
       input: { type: string; location: string; dims: number[]; data: unknown } | undefined;
@@ -955,7 +959,9 @@ A separate synthetic LFM conversation.<|im_end|>
       })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent LFM2.6 input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent LFM2.6 input replay');
+        }
         return next(context);
       },
     });
@@ -1429,7 +1435,9 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
     expect(productionTokenizations).toHaveLength(1);
     const productionCall = productionTokenizations[0];
-    if (!productionCall) throw new Error('Expected Production template invocation');
+    if (!productionCall) {
+      throw new Error('Expected Production template invocation');
+    }
     // Raw unknown fields still fail. Only optional-field ownness is irrelevant
     // to the semantic messages being compared, and actual arguments stay intact.
     const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
@@ -1441,7 +1449,9 @@ describe('LFM2.5 2.6B Provider / tools', () => {
       { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
     ]);
     expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
-    if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
+    if (!replay.seen.inference) {
+      throw new Error('Actual LFM2.6 inference boundary was not reached');
+    }
     const { tokenizer, runtime, options } = replay.seen.inference;
     expect(replay.seen.count).toBe(1);
     expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
@@ -1600,7 +1610,9 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
     expect(productionTokenizations).toHaveLength(1);
     const productionCall = productionTokenizations[0];
-    if (!productionCall) throw new Error('Expected Production template invocation');
+    if (!productionCall) {
+      throw new Error('Expected Production template invocation');
+    }
     const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
       const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
       unhandled satisfies Record<PropertyKey, never>;
@@ -1608,7 +1620,9 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     });
     expect(observedMessages).toStrictEqual(nativeMappedMessages);
     expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
-    if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
+    if (!replay.seen.inference) {
+      throw new Error('Actual LFM2.6 inference boundary was not reached');
+    }
     const { tokenizer, runtime, options } = replay.seen.inference;
     expect(replay.seen.count).toBe(1);
     expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
@@ -1769,7 +1783,9 @@ Use the weather tool for Tokyo.<|im_end|>
       expect(executions[0]!.signal).not.toBe(abortController.signal);
       expect(executions[0]!.signal?.aborted).toBe(false);
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(executions[0]!.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -1850,7 +1866,9 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
       expect(executions[0]!.signal).not.toBe(abortController.signal);
       expect(executions[0]!.signal?.aborted).toBe(false);
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(executions[0]!.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },

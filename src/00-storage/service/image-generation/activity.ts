@@ -31,7 +31,8 @@ function assertActivityJournal({ journal }: { journal: ExperimentalImageGenerati
     if (entry.order > journal.sequence || keys.has(key) || orders.has(entry.order)) {
       throw new Error('Ambiguous Image Generation activity reservations; preserve the store for recovery.');
     }
-    keys.add(key); orders.add(entry.order);
+    keys.add(key);
+    orders.add(entry.order);
   }
 }
 
@@ -41,11 +42,15 @@ function assertActivityJournal({ journal }: { journal: ExperimentalImageGenerati
  * exists. Gaps are harmless; a lost acknowledgement must never allocate twice. */
 export async function readImageGenerationActivity({ directory }: { directory: FileSystemDirectoryHandle }): Promise<ExperimentalImageGenerationActivityJournalDto> {
   const text = await readImageGenerationText({ directory, name: journalName });
-  if (text !== undefined) return ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse(text));
+  if (text !== undefined) {
+    return ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse(text));
+  }
   // Only a legacy store may start a new clock. Do not quietly restart a clock
   // after its file was deleted from an already ordered workspace.
   const sessions = await (await imageGenerationSessionTable({ directory, create: false })).list();
-  if (sessions.warningCount || sessions.items.some(session => session.activityOrder !== undefined)) throw new Error('Image Generation activity clock is missing; preserve the store for recovery.');
+  if (sessions.warningCount || sessions.items.some(session => session.activityOrder !== undefined)) {
+    throw new Error('Image Generation activity clock is missing; preserve the store for recovery.');
+  }
   return { version: 1, sequence: 0, pending: [] };
 }
 
@@ -61,7 +66,9 @@ export async function reserveImageGenerationActivity({ directory, run }: {
   const current = await readImageGenerationActivity({ directory });
   assertActivityJournal({ journal: current });
   const previous = run && current.pending.find(entry => entry.sessionId === run.sessionId && entry.runId === run.runId);
-  if (previous) return previous.order;
+  if (previous) {
+    return previous.order;
+  }
   const order = current.sequence + 1;
   assertActivityOrder({ order });
   await writeActivity({ directory, journal: { ...current, sequence: order, pending: run ? [...current.pending, { ...run, order }] : current.pending } });
@@ -74,7 +81,9 @@ export async function finishImageGenerationActivity({ directory, sessionId, runI
   const current = await readImageGenerationActivity({ directory });
   assertActivityJournal({ journal: current });
   const pending = current.pending.filter(entry => entry.sessionId !== sessionId || entry.runId !== runId);
-  if (pending.length !== current.pending.length) await writeActivity({ directory, journal: { ...current, pending } });
+  if (pending.length !== current.pending.length) {
+    await writeActivity({ directory, journal: { ...current, pending } });
+  }
 }
 
 export async function applyImageGenerationActivity({ directory, sessionId, runId }: {
@@ -87,7 +96,9 @@ export async function applyImageGenerationActivity({ directory, sessionId, runId
     return undefined;
   }
   const location = await imageGenerationSessionDirectory({ directory, sessionId });
-  if (!location) return undefined;
+  if (!location) {
+    return undefined;
+  }
   const run = await (await imageGenerationRunTable({ directory: location, sessionId, create: false })).load({ id: runId });
   // The store lock proves no publisher is still between reservation and record.
   // Missing records are unaccepted attempts, not an excuse to reorder a session.
@@ -100,12 +111,20 @@ export async function applyImageGenerationActivity({ directory, sessionId, runId
   assertActivityJournal({ journal });
   if (current.activityOrder !== undefined) {
     assertActivityOrder({ order: current.activityOrder });
-    if (current.activityOrder > journal.sequence) throw new Error('Image Generation session order exceeds its clock.');
+    if (current.activityOrder > journal.sequence) {
+      throw new Error('Image Generation session order exceeds its clock.');
+    }
   }
-  if (run.acceptedOrder !== undefined) assertActivityOrder({ order: run.acceptedOrder });
-  if (run.acceptedOrder !== undefined && run.acceptedOrder > journal.sequence) throw new Error('Image Generation activity order exceeds its clock.');
+  if (run.acceptedOrder !== undefined) {
+    assertActivityOrder({ order: run.acceptedOrder });
+  }
+  if (run.acceptedOrder !== undefined && run.acceptedOrder > journal.sequence) {
+    throw new Error('Image Generation activity order exceeds its clock.');
+  }
   const reservation = journal.pending.find(entry => entry.sessionId === sessionId && entry.runId === runId);
-  if (reservation && reservation.order !== run.acceptedOrder) throw new Error('Image Generation activity reservation does not match its run.');
+  if (reservation && reservation.order !== run.acceptedOrder) {
+    throw new Error('Image Generation activity reservation does not match its run.');
+  }
   const activityOrder = run.acceptedOrder === undefined ? current.activityOrder : Math.max(current.activityOrder ?? 0, run.acceptedOrder);
   const shouldApply = run.acceptedOrder === undefined
     ? current.activityOrder === undefined && current.updatedAt < run.createdAt
@@ -126,18 +145,23 @@ export async function recoverImageGenerationActivities({ directory }: { director
   let warningCount = 0;
   function warn({ path, error }: { path: string, error: unknown }): void {
     warningCount++;
-    if (warnings.length < 100) warnings.push({ path, message: (error instanceof Error ? error.message : String(error)).slice(0, 1024) });
+    if (warnings.length < 100) {
+      warnings.push({ path, message: (error instanceof Error ? error.message : String(error)).slice(0, 1024) });
+    }
   }
   let pending: PendingActivity[];
   try {
     // Do not create a journal during an ordinary read-only legacy visit.
     const text = await readImageGenerationText({ directory, name: journalName });
-    if (text === undefined) return { warnings, warningCount };
+    if (text === undefined) {
+      return { warnings, warningCount };
+    }
     const journal = ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse(text));
     assertActivityJournal({ journal });
     pending = journal.pending;
   } catch (error) {
-    warn({ path: journalName, error }); return { warnings, warningCount };
+    warn({ path: journalName, error });
+    return { warnings, warningCount };
   }
   for (const entry of pending) {
     try {

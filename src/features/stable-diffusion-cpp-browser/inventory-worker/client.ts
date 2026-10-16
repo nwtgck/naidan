@@ -22,16 +22,23 @@ export async function inspectImageInventory({ signal, onProgress, repositories, 
   };
   let remote: ReturnType<typeof wrapWorkerRemote<InventoryWorker>> | undefined;
   signal.addEventListener('abort', abort, { once: true });
-  worker.addEventListener('error', crash); worker.addEventListener('messageerror', crash);
+  worker.addEventListener('error', crash);
+  worker.addEventListener('messageerror', crash);
   try {
     remote = wrapWorkerRemote<InventoryWorker>({ endpoint: worker });
     pulse();
-    if (signal.aborted) abort();
+    if (signal.aborted) {
+      abort();
+    }
     return await Promise.race([remote.inspect(repositories, workerProxy({
       value: ({ progress }) => {
-        if (closed || signal.aborted) return;
+        if (closed || signal.aborted) {
+          return;
+        }
         const parsed = inspectionProgressSchema.safeParse(progress);
-        if (!parsed.success) return;
+        if (!parsed.success) {
+          return;
+        }
         lastProgress = `${parsed.data.phase}: ${parsed.data.path.slice(0, 512)}`;
         pulse();
         try {
@@ -40,11 +47,16 @@ export async function inspectImageInventory({ signal, onProgress, repositories, 
       },
     }), hostDirectories, repositoryIds), stopped.promise]);
   } finally {
-    closed = true; clearTimeout(timer); signal.removeEventListener('abort', abort);
-    worker.removeEventListener('error', crash); worker.removeEventListener('messageerror', crash);
-    if (remote) try {
-      Promise.resolve(releaseWorkerRemote({ remote })).catch(() => undefined);
-    } catch { /* worker gone */ }
+    closed = true;
+    clearTimeout(timer);
+    signal.removeEventListener('abort', abort);
+    worker.removeEventListener('error', crash);
+    worker.removeEventListener('messageerror', crash);
+    if (remote) {
+      try {
+        Promise.resolve(releaseWorkerRemote({ remote })).catch(() => undefined);
+      } catch { /* worker gone */ }
+    }
     worker.terminate();
   }
 }

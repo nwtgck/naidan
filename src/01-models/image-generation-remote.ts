@@ -19,7 +19,10 @@ export function isRemoteImageRuntime({ runtime }: { runtime: ImageGenerationRunt
   switch (runtime.profile) {
   case 'naidan-rpc': return true;
   case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return false;
-  default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = runtime;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -27,7 +30,10 @@ export function copyImageGenerationRuntime({ runtime }: { runtime: ImageGenerati
   switch (runtime.profile) {
   case 'naidan-rpc': return { ...runtime, modelSelection: runtime.modelSelection && copyRemoteImageSelection({ selection: runtime.modelSelection }) };
   case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return { ...runtime };
-  default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = runtime;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

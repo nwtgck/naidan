@@ -33,7 +33,9 @@ function args() {
 }
 
 beforeEach(async () => {
-  vi.resetModules(); vi.clearAllMocks(); fixture.worker.canReuse.mockReturnValue(true);
+  vi.resetModules();
+  vi.clearAllMocks();
+  fixture.worker.canReuse.mockReturnValue(true);
   const { storageService } = await import('@/00-storage/service');
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   fixture.worker.generate.mockResolvedValue(result);
@@ -43,12 +45,14 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  service.release(); vi.restoreAllMocks();
+  service.release();
+  vi.restoreAllMocks();
 });
 
 it('does not create a native worker to dispose an unused resource owner', async () => {
   const resources = create({ directories: () => [] });
-  await resources.dispose(); await resources.dispose();
+  await resources.dispose();
+  await resources.dispose();
   expect(fixture.create).not.toHaveBeenCalled();
 });
 
@@ -56,7 +60,8 @@ it('releases the chat cache once when its resource owner retires', async () => {
   const resources = create({ directories: () => [] });
   await resources.generateChat(args());
   expect(fixture.worker.probeProfiles).not.toHaveBeenCalled();
-  await resources.dispose(); await resources.dispose();
+  await resources.dispose();
+  await resources.dispose();
   expect(fixture.worker.dispose).toHaveBeenCalledOnce();
   expect(service.getState()).toEqual({ status: 'idle' });
 });
@@ -73,26 +78,35 @@ it('does not evict the cache that a later local generation took over', async () 
 
 it('distinguishes two resource owners using the same native worker', async () => {
   const a = create({ directories: () => [] }), b = create({ directories: () => [] });
-  await a.generateChat(args()); await b.generateChat(args());
-  await a.dispose(); expect(fixture.worker.dispose).not.toHaveBeenCalled();
-  await b.dispose(); expect(fixture.worker.dispose).toHaveBeenCalledOnce();
+  await a.generateChat(args());
+  await b.generateChat(args());
+  await a.dispose();
+  expect(fixture.worker.dispose).not.toHaveBeenCalled();
+  await b.dispose();
+  expect(fixture.worker.dispose).toHaveBeenCalledOnce();
 });
 
 it('does not acknowledge disposal before a cancelled chat physically retires', async () => {
   const resources = create({ directories: () => [] });
-  const gate = Promise.withResolvers<typeof result>(); fixture.worker.generate.mockReturnValueOnce(gate.promise);
-  const pending = resources.generateChat(args()); const rejected = expect(pending).rejects.toBeDefined();
+  const gate = Promise.withResolvers<typeof result>();
+  fixture.worker.generate.mockReturnValueOnce(gate.promise);
+  const pending = resources.generateChat(args());
+  const rejected = expect(pending).rejects.toBeDefined();
   await vi.waitFor(() => expect(fixture.worker.generate).toHaveBeenCalledOnce());
   let retired = false;
   const closing = Promise.resolve(resources.dispose()).then(() => {
     retired = true;
   });
   try {
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     expect(fixture.worker.generate.mock.calls[0]![0].signal?.aborted).toBe(true);
-    expect(retired).toBe(false); expect(fixture.worker.dispose).not.toHaveBeenCalled();
+    expect(retired).toBe(false);
+    expect(fixture.worker.dispose).not.toHaveBeenCalled();
   } finally {
-    gate.resolve(result); await rejected; await closing;
+    gate.resolve(result);
+    await rejected;
+    await closing;
   }
   expect(fixture.worker.dispose).toHaveBeenCalledOnce();
 });
@@ -101,17 +115,21 @@ it('does not tear down a queued local call while retiring the previous owner', a
   const resources = create({ directories: () => [] });
   const remote = Promise.withResolvers<typeof result>(), local = Promise.withResolvers<typeof result>();
   fixture.worker.generate.mockReturnValueOnce(remote.promise).mockReturnValueOnce(local.promise);
-  const pending = resources.generateChat(args()); const rejected = expect(pending).rejects.toBeDefined();
+  const pending = resources.generateChat(args());
+  const rejected = expect(pending).rejects.toBeDefined();
   await vi.waitFor(() => expect(fixture.worker.generate).toHaveBeenCalledOnce());
   const localCall = service.generate({ input: input(), signal: undefined, onEvent: () => {} });
   const closing = Promise.resolve(resources.dispose());
   try {
-    remote.resolve(result); await rejected;
+    remote.resolve(result);
+    await rejected;
     await vi.waitFor(() => expect(fixture.worker.generate).toHaveBeenCalledTimes(2));
     expect(fixture.worker.generate.mock.calls[1]![0].signal?.aborted).toBe(false);
     expect(fixture.worker.dispose).not.toHaveBeenCalled();
   } finally {
-    local.resolve(result); await localCall; await closing;
+    local.resolve(result);
+    await localCall;
+    await closing;
   }
   expect(fixture.worker.dispose).not.toHaveBeenCalled();
 });

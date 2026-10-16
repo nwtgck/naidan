@@ -20,7 +20,9 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
   signal: AbortSignal | undefined,
 }): Promise<PromptApiMappedConversation> {
   signal?.throwIfAborted();
-  if (messages.length === 0) return unsupported({ message: 'Prompt API requires at least one message.' });
+  if (messages.length === 0) {
+    return unsupported({ message: 'Prompt API requires at least one message.' });
+  }
   const systemContents: string[] = [];
   const conversation: PromptApiMessage[] = [];
   let inputMode: PromptApiInputMode = 'text';
@@ -30,7 +32,9 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
     unhandled satisfies Record<PropertyKey, never>;
     switch (message.role) {
     case 'system':
-      if (conversation.length) return unsupported({ message: 'Prompt API system messages must precede the conversation.' });
+      if (conversation.length) {
+        return unsupported({ message: 'Prompt API system messages must precede the conversation.' });
+      }
       systemContents.push(message.parts.map(part => part.text).join(''));
       break;
     case 'user': {
@@ -47,13 +51,19 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
           }
           let blob: Blob;
           switch (attachment.status) {
-          case 'memory': blob = attachment.blob; break;
+          case 'memory': blob = attachment.blob;
+            break;
           case 'persisted':
-            if (!readBinaryObject) return unsupported({ message: 'Prompt API requires a binary reader for persisted images.' });
+            if (!readBinaryObject) {
+              return unsupported({ message: 'Prompt API requires a binary reader for persisted images.' });
+            }
             blob = await readBinaryObject({ binaryObjectId: attachment.binaryObjectId, signal });
             break;
           case 'missing': return unsupported({ message: `Prompt API image attachment is missing: ${attachment.originalName}` });
-          default: { const _ex: never = attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+          default: {
+            const _ex: never = attachment;
+            throw new Error(`Unhandled attachment: ${_ex}`);
+          }
           }
           signal?.throwIfAborted();
           // Metadata is authoritative; a stored Blob can have an empty MIME type.
@@ -61,7 +71,10 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
           inputMode = 'image';
           break;
         }
-        default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled user part: ${_ex}`);
+        }
         }
       }
       const hasImage = content.some(part => part.type === 'image');
@@ -71,7 +84,10 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
           switch (part.type) {
           case 'text': return part.value;
           case 'image': throw new Error('Expected text-only content.');
-          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          default: {
+            const _ex: never = part;
+            throw new Error(`Unhandled content: ${_ex}`);
+          }
           }
         }).join(''),
       });
@@ -81,29 +97,43 @@ export async function mapChatMessagesToPromptApi({ messages, readBinaryObject, s
       const content: string[] = [];
       for (const part of message.parts) {
         switch (part.type) {
-        case 'text': content.push(part.text); break;
+        case 'text': content.push(part.text);
+          break;
         case 'reasoning': return unsupported({ message: 'Prompt API structured reasoning history is not supported yet.' });
         case 'tool_call': return unsupported({ message: 'Prompt API tool history is not supported yet.' });
-        default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled assistant part: ${_ex}`);
+        }
         }
       }
       conversation.push({ role: 'assistant', content: content.join('') });
       break;
     }
     case 'tool': return unsupported({ message: 'Prompt API tool history is not supported yet.' });
-    default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = message;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
   }
   const final = conversation.at(-1);
-  if (!final) return unsupported({ message: 'Prompt API requires the final message to be from the user.' });
+  if (!final) {
+    return unsupported({ message: 'Prompt API requires the final message to be from the user.' });
+  }
   switch (final.role) {
   case 'user': break;
   case 'system':
   case 'assistant': return unsupported({ message: 'Prompt API requires the final message to be from the user.' });
-  default: { const _ex: never = final.role; throw new Error(`Unhandled final role: ${_ex}`); }
+  default: {
+    const _ex: never = final.role;
+    throw new Error(`Unhandled final role: ${_ex}`);
+  }
   }
   const initialPrompts: PromptApiMessage[] = [];
-  if (systemContents.length) initialPrompts.push({ role: 'system', content: systemContents.join('\n\n') });
+  if (systemContents.length) {
+    initialPrompts.push({ role: 'system', content: systemContents.join('\n\n') });
+  }
   initialPrompts.push(...conversation.slice(0, -1));
   signal?.throwIfAborted();
   return { initialPrompts, prompt: typeof final.content === 'string' ? final.content : [final], inputMode };

@@ -52,20 +52,28 @@ function parseStandaloneRelativeDateValue({
   }
 
   const match = /^(?:(next|last)[\t\n\v\f\r ]+)?([+-]?\d+)?[\t\n\v\f\r ]*(seconds?|minutes?|hours?|days?|weeks?)(?:[\t\n\v\f\r ]+(ago))?$/u.exec(normalized);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const directionWord = match[1];
   const rawAmount = match[2];
   const ago = match[4] !== undefined;
-  if (directionWord !== undefined && rawAmount !== undefined) return undefined;
+  if (directionWord !== undefined && rawAmount !== undefined) {
+    return undefined;
+  }
 
   const unitMilliseconds = match[3] === undefined
     ? undefined
     : getRelativeUnitMilliseconds({ value: match[3] });
-  if (unitMilliseconds === undefined) return undefined;
+  if (unitMilliseconds === undefined) {
+    return undefined;
+  }
 
   const amount = rawAmount === undefined ? 1 : Number(rawAmount);
-  if (!Number.isFinite(amount)) return undefined;
+  if (!Number.isFinite(amount)) {
+    return undefined;
+  }
 
   const direction: 1 | -1 = directionWord === 'last' || ago ? -1 : 1;
   return applyRelativeOffset({ baseTime, amount, unitMilliseconds, direction });
@@ -73,7 +81,9 @@ function parseStandaloneRelativeDateValue({
 
 function parseEpochDateValue({ value }: { value: string }): number | undefined {
   const match = /^@([+-]?\d+)(?:\.(\d+))?$/u.exec(value);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const wholeSeconds = Number(match[1]);
   const fractionalDigits = match[2] ?? '';
@@ -85,17 +95,25 @@ function parseEpochDateValue({ value }: { value: string }): number | undefined {
 
 function parseAnchoredRelativeDateValue({ value }: { value: string }): number | undefined {
   const match = /^(.*?\S)[\t\n\v\f\r ]+([+-])?[\t\n\v\f\r ]*(\d+)[\t\n\v\f\r ]*(seconds?|minutes?|hours?|days?|weeks?)(?:[\t\n\v\f\r ]+(ago))?$/iu.exec(value);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const anchor = trimAsciiDateWhitespace({ value: match[1] ?? '' });
   const anchorTime = Date.parse(anchor);
-  if (!Number.isSafeInteger(anchorTime)) return undefined;
+  if (!Number.isSafeInteger(anchorTime)) {
+    return undefined;
+  }
 
   const amount = Number(match[3]);
-  if (!Number.isFinite(amount)) return undefined;
+  if (!Number.isFinite(amount)) {
+    return undefined;
+  }
   const unitName = foldAsciiCase({ value: match[4] ?? '' });
   const unitMilliseconds = getRelativeUnitMilliseconds({ value: unitName });
-  if (unitMilliseconds === undefined) return undefined;
+  if (unitMilliseconds === undefined) {
+    return undefined;
+  }
 
   const explicitNegative = match[2] === '-';
   const ago = match[5] !== undefined;
@@ -114,17 +132,25 @@ export function parseDateExpressionMilliseconds({
   value: string,
   baseTime: number,
 }): number | undefined {
-  if (containsNonAsciiDateWhitespace({ value })) return undefined;
+  if (containsNonAsciiDateWhitespace({ value })) {
+    return undefined;
+  }
 
   const trimmed = trimAsciiDateWhitespace({ value });
   const epoch = parseEpochDateValue({ value: trimmed });
-  if (epoch !== undefined) return epoch;
+  if (epoch !== undefined) {
+    return epoch;
+  }
 
   const standaloneRelative = parseStandaloneRelativeDateValue({ value: trimmed, baseTime });
-  if (standaloneRelative !== undefined) return standaloneRelative;
+  if (standaloneRelative !== undefined) {
+    return standaloneRelative;
+  }
 
   const anchoredRelative = parseAnchoredRelativeDateValue({ value: trimmed });
-  if (anchoredRelative !== undefined) return anchoredRelative;
+  if (anchoredRelative !== undefined) {
+    return anchoredRelative;
+  }
 
   const absolute = Date.parse(trimmed);
   return Number.isSafeInteger(absolute) ? absolute : undefined;

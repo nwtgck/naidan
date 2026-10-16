@@ -9,7 +9,9 @@ it('joins old network ownership without freeing a canceled native job or allowin
   const definition = contract({ name: 'retirement.test', methods: { run: procedure({ input: z.object({}), result: z.number(), notifications: {} }) } });
   const started = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
   const handler = vi.fn(async () => {
-    started.resolve(); await finish.promise; return 17;
+    started.resolve();
+    await finish.promise;
+    return 17;
   });
   const wire = transportPair({ capacity: 4, fragmentBytes: 256 }), nextWire = transportPair({ capacity: 4, fragmentBytes: 256 });
   const limits = { maxCalls: 4, maxCallTimeoutMs: undefined }, signal = new AbortController().signal;
@@ -19,33 +21,47 @@ it('joins old network ownership without freeing a canceled native job or allowin
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      finish.resolve(); wire.close(); nextWire.close();
+      finish.resolve();
+      wire.close();
+      nextWire.close();
       await Promise.all([old.retire(), caller.retire(), next.retire()]);
     },
   };
   await started.promise;
   await old.retireNetwork();
-  let fullyRetired = false; const retirement = old.retire().then(() => {
+  let fullyRetired = false;
+  const retirement = old.retire().then(() => {
     fullyRetired = true;
   });
-  await Promise.resolve(); expect(fullyRetired).toBe(false);
+  await Promise.resolve();
+  expect(fullyRetired).toBe(false);
   expect(budget.reserve()).toBeUndefined();
   const blocked = next.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
   await expect(blocked.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
   await expect(blocked.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
   expect(nextWire.stats().total).toBe(0);
-  finish.resolve(); await retirement; expect(fullyRetired).toBe(true);
-  const release = budget.reserve(); expect(release).toBeDefined(); release!(); release!();
-  await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
-  expect(handler).toHaveBeenCalledOnce();
+  finish.resolve();
+  await retirement;
+  expect(fullyRetired).toBe(true);
+  const release = budget.reserve();
+  expect(release).toBeDefined();
+release!();
+release!();
+await expect(call.result).rejects.toBeDefined();
+await expect(call.closed).rejects.toBeDefined();
+expect(handler).toHaveBeenCalledOnce();
 });
 
 it('shares a single finite call budget with idempotent release', () => {
   const budget = new NaidanRpcCallBudget({ capacity: 2 });
   const first = budget.reserve()!, second = budget.reserve()!;
   expect(budget.reserve()).toBeUndefined();
-  first(); first(); const third = budget.reserve()!;
-  expect(budget.reserve()).toBeUndefined(); second(); third();
+  first();
+  first();
+  const third = budget.reserve()!;
+  expect(budget.reserve()).toBeUndefined();
+  second();
+  third();
   expect(budget.reserve()).toBeDefined();
 });
 
@@ -71,7 +87,8 @@ it('retains shared call capacity after late native cleanup failure instead of re
             started.resolve();
           },
           async cancel() {
-            await finish.promise; throw failure;
+            await finish.promise;
+            throw failure;
           },
         }, { highWaterMark: 0 }),
       },
@@ -82,15 +99,20 @@ it('retains shared call capacity after late native cleanup failure instead of re
   let retirement: Promise<void> | undefined;
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      finish.resolve(); wire.close();
+      finish.resolve();
+      wire.close();
       await Promise.allSettled([caller.retire(), retirement ?? callee.retire()]);
     },
   };
-  const reading = (await call.result).getReader().read(); void reading.catch(() => {});
-  await started.promise; await callee.retireNetwork();
-  retirement = callee.retire(); const rejected = expect(retirement).rejects.toBeDefined();
+  const reading = (await call.result).getReader().read();
+  void reading.catch(() => {});
+  await started.promise;
+  await callee.retireNetwork();
+  retirement = callee.retire();
+  const rejected = expect(retirement).rejects.toBeDefined();
   expect(budget.reserve()).toBeUndefined();
-  finish.resolve(); await rejected;
+  finish.resolve();
+  await rejected;
   expect(budget.reserve()).toBeUndefined();
   await expect(call.closed).rejects.toBeDefined();
 });

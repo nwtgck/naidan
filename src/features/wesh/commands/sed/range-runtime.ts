@@ -28,7 +28,9 @@ function matchesAddress({
   line: string;
   isLastLine: boolean;
 }): boolean {
-  if (address === undefined) return true;
+  if (address === undefined) {
+    return true;
+  }
 
   switch (address.kind) {
   case "line":
@@ -45,8 +47,12 @@ function matchesAddress({
     return address.regex.test(line);
   case "lineStep": {
     const currentLine = BigInt(lineNumber);
-    if (address.step === 0n) return currentLine === address.first;
-    if (address.first === 0n) return currentLine % address.step === 0n;
+    if (address.step === 0n) {
+      return currentLine === address.first;
+    }
+    if (address.first === 0n) {
+      return currentLine % address.step === 0n;
+    }
     return currentLine >= address.first && (currentLine - address.first) % address.step === 0n;
   }
   case "relativeOffset":
@@ -71,12 +77,16 @@ function matchesRangeEndAddress({
   isLastLine: boolean;
 }): boolean {
   const endAddress = runtimeCommand.command.rangeEnd;
-  if (endAddress === undefined) return false;
+  if (endAddress === undefined) {
+    return false;
+  }
 
   switch (endAddress.kind) {
   case "relativeOffset": {
     const startLine = runtimeCommand.rangeStartLine;
-    if (startLine === undefined) return false;
+    if (startLine === undefined) {
+      return false;
+    }
     const targetLine = addSedUnsigned64({
       left: BigInt(startLine),
       right: endAddress.count,
@@ -85,8 +95,12 @@ function matchesRangeEndAddress({
   }
   case "relativeModulo": {
     const startLine = runtimeCommand.rangeStartLine;
-    if (startLine === undefined) return false;
-    if (endAddress.modulus === 0n) return lineNumber >= startLine;
+    if (startLine === undefined) {
+      return false;
+    }
+    if (endAddress.modulus === 0n) {
+      return lineNumber >= startLine;
+    }
     const startLineValue = BigInt(startLine);
     const remainder = startLineValue % endAddress.modulus;
     const targetLine = addSedUnsigned64({
@@ -160,14 +174,19 @@ export function commandApplies({
   } else {
     const startsRange = (() => {
       const address = command.address;
-      if (address === undefined) return true;
+      if (address === undefined) {
+        return true;
+      }
       switch (address.kind) {
       case "zero":
         return !runtimeCommand.rangeStarted;
       case "line": {
-        if (runtimeCommand.rangeStarted || BigInt(lineNumber) < address.lineNumber)
+        if (runtimeCommand.rangeStarted || BigInt(lineNumber) < address.lineNumber) {
           return false;
-        if (BigInt(lineNumber) === address.lineNumber) return true;
+        }
+        if (BigInt(lineNumber) === address.lineNumber) {
+          return true;
+        }
         const rangeEnd = command.rangeEnd;
         return rangeEnd.kind !== "line" || BigInt(lineNumber) <= rangeEnd.lineNumber;
       }
@@ -213,7 +232,9 @@ export function commandApplies({
         case "regex":
           return false;
         case "lineStep":
-          if (endAddress.first === 0n && endAddress.step === 0n) return true;
+          if (endAddress.first === 0n && endAddress.step === 0n) {
+            return true;
+          }
           return matchesAddress({
             address: endAddress,
             lineNumber,
@@ -260,7 +281,9 @@ export function commandNeedsLastLine({
   const { command } = runtimeCommand;
   const addressNeedsLastLine = (() => {
     const address = command.address;
-    if (address === undefined) return false;
+    if (address === undefined) {
+      return false;
+    }
     switch (address.kind) {
     case "last":
       return true;
@@ -281,7 +304,9 @@ export function commandNeedsLastLine({
     }
   })();
 
-  if (command.rangeEnd === undefined) return addressNeedsLastLine;
+  if (command.rangeEnd === undefined) {
+    return addressNeedsLastLine;
+  }
 
   const rangeEndsOnLastLine = (() => {
     const rangeEnd = command.rangeEnd;
@@ -304,13 +329,23 @@ export function commandNeedsLastLine({
     }
   })();
 
-  if (runtimeCommand.inRange) return rangeEndsOnLastLine;
-  if (runtimeCommand.rangeEndedOnLine === BigInt(lineNumber)) return false;
-  if (addressNeedsLastLine) return true;
-  if (!rangeEndsOnLastLine) return false;
+  if (runtimeCommand.inRange) {
+    return rangeEndsOnLastLine;
+  }
+  if (runtimeCommand.rangeEndedOnLine === BigInt(lineNumber)) {
+    return false;
+  }
+  if (addressNeedsLastLine) {
+    return true;
+  }
+  if (!rangeEndsOnLastLine) {
+    return false;
+  }
 
   const address = command.address;
-  if (address === undefined) return true;
+  if (address === undefined) {
+    return true;
+  }
   switch (address.kind) {
   case "last":
     return true;
@@ -356,7 +391,9 @@ export function settleActiveRangeEnds({
   for (let index = startIndex; index < endIndex; index += 1) {
     const runtimeCommand = runtimeCommands[index]!;
     const rangeEnd = runtimeCommand.command.rangeEnd;
-    if (!runtimeCommand.inRange || rangeEnd === undefined) continue;
+    if (!runtimeCommand.inRange || rangeEnd === undefined) {
+      continue;
+    }
     if (
       rangeEnd.kind === "last" ||
       rangeEnd.kind === "relativeOffset" ||

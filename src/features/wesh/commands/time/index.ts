@@ -142,7 +142,9 @@ export const timeCommandImplementation: WeshCommandImplementation = {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message !== `Command not found: ${command}`) throw error;
+      if (message !== `Command not found: ${command}`) {
+        throw error;
+      }
       await context.text().error({
         text: `time: cannot run ${command}: No such file or directory\n`,
       });

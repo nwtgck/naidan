@@ -130,8 +130,12 @@ export function createCssOwnerKey({ owners }: { owners: string[] }): string {
 }
 
 export function parseCssOwnerKey({ key }: { key: string }): string[] {
-  if (key === '') return [];
-  if (!key.startsWith('[')) return [key];
+  if (key === '') {
+    return [];
+  }
+  if (!key.startsWith('[')) {
+    return [key];
+  }
   let owners: unknown;
   try {
     owners = JSON.parse(key);
@@ -169,21 +173,29 @@ function subtractContainer({ target, baseline }: { target: Container; baseline: 
     const header = nodeHeader({ node });
     let matchIndex = -1;
     for (let index = 0; index < baselineNodes.length; index += 1) {
-      if (used.has(index)) continue;
+      if (used.has(index)) {
+        continue;
+      }
       if (nodeHeader({ node: baselineNodes[index] }) === header) {
         matchIndex = index;
         break;
       }
     }
-    if (matchIndex === -1) continue;
+    if (matchIndex === -1) {
+      continue;
+    }
     used.add(matchIndex);
     const baselineNode = baselineNodes[matchIndex];
     if ('nodes' in node && Array.isArray(node.nodes) && 'nodes' in baselineNode && Array.isArray(baselineNode.nodes)) {
       subtractContainer({ target: node, baseline: baselineNode });
-      if ((node.nodes ?? []).length === 0) node.remove();
+      if ((node.nodes ?? []).length === 0) {
+        node.remove();
+      }
       continue;
     }
-    if (node.toString() === baselineNode.toString()) node.remove();
+    if (node.toString() === baselineNode.toString()) {
+      node.remove();
+    }
   }
 }
 
@@ -253,7 +265,9 @@ function flattenCssAtoms({ css }: { css: string }): CssAtom[] {
           for (const declaration of child.nodes) {
             append({ wrappers: [...layerWrapper, { type: 'rule', selector: child.selector }], node: declaration });
           }
-        } else append({ wrappers: layerWrapper, node: child });
+        } else {
+          append({ wrappers: layerWrapper, node: child });
+        }
       }
       continue;
     }
@@ -266,7 +280,9 @@ function serializeCssAtoms({ atoms }: { atoms: CssAtom[] }): string {
   const output: string[] = [];
   let current: CssAtomRun | undefined;
   function flush(): void {
-    if (current === undefined) return;
+    if (current === undefined) {
+      return;
+    }
     output.push(wrapAtom({ wrappers: current.wrappers, nodeCss: current.nodes.join('\n') }));
     current = undefined;
   }
@@ -274,7 +290,9 @@ function serializeCssAtoms({ atoms }: { atoms: CssAtom[] }): string {
     if (current === undefined || current.wrapperKey !== atom.wrapperKey) {
       flush();
       current = { wrapperKey: atom.wrapperKey, wrappers: atom.wrappers, nodes: [atom.nodeCss] };
-    } else current.nodes.push(atom.nodeCss);
+    } else {
+      current.nodes.push(atom.nodeCss);
+    }
   }
   flush();
   return output.length === 0 ? '' : `${output.join('\n')}\n`;
@@ -289,15 +307,21 @@ function isRuleNode(node: Node): node is Rule {
 }
 
 function cssOwnershipKeys({ css }: { css: string | null | undefined }): Set<string> {
-  if (css === null || css === undefined || css.trim() === '') return new Set();
+  if (css === null || css === undefined || css.trim() === '') {
+    return new Set();
+  }
   const keys = new Set<string>();
   const root = postcss.parse(css);
   root.walkRules((rule) => {
     const selectorPath: string[] = [];
     let current: Node | undefined = rule;
     while (current !== undefined && current.type !== 'root') {
-      if (isAtRuleNode(current) && current.name === 'keyframes') return;
-      if (isRuleNode(current)) selectorPath.unshift(current.selector);
+      if (isAtRuleNode(current) && current.name === 'keyframes') {
+        return;
+      }
+      if (isRuleNode(current)) {
+        selectorPath.unshift(current.selector);
+      }
       current = current.parent;
     }
     keys.add(`selector-path:${selectorPath.join('\0')}`);
@@ -312,7 +336,9 @@ function createOwnershipHints({ candidates, candidateCss, candidateOwners }: { c
   const hints = new Map<string, Set<string>>();
   for (const candidate of candidates) {
     const owners = candidateOwners.get(candidate);
-    if (owners === undefined) continue;
+    if (owners === undefined) {
+      continue;
+    }
     for (const key of cssOwnershipKeys({ css: candidateCss.get(candidate) })) {
       const values = hints.get(key) ?? new Set<string>();
       owners.forEach((owner) => values.add(owner));
@@ -341,15 +367,22 @@ function annotateCanonicalAtoms({ atoms }: { atoms: CssAtom[] }): CanonicalCssAt
 
 function fingerprintCounts({ atoms }: { atoms: CssAtom[] }): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const atom of atoms) counts.set(atom.fingerprint, (counts.get(atom.fingerprint) ?? 0) + 1);
+  for (const atom of atoms) {
+    counts.set(atom.fingerprint, (counts.get(atom.fingerprint) ?? 0) + 1);
+  }
   return counts;
 }
 
 function consumeFingerprint({ counts, fingerprint }: { counts: Map<string, number>; fingerprint: string }): boolean {
   const count = counts.get(fingerprint) ?? 0;
-  if (count === 0) return false;
-  if (count === 1) counts.delete(fingerprint);
-  else counts.set(fingerprint, count - 1);
+  if (count === 0) {
+    return false;
+  }
+  if (count === 1) {
+    counts.delete(fingerprint);
+  } else {
+    counts.set(fingerprint, count - 1);
+  }
   return true;
 }
 
@@ -361,7 +394,9 @@ function createOrderedFragments({ atoms }: { atoms: CanonicalCssAtom[] }): CssRu
     const previousOrder = previous?.atoms.at(-1)?.canonicalOrder;
     if (previous === undefined || previousOrder === undefined || previousOrder + 1 !== atom.canonicalOrder) {
       runs.push({ order: atom.canonicalOrder, atoms: [atom] });
-    } else previous.atoms.push(atom);
+    } else {
+      previous.atoms.push(atom);
+    }
   }
   return runs.map(({ order, atoms: runAtoms }) => ({
     order,
@@ -410,7 +445,9 @@ function assertAnalysisIntegrity({ analysis }: { analysis: CssOwnershipAnalysis 
     ))
     .map(([candidate]) => candidate)
     .sort();
-  if (missingOwners.length === 0 && missingOccurrences.length === 0 && invalidOwnerEntries.length === 0) return;
+  if (missingOwners.length === 0 && missingOccurrences.length === 0 && invalidOwnerEntries.length === 0) {
+    return;
+  }
   const details = [
     missingOwners.length === 0
       ? undefined
@@ -433,16 +470,24 @@ function groupCandidatesByOwner({ candidateOwners }: { candidateOwners: Map<stri
     candidates.push(candidate);
     result.set(key, candidates);
   }
-  for (const candidates of result.values()) candidates.sort();
+  for (const candidates of result.values()) {
+    candidates.sort();
+  }
   return result;
 }
 
 function lazyGroupPriority({ left, right }: { left: LazyGroup; right: LazyGroup }): number {
-  if (left.bytes !== right.bytes) return right.bytes - left.bytes;
-  if (left.itemCount !== right.itemCount) return right.itemCount - left.itemCount;
+  if (left.bytes !== right.bytes) {
+    return right.bytes - left.bytes;
+  }
+  if (left.itemCount !== right.itemCount) {
+    return right.itemCount - left.itemCount;
+  }
   const leftSingleOwner = parseCssOwnerKey({ key: left.key }).length === 1;
   const rightSingleOwner = parseCssOwnerKey({ key: right.key }).length === 1;
-  if (leftSingleOwner !== rightSingleOwner) return leftSingleOwner ? -1 : 1;
+  if (leftSingleOwner !== rightSingleOwner) {
+    return leftSingleOwner ? -1 : 1;
+  }
   return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
@@ -460,12 +505,16 @@ function compressAtomGroups({ atomGroups, maxSplitCssGroups }: { atomGroups: Map
   const initialAtoms = atomGroups.get('initial') ?? [];
   let promotedAtomCount = 0;
   for (const { key, atoms } of lazyGroups) {
-    if (retained.has(key)) continue;
+    if (retained.has(key)) {
+      continue;
+    }
     initialAtoms.push(...atoms);
     atomGroups.delete(key);
     promotedAtomCount += atoms.length;
   }
-  if (initialAtoms.length > 0) atomGroups.set('initial', initialAtoms);
+  if (initialAtoms.length > 0) {
+    atomGroups.set('initial', initialAtoms);
+  }
   return {
     originalLazyGroupCount: lazyGroups.length,
     retainedLazyGroupCount: retained.size,
@@ -634,8 +683,11 @@ export async function createCssOwnershipPlan({
     const placement = isBaselineAtom
       ? { owners: new Set(['initial']), sourceOwned: false }
       : atomOwners({ atom, ownershipHints });
-    if (placement.sourceOwned) sourceOwnedAtomCount += 1;
-    else initialSupportAtomCount += 1;
+    if (placement.sourceOwned) {
+      sourceOwnedAtomCount += 1;
+    } else {
+      initialSupportAtomCount += 1;
+    }
     const key = createCssOwnerKey({ owners: [...placement.owners] });
     const values = atomGroups.get(key) ?? [];
     values.push(atom);

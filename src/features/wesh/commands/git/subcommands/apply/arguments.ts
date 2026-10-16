@@ -75,8 +75,9 @@ export function parseApplyArguments({ args }: { args: readonly string[] }): Appl
     }
     }
   }
-  if (parsed.positionals.length > 1)
+  if (parsed.positionals.length > 1) {
     throw new Error('git apply accepts at most one patch input');
+  }
   return {
     cached: parsed.optionValues.cached === true,
     check: parsed.optionValues.check === true,

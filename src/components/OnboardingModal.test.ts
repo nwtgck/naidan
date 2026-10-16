@@ -140,19 +140,26 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').classes()).toContain('bg-blue-600');
     expect(wrapper.find('[data-testid="onboarding-connect-button"]').exists()).toBe(false);
-    expect(mockSave).not.toHaveBeenCalled(); expect(listModelsMock).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(listModelsMock).not.toHaveBeenCalled();
     list.mockResolvedValue([{ id: 'model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);
     preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true };
     await flushPromises();
     // Returning to the endpoint refreshes its authoritative local model list.
     const ollama = wrapper.findAll('button').find(button => button.text() === 'Ollama')!;
-    await ollama.trigger('click'); await wrapper.get('[data-testid="onboarding-llama-cpp-browser-button"]').trigger('click'); await flushPromises();
+    await ollama.trigger('click');
+    await wrapper.get('[data-testid="onboarding-llama-cpp-browser-button"]').trigger('click');
+    await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
-    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true); await flushPromises();
+    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);
+    await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
-    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click');
+    await flushPromises();
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
-    wrapper.unmount(); list.mockRestore(); vi.unstubAllGlobals();
+    wrapper.unmount();
+    list.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
@@ -164,14 +171,18 @@ describe('OnboardingModal.vue', () => {
     const child = wrapper.findComponent({ name: 'PreparedManager' });
     const target = 'hf.co/owner/repo:Q8_0';
     child.vm.$emit('modelsChanged', [{ id: 'first', name: 'first', size: 128, importedAt: 1 }, { id: 'target', name: target, size: 128, importedAt: 1 }]);
-    child.vm.$emit('modelSelected', target); await flushPromises();
+    child.vm.$emit('modelSelected', target);
+    await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
-    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true); await flushPromises();
+    wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);
+    await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeUndefined();
     expect(mockSave).not.toHaveBeenCalled();
-    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="onboarding-local-start"]').trigger('click');
+    await flushPromises();
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target }) }));
-    wrapper.unmount(); list.mockRestore();
+    wrapper.unmount();
+    list.mockRestore();
   });
 
   it('renders Step 1 by default and shows correct labels', async () => {
@@ -374,7 +385,8 @@ describe('OnboardingModal.vue', () => {
     });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        wrapper.unmount(); list.mockRestore();
+        wrapper.unmount();
+        list.mockRestore();
       },
     };
     await flushPromises();

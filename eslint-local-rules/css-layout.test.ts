@@ -241,12 +241,14 @@ describe('CSS layout', () => {
   });
 
   it.each(['url', 'URL', String.raw`u\72l`, String.raw`\75rl`, String.raw`\55\52\4c`])('does not confuse comment-like unquoted %s URL text with CSS comments', name => {
-    for (const declaration of [String.raw`\2d\2d foo:{a:b;c:d};color:red`, String.raw`font-family:foo\ `]) for (const url of ['https://example.com/*', String.raw`https://example.com/\)/*`]) {
-      const input = `.a{background:${name}(${url});${declaration}}`;
-      const result = linter.verifyAndFix(input, config, { filename: 'src/example.css' });
-      expect(result.fixed).toBe(false);
-      expect(result.output).toBe(input);
-      expect(result.messages).toEqual([]);
+    for (const declaration of [String.raw`\2d\2d foo:{a:b;c:d};color:red`, String.raw`font-family:foo\ `]) {
+      for (const url of ['https://example.com/*', String.raw`https://example.com/\)/*`]) {
+        const input = `.a{background:${name}(${url});${declaration}}`;
+        const result = linter.verifyAndFix(input, config, { filename: 'src/example.css' });
+        expect(result.fixed).toBe(false);
+        expect(result.output).toBe(input);
+        expect(result.messages).toEqual([]);
+      }
     }
   });
 

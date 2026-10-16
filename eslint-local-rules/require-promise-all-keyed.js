@@ -103,7 +103,9 @@ function isTypeScriptLibDeclaration(declaration) {
 
 function isBuiltInPromise({ checker, promiseIdentifier, services }) {
   const tsNode = services.esTreeNodeToTSNodeMap.get(promiseIdentifier);
-  if (!tsNode) return false;
+  if (!tsNode) {
+    return false;
+  }
 
   const symbol = checker.getSymbolAtLocation(tsNode);
   return Boolean(symbol?.declarations?.some(isTypeScriptLibDeclaration));
@@ -152,7 +154,9 @@ function typeProducesOnlyVoid({ checker, type }) {
 
 function expressionProducesOnlyVoid({ checker, expression, services }) {
   const tsNode = services.esTreeNodeToTSNodeMap.get(unwrapExpression(expression));
-  if (!tsNode) return false;
+  if (!tsNode) {
+    return false;
+  }
 
   return typeProducesOnlyVoid({
     checker,
@@ -162,7 +166,9 @@ function expressionProducesOnlyVoid({ checker, expression, services }) {
 
 function getFixedTupleElementTypes({ checker, expression, services }) {
   const tsNode = services.esTreeNodeToTSNodeMap.get(unwrapExpression(expression));
-  if (!tsNode) return undefined;
+  if (!tsNode) {
+    return undefined;
+  }
 
   const type = checker.getTypeAtLocation(tsNode);
   const unionMembers = type.isUnion?.() ? type.types : [type];
@@ -254,7 +260,9 @@ export const rule = {
   },
   create(context) {
     const services = getParserServices(context);
-    if (!services) return {};
+    if (!services) {
+      return {};
+    }
 
     const checker = services.program.getTypeChecker();
     const filePath = context.filename ?? context.getFilename?.() ?? '';
@@ -262,7 +270,9 @@ export const rule = {
     return {
       CallExpression(node) {
         const match = getPromiseAllInput(node);
-        if (!match) return;
+        if (!match) {
+          return;
+        }
 
         if (!isBuiltInPromise({
           checker,
@@ -282,7 +292,9 @@ export const rule = {
           services,
         });
 
-        if (inputStatus !== FIXED_INPUT_STATUS.value) return;
+        if (inputStatus !== FIXED_INPUT_STATUS.value) {
+          return;
+        }
 
         context.report({
           node: match.callExpression,

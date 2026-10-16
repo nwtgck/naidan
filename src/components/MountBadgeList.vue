@@ -20,7 +20,9 @@ const emit = defineEmits<{
 }>();
 
 function displayPath({ mountPath }: { mountPath: string }): string {
-  if (!props.pathTrimPrefix) return mountPath;
+  if (!props.pathTrimPrefix) {
+    return mountPath;
+  }
   const trimmed = mountPath.startsWith(props.pathTrimPrefix)
     ? mountPath.slice(props.pathTrimPrefix.length)
     : mountPath;

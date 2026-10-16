@@ -149,10 +149,14 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
       command: 'build' | 'serve',
     }): Promise<void> => {
       const configResolved = plugin.configResolved;
-      if (typeof configResolved !== 'function') throw new TypeError('Expected configResolved hook.');
+      if (typeof configResolved !== 'function') {
+        throw new TypeError('Expected configResolved hook.');
+      }
       await configResolved.call({} as never, { command } as never);
       const buildStart = plugin.buildStart;
-      if (typeof buildStart !== 'function') throw new TypeError('Expected buildStart hook.');
+      if (typeof buildStart !== 'function') {
+        throw new TypeError('Expected buildStart hook.');
+      }
       await buildStart.call({ info() {} } as never, {} as never);
     };
     const cssImports = ({ plugin }: { plugin: ReturnType<typeof createPlugin> }): Record<string, string[]> => (
@@ -213,7 +217,9 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     }>;
     const entry = Object.values(manifest).find(({ isEntry }) => isEntry === true);
     expect(entry).toBeDefined();
-    if (entry === undefined) throw new TypeError('Expected one hosted entry chunk.');
+    if (entry === undefined) {
+      throw new TypeError('Expected one hosted entry chunk.');
+    }
 
     const hostedCss = [...readCssAssets({ outputDirectory }).values()].join('\n');
     expect(hostedCss).not.toContain('.animate-spin');
@@ -294,15 +300,21 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       key.endsWith('broker.html') && value.isEntry === true
     ))?.[0];
     expect(brokerEntryKey).toBeDefined();
-    if (brokerEntryKey === undefined) throw new TypeError('Expected the broker HTML entry in the manifest.');
+    if (brokerEntryKey === undefined) {
+      throw new TypeError('Expected the broker HTML entry in the manifest.');
+    }
 
     const reachableKeys = new Set<string>();
     const pendingKeys = [brokerEntryKey];
     while (pendingKeys.length > 0) {
       const key = pendingKeys.shift();
-      if (key === undefined || reachableKeys.has(key)) continue;
+      if (key === undefined || reachableKeys.has(key)) {
+        continue;
+      }
       reachableKeys.add(key);
-      for (const importedKey of manifest[key]?.imports ?? []) pendingKeys.push(importedKey);
+      for (const importedKey of manifest[key]?.imports ?? []) {
+        pendingKeys.push(importedKey);
+      }
     }
     const brokerJavaScript = [...reachableKeys]
       .map((key) => manifest[key])
@@ -430,7 +442,9 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
     expect(Object.values(manifest).flatMap(({ css }) => css ?? [])).toEqual([]);
     const entry = Object.values(manifest).find(({ isEntry }) => isEntry === true);
     expect(entry).toBeDefined();
-    if (entry === undefined) throw new TypeError('Expected one standalone entry chunk.');
+    if (entry === undefined) {
+      throw new TypeError('Expected one standalone entry chunk.');
+    }
 
     expect(readCssAssets({ outputDirectory }).size).toBe(0);
     const javascriptAssets = readJavaScriptAssets({ outputDirectory });

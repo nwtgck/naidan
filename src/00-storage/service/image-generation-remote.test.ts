@@ -18,16 +18,21 @@ function remote() {
     label: 'Remote machine',
     modelSelection: { primary: { slot: 'model', file: { location: { kind: 'opfs', path: 'models/remote/example.gguf' }, expected: { size: 1000, lastModified: 1 } } }, components: [], loras: [] },
   };
-  run.request.models = []; run.request.loras = [];
-  for (const key of ['vaeTiling', 'vaeTileSize', 'flashAttention', 'bf16WeightType', 'qwenVaePolicy', 'conditioningCacheSize', 'modelArguments'] as const) delete run.request.parameters[key];
+  run.request.models = [];
+  run.request.loras = [];
+  for (const key of ['vaeTiling', 'vaeTileSize', 'flashAttention', 'bf16WeightType', 'qwenVaePolicy', 'conditioningCacheSize', 'modelArguments'] as const) {
+    delete run.request.parameters[key];
+  }
   return run;
 }
 
 it('roundtrips remote provenance without claiming local files or native settings', () => {
-  const run = remote(); const dto = imageGenerationRequestToDto({ request: reactive(run.request) });
+  const run = remote();
+  const dto = imageGenerationRequestToDto({ request: reactive(run.request) });
   expect(() => structuredClone(dto)).not.toThrow();
   expect(imageGenerationRequestToDomain({ request: dto })).toEqual(run.request);
-  expect(dto.models).toEqual([]); expect(dto.parameters).not.toHaveProperty('modelArguments');
+  expect(dto.models).toEqual([]);
+  expect(dto.parameters).not.toHaveProperty('modelArguments');
   expect(ExperimentalImageGenerationRunSchemaDto.parse({ ...run, request: dto }).request).toEqual(dto);
 });
 

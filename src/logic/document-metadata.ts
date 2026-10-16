@@ -53,15 +53,24 @@ export function isHomeIntroductionActive({ introduction, route }: {
   case 'inactive': return false;
   case 'active': return route !== undefined && introduction.routePaths.includes(route.path)
     && route.query['llama-cpp-browser-model'] === undefined && route.query.q === undefined && route.query.settings === undefined;
-  default: { const _ex: never = introduction; return _ex; }
+  default: {
+    const _ex: never = introduction;
+    return _ex;
+  }
   }
 }
 
 export function routeDocumentMetadata({ route }: { route: DocumentMetadataRoute | undefined }): PageMetadata {
-  if (route === undefined) return APPLICATION_METADATA;
+  if (route === undefined) {
+    return APPLICATION_METADATA;
+  }
   const path = route.path.replace(/\/+$/, '');
-  if (path === '/audio-generation' && route.matched.some(record => record.path === '/audio-generation')) return AUDIO_METADATA;
-  if (path === '/image-generation' && route.matched.some(record => record.path === '/image-generation')) return IMAGE_METADATA;
+  if (path === '/audio-generation' && route.matched.some(record => record.path === '/audio-generation')) {
+    return AUDIO_METADATA;
+  }
+  if (path === '/image-generation' && route.matched.some(record => record.path === '/image-generation')) {
+    return IMAGE_METADATA;
+  }
   return APPLICATION_METADATA;
 }
 
@@ -73,8 +82,12 @@ export function applyDocumentMetadata({ document, page, documentTitle }: {
   const { title, description, ...unhandled } = page;
   unhandled satisfies Record<PropertyKey, never>;
   const titles = [...document.head.querySelectorAll('title')];
-  for (const duplicate of titles.slice(1)) duplicate.remove();
-  if (document.title !== documentTitle || titles.length === 0) document.title = documentTitle;
+  for (const duplicate of titles.slice(1)) {
+    duplicate.remove();
+  }
+  if (document.title !== documentTitle || titles.length === 0) {
+    document.title = documentTitle;
+  }
   document.head.querySelector('title')?.setAttribute('data-document-metadata', '');
 
   const entries = [
@@ -87,11 +100,17 @@ export function applyDocumentMetadata({ document, page, documentTitle }: {
   for (const { attribute, key, content } of entries) {
     const matches = [...document.head.querySelectorAll<HTMLMetaElement>(`meta[${attribute}="${key}"]`)];
     const meta = matches[0] ?? document.createElement('meta');
-    for (const duplicate of matches.slice(1)) duplicate.remove();
+    for (const duplicate of matches.slice(1)) {
+      duplicate.remove();
+    }
     meta.setAttribute(attribute, key);
     meta.setAttribute('data-document-metadata', '');
-    if (meta.content !== content) meta.content = content;
-    if (meta.parentNode === null) document.head.append(meta);
+    if (meta.content !== content) {
+      meta.content = content;
+    }
+    if (meta.parentNode === null) {
+      document.head.append(meta);
+    }
   }
 }
 

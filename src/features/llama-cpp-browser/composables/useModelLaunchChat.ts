@@ -31,8 +31,12 @@ export function useModelLaunchChat({ chat, resolved }: {
   const selectedPath = ref('');
   const selectedTarget = computed(() => {
     const saved = launch.value?.target;
-    if (saved === undefined || selectedPath.value === saved.mainFilePath) return saved;
-    if (catalog.value === undefined) return undefined;
+    if (saved === undefined || selectedPath.value === saved.mainFilePath) {
+      return saved;
+    }
+    if (catalog.value === undefined) {
+      return undefined;
+    }
     try {
       return targetForChoice({ catalog: catalog.value, path: selectedPath.value });
     } catch {
@@ -61,7 +65,9 @@ export function useModelLaunchChat({ chat, resolved }: {
   const runtimeUnavailable = computed(() => runtimeState.value.status === 'unavailable');
   const job = computed(() => {
     const target = selectedTarget.value;
-    if (target === undefined) return undefined;
+    if (target === undefined) {
+      return undefined;
+    }
     const key = selectionKey({ selection: target.selection });
     const matching = queue.jobs.value.filter(candidate => candidate.key === key || (candidate.selection !== undefined && selectionKey({ selection: candidate.selection }) === key));
     return matching.find(candidate => jobIsBusy({ job: candidate })) ?? matching.at(-1);
@@ -75,9 +81,15 @@ export function useModelLaunchChat({ chat, resolved }: {
   // available. Never apply this to ordinary chats, existing conversations, or
   // a user-selected override. ChatPane uses v-show to retain drafts/attachments.
   const composerVisibility = computed<'visible' | 'hidden'>(() => {
-    if (!visible.value || chat.value === null || chat.value.root.items.length > 0) return 'visible';
-    if (launch.value === undefined || needsRecovery.value) return 'hidden';
-    if (!isActive.value) return 'visible';
+    if (!visible.value || chat.value === null || chat.value.root.items.length > 0) {
+      return 'visible';
+    }
+    if (launch.value === undefined || needsRecovery.value) {
+      return 'hidden';
+    }
+    if (!isActive.value) {
+      return 'visible';
+    }
     return readiness.value === 'ready' && !selectionChanged.value ? 'visible' : 'hidden';
   });
   const label = computed(() => {
@@ -96,11 +108,17 @@ export function useModelLaunchChat({ chat, resolved }: {
     const current = chat.value;
     if (disposed || !isCurrentRoute.value || current === null || target === undefined || current.root.items.length > 0
       || readiness.value !== 'ready' || verification.value === 'checking' || busy.value || selectionChanged.value || runtimeUnavailable.value
-      || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+      || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) {
+      return;
+    }
     const key = `${idToRaw({ id: current.id })}:${target.modelId}`;
-    if (warmupKey === key) return;
+    if (warmupKey === key) {
+      return;
+    }
     warmupController?.abort();
-    const controller = new AbortController(); warmupController = controller; warmupKey = key;
+    const controller = new AbortController();
+    warmupController = controller;
+    warmupKey = key;
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     warmup.value = 'loading';
     warmupProgress.value = undefined;
@@ -110,21 +128,36 @@ export function useModelLaunchChat({ chat, resolved }: {
       onProgress: ({ progress }) => {
       // Operation-local, not the engine's global progress: another chat may own
       // the lane, or this card may already have changed target/storage.
-        if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') warmupProgress.value = progress;
+        if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') {
+          warmupProgress.value = progress;
+        }
       },
     }).then(result => {
-      if (disposed || controller.signal.aborted || !isStorageCurrent() || warmupKey !== key) return;
+      if (disposed || controller.signal.aborted || !isStorageCurrent() || warmupKey !== key) {
+        return;
+      }
       switch (result) {
-      case 'ready': warmup.value = 'ready'; break;
-      case 'skipped-busy': warmup.value = 'deferred'; break;
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      case 'ready': warmup.value = 'ready';
+        break;
+      case 'skipped-busy': warmup.value = 'deferred';
+        break;
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
       }
     }).catch(() => {
-      if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key) warmup.value = 'failed';
+      if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key) {
+        warmup.value = 'failed';
+      }
     });
   }
   watch([() => chat.value?.id, () => effectiveTarget.value?.modelId, () => settingsApi.settings.value.storageType, isCurrentRoute, selectionChanged, readiness], () => {
-    warmupController?.abort(); warmupController = undefined; warmupKey = undefined; warmup.value = 'idle'; warmupProgress.value = undefined;
+    warmupController?.abort();
+    warmupController = undefined;
+    warmupKey = undefined;
+    warmup.value = 'idle';
+    warmupProgress.value = undefined;
   });
   watch([readiness, verification, busy, selectionChanged, effectiveTarget, isCurrentRoute], prepareWhenIdle);
 
@@ -134,7 +167,9 @@ export function useModelLaunchChat({ chat, resolved }: {
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     const context = JSON.stringify({ chatId: chat.value?.id, target });
     if (target === undefined) {
-      readiness.value = 'failed'; verification.value = 'idle'; return;
+      readiness.value = 'failed';
+      verification.value = 'idle';
+      return;
     }
     if (context !== readinessContext || readinessStorageCurrent?.() !== true || readiness.value === 'failed') {
       readiness.value = 'checking';
@@ -147,21 +182,31 @@ export function useModelLaunchChat({ chat, resolved }: {
     let ready: boolean;
     try {
       ready = await isModelLaunchTargetReady({ target });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       hasPausedDownload.value = false;
       if (!ready) {
         try {
           const folder = await repositoryFolder({ repository: target.selection.repository, create: false });
           const journal = await readJournal({ folder });
-          if (isCurrent()) hasPausedDownload.value = selectionKey({ selection: journal.selection }) === selectionKey({ selection: target.selection });
+          if (isCurrent()) {
+            hasPausedDownload.value = selectionKey({ selection: journal.selection }) === selectionKey({ selection: target.selection });
+          }
         } catch (cause) {
-          if (!isMissing({ error: cause })) throw cause;
+          if (!isMissing({ error: cause })) {
+            throw cause;
+          }
         }
       }
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       readiness.value = ready ? 'ready' : 'missing';
     } catch {
-      if (isCurrent()) readiness.value = 'failed';
+      if (isCurrent()) {
+        readiness.value = 'failed';
+      }
       return;
     } finally {
       if (!disposed && generation === readGeneration) {
@@ -183,20 +228,29 @@ export function useModelLaunchChat({ chat, resolved }: {
       && storageType === settingsApi.settings.value.storageType) {
       try {
         const expected = await defaults;
-        if (!isCurrent() || !isCurrentRoute.value) return;
-        if (defaultAttempted || !isActive.value || selectionChanged.value || storageType !== settingsApi.settings.value.storageType) return;
+        if (!isCurrent() || !isCurrentRoute.value) {
+          return;
+        }
+        if (defaultAttempted || !isActive.value || selectionChanged.value || storageType !== settingsApi.settings.value.storageType) {
+          return;
+        }
         defaultAttempted = true;
         if (expected === undefined) {
-          defaultWarning.value = true; return;
+          defaultWarning.value = true;
+          return;
         }
         await settingsApi.initializeModelLaunchDefaults({ modelId: target.modelId, expected });
       } catch {
-        if (isCurrent()) defaultWarning.value = true;
+        if (isCurrent()) {
+          defaultWarning.value = true;
+        }
       }
     }
   }
   watch([() => chat.value?.id, () => launch.value !== undefined], () => {
-    for (const controller of controllers) controller.abort();
+    for (const controller of controllers) {
+      controller.abort();
+    }
     error.value = false;
     operation.value = 'idle';
     defaults = launch.value === undefined ? Promise.resolve(undefined) : settingsApi.captureModelLaunchDefaults().catch(() => undefined);
@@ -210,8 +264,9 @@ export function useModelLaunchChat({ chat, resolved }: {
     catalog.value = target === undefined ? undefined : readLaunchCatalog({ repository: target.selection.repository });
   }, { immediate: true });
   watch([() => chat.value?.id, selectedTarget, queue.changed, () => settingsApi.settings.value.storageType], () => {
-    if (launch.value !== undefined) void refresh();
-    else {
+    if (launch.value !== undefined) {
+      void refresh();
+    } else {
       readGeneration++;
       readinessContext = undefined;
       readinessStorageCurrent = undefined;
@@ -222,27 +277,43 @@ export function useModelLaunchChat({ chat, resolved }: {
 
   async function refreshChoices(): Promise<void> {
     const saved = launch.value;
-    if (saved === undefined || busy.value || !isActive.value) return;
+    if (saved === undefined || busy.value || !isActive.value) {
+      return;
+    }
     const chatId = chat.value?.id;
-    const controller = new AbortController(); controllers.add(controller);
-    operation.value = 'checking'; error.value = false;
+    const controller = new AbortController();
+    controllers.add(controller);
+    operation.value = 'checking';
+    error.value = false;
     try {
       const result = await getMetadataSession().inspect({ input: saved.target.selection.repository, signal: controller.signal, freshness: 'refresh' });
-      if (disposed || chat.value?.id !== chatId) return;
-      rememberLaunchCatalog({ catalog: result }); catalog.value = result;
+      if (disposed || chat.value?.id !== chatId) {
+        return;
+      }
+      rememberLaunchCatalog({ catalog: result });
+      catalog.value = result;
       // Refreshing choices is not permission to replace the pinned saved plan.
     } catch {
-      if (!controller.signal.aborted && chat.value?.id === chatId) error.value = true;
+      if (!controller.signal.aborted && chat.value?.id === chatId) {
+        error.value = true;
+      }
     } finally {
-      controllers.delete(controller); if (!disposed && chat.value?.id === chatId) operation.value = 'idle';
+      controllers.delete(controller);
+      if (!disposed && chat.value?.id === chatId) {
+        operation.value = 'idle';
+      }
     }
   }
   async function recover(): Promise<void> {
     const current = chat.value;
     const saved = launch.value;
-    if (current === null || saved?.phase !== 'reserved' || busy.value) return;
-    const controller = new AbortController(); controllers.add(controller);
-    operation.value = 'adopting'; error.value = false;
+    if (current === null || saved?.phase !== 'reserved' || busy.value) {
+      return;
+    }
+    const controller = new AbortController();
+    controllers.add(controller);
+    operation.value = 'adopting';
+    error.value = false;
     try {
       const updated = await storageService.prepareModelLaunchChat({
         signal: controller.signal,
@@ -258,19 +329,33 @@ export function useModelLaunchChat({ chat, resolved }: {
           expectedTarget: undefined,
         },
       });
-      if (disposed || chat.value?.id !== current.id || controller.signal.aborted) return;
-      registerLiveInstance({ chat: updated }); synchronize(); await loadData(); await refresh();
+      if (disposed || chat.value?.id !== current.id || controller.signal.aborted) {
+        return;
+      }
+      registerLiveInstance({ chat: updated });
+      synchronize();
+      await loadData();
+      await refresh();
     } catch {
-      if (!controller.signal.aborted) error.value = true;
+      if (!controller.signal.aborted) {
+        error.value = true;
+      }
     } finally {
-      controllers.delete(controller); if (!disposed && chat.value?.id === current.id) operation.value = 'idle';
+      controllers.delete(controller);
+      if (!disposed && chat.value?.id === current.id) {
+        operation.value = 'idle';
+      }
     }
   }
   watch(() => launch.value?.phase, phase => {
     switch (phase) {
-    case 'reserved': void recover(); break;
+    case 'reserved': void recover();
+      break;
     case 'active': case 'detached': case undefined: break;
-    default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(String(exhaustive));
+    }
     }
   }, { immediate: true });
 
@@ -278,10 +363,14 @@ export function useModelLaunchChat({ chat, resolved }: {
     const current = chat.value;
     const saved = launch.value;
     const target = selectedTarget.value;
-    if (current === null || saved === undefined || target === undefined || busy.value || verification.value === 'checking' || !isActive.value || runtimeUnavailable.value) return;
-    const controller = new AbortController(); controllers.add(controller);
+    if (current === null || saved === undefined || target === undefined || busy.value || verification.value === 'checking' || !isActive.value || runtimeUnavailable.value) {
+      return;
+    }
+    const controller = new AbortController();
+    controllers.add(controller);
     const isStorageCurrent = storageService.captureModelLaunchStorage();
-    operation.value = 'adopting'; error.value = false;
+    operation.value = 'adopting';
+    error.value = false;
     try {
       if (selectionChanged.value) {
         const updated = await storageService.prepareModelLaunchChat({
@@ -298,22 +387,32 @@ export function useModelLaunchChat({ chat, resolved }: {
             expectedTarget: saved.target,
           },
         });
-        if (disposed || chat.value?.id !== current.id) return;
-        registerLiveInstance({ chat: updated }); synchronize(); await loadData();
+        if (disposed || chat.value?.id !== current.id) {
+          return;
+        }
+        registerLiveInstance({ chat: updated });
+        synchronize();
+        await loadData();
       }
-      if (disposed || chat.value?.id !== current.id || !isStorageCurrent() || settingsApi.settings.value.storageType !== storageType) return;
+      if (disposed || chat.value?.id !== current.id || !isStorageCurrent() || settingsApi.settings.value.storageType !== storageType) {
+        return;
+      }
       const ready = await isModelLaunchTargetReady({ target });
       // Local file inspection is asynchronous too. Recheck intent and storage
       // after it settles, before starting any model transfer.
       if (disposed || controller.signal.aborted || chat.value?.id !== current.id
         || !isStorageCurrent() || settingsApi.settings.value.storageType !== storageType
         || !isActive.value || selectedTarget.value === undefined
-        || !sameLaunchTarget({ left: selectedTarget.value, right: target })) return;
+        || !sameLaunchTarget({ left: selectedTarget.value, right: target })) {
+        return;
+      }
       if (!ready) {
         const queued = queue.enqueue({ key: selectionKey({ selection: target.selection }), repository: target.selection.repository, source: 'repository', prepare: async () => target.selection });
         // The page-owned queue survives card unmounts. Never auto-send on finish.
         void queued.done.then(() => {
-          if (!disposed) void refresh();
+          if (!disposed) {
+            void refresh();
+          }
         });
       }
       await refresh();
@@ -324,16 +423,22 @@ export function useModelLaunchChat({ chat, resolved }: {
         // that state so sending stays blocked and the same plan can be repaired.
         try {
           const stored = await storageService.loadChat({ id: current.id });
-          if (!disposed && isStorageCurrent() && chat.value?.id === current.id && stored !== null) registerLiveInstance({ chat: stored });
+          if (!disposed && isStorageCurrent() && chat.value?.id === current.id && stored !== null) {
+            registerLiveInstance({ chat: stored });
+          }
         } catch { /* Keep the explicit error and leave recovery to a reload. */ }
       }
     } finally {
-      controllers.delete(controller); if (!disposed && chat.value?.id === current.id) operation.value = 'idle';
+      controllers.delete(controller);
+      if (!disposed && chat.value?.id === current.id) {
+        operation.value = 'idle';
+      }
     }
   }
   function selectPath({ path }: { path: string }): void {
     if (!busy.value && launch.value?.requestedVariant === undefined) {
-      selectedPath.value = path; error.value = false;
+      selectedPath.value = path;
+      error.value = false;
     }
   }
   const unsubscribeState = llamaCppBrowserService.subscribe({
@@ -343,22 +448,38 @@ export function useModelLaunchChat({ chat, resolved }: {
   });
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({
     listener: () => {
-      if (launch.value !== undefined) void refresh();
+      if (launch.value !== undefined) {
+        void refresh();
+      }
     },
   });
   function onFocus(): void {
     if (launch.value !== undefined) {
-      void refresh(); prepareWhenIdle();
+      void refresh();
+      prepareWhenIdle();
     }
   }
-  if (typeof window !== 'undefined') window.addEventListener('focus', onFocus);
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onFocus);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', onFocus);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onFocus);
+  }
   onScopeDispose(() => {
-    disposed = true; readGeneration++; warmupController?.abort();
-    for (const controller of controllers) controller.abort();
-    unsubscribeState(); unsubscribeModels();
-    if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onFocus);
+    disposed = true;
+    readGeneration++;
+    warmupController?.abort();
+    for (const controller of controllers) {
+      controller.abort();
+    }
+    unsubscribeState();
+    unsubscribeModels();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onFocus);
+    }
   });
   return {
     launch,

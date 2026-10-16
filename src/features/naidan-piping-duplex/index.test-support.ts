@@ -27,7 +27,9 @@ export function mailbox(): NaidanPipingHandshakeChannel {
       for (;;) {
         signal.throwIfAborted();
         const revision = pulse.revision, bytes = messages.shift();
-        if (bytes !== undefined) return bytes;
+        if (bytes !== undefined) {
+          return bytes;
+        }
         await pulse.wait({ revision, signal });
       }
     },
@@ -59,11 +61,14 @@ export async function keyPair() {
       signal: stop.signal,
     }),
   };
-  for (const job of Object.values(jobs)) void job.catch(error => stop.abort(error));
+  for (const job of Object.values(jobs)) {
+    void job.catch(error => stop.abort(error));
+  }
   try {
     const keys = await promiseAllKeyed(jobs);
     onTestFinished(() => {
-      keys.a.dispose(); keys.b.dispose();
+      keys.a.dispose();
+      keys.b.dispose();
     });
     return keys;
   } finally {
@@ -77,7 +82,9 @@ export function pattern({ size, seed }: { size: number; seed: number }): Uint8Ar
   let state = seed >>> 0;
   const bytes = new Uint8Array(size);
   for (let index = 0; index < size; index++) {
-    state ^= state << 13; state ^= state >>> 17; state ^= state << 5;
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
     bytes[index] = state & 255;
   }
   return bytes;
@@ -88,7 +95,9 @@ export async function readAll({ readable }: { readable: ReadableStream<Uint8Arra
   try {
     for (;;) {
       const item = await reader.read();
-      if (item.done) return joinBytes({ parts });
+      if (item.done) {
+        return joinBytes({ parts });
+      }
       parts.push(item.value);
     }
   } finally {

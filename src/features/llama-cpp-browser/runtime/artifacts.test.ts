@@ -20,7 +20,8 @@ vi.mock('virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi',
 const nativeDecompressionStream = DecompressionStream;
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('standalone artifact transport', () => {
@@ -30,13 +31,15 @@ describe('standalone artifact transport', () => {
   });
 
   it('decodes and verifies the embedded Brotli payload without an asset URL', async () => {
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     await expect(loadStandaloneWasm({ signal: undefined, profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined })).resolves.toEqual(new Uint8Array([71]));
     expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('routes the wasm32 artifact to its own embedded payload', async () => {
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     await expect(loadStandaloneWasm({ signal: undefined, profile: 'webgpu-wasm32-jspi', assetBaseURL: undefined })).resolves.toEqual(new Uint8Array([72, 77]));
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -53,7 +56,8 @@ describe('standalone artifact transport', () => {
   });
 
   it('does not let an external URL select another transport or bypass verification', async () => {
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     await expect(loadStandaloneWasm({ signal: undefined, profile: 'webgpu-wasm64-jspi', assetBaseURL: 'https://fixture.invalid/' })).rejects.toThrow('unavailable');
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -68,7 +72,9 @@ describe('hosted artifact transport', () => {
     vi.stubGlobal('DecompressionStream', class {
       constructor(format: string) {
         formats.push(format);
-        if (format !== 'gzip') throw new TypeError('Only gzip is supported');
+        if (format !== 'gzip') {
+          throw new TypeError('Only gzip is supported');
+        }
         return new nativeDecompressionStream(format);
       }
     });
@@ -95,15 +101,18 @@ describe('cancelled artifact acquisition', () => {
     const pending = loadHostedWasm({ profile: 'cpu-wasm32', assetBaseURL: 'https://fixture.invalid/runtime/', signal: controller.signal });
     const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(fetcher.mock.calls[0]?.[1].signal).toBe(controller.signal);
-    controller.abort(); await rejected;
+    controller.abort();
+    await rejected;
   });
 
   it('rejects pre-aborted hosted and standalone reads without fetching or decoding', async () => {
-    const fetcher = vi.fn(); const digest = vi.spyOn(crypto.subtle, 'digest');
+    const fetcher = vi.fn();
+    const digest = vi.spyOn(crypto.subtle, 'digest');
     vi.stubGlobal('fetch', fetcher);
     for (const load of [loadHostedWasm, loadStandaloneWasm]) {
       await expect(load({ profile: 'webgpu-wasm64-jspi', assetBaseURL: undefined, signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
     }
-    expect(fetcher).not.toHaveBeenCalled(); expect(digest).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(digest).not.toHaveBeenCalled();
   });
 });

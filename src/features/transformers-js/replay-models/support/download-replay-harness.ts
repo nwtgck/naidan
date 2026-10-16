@@ -25,7 +25,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   modelId: string, revision: string, remoteRefs: ReadonlyMap<string, string>,
 }) {
   const archive = readModelFixture({ modelId });
-  if (archive.summary.revision !== revision) throw new Error('Model test revision differs from raw evidence');
+  if (archive.summary.revision !== revision) {
+    throw new Error('Model test revision differs from raw evidence');
+  }
   const repository = archive.repository;
   const repositoryPaths = new Set(repository.files.map(file => file.path));
   const metadataPaths = new Set<string>(archive.summary.files.map(file => file.path));
@@ -53,13 +55,17 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   const serviceLoadCalls: Array<{ modelId: string, revisionSelection: DownloadedModelRevisionSelection }> = [];
   const serviceClientEvents: Array<{ service: number, event: 'created' | 'disposed' }> = [];
   function assertSessionOracle() {
-    if (sessionErrors.length > 0) throw new Error(`Synthetic ORT oracle rejected an input: ${sessionErrors.join('; ')}`);
+    if (sessionErrors.length > 0) {
+      throw new Error(`Synthetic ORT oracle rejected an input: ${sessionErrors.join('; ')}`);
+    }
   }
   let phase = 'unassigned';
   let captured: unknown;
   const activeLoads: LoadApi[] = [];
   const runtimeArtifact = await getProductionTransformersArtifact();
-  if (runtimeArtifact.originalBundleSha256 !== WEB_BUNDLE_SHA256) throw new Error('Installed web bundle changed: review the fixed model contracts');
+  if (runtimeArtifact.originalBundleSha256 !== WEB_BUNDLE_SHA256) {
+    throw new Error('Installed web bundle changed: review the fixed model contracts');
+  }
   const bundleUrl = new URL(runtimeArtifact.moduleUrl);
   const ortUrl = runtimeArtifact.ortWebGpuUrl;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Exact external ORT method boundary.
@@ -67,7 +73,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   const released = vi.fn(async () => undefined);
   const sessionSpy = vi.spyOn(ort.InferenceSession, 'create').mockImplementation(async (...args) => {
     try {
-      if (phase !== 'load') throw new Error(`Synthetic ORT session reached from ${phase}`);
+      if (phase !== 'load') {
+        throw new Error(`Synthetic ORT session reached from ${phase}`);
+      }
       const observation = inspectSyntheticOrtSession({ modelId, revision, repositoryPaths, core: args[0], options: args[1] });
       sessions.push({ phase, ...observation });
       return { inputNames: [], outputNames: [], release: released };
@@ -82,21 +90,27 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
     const prefix = `/${modelId}/resolve/`;
     if (url.origin !== 'https://huggingface.co' || !url.pathname.startsWith(prefix)) {
-      unknown.push(url.href); throw new Error(`Unknown transport request ${url.href}`);
+      unknown.push(url.href);
+      throw new Error(`Unknown transport request ${url.href}`);
     }
     const [requestedRevision, ...parts] = url.pathname.slice(prefix.length).split('/');
     const path = parts.map(decodeURIComponent).join('/');
     if (requestedRevision === undefined || (remoteRefs.get(requestedRevision) ?? requestedRevision) !== revision) {
-      unknown.push(url.href); throw new Error(`Unexpected mutable or different revision ${url.href}`);
+      unknown.push(url.href);
+      throw new Error(`Unexpected mutable or different revision ${url.href}`);
     }
     const modelBody = path.startsWith('onnx/');
     if (!modelBody && !metadataPaths.has(path)) {
-      unknown.push(url.href); throw new Error(`Uncaptured metadata request ${url.href}`);
+      unknown.push(url.href);
+      throw new Error(`Uncaptured metadata request ${url.href}`);
     }
     let body = archive.files.get(path);
-    if (modelBody && repositoryPaths.has(path)) body = createSyntheticModelBody({ modelId, revision, path });
+    if (modelBody && repositoryPaths.has(path)) {
+      body = createSyntheticModelBody({ modelId, revision, path });
+    }
     if (!body && repositoryPaths.has(path)) {
-      unknown.push(url.href); throw new Error(`Repository-present body unavailable in fixture ${path}`);
+      unknown.push(url.href);
+      throw new Error(`Repository-present body unavailable in fixture ${path}`);
     }
     const status = body ? 200 : 404;
     requests.push({ phase, path, revision: requestedRevision, bytes: body?.byteLength ?? 0, status });
@@ -122,7 +136,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
           ...identity,
           originalFetch: async (input, init) => {
             const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-            if (url !== assets.mjsUrl) return forbiddenTransport(input, init);
+            if (url !== assets.mjsUrl) {
+              return forbiddenTransport(input, init);
+            }
             expect(init?.redirect).toBe('error');
             runtimeAssetFetchCalls.push(url);
             return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
@@ -131,7 +147,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         const observedGuard: typeof fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
           offlineFetchCalls.push(url);
-          if (url !== assets.mjsUrl) offlineNonRuntimeFetchCalls.push(url);
+          if (url !== assets.mjsUrl) {
+            offlineNonRuntimeFetchCalls.push(url);
+          }
           return guard(input, init);
         };
         return observedGuard;
@@ -164,7 +182,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     let runtime: Runtime;
     try {
       runtime = await importProductionTransformersArtifact({ moduleUrl: bundleUrl.href }) as Runtime;
-      if (runtime.env.allowLocalModels !== false) throw new Error('Download replay did not enter the upstream web Worker environment');
+      if (runtime.env.allowLocalModels !== false) {
+        throw new Error('Download replay did not enter the upstream web Worker environment');
+      }
     } finally {
       vi.stubGlobal('process', actualProcess);
     }
@@ -179,9 +199,12 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     }));
     captured = undefined;
     switch (kind) {
-    case 'download': await import('@/features/transformers-js/download-verification/download-worker/entry'); break;
-    case 'observer': await import('@/features/transformers-js/download-verification/model-artifact-request-worker/entry'); break;
-    case 'fresh-metadata': await import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/entry'); break;
+    case 'download': await import('@/features/transformers-js/download-verification/download-worker/entry');
+      break;
+    case 'observer': await import('@/features/transformers-js/download-verification/model-artifact-request-worker/entry');
+      break;
+    case 'fresh-metadata': await import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/entry');
+      break;
     case 'load': {
       // Node cannot perform browser Blob module imports. Only that platform
       // boundary is simulated; fetch, byte/hash validation, host lease, startup
@@ -210,7 +233,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       throw new Error(`Unhandled fixture entry ${_ex}`);
     }
     }
-    if (!captured) throw new Error(`Worker entry did not expose an API: ${kind}`);
+    if (!captured) {
+      throw new Error(`Worker entry did not expose an API: ${kind}`);
+    }
     return captured;
   }
   vi.doMock('@/features/transformers-js/download-verification/runtime-artifact-preparation-worker/client-hosted', () => ({
@@ -243,9 +268,13 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         const result = await api.prefetchUrls(urls, info => progressCallback({ info }));
         for (const file of result.files) {
           switch (file.status) {
-          case 'downloaded': downloadedSaveMethods.push(file.timing?.saveMethod); break;
+          case 'downloaded': downloadedSaveMethods.push(file.timing?.saveMethod);
+            break;
           case 'cached': case 'failed': break;
-          default: { const exhaustive: never = file; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = file;
+            throw new Error(String(exhaustive));
+          }
           }
         }
         return result;
@@ -303,7 +332,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
               throw new Error(`Unhandled fixture client lifecycle ${_ex}`);
             }
             }
-            if (api) throw new Error('Fixture service client must unload before another load');
+            if (api) {
+              throw new Error('Fixture service client must unload before another load');
+            }
             // Requested selection is not the accepted native namespace. The
             // independent session oracle below verifies the latter exactly.
             serviceLoadCalls.push({ modelId: id, revisionSelection: structuredClone(revisionSelection) });
@@ -353,12 +384,16 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   }
   async function retireService() {
     const owner = serviceOwner;
-    if (!owner) return;
+    if (!owner) {
+      return;
+    }
     await owner.service.unloadModel();
     // The public service's unload clears model state but keeps its client.
     // Release that retained facade before abandoning this singleton. This lane
     // never registers UI listeners; there are no subscriptions to carry forward.
-    for (const client of owner.clients) await client.dispose();
+    for (const client of owner.clients) {
+      await client.dispose();
+    }
     serviceOwner = undefined;
   }
   function enterServiceOffline() {
@@ -393,7 +428,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       // The model-only inventory is not a repository metadata manifest. Require
       // explicit presence/absence evidence for every collector path before replay.
       for (const path of REPLAY_METADATA_PATHS) {
-        if (!metadataPaths.has(path)) throw new Error(`Unrecorded metadata inventory: ${path}`);
+        if (!metadataPaths.has(path)) {
+          throw new Error(`Unrecorded metadata inventory: ${path}`);
+        }
       }
       const repositoryFiles = [
         ...repository.files.map(({ path, size }) => ({ path, size })),
@@ -502,7 +539,9 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
       } catch (error) {
         failures.push(error);
       }
-      for (const runtime of runtimeModules) runtime.env.fetch = forbiddenTransport;
+      for (const runtime of runtimeModules) {
+        runtime.env.fetch = forbiddenTransport;
+      }
       sessionSpy.mockRestore();
       for (const module of [
         '@huggingface/transformers', '@/utils/worker-transport',
@@ -512,10 +551,17 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         '@/features/transformers-js/download-verification/model-artifact-request-worker/client-hosted',
         '@/features/transformers-js/download-verification/download-worker/client-hosted',
         '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted',
-      ]) vi.doUnmock(module);
-      vi.unstubAllGlobals(); vi.resetModules();
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1) throw new AggregateError(failures, 'Connected replay teardown failed');
+      ]) {
+        vi.doUnmock(module);
+      }
+      vi.unstubAllGlobals();
+      vi.resetModules();
+      if (failures.length === 1) {
+        throw failures[0];
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(failures, 'Connected replay teardown failed');
+      }
     },
   };
 }

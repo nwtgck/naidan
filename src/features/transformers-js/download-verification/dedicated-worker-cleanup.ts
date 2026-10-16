@@ -12,17 +12,24 @@ export function createDedicatedDownloadWorkerSession<Api>({ worker, createRemote
   let remote: WorkerRemote<Api> | undefined;
 
   const dispose = () => {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     disposed = true;
     terminalError ??= new Error('Download Worker disposed');
     stopped.reject(terminalError);
     worker.removeEventListener('error', onError);
     worker.removeEventListener('messageerror', onMessageError);
-    if (remote === undefined) worker.terminate();
-    else disposeDedicatedWorkerBestEffort({ remote, worker });
+    if (remote === undefined) {
+      worker.terminate();
+    } else {
+      disposeDedicatedWorkerBestEffort({ remote, worker });
+    }
   };
   const fail = ({ error }: { error: Error }) => {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     terminalError = error;
     stopped.reject(error);
     dispose();
@@ -48,7 +55,9 @@ export function createDedicatedDownloadWorkerSession<Api>({ worker, createRemote
   return {
     isActive: () => !disposed,
     async run<T>({ operation }: { operation: ({ remote }: { remote: WorkerRemote<Api> }) => Promise<T> }): Promise<T> {
-      if (terminalError !== undefined) throw terminalError;
+      if (terminalError !== undefined) {
+        throw terminalError;
+      }
       const result = operation({ remote: activeRemote });
       // Race even if a synchronous Worker event stopped the session during
       // invocation: the remote promise still needs a rejection observer.

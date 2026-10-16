@@ -73,7 +73,9 @@ function statusWithPathspec({ context, status, operands }: {
   status: GitStatus,
   operands: readonly string[],
 }): GitStatus {
-  if (operands.length === 0) return status;
+  if (operands.length === 0) {
+    return status;
+  }
   const selected = matchRepositoryPathSelection({
     repository: status.repository,
     cwd: context.cwd,
@@ -82,7 +84,9 @@ function statusWithPathspec({ context, status, operands }: {
   }).selected;
   const entries: GitStatusEntry[] = [];
   for (const entry of status.entries) {
-    if (!selected.has(entry.path)) continue;
+    if (!selected.has(entry.path)) {
+      continue;
+    }
     if (entry.renameSourcePath === undefined || selected.has(entry.renameSourcePath)) {
       entries.push(entry);
       continue;
@@ -171,8 +175,9 @@ export async function runStatus({ context, args }: {
     }
     }
   }
-  if (nul && format === 'long')
+  if (nul && format === 'long') {
     format = 'porcelain-v1';
+  }
   const status = statusWithPathspec({
     context,
     status: await collectStatus({ context }),
@@ -183,8 +188,9 @@ export async function runStatus({ context, args }: {
   switch (format) {
   case 'short':
   case 'porcelain-v1':
-    if (branch)
+    if (branch) {
       await text.print({ text: `## ${formatPorcelainV1Branch({ status })}${separator}` });
+    }
     await text.print({
       text: format === 'short' && !nul
         ? renderShortStatus({ context, repository: status.repository, entries: status.entries, quoteNonAscii: status.quoteNonAscii })

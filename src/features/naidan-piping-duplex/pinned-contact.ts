@@ -31,24 +31,31 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
   const peer = ownBytes({ bytes: expectedPeer, maxBytes: 32 });
   const stop = new AbortController(), signal = AbortSignal.any([parent, stop.signal]);
   const offered = Promise.withResolvers<PreparedPinnedKeys | { kind: 'same-connection' }>();
-  const gate = Promise.withResolvers<void>(); void gate.promise.catch(() => {});
+  const gate = Promise.withResolvers<void>();
+  void gate.promise.catch(() => {});
   const abortGate = () => gate.reject(signal.reason);
-  signal.addEventListener('abort', abortGate, { once: true }); if (signal.aborted) abortGate();
+  signal.addEventListener('abort', abortGate, { once: true });
+  if (signal.aborted) {
+    abortGate();
+  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   let expires: { monotonic: number; wall: number } | undefined;
   const assertLive = () => {
     signal.throwIfAborted();
     if (expires) {
       const monotonic = performance.now(), wall = Date.now();
-      if (!Number.isFinite(monotonic) || !Number.isFinite(wall) || monotonic >= expires.monotonic || wall >= expires.wall)
+      if (!Number.isFinite(monotonic) || !Number.isFinite(wall) || monotonic >= expires.monotonic || wall >= expires.wall) {
         stop.abort(new HandshakeResponseUnconfirmedError({ stage: 'status' }));
+      }
     }
     signal.throwIfAborted();
   };
   const deadline = ({ milliseconds = Math.min(15000, responseTimeoutMs * 3) }: { milliseconds?: number } = {}) => {
     assertLive();
     expires = { monotonic: performance.now() + milliseconds, wall: Date.now() + milliseconds };
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     timer = setTimeout(() => stop.abort(new HandshakeResponseUnconfirmedError({ stage: 'status' })), milliseconds);
   };
   const receiveEntry = ({ route, maximum, idle }: { route: string; maximum: number; idle: boolean }) => endpoint.read({
@@ -86,9 +93,13 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
       try {
         await knocking;
       } catch (error) {
-        if (error instanceof PipingRetirementError) throw error;
+        if (error instanceof PipingRetirementError) {
+          throw error;
+        }
       }
-      if (failure) throw failure.error;
+      if (failure) {
+        throw failure.error;
+      }
     }
     deadline();
     return runHandshakeAttempt({
@@ -107,12 +118,17 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
         publicHandshakeData: publicData,
         confirm: async ({ peerHeldContext, peerPublicHandshakeData, signal: authenticatedSignal }) => {
           authenticatedSignal.throwIfAborted();
-          if (held && peerHeldContext && equalBytes({ left: held, right: peerHeldContext })) throw new SameConnection();
-          advertised = peerPublicHandshakeData.slice(); state = 'prepared'; deadline();
+          if (held && peerHeldContext && equalBytes({ left: held, right: peerHeldContext })) {
+            throw new SameConnection();
+          }
+          advertised = peerPublicHandshakeData.slice();
+          state = 'prepared';
+          deadline();
           offered.resolve({
             kind: 'candidate',
             assertAvailable: () => {
-              requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' }); assertLive();
+              requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' });
+              assertLive();
             },
             get peerPublicHandshakeData() {
               return advertised.slice();
@@ -123,44 +139,61 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
               let result: HandshakeResult | undefined;
               try {
                 try {
-                  assertLive(); gate.resolve();
+                  assertLive();
+                  gate.resolve();
                 } catch (error) {
                   stop.abort(error);
                 }
                 // Even an already-cancelled candidate must join the handshake;
                 // its cleanup failure takes precedence over logical expiry.
-                result = await task; assertLive();
+                result = await task;
+                assertLive();
                 return { ...result, peerPublicHandshakeData: advertised.slice() };
               } catch (error) {
-                result?.keys.dispose(); result?.peerPublicHandshakeData.fill(0); result?.peerHandshakeData.fill(0); throw error;
+                result?.keys.dispose();
+                result?.peerPublicHandshakeData.fill(0);
+                result?.peerHandshakeData.fill(0);
+                throw error;
               } finally {
                 advertised.fill(0);
               }
             },
             dispose: async () => {
               requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' });
-              state = 'disposed'; stop.abort(new Error('Contact discarded'));
+              state = 'disposed';
+              stop.abort(new Error('Contact discarded'));
               try {
                 await task;
               } catch (error) {
-                if (error instanceof PipingRetirementError) throw error;
+                if (error instanceof PipingRetirementError) {
+                  throw error;
+                }
               } finally {
                 advertised.fill(0);
               }
             },
           });
-          await gate.promise; authenticatedSignal.throwIfAborted();
+          await gate.promise;
+          authenticatedSignal.throwIfAborted();
         },
       },
     });
   })().finally(() => {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     signal.removeEventListener('abort', abortGate);
-    held?.fill(0); publicData.fill(0); privateData.fill(0); peer.fill(0);
+    held?.fill(0);
+    publicData.fill(0);
+    privateData.fill(0);
+    peer.fill(0);
   });
   void task.catch(error => {
-    if (error instanceof SameConnection) offered.resolve({ kind: 'same-connection' });
-    else offered.reject(error);
+    if (error instanceof SameConnection) {
+      offered.resolve({ kind: 'same-connection' });
+    } else {
+      offered.reject(error);
+    }
   });
   return offered.promise;
 }
@@ -173,7 +206,10 @@ export async function connectPinnedKeys({ endpoint, identity, expectedPeer, purp
   switch (prepared.kind) {
   case 'candidate': return prepared.finish();
   case 'same-connection': throw new Error('An empty contact cannot retain a connection');
-  default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = prepared;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

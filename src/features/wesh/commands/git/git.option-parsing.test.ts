@@ -1304,8 +1304,9 @@ two
       const { result, stderr } = await execute({ script: `git config ${option}` });
       expect(result.exitCode, option).toBe(129);
       expect(stderr.text, option).toContain(`ambiguous option: ${option.slice(2)}`);
-      for (const candidate of candidates)
+      for (const candidate of candidates) {
         expect(stderr.text, `${option}: ${candidate}`).toContain(candidate);
+      }
     }
   });
 

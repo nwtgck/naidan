@@ -17,13 +17,16 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 it('keeps next-run fields editable while destructive model controls and generation remain locked', async () => {
   const view = useImageGeneration(), restoring = ref(false);
-  view.supported = computed(() => true); view.formDisabled = computed(() => true);
-  view.draftDisabled = computed(() => restoring.value); view.busy = computed(() => true);
+  view.supported = computed(() => true);
+  view.formDisabled = computed(() => true);
+  view.draftDisabled = computed(() => restoring.value);
+  view.busy = computed(() => true);
   view.progress.value = { phase: 'model', step: 0, steps: 0 };
   view.seedMode.value = 'fixed';
   wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
@@ -36,7 +39,8 @@ it('keeps next-run fields editable while destructive model controls and generati
   await wrapper.get('[data-testid="image-resolution-presets"]').setValue('768x1024');
   await wrapper.get('[data-testid="image-swap-resolution"]').trigger('click');
   expect([view.parameters.value.width, view.parameters.value.height]).toEqual([1024, 768]);
-  restoring.value = true; await flushPromises();
+  restoring.value = true;
+  await flushPromises();
   expect(wrapper.get('[data-testid="image-prompt"]').element.matches(':disabled')).toBe(true);
   expect(wrapper.get('[data-testid="image-width"]').element.matches(':disabled')).toBe(true);
   const dimensions = [view.parameters.value.width, view.parameters.value.height];
@@ -80,7 +84,8 @@ it.each(['import', 'download'])('only locks conflicting model layout and preset 
 });
 
 it('connects independent width and height hints without changing other draft fields', async () => {
-  const view = useImageGeneration(); view.draftDisabled = computed(() => false);
+  const view = useImageGeneration();
+  view.draftDisabled = computed(() => false);
   view.parameters.value = { ...view.parameters.value, width: 1024, height: 768, steps: 20 };
   const preset = recommendationForSelection({ model: { family: 'z-image', variant: 'turbo', evidence: [] } })!;
   view.recommendation = computed(() => preset);
@@ -105,7 +110,8 @@ it('connects independent width and height hints without changing other draft fie
 });
 
 it('renders Qwen Turbo resolution and guidance hints without suggesting unsupported sampling values', () => {
-  const view = useImageGeneration(); view.draftDisabled = computed(() => false);
+  const view = useImageGeneration();
+  view.draftDisabled = computed(() => false);
   view.recommendation = computed(() => recommendationForSelection({ model: { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] } }));
   wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
   const hints = wrapper.findAllComponents(ImageRecommendedFieldHint);

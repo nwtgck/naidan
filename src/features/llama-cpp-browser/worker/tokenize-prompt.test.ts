@@ -12,16 +12,22 @@ function fixture() {
       return pointer;
     }),
     free: vi.fn(({ pointer }: { pointer: bigint }) => {
-      if (!allocations.delete(pointer)) throw new Error('Double or unowned free');
+      if (!allocations.delete(pointer)) {
+        throw new Error('Double or unowned free');
+      }
     }),
     bytes: vi.fn(({ pointer, length }: { pointer: bigint, length: number | bigint }) => {
       const bytes = allocations.get(pointer);
-      if (!bytes || Number(length) > bytes.length) throw new RangeError('Out of bounds');
+      if (!bytes || Number(length) > bytes.length) {
+        throw new RangeError('Out of bounds');
+      }
       return bytes.subarray(0, Number(length));
     }),
     api: {
       llama_tokenize: vi.fn(async (_vocab: bigint, _text: bigint, _length: number, pointer: bigint, capacity: number, _addSpecial: number, _parseSpecial: number): Promise<number> => {
-        if (capacity < 3) return -3;
+        if (capacity < 3) {
+          return -3;
+        }
         const bytes = allocations.get(pointer)!;
         const view = new DataView(bytes.buffer);
         [1, 200, 999].forEach((token, index) => view.setInt32(index * 4, token, true));
@@ -160,14 +166,18 @@ describe('bounded single-pass prompt tokenization', () => {
   });
 
   it('does not retry freeing the old prompt buffer when resizing cleanup throws', async () => {
-    const { core, allocations, run } = fixture(); const original = core.free.getMockImplementation()!;
+    const { core, allocations, run } = fixture();
+    const original = core.free.getMockImplementation()!;
     core.api.llama_tokenize.mockResolvedValueOnce(-65537);
     core.free.mockImplementationOnce(args => {
-      original(args); throw new Error('resize free failure');
+      original(args);
+      throw new Error('resize free failure');
     });
     await expect(run({ contextTokens: 100000 })).rejects.toThrow('resize free failure');
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
-    expect(core.tryAlloc).toHaveBeenCalledOnce(); expect(core.api.llama_tokenize).toHaveBeenCalledOnce(); expect(allocations.size).toBe(0);
+    expect(core.tryAlloc).toHaveBeenCalledOnce();
+    expect(core.api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(allocations.size).toBe(0);
   });
 });
 
@@ -194,7 +204,8 @@ describe('prompt-sized speculation and deallocation failures', () => {
     const failure = new WebAssembly.RuntimeError('free trap');
     core.api.llama_tokenize.mockResolvedValueOnce(-17);
     core.free.mockImplementationOnce(({ pointer }) => {
-      allocations.delete(pointer); throw failure;
+      allocations.delete(pointer);
+      throw failure;
     });
     await expect(run({ contextTokens: 32 })).rejects.toBe(failure);
     expect(core.free).toHaveBeenCalledOnce();
@@ -219,8 +230,11 @@ describe('context capacity failure diagnostics', () => {
     expect(listener).toHaveBeenCalledOnce();
     const diagnostic = listener.mock.calls[0]?.[0].diagnostic;
     expect(diagnostic).toMatchObject({ event: 'failed', stage: 'tokenize', code: 'context-full', contextTokens: 32768 });
-    if (result === -2147483648) expect(diagnostic).not.toHaveProperty('tokens');
-    else expect(diagnostic.tokens).toBe(65536);
+    if (result === -2147483648) {
+      expect(diagnostic).not.toHaveProperty('tokens');
+    } else {
+      expect(diagnostic.tokens).toBe(65536);
+    }
     expect(diagnostic).not.toHaveProperty('prompt');
     expect(diagnostic).not.toHaveProperty('tokenIds');
   });

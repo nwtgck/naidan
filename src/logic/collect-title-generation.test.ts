@@ -24,7 +24,9 @@ const ollamaDone = `\
 
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetcher.mock.calls[index]?.[1]?.body;
-  if (typeof raw !== 'string') throw new Error('Missing request body');
+  if (typeof raw !== 'string') {
+    throw new Error('Missing request body');
+  }
   return JSON.parse(raw);
 }
 
@@ -137,7 +139,9 @@ describe('title-only thinking fallback', () => {
     const chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async () => ({ type: 'finished', next: 'user' }) }));
     const provider: LmProvider = { chat, listModels: async () => ['model'] };
     const defaults = DEFAULT_SETTINGS.titleGeneration;
-    if (defaults === 'disabled' || defaults.lmParameters === 'same_scope') throw new Error('Expected fresh title parameters');
+    if (defaults === 'disabled' || defaults.lmParameters === 'same_scope') {
+      throw new Error('Expected fresh title parameters');
+    }
     await collect({ provider, endpoint: { type: 'browser_provided_lm' }, parameters: defaults.lmParameters, signal: new AbortController().signal });
     expect(chat.mock.calls[0]?.[0].parameters).toBeUndefined();
     expect(defaults.lmParameters.reasoning.effort).toBe('none');

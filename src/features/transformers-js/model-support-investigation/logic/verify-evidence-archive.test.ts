@@ -26,7 +26,9 @@ async function createArchive({
   const zip = new JSZip();
   zip.file("payload.txt", payload);
   zip.file("package-assessment.json", JSON.stringify({ schemaVersion: 1, status: packageStatus }));
-  for (const [path, content] of additionalFiles ?? []) zip.file(path, content);
+  for (const [path, content] of additionalFiles ?? []) {
+    zip.file(path, content);
+  }
   const entries = await Promise.all(Object.entries(zip.files).filter(([, file]) => !file.dir).map(async ([path]) => {
     const bytes = await zip.file(path)!.async("uint8array");
     return {
@@ -76,9 +78,14 @@ describe("verifyGeneratedEvidenceArchive", () => {
     })]]);
     switch (owner) {
     case 'absent': break;
-    case 'probe-only': additionalFiles.set('run.json', JSON.stringify({ runId: 'run-1', modelId: 'fixture/model', downloadEvidence: { mode: 'probe-only' } })); break;
-    case 'other-acceptance-source': additionalFiles.set('run.json', JSON.stringify({ runId: 'run-1', modelId: 'fixture/model', downloadEvidence: { mode: 'runtime-complete', runtimeCompletion: { source: 'reused-production-cache' } } })); break;
-    default: { const exhaustive: never = owner; throw new Error('Unknown acceptance owner fixture: ' + exhaustive); }
+    case 'probe-only': additionalFiles.set('run.json', JSON.stringify({ runId: 'run-1', modelId: 'fixture/model', downloadEvidence: { mode: 'probe-only' } }));
+      break;
+    case 'other-acceptance-source': additionalFiles.set('run.json', JSON.stringify({ runId: 'run-1', modelId: 'fixture/model', downloadEvidence: { mode: 'runtime-complete', runtimeCompletion: { source: 'reused-production-cache' } } }));
+      break;
+    default: {
+      const exhaustive: never = owner;
+      throw new Error('Unknown acceptance owner fixture: ' + exhaustive);
+    }
     }
     return expect(createArchive({ payload: 'Unowned acceptance document', additionalFiles }).then(blob => verifyGeneratedEvidenceArchive({ blob })))
       .rejects.toThrow('Provider Load acceptance document does not match its run owner');

@@ -119,11 +119,19 @@ beforeAll(async () => {
 }, 30000);
 
 afterAll(async () => {
-  if (!core) return;
-  for (const pointer of allocations) core.free({ pointer });
+  if (!core) {
+    return;
+  }
+  for (const pointer of allocations) {
+    core.free({ pointer });
+  }
   allocations.clear();
-  if (context !== 0n) await core.api.llama_free(context);
-  if (model !== 0n) await core.api.llama_model_free(model);
+  if (context !== 0n) {
+    await core.api.llama_free(context);
+  }
+  if (model !== 0n) {
+    await core.api.llama_model_free(model);
+  }
   await core.api.llama_backend_free();
 });
 

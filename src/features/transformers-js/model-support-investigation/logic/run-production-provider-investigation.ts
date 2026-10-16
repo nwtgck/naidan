@@ -127,7 +127,10 @@ export function createProductionProviderInvestigation({
     switch (sealAdoption) {
     case 'open': return true;
     case 'closed': return false;
-    default: { const exhaustive: never = sealAdoption; throw new Error('Unhandled seal adoption: ' + exhaustive); }
+    default: {
+      const exhaustive: never = sealAdoption;
+      throw new Error('Unhandled seal adoption: ' + exhaustive);
+    }
     }
   }
 
@@ -142,7 +145,9 @@ export function createProductionProviderInvestigation({
   }
 
   function startDisposal(): Promise<void> {
-    if (disposal !== undefined) return disposal;
+    if (disposal !== undefined) {
+      return disposal;
+    }
     cleanup = 'pending';
     // Physical Worker disposal is requested synchronously, before awaiting any
     // pending generation, collection, hashing, or progress delivery.
@@ -171,7 +176,10 @@ export function createProductionProviderInvestigation({
     switch (anchorObservation) {
     case 'captured': case 'unavailable': return;
     case 'not-taken': break;
-    default: { const exhaustive: never = anchorObservation; throw new Error('Unhandled anchor observation: ' + exhaustive); }
+    default: {
+      const exhaustive: never = anchorObservation;
+      throw new Error('Unhandled anchor observation: ' + exhaustive);
+    }
     }
     try {
       const provider = owner.snapshotProvider();
@@ -187,7 +195,9 @@ export function createProductionProviderInvestigation({
   }
 
   function detach({ reason }: { reason: NativeCollectionDetachReason }): void {
-    if (cutoff !== undefined) return;
+    if (cutoff !== undefined) {
+      return;
+    }
     // Normal completion observes the script after collection. A stopping run
     // already captured its pre-stop projection in the same synchronous stack.
     captureAnchor();
@@ -198,7 +208,10 @@ export function createProductionProviderInvestigation({
       cutoff = result.cutoff;
       break;
     case 'already-detached': throw new Error('Investigation native ownership was already transferred');
-    default: { const exhaustive: never = result; throw new Error('Unhandled native transfer: ' + String(exhaustive)); }
+    default: {
+      const exhaustive: never = result;
+      throw new Error('Unhandled native transfer: ' + String(exhaustive));
+    }
     }
   }
 
@@ -206,7 +219,10 @@ export function createProductionProviderInvestigation({
     switch (phase) {
     case 'finished': return;
     case 'not-started': case 'running': case 'collecting': case 'sealing': break;
-    default: { const exhaustive: never = phase; throw new Error('Unhandled investigation phase: ' + exhaustive); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error('Unhandled investigation phase: ' + exhaustive);
+    }
     }
     stopReason ??= reason;
     // No await, native observer, RPC, encoding, or byte copy precedes disposal.
@@ -235,21 +251,31 @@ export function createProductionProviderInvestigation({
       detachReason = 'disposed';
       interruptedSealStatus = 'sealing-interrupted';
       break;
-    default: { const exhaustive: never = reason; throw new Error('Unhandled investigation stop: ' + exhaustive); }
+    default: {
+      const exhaustive: never = reason;
+      throw new Error('Unhandled investigation stop: ' + exhaustive);
+    }
     }
     void startDisposal();
     switch (phase) {
     case 'not-started': case 'running': case 'collecting': break;
     case 'sealing':
       sealAdoption = 'closed';
-      if (nativeEvidence === undefined) nativeEvidenceStatus = interruptedSealStatus;
+      if (nativeEvidence === undefined) {
+        nativeEvidenceStatus = interruptedSealStatus;
+      }
       break;
-    default: { const exhaustive: never = phase; throw new Error('Unhandled stopping phase: ' + exhaustive); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error('Unhandled stopping phase: ' + exhaustive);
+    }
     }
     // Native detachment follows the requested stop. Its later inactive-session
     // state must not replace the pre-stop Provider anchor or its counters.
     detach({ reason: detachReason });
-    for (const notifyStop of stopListeners) notifyStop();
+    for (const notifyStop of stopListeners) {
+      notifyStop();
+    }
   }
 
   async function waitPhase({ startOperation, milliseconds, deadlineReason }: {
@@ -282,7 +308,9 @@ export function createProductionProviderInvestigation({
       publishProgress();
       return await Promise.race([observe, deadline, interrupted.promise]);
     } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       stopListeners.delete(notifyStop);
     }
   }
@@ -290,7 +318,9 @@ export function createProductionProviderInvestigation({
   function startSealing({ provider }: { provider: ProductionProviderCaptureSnapshot }): void {
     const transfer = detached;
     detached = undefined;
-    if (transfer === undefined) throw new Error('Investigation native transfer is missing');
+    if (transfer === undefined) {
+      throw new Error('Investigation native transfer is missing');
+    }
     sealOwnership = 'pending';
     // The helper synchronously creates its owned encoding plan. Neither this
     // coordinator nor its progress/result/session DTO retains the source raw body.
@@ -300,7 +330,9 @@ export function createProductionProviderInvestigation({
         nativeEvidenceStatus = 'available';
       }
     }, () => {
-      if (canAdoptSeal()) nativeEvidenceStatus = 'sealing-failed';
+      if (canAdoptSeal()) {
+        nativeEvidenceStatus = 'sealing-failed';
+      }
     }).finally(() => {
       sealOwnership = 'settled';
     });
@@ -309,8 +341,12 @@ export function createProductionProviderInvestigation({
   function handleExecutionOutcome({ outcome }: { outcome: Awaited<ReturnType<typeof waitPhase>> }): void {
     switch (outcome) {
     case 'settled': case 'interrupted': break;
-    case 'rejected': requestStop({ reason: 'execution-failed' }); break;
-    default: { const exhaustive: never = outcome; throw new Error('Unhandled investigation outcome: ' + exhaustive); }
+    case 'rejected': requestStop({ reason: 'execution-failed' });
+      break;
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error('Unhandled investigation outcome: ' + exhaustive);
+    }
     }
   }
 
@@ -318,7 +354,10 @@ export function createProductionProviderInvestigation({
     switch (invocation) {
     case 'started': throw new Error('Production Provider investigation can run only once');
     case 'not-started': break;
-    default: { const exhaustive: never = invocation; throw new Error('Unhandled investigation invocation: ' + exhaustive); }
+    default: {
+      const exhaustive: never = invocation;
+      throw new Error('Unhandled investigation invocation: ' + exhaustive);
+    }
     }
     invocation = 'started';
     const progressTimer = setInterval(publishProgress, 250);
@@ -333,10 +372,14 @@ export function createProductionProviderInvestigation({
         const outcome = await waitPhase({ startOperation: owner.collectNative, milliseconds: deadlines.collectionMs, deadlineReason: 'collection-deadline' });
         handleExecutionOutcome({ outcome });
       }
-      if (cutoff === undefined) detach({ reason: 'normal-completion' });
+      if (cutoff === undefined) {
+        detach({ reason: 'normal-completion' });
+      }
       const disposing = startDisposal();
       const provider = anchor;
-      if (provider === undefined || cutoff === undefined || anchorProgress === undefined) throw new Error('Production Provider cutoff observation is unavailable');
+      if (provider === undefined || cutoff === undefined || anchorProgress === undefined) {
+        throw new Error('Production Provider cutoff observation is unavailable');
+      }
       let providerEvidence: 'available' | 'refused' = 'available';
       let providerOutput: ProductionProviderCaptureSnapshot | undefined;
       try {
@@ -354,7 +397,9 @@ export function createProductionProviderInvestigation({
         const outcome = await waitPhase({
           startOperation: () => {
             startSealing({ provider });
-            if (sealWork === undefined) throw new Error('Investigation seal operation is missing');
+            if (sealWork === undefined) {
+              throw new Error('Investigation seal operation is missing');
+            }
             return sealWork;
           },
           milliseconds: deadlines.sealingMs,
@@ -366,11 +411,17 @@ export function createProductionProviderInvestigation({
           nativeEvidenceStatus = 'sealing-failed';
           sealOwnership = 'settled';
           break;
-        default: { const exhaustive: never = outcome; throw new Error('Unhandled sealing outcome: ' + exhaustive); }
+        default: {
+          const exhaustive: never = outcome;
+          throw new Error('Unhandled sealing outcome: ' + exhaustive);
+        }
         }
         break;
       }
-      default: { const exhaustive: never = providerEvidence; throw new Error('Unhandled Provider evidence: ' + exhaustive); }
+      default: {
+        const exhaustive: never = providerEvidence;
+        throw new Error('Unhandled Provider evidence: ' + exhaustive);
+      }
       }
       await disposing.catch(() => undefined);
       phase = 'finished';
@@ -422,7 +473,10 @@ export function createProductionProviderInvestigation({
       case 'finished': return sealWork ?? Promise.resolve();
       case 'not-started': case 'running': case 'collecting': case 'sealing':
         return Promise.reject(new Error('Evidence release requires the investigation run to finish'));
-      default: { const exhaustive: never = phase; throw new Error('Unhandled evidence release phase: ' + exhaustive); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error('Unhandled evidence release phase: ' + exhaustive);
+      }
       }
     },
   };

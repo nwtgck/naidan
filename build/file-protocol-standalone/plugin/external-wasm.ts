@@ -19,7 +19,9 @@ export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Reado
       outputDirectory = path.resolve(config.root, config.build.outDir);
     },
     generateBundle(_options, bundle) {
-      if (allowExternalWasmAssets) return;
+      if (allowExternalWasmAssets) {
+        return;
+      }
       rejectAssets({
         assets: Object.values(bundle)
           .filter(output => output.type === 'asset' && isWasmAsset({ fileName: output.fileName }))
@@ -32,9 +34,13 @@ export function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Reado
       order: 'pre',
       sequential: true,
       async handler(options) {
-        if (allowExternalWasmAssets) return;
+        if (allowExternalWasmAssets) {
+          return;
+        }
         const directory = options.dir ?? outputDirectory;
-        if (directory === undefined) throw new Error('Missing standalone output directory');
+        if (directory === undefined) {
+          throw new Error('Missing standalone output directory');
+        }
         const entries = await readdir(directory, { recursive: true, withFileTypes: true });
         rejectAssets({
           assets: entries.filter(entry => entry.isFile() && isWasmAsset({ fileName: entry.name }))

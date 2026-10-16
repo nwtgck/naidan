@@ -669,7 +669,9 @@ export function escapeShellPatternLiteral({
       break;
     }
   }
-  if (firstMetaIndex < 0) return text;
+  if (firstMetaIndex < 0) {
+    return text;
+  }
 
   const parts: string[] = [];
   let literalStart = 0;
@@ -684,11 +686,15 @@ export function escapeShellPatternLiteral({
     ) {
       continue;
     }
-    if (index > literalStart) parts.push(text.slice(literalStart, index));
+    if (index > literalStart) {
+      parts.push(text.slice(literalStart, index));
+    }
     parts.push('\\', character);
     literalStart = index + 1;
   }
-  if (literalStart < text.length) parts.push(text.slice(literalStart));
+  if (literalStart < text.length) {
+    parts.push(text.slice(literalStart));
+  }
   return parts.join('');
 }
 

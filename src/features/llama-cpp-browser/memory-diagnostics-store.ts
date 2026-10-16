@@ -30,12 +30,18 @@ export function observeWorkerMemory({ worker }: { worker: Pick<Worker, 'postMess
       let status: MemoryDiagnosticsHistory['status'];
       let latestLoad = previous?.latestLoad;
       switch (sample.checkpoint) {
-      case 'runtime-released': status = 'runtime-released'; break;
+      case 'runtime-released': status = 'runtime-released';
+        break;
       case 'before-model-load':
         latestLoad = { ordinal: (latestLoad?.ordinal ?? 0) + 1, baselineBytes: sample.capacityBytes, gpuRequests: sample.gpuRequests };
-        status = 'observed'; break;
-      case 'decode': case 'runtime-ready': case 'model-loaded': case 'model-load-failed': case 'context-ready': case 'prefill-start': case 'prefill-complete': case 'generation-complete': case 'generation-interrupted': case 'generation-cleaned': case 'model-released': status = 'observed'; break;
-      default: { const exhaustive: never = sample.checkpoint; throw new Error(String(exhaustive)); }
+        status = 'observed';
+        break;
+      case 'decode': case 'runtime-ready': case 'model-loaded': case 'model-load-failed': case 'context-ready': case 'prefill-start': case 'prefill-complete': case 'generation-complete': case 'generation-interrupted': case 'generation-cleaned': case 'model-released': status = 'observed';
+        break;
+      default: {
+        const exhaustive: never = sample.checkpoint;
+        throw new Error(String(exhaustive));
+      }
       }
       const next: MemoryDiagnosticsHistory = {
         workerId,
@@ -50,7 +56,9 @@ export function observeWorkerMemory({ worker }: { worker: Pick<Worker, 'postMess
     },
   });
   return () => {
-    if (ended) return;
+    if (ended) {
+      return;
+    }
     ended = true;
     stopListening();
     histories.value = histories.value.map(history => history.workerId === workerId ? { ...history, status: 'worker-ended' } : history);
@@ -59,6 +67,7 @@ export function observeWorkerMemory({ worker }: { worker: Pick<Worker, 'postMess
 
 export const TEST_ONLY = {
   reset() {
-    histories.value = []; nextWorkerId = 0;
+    histories.value = [];
+    nextWorkerId = 0;
   },
 };

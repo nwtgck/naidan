@@ -15,19 +15,25 @@ function strictRecord<Shape extends z.ZodRawShape>({ shape }: { shape: Shape }) 
   const keys = Object.keys(shape);
   return z.custom<Record<string, unknown>>(value => typeof value === 'object' && value !== null && !Array.isArray(value))
     .superRefine((value, context) => {
-      if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return;
+      }
       const ownKeys = Reflect.ownKeys(value);
       if (ownKeys.length !== keys.length || ownKeys.some(key => typeof key !== 'string' || !keys.includes(key))
         || keys.some(key => {
           const descriptor = Object.getOwnPropertyDescriptor(value, key);
           return descriptor === undefined || !('value' in descriptor);
-        })) context.addIssue({ code: 'custom', message: 'Invalid capture object' });
+        })) {
+        context.addIssue({ code: 'custom', message: 'Invalid capture object' });
+      }
     }).pipe(z.object(shape).strict());
 }
 
 function boundedArray<Element extends z.ZodType>({ element, maximum }: { element: Element; maximum: number }) {
   return z.custom<unknown[]>(Array.isArray).superRefine((value, context) => {
-    if (!Array.isArray(value)) return;
+    if (!Array.isArray(value)) {
+      return;
+    }
     if (value.length > maximum) {
       context.addIssue({ code: 'custom', message: 'Capture array exceeds its limit' });
       return;
@@ -242,7 +248,10 @@ function payloadCharacters({ event }: { event: z.output<typeof eventSchema> }): 
   case 'tool-started': case 'tool-exit': case 'tool-error': return event.toolCallId.length;
   case 'tool-output': return event.toolCallId.length + event.text.length;
   case 'tool-success': return event.toolCallId.length + event.content.length;
-  default: { const exhaustive: never = event; throw new Error('Unhandled Provider trace event: ' + exhaustive); }
+  default: {
+    const exhaustive: never = event;
+    throw new Error('Unhandled Provider trace event: ' + exhaustive);
+  }
   }
 }
 
@@ -255,58 +264,95 @@ function validateObservationContract({ trace }: { trace: ProductionProviderTrace
   for (const event of trace.events) {
     switch (event.kind) {
     case 'assistant_message':
-      if (trace.format !== 'production-provider-trace-v3' || ended || messageIds.has(event.messageId)) invalidCapture();
-      messageId = event.messageId; messageIds.add(messageId); parts.clear(); break;
+      if (trace.format !== 'production-provider-trace-v3' || ended || messageIds.has(event.messageId)) {
+        invalidCapture();
+      }
+      messageId = event.messageId;
+      messageIds.add(messageId);
+      parts.clear();
+      break;
     case 'part_text': case 'part_call': {
-      if (trace.format !== 'production-provider-trace-v3' || ended || event.messageId !== messageId) invalidCapture();
+      if (trace.format !== 'production-provider-trace-v3' || ended || event.messageId !== messageId) {
+        invalidCapture();
+      }
       const previous = parts.get(event.partId);
       if (previous !== undefined) {
-        if (previous.kind !== event.kind) invalidCapture();
+        if (previous.kind !== event.kind) {
+          invalidCapture();
+        }
         if (event.kind === 'part_text' && previous.kind === 'part_text' && (event.partType !== previous.partType
-          || !event.text.startsWith(previous.text) || (previous.completeness === 'complete' && (event.completeness !== 'complete' || previous.text !== event.text)))) invalidCapture();
+          || !event.text.startsWith(previous.text) || (previous.completeness === 'complete' && (event.completeness !== 'complete' || previous.text !== event.text)))) {
+          invalidCapture();
+        }
         if (event.kind === 'part_call' && previous.kind === 'part_call' && (previous.toolCallId !== event.toolCallId
-          || previous.toolName !== event.toolName || previous.modelVisibleArguments !== event.modelVisibleArguments)) invalidCapture();
+          || previous.toolName !== event.toolName || previous.modelVisibleArguments !== event.modelVisibleArguments)) {
+          invalidCapture();
+        }
       }
-      parts.set(event.partId, event); break;
+      parts.set(event.partId, event);
+      break;
     }
     case 'generation_finished': case 'generation_interrupted': case 'generation_error': {
-      if (trace.format !== 'production-provider-trace-v3' || ended) invalidCapture();
+      if (trace.format !== 'production-provider-trace-v3' || ended) {
+        invalidCapture();
+      }
       const ordered = [...parts.values()].sort((a, b) => a.index - b.index);
-      if (ordered.some((part, index) => part.index !== index)) invalidCapture();
+      if (ordered.some((part, index) => part.index !== index)) {
+        invalidCapture();
+      }
       switch (event.kind) {
       case 'generation_finished': {
-        if (ordered.some(part => part.kind === 'part_text' && part.completeness === 'partial')) invalidCapture();
+        if (ordered.some(part => part.kind === 'part_text' && part.completeness === 'partial')) {
+          invalidCapture();
+        }
         const hasCalls = ordered.some(part => part.kind === 'part_call');
-        if ((event.next === 'tool_results') !== hasCalls) invalidCapture();
+        if ((event.next === 'tool_results') !== hasCalls) {
+          invalidCapture();
+        }
         break;
       }
       case 'generation_interrupted': case 'generation_error': break;
-      default: { const exhaustive: never = event; throw new Error('Unhandled generation observation: ' + exhaustive); }
+      default: {
+        const exhaustive: never = event;
+        throw new Error('Unhandled generation observation: ' + exhaustive);
       }
-      terminal = event.kind; ended = true; break;
+      }
+      terminal = event.kind;
+      ended = true;
+      break;
     }
     case 'chunk': case 'assistant-start': case 'tool-call':
       switch (trace.format) {
       case 'production-provider-trace-v2': break;
       case 'production-provider-trace-v3': return invalidCapture();
-      default: { const exhaustive: never = trace.format; throw new Error('Unhandled trace format: ' + exhaustive); }
+      default: {
+        const exhaustive: never = trace.format;
+        throw new Error('Unhandled trace format: ' + exhaustive);
+      }
       }
       break;
     case 'tool-started': case 'tool-output': case 'tool-exit': case 'tool-success': case 'tool-error': break;
-    default: { const exhaustive: never = event; throw new Error('Unhandled observation event: ' + exhaustive); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error('Unhandled observation event: ' + exhaustive);
+    }
     }
   }
   // A complete projection of a settled parts operation includes its actual
   // result. This does not imply model-native generation was complete.
   if (trace.format === 'production-provider-trace-v3' && trace.settled?.completeness === 'complete') {
-    if (!ended || (terminal === 'generation_error') !== (trace.settled.outcome.status === 'rejected')) invalidCapture();
+    if (!ended || (terminal === 'generation_error') !== (trace.settled.outcome.status === 'rejected')) {
+      invalidCapture();
+    }
   }
   // A late event is not continuation input, but it must still identify the same
   // observation vocabulary rather than pretending it came from an older API.
   for (const event of trace.lateEvents) {
     const legacy = ['chunk', 'assistant-start', 'tool-call'].includes(event.kind);
     const partsEvent = ['assistant_message', 'part_text', 'part_call', 'generation_finished', 'generation_interrupted', 'generation_error'].includes(event.kind);
-    if ((trace.format === 'production-provider-trace-v3' && legacy) || (trace.format === 'production-provider-trace-v2' && partsEvent)) invalidCapture();
+    if ((trace.format === 'production-provider-trace-v3' && legacy) || (trace.format === 'production-provider-trace-v2' && partsEvent)) {
+      invalidCapture();
+    }
   }
 }
 
@@ -315,145 +361,243 @@ function validateTrace({ trace }: { trace: ProductionProviderTraceSnapshot }): v
   if (trace.events.length + trace.lateEvents.length > trace.limits.maximumEvents || trace.retainedCharacters > trace.limits.maximumCharacters
     || trace.events.some((event, index) => event.phase !== 'before-settlement' || event.sequence !== index)
     || (trace.completeness === 'complete') !== (trace.failure === undefined)
-    || [...trace.events, ...trace.lateEvents].reduce((sum, event) => sum + payloadCharacters({ event }), 0) !== trace.retainedCharacters) invalidCapture();
+    || [...trace.events, ...trace.lateEvents].reduce((sum, event) => sum + payloadCharacters({ event }), 0) !== trace.retainedCharacters) {
+    invalidCapture();
+  }
   if (trace.settled === undefined) {
-    if (trace.lateEvents.length !== 0 || trace.failure?.phase === 'after-settlement') invalidCapture();
+    if (trace.lateEvents.length !== 0 || trace.failure?.phase === 'after-settlement') {
+      invalidCapture();
+    }
   } else {
     const settled = trace.settled;
     if (settled.sequence !== trace.events.length || JSON.stringify(settled.events) !== JSON.stringify(trace.events)
       || (settled.completeness === 'complete') !== (settled.failure === undefined)
       || (settled.failure !== undefined && (settled.failure.phase !== 'before-settlement' || JSON.stringify(settled.failure) !== JSON.stringify(trace.failure)))
-      || trace.lateEvents.some((event, index) => event.phase !== 'after-settlement' || event.sequence !== settled.sequence + 1 + index)) invalidCapture();
+      || trace.lateEvents.some((event, index) => event.phase !== 'after-settlement' || event.sequence !== settled.sequence + 1 + index)) {
+      invalidCapture();
+    }
   }
   if (trace.failure !== undefined) {
     switch (trace.failure.reason) {
     case 'event-limit':
-      if (trace.events.length + trace.lateEvents.length !== trace.limits.maximumEvents) invalidCapture();
+      if (trace.events.length + trace.lateEvents.length !== trace.limits.maximumEvents) {
+        invalidCapture();
+      }
       break;
     // The rejected payload is not retained, so its character count cannot be
     // reconstructed. Do not infer a full buffer from a character-limit failure.
     case 'character-limit': case 'unreadable-callback': case 'duplicate-settlement': break;
-    default: { const exhaustive: never = trace.failure.reason; throw new Error('Unhandled trace failure: ' + exhaustive); }
+    default: {
+      const exhaustive: never = trace.failure.reason;
+      throw new Error('Unhandled trace failure: ' + exhaustive);
+    }
     }
     const settlementOffset = (() => {
       switch (trace.failure.phase) {
       case 'before-settlement': return 0;
       case 'after-settlement': return 1;
-      default: { const exhaustive: never = trace.failure.phase; throw new Error('Unhandled failure phase: ' + exhaustive); }
+      default: {
+        const exhaustive: never = trace.failure.phase;
+        throw new Error('Unhandled failure phase: ' + exhaustive);
+      }
       }
     })();
     const expectedSequence = trace.events.length + trace.lateEvents.length + settlementOffset;
-    if (trace.failure.sequence !== expectedSequence || (trace.failure.phase === 'before-settlement' && trace.lateEvents.length > 0)) invalidCapture();
+    if (trace.failure.sequence !== expectedSequence || (trace.failure.phase === 'before-settlement' && trace.lateEvents.length > 0)) {
+      invalidCapture();
+    }
   }
 }
 
 function validateIdentityAndScript({ capture, runId, modelId }: { capture: ProductionProviderCaptureSnapshot; runId: string; modelId: string }): void {
-  if (capture.runId !== runId || capture.modelId !== modelId) invalidCapture();
+  if (capture.runId !== runId || capture.modelId !== modelId) {
+    invalidCapture();
+  }
   const partsContract = capture.format === 'production-provider-capture-v3';
-  if (capture.capabilities.providerCallbacks !== (partsContract ? 'parts_and_tools_projection' : 'bounded-projection')) invalidCapture();
+  if (capture.capabilities.providerCallbacks !== (partsContract ? 'parts_and_tools_projection' : 'bounded-projection')) {
+    invalidCapture();
+  }
   if (capture.requests.some(request => request.trace.format !== (partsContract ? 'production-provider-trace-v3' : 'production-provider-trace-v2')
-    || (!partsContract && request.input?.messages.some(message => 'parts' in message)))) invalidCapture();
+    || (!partsContract && request.input?.messages.some(message => 'parts' in message)))) {
+    invalidCapture();
+  }
   const scenarios = captureScenarios({ plan: capture.plan });
   const version2 = isCapturePlanV2({ plan: capture.plan });
   if (capture.capabilities.tools !== (isCaptureScenarioSelected({ plan: capture.plan, scenario: 'natural-tool-minimal' }) ? 'fixed-public-weather-tool' : 'not-selected')
-    || capture.capabilities.images !== (isCaptureScenarioSelected({ plan: capture.plan, scenario: 'image' }) ? 'fixed-public-image' : 'not-selected')) invalidCapture();
+    || capture.capabilities.images !== (isCaptureScenarioSelected({ plan: capture.plan, scenario: 'image' }) ? 'fixed-public-image' : 'not-selected')) {
+    invalidCapture();
+  }
   if (capture.requests.length !== scenarios.length || capture.events.some((event, index) => event.sequence !== index
-    || (event.activeRequestId !== undefined && !capture.requests.some(request => request.requestId === event.activeRequestId)))) invalidCapture();
+    || (event.activeRequestId !== undefined && !capture.requests.some(request => request.requestId === event.activeRequestId)))) {
+    invalidCapture();
+  }
   let previousCanContinue = true;
   let executionTail = false;
   for (const [index, request] of capture.requests.entries()) {
     if (request.runId !== runId || request.scenario !== scenarios[index]
-      || request.requestId !== runId + '-' + request.scenario || request.trace.requestId !== request.requestId) invalidCapture();
+      || request.requestId !== runId + '-' + request.scenario || request.trace.requestId !== request.requestId) {
+      invalidCapture();
+    }
     validateTrace({ trace: request.trace });
     const expectedStatus = request.input === undefined ? 'not-started' : request.trace.settled === undefined ? 'awaiting-settlement' : 'settled';
     if (request.status !== expectedStatus || (request.input === undefined && (request.trace.events.length > 0 || request.trace.settled !== undefined || request.trace.failure !== undefined))
-      || (request.status === 'not-started') !== (request.notStartedReason !== undefined)) invalidCapture();
-    if (request.status !== 'not-started' && ((!version2 && !previousCanContinue) || executionTail)) invalidCapture();
+      || (request.status === 'not-started') !== (request.notStartedReason !== undefined)) {
+      invalidCapture();
+    }
+    if (request.status !== 'not-started' && ((!version2 && !previousCanContinue) || executionTail)) {
+      invalidCapture();
+    }
     previousCanContinue = request.trace.settled?.outcome.status === 'fulfilled' && request.trace.settled.completeness === 'complete';
     const selected = isCaptureScenarioSelected({ plan: capture.plan, scenario: request.scenario });
-    if (!selected && request.notStartedReason !== 'scope-not-selected') invalidCapture();
+    if (!selected && request.notStartedReason !== 'scope-not-selected') {
+      invalidCapture();
+    }
     switch (request.notStartedReason) {
     case undefined:
-      if (!selected) invalidCapture();
+      if (!selected) {
+        invalidCapture();
+      }
       switch (request.status) {
-      case 'awaiting-settlement': executionTail = true; break;
+      case 'awaiting-settlement': executionTail = true;
+        break;
       case 'settled': break;
       case 'not-started': return invalidCapture();
-      default: { const exhaustive: never = request.status; throw new Error('Unhandled request status: ' + exhaustive); }
+      default: {
+        const exhaustive: never = request.status;
+        throw new Error('Unhandled request status: ' + exhaustive);
+      }
       }
       break;
-    case 'scope-not-selected': if (selected) invalidCapture(); break;
+    case 'scope-not-selected': if (selected) {
+      invalidCapture();
+    }
+      break;
     case 'first-settlement-unavailable': {
       const first = capture.requests[0]?.trace.settled;
       if (!version2 || !selected || request.scenario !== 'continuity' || first === undefined
-        || isCapturedContinuityAvailable({ settled: first })) invalidCapture();
+        || isCapturedContinuityAvailable({ settled: first })) {
+        invalidCapture();
+      }
       break;
     }
-    case 'not-yet-started': executionTail = true; break;
+    case 'not-yet-started': executionTail = true;
+      break;
     case 'legacy-script-stopped':
-      if (version2 || capture.run.status !== 'stopped' || !['provider-rejected', 'capture-incomplete'].includes(capture.run.reason)) invalidCapture();
-      executionTail = true; break;
+      if (version2 || capture.run.status !== 'stopped' || !['provider-rejected', 'capture-incomplete'].includes(capture.run.reason)) {
+        invalidCapture();
+      }
+      executionTail = true;
+      break;
     case 'runtime-unavailable':
-      if (!version2 || capture.run.status !== 'stopped' || capture.run.reason !== 'runtime-unavailable' || capture.requests[0]?.input === undefined) invalidCapture();
-      executionTail = true; break;
+      if (!version2 || capture.run.status !== 'stopped' || capture.run.reason !== 'runtime-unavailable' || capture.requests[0]?.input === undefined) {
+        invalidCapture();
+      }
+      executionTail = true;
+      break;
     case 'aborted':
-      if (capture.run.status !== 'stopped' || capture.run.reason !== 'aborted' || capture.abortReason !== 'user-requested') invalidCapture();
-      executionTail = true; break;
+      if (capture.run.status !== 'stopped' || capture.run.reason !== 'aborted' || capture.abortReason !== 'user-requested') {
+        invalidCapture();
+      }
+      executionTail = true;
+      break;
     case 'deadline':
-      if (capture.run.status !== 'stopped' || capture.run.reason !== 'aborted' || capture.abortReason !== 'deadline') invalidCapture();
-      executionTail = true; break;
+      if (capture.run.status !== 'stopped' || capture.run.reason !== 'aborted' || capture.abortReason !== 'deadline') {
+        invalidCapture();
+      }
+      executionTail = true;
+      break;
     case 'disposed':
-      if (capture.run.status !== 'stopped' || capture.run.reason !== 'disposed' || capture.lifetime === 'open') invalidCapture();
-      executionTail = true; break;
-    default: { const exhaustive: never = request.notStartedReason; throw new Error('Unhandled not-started reason: ' + exhaustive); }
+      if (capture.run.status !== 'stopped' || capture.run.reason !== 'disposed' || capture.lifetime === 'open') {
+        invalidCapture();
+      }
+      executionTail = true;
+      break;
+    default: {
+      const exhaustive: never = request.notStartedReason;
+      throw new Error('Unhandled not-started reason: ' + exhaustive);
+    }
     }
     if (request.input !== undefined) {
       const expected = captureScenarioInput({ scenario: request.scenario, firstSettled: capture.requests[0]?.trace.settled });
       // Both operands are strict-schema canonical objects, never arbitrary
       // callback values. This compares every fixed field without key-order noise.
-      if (JSON.stringify(inputSchema.parse(request.input)) !== JSON.stringify(inputSchema.parse(expected))) invalidCapture();
+      if (JSON.stringify(inputSchema.parse(request.input)) !== JSON.stringify(inputSchema.parse(expected))) {
+        invalidCapture();
+      }
     }
   }
   switch (capture.run.status) {
   case 'completed':
     if (version2) {
-      if (capture.requests.some(request => request.status !== 'settled' && request.notStartedReason !== 'scope-not-selected' && request.notStartedReason !== 'first-settlement-unavailable')) invalidCapture();
-    } else if (capture.requests.some(request => request.status !== 'settled' || request.trace.settled?.outcome.status !== 'fulfilled' || request.trace.settled.completeness !== 'complete')) invalidCapture();
+      if (capture.requests.some(request => request.status !== 'settled' && request.notStartedReason !== 'scope-not-selected' && request.notStartedReason !== 'first-settlement-unavailable')) {
+        invalidCapture();
+      }
+    } else if (capture.requests.some(request => request.status !== 'settled' || request.trace.settled?.outcome.status !== 'fulfilled' || request.trace.settled.completeness !== 'complete')) {
+      invalidCapture();
+    }
     break;
   case 'not-started':
-    if (capture.requests.some(request => request.status !== 'not-started')) invalidCapture();
+    if (capture.requests.some(request => request.status !== 'not-started')) {
+      invalidCapture();
+    }
     break;
   case 'running': break;
   case 'stopped':
     switch (capture.run.reason) {
-    case 'provider-rejected': case 'capture-incomplete': if (version2) invalidCapture(); break;
-    case 'runtime-unavailable':
-      if (!version2 || !capture.requests.some(request => request.notStartedReason === 'runtime-unavailable')) invalidCapture();
+    case 'provider-rejected': case 'capture-incomplete': if (version2) {
+      invalidCapture();
+    }
       break;
-    case 'aborted': if (capture.abortReason === undefined) invalidCapture(); break;
+    case 'runtime-unavailable':
+      if (!version2 || !capture.requests.some(request => request.notStartedReason === 'runtime-unavailable')) {
+        invalidCapture();
+      }
+      break;
+    case 'aborted': if (capture.abortReason === undefined) {
+      invalidCapture();
+    }
+      break;
     case 'disposed':
       switch (capture.lifetime) {
       case 'open': return invalidCapture();
       case 'closing': case 'closed': break;
-      default: { const exhaustive: never = capture.lifetime; throw new Error('Unhandled lifetime: ' + exhaustive); }
+      default: {
+        const exhaustive: never = capture.lifetime;
+        throw new Error('Unhandled lifetime: ' + exhaustive);
+      }
       }
       break;
-    default: { const exhaustive: never = capture.run.reason; throw new Error('Unhandled stopped run: ' + exhaustive); }
+    default: {
+      const exhaustive: never = capture.run.reason;
+      throw new Error('Unhandled stopped run: ' + exhaustive);
+    }
     }
     break;
-  default: { const exhaustive: never = capture.run; throw new Error('Unhandled capture run: ' + exhaustive); }
+  default: {
+    const exhaustive: never = capture.run;
+    throw new Error('Unhandled capture run: ' + exhaustive);
+  }
   }
   switch (capture.disposal) {
   case 'not-requested':
-    if (capture.lifetime !== 'open' || capture.observation !== 'open') invalidCapture();
+    if (capture.lifetime !== 'open' || capture.observation !== 'open') {
+      invalidCapture();
+    }
     break;
   case 'pending':
-    if (capture.lifetime !== 'closing' || capture.observation !== 'end-requested-by-dispose') invalidCapture();
+    if (capture.lifetime !== 'closing' || capture.observation !== 'end-requested-by-dispose') {
+      invalidCapture();
+    }
     break;
   case 'completed': case 'failed':
-    if (capture.lifetime !== 'closed' || capture.observation !== 'end-requested-by-dispose') invalidCapture();
+    if (capture.lifetime !== 'closed' || capture.observation !== 'end-requested-by-dispose') {
+      invalidCapture();
+    }
     break;
-  default: { const exhaustive: never = capture.disposal; throw new Error('Unhandled capture disposal: ' + exhaustive); }
+  default: {
+    const exhaustive: never = capture.disposal;
+    throw new Error('Unhandled capture disposal: ' + exhaustive);
+  }
   }
 }
 
@@ -486,7 +630,9 @@ function encodeTrace({ trace }: { trace: ProductionProviderTraceSnapshot }) {
   const { format, requestId, limits, completeness, failure, events, settled, lateEvents, retainedCharacters, ...rest } = trace;
   rest satisfies Record<PropertyKey, never>;
   const encodedSettlement = (() => {
-    if (settled === undefined) return undefinedValue;
+    if (settled === undefined) {
+      return undefinedValue;
+    }
     const { sequence, outcome, events, completeness, failure, ...rest } = settled;
     rest satisfies Record<PropertyKey, never>;
     return { sequence, outcome, events, completeness, failure: failure ?? undefinedValue };
@@ -524,7 +670,9 @@ function encodeCapture({ capture }: { capture: ProductionProviderCaptureSnapshot
     requests: requests.map(({ runId, requestId, scenario, status, notStartedReason, input, trace, ...rest }) => {
       rest satisfies Record<PropertyKey, never>;
       const encodedInput = (() => {
-        if (input === undefined) return undefinedValue;
+        if (input === undefined) {
+          return undefinedValue;
+        }
         const { messages, parameters, tools, ...restInput } = input;
         restInput satisfies Record<PropertyKey, never>;
         const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...restParameters } = parameters;
@@ -576,7 +724,9 @@ export function createProductionProviderCaptureEvidence({ capture, runId, modelI
       },
     });
     const json = JSON.stringify(document, undefined, 2) + '\n';
-    if (json.length > PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS) invalidCapture();
+    if (json.length > PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS) {
+      invalidCapture();
+    }
     return {
       reference: productionProviderCaptureReferenceSchema.parse({ format: 'production-provider-capture-reference-v1', path: PRODUCTION_PROVIDER_CAPTURE_EVIDENCE_PATH }),
       json,
@@ -595,7 +745,11 @@ type DecodeField = ({ value }: { value: unknown }) => unknown;
 function decodeFields({ value, fields }: { value: unknown; fields: Record<string, DecodeField> }): Record<string, unknown> {
   const source = z.record(z.string(), z.unknown()).parse(value);
   const result = { ...source };
-  for (const [key, decode] of Object.entries(fields)) if (Object.hasOwn(source, key)) result[key] = decode({ value: source[key] });
+  for (const [key, decode] of Object.entries(fields)) {
+    if (Object.hasOwn(source, key)) {
+      result[key] = decode({ value: source[key] });
+    }
+  }
   return result;
 }
 
@@ -659,7 +813,9 @@ export function readProductionProviderCaptureEvidence({ json, runId, modelId }: 
       },
     });
     const parsed = captureSchema.parse(decoded);
-    if (envelope.limitations.providerCallbacks !== parsed.capabilities.providerCallbacks) invalidCapture();
+    if (envelope.limitations.providerCallbacks !== parsed.capabilities.providerCallbacks) {
+      invalidCapture();
+    }
     validateIdentityAndScript({ capture: parsed as ProductionProviderCaptureSnapshot, runId, modelId });
     // Same validated bridge as export: strictRecord requires own keys even for
     // undefined values, while Zod's output type marks those keys optional.

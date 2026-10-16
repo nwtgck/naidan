@@ -308,7 +308,9 @@ describe('ChatPane Draft Maintenance', () => {
   });
 
   afterEach(() => {
-    if (wrapper) wrapper.unmount();
+    if (wrapper) {
+      wrapper.unmount();
+    }
   });
 
   it('should maintain input text independently when switching between chats', async () => {

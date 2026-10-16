@@ -106,9 +106,13 @@ function updateSlider({ immediate }: { immediate?: boolean }) {
 }
 
 function setValue({ value }: { value: ReasoningSettingsValue }) {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   emit('update:value', value);
-  if (isReasoningEffort(value)) emit('update:effort', value);
+  if (isReasoningEffort(value)) {
+    emit('update:effort', value);
+  }
 }
 
 onMounted(() => {

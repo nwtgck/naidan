@@ -43,33 +43,45 @@ const displaySummary = computed(() => {
   const parts: string[] = [];
   if (props.stats.thinkingSteps > 0) {
     const thinkingSteps = lazyStrings.AssistantProcessSequence__thinking_steps({ count: props.stats.thinkingSteps });
-    if (thinkingSteps === undefined) return undefined;
+    if (thinkingSteps === undefined) {
+      return undefined;
+    }
     parts.push(thinkingSteps);
   }
   if (props.stats.toolCallCount > 0) {
     const toolExecutions = lazyStrings.AssistantProcessSequence__tool_executions({ count: props.stats.toolCallCount });
-    if (toolExecutions === undefined) return undefined;
+    if (toolExecutions === undefined) {
+      return undefined;
+    }
     parts.push(toolExecutions);
   }
   if (props.stats.toolNames.length > 0) {
     const displayedToolNames = props.stats.toolNames.slice(0, 2);
     const usedTools = lazyStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
-    if (usedTools === undefined) return undefined;
+    if (usedTools === undefined) {
+      return undefined;
+    }
     let toolSummary = usedTools;
     if (props.stats.toolNames.length > displayedToolNames.length) {
       const moreTools = lazyStrings.AssistantProcessSequence__and_more({ count: props.stats.toolNames.length - displayedToolNames.length });
-      if (moreTools === undefined) return undefined;
+      if (moreTools === undefined) {
+        return undefined;
+      }
       toolSummary += ` ${moreTools}`;
     }
     parts.push(toolSummary);
   }
-  if (parts.length > 0) return parts.join(' • ');
+  if (parts.length > 0) {
+    return parts.join(' • ');
+  }
   return lazyStrings.AssistantProcessSequence__process_details();
 });
 
 const modelId = computed(() => {
   const first = props.items[0];
-  if (!first) return undefined;
+  if (!first) {
+    return undefined;
+  }
   const type = first.type;
   switch (type) {
   case 'message':

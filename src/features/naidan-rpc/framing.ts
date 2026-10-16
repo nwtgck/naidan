@@ -63,12 +63,14 @@ export class FramedDuplex {
 
   constructor({ duplex, onRetirementFailure, onProtocolFailure, memory }: { memory?: RpcByteOwner; duplex: NaidanRpcDuplex; onProtocolFailure: ({ error }: { error: NaidanRpcProtocolError }) => void; onRetirementFailure?: ({ error }: { error: unknown }) => void }) {
     this.memory = memory?.fork() ?? new NaidanRpcByteBudget().owner();
-    this.onRetirementFailure = onRetirementFailure; this.onProtocolFailure = onProtocolFailure;
+    this.onRetirementFailure = onRetirementFailure;
+    this.onProtocolFailure = onProtocolFailure;
     this.reader = duplex.readable.getReader();
     try {
       this.writer = duplex.writable.getWriter();
     } catch (error) {
-      releaseLocks({ reader: this.reader, writer: undefined }); this.memory.clear();
+      releaseLocks({ reader: this.reader, writer: undefined });
+      this.memory.clear();
       throw error;
     }
     const settled = deferred<void>(), bytes = encodeProtocolHeader(), initial = this.memory.fork();
@@ -76,61 +78,89 @@ export class FramedDuplex {
     try {
       initial.retain({ bytes });
     } catch (error) {
-      this.memory.clear(); releaseLocks({ reader: this.reader, writer: this.writer }); throw error;
+      this.memory.clear();
+      releaseLocks({ reader: this.reader, writer: this.writer });
+      throw error;
     }
-    this.queue.push({ bytes, memory: initial, offset: 0, settled }); this.retainedBytes = bytes.buffer.byteLength;
+    this.queue.push({ bytes, memory: initial, offset: 0, settled });
+    this.retainedBytes = bytes.buffer.byteLength;
     this.kick();
   }
 
   send({ frame }: { frame: Frame }): Promise<void> {
-    if (this.retirement || this.released || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    if (this.retirement || this.released || this.failure) {
+      return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    }
     check({ condition: !this.closing, code: 'RESOURCE_EXHAUSTED' });
-    if (this.queue.length >= QUEUE_FRAMES) throw new NaidanRpcPublicError({
-      code: 'RESOURCE_EXHAUSTED',
-      details: {
-        scope: 'rpc-frame',
-        constraint: 'queued-frames',
-        limit: QUEUE_FRAMES,
-        observed: this.queue.length + 1,
-      },
-    });
+    if (this.queue.length >= QUEUE_FRAMES) {
+      throw new NaidanRpcPublicError({
+        code: 'RESOURCE_EXHAUSTED',
+        details: {
+          scope: 'rpc-frame',
+          constraint: 'queued-frames',
+          limit: QUEUE_FRAMES,
+          observed: this.queue.length + 1,
+        },
+      });
+    }
     const memory = this.memory.fork();
     try {
       const payload = encode({ value: frameSchema.parse(frame), limit: FRAME_BYTES, memory });
-      const bytes = memory.allocate({ bytes: payload.length + 4 }); new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4);
+      const bytes = memory.allocate({ bytes: payload.length + 4 });
+      new DataView(bytes.buffer).setUint32(0, payload.length, false);
+      bytes.set(payload, 4);
       memory.release({ bytes: payload });
-      if (this.retainedBytes + bytes.buffer.byteLength > QUEUE_BYTES) throw new NaidanRpcPublicError({
-        code: 'RESOURCE_EXHAUSTED',
-        details: { scope: 'rpc-frame', constraint: 'queued-bytes', limit: QUEUE_BYTES, observed: this.retainedBytes + bytes.buffer.byteLength },
-      });
-      const settled = deferred<void>(); this.queue.push({ bytes, memory, offset: 0, settled }); this.retainedBytes += bytes.buffer.byteLength;
-      this.kick(); return settled.promise;
+      if (this.retainedBytes + bytes.buffer.byteLength > QUEUE_BYTES) {
+        throw new NaidanRpcPublicError({
+          code: 'RESOURCE_EXHAUSTED',
+          details: { scope: 'rpc-frame', constraint: 'queued-bytes', limit: QUEUE_BYTES, observed: this.retainedBytes + bytes.buffer.byteLength },
+        });
+      }
+      const settled = deferred<void>();
+      this.queue.push({ bytes, memory, offset: 0, settled });
+      this.retainedBytes += bytes.buffer.byteLength;
+      this.kick();
+      return settled.promise;
     } catch (error) {
-      memory.clear(); throw error;
+      memory.clear();
+      throw error;
     }
   }
 
   private kick(): void {
-    if (this.sending) return;
+    if (this.sending) {
+      return;
+    }
     // Publish ownership before a lower write/close can synchronously reenter stop.
-    const work = deferred<void>(); this.sendWork = work.promise;
+    const work = deferred<void>();
+    this.sendWork = work.promise;
     void this.pump().then(work.resolve, work.reject);
   }
 
   private async pump(): Promise<void> {
-    if (this.sending) return; this.sending = true;
+    if (this.sending) {
+      return;
+    }
+    this.sending = true;
     try {
       while (this.queue.length) {
-        const prefix = this.readyPrefix(); this.inFlight = prefix;
+        const prefix = this.readyPrefix();
+        this.inFlight = prefix;
         try {
           await this.writer.write(prefix.bytes);
-          if (this.stopped || this.failure) return;
+          if (this.stopped || this.failure) {
+            return;
+          }
           let remaining = prefix.bytes.length;
           for (const entry of prefix.entries) {
             const size = Math.min(remaining, entry.bytes.length - entry.offset);
-            entry.offset += size; remaining -= size;
+            entry.offset += size;
+            remaining -= size;
             if (entry.offset === entry.bytes.length) {
-              this.queue.shift(); this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear(); entry.settled.resolve();
+              this.queue.shift();
+              this.retainedBytes -= entry.bytes.buffer.byteLength;
+              entry.memory.clear();
+              entry.settled.resolve();
             }
           }
         } finally {
@@ -138,17 +168,22 @@ export class FramedDuplex {
           // Neither stop nor a late success/rejection can release them twice.
           if (this.stopped || this.failure) {
             for (const entry of prefix.entries) {
-              this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear();
+              this.retainedBytes -= entry.bytes.buffer.byteLength;
+              entry.memory.clear();
             }
           }
-          prefix.memory.clear(); this.inFlight = undefined;
+          prefix.memory.clear();
+          this.inFlight = undefined;
         }
       }
       if (this.closing) {
-        this.closeWork = this.writer.close(); await this.closeWork; this.drained.resolve();
+        this.closeWork = this.writer.close();
+        await this.closeWork;
+        this.drained.resolve();
       }
     } catch (error) {
-      this.failure ??= { error }; this.rejectQueue({ error: this.failure.error });
+      this.failure ??= { error };
+      this.rejectQueue({ error: this.failure.error });
     } finally {
       this.sending = false;
     }
@@ -156,27 +191,38 @@ export class FramedDuplex {
 
   private readyPrefix(): { entries: Pending[]; bytes: Uint8Array; scratchBytes: number; memory: RpcByteOwner } {
     const memory = this.memory.fork();
-    const entries: Pending[] = []; let length = 0;
+    const entries: Pending[] = [];
+    let length = 0;
     for (const entry of this.queue) {
-      entries.push(entry); length += Math.min(WRITE_BATCH_BYTES - length, entry.bytes.length - entry.offset);
-      if (length === WRITE_BATCH_BYTES) break;
+      entries.push(entry);
+      length += Math.min(WRITE_BATCH_BYTES - length, entry.bytes.length - entry.offset);
+      if (length === WRITE_BATCH_BYTES) {
+        break;
+      }
     }
     const first = entries[0]!;
-    if (entries.length === 1) return { entries, bytes: first.bytes.subarray(first.offset, first.offset + length), scratchBytes: 0, memory };
+    if (entries.length === 1) {
+      return { entries, bytes: first.bytes.subarray(first.offset, first.offset + length), scratchBytes: 0, memory };
+    }
     // One independent, bounded scratch allowance; never wait for queue capacity
     // in the pump that must drain that queue. No delay to create a larger batch.
-    const bytes = memory.allocate({ bytes: length }); let offset = 0;
+    const bytes = memory.allocate({ bytes: length });
+    let offset = 0;
     for (const entry of entries) {
       const size = Math.min(length - offset, entry.bytes.length - entry.offset);
-      bytes.set(entry.bytes.subarray(entry.offset, entry.offset + size), offset); offset += size;
+      bytes.set(entry.bytes.subarray(entry.offset, entry.offset + size), offset);
+      offset += size;
     }
     return { entries, bytes, scratchBytes: bytes.buffer.byteLength, memory };
   }
 
   finish(): Promise<void> {
-    if (this.stopped || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    if (this.stopped || this.failure) {
+      return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    }
     if (!this.closing) {
-      this.closing = true; this.kick();
+      this.closing = true;
+      this.kick();
     }
     return this.drained.promise;
   }
@@ -185,15 +231,20 @@ export class FramedDuplex {
     for (const entry of this.queue.splice(0)) {
       entry.settled.reject(error);
       if (!this.inFlight?.entries.includes(entry)) {
-        this.retainedBytes -= entry.bytes.buffer.byteLength; entry.memory.clear();
+        this.retainedBytes -= entry.bytes.buffer.byteLength;
+        entry.memory.clear();
       }
     }
     this.drained.reject(error);
   }
 
   stop({ error }: { error: unknown }): Promise<void> {
-    if (this.retirement) return this.retirement;
-    this.stopped = true; this.failure ??= { error }; this.rejectQueue({ error: this.failure.error });
+    if (this.retirement) {
+      return this.retirement;
+    }
+    this.stopped = true;
+    this.failure ??= { error };
+    this.rejectQueue({ error: this.failure.error });
     return this.retireOwned({ mode: 'abort', error: this.failure.error });
   }
 
@@ -203,15 +254,21 @@ export class FramedDuplex {
   }
 
   private retireOwned({ mode, error }: { mode: 'abort' | 'graceful'; error: unknown }): Promise<void> {
-    if (this.retirement) return this.retirement;
-    const retired = deferred<void>(); this.retirement = retired.promise;
+    if (this.retirement) {
+      return this.retirement;
+    }
+    const retired = deferred<void>();
+    this.retirement = retired.promise;
     void (async () => {
       const failures = new RetirementFailures({ onFailure: this.onRetirementFailure });
       const cleanup = (() => {
         switch (mode) {
         case 'abort': return [cancelReader({ reader: this.reader, reason: error }), abortWriter({ writer: this.writer, reason: error, ownedClose: this.closeWork })];
         case 'graceful': return [];
-        default: { const unreachable: never = mode; throw new Error(String(unreachable)); }
+        default: {
+          const unreachable: never = mode;
+          throw new Error(String(unreachable));
+        }
         }
       })();
       // Read/decode and send failures are logical outcomes; still join their
@@ -223,20 +280,27 @@ export class FramedDuplex {
       } catch (error) {
         failures.add({ error });
       }
-      failures.check(); this.memory.clear();
+      failures.check();
+      this.memory.clear();
     })().then(retired.resolve, retired.reject);
     return retired.promise;
   }
 
   release(): void {
-    if (this.released) return;
+    if (this.released) {
+      return;
+    }
     releaseLocks({ reader: this.reader, writer: this.writer });
-    this.released = true; this.chunk = new Uint8Array();
-    if (!this.retirement) this.memory.clear();
+    this.released = true;
+    this.chunk = new Uint8Array();
+    if (!this.retirement) {
+      this.memory.clear();
+    }
   }
 
   private async bytes({ length, allowEnd }: { length: number; allowEnd: boolean }): Promise<Uint8Array | undefined> {
-    const bytes = new ByteAssembly({ limit: length, memory: this.frameMemory }); let written = 0;
+    const bytes = new ByteAssembly({ limit: length, memory: this.frameMemory });
+    let written = 0;
     while (written < length) {
       if (this.cursor === this.chunk.length) {
         let next: ReadableStreamReadResult<Uint8Array>;
@@ -247,30 +311,43 @@ export class FramedDuplex {
           throw new NaidanRpcError({ code: 'TRANSPORT_ERROR', cause });
         }
         if (next.done) {
-          if (allowEnd && written === 0) return undefined;
+          if (allowEnd && written === 0) {
+            return undefined;
+          }
           throw new NaidanRpcError({ code: 'PROTOCOL_ERROR' });
         }
         check({ condition: next.value instanceof Uint8Array && next.value.buffer instanceof ArrayBuffer && next.value.length > 0, code: 'PROTOCOL_ERROR' });
-        this.chunkMemory?.clear(); this.chunkMemory = this.memory.fork(); this.chunkMemory.retain({ bytes: next.value });
-        this.chunk = next.value; this.cursor = 0;
+        this.chunkMemory?.clear();
+        this.chunkMemory = this.memory.fork();
+        this.chunkMemory.retain({ bytes: next.value });
+        this.chunk = next.value;
+        this.cursor = 0;
       }
       const size = Math.min(length - written, this.chunk.length - this.cursor);
-      bytes.append({ bytes: this.chunk.subarray(this.cursor, this.cursor + size) }); this.cursor += size; written += size;
+      bytes.append({ bytes: this.chunk.subarray(this.cursor, this.cursor + size) });
+      this.cursor += size;
+      written += size;
     }
     return bytes.finish();
   }
 
   read(): Promise<Frame | undefined> {
-    if (this.retirement || this.released || this.failure) return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    if (this.retirement || this.released || this.failure) {
+      return Promise.reject(this.failure ? this.failure.error : new NaidanRpcError({ code: 'CANCELLED' }));
+    }
     check({ condition: this.reads.size === 0, code: 'INVALID_ARGUMENT' });
-    const work = this.readFrame(); this.reads.add(work);
+    const work = this.readFrame();
+    this.reads.add(work);
     void work.then(() => this.reads.delete(work), () => this.reads.delete(work));
     return work;
   }
 
   private rejectHeader({ result }: { result: Exclude<ProtocolHeaderResult, { kind: 'supported' }> }): never {
-    if (this.stopped || this.failure) throw this.failure?.error;
-    const error = new NaidanRpcProtocolError({ diagnostic: result }); this.failure = { error };
+    if (this.stopped || this.failure) {
+      throw this.failure?.error;
+    }
+    const error = new NaidanRpcProtocolError({ diagnostic: result });
+    this.failure = { error };
     this.rejectQueue({ error });
     try {
       this.onProtocolFailure({ error });
@@ -279,7 +356,9 @@ export class FramedDuplex {
   }
 
   private checkReadActive(): void {
-    if (this.stopped || this.failure) throw this.failure?.error;
+    if (this.stopped || this.failure) {
+      throw this.failure?.error;
+    }
   }
 
   private async readPreamble(): Promise<void> {
@@ -300,32 +379,48 @@ export class FramedDuplex {
           switch (result.kind) {
           case 'supported': return;
           case 'truncated-header': case 'wrong-protocol-magic': case 'invalid-protocol-version': case 'unsupported-protocol-version': return this.rejectHeader({ result });
-          default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = result;
+            throw new Error(String(exhaustive));
+          }
           }
         }
         check({ condition: next.value instanceof Uint8Array && next.value.buffer instanceof ArrayBuffer && next.value.length > 0, code: 'PROTOCOL_ERROR' });
-        this.chunkMemory?.clear(); this.chunkMemory = this.memory.fork(); this.chunkMemory.retain({ bytes: next.value });
-        this.chunk = next.value; this.cursor = 0;
+        this.chunkMemory?.clear();
+        this.chunkMemory = this.memory.fork();
+        this.chunkMemory.retain({ bytes: next.value });
+        this.chunk = next.value;
+        this.cursor = 0;
       }
-      const { consumedBytes, result } = header.push({ chunk: this.chunk.subarray(this.cursor) }); this.cursor += consumedBytes;
+      const { consumedBytes, result } = header.push({ chunk: this.chunk.subarray(this.cursor) });
+      this.cursor += consumedBytes;
       switch (result.kind) {
       case 'need-more': break;
       case 'supported': return;
       case 'truncated-header': case 'wrong-protocol-magic': case 'invalid-protocol-version': case 'unsupported-protocol-version': return this.rejectHeader({ result });
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
       }
     }
   }
 
   private async readFrame(): Promise<Frame | undefined> {
-    this.frameMemory?.clear(); this.frameMemory = this.memory.fork();
+    this.frameMemory?.clear();
+    this.frameMemory = this.memory.fork();
     await (this.preambleRead ??= this.readPreamble());
     this.checkReadActive();
-    const header = await this.bytes({ length: 4, allowEnd: true }); if (!header) return undefined;
+    const header = await this.bytes({ length: 4, allowEnd: true });
+    if (!header) {
+      return undefined;
+    }
     const length = new DataView(header.buffer).getUint32(0, false);
     check({ condition: length > 0 && length <= FRAME_BYTES, code: 'PROTOCOL_ERROR' });
     const body = await this.bytes({ length, allowEnd: false });
-    if (!body) throw new Error('Missing frame');
+    if (!body) {
+      throw new Error('Missing frame');
+    }
     const raw = decode({ bytes: body, memory: this.frameMemory });
     // Inspect before stripping extensions: hidden/duplicate capabilities must
     // not escape direction, ownership or acceptance checks.

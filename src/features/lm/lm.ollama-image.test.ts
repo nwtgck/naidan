@@ -24,7 +24,9 @@ describe('OllamaProvider Image Generation', () => {
           let index = 0;
           return {
             read: () => {
-              if (index >= chunks.length) return Promise.resolve({ done: true });
+              if (index >= chunks.length) {
+                return Promise.resolve({ done: true });
+              }
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
             },
           };
@@ -81,7 +83,9 @@ describe('OllamaProvider Image Generation', () => {
           let index = 0;
           return {
             read: () => {
-              if (index >= chunks.length) return Promise.resolve({ done: true });
+              if (index >= chunks.length) {
+                return Promise.resolve({ done: true });
+              }
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
             },
           };
@@ -113,7 +117,9 @@ describe('OllamaProvider Image Generation', () => {
     function MockFileReader(this: any) {
       this.readAsDataURL = vi.fn(() => {
         this.result = 'data:image/png;base64,YmFzZTY0ZGF0YQ==';
-        if (this.onloadend) this.onloadend();
+        if (this.onloadend) {
+          this.onloadend();
+        }
       });
     }
     vi.stubGlobal('FileReader', MockFileReader);
@@ -131,7 +137,9 @@ describe('OllamaProvider Image Generation', () => {
           let index = 0;
           return {
             read: () => {
-              if (index >= chunks.length) return Promise.resolve({ done: true });
+              if (index >= chunks.length) {
+                return Promise.resolve({ done: true });
+              }
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
             },
           };

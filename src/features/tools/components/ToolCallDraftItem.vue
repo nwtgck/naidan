@@ -16,7 +16,9 @@ let lastContainer: HTMLDivElement | undefined;
 
 function onArgumentsScroll(): void {
   const container = argumentsContainer.value;
-  if (!container) return;
+  if (!container) {
+    return;
+  }
   const maximum = Math.max(0, container.scrollHeight - container.clientHeight);
   const scrollTop = Math.max(0, container.scrollTop);
   if (maximum - scrollTop <= 2) {
@@ -31,7 +33,9 @@ function onArgumentsScroll(): void {
 
 function followArgumentsTail(): void {
   const container = argumentsContainer.value;
-  if (!container) return;
+  if (!container) {
+    return;
+  }
   const maximum = Math.max(0, container.scrollHeight - container.clientHeight);
   if (container !== lastContainer) {
     // Reopening a collapsed preview preserves the reader's paused position.
@@ -63,12 +67,16 @@ watch(
 );
 
 watch(argumentsContent, (content, _previous, onCleanup) => {
-  if (!content || typeof ResizeObserver === 'undefined') return;
+  if (!content || typeof ResizeObserver === 'undefined') {
+    return;
+  }
   // Highlighted text may render asynchronously after the draft prop update.
   // Observe the content, since the capped scroll viewport no longer grows.
   let observing = true;
   const observer = new ResizeObserver(() => {
-    if (observing && argumentsContent.value === content) followArgumentsTail();
+    if (observing && argumentsContent.value === content) {
+      followArgumentsTail();
+    }
   });
   observer.observe(content);
   onCleanup(() => {

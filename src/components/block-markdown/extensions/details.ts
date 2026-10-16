@@ -12,7 +12,9 @@ export const detailsExtension: TokenizerAndRendererExtension = {
     return src.match(/<details>/)?.index;
   },
   tokenizer(src: string) {
-    if (!src.startsWith('<details>')) return undefined;
+    if (!src.startsWith('<details>')) {
+      return undefined;
+    }
 
     let depth = 0;
     let index = 0;

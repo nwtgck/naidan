@@ -57,7 +57,9 @@ export class ForcedTokenSequenceLogitsProcessor extends LogitsProcessor {
         );
       }
       const tokenId = this.forcedTokenIds[forcedIndex];
-      if (tokenId === undefined) continue;
+      if (tokenId === undefined) {
+        continue;
+      }
       forceToken({ row: logits._getitem(batchIndex), tokenId });
     }
     return logits;

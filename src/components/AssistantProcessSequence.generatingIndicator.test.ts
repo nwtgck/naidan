@@ -219,12 +219,15 @@ it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle',
     },
   };
   const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');
-  expect(toggle.element.tagName).toBe('BUTTON'); expect(toggle.attributes('type')).toBe('button');
+  expect(toggle.element.tagName).toBe('BUTTON');
+  expect(toggle.attributes('type')).toBe('button');
   for (const name of tools) {
-    expect(toggle.text()).toContain(name); expect(toggle.attributes('title')).toContain(name);
+    expect(toggle.text()).toContain(name);
+    expect(toggle.attributes('title')).toContain(name);
   }
   expect(toggle.attributes('aria-expanded')).toBe('false');
   expect(toggle.findAll('.truncate, .line-clamp-1')).toHaveLength(0);
   expect(toggle.find('.whitespace-normal').exists()).toBe(true);
-  await toggle.trigger('click'); expect(toggle.attributes('aria-expanded')).toBe('true');
+  await toggle.trigger('click');
+  expect(toggle.attributes('aria-expanded')).toBe('true');
 });

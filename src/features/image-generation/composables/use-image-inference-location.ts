@@ -29,7 +29,10 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     switch (kind.value) {
     case 'local': return false;
     case 'naidan_rpc': return true;
-    default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = kind.value;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   const registrationId = ref<NaidanRpcRegistrationId>();
@@ -49,20 +52,33 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   const connected = computed(() => selected.value?.phase === 'connected' && selected.value.registration.peerPublicKey === peerPublicKey.value);
   const unsubscribe = subscribeRpcState({
     listener() {
-      if (isRemote.value) void refresh({ fromStorage: false });
+      if (isRemote.value) {
+        void refresh({ fromStorage: false });
+      }
     },
   });
   onScopeDispose(() => {
-    disposed = true; catalogStop?.abort(); unsubscribe();
+    disposed = true;
+    catalogStop?.abort();
+    unsubscribe();
   });
   function discardCatalog(): void {
-    catalogEpoch++; catalogStop?.abort(); catalogStop = undefined; catalog.value = []; loading.value = false;
+    catalogEpoch++;
+    catalogStop?.abort();
+    catalogStop = undefined;
+    catalog.value = [];
+    loading.value = false;
   }
   function chooseRegistration({ id }: { id: NaidanRpcRegistrationId | undefined }): void {
-    if (blocked()) return;
-    discardCatalog(); unavailable.value = false; registrationId.value = id;
+    if (blocked()) {
+      return;
+    }
+    discardCatalog();
+    unavailable.value = false;
+    registrationId.value = id;
     const next = entries.value.find(item => item.registration.id === id);
-    peerPublicKey.value = next?.registration.peerPublicKey; label.value = next?.registration.label ?? '';
+    peerPublicKey.value = next?.registration.peerPublicKey;
+    label.value = next?.registration.label ?? '';
     const saved = editors.value.find(item => item.registrationId === id && item.peerPublicKey === peerPublicKey.value);
     editor.value = saved ? copyRemoteImageModelEditor({ editor: saved.editor }) : emptyRemoteImageModelEditor();
     failure.value = '';
@@ -71,26 +87,41 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const epoch = ++refreshEpoch;
     try {
       const manager = await getRpcManager();
-      if (fromStorage) await manager.reload();
-      if (!disposed && epoch === refreshEpoch) entries.value = manager.list();
+      if (fromStorage) {
+        await manager.reload();
+      }
+      if (!disposed && epoch === refreshEpoch) {
+        entries.value = manager.list();
+      }
     } catch (error) {
       if (!disposed && epoch === refreshEpoch) {
-        entries.value = []; failure.value = error instanceof Error ? error.message : String(error);
+        entries.value = [];
+        failure.value = error instanceof Error ? error.message : String(error);
       }
     }
   }
   watch(kind, () => {
     discardCatalog();
-    if (isRemote.value) void refresh({ fromStorage: true });
+    if (isRemote.value) {
+      void refresh({ fromStorage: true });
+    }
   }, { flush: 'sync' });
   async function loadModels(): Promise<void> {
-    if (blocked() || !registrationId.value || !peerPublicKey.value || loading.value) return;
-    discardCatalog(); const epoch = catalogEpoch, id = registrationId.value, expectedPeer = peerPublicKey.value;
-    const stop = new AbortController(); catalogStop = stop; loading.value = true; failure.value = '';
+    if (blocked() || !registrationId.value || !peerPublicKey.value || loading.value) {
+      return;
+    }
+    discardCatalog();
+    const epoch = catalogEpoch, id = registrationId.value, expectedPeer = peerPublicKey.value;
+    const stop = new AbortController();
+    catalogStop = stop;
+    loading.value = true;
+    failure.value = '';
     try {
       const binding = (await getRpcManager()).bindClient({ id });
       stop.signal.throwIfAborted();
-      if (binding.registration.peerPublicKey !== expectedPeer) throw new Error('The selected peer identity changed');
+      if (binding.registration.peerPublicKey !== expectedPeer) {
+        throw new Error('The selected peer identity changed');
+      }
       const sessionSignal = AbortSignal.any([stop.signal, binding.signal]);
       const call = binding.client.listImageModels({ input: {}, on: {}, signal: sessionSignal, timeoutMs: undefined });
       void call.closed.catch(() => {});
@@ -99,8 +130,13 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
         const items: PeerImageCatalogItem[] = [];
         try {
           for (;;) {
-            const item = await reader.read(); if (item.done) break;
-            if (items.length >= 256) throw new Error('Remote image catalog exceeds its limit');
+            const item = await reader.read();
+            if (item.done) {
+              break;
+            }
+            if (items.length >= 256) {
+              throw new Error('Remote image catalog exceeds its limit');
+            }
             items.push(item.value);
           }
         } finally {
@@ -109,20 +145,29 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
         await call.closed;
         if (!disposed && epoch === catalogEpoch) {
           sessionSignal.throwIfAborted();
-          if (new Set(items.map(item => remoteImageFileKey({ file: item.file }))).size !== items.length) throw new Error('Duplicate remote image catalog file');
+          if (new Set(items.map(item => remoteImageFileKey({ file: item.file }))).size !== items.length) {
+            throw new Error('Duplicate remote image catalog file');
+          }
           catalog.value = items;
         }
       } catch (error) {
-        call.cancel({ reason: 'Image catalog stopped' }); throw error;
+        call.cancel({ reason: 'Image catalog stopped' });
+        throw error;
       }
     } catch (error) {
-      if (!disposed && epoch === catalogEpoch) failure.value = error instanceof Error ? error.message : String(error);
+      if (!disposed && epoch === catalogEpoch) {
+        failure.value = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      if (!disposed && epoch === catalogEpoch) loading.value = false;
+      if (!disposed && epoch === catalogEpoch) {
+        loading.value = false;
+      }
     }
   }
   function selectModel({ value }: { value: unknown }): void {
-    if (blocked()) return;
+    if (blocked()) {
+      return;
+    }
     const parsed = imageModelSelectionSchema.parse(value);
     const item = catalog.value.find(item => remoteImageFileKey({ file: item.file }) === remoteImageFileKey({ file: parsed.primary.file }));
     setEditor({ value: remoteImageEditorFromSelection({ selection: parsed, family: item?.facts?.family }) });
@@ -132,7 +177,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const id = registrationId.value, peer = peerPublicKey.value;
     if (id && peer) {
       const previous = editors.value.find(item => item.registrationId === id && item.peerPublicKey === peer);
-      if (!previous && editors.value.length >= 32) throw new Error('Too many saved remote model editors');
+      if (!previous && editors.value.length >= 32) {
+        throw new Error('Too many saved remote model editors');
+      }
       editors.value = [...editors.value.filter(item => item !== previous), { registrationId: id, peerPublicKey: peer, editor: copied }];
     }
     editor.value = copied;
@@ -141,7 +188,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const choices = remoteImageModelChoices({ catalog: catalog.value, slot, family: editor.value.primary?.family });
     if (file) {
       const id = remoteImageFileKey({ file });
-      if (!choices.some(item => item.id === id)) choices.unshift({ id, label: file.location.path, detail: file.location.path, evidence: [], status: 'unverified', issue: undefined });
+      if (!choices.some(item => item.id === id)) {
+        choices.unshift({ id, label: file.location.path, detail: file.location.path, evidence: [], status: 'unverified', issue: undefined });
+      }
     }
     return choices;
   }
@@ -158,35 +207,53 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   });
   const loraChoices = computed(() => choices({ slot: 'lora', file: undefined }));
   function choosePrimary({ id }: { id: string }): void {
-    if (blocked()) return;
+    if (blocked()) {
+      return;
+    }
     if (!id) {
-      setEditor({ value: emptyRemoteImageModelEditor() }); return;
+      setEditor({ value: emptyRemoteImageModelEditor() });
+      return;
     }
     const item = catalog.value.find(item => remoteImageFileKey({ file: item.file }) === id);
-    if (!item || !primaryChoices.value.some(choice => choice.id === id)) return;
+    if (!item || !primaryChoices.value.some(choice => choice.id === id)) {
+      return;
+    }
     if (item.selection) {
-      selectModel({ value: item.selection }); return;
+      selectModel({ value: item.selection });
+      return;
     }
     const slot = item.roles.includes('model') ? 'model' : 'diffusion';
     setEditor({ value: { primary: { slot, file: item.file, family: item.facts?.family }, components: [], loras: [] } });
   }
   function chooseComponent({ slot, id }: { slot: RemoteImageModelEditor['components'][number]['slot'], id: string }): void {
-    if (blocked()) return;
+    if (blocked()) {
+      return;
+    }
     const item = id ? catalog.value.find(item => remoteImageFileKey({ file: item.file }) === id) : undefined;
-    if (id && (!item || !components.value.find(component => component.slot === slot)?.choices.some(choice => choice.id === id))) return;
+    if (id && (!item || !components.value.find(component => component.slot === slot)?.choices.some(choice => choice.id === id))) {
+      return;
+    }
     setEditor({ value: { ...editor.value, components: [...editor.value.components.filter(component => component.slot !== slot), ...(item ? [{ slot, file: item.file }] : [])] } });
   }
   function addLora({ id }: { id: string }): void {
-    if (blocked() || editor.value.loras.length >= 8) return;
+    if (blocked() || editor.value.loras.length >= 8) {
+      return;
+    }
     const item = catalog.value.find(item => remoteImageFileKey({ file: item.file }) === id && item.roles.includes('lora'));
-    if (item) setEditor({ value: { ...editor.value, loras: [...editor.value.loras, { file: item.file, strength: 1, enabled: 'enabled' }] } });
+    if (item) {
+      setEditor({ value: { ...editor.value, loras: [...editor.value.loras, { file: item.file, strength: 1, enabled: 'enabled' }] } });
+    }
   }
   function changeLora({ index, strength, enabled }: { index: number, strength: number, enabled: 'enabled' | 'disabled' }): void {
-    if (blocked()) return;
+    if (blocked()) {
+      return;
+    }
     setEditor({ value: { ...editor.value, loras: editor.value.loras.map((item, position) => position === index ? { ...item, strength, enabled } : item) } });
   }
   function removeLora({ index }: { index: number }): void {
-    if (!blocked()) setEditor({ value: { ...editor.value, loras: editor.value.loras.filter((_item, position) => position !== index) } });
+    if (!blocked()) {
+      setEditor({ value: { ...editor.value, loras: editor.value.loras.filter((_item, position) => position !== index) } });
+    }
   }
   function capturePreferences(): { inferenceLocation: ImageInferenceLocationPreference, remoteModelEditors: RemoteImageModelEditorPreference[] } {
     const durable = ({ id, peer }: { id: NaidanRpcRegistrationId, peer: NaidanRpcPeerPublicKey }): boolean => {
@@ -199,7 +266,10 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
       switch (kind.value) {
       case 'local': return { kind: 'local' as const };
       case 'naidan_rpc': return unavailable.value ? { kind: 'unavailable' as const } : { kind: 'naidan_rpc' as const, registration };
-      default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = kind.value;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     const active = new Map(editors.value.filter(item => durable({ id: item.registrationId, peer: item.peerPublicKey }))
@@ -211,16 +281,23 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
   }): void {
     editors.value = (remoteModelEditors ?? []).map(item => ({ ...item, editor: copyRemoteImageModelEditor({ editor: item.editor }) }));
     durableReferences.clear();
-    for (const item of editors.value) durableReferences.add(`${idToRaw({ id: item.registrationId })}:${idToRaw({ id: item.peerPublicKey })}`);
+    for (const item of editors.value) {
+      durableReferences.add(`${idToRaw({ id: item.registrationId })}:${idToRaw({ id: item.peerPublicKey })}`);
+    }
     discardCatalog();
     const location = inferenceLocation ?? { kind: 'local' as const };
     const modelEditor = (() => {
       switch (location.kind) {
       case 'local': case 'unavailable': return undefined;
       case 'naidan_rpc':
-        if (location.registration) durableReferences.add(`${idToRaw({ id: location.registration.registrationId })}:${idToRaw({ id: location.registration.peerPublicKey })}`);
+        if (location.registration) {
+          durableReferences.add(`${idToRaw({ id: location.registration.registrationId })}:${idToRaw({ id: location.registration.peerPublicKey })}`);
+        }
         return editors.value.find(item => item.registrationId === location.registration?.registrationId && item.peerPublicKey === location.registration?.peerPublicKey)?.editor;
-      default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = location;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     restoreLocation({ location, modelEditor });
@@ -229,25 +306,44 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     switch (kind.value) {
     case 'local': return { kind: 'local' };
     case 'naidan_rpc': return unavailable.value ? { kind: 'unavailable' } : { kind: 'naidan_rpc', registration: registrationId.value && peerPublicKey.value ? { registrationId: registrationId.value, peerPublicKey: peerPublicKey.value } : undefined };
-    default: { const exhaustive: never = kind.value; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = kind.value;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   function restoreLocation({ location, modelEditor }: { location: ImageInferenceLocationPreference, modelEditor: RemoteImageModelEditor | undefined }): void {
     discardCatalog();
     switch (location.kind) {
-    case 'local': unavailable.value = false; kind.value = 'local'; break;
+    case 'local': unavailable.value = false;
+      kind.value = 'local';
+      break;
     case 'unavailable':
-      unavailable.value = true; kind.value = 'naidan_rpc'; registrationId.value = undefined; peerPublicKey.value = undefined; label.value = '';
-      setEditor({ value: emptyRemoteImageModelEditor() }); break;
+      unavailable.value = true;
+      kind.value = 'naidan_rpc';
+      registrationId.value = undefined;
+      peerPublicKey.value = undefined;
+      label.value = '';
+      setEditor({ value: emptyRemoteImageModelEditor() });
+      break;
     case 'naidan_rpc':
       unavailable.value = false;
-      kind.value = 'naidan_rpc'; registrationId.value = location.registration?.registrationId; peerPublicKey.value = location.registration?.peerPublicKey; label.value = '';
-      setEditor({ value: modelEditor ?? emptyRemoteImageModelEditor() }); break;
-    default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+      kind.value = 'naidan_rpc';
+      registrationId.value = location.registration?.registrationId;
+      peerPublicKey.value = location.registration?.peerPublicKey;
+      label.value = '';
+      setEditor({ value: modelEditor ?? emptyRemoteImageModelEditor() });
+      break;
+    default: {
+      const exhaustive: never = location;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   function runtime(): ImageGenerationRemoteRuntime {
-    if (!registrationId.value || !peerPublicKey.value) throw new Error('Choose a Naidan RPC registration first');
+    if (!registrationId.value || !peerPublicKey.value) {
+      throw new Error('Choose a Naidan RPC registration first');
+    }
     return {
       profile: 'naidan-rpc',
       registrationId: registrationId.value,
@@ -260,7 +356,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     const inputFiles: HistoryBinaryFile[] = [];
     const image = ({ file }: { file: File }) => {
       const binaryObjectId = identifyInput({ file });
-      if (!inputFiles.some(item => item.binaryObjectId === binaryObjectId)) inputFiles.push({ binaryObjectId, blob: file, name: file.name });
+      if (!inputFiles.some(item => item.binaryObjectId === binaryObjectId)) {
+        inputFiles.push({ binaryObjectId, blob: file, name: file.name });
+      }
       return { binaryObjectId, name: file.name };
     };
     // Native-only options are deliberately absent: they are not remote settings
@@ -298,7 +396,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     // Capture before awaiting the manager; edits belong to the next generation.
     const captured = snapshot({ seed, createdAt });
     const runtimeSnapshot = captured.request.runtime;
-    if (runtimeSnapshot.profile !== 'naidan-rpc' || !runtimeSnapshot.modelSelection || !ready.value) throw new Error('Choose an explicit remote model configuration');
+    if (runtimeSnapshot.profile !== 'naidan-rpc' || !runtimeSnapshot.modelSelection || !ready.value) {
+      throw new Error('Choose an explicit remote model configuration');
+    }
     const parameters = peerImageParametersSchema.parse(captured.request.parameters), preview = peerImagePreviewSchema.parse(captured.request.preview);
     const inputs = form.imageInputs.value;
     const input = {
@@ -309,7 +409,9 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     };
     const binding = (await getRpcManager()).bindClient({ id: runtimeSnapshot.registrationId });
     signal.throwIfAborted();
-    if (binding.registration.peerPublicKey !== runtimeSnapshot.peerPublicKey) throw new Error('The saved model belongs to a different remote identity');
+    if (binding.registration.peerPublicKey !== runtimeSnapshot.peerPublicKey) {
+      throw new Error('The saved model belongs to a different remote identity');
+    }
     const plan = preparePeerImageExecution({ binding, input });
     return {
       get snapshot() {
@@ -319,14 +421,19 @@ export function useImageInferenceLocation({ form, blocked, identifyInput }: {
     };
   }
   function restore({ value, modelEditor }: { value: ImageGenerationRemoteRuntime, modelEditor: RemoteImageModelEditor | undefined }): void {
-    discardCatalog(); unavailable.value = false; kind.value = 'naidan_rpc'; registrationId.value = value.registrationId; peerPublicKey.value = value.peerPublicKey;
+    discardCatalog();
+    unavailable.value = false;
+    kind.value = 'naidan_rpc';
+    registrationId.value = value.registrationId;
+    peerPublicKey.value = value.peerPublicKey;
     label.value = value.label;
     setEditor({ value: modelEditor ?? (value.modelSelection ? remoteImageEditorFromSelection({ selection: imageModelSelectionSchema.parse(value.modelSelection), family: undefined }) : emptyRemoteImageModelEditor()) });
     // Caller triggers this after local input restoration; it never reconnects.
   }
   function setKind({ value }: { value: 'local' | 'naidan_rpc' }): void {
     if (!blocked()) {
-      unavailable.value = false; kind.value = value;
+      unavailable.value = false;
+      kind.value = value;
     }
   }
   return {

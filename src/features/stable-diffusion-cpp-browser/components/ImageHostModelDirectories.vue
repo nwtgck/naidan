@@ -20,7 +20,9 @@ const selected = computed(() => entries.value.find(entry => entry.id === destina
 const missingDestination = computed(() => destination.value !== 'opfs' && selected.value === undefined);
 const layout = computed(() => {
   const root = selected.value;
-  if (!root) return undefined;
+  if (!root) {
+    return undefined;
+  }
   const segments = props.layoutFile
     ? [...props.layoutFile.repository.split('/'), ...props.layoutFile.path.split('/')]
     : ['owner', 'repository', 'model.gguf'];
@@ -28,8 +30,12 @@ const layout = computed(() => {
 });
 
 function selectDestination({ event }: { event: Event }): void {
-  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) return;
-  if (event.target.value === 'opfs' && !props.opfsSupported) return;
+  if (props.disabled || busy.value || !(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
+  if (event.target.value === 'opfs' && !props.opfsSupported) {
+    return;
+  }
   props.view.selectDestination({ id: event.target.value });
 }
 

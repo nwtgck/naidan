@@ -29,8 +29,9 @@ function parsePositiveParentNumber({ value, option }: {
   value: string,
   option: string,
 }): number {
-  if (!/^[1-9][0-9]*$/u.test(value))
+  if (!/^[1-9][0-9]*$/u.test(value)) {
     throw new GitUsageError({ message: `option '${option}' requires a positive parent number` });
+  }
   return Number.parseInt(value, 10);
 }
 
@@ -77,12 +78,14 @@ export function parseReplayControlAction({ args }: {
       hasUnsupportedArgument = true;
       continue;
     }
-    if (action !== undefined && action !== nextAction)
+    if (action !== undefined && action !== nextAction) {
       throw new GitUsageError({ message: `options '${arg}' and '--${action}' cannot be used together` });
+    }
     action = nextAction;
   }
-  if (action !== undefined && hasUnsupportedArgument)
+  if (action !== undefined && hasUnsupportedArgument) {
     throw new GitUsageError({ message: `options cannot be combined with '--${action}'` });
+  }
   return action;
 }
 
@@ -91,8 +94,9 @@ export function parseReplayArguments({ args, kind }: {
   kind: GitReplayKind;
 }): GitReplayRequest {
   const controlAction = parseReplayControlAction({ args });
-  if (controlAction !== undefined)
+  if (controlAction !== undefined) {
     return { action: controlAction, operands: [], mainlineParentNumber: undefined };
+  }
 
   const operands: string[] = [];
   let parsingOptions = true;
@@ -127,8 +131,9 @@ export function parseReplayArguments({ args, kind }: {
           break;
         case 'following-required': {
           const value = args[index + 1];
-          if (value === undefined)
+          if (value === undefined) {
             throw new GitUsageError({ message: `option '${analysis.option}' requires a positive parent number` });
+          }
           mainlineParentNumber = parsePositiveParentNumber({ value, option: analysis.option });
           index += 1;
           break;
@@ -191,8 +196,9 @@ export function parseReplayArguments({ args, kind }: {
           break;
         case 'following-required': {
           const value = args[index + 1];
-          if (value === undefined)
+          if (value === undefined) {
             throw new GitUsageError({ message: `option '${analysis.option}' requires a positive parent number` });
+          }
           mainlineParentNumber = parsePositiveParentNumber({ value, option: analysis.option });
           index += 1;
           break;
@@ -216,8 +222,9 @@ export function parseReplayArguments({ args, kind }: {
     }
     operands.push(arg);
   }
-  if (operands.length === 0)
+  if (operands.length === 0) {
     throw new GitUsageError({ message: replayUsage({ kind }), prefix: 'none' });
+  }
   return { action: 'start', operands, mainlineParentNumber };
 }
 

@@ -8,7 +8,10 @@ function inputBytesIncluded({ preference }: { preference: 'omit' | 'include' }):
   switch (preference) {
   case 'omit': return false;
   case 'include': return true;
-  default: { const exhaustive: never = preference; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = preference;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -185,19 +188,27 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
         await add({ name: `${root}/settings.json`, content: json({ value: model }) });
         if (inputBytesIncluded({ preference: includeInputImages })) {
           const planned = snapshot.plan.models[model.index];
-          if (!planned) throw new Error('Missing image input plan');
-          for (const input of inputFiles({ modelIndex: model.index, request: planned.request })) await add({ name: input.archivePath, content: input.file });
+          if (!planned) {
+            throw new Error('Missing image input plan');
+          }
+          for (const input of inputFiles({ modelIndex: model.index, request: planned.request })) {
+            await add({ name: input.archivePath, content: input.file });
+          }
         }
         for (const run of snapshot.runs.filter(run => run.record.modelIndex === model.index)) {
           const folder = `${root}/runs/r${String(run.record.runIndex + 1).padStart(3, '0')}`;
           await add({ name: `${folder}/result.json`, content: json({ value: manifest.runs.find(record => record.id === run.record.id) }) });
           await add({ name: `${folder}/diagnostics.jsonl`, content: new Blob([run.diagnostics + (run.diagnostics ? '\n' : '')]) });
-          if (run.png) await add({ name: `${folder}/result.png`, content: run.png });
+          if (run.png) {
+            await add({ name: `${folder}/result.png`, content: run.png });
+          }
         }
       }
-      await writer.finalize(); await output.close();
+      await writer.finalize();
+      await output.close();
     } catch (error) {
-      await output.abort({ reason: error }).catch(() => undefined); throw error;
+      await output.abort({ reason: error }).catch(() => undefined);
+      throw error;
     } finally {
       await directory.dispose();
     }
@@ -209,23 +220,36 @@ export function createBenchmarkArchive({ snapshot, includePrompts, includeInputI
 export async function benchmarkArchiveBlob({ snapshot, includePrompts, includeInputImages, exportedAt, signal }: { snapshot: BenchmarkSnapshot, includePrompts: boolean, includeInputImages: 'omit' | 'include', exportedAt: string, signal: AbortSignal }): Promise<Blob> {
   signal.throwIfAborted();
   const archive = createBenchmarkArchive({ snapshot, includePrompts, includeInputImages, exportedAt });
-  const reader = archive.stream.getReader(); const chunks: Uint8Array<ArrayBuffer>[] = []; let bytes = 0;
+  const reader = archive.stream.getReader();
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+  let bytes = 0;
   const abort = () => {
     void reader.cancel(signal.reason).catch(() => undefined);
   };
   signal.addEventListener('abort', abort, { once: true });
   try {
-    if (signal.aborted) abort();
+    if (signal.aborted) {
+      abort();
+    }
     while (true) {
-      const part = await reader.read(); signal.throwIfAborted(); if (part.done) break;
+      const part = await reader.read();
+      signal.throwIfAborted();
+      if (part.done) {
+        break;
+      }
       bytes += part.value.byteLength;
-      if (bytes > 256 * 1024 ** 2) throw new Error('Benchmark archive exceeds the 256 MiB evidence limit');
+      if (bytes > 256 * 1024 ** 2) {
+        throw new Error('Benchmark archive exceeds the 256 MiB evidence limit');
+      }
       chunks.push(Uint8Array.from(part.value));
     }
-    await archive.completed; signal.throwIfAborted();
+    await archive.completed;
+    signal.throwIfAborted();
     return new Blob(chunks, { type: 'application/zip' });
   } finally {
-    signal.removeEventListener('abort', abort); await reader.cancel().catch(() => undefined); reader.releaseLock();
+    signal.removeEventListener('abort', abort);
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
   }
 }
 

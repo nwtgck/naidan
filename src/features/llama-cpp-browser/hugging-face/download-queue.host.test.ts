@@ -10,14 +10,16 @@ const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.r
 let root: MemoryDirectory;
 
 beforeEach(() => {
-  root = new MemoryDirectory('models'); vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
+  root = new MemoryDirectory('models');
+  vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
 });
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('destination-bound download queue', () => {
   it('separates identical intents in OPFS and two linked roots', async () => {
-    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined); const queue = createDownloadQueue({ download });
+    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined);
+    const queue = createDownloadQueue({ download });
     const first = queue.enqueue({ key: 'same', repository: selection.repository, source: 'repository', prepare: async () => selection });
     const second = queue.enqueue({ key: 'same', repository: selection.repository, source: 'repository', destination: { kind: 'host', directoryId: 'a' }, prepare: async () => selection });
     const third = queue.enqueue({ key: 'same', repository: selection.repository, source: 'repository', destination: { kind: 'host', directoryId: 'b' }, prepare: async () => selection });
@@ -28,33 +30,52 @@ describe('destination-bound download queue', () => {
   });
 
   it('captures mutable destination input and physical root at enqueue', async () => {
-    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined); const queue = createDownloadQueue({ download });
+    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined);
+    const queue = createDownloadQueue({ download });
     const destination = { kind: 'host' as const, directoryId: 'a' };
     const job = queue.enqueue({ key: 'same', repository: selection.repository, source: 'repository', destination, prepare: async () => selection });
-    destination.directoryId = 'b'; await job.done;
+    destination.directoryId = 'b';
+    await job.done;
     expect(download).toHaveBeenCalledWith(expect.objectContaining({ destination: { kind: 'host', directoryId: 'a' }, expectedRoot: root }));
   });
 
   it('refuses a root replaced during the permission prompt before metadata discovery', async () => {
-    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined); const prepare = vi.fn(async () => selection); const queue = createDownloadQueue({ download });
+    const download = vi.fn<typeof downloadRepository>().mockResolvedValue(undefined);
+    const prepare = vi.fn(async () => selection);
+    const queue = createDownloadQueue({ download });
     const approved = new MemoryDirectory('old-models');
     const job = queue.enqueue({ key: 'same', repository: selection.repository, source: 'repository', destination: { kind: 'host', directoryId: 'a' }, expectedRoot: approved as unknown as FileSystemDirectoryHandle, prepare });
-    expect((await job.done).status).toBe('failed'); expect(prepare).not.toHaveBeenCalled(); expect(download).not.toHaveBeenCalled();
+    expect((await job.done).status).toBe('failed');
+    expect(prepare).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
   });
 
   it('cancels every queued job for an unlinked root and waits for the active writer to clean up', async () => {
-    const started = Promise.withResolvers<void>(); const cleanup = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const cleanup = Promise.withResolvers<void>();
     const download = vi.fn<typeof downloadRepository>().mockImplementation(async ({ signal }) => {
-      started.resolve(); await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
-      await cleanup.promise; signal.throwIfAborted();
+      started.resolve();
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+      await cleanup.promise;
+      signal.throwIfAborted();
     });
-    const queue = createDownloadQueue({ download }); const destination = { kind: 'host' as const, directoryId: 'a' };
+    const queue = createDownloadQueue({ download });
+    const destination = { kind: 'host' as const, directoryId: 'a' };
     const first = queue.enqueue({ key: 'first', repository: selection.repository, source: 'repository', destination, prepare: async () => selection });
-    const prepare = vi.fn(async () => selection); const second = queue.enqueue({ key: 'second', repository: selection.repository, source: 'repository', destination, prepare });
-    await started.promise; let stopped = false; const stopping = queue.stopDirectory({ directoryId: 'a' }).then(() => {
+    const prepare = vi.fn(async () => selection);
+    const second = queue.enqueue({ key: 'second', repository: selection.repository, source: 'repository', destination, prepare });
+    await started.promise;
+    let stopped = false;
+    const stopping = queue.stopDirectory({ directoryId: 'a' }).then(() => {
       stopped = true;
     });
-    await Promise.resolve(); expect(stopped).toBe(false); expect((await second.done).status).toBe('cancelled'); expect(prepare).not.toHaveBeenCalled();
-    cleanup.resolve(); await stopping; expect((await first.done).status).toBe('paused'); expect(download).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    expect((await second.done).status).toBe('cancelled');
+    expect(prepare).not.toHaveBeenCalled();
+    cleanup.resolve();
+    await stopping;
+    expect((await first.done).status).toBe('paused');
+    expect(download).toHaveBeenCalledOnce();
   });
 });

@@ -38,7 +38,9 @@ describe('parts-based display flow', () => {
 
     // A later call can finish first. It becomes a real part while the earlier call stays volatile.
     const node = chat.value.root.items[0];
-    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    if (node?.role !== 'assistant') {
+      throw new Error('Expected assistant fixture.');
+    }
     node.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'complete-7' }), type: 'function', function: { name: 'weather', arguments: '{"city":"Tokyo"}' } } });
     drafts.value = [{ partId: 'call-3', index: 3, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo hello' }];
     const after = flatten({ items: chatFlow.value });
@@ -75,7 +77,9 @@ describe('parts-based display flow', () => {
     expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'waiting' });
     chat.value.id = toChatId({ raw: 'owned' });
     const node = chat.value.root.items[0];
-    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    if (node?.role !== 'assistant') {
+      throw new Error('Expected assistant fixture.');
+    }
     node.interruption = { type: 'cancelled' };
     expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'content' });
     node.interruption = undefined;
@@ -125,8 +129,11 @@ describe('parts-based display flow', () => {
       processing: true,
     });
     const prior = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
-    const node = chat.value.root.items[0]!; const first = node.parts[0];
-    if (first?.type !== 'text') throw new Error('Missing fixture part.');
+    const node = chat.value.root.items[0]!;
+    const first = node.parts[0];
+    if (first?.type !== 'text') {
+      throw new Error('Missing fixture part.');
+    }
     first.text = 'A';
     const later = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     expect(later?.type === 'message' && later.key).toBe(prior?.type === 'message' && prior.key);
@@ -144,10 +151,14 @@ describe('parts-based display flow', () => {
     });
     const before = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body');
     const node = chat.value.root.items[0];
-    if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
+    if (node?.role !== 'assistant') {
+      throw new Error('Expected assistant fixture.');
+    }
     node.parts.unshift({ type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'late-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
     const text = node.parts[1];
-    if (text?.type !== 'text') throw new Error('Expected body part.');
+    if (text?.type !== 'text') {
+      throw new Error('Expected body part.');
+    }
     text.text += ' continued';
     const after = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body continued');
     expect(before?.type).toBe('message');
@@ -167,8 +178,10 @@ describe('parts-based display flow', () => {
     const a = assistant({ parts: [{ type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'old', arguments: '{}' } } }], interruption: undefined });
     const u: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: 'value' } } }], createdAt: 2, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
-    a.replies.items = [u]; u.replies.items = [tool];
-    const { chat, chatFlow } = createFlow({ message: a, processing: false }); chat.value.currentLeafId = tool.id;
+    a.replies.items = [u];
+    u.replies.items = [tool];
+    const { chat, chatFlow } = createFlow({ message: a, processing: false });
+    chat.value.currentLeafId = tool.id;
     const items = flatten({ items: chatFlow.value });
     expect(items.some(p => p.type === 'tool_group')).toBe(false);
     expect(items.at(-1)).toMatchObject({ type: 'message', mode: 'content', partContent: '[Tool Results]' });

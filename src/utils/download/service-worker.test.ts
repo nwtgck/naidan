@@ -7,7 +7,9 @@ import { createDownloadUrl, DOWNLOAD_EVENT_LEASE_MS, type DownloadVersion } from
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
+  for (const cleanup of cleanups.splice(0)) {
+    await cleanup();
+  }
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -19,8 +21,12 @@ function fixture({ size, filename, version }: { size: number | undefined, filena
     registration: { scope: 'https://example.test/nested/app/' },
     clients: { get: vi.fn(async () => ({ id: 'owner' })) },
     addEventListener(type: string, listener: unknown) {
-      if (type === 'message') onMessage = listener as typeof onMessage;
-      if (type === 'fetch') onFetch = listener as typeof onFetch;
+      if (type === 'message') {
+        onMessage = listener as typeof onMessage;
+      }
+      if (type === 'fetch') {
+        onFetch = listener as typeof onFetch;
+      }
     },
   };
   installStreamDownloadWorker({ scope: scope as DownloadWorkerScope });
@@ -66,7 +72,9 @@ function fixture({ size, filename, version }: { size: number | undefined, filena
       },
       stopImmediatePropagation: vi.fn(),
     };
-    if (mode === 'navigate') Object.defineProperty(event.request, 'mode', { value: mode });
+    if (mode === 'navigate') {
+      Object.defineProperty(event.request, 'mode', { value: mode });
+    }
     onFetch(event);
     return { response: response as Response, event, lifetime };
   };
@@ -92,7 +100,8 @@ describe('streaming download Service Worker', () => {
       owner: 'owner',
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          controller.close();
         },
       }),
     });
@@ -146,7 +155,8 @@ describe('streaming download Service Worker', () => {
       owner: 'owner',
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          controller.close();
         },
       }),
     });
@@ -209,7 +219,8 @@ describe('streaming download Service Worker', () => {
     expect(previous).toBeDefined();
     for (let i = 0; i < 30; i += 1) {
       await vi.advanceTimersByTimeAsync(15_000);
-      const settled = vi.fn(); void previous?.then(settled);
+      const settled = vi.fn();
+      void previous?.then(settled);
       const next = f.heartbeat({ owner: 'owner' });
       await Promise.resolve();
       expect(settled).toHaveBeenCalledOnce();
@@ -218,7 +229,8 @@ describe('streaming download Service Worker', () => {
       previous = next;
     }
     expect(f.heartbeat({ owner: 'another-page' })).toBeUndefined();
-    const expired = vi.fn(); void previous?.then(expired);
+    const expired = vi.fn();
+    void previous?.then(expired);
     await vi.advanceTimersByTimeAsync(DOWNLOAD_EVENT_LEASE_MS);
     expect(expired).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
@@ -245,7 +257,8 @@ describe('fragment downloads', () => {
       owner: 'owner',
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([7, 8, 9])); controller.close();
+          controller.enqueue(new Uint8Array([7, 8, 9]));
+          controller.close();
         },
       }),
     });
@@ -272,7 +285,8 @@ describe('fragment downloads', () => {
     });
     const u = new URL(f.url);
     const token = u.hash.substring('#?id='.length);
-    const clean = new URL(u); clean.hash = '';
+    const clean = new URL(u);
+    clean.hash = '';
     for (const requestUrl of [clean.href, clean.href + `?id=${token}`, clean.href + token,
       f.url + '&extra=x', f.url + `&id=${token}`, clean.href + `#?id=${crypto.randomUUID()}`,
       clean.href.replace('/v2/', '/v1/') + token]) {

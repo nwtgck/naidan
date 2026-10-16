@@ -41,7 +41,9 @@ export function subscribeToPersistedThemeMode({ window, listener }: {
   listener: ({ mode }: { mode: ThemeMode }) => void,
 }): () => void {
   const handleStorage: NonNullable<Window['onstorage']> = (event) => {
-    if (event.key !== THEME_MODE_STORAGE_KEY) return;
+    if (event.key !== THEME_MODE_STORAGE_KEY) {
+      return;
+    }
     listener({
       mode: decodePersistedThemeMode({ rawValue: event.newValue }),
     });

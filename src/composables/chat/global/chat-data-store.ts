@@ -132,7 +132,9 @@ export function createChatDataStore({
     chat: Chat,
   }) {
     const raw = toRaw(chat);
-    if (!raw || !raw.id) return;
+    if (!raw || !raw.id) {
+      return;
+    }
 
     if (!liveChatRegistry.has(raw.id)) {
       liveChatRegistry.set(raw.id, isProxy(chat) ? chat : reactive(chat));
@@ -150,15 +152,21 @@ export function createChatDataStore({
   }: {
     chatId: ChatId,
   }) {
-    if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) return;
+    if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
+      return;
+    }
     if (!isTaskRunning({ chatId })) {
       liveChatRegistry.delete(chatId);
     }
   }
 
   watch(currentChatRef, (newChat, oldChat) => {
-    if (oldChat) unregisterLiveInstance({ chatId: toRaw(oldChat).id });
-    if (newChat) registerLiveInstance({ chat: newChat });
+    if (oldChat) {
+      unregisterLiveInstance({ chatId: toRaw(oldChat).id });
+    }
+    if (newChat) {
+      registerLiveInstance({ chat: newChat });
+    }
   });
 
   function syncLiveInstancesWithSidebar() {
@@ -173,7 +181,9 @@ export function createChatDataStore({
         switch (item.type) {
         case 'chat': {
           const live = liveChatRegistry.get(item.chat.id);
-          if (live) live.groupId = parentGroupId;
+          if (live) {
+            live.groupId = parentGroupId;
+          }
           if (currentChatRef.value && toRaw(currentChatRef.value).id === item.chat.id) {
             currentChatRef.value.groupId = parentGroupId;
           }
@@ -402,7 +412,9 @@ export function createChatDataStore({
       updater: async ({ current: curr }) => {
         const fullChat = curr ? await storageService.loadChat({ id }) : null;
         const updatedFull = await updater({ current: fullChat });
-        if (!updatedFull) return curr!;
+        if (!updatedFull) {
+          return curr!;
+        }
         const { root: _r, ...meta } = updatedFull;
         return {
           ...meta,
@@ -418,7 +430,9 @@ export function createChatDataStore({
     chatId: ChatId,
     changes: readonly ScopedSettingChange[],
   }): Promise<void> {
-    if (changes.length === 0) return;
+    if (changes.length === 0) {
+      return;
+    }
 
     const queuedChanges = cloneScopedSettingChanges({ changes });
     const previous = scopedSettingUpdateQueues.get(chatId) ?? Promise.resolve();
@@ -446,7 +460,9 @@ export function createChatDataStore({
         });
 
         const existing = liveChatRegistry.get(chatId);
-        if (existing === undefined) return;
+        if (existing === undefined) {
+          return;
+        }
         const current = toRaw(existing);
         const updated = applyScopedSettingChangesToChat({
           current,
@@ -530,11 +546,15 @@ export function createChatDataStore({
     messageId: MessageId,
   }) {
     const chat = await openChat({ id: chatId, leafId: undefined });
-    if (!chat) return null;
+    if (!chat) {
+      return null;
+    }
 
     const mutableChat = getLiveChat({ chat });
     const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
-    if (!node) return chat;
+    if (!node) {
+      return chat;
+    }
 
     mutableChat.currentLeafId = findDeepestLeaf({ node }).id;
     if (currentChatRef.value && toRaw(currentChatRef.value).id === mutableChat.id) {

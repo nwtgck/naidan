@@ -343,7 +343,9 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
   });
 
   afterEach(() => {
-    if (wrapper) wrapper.unmount();
+    if (wrapper) {
+      wrapper.unmount();
+    }
   });
 
   it('hides assistant message and shows loading indicator when engine is loading', async () => {

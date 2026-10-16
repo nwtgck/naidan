@@ -116,9 +116,13 @@ export async function createStandaloneWorkerDebugBuildReport({
   const workerDefinitions = new Map(workers.map(worker => [worker.name, worker]));
   const workerReports = metrics.workers.map(workerMetric => {
     const definition = workerDefinitions.get(workerMetric.name);
-    if (!definition) throw new Error(`Missing Worker definition for ${workerMetric.name}`);
+    if (!definition) {
+      throw new Error(`Missing Worker definition for ${workerMetric.name}`);
+    }
     const entryChunk = chunksByFileName.get(workerMetric.entryFileName);
-    if (!entryChunk) throw new Error(`Missing Worker entry chunk ${workerMetric.entryFileName}`);
+    if (!entryChunk) {
+      throw new Error(`Missing Worker entry chunk ${workerMetric.entryFileName}`);
+    }
     const staticSet = new Set(workerMetric.staticChunkClosure);
     const lazyChunkClosure = workerMetric.reachableChunkClosure.filter(fileName => !staticSet.has(fileName));
     const sharedWithUiStaticFiles = workerMetric.staticChunkClosure.filter(fileName => uiStaticSet.has(fileName));

@@ -27,13 +27,18 @@ const currentFileIndex = computed(() => props.job.status === 'downloading' || pr
 const copyState = ref<{ url: string, status: 'copied' | 'failed' }>();
 let generation = 0;
 watch([() => props.job.id, plan], () => {
-  generation++; open.value = false; copyState.value = undefined;
+  generation++;
+  open.value = false;
+  copyState.value = undefined;
 });
 onScopeDispose(() => generation++);
 
 function close(): void {
-  if (!open.value) return;
-  open.value = false; trigger.value?.focus();
+  if (!open.value) {
+    return;
+  }
+  open.value = false;
+  trigger.value?.focus();
 }
 
 async function copyUrl({ url }: { url: string }): Promise<void> {
@@ -41,9 +46,13 @@ async function copyUrl({ url }: { url: string }): Promise<void> {
   copyState.value = undefined;
   try {
     await navigator.clipboard.writeText(url);
-    if (operation === generation) copyState.value = { url, status: 'copied' };
+    if (operation === generation) {
+      copyState.value = { url, status: 'copied' };
+    }
   } catch {
-    if (operation === generation) copyState.value = { url, status: 'failed' };
+    if (operation === generation) {
+      copyState.value = { url, status: 'failed' };
+    }
   }
 }
 

@@ -18,9 +18,13 @@ export function maximumSedReplacementBackreference({
 }): number {
   let maximum = 0;
   for (let index = 0; index < replacement.length; index += 1) {
-    if (replacement[index] !== "\\") continue;
+    if (replacement[index] !== "\\") {
+      continue;
+    }
     const escaped = replacement[index + 1];
-    if (escaped === undefined) break;
+    if (escaped === undefined) {
+      break;
+    }
     if (/^[1-9]$/.test(escaped)) {
       maximum = Math.max(maximum, Number.parseInt(escaped, 10));
     }
@@ -37,7 +41,9 @@ function resolveSedSingleCharacterUppercase({
   character: string;
 }): string | undefined {
   const codePoint = character.codePointAt(0);
-  if (codePoint === undefined) return undefined;
+  if (codePoint === undefined) {
+    return undefined;
+  }
 
   if (
     (codePoint >= 0x1f80 && codePoint <= 0x1f87)
@@ -101,14 +107,18 @@ function applySedCharacterCase({
       }
     })();
     const convertedCharacters = [...converted];
-    if (convertedCharacters.length === 1) return convertedCharacters[0]!;
+    if (convertedCharacters.length === 1) {
+      return convertedCharacters[0]!;
+    }
 
     // JavaScript exposes full Unicode case mappings, while GNU sed applies
     // a single-character locale mapping. Preserve sed's one-code-point
     // result instead of accepting JavaScript's multi-code-point expansion.
     switch (mode) {
     case 'lower':
-      if (character === 'İ') return 'i';
+      if (character === 'İ') {
+        return 'i';
+      }
       return character;
     case 'upper':
       return resolveSedSingleCharacterUppercase({ character }) ?? character;
@@ -174,7 +184,9 @@ function applySedReplacement({
       const codePoint = replacement.codePointAt(index);
       const literal = codePoint === undefined ? character : String.fromCodePoint(codePoint);
       append({ value: toSedLocaleText({ text: literal, characterLocaleMode }) });
-      if (literal.length === 2) index += 1;
+      if (literal.length === 2) {
+        index += 1;
+      }
       continue;
     }
 
@@ -266,7 +278,9 @@ export function substituteSedPattern({
     regex.flags.includes('g') ? regex.flags : `${regex.flags}g`,
   );
   const interiorByteEmptyMatch = (() => {
-    if (characterLocaleMode !== 'unicode' || regex.source.includes('\\p{')) return undefined;
+    if (characterLocaleMode !== 'unicode' || regex.source.includes('\\p{')) {
+      return undefined;
+    }
     const result = findPosixLeftmostLongestMatch({
       regex: searchRegex,
       source: '!!',
@@ -286,7 +300,9 @@ export function substituteSedPattern({
     const shouldReplace =
       matchNumber === occurrence
       || (replaceFollowing && matchNumber > occurrence);
-    if (!shouldReplace) return false;
+    if (!shouldReplace) {
+      return false;
+    }
     text += applySedReplacement({
       replacement,
       match: '',
@@ -325,15 +341,21 @@ export function substituteSedPattern({
       source,
       startIndex: searchIndex,
     });
-    if (result === undefined) break;
+    if (result === undefined) {
+      break;
+    }
 
     const match = result.text;
     const start = result.index;
     const end = start + match.length;
     if (match.length === 0 && start === previousNonEmptyMatchEnd) {
-      if (start >= source.length) break;
+      if (start >= source.length) {
+        break;
+      }
       const consumed = consumeAfterEmptyMatch({ start });
-      if (consumed.completed) return { text, matched: true };
+      if (consumed.completed) {
+        return { text, matched: true };
+      }
       cursor = consumed.nextIndex;
       searchIndex = consumed.nextIndex;
       previousNonEmptyMatchEnd = -1;
@@ -352,7 +374,9 @@ export function substituteSedPattern({
         break;
       }
       const consumed = consumeAfterEmptyMatch({ start });
-      if (consumed.completed) return { text, matched: true };
+      if (consumed.completed) {
+        return { text, matched: true };
+      }
       cursor = consumed.nextIndex;
       searchIndex = consumed.nextIndex;
       previousNonEmptyMatchEnd = -1;

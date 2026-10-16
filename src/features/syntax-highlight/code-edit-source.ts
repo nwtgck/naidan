@@ -19,17 +19,25 @@ export function createCodeEditSource() {
 
   const edits: AsyncIterable<CodeEdit> = {
     async *[Symbol.asyncIterator]() {
-      if (claimed) throw new Error('Code edit source already has a consumer');
+      if (claimed) {
+        throw new Error('Code edit source already has a consumer');
+      }
       claimed = true;
       try {
         while (!closed) {
-          if (latest === undefined) await new Promise<void>(resolve => {
-            wake = resolve;
-          });
-          if (closed) return;
+          if (latest === undefined) {
+            await new Promise<void>(resolve => {
+              wake = resolve;
+            });
+          }
+          if (closed) {
+            return;
+          }
           const snapshot = latest;
           latest = undefined;
-          if (snapshot === undefined || snapshot === consumed) continue;
+          if (snapshot === undefined || snapshot === consumed) {
+            continue;
+          }
           // Corrections rebuild lexical state anyway; only the common append
           // path needs a suffix edit. Avoid a JavaScript prefix walk per update.
           const offset = snapshot.startsWith(consumed) ? consumed.length : 0;
@@ -46,7 +54,9 @@ export function createCodeEditSource() {
   return {
     edits,
     setCode({ code }: { code: string }) {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       latest = code;
       wake?.();
       wake = undefined;

@@ -83,7 +83,8 @@ async function pair() {
     }),
   });
   onTestFinished(() => {
-    states.a.dispose(); states.b.dispose();
+    states.a.dispose();
+    states.b.dispose();
   });
   return states;
 }
@@ -105,7 +106,10 @@ it('published Noise XX vector matches three exact handshake and three transport 
   }
   const { left, right } = await promiseAllKeyed({ left: a.split(), right: b.split() });
   onTestFinished(() => {
-    left.send.dispose(); left.receive.dispose(); right.send.dispose(); right.receive.dispose();
+    left.send.dispose();
+    left.receive.dispose();
+    right.send.dispose();
+    right.receive.dispose();
   });
   expect(left.binding).toEqual(right.binding);
   for (let index = 3; index < vector.messages.length; index++) {
@@ -128,10 +132,11 @@ it.each([0, 31, 32, 79, 95])('a truncated second flight of %s bytes poisons only
 it('mutated handshake authentication never allows split or retry on the same state', async () => {
   const { a, b } = await pair();
   await b.exchange({ operation: 'read', bytes: await a.exchange({ operation: 'write', bytes: new Uint8Array() }) });
-  const reply = await b.exchange({ operation: 'write', bytes: new Uint8Array() }); reply[reply.length - 1]! ^= 1;
-  await expect(a.exchange({ operation: 'read', bytes: reply })).rejects.toThrow();
-  await expect(a.exchange({ operation: 'read', bytes: reply })).rejects.toThrow('unavailable');
-  await expect(a.split()).rejects.toThrow('consumed');
+  const reply = await b.exchange({ operation: 'write', bytes: new Uint8Array() });
+reply[reply.length - 1]! ^= 1;
+await expect(a.exchange({ operation: 'read', bytes: reply })).rejects.toThrow();
+await expect(a.exchange({ operation: 'read', bytes: reply })).rejects.toThrow('unavailable');
+await expect(a.split()).rejects.toThrow('consumed');
 });
 
 it('wrong flight and premature split are rejected before advancing the handshake', async () => {
@@ -139,7 +144,9 @@ it('wrong flight and premature split are rejected before advancing the handshake
   await expect(a.exchange({ operation: 'read', bytes: new Uint8Array() })).rejects.toThrow('Wrong');
   await expect(a.split()).rejects.toThrow('incomplete');
   await handshake({ a, b });
-  const split = await a.split(); split.send.dispose(); split.receive.dispose();
+  const split = await a.split();
+  split.send.dispose();
+  split.receive.dispose();
 });
 
 it('concurrent handshake writes cannot advance the same state twice', async () => {
@@ -164,14 +171,17 @@ it('all-zero X25519 input is rejected instead of establishing a predictable secr
 });
 
 it('disposing while split is in progress never publishes usable ciphers', async () => {
-  const { a, b } = await pair(); await handshake({ a, b });
-  const pending = a.split(); a.dispose();
+  const { a, b } = await pair();
+  await handshake({ a, b });
+  const pending = a.split();
+  a.dispose();
   await expect(pending).rejects.toThrow('disposed');
 });
 
 it('cipher encryption failure permanently burns the cipher rather than recycling its nonce', async () => {
   const key = await crypto.subtle.importKey('raw', new Uint8Array(32), 'AES-GCM', false, ['encrypt', 'decrypt']);
-  const cipher = new NoiseCipher({ key }); onTestFinished(() => cipher.dispose());
+  const cipher = new NoiseCipher({ key });
+  onTestFinished(() => cipher.dispose());
   const encrypt = vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValueOnce(new Error('Local encryption failure'));
   await expect(cipher.crypt({ operation: 'encrypt', bytes: new Uint8Array([1]), aad: new Uint8Array() })).rejects.toThrow('Local encryption');
   await expect(cipher.crypt({ operation: 'encrypt', bytes: new Uint8Array([2]), aad: new Uint8Array() })).rejects.toThrow('unavailable');
@@ -182,11 +192,13 @@ it('failed transport decryption does not consume the valid receive nonce', async
   const key = await crypto.subtle.importKey('raw', new Uint8Array(32), 'AES-GCM', false, ['encrypt', 'decrypt']);
   const tx = new NoiseCipher({ key }), rx = new NoiseCipher({ key });
   onTestFinished(() => {
-    tx.dispose(); rx.dispose();
+    tx.dispose();
+    rx.dispose();
   });
   const bytes = new Uint8Array([8, 9]), aad = new Uint8Array([2, 5]);
-  const good = await tx.crypt({ operation: 'encrypt', bytes, aad }), corrupt = good.slice(); corrupt[0]! ^= 1;
-  await expect(rx.crypt({ operation: 'decrypt', bytes: corrupt, aad })).rejects.toThrow();
-  await expect(rx.crypt({ operation: 'decrypt', bytes: good, aad })).resolves.toEqual(bytes);
-  await expect(rx.crypt({ operation: 'decrypt', bytes: good, aad })).rejects.toThrow();
+  const good = await tx.crypt({ operation: 'encrypt', bytes, aad }), corrupt = good.slice();
+corrupt[0]! ^= 1;
+await expect(rx.crypt({ operation: 'decrypt', bytes: corrupt, aad })).rejects.toThrow();
+await expect(rx.crypt({ operation: 'decrypt', bytes: good, aad })).resolves.toEqual(bytes);
+await expect(rx.crypt({ operation: 'decrypt', bytes: good, aad })).rejects.toThrow();
 });

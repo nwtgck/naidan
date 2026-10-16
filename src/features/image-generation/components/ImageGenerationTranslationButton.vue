@@ -32,12 +32,17 @@ const progressLabel = computed(() => {
   case 'initializing': case 'loading': return lazyStrings.imageGeneration__translation_loading_model();
   case 'prefill': return lazyStrings.imageGeneration__translation_processing_input();
   case 'generating': case undefined: return lazyStrings.imageGeneration__translation_running();
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const progressFraction = computed(() => {
   const value = progress.value;
-  if (!value || value.phase === 'generating' || value.phase === 'queued' || !Number.isFinite(value.total) || value.total <= 0 || !Number.isFinite(value.completed)) return undefined;
+  if (!value || value.phase === 'generating' || value.phase === 'queued' || !Number.isFinite(value.total) || value.total <= 0 || !Number.isFinite(value.completed)) {
+    return undefined;
+  }
   return Math.max(0, Math.min(100, Math.floor(value.completed / value.total * 100)));
 });
 let controller: AbortController | undefined, epoch = 0, disposed = false;
@@ -52,61 +57,106 @@ const fieldLabel = computed(() => {
   switch (props.field) {
   case 'prompt': return lazyStrings.stableDiffusionCppBrowser__prompt();
   case 'negativePrompt': return lazyStrings.stableDiffusionCppBrowser__negative_prompt();
-  default: { const exhaustive: never = props.field; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.field;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
 function retire(): void {
-  epoch++; controller?.abort(); controller = undefined; translating.value = false; progress.value = undefined;
+  epoch++;
+  controller?.abort();
+  controller = undefined;
+  translating.value = false;
+  progress.value = undefined;
 }
 
 function restoreFocus(): void {
-  if (activeFocusAreaVersion.value === focusVersion && previousArea) setActiveFocusArea({ area: previousArea });
-  previousArea = undefined; focusVersion = undefined;
-  if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+  if (activeFocusAreaVersion.value === focusVersion && previousArea) {
+    setActiveFocusArea({ area: previousArea });
+  }
+  previousArea = undefined;
+  focusVersion = undefined;
+  if (previousFocus?.isConnected) {
+    previousFocus.focus({ preventScroll: true });
+  }
   previousFocus = undefined;
 }
 
 async function show(): Promise<void> {
-  if ((!props.text.trim() && !previousResult.value) || !props.active || open.value) return;
+  if ((!props.text.trim() && !previousResult.value) || !props.active || open.value) {
+    return;
+  }
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-  previousArea = activeFocusArea.value; setActiveFocusArea({ area: 'dialog' }); focusVersion = activeFocusAreaVersion.value;
-  result.value = ''; resultComplete.value = false; failure.value = ''; open.value = true;
-  await nextTick(); if (!disposed && open.value) dialog.value?.focus({ preventScroll: true });
+  previousArea = activeFocusArea.value;
+  setActiveFocusArea({ area: 'dialog' });
+  focusVersion = activeFocusAreaVersion.value;
+  result.value = '';
+  resultComplete.value = false;
+  failure.value = '';
+  open.value = true;
+  await nextTick();
+  if (!disposed && open.value) {
+    dialog.value?.focus({ preventScroll: true });
+  }
 }
 
 function close(): void {
-  retire(); open.value = false; result.value = ''; failure.value = ''; restoreFocus();
+  retire();
+  open.value = false;
+  result.value = '';
+  failure.value = '';
+  restoreFocus();
 }
 
 function keyboard({ event }: { event: KeyboardEvent }): void {
-  if (event.defaultPrevented || event.isComposing) return;
+  if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
   trapImageDialogFocus({ root: dialog.value, event });
   if (event.key === 'Escape') {
-    event.preventDefault(); close();
+    event.preventDefault();
+    close();
   }
 }
 
 function changeLanguage({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
-  const value = parseUiLocale({ value: event.target.value }); if (value) language.value = value;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
+  const value = parseUiLocale({ value: event.target.value });
+  if (value) {
+    language.value = value;
+  }
 }
 
 // A result is valid only for this exact source, destination and live session.
 // Never translate again automatically after settings or the source change.
 watch(() => JSON.stringify([props.text, props.field, props.workspace.store.value?.storeId, props.workspace.selectedSessionId.value,
   target.value, language.value, settings.value.lmParameters, settings.value.experimental?.fakeLm]), () => {
-  retire(); result.value = ''; failure.value = '';
+  retire();
+  result.value = '';
+  failure.value = '';
 }, { flush: 'sync' });
 watch(() => props.active, active => {
-  if (!active && open.value) close();
+  if (!active && open.value) {
+    close();
+  }
 });
 
 async function translate(): Promise<void> {
-  if (translating.value || !open.value || !props.active || !props.text.trim()) return;
-  retire(); const token = epoch, abort = new AbortController(); controller = abort;
+  if (translating.value || !open.value || !props.active || !props.text.trim()) {
+    return;
+  }
+  retire();
+  const token = epoch, abort = new AbortController();
+  controller = abort;
   const destination = target.value, sourceText = props.text, key = { ...translationKey.value };
-  translating.value = true; result.value = ''; resultComplete.value = false; failure.value = '';
+  translating.value = true;
+  result.value = '';
+  resultComplete.value = false;
+  failure.value = '';
   try {
     const translated = await translateImagePrompt({
       prompt: sourceText,
@@ -116,10 +166,14 @@ async function translate(): Promise<void> {
       parameters: cloneLmParameters({ lmParameters: destination.lmParameters }),
       signal: abort.signal,
       onText: ({ text }) => {
-        if (!disposed && open.value && token === epoch) result.value = text;
+        if (!disposed && open.value && token === epoch) {
+          result.value = text;
+        }
       },
       onProgress: ({ progress: value }) => {
-        if (!disposed && open.value && token === epoch) progress.value = value;
+        if (!disposed && open.value && token === epoch) {
+          progress.value = value;
+        }
       },
       fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
     });
@@ -127,25 +181,36 @@ async function translate(): Promise<void> {
       const retained = props.workspace.translationMemory.save({ key, entry: { sourceText, text: translated, createdAt: Date.now() } });
       // A cache admission limit must not discard the successful response. Keep
       // oversized text in the open dialog, without evicting the previous success.
-      resultComplete.value = true; result.value = retained ? '' : translated;
+      resultComplete.value = true;
+      result.value = retained ? '' : translated;
     }
   } catch (error) {
-    if (!disposed && open.value && token === epoch && !abort.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
+    if (!disposed && open.value && token === epoch && !abort.signal.aborted) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
     if (!disposed && token === epoch) {
-      translating.value = false; controller = undefined;
+      translating.value = false;
+      controller = undefined;
     }
   }
 }
 
 async function cancel(): Promise<void> {
-  retire(); const token = epoch;
+  retire();
+  const token = epoch;
   const message = await ensureStrings.imageGeneration__translation_cancelled();
-  if (!disposed && open.value && token === epoch) failure.value = message;
+  if (!disposed && open.value && token === epoch) {
+    failure.value = message;
+  }
 }
 
 onScopeDispose(() => {
-  disposed = true; retire(); if (open.value) restoreFocus();
+  disposed = true;
+  retire();
+  if (open.value) {
+    restoreFocus();
+  }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

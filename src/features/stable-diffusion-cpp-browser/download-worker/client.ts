@@ -15,7 +15,8 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
     try {
       return wrapWorkerRemote<ImageDownloadWorker>({ endpoint: worker });
     } catch (error) {
-      worker.terminate(); throw error;
+      worker.terminate();
+      throw error;
     }
   })();
   const bridge = createImageDownloadFetchBridge({ signal });
@@ -23,12 +24,15 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
   let timer: ReturnType<typeof setTimeout> | undefined;
   const crash = (): void => stopped.reject(new Error('Model download Worker failed; completed files and pending checkpoints were retained'));
   const abort = (): void => {
-    if (timer !== undefined) return;
+    if (timer !== undefined) {
+      return;
+    }
     void remote.cancel().catch(crash);
     timer = setTimeout(() => stopped.reject(new DOMException('Download paused', 'AbortError')), 5000);
   };
   signal.addEventListener('abort', abort, { once: true });
-  worker.addEventListener('error', crash); worker.addEventListener('messageerror', crash);
+  worker.addEventListener('error', crash);
+  worker.addEventListener('messageerror', crash);
   try {
     const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({
       value: ({ progress }) => {
@@ -40,16 +44,23 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
         }
       },
     }), workerProxy({ value: bridge.open }));
-    if (signal.aborted) abort();
-    await Promise.race([operation, stopped.promise]); signal.throwIfAborted();
+    if (signal.aborted) {
+      abort();
+    }
+    await Promise.race([operation, stopped.promise]);
+    signal.throwIfAborted();
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     signal.removeEventListener('abort', abort);
-    worker.removeEventListener('error', crash); worker.removeEventListener('messageerror', crash);
+    worker.removeEventListener('error', crash);
+    worker.removeEventListener('messageerror', crash);
     try {
       void Promise.resolve(releaseWorkerRemote({ remote })).catch(() => undefined);
     } catch { /* already stopped */ }
-    bridge.dispose(); worker.terminate();
+    bridge.dispose();
+    worker.terminate();
   }
 }
 

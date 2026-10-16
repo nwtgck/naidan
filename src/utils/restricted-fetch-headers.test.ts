@@ -15,7 +15,9 @@ it.each(['Host', 'Origin', 'Cookie', 'Content-Length', 'Transfer-Encoding', 'Sec
 it.each(['value' + String.fromCharCode(13, 10) + 'injected: yes', '\0', '\u007f', '\u0100'])('rejects invalid header values without reporting their contents', value => {
   const result = restrictedFetchHeadersSchema.safeParse([{ name: 'Authorization', value }]);
   expect(result.success).toBe(false);
-  if (!result.success) expect(result.error.issues.every(issue => !issue.message.includes(value))).toBe(true);
+  if (!result.success) {
+    expect(result.error.issues.every(issue => !issue.message.includes(value))).toBe(true);
+  }
 });
 
 it('rejects duplicate names case-insensitively and enforces aggregate limits', () => {

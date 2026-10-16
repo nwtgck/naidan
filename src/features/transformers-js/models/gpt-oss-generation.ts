@@ -26,12 +26,18 @@ export function createGptOssGeneration({ emit }: {
   let activePart: Extract<typeof parts[number], { type: 'text' | 'reasoning' }> | undefined;
 
   function ensureWritable(): void {
-    if (settled || terminal !== undefined) throw new Error('Harmony content arrived after completion.');
+    if (settled || terminal !== undefined) {
+      throw new Error('Harmony content arrived after completion.');
+    }
   }
   function openBody(): void {
-    if (active !== undefined) throw new Error('Harmony started a body before closing its previous message.');
+    if (active !== undefined) {
+      throw new Error('Harmony started a body before closing its previous message.');
+    }
     const message = parser.messages.at(-1);
-    if (!message || message.role !== 'assistant') throw new Error('Unsupported Harmony message author.');
+    if (!message || message.role !== 'assistant') {
+      throw new Error('Unsupported Harmony message author.');
+    }
     let kind: 'text' | 'reasoning' | 'tool_call';
     if (message.recipient !== undefined) {
       if (!message.recipient.startsWith('functions.') || message.recipient.length === 'functions.'.length || !['', 'commentary'].includes(message.channel)) {
@@ -40,8 +46,10 @@ export function createGptOssGeneration({ emit }: {
       kind = 'tool_call';
     } else {
       switch (message.channel) {
-      case 'analysis': kind = 'reasoning'; break;
-      case '': case 'final': case 'commentary': kind = 'text'; break;
+      case 'analysis': kind = 'reasoning';
+        break;
+      case '': case 'final': case 'commentary': kind = 'text';
+        break;
       default: throw new Error('Unsupported Harmony channel.');
       }
     }
@@ -55,15 +63,22 @@ export function createGptOssGeneration({ emit }: {
       parts.push(activePart);
       emit({ event: { type: 'part_start', index: active.index, kind } });
       break;
-    default: { const exhaustive: never = kind; throw new Error(`Unhandled part kind: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unhandled part kind: ${exhaustive}`);
+    }
     }
   }
   function closeBody({ token }: { token: string }): void {
-    if (!active) throw new Error('Harmony ended a message before its body.');
+    if (!active) {
+      throw new Error('Harmony ended a message before its body.');
+    }
     const message = parser.messages.at(-1)!;
     switch (active.kind) {
     case 'tool_call': {
-      if (token !== '<|call|>') throw new Error('Harmony tool draft ended without a call boundary.');
+      if (token !== '<|call|>') {
+        throw new Error('Harmony tool draft ended without a call boundary.');
+      }
       // Validation does not reserialize arguments or apply tool defaults.
       z.record(z.string(), z.json()).parse(JSON.parse(message.content));
       const toolCall: ToolCall = {
@@ -80,34 +95,54 @@ export function createGptOssGeneration({ emit }: {
       break;
     }
     case 'text': case 'reasoning': {
-      if (token === '<|call|>') throw new Error('Harmony handoff has no supported tool recipient.');
+      if (token === '<|call|>') {
+        throw new Error('Harmony handoff has no supported tool recipient.');
+      }
       activePart!.completeness = 'complete';
       emit({ event: { type: 'part_end', index: active.index, completeness: 'complete' } });
-      if (token === '<|return|>') terminal = 'user';
+      if (token === '<|return|>') {
+        terminal = 'user';
+      }
       break;
     }
-    default: { const exhaustive: never = active.kind; throw new Error(`Unhandled part kind: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = active.kind;
+      throw new Error(`Unhandled part kind: ${exhaustive}`);
+    }
     }
     parser.push({ token });
-    active = undefined; activePart = undefined;
+    active = undefined;
+    activePart = undefined;
   }
 
   return {
     text({ text }: { text: string }): void {
-      if (text.length === 0) return;
+      if (text.length === 0) {
+        return;
+      }
       ensureWritable();
       const delta = parser.pushText({ text });
-      if (delta === null) return;
+      if (delta === null) {
+        return;
+      }
       switch (delta.type) {
       case 'content': break;
       case 'new_message': case 'done': throw new Error('Ordinary Harmony text changed framing.');
-      default: { const exhaustive: never = delta; throw new Error(`Unhandled Harmony delta: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = delta;
+        throw new Error(`Unhandled Harmony delta: ${exhaustive}`);
       }
-      if (!active) throw new Error('Harmony content arrived without an open body.');
+      }
+      if (!active) {
+        throw new Error('Harmony content arrived without an open body.');
+      }
       switch (active.kind) {
       case 'tool_call': return;
       case 'text': case 'reasoning': break;
-      default: { const exhaustive: never = active.kind; throw new Error(`Unhandled part kind: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = active.kind;
+        throw new Error(`Unhandled part kind: ${exhaustive}`);
+      }
       }
       activePart!.text += text;
       emit({ event: { type: 'text_delta', index: active.index, text } });
@@ -116,18 +151,25 @@ export function createGptOssGeneration({ emit }: {
       ensureWritable();
       switch (token) {
       case '<|start|>': case '<|channel|>': case '<|constrain|>':
-        if (active) throw new Error('Harmony changed framing inside an open body.');
+        if (active) {
+          throw new Error('Harmony changed framing inside an open body.');
+        }
         parser.push({ token });
         break;
       case '<|message|>':
-        openBody(); parser.push({ token }); break;
+        openBody();
+        parser.push({ token });
+        break;
       case '<|end|>': case '<|return|>': case '<|call|>':
-        closeBody({ token }); break;
+        closeBody({ token });
+        break;
       default: throw new Error('Unsupported Harmony control token.');
       }
     },
     finish({ reason }: { reason: 'aborted' | 'limit' | 'unknown' }): void {
-      if (settled) throw new Error('Harmony generation was settled twice.');
+      if (settled) {
+        throw new Error('Harmony generation was settled twice.');
+      }
       settled = true;
       if (active && active.kind !== 'tool_call') {
         emit({ event: { type: 'part_end', index: active.index, completeness: 'partial' } });
@@ -140,12 +182,15 @@ export function createGptOssGeneration({ emit }: {
             : { type: 'finished', next: terminal },
         },
       });
-      active = undefined; activePart = undefined;
+      active = undefined;
+      activePart = undefined;
     },
     assistant(): InferenceMessage | undefined {
       // This existing input codec has only one leading reasoning field. A
       // richer generated history is retained as parts, never flattened for KV.
-      if (!settled || terminal === undefined) return undefined;
+      if (!settled || terminal === undefined) {
+        return undefined;
+      }
       let reasoning: InferenceMessage['reasoning'];
       let content = '';
       let hasText = false;
@@ -156,28 +201,39 @@ export function createGptOssGeneration({ emit }: {
         case 'reasoning': {
           const { type: _type, text, completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
-          if (reasoning !== undefined || phase !== 'reasoning' || completeness !== 'complete') return undefined;
+          if (reasoning !== undefined || phase !== 'reasoning' || completeness !== 'complete') {
+            return undefined;
+          }
           reasoning = exactObject<NonNullable<InferenceMessage['reasoning']>>()({ text, completeness });
           break;
         }
         case 'text': {
           const { type: _type, text, completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
-          if (hasText || phase === 'tool_call' || completeness !== 'complete') return undefined;
+          if (hasText || phase === 'tool_call' || completeness !== 'complete') {
+            return undefined;
+          }
           hasText = true;
-          phase = 'text'; content += text;
+          phase = 'text';
+          content += text;
           break;
         }
         case 'tool_call': {
           const { type: _type, toolCall, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
-          phase = 'tool_call'; calls.push(toolCall);
+          phase = 'tool_call';
+          calls.push(toolCall);
           break;
         }
-        default: { const exhaustive: never = part; throw new Error(`Unhandled generated part: ${exhaustive}`); }
+        default: {
+          const exhaustive: never = part;
+          throw new Error(`Unhandled generated part: ${exhaustive}`);
+        }
         }
       }
-      if (reasoning !== undefined && hasText && calls.length > 0) return undefined;
+      if (reasoning !== undefined && hasText && calls.length > 0) {
+        return undefined;
+      }
       // Match the delivered-parts projection, including absent vs. empty text.
       // Cache history currently uses JSON identity, so property order also agrees.
       return exactObject<Omit<InferenceMessage, 'tool_call_id'>>()({

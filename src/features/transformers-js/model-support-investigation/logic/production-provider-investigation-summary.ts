@@ -30,14 +30,20 @@ export function validateProductionProviderInvestigationLiveProgress({ value, run
     if (!Object.hasOwn(progress, 'stopReason') || !Object.hasOwn(provider, 'activeRequest')
       || provider.runId !== runId || provider.modelId !== modelId
       || provider.totalRequests !== captureScenarios({ plan: provider.plan }).length
-      || provider.selectedRequests !== selected.length || provider.settledRequests > selected.length) invalid();
+      || provider.selectedRequests !== selected.length || provider.settledRequests > selected.length) {
+      invalid();
+    }
     const active = provider.activeRequest;
     if (active !== undefined && (active.runId !== runId || !selected.includes(active.scenario)
       || active.requestId !== `${runId}-${active.scenario}` || provider.run.status !== 'running'
-      || provider.settledRequests >= selected.length)) invalid();
+      || provider.settledRequests >= selected.length)) {
+      invalid();
+    }
     // A completed v2 script can skip dependent continuity after a failed first
     // request. Aggregate completion is not proof that every selected request ran.
-    if (provider.run.status === 'completed' && active !== undefined) invalid();
+    if (provider.run.status === 'completed' && active !== undefined) {
+      invalid();
+    }
     return Object.freeze({
       progress: Object.freeze({
         ...progress,
@@ -135,21 +141,40 @@ function invalid(): never {
 function inspectData({ value }: { value: unknown }): void {
   let remaining = 4096;
   function visit({ value, depth }: { value: unknown; depth: number }): void {
-    if (--remaining < 0 || depth > 10) invalid();
-    if (value === undefined || typeof value === 'boolean' || typeof value === 'number') return;
-    if (typeof value === 'string') {
-      if (value.length > maximumCharacters) invalid(); return;
+    if (--remaining < 0 || depth > 10) {
+      invalid();
     }
-    if (typeof value !== 'object' || value === null) invalid();
+    if (value === undefined || typeof value === 'boolean' || typeof value === 'number') {
+      return;
+    }
+    if (typeof value === 'string') {
+      if (value.length > maximumCharacters) {
+        invalid();
+      }
+      return;
+    }
+    if (typeof value !== 'object' || value === null) {
+      invalid();
+    }
     const array = Array.isArray(value);
-    if (Object.getPrototypeOf(value) !== (array ? Array.prototype : Object.prototype)) invalid();
+    if (Object.getPrototypeOf(value) !== (array ? Array.prototype : Object.prototype)) {
+      invalid();
+    }
     const keys = Reflect.ownKeys(value);
-    if (keys.length > 128) invalid();
-    if (array && (keys.length !== value.length + 1 || keys.some(key => key !== 'length' && (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/u.test(key))))) invalid();
+    if (keys.length > 128) {
+      invalid();
+    }
+    if (array && (keys.length !== value.length + 1 || keys.some(key => key !== 'length' && (typeof key !== 'string' || !/^(0|[1-9][0-9]*)$/u.test(key))))) {
+      invalid();
+    }
     for (const key of keys) {
-      if (typeof key !== 'string') invalid();
+      if (typeof key !== 'string') {
+        invalid();
+      }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor === undefined || !('value' in descriptor)) invalid();
+      if (descriptor === undefined || !('value' in descriptor)) {
+        invalid();
+      }
       visit({ value: descriptor.value, depth: depth + 1 });
     }
   }
@@ -160,7 +185,9 @@ function encode({ summary }: { summary: Summary }) {
   const { format, policy, completion, stopReason, providerEvidence, providerProgress, requests, cutoff, nativeEvidenceStatus, cleanup, sealOwnership, progressCallbackFailures, ...rest } = summary;
   rest satisfies Record<PropertyKey, never>;
   if (!Object.hasOwn(summary, 'stopReason') || !Object.hasOwn(providerProgress, 'activeRequest')
-    || requests.some(request => ['notStartedReason', 'outcome', 'settledCompleteness'].some(key => !Object.hasOwn(request, key)))) invalid();
+    || requests.some(request => ['notStartedReason', 'outcome', 'settledCompleteness'].some(key => !Object.hasOwn(request, key)))) {
+    invalid();
+  }
   const tag = { captureValue: 'undefined' } as const;
   return {
     ...rest,
@@ -201,28 +228,54 @@ function decode({ encoded, runId, modelId }: { encoded: z.infer<typeof encodedSc
     sealOwnership,
     progressCallbackFailures,
   };
-  if (providerProgress.runId !== runId || providerProgress.modelId !== modelId || cutoff.runId !== runId || policy.plan !== providerProgress.plan) invalid();
-  if (JSON.stringify(policy) !== JSON.stringify(encodedSchema.shape.policy.parse(createProductionProviderCapturePolicy({ plan: policy.plan })))) invalid();
+  if (providerProgress.runId !== runId || providerProgress.modelId !== modelId || cutoff.runId !== runId || policy.plan !== providerProgress.plan) {
+    invalid();
+  }
+  if (JSON.stringify(policy) !== JSON.stringify(encodedSchema.shape.policy.parse(createProductionProviderCapturePolicy({ plan: policy.plan })))) {
+    invalid();
+  }
   const scenarios = captureScenarios({ plan: policy.plan });
   if (requests.length !== scenarios.length || providerProgress.totalRequests !== requests.length
     || providerProgress.selectedRequests !== scenarios.filter(scenario => isCaptureScenarioSelected({ plan: policy.plan, scenario })).length
     || providerProgress.settledRequests !== requests.filter(request => request.status === 'settled').length
-    || cutoff.epochs.length > cutoff.maximumWorkerEpochs || cutoff.epochs.some((epoch, index) => epoch.workerEpoch !== index + 1)) invalid();
+    || cutoff.epochs.length > cutoff.maximumWorkerEpochs || cutoff.epochs.some((epoch, index) => epoch.workerEpoch !== index + 1)) {
+    invalid();
+  }
   for (const [index, request] of summary.requests.entries()) {
-    if (request.scenario !== scenarios[index] || request.requestId !== runId + '-' + request.scenario) invalid();
+    if (request.scenario !== scenarios[index] || request.requestId !== runId + '-' + request.scenario) {
+      invalid();
+    }
     switch (request.status) {
-    case 'settled': if (request.outcome === undefined || request.settledCompleteness === undefined || request.notStartedReason !== undefined) invalid(); break;
-    case 'awaiting-settlement': if (request.outcome !== undefined || request.settledCompleteness !== undefined || request.notStartedReason !== undefined) invalid(); break;
-    case 'not-started': if (request.outcome !== undefined || request.settledCompleteness !== undefined || request.notStartedReason === undefined) invalid(); break;
-    default: { const exhaustive: never = request.status; throw new Error('Unhandled request summary: ' + exhaustive); }
+    case 'settled': if (request.outcome === undefined || request.settledCompleteness === undefined || request.notStartedReason !== undefined) {
+      invalid();
+    }
+      break;
+    case 'awaiting-settlement': if (request.outcome !== undefined || request.settledCompleteness !== undefined || request.notStartedReason !== undefined) {
+      invalid();
+    }
+      break;
+    case 'not-started': if (request.outcome !== undefined || request.settledCompleteness !== undefined || request.notStartedReason === undefined) {
+      invalid();
+    }
+      break;
+    default: {
+      const exhaustive: never = request.status;
+      throw new Error('Unhandled request summary: ' + exhaustive);
+    }
     }
   }
   const active = summary.providerProgress.activeRequest;
   const awaiting = summary.requests.filter(request => request.status === 'awaiting-settlement');
   if (awaiting.length > 1 || (awaiting.length === 1) !== (active !== undefined)
-    || (awaiting.length === 1 && providerProgress.run.status !== 'running')) invalid();
-  if (active !== undefined && (active.runId !== runId || !summary.requests.some(request => request.requestId === active.requestId && request.scenario === active.scenario && request.status === 'awaiting-settlement'))) invalid();
-  if ((completion === 'completed') !== (summary.stopReason === undefined)) invalid();
+    || (awaiting.length === 1 && providerProgress.run.status !== 'running')) {
+    invalid();
+  }
+  if (active !== undefined && (active.runId !== runId || !summary.requests.some(request => request.requestId === active.requestId && request.scenario === active.scenario && request.status === 'awaiting-settlement'))) {
+    invalid();
+  }
+  if ((completion === 'completed') !== (summary.stopReason === undefined)) {
+    invalid();
+  }
   return summary;
 }
 
@@ -232,7 +285,9 @@ export function createProductionProviderInvestigationSummaryEvidence({ summary, 
     const encoded = encodedSchema.parse(encode({ summary }));
     decode({ encoded, runId, modelId });
     const json = JSON.stringify({ format: 'production-provider-investigation-summary-evidence-v1', summary: encoded }, undefined, 2);
-    if (json.length > maximumCharacters) invalid();
+    if (json.length > maximumCharacters) {
+      invalid();
+    }
     return { json };
   } catch {
     return invalid();
@@ -241,7 +296,9 @@ export function createProductionProviderInvestigationSummaryEvidence({ summary, 
 
 export function readProductionProviderInvestigationSummaryEvidence({ json, runId, modelId }: { json: string; runId: string; modelId: string }): Summary {
   try {
-    if (json.length > maximumCharacters) invalid();
+    if (json.length > maximumCharacters) {
+      invalid();
+    }
     const envelope = z.object({ format: z.literal('production-provider-investigation-summary-evidence-v1'), summary: encodedSchema }).strict().parse(JSON.parse(json));
     return decode({ encoded: envelope.summary, runId, modelId });
   } catch {

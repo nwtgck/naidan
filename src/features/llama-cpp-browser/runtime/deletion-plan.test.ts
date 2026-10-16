@@ -20,12 +20,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 async function writeFile({ folder, name, value }: { folder: FileSystemDirectoryHandle, name: string, value: string }): Promise<void> {
-  const writer = await (await folder.getFileHandle(name, { create: true })).createWritable(); await writer.write(value); await writer.close();
+  const writer = await (await folder.getFileHandle(name, { create: true })).createWritable();
+  await writer.write(value);
+  await writer.close();
 }
 
 describe('confirmed model deletion plans', () => {
   it('previews GGUF files, rejects their additions and modifications, and preserves unrelated files', async () => {
-    const root = await userModelDirectory(); const folder = await root.getDirectoryHandle('model', { create: true });
+    const root = await userModelDirectory();
+    const folder = await root.getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'model' });
     await writeFile({ folder, name: 'README.md', value: 'readme' });
@@ -45,9 +48,11 @@ describe('confirmed model deletion plans', () => {
     const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
     const nested = await folder.getDirectoryHandle('nested', { create: true });
     await writeFile({ folder: nested, name: 'model.gguf', value: 'model' });
-    const plan = await planStoredModelRemoval({ id: 'user/model' }); const remove = nested.removeEntry.bind(nested);
+    const plan = await planStoredModelRemoval({ id: 'user/model' });
+    const remove = nested.removeEntry.bind(nested);
     vi.spyOn(nested, 'removeEntry').mockImplementation(async (name, options) => {
-      await remove(name, options); await writeFile({ folder: nested, name: 'new.txt', value: 'keep' });
+      await remove(name, options);
+      await writeFile({ folder: nested, name: 'new.txt', value: 'keep' });
     });
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect((await scanDeletionTree({ folder })).files.map(file => file.path)).toEqual(['nested/new.txt']);
@@ -55,12 +60,15 @@ describe('confirmed model deletion plans', () => {
 
   it('preserves a file replacing an empty directory after the initial scan', async () => {
     const folder = await (await userModelDirectory()).getDirectoryHandle('model', { create: true });
-    await folder.getDirectoryHandle('empty', { create: true }); await writeFile({ folder, name: 'model.gguf', value: 'model' });
-    const plan = await planStoredModelRemoval({ id: 'user/model' }); const remove = folder.removeEntry.bind(folder);
+    await folder.getDirectoryHandle('empty', { create: true });
+    await writeFile({ folder, name: 'model.gguf', value: 'model' });
+    const plan = await planStoredModelRemoval({ id: 'user/model' });
+    const remove = folder.removeEntry.bind(folder);
     vi.spyOn(folder, 'removeEntry').mockImplementation(async (name, options) => {
       await remove(name, options);
       if (name === 'model.gguf') {
-        await remove('empty'); await writeFile({ folder, name: 'empty', value: 'unapproved replacement' });
+        await remove('empty');
+        await writeFile({ folder, name: 'empty', value: 'unapproved replacement' });
       }
     });
     expect(await removeStoredModel({ plan })).toBe('deleted');
@@ -71,7 +79,9 @@ describe('confirmed model deletion plans', () => {
     const root = await navigator.storage.getDirectory();
     const folder = await (await (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true })).getDirectoryHandle('model-GGUF', { create: true });
     await folder.getDirectoryHandle('unrelated-empty', { create: true });
-    for (const name of ['model.gguf']) await writeFile({ folder, name, value: name });
+    for (const name of ['model.gguf']) {
+      await writeFile({ folder, name, value: name });
+    }
     const plan = await planStoredModelRemoval({ id: 'user/model-GGUF' });
     expect(plan.files.map(file => file.path)).toEqual(['model.gguf']);
     await writeFile({ folder, name: 'extra.gguf', value: 'notes.txt' });
@@ -86,17 +96,21 @@ describe('confirmed model deletion plans', () => {
     const plan = await planStoredModelRemoval({ id: 'hf.co/owner/repo' });
     expect(plan.files.map(file => file.path)).toEqual(['.llama-cpp-import-pending', 'nested/model.gguf']);
     expect(await removeStoredModel({ plan })).toBe('deleted');
-    expect(await listPendingDownloads()).toEqual([]); expect(await listHuggingFaceModels()).toEqual([]);
+    expect(await listPendingDownloads()).toEqual([]);
+    expect(await listHuggingFaceModels()).toEqual([]);
     expect(await createDownloadWriter().begin({ selection })).toMatchObject({ status: 'ready' });
     expect((await listPendingDownloads())[0]?.selection).toEqual(selection);
   });
 
   it('stops on a late modification without deleting the modified file', async () => {
     const folder = await repositoryFolder({ repository: selection.repository, create: true });
-    await writeFile({ folder, name: 'a', value: 'a' }); await writeFile({ folder, name: 'b', value: 'b' });
-    const plan = { id: 'hf.co/owner/repo', files: (await scanDeletionTree({ folder })).files }; const remove = folder.removeEntry.bind(folder);
+    await writeFile({ folder, name: 'a', value: 'a' });
+    await writeFile({ folder, name: 'b', value: 'b' });
+    const plan = { id: 'hf.co/owner/repo', files: (await scanDeletionTree({ folder })).files };
+    const remove = folder.removeEntry.bind(folder);
     vi.spyOn(folder, 'removeEntry').mockImplementation(async (name, options) => {
-      await remove(name, options); await writeFile({ folder, name: 'b', value: 'modified' });
+      await remove(name, options);
+      await writeFile({ folder, name: 'b', value: 'modified' });
     });
     expect(await executeDeletionPlan({ folder, plan, selectedPaths: undefined })).toBe('changed');
     expect((await (await folder.getFileHandle('b')).getFile()).size).toBe(8);

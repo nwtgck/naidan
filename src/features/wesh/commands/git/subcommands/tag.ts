@@ -163,11 +163,17 @@ export async function runTag({ context, args }: {
   const operands = parsed.positionals;
 
 
-  if (message !== undefined) message = cleanupMessage({ text: message });
+  if (message !== undefined) {
+    message = cleanupMessage({ text: message });
+  }
 
   if (deleteMode) {
-    if (annotated || message !== undefined) throw new Error('tag delete cannot be combined with annotation options');
-    if (operands.length === 0) return { exitCode: 0 };
+    if (annotated || message !== undefined) {
+      throw new Error('tag delete cannot be combined with annotation options');
+    }
+    if (operands.length === 0) {
+      return { exitCode: 0 };
+    }
     let exitCode = 0;
     for (const name of operands) {
       const refName = `refs/tags/${name}`;
@@ -184,14 +190,18 @@ export async function runTag({ context, args }: {
   }
 
   if (operands.length === 0) {
-    if (annotated || message !== undefined) throw new GitUsageError({ message: 'usage: git tag [-a] [-m <msg>] <tagname> [<object>]', prefix: 'none' });
+    if (annotated || message !== undefined) {
+      throw new GitUsageError({ message: 'usage: git tag [-a] [-m <msg>] <tagname> [<object>]', prefix: 'none' });
+    }
     const refs = await listRefs({ files: context.files, repository, prefix: 'refs/tags' });
     for (const ref of refs) {
       await context.text().print({ text: `${ref.refName.slice('refs/tags/'.length)}\n` });
     }
     return { exitCode: 0 };
   }
-  if (operands.length > 2) throw new Error('too many arguments');
+  if (operands.length > 2) {
+    throw new Error('too many arguments');
+  }
   if (getBooleanConfigValue({ config, key: 'tag.gpgsign' }) === true) {
     throw new Error('tag signing is not supported yet');
   }

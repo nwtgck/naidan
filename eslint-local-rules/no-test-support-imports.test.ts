@@ -52,7 +52,9 @@ describe('no-test-support-imports', () => {
   });
 
   it.each(['src/helper.test.ts', 'src/helper.test-support.ts'])('allows test-only dependency chains in %s', filename => {
-    for (const code of forbidden) expect(lint({ code, filename })).toEqual([]);
+    for (const code of forbidden) {
+      expect(lint({ code, filename })).toEqual([]);
+    }
   });
 
   it.each(['src/test-support/helper.ts', 'src/helper.test-helpers.ts', 'src/helper.test-support.tsx'])('does not exempt lookalike support importers: %s', filename => {

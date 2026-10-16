@@ -108,7 +108,9 @@ function isWcUnicodeWordSeparator({
   codePoint: number,
   posixlyCorrect: boolean,
 }): boolean {
-  if (isAsciiWhitespaceByte({ byte: codePoint })) return true;
+  if (isAsciiWhitespaceByte({ byte: codePoint })) {
+    return true;
+  }
 
   if (
     codePoint === 0x1680
@@ -149,11 +151,21 @@ function getSelectedFields({
   optionValues: Record<string, boolean | string | number>,
 }): WcField[] {
   const fields: WcField[] = [];
-  if (optionValues.lines === true) fields.push('lines');
-  if (optionValues.words === true) fields.push('words');
-  if (optionValues.chars === true) fields.push('chars');
-  if (optionValues.bytes === true) fields.push('bytes');
-  if (optionValues.maxLineLength === true) fields.push('maxLineLength');
+  if (optionValues.lines === true) {
+    fields.push('lines');
+  }
+  if (optionValues.words === true) {
+    fields.push('words');
+  }
+  if (optionValues.chars === true) {
+    fields.push('chars');
+  }
+  if (optionValues.bytes === true) {
+    fields.push('bytes');
+  }
+  if (optionValues.maxLineLength === true) {
+    fields.push('maxLineLength');
+  }
 
   if (fields.length === 0) {
     return ['lines', 'words', 'bytes'];
@@ -219,7 +231,9 @@ function computeFieldWidth({
   hasRepeatedOrMixedStdin: boolean,
 }): number {
   const totalByteSizeHint = entries.reduce<number | undefined>((sum, entry) => {
-    if (sum === undefined || entry.byteSizeHint === undefined) return undefined;
+    if (sum === undefined || entry.byteSizeHint === undefined) {
+      return undefined;
+    }
     return sum + entry.byteSizeHint;
   }, 0);
   const hasTotal = total !== undefined;
@@ -263,7 +277,9 @@ function formatCountsLine({
 }
 
 function quoteWcOutputName({ name }: { name: string }): string {
-  if (!name.includes('\n')) return name;
+  if (!name.includes('\n')) {
+    return name;
+  }
 
   const quotePrintable = ({ value }: { value: string }): string =>
     `'${value.replaceAll("'", "'\\''")}'`;
@@ -273,14 +289,18 @@ function quoteWcOutputName({ name }: { name: string }): string {
   while (index < name.length) {
     if (name[index] === '\n') {
       let end = index + 1;
-      while (name[end] === '\n') end += 1;
+      while (name[end] === '\n') {
+        end += 1;
+      }
       rendered += `$'${'\\n'.repeat(end - index)}'`;
       index = end;
       continue;
     }
 
     let end = index + 1;
-    while (end < name.length && name[end] !== '\n') end += 1;
+    while (end < name.length && name[end] !== '\n') {
+      end += 1;
+    }
     rendered += quotePrintable({ value: name.slice(index, end) });
     index = end;
   }
@@ -293,11 +313,21 @@ function getUtf8SequenceLengthFromLeadByte({
 }: {
   byte: number,
 }): number {
-  if (byte >= 0xC2 && byte <= 0xDF) return 2;
-  if (byte >= 0xE0 && byte <= 0xEF) return 3;
-  if (byte >= 0xF0 && byte <= 0xF7) return 4;
-  if (byte >= 0xF8 && byte <= 0xFB) return 5;
-  if (byte >= 0xFC && byte <= 0xFD) return 6;
+  if (byte >= 0xC2 && byte <= 0xDF) {
+    return 2;
+  }
+  if (byte >= 0xE0 && byte <= 0xEF) {
+    return 3;
+  }
+  if (byte >= 0xF0 && byte <= 0xF7) {
+    return 4;
+  }
+  if (byte >= 0xF8 && byte <= 0xFB) {
+    return 5;
+  }
+  if (byte >= 0xFC && byte <= 0xFD) {
+    return 6;
+  }
   return 0;
 }
 
@@ -310,13 +340,27 @@ function isValidUtf8Continuation({
   continuationIndex: number,
   byte: number,
 }): boolean {
-  if (byte < 0x80 || byte > 0xBF) return false;
-  if (continuationIndex !== 1) return true;
-  if (leadByte === 0xE0) return byte >= 0xA0;
-  if (leadByte === 0xED) return byte <= 0x9F;
-  if (leadByte === 0xF0) return byte >= 0x90;
-  if (leadByte === 0xF8) return byte >= 0x88;
-  if (leadByte === 0xFC) return byte >= 0x84;
+  if (byte < 0x80 || byte > 0xBF) {
+    return false;
+  }
+  if (continuationIndex !== 1) {
+    return true;
+  }
+  if (leadByte === 0xE0) {
+    return byte >= 0xA0;
+  }
+  if (leadByte === 0xED) {
+    return byte <= 0x9F;
+  }
+  if (leadByte === 0xF0) {
+    return byte >= 0x90;
+  }
+  if (leadByte === 0xF8) {
+    return byte >= 0x88;
+  }
+  if (leadByte === 0xFC) {
+    return byte >= 0x84;
+  }
   return true;
 }
 
@@ -487,7 +531,9 @@ async function readCountsFromStream({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
 
       if (needsByteCount) {
         bytes += value.length;

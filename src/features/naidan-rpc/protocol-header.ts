@@ -38,8 +38,12 @@ export function inspectProtocolHeader({ bytes }: { bytes: Uint8Array }): Protoco
   }
   // The version starts at an unaligned offset, potentially within a larger buffer.
   const version = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(9, true);
-  if ((version & 0x7fffffff) === 0) return { kind: 'invalid-protocol-version', version };
-  if (version !== PROTOCOL_VERSION) return { kind: 'unsupported-protocol-version', version };
+  if ((version & 0x7fffffff) === 0) {
+    return { kind: 'invalid-protocol-version', version };
+  }
+  if (version !== PROTOCOL_VERSION) {
+    return { kind: 'unsupported-protocol-version', version };
+  }
   return { kind: 'supported', version };
 }
 
@@ -60,7 +64,9 @@ export class ProtocolHeaderReader {
     readonly consumedBytes: number;
     readonly result: ProtocolHeaderProgress;
   } {
-    if (this.result !== undefined) throw new Error('Protocol header reader is already finished');
+    if (this.result !== undefined) {
+      throw new Error('Protocol header reader is already finished');
+    }
     requireBytes({ bytes: chunk });
     const consumedBytes = Math.min(chunk.byteLength, PROTOCOL_HEADER_BYTES - this.usedBytes);
     this.bytes.set(chunk.subarray(0, consumedBytes), this.usedBytes);

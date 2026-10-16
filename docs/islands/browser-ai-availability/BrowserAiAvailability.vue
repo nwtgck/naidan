@@ -23,7 +23,10 @@ const message = computed(() => {
   case 'apiAbsent': return messages.language_model_api_is_not_exposed;
   case 'unknown': return messages.unrecognized_browser_status;
   case 'rejected': return messages.browser_check_failed;
-  default: { const unreachable: never = status.value; throw new Error(`Unknown browser AI availability status: ${unreachable}`); }
+  default: {
+    const unreachable: never = status.value;
+    throw new Error(`Unknown browser AI availability status: ${unreachable}`);
+  }
   }
 });
 
@@ -38,7 +41,10 @@ const tone = computed(() => {
   case 'apiAbsent':
   case 'unknown':
   case 'rejected': return 'neutral';
-  default: { const unreachable: never = status.value; throw new Error(`Unknown browser AI availability status: ${unreachable}`); }
+  default: {
+    const unreachable: never = status.value;
+    throw new Error(`Unknown browser AI availability status: ${unreachable}`);
+  }
   }
 });
 
@@ -46,7 +52,9 @@ async function recheck(): Promise<void> {
   const current = ++revision;
   status.value = 'checking';
   const result = await checkBrowserAiAvailability({ nativeScope: globalThis as typeof globalThis & { LanguageModel?: unknown } });
-  if (active && current === revision) status.value = result;
+  if (active && current === revision) {
+    status.value = result;
+  }
 }
 
 onMounted(() => {

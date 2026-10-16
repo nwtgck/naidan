@@ -93,7 +93,9 @@ describe('test-resource-management', () => {
   });
 
   it.each(['src/example.test.ts', 'src/example.test-support.ts'])('permits protocols only in %s', filename => {
-    for (const code of runtimeAccesses) expect(lint({ code, filename })).toEqual([]);
+    for (const code of runtimeAccesses) {
+      expect(lint({ code, filename })).toEqual([]);
+    }
   });
 
   it.each(['src/runtime.ts', 'src/runtime.js', 'src/example.test.tsx', 'src/example.test-support.ts', 'src/test-support/helper.ts', 'src/example.test-helpers.ts'])('rejects using declarations in %s', filename => {
@@ -124,7 +126,9 @@ describe('test-resource-management', () => {
       '<template><button @click="(Symbol) => Symbol.dispose" /></template>',
       '<template><div v-for="Symbol in items">{{ Symbol.dispose }}</div></template>',
       '<script setup lang="ts">const Symbol = { dispose: 1 };</script><template>{{ Symbol.dispose }}</template>',
-    ]) expect(lint({ code, filename: 'src/View.vue' })).toEqual([]);
+    ]) {
+      expect(lint({ code, filename: 'src/View.vue' })).toEqual([]);
+    }
   });
 
   it.each([

@@ -5,7 +5,9 @@ export function validModelPath({ path }: { path: string }): boolean {
 }
 
 export function relativeCompanionPath({ indexPath, reference }: { indexPath: string, reference: string }): string {
-  if (!validModelPath({ path: indexPath }) || !validModelPath({ path: reference }) || reference.includes(':')) throw new Error('Unsafe local model companion path');
+  if (!validModelPath({ path: indexPath }) || !validModelPath({ path: reference }) || reference.includes(':')) {
+    throw new Error('Unsafe local model companion path');
+  }
   const parent = indexPath.split('/').slice(0, -1).join('/');
   return parent ? `${parent}/${reference}` : reference;
 }

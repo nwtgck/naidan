@@ -15,7 +15,9 @@ const PromptApiChunkSchema = z.string();
 function hasConfiguredLmParameters({ parameters }: {
   parameters: LmParameters | undefined,
 }): boolean {
-  if (parameters === undefined) return false;
+  if (parameters === undefined) {
+    return false;
+  }
   return (
     parameters.temperature !== undefined
     || parameters.topP !== undefined
@@ -54,10 +56,14 @@ export class PromptApiProvider implements LmProvider {
           };
           signal.addEventListener('abort', stop, { once: true });
           try {
-            if (signal.aborted) stop();
+            if (signal.aborted) {
+              stop();
+            }
             while (true) {
               const result = await reader.read();
-              if (result.done) break;
+              if (result.done) {
+                break;
+              }
               await writer.text({ type: 'text', text: PromptApiChunkSchema.parse(result.value) });
             }
             return signal.aborted

@@ -114,7 +114,9 @@ function assertExistingPath({ label, filename, expectedType }: { label: string; 
     throw new Error(`Unhandled expected path type: ${_ex}`);
   }
   }
-  if (!matches) throw new Error(`[tw-class] ${label} must be a ${expectedType}: ${filename}`);
+  if (!matches) {
+    throw new Error(`[tw-class] ${label} must be a ${expectedType}: ${filename}`);
+  }
 }
 
 function readExpectedTailwindVersion({ projectRoot }: { projectRoot: string }): string {
@@ -139,7 +141,9 @@ function assertPathDoesNotTraverseSymlinks({ root, target, label }: { root: stri
     try {
       stats = fs.lstatSync(current);
     } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') return;
+      if (isErrnoException(error) && error.code === 'ENOENT') {
+        return;
+      }
       throw error;
     }
     if (stats.isSymbolicLink()) {
@@ -154,18 +158,28 @@ function cleanModuleId({ id }: { id: string }): string {
 
 function bundleModuleMatchesFile({ moduleId, filename, projectRoot }: { moduleId: string; filename: string; projectRoot: string }): boolean {
   const cleanId = cleanModuleId({ id: moduleId });
-  if (cleanId.startsWith('\0')) return false;
+  if (cleanId.startsWith('\0')) {
+    return false;
+  }
   const absoluteFilename = path.resolve(filename);
   const projectRelativeId = `/${path.relative(projectRoot, absoluteFilename).replaceAll(path.sep, '/')}`;
-  if (cleanId === projectRelativeId) return true;
-  if (path.isAbsolute(cleanId)) return path.resolve(cleanId) === absoluteFilename;
+  if (cleanId === projectRelativeId) {
+    return true;
+  }
+  if (path.isAbsolute(cleanId)) {
+    return path.resolve(cleanId) === absoluteFilename;
+  }
   return cleanId.endsWith(projectRelativeId);
 }
 
 function canonicalVirtualModuleId({ moduleId }: { moduleId: string }): string | undefined {
   const cleanId = cleanModuleId({ id: moduleId });
-  if (cleanId.startsWith('\0virtual:naidan-tailwind-')) return cleanId;
-  if (cleanId.startsWith('virtual:naidan-tailwind-')) return `\0${cleanId}`;
+  if (cleanId.startsWith('\0virtual:naidan-tailwind-')) {
+    return cleanId;
+  }
+  if (cleanId.startsWith('virtual:naidan-tailwind-')) {
+    return `\0${cleanId}`;
+  }
   return undefined;
 }
 
@@ -202,7 +216,9 @@ export function assertCssRegistrationBundleIntegrity({
   }
 
   function resolveImportedChunkName({ importerFileName, importedFileName }: { importerFileName: string; importedFileName: string }): string | undefined {
-    if (chunkByFileName.has(importedFileName)) return importedFileName;
+    if (chunkByFileName.has(importedFileName)) {
+      return importedFileName;
+    }
     const relativeName = path.posix.normalize(path.posix.join(
       path.posix.dirname(importerFileName),
       importedFileName,
@@ -215,16 +231,22 @@ export function assertCssRegistrationBundleIntegrity({
     const queue = [...roots];
     while (queue.length > 0) {
       const fileName = queue.shift();
-      if (fileName === undefined || reachable.has(fileName)) continue;
+      if (fileName === undefined || reachable.has(fileName)) {
+        continue;
+      }
       reachable.add(fileName);
       const chunk = chunkByFileName.get(fileName);
-      if (chunk === undefined) continue;
+      if (chunk === undefined) {
+        continue;
+      }
       const importedFileNames = includeDynamicImports
         ? [...(chunk.imports ?? []), ...(chunk.dynamicImports ?? [])]
         : chunk.imports ?? [];
       for (const importedFileName of importedFileNames) {
         const resolved = resolveImportedChunkName({ importerFileName: fileName, importedFileName });
-        if (resolved !== undefined && !reachable.has(resolved)) queue.push(resolved);
+        if (resolved !== undefined && !reachable.has(resolved)) {
+          queue.push(resolved);
+        }
       }
     }
     return reachable;
@@ -248,7 +270,9 @@ export function assertCssRegistrationBundleIntegrity({
       staticallyReachable = reachableChunkNames({ roots: [ownerChunkName], includeDynamicImports: false });
       staticallyReachableByChunkName.set(ownerChunkName, staticallyReachable);
     }
-    if (staticallyReachable.has(registrationChunkName)) return true;
+    if (staticallyReachable.has(registrationChunkName)) {
+      return true;
+    }
 
     const ownerEntryChunkNames = entryChunkNames.filter((entryChunkName) => (
       allChunkNamesByEntry.get(entryChunkName)?.has(ownerChunkName) === true
@@ -268,13 +292,19 @@ export function assertCssRegistrationBundleIntegrity({
         projectRoot,
       })))
       .map(({ fileName }) => fileName);
-    if (ownerChunkNames.length === 0) continue;
+    if (ownerChunkNames.length === 0) {
+      continue;
+    }
     for (const publicId of publicIds) {
-      if (!publicId.startsWith(virtualCssPrefix)) continue;
+      if (!publicId.startsWith(virtualCssPrefix)) {
+        continue;
+      }
       const resolvedId = `\0${publicId}`;
       directExpectedResolvedIds.add(resolvedId);
       const values = ownerChunkNamesByRegistrationId.get(resolvedId) ?? new Set<string>();
-      for (const ownerChunkName of ownerChunkNames) values.add(ownerChunkName);
+      for (const ownerChunkName of ownerChunkNames) {
+        values.add(ownerChunkName);
+      }
       ownerChunkNamesByRegistrationId.set(resolvedId, values);
     }
   }
@@ -287,9 +317,13 @@ export function assertCssRegistrationBundleIntegrity({
   const visitedRegistrationOwners = new Set<string>();
   for (let index = 0; index < pendingRegistrations.length; index += 1) {
     const pending = pendingRegistrations[index];
-    if (pending === undefined) continue;
+    if (pending === undefined) {
+      continue;
+    }
     const pairKey = `${pending.registrationId}\0${pending.ownerChunkName}`;
-    if (visitedRegistrationOwners.has(pairKey)) continue;
+    if (visitedRegistrationOwners.has(pairKey)) {
+      continue;
+    }
     visitedRegistrationOwners.add(pairKey);
     expectedResolvedIds.add(pending.registrationId);
     const values = ownerChunkNamesByRegistrationId.get(pending.registrationId) ?? new Set<string>();
@@ -312,7 +346,9 @@ export function assertCssRegistrationBundleIntegrity({
   const misplaced: string[] = [];
   for (const [registrationId, ownerChunkNames] of ownerChunkNamesByRegistrationId) {
     const registrationChunkNames = chunkNamesByModuleId.get(registrationId) ?? new Set();
-    if (registrationChunkNames.size !== 1) continue;
+    if (registrationChunkNames.size !== 1) {
+      continue;
+    }
     const [registrationChunkName] = registrationChunkNames;
     for (const ownerChunkName of ownerChunkNames) {
       if (!registrationLoadsWithChunk({ ownerChunkName, registrationChunkName })) {
@@ -334,7 +370,9 @@ export function assertCssRegistrationBundleIntegrity({
             ownerChunkName: registrationChunkName,
             registrationChunkName: runtimeChunkName,
           })
-        ) misplaced.push(`${resolvedVirtualCssRuntimeModuleId} is not loaded with ${registrationChunkName}`);
+        ) {
+          misplaced.push(`${resolvedVirtualCssRuntimeModuleId} is not loaded with ${registrationChunkName}`);
+        }
       }
     }
   }
@@ -346,7 +384,9 @@ export function assertCssRegistrationBundleIntegrity({
     && unknownPlannedIds.length === 0
     && misplaced.length === 0
     && !runtimeInvalid
-  ) return;
+  ) {
+    return;
+  }
 
   const details = [
     missing.length === 0 ? undefined : `missing registrations: ${missing.join(', ')}`,
@@ -454,14 +494,18 @@ export function createTwClassVitePlugin({
     try {
       return fs.readFileSync(filename, 'utf8') !== committedSource;
     } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') return committedSource !== undefined;
+      if (isErrnoException(error) && error.code === 'ENOENT') {
+        return committedSource !== undefined;
+      }
       throw error;
     }
   }
 
   function markCurrentPlanApplied(): void {
     const activePlan = plan;
-    if (activePlan === undefined) throw new Error('[tw-class] CSS plan was not initialized.');
+    if (activePlan === undefined) {
+      throw new Error('[tw-class] CSS plan was not initialized.');
+    }
     appliedEntryCss = entryCss;
     appliedModuleSourceByResolvedId = new Map(moduleSourceByResolvedId);
     appliedImportsByModule = new Map(
@@ -487,11 +531,15 @@ export function createTwClassVitePlugin({
     const nextRegistrationDependenciesByResolvedId = new Map<string, string[]>();
     const nextImportsByModule = new Map<string, Set<string>>();
     const nextOwnerRootByName = new Map<string, string>([['initial', absoluteEntryModule]]);
-    for (const owner of nextAnalysis.cssOwners) nextOwnerRootByName.set(owner.name, owner.root);
+    for (const owner of nextAnalysis.cssOwners) {
+      nextOwnerRootByName.set(owner.name, owner.root);
+    }
 
     const registrations: CssRegistration[] = [];
     for (const [ownerKey, fragments] of nextPlan.runtimeFragmentsByOwner) {
-      if (fragments.length === 0) continue;
+      if (fragments.length === 0) {
+        continue;
+      }
       const normalizedOwners = parseCssOwnerKey({ key: ownerKey });
       const owners = normalizedOwners.length === 0 ? ['initial'] : normalizedOwners;
       const publicId = `${virtualCssPrefix}${groupHash({ ownerKey: createCssOwnerKey({ owners }) })}.js`;
@@ -504,7 +552,9 @@ export function createTwClassVitePlugin({
       });
       for (const owner of owners) {
         const root = nextOwnerRootByName.get(owner);
-        if (root === undefined) throw new Error(`[tw-class] CSS owner has no module root: ${owner}`);
+        if (root === undefined) {
+          throw new Error(`[tw-class] CSS owner has no module root: ${owner}`);
+        }
         const values = nextImportsByModule.get(root) ?? new Set<string>();
         values.add(publicId);
         nextImportsByModule.set(root, values);
@@ -578,7 +628,9 @@ export function createTwClassVitePlugin({
       [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
     );
     for (const filename of nextPlan.stylesheetDependencies) {
-      if (!isLocalStylesheetPath({ filename })) continue;
+      if (!isLocalStylesheetPath({ filename })) {
+        continue;
+      }
       nextInputSourceByFile.set(filename, fs.readFileSync(filename, 'utf8'));
     }
     const previousActiveModuleSourceByResolvedId = moduleSourceByResolvedId;
@@ -586,9 +638,13 @@ export function createTwClassVitePlugin({
     plan = nextPlan;
     entryCss = nextPlan.entryCss;
     for (const id of previousActiveModuleSourceByResolvedId.keys()) {
-      if (!state.nextModuleSourceByResolvedId.has(id)) retiredCssModuleIds.add(id);
+      if (!state.nextModuleSourceByResolvedId.has(id)) {
+        retiredCssModuleIds.add(id);
+      }
     }
-    for (const id of state.nextModuleSourceByResolvedId.keys()) retiredCssModuleIds.delete(id);
+    for (const id of state.nextModuleSourceByResolvedId.keys()) {
+      retiredCssModuleIds.delete(id);
+    }
     moduleSourceByResolvedId = state.nextModuleSourceByResolvedId;
     registrationDependenciesByResolvedId = state.nextRegistrationDependenciesByResolvedId;
     importsByModule = state.nextImportsByModule;
@@ -623,17 +679,25 @@ export function createTwClassVitePlugin({
     if (result.baseCssChanged) {
       const modules = environment.moduleGraph.getModulesByFile(absoluteTailwindCssPath);
       if (modules !== undefined) {
-        for (const module of modules) await environment.reloadModule(module);
+        for (const module of modules) {
+          await environment.reloadModule(module);
+        }
       }
     }
     for (const resolvedId of result.changedCssIds) {
       const module = environment.moduleGraph.getModuleById(resolvedId);
-      if (module !== undefined) await environment.reloadModule(module);
+      if (module !== undefined) {
+        await environment.reloadModule(module);
+      }
     }
     for (const filename of result.changedOwnerModules) {
       const modules = environment.moduleGraph.getModulesByFile(filename);
-      if (modules === undefined) continue;
-      for (const module of modules) await environment.reloadModule(module);
+      if (modules === undefined) {
+        continue;
+      }
+      for (const module of modules) {
+        await environment.reloadModule(module);
+      }
     }
     if (result.removedCssIds.size > 0) {
       environment.hot.send({
@@ -659,12 +723,16 @@ export function createTwClassVitePlugin({
   });
 
   function clearDebugOutput(): void {
-    if (absoluteDebugOutputDirectory === undefined) return;
+    if (absoluteDebugOutputDirectory === undefined) {
+      return;
+    }
     fs.rmSync(absoluteDebugOutputDirectory, { recursive: true, force: true });
   }
 
   function writeDebugOutput(): void {
-    if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) return;
+    if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) {
+      return;
+    }
     fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
     fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
     fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan }), null, 2)}\n`);
@@ -703,7 +771,9 @@ export function createTwClassVitePlugin({
       await refreshPlan();
       markCurrentPlanApplied();
       const activePlan = plan;
-      if (activePlan === undefined) throw new Error('[tw-class] CSS plan was not initialized.');
+      if (activePlan === undefined) {
+        throw new Error('[tw-class] CSS plan was not initialized.');
+      }
       this.info(splitCss
         ? `[tw-class] planned ${activePlan.candidates.length} candidates into ${activePlan.cssGroups.size} virtual CSS ownership groups.`
         : `[tw-class] planned ${activePlan.candidates.length} candidates into one global CSS asset.`);
@@ -731,7 +801,9 @@ export function createTwClassVitePlugin({
           throw new Error(`Unhandled Vite command: ${_ex}`);
         }
         }
-        if (!splitCss) return;
+        if (!splitCss) {
+          return;
+        }
         assertCssRegistrationBundleIntegrity({
           bundle,
           projectRoot: absoluteProjectRoot,
@@ -742,13 +814,23 @@ export function createTwClassVitePlugin({
       },
     },
     writeBundle() {
-      if (cssPlanning === 'enabled' && command === 'build') writeDebugOutput();
+      if (cssPlanning === 'enabled' && command === 'build') {
+        writeDebugOutput();
+      }
     },
     resolveId(id) {
-      if (id === virtualMacroModuleId) return resolvedVirtualMacroModuleId;
-      if (id === virtualHmrClientModuleId) return resolvedVirtualHmrClientModuleId;
-      if (id === virtualCssRuntimeModuleId) return resolvedVirtualCssRuntimeModuleId;
-      if (id.startsWith(virtualCssPrefix)) return `\0${id}`;
+      if (id === virtualMacroModuleId) {
+        return resolvedVirtualMacroModuleId;
+      }
+      if (id === virtualHmrClientModuleId) {
+        return resolvedVirtualHmrClientModuleId;
+      }
+      if (id === virtualCssRuntimeModuleId) {
+        return resolvedVirtualCssRuntimeModuleId;
+      }
+      if (id.startsWith(virtualCssPrefix)) {
+        return `\0${id}`;
+      }
       return null;
     },
     load(id) {
@@ -760,19 +842,29 @@ if (import.meta.hot) {
   });
 }`;
       }
-      if (id === resolvedVirtualCssRuntimeModuleId) return createTailwindCssRuntimeModuleSource();
+      if (id === resolvedVirtualCssRuntimeModuleId) {
+        return createTailwindCssRuntimeModuleSource();
+      }
       if (id === resolvedVirtualMacroModuleId) {
         return "const fail = () => { throw new Error('Tailwind compile-time macro was not transformed.'); }; export const tw = fail; export const twClassString = fail; export const twClasses = fail; export const customClasses = fail;";
       }
-      if (moduleSourceByResolvedId.has(id)) return moduleSourceByResolvedId.get(id);
-      if (retiredCssModuleIds.has(id)) return 'export {};';
+      if (moduleSourceByResolvedId.has(id)) {
+        return moduleSourceByResolvedId.get(id);
+      }
+      if (retiredCssModuleIds.has(id)) {
+        return 'export {};';
+      }
       const cleanId = id.split('?', 1)[0];
-      if (path.resolve(cleanId) === absoluteTailwindCssPath) return entryCss;
+      if (path.resolve(cleanId) === absoluteTailwindCssPath) {
+        return entryCss;
+      }
       return null;
     },
     transform(source, id) {
       const cleanId = id.split('?', 1)[0];
-      if (cleanId.includes('/node_modules/')) return null;
+      if (cleanId.includes('/node_modules/')) {
+        return null;
+      }
       const imports = importsByModule.get(path.resolve(cleanId)) ?? [];
       const referencesMacroModule = source.includes(virtualMacroModuleId);
       const isRawVueModule = cleanId.endsWith('.vue') && !id.includes('?');
@@ -790,7 +882,9 @@ if (import.meta.hot) {
           );
         }
       }
-      if (imports.length === 0 && !referencesMacroModule) return null;
+      if (imports.length === 0 && !referencesMacroModule) {
+        return null;
+      }
       const assertCoveredMacroTransform = ({ changed }: { changed: boolean }): void => {
         if (
           cssPlanning === 'enabled'
@@ -810,7 +904,9 @@ if (import.meta.hot) {
         return result.changed ? { code: result.code, map: result.map } : null;
       }
       const extension = path.extname(cleanId);
-      if (!supportedModuleExtensions.has(extension)) return null;
+      if (!supportedModuleExtensions.has(extension)) {
+        return null;
+      }
       const result = transformTwCallsInModule({
         source,
         filename: cleanId,
@@ -824,7 +920,9 @@ if (import.meta.hot) {
     hotUpdate: {
       order: 'pre',
       async handler(options) {
-        if (this.environment.name !== environmentName) return options.modules;
+        if (this.environment.name !== environmentName) {
+          return options.modules;
+        }
         switch (cssPlanning) {
         case 'disabled':
           return options.modules;
@@ -849,13 +947,17 @@ if (import.meta.hot) {
         // immediately restore the stricter dependency-only filter.
         const isLocalStylesheetDependency = isLocalStylesheetPath({ filename: absoluteFile })
           && (isActiveStylesheetDependency || hasFailedRefresh);
-        if (!isAnalyzedSource && !isLocalStylesheetDependency) return options.modules;
+        if (!isAnalyzedSource && !isLocalStylesheetDependency) {
+          return options.modules;
+        }
         // An active refresh may have analyzed an intermediate version. Queue a
         // trailing generation even when the file has reverted to committed content.
         if (
           !refreshCoordinator.hasPendingRefresh()
           && !hasInputChangedSinceLastAppliedPlan({ filename: absoluteFile })
-        ) return options.modules;
+        ) {
+          return options.modules;
+        }
         await refreshCoordinator.request({ context: this.environment });
         return options.modules;
       },

@@ -49,7 +49,9 @@ export async function prepareRuntimeMetadata({ modelId, revision, runtime, downl
           }).paths,
         };
       } catch (error) {
-        if (!(error instanceof ProductionResourceCandidateError)) throw error;
+        if (!(error instanceof ProductionResourceCandidateError)) {
+          throw error;
+        }
         resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = { status: 'planning-failed', error: { name: error.name, message: error.message } };
       }
     }

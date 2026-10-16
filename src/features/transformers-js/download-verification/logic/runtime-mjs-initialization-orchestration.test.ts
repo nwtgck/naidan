@@ -51,7 +51,9 @@ class ReadyWorker extends EventTarget {
     super();
     workers.push(this);
     queueMicrotask(() => {
-      if (this.active) this.fixture.start();
+      if (this.active) {
+        this.fixture.start();
+      }
     });
   }
 }
@@ -65,7 +67,9 @@ beforeEach(() => {
 afterEach(async () => {
   for (const worker of workers.splice(0)) {
     worker.dispatchEvent(new Event('error'));
-    if (worker instanceof InitializationFailureWorker) await worker.startup;
+    if (worker instanceof InitializationFailureWorker) {
+      await worker.startup;
+    }
   }
   vi.unstubAllGlobals();
 });
@@ -160,5 +164,7 @@ it('preserves ordinary ORT incompatibility fallback after verified startup has c
   ]);
   expect(prepareCandidate).toHaveBeenCalledTimes(2);
   expect(workers).toHaveLength(2);
-  for (const worker of workers) expect(worker.terminate).toHaveBeenCalledOnce();
+  for (const worker of workers) {
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  }
 });

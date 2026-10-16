@@ -58,12 +58,15 @@ describe('Qwen image generation session ownership', () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await capture.client.dispose(); await harness.close();
+        await capture.client.dispose();
+        await harness.close();
       },
     };
     await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
     const result = await capture.takeGenerationCapture();
-    if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') throw new Error('Expected actual Load receipt before generation');
+    if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') {
+      throw new Error('Expected actual Load receipt before generation');
+    }
     const receipt = result.loadObservation.outcome.receipt;
     expect(receipt).toMatchObject({ autoClass: 'AutoModelForCausalLM', cacheLookup: { revision }, resourceHealth: 'healthy-after-close' });
     expect(receipt.plannedRequiredPaths.filter(path => path.startsWith('onnx/')).sort()).toEqual([...textArtifacts].sort());
@@ -98,7 +101,9 @@ describe('Qwen image generation session ownership', () => {
         stages.push('native-generate');
         const sessions = model.sessions;
         const embed = sessions['embed_tokens'];
-        if (!embed || !(options.input_ids instanceof runtime.Tensor)) throw new Error('Missing actual text input or embedding session');
+        if (!embed || !(options.input_ids instanceof runtime.Tensor)) {
+          throw new Error('Missing actual text input or embedding session');
+        }
         const length = options.input_ids.dims[1]!;
         // Only native ORT inference is supplied. Model dispatch, text embedding,
         // image dispatch and session validation remain the actual runtime.
@@ -110,12 +115,15 @@ describe('Qwen image generation session ownership', () => {
           },
         });
         const vision = sessions['vision_encoder'];
-        if (vision) Object.assign(vision, {
-          inputNames: ['pixel_values', 'image_grid_thw'],
-          run: async () => {
-            stages.push('vision-inference'); throw new Error(visionBoundary);
-          },
-        });
+        if (vision) {
+          Object.assign(vision, {
+            inputNames: ['pixel_values', 'image_grid_thw'],
+            run: async () => {
+              stages.push('vision-inference');
+              throw new Error(visionBoundary);
+            },
+          });
+        }
         const encodeImage = vi.spyOn(model, 'encode_image');
         try {
           // The shared harness replaces generate; invoke its unmodified inherited
@@ -125,7 +133,9 @@ describe('Qwen image generation session ownership', () => {
           nativeFailure = error;
           throw error;
         } finally {
-          if (encodeImage.mock.calls.length) stages.push('image-encoder-called');
+          if (encodeImage.mock.calls.length) {
+            stages.push('image-encoder-called');
+          }
           encodeImage.mockRestore();
         }
       },
@@ -164,7 +174,9 @@ describe('Qwen image generation session ownership', () => {
 
   it('keeps a complete text-only cache usable and refuses images without loading again', async () => {
     const generate = vi.fn<ProviderReplayGenerate>(async ({ options, runtime }) => {
-      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Missing actual text input');
+      if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+        throw new Error('Missing actual text input');
+      }
       // Synthetic text settlement validates the public execution path only.
       options.streamer.put(options.input_ids.tolist());
       options.streamer.put([[40n]]);
@@ -257,7 +269,9 @@ describe('Qwen image generation session ownership', () => {
     const textLoad = vi.spyOn(harness.runtime.AutoModelForCausalLM, 'from_pretrained');
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        imageLoad.mockRestore(); textLoad.mockRestore(); await harness.close();
+        imageLoad.mockRestore();
+        textLoad.mockRestore();
+        await harness.close();
       },
     };
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow();

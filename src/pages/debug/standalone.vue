@@ -32,7 +32,9 @@ const lazyStyleInitialMarkerAttribute = 'data-debug-file-protocol-standalone-laz
 function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({ element }: { element: HTMLElement }): string {
   const root = document.documentElement;
   const existing = root.getAttribute(lazyStyleInitialMarkerAttribute);
-  if (existing !== null) return existing;
+  if (existing !== null) {
+    return existing;
+  }
 
   const measured = getComputedStyle(element)
     .getPropertyValue('--debug-file-protocol-standalone-lazy-style-marker')
@@ -85,8 +87,12 @@ async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { s
     restoreError = error;
   }
 
-  if (transitionError !== undefined) throw transitionError;
-  if (restoreError !== undefined) throw restoreError;
+  if (transitionError !== undefined) {
+    throw transitionError;
+  }
+  if (restoreError !== undefined) {
+    throw restoreError;
+  }
   if (transitioned === undefined) {
     throw new Error('Standalone verification route transition produced no transitioned route.');
   }

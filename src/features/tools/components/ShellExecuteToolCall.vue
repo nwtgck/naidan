@@ -43,7 +43,9 @@ function readPartialScript({ input }: { input: string }): string | undefined {
   switch (partialState) {
   case 'header': {
     const header = /^[ \t\r\n]*\{[ \t\r\n]*"shell_script"[ \t\r\n]*:[ \t\r\n]*"/.exec(input);
-    if (!header) return undefined;
+    if (!header) {
+      return undefined;
+    }
     partialCursor = header[0].length;
     partialState = 'string';
     break;
@@ -52,7 +54,10 @@ function readPartialScript({ input }: { input: string }): string | undefined {
   // A draft preview does not certify later fields. Complete calls use the schema below.
   case 'closed': return partialScript;
   case 'invalid': return undefined;
-  default: { const _ex: never = partialState; throw new Error(`Unhandled partial display state: ${_ex}`); }
+  default: {
+    const _ex: never = partialState;
+    throw new Error(`Unhandled partial display state: ${_ex}`);
+  }
   }
   while (partialCursor < input.length) {
     const character = input[partialCursor]!;
@@ -67,9 +72,13 @@ function readPartialScript({ input }: { input: string }): string | undefined {
     }
     if (character === '\\') {
       const escape = input[partialCursor + 1];
-      if (escape === undefined) break;
+      if (escape === undefined) {
+        break;
+      }
       const length = escape === 'u' ? 6 : 2;
-      if (partialCursor + length > input.length) break;
+      if (partialCursor + length > input.length) {
+        break;
+      }
       try {
         partialScript += JSON.parse('"' + input.slice(partialCursor, partialCursor + length) + '"');
       } catch {
@@ -90,12 +99,17 @@ const parsedArgs = computed((): ShellExecuteArgs | null => {
   switch (argumentState) {
   case 'partial': {
     const script = readPartialScript({ input: props.args });
-    if (script !== undefined) return { shell_script: script };
+    if (script !== undefined) {
+      return { shell_script: script };
+    }
     break;
   }
   case 'complete':
   case undefined: break;
-  default: { const _ex: never = argumentState; throw new Error(`Unhandled argument display state: ${_ex}`); }
+  default: {
+    const _ex: never = argumentState;
+    throw new Error(`Unhandled argument display state: ${_ex}`);
+  }
   }
   try {
     const r = ShellExecuteArgsSchema.safeParse(JSON.parse(props.args));
@@ -111,7 +125,10 @@ const formattedRawArgs = computed((): string => {
   case 'partial': return props.args;
   case 'complete':
   case undefined: break;
-  default: { const _ex: never = argumentState; throw new Error(`Unhandled argument display state: ${_ex}`); }
+  default: {
+    const _ex: never = argumentState;
+    throw new Error(`Unhandled argument display state: ${_ex}`);
+  }
   }
   try {
     return JSON.stringify(JSON.parse(props.args), null, 2);
@@ -125,9 +142,15 @@ const wrapCommand = ref(true);
 
 const resultText = computed((): string | null => {
   const r = props.result;
-  if (r === undefined) return null;
-  if (r.status === 'success' && r.content.type === 'text') return r.content.text;
-  if (r.status === 'error' && r.error.message.type === 'text') return r.error.message.text;
+  if (r === undefined) {
+    return null;
+  }
+  if (r.status === 'success' && r.content.type === 'text') {
+    return r.content.text;
+  }
+  if (r.status === 'error' && r.error.message.type === 'text') {
+    return r.error.message.text;
+  }
   return null;
 });
 

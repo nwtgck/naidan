@@ -33,7 +33,9 @@ async function readRegularBlob({ files, repository, entry }: {
   repository: GitRepository,
   entry: GitIndexEntry,
 }): Promise<Uint8Array> {
-  if (!isRegularMode({ mode: entry.mode })) throw new Error(`unsupported merge conflict mode ${entry.mode.toString(8)}: ${entry.path}`);
+  if (!isRegularMode({ mode: entry.mode })) {
+    throw new Error(`unsupported merge conflict mode ${entry.mode.toString(8)}: ${entry.path}`);
+  }
   const object = await readObject({ files, repository, objectId: entry.objectId });
   switch (object.type) {
   case 'blob':
@@ -50,7 +52,9 @@ async function readRegularBlob({ files, repository, entry }: {
 }
 
 function decodeConflictText({ bytes }: { bytes: Uint8Array }): string | undefined {
-  if (bytes.includes(0)) return undefined;
+  if (bytes.includes(0)) {
+    return undefined;
+  }
   try {
     return decoder.decode(bytes);
   } catch {
@@ -64,9 +68,15 @@ function withFinalNewline({ text }: { text: string }): string {
 
 function stagedEntries({ conflict }: { conflict: GitTreeMergeConflict }): GitIndexEntry[] {
   const result: GitIndexEntry[] = [];
-  if (conflict.base !== undefined) result.push({ ...conflict.base, stage: 1 });
-  if (conflict.ours !== undefined) result.push({ ...conflict.ours, stage: 2 });
-  if (conflict.theirs !== undefined) result.push({ ...conflict.theirs, stage: 3 });
+  if (conflict.base !== undefined) {
+    result.push({ ...conflict.base, stage: 1 });
+  }
+  if (conflict.ours !== undefined) {
+    result.push({ ...conflict.ours, stage: 2 });
+  }
+  if (conflict.theirs !== undefined) {
+    result.push({ ...conflict.theirs, stage: 3 });
+  }
   return result;
 }
 
@@ -149,7 +159,9 @@ export function formatPreparedMergeConflict({ conflict, oursLabel, theirsLabel }
   theirsLabel: string,
 }): string[] {
   const lines: string[] = [];
-  if (conflict.binary) lines.push(`warning: Cannot merge binary files: ${conflict.path} (${oursLabel} vs. ${theirsLabel})\n`);
+  if (conflict.binary) {
+    lines.push(`warning: Cannot merge binary files: ${conflict.path} (${oursLabel} vs. ${theirsLabel})\n`);
+  }
   switch (conflict.kind) {
   case 'content':
     lines.push(`Auto-merging ${conflict.path}\n`, `CONFLICT (content): Merge conflict in ${conflict.path}\n`);

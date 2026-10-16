@@ -26,7 +26,9 @@ export function createProgressQueue({ deliver, signal }: {
     peakPending: 0,
   };
   const discardPending = (): void => {
-    if (pending) counters.discarded++;
+    if (pending) {
+      counters.discarded++;
+    }
     pending = undefined;
   };
   const fail = ({ error }: { error: unknown }): void => {
@@ -51,7 +53,9 @@ export function createProgressQueue({ deliver, signal }: {
     const complete = (): void => {
       active.delete(phase);
       counters.settled++;
-      if (signal.aborted || failed) discardPending();
+      if (signal.aborted || failed) {
+        discardPending();
+      }
       const next = pending;
       if (next && !active.has(next.phase)) {
         pending = undefined;
@@ -64,16 +68,20 @@ export function createProgressQueue({ deliver, signal }: {
       // before a synchronous native computation returns to the event loop.
       const result = deliver({ progress });
       void Promise.resolve(result).then(complete, error => {
-        fail({ error }); complete();
+        fail({ error });
+        complete();
       });
     } catch (error) {
-      fail({ error }); complete();
+      fail({ error });
+      complete();
     }
   };
   return {
     counters,
     send({ progress }: { progress: NumericProgress }): void {
-      if (!accepting) return;
+      if (!accepting) {
+        return;
+      }
       counters.received++;
       if (signal.aborted || failed) {
         counters.discarded++;
@@ -83,8 +91,11 @@ export function createProgressQueue({ deliver, signal }: {
       if (pending) {
         // A new phase supersedes an old phase's undelivered state. Never let
         // a delayed prefill update overwrite a newer generating indicator.
-        if (pending.phase === progress.phase) counters.coalesced++;
-        else counters.discarded++;
+        if (pending.phase === progress.phase) {
+          counters.coalesced++;
+        } else {
+          counters.discarded++;
+        }
         pending = undefined;
       }
       // Copy the numeric snapshot; callers may reuse their progress object.
@@ -94,15 +105,23 @@ export function createProgressQueue({ deliver, signal }: {
       if (active.has(snapshot.phase)) {
         pending = snapshot;
         counters.peakPending = 1;
-      } else start({ progress: snapshot });
+      } else {
+        start({ progress: snapshot });
+      }
     },
     async finish(): Promise<void> {
       accepting = false;
-      if (signal.aborted || failed) discardPending();
+      if (signal.aborted || failed) {
+        discardPending();
+      }
       // Completing one callback can start delivery of the latest snapshot.
       // A single Promise.all(active) would miss that newly owned callback.
-      while (active.size > 0) await Promise.all(active.values());
-      if (failed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+      while (active.size > 0) {
+        await Promise.all(active.values());
+      }
+      if (failed) {
+        throw new LlamaCppBrowserError({ code: 'worker-failed' });
+      }
     },
   };
 }

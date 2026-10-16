@@ -24,7 +24,8 @@ it('shows inspection phase/path/progress and offers cancel while inspecting', as
   await picker.trigger('click');
   expect(wrapper.find('[data-testid="image-model-picker-popup"]').exists()).toBe(false);
   await wrapper.get('[data-testid="image-cancel-scan"]').trigger('click');
-  expect(view.cancelScan).toHaveBeenCalledOnce(); wrapper.unmount();
+  expect(view.cancelScan).toHaveBeenCalledOnce();
+  wrapper.unmount();
 });
 
 it('closes companion choices during a scan without resetting the selected file', async () => {
@@ -34,11 +35,13 @@ it('closes companion choices during a scan without resetting the selected file',
   const picker = wrapper.get('[data-testid="image-model-picker-trigger"]');
   await picker.trigger('click');
   expect(wrapper.find('[data-testid="image-model-picker-popup"]').exists()).toBe(true);
-  view.scanState.value = 'scanning'; await wrapper.vm.$nextTick();
+  view.scanState.value = 'scanning';
+  await wrapper.vm.$nextTick();
   expect(picker.element.matches(':disabled')).toBe(true);
   expect(wrapper.find('[data-testid="image-model-picker-popup"]').exists()).toBe(false);
   expect(view.components.value[0]?.selected).toBe('selected-vae');
-  view.scanState.value = 'idle'; await wrapper.vm.$nextTick();
+  view.scanState.value = 'idle';
+  await wrapper.vm.$nextTick();
   expect(picker.element.matches(':disabled')).toBe(false);
   expect(wrapper.find('[data-testid="image-model-picker-popup"]').exists()).toBe(false);
   wrapper.unmount();

@@ -23,14 +23,18 @@ export async function readAllHandleBytes({
   while (true) {
     const buffer = new Uint8Array(64 * 1024);
     const { bytesRead } = await handle.read({ buffer });
-    if (bytesRead === 0) break;
+    if (bytesRead === 0) {
+      break;
+    }
 
     const chunk = bytesRead === buffer.byteLength ? buffer : buffer.slice(0, bytesRead);
     chunks.push(chunk);
     totalLength += chunk.byteLength;
   }
 
-  if (chunks.length === 1) return chunks[0]!;
+  if (chunks.length === 1) {
+    return chunks[0]!;
+  }
 
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -86,7 +90,9 @@ export async function readAllFileBytes({ files, path }: { files: WeshFileCapabil
         offset: totalRead,
         length: stat.size - totalRead,
       });
-      if (bytesRead === 0) break;
+      if (bytesRead === 0) {
+        break;
+      }
       totalRead += bytesRead;
     }
     return buffer.subarray(0, totalRead);
@@ -267,7 +273,9 @@ export async function writeAllStreamToHandle({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
 
       if (handle.writeOwned !== undefined) {
         await handle.writeOwned({

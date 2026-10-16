@@ -44,7 +44,9 @@ export function bindNativeChat<
   const templateFor = ({ assertIdle, model }: { assertIdle: () => void, model: bigint }) => {
     assertIdle();
     const existing = templatesByModel.get(model);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     const created = new native.common_chat_templates(model, '', '', '');
     templatesByModel.set(model, created);
     return created;
@@ -53,7 +55,9 @@ export function bindNativeChat<
     releaseModel({ assertIdle, model }: { assertIdle: () => void, model: bigint }): void {
       assertIdle();
       const templates = templatesByModel.get(model);
-      if (!templates) return;
+      if (!templates) {
+        return;
+      }
       templatesByModel.delete(model);
       templates.delete();
     },
@@ -64,8 +68,10 @@ export function bindNativeChat<
       const dispose = (): void => {
         // Release ownership before destructors run. A failed parser cleanup
         // must neither leak the parameters nor retry the same handle later.
-        const ownedParser = parser; const ownedParams = params;
-        parser = undefined; params = undefined;
+        const ownedParser = parser;
+        const ownedParams = params;
+        parser = undefined;
+        params = undefined;
         try {
           ownedParser?.delete();
         } finally {
@@ -86,7 +92,10 @@ export function bindNativeChat<
               images.push({ marker, blob: part.blob });
               return { type: 'media_marker', text: marker };
             }
-            default: { const exhaustive: never = part; throw new Error(`Unknown part: ${exhaustive}`); }
+            default: {
+              const exhaustive: never = part;
+              throw new Error(`Unknown part: ${exhaustive}`);
+            }
             }
           }),
         }));
@@ -125,14 +134,18 @@ export function bindNativeChat<
           case 'low': case 'medium': case 'high': {
             const kwargs = new native.string_map();
             try {
-              kwargs.set('reasoning_effort', JSON.stringify(effort)); inputs.chat_template_kwargs = kwargs;
+              kwargs.set('reasoning_effort', JSON.stringify(effort));
+              inputs.chat_template_kwargs = kwargs;
             } finally {
               kwargs.delete();
             }
             break;
           }
           case undefined: break;
-          default: { const exhaustive: never = effort; throw new Error(`Unknown reasoning effort: ${exhaustive}`); }
+          default: {
+            const exhaustive: never = effort;
+            throw new Error(`Unknown reasoning effort: ${exhaustive}`);
+          }
           }
           inputs.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
           params = renderThinkingTemplate({ offRequested: effort === 'none', render: () => templates.apply(inputs) });
@@ -144,7 +157,9 @@ export function bindNativeChat<
         parser.parse_tool_calls = !!request.tools?.length;
         const arena = new native.common_peg_arena();
         try {
-          if (params.parser) arena.load(params.parser);
+          if (params.parser) {
+            arena.load(params.parser);
+          }
           parser.parser = arena;
         } finally {
           arena.delete();
@@ -172,7 +187,9 @@ export function bindNativeChat<
                 const toolCalls: GenerationResult['toolCalls'] = [];
                 for (let index = 0; index < calls.size(); index++) {
                   const call = calls.get(index);
-                  if (!call) throw new Error('Missing native tool call');
+                  if (!call) {
+                    throw new Error('Missing native tool call');
+                  }
                   try {
                     toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
                   } finally {
@@ -194,7 +211,9 @@ export function bindNativeChat<
         // Unsupported template inputs are recoverable; a Wasm trap is not.
         // Keep the original failure so the service retires the resident runtime
         // instead of reusing its cached template and native state.
-        if (error instanceof WebAssembly.RuntimeError) throw error;
+        if (error instanceof WebAssembly.RuntimeError) {
+          throw error;
+        }
         throw new LlamaCppBrowserError({ code: isUnsupportedReasoningError({ error }) ? 'reasoning-unsupported' : 'template-unsupported' });
       }
     },

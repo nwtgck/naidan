@@ -3,8 +3,13 @@ import { Blob as NativeBlob } from 'node:buffer';
 export type MetadataFixtureEntry = { key: string, type: number, value: Uint8Array };
 
 export function ggufInteger({ value, bytes }: { value: bigint | number, bytes: 4 | 8 }): Uint8Array {
-  const buffer = new Uint8Array(bytes); const view = new DataView(buffer.buffer);
-  if (bytes === 4) view.setUint32(0, Number(value), true); else view.setBigUint64(0, BigInt(value), true);
+  const buffer = new Uint8Array(bytes);
+  const view = new DataView(buffer.buffer);
+  if (bytes === 4) {
+    view.setUint32(0, Number(value), true);
+  } else {
+    view.setBigUint64(0, BigInt(value), true);
+  }
   return buffer;
 }
 
@@ -14,9 +19,11 @@ export function ggufString({ value }: { value: string }): Uint8Array {
 }
 
 export function concatenateGguf({ parts }: { parts: readonly Uint8Array[] }): Uint8Array {
-  const bytes = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0)); let offset = 0;
+  const bytes = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
+  let offset = 0;
   for (const part of parts) {
-    bytes.set(part, offset); offset += part.length;
+    bytes.set(part, offset);
+    offset += part.length;
   }
   return bytes;
 }

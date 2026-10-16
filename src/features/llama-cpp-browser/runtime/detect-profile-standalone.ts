@@ -7,7 +7,9 @@ import { decodeEmbeddedBrotli } from '@/features/file-protocol-standalone/embedd
 export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptions['profile'] }): Promise<LlamaCppProfile> {
   parseRuntimeOptions({ options: { profile } });
   try {
-    if (typeof WebAssembly === 'undefined') throw new Error('WebAssembly');
+    if (typeof WebAssembly === 'undefined') {
+      throw new Error('WebAssembly');
+    }
     const selected = (() => {
       switch (profile) {
       case 'auto': {
@@ -20,15 +22,22 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
         return memory64 ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
       }
       case 'webgpu-wasm64-jspi':
-        if (!WebAssembly.validate(memory64Probe)) throw new Error('memory64');
+        if (!WebAssembly.validate(memory64Probe)) {
+          throw new Error('memory64');
+        }
         return profile;
       case 'webgpu-wasm32-jspi': return profile;
       case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm32-asyncify': throw new Error('Non-embedded profile');
-      default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = profile;
+        throw new Error(`Unhandled profile: ${exhaustive}`);
+      }
       }
     })();
     await checkJspi();
-    if (await gpuUnavailableReason()) throw new Error('WebGPU');
+    if (await gpuUnavailableReason()) {
+      throw new Error('WebGPU');
+    }
     // Standalone intentionally ships only Brotli to reduce distribution size;
     // browser-side DecompressionStream('brotli') must remain standalone-only.
     // Hosted browser paths must not run this probe and retain gzip decoding.
@@ -55,11 +64,15 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
   const memory64 = supportsMemory64();
   try {
     reason = 'wasm';
-    if (typeof WebAssembly === 'undefined') throw new Error('WebAssembly');
-    reason = 'jspi'; await checkJspi();
+    if (typeof WebAssembly === 'undefined') {
+      throw new Error('WebAssembly');
+    }
+    reason = 'jspi';
+    await checkJspi();
     const gpuReason = await gpuUnavailableReason();
     if (gpuReason) {
-      reason = gpuReason; throw new Error('WebGPU');
+      reason = gpuReason;
+      throw new Error('WebGPU');
     }
     reason = 'brotli';
     await decodeEmbeddedBrotli({
@@ -67,7 +80,8 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
       byteLength: 1,
       sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
     });
-    reason = 'storage'; await checkStorage();
+    reason = 'storage';
+    await checkStorage();
     reason = undefined;
   } catch { /* Return only a closed capability reason, never browser error text. */ }
   return profileCapabilitiesSchema.parse({

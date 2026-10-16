@@ -36,7 +36,9 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
       "/tmp')]<|tool_call_end|>",
     ];
 
-    for (const chunk of chunks) parser.feed({ output: chunk });
+    for (const chunk of chunks) {
+      parser.feed({ output: chunk });
+    }
     parser.flush();
 
     expect(onText.mock.calls.map(([value]) => value.text).join('')).toBe('directory.</think>');
@@ -55,7 +57,9 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     const parser = createParser({ toolNames: ['lookup_weather'] });
     const output = "<|tool_call_start|>[lookup_weather(city='Tokyo')]<|tool_call_end|>";
 
-    for (const character of output) parser.feed({ output: character });
+    for (const character of output) {
+      parser.feed({ output: character });
+    }
     parser.flush();
 
     expect(onText).not.toHaveBeenCalled();
@@ -219,7 +223,9 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     ]);
     expect(parser.drainToolCalls()).toEqual([]);
 
-    for (const character of DELIMITED_PYTHONIC_TOOL_CALL_CLOSE) parser.feed({ output: character });
+    for (const character of DELIMITED_PYTHONIC_TOOL_CALL_CLOSE) {
+      parser.feed({ output: character });
+    }
 
     expect(events.at(-1)).toEqual({ type: 'block-committed', blockId: 0, callCount: 2 });
     expect(parser.drainToolCalls().map(call => call.function.name)).toEqual(['first_tool', 'second_tool']);
@@ -248,7 +254,9 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     const parser = createParser({ toolNames: ['shell_execute'] });
     const output = `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}[shell_execute(shell_script='cat > /workspace/game.html << \\'EOF\\'\\n<script>\\nconst mole = document.getElementById(\\'mole\\');\\n</script>\\nEOF')]${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
 
-    for (const character of output) parser.feed({ output: character });
+    for (const character of output) {
+      parser.feed({ output: character });
+    }
     parser.flush();
 
     const calls = parser.drainToolCalls();
@@ -269,7 +277,9 @@ EOF`,
     const delimiterText = DELIMITED_PYTHONIC_TOOL_CALL_CLOSE;
     const output = `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}[write_file(content='before ${delimiterText} after')]${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
 
-    for (const character of output) parser.feed({ output: character });
+    for (const character of output) {
+      parser.feed({ output: character });
+    }
     parser.flush();
 
     const calls = parser.drainToolCalls();

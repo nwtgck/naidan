@@ -34,7 +34,9 @@ async function finishMessage({ onEvent }: { onEvent: InferenceGenerationCallback
 
 async function emitMessage({ onEvent, chunks }: { onEvent: InferenceGenerationCallback; chunks: string[] }): Promise<void> {
   await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
-  for (const text of chunks) await onEvent({ event: { type: 'text_delta', index: 0, text } });
+  for (const text of chunks) {
+    await onEvent({ event: { type: 'text_delta', index: 0, text } });
+  }
   await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
   await finishMessage({ onEvent });
 }
@@ -172,7 +174,9 @@ describe('isolated fixed Production Provider capture owner', () => {
       expect(owner.getProgress()).toMatchObject({ run: { status: 'running' }, selectedRequests: 3, totalRequests: 13 });
       expect(snapshots.every(snapshot => snapshot.mock.calls.length === 0)).toBe(true);
     });
-    for (let index = 0; index < 100; index += 1) owner.getProgress();
+    for (let index = 0; index < 100; index += 1) {
+      owner.getProgress();
+    }
     expect(snapshots).toHaveLength(13);
     expect(snapshots.every(snapshot => snapshot.mock.calls.length === 0)).toBe(true);
     const result = await owner.run();
@@ -221,7 +225,8 @@ describe('isolated fixed Production Provider capture owner', () => {
     const client = clientFixture();
     let late: Parameters<TransformersJsWorkerClient['generateMessage']>[0]['onEvent'] | undefined;
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
-      late = onEvent; await emitMessage({ onEvent, chunks: ['overflow'] });
+      late = onEvent;
+      await emitMessage({ onEvent, chunks: ['overflow'] });
     });
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       await late?.({ event: { type: 'text_delta', index: 0, text: 'not usable as history' } });
@@ -248,7 +253,9 @@ describe('isolated fixed Production Provider capture owner', () => {
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'tool_results' } } });
       } else if (emitted && messages.at(-1)?.role === 'tool') {
         await emitMessage({ onEvent, chunks: ['Tool continuation.'] });
-      } else await finishMessage({ onEvent });
+      } else {
+        await finishMessage({ onEvent });
+      }
     });
     const { owner } = createOwner({ client, runId: 'tools-v2', plan: 'generation-capabilities-v2', traceLimits: limits });
     const result = await owner.run();
@@ -394,7 +401,9 @@ describe('isolated fixed Production Provider capture owner', () => {
     // must revoke that capability. It is not a late Provider event to export.
     expect(result.requests[0]?.trace.lateEvents).toEqual([]);
     const settled = result.requests[1]?.trace.settled;
-    if (settled === undefined) throw new Error('Missing settled continuation');
+    if (settled === undefined) {
+      throw new Error('Missing settled continuation');
+    }
     expect(captureSettledAssistantParts({ settled })).toEqual([{ id: 'part_0', type: 'text', text: 'second text', completeness: 'complete' }]);
     expect(result.requests[2]?.input?.messages).toEqual([{ role: 'user', content: 'A separate synthetic capture conversation.' }]);
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
@@ -409,7 +418,8 @@ describe('isolated fixed Production Provider capture owner', () => {
       await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'partial' } });
       await vi.waitFor(() => expect(owner.snapshot().requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'partial', completeness: 'partial' })));
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
       await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
       await finishMessage({ onEvent });
     });
@@ -420,7 +430,9 @@ describe('isolated fixed Production Provider capture owner', () => {
     expect(before.requests[0]?.status).toBe('awaiting-settlement');
     expect(before.requests[0]?.trace.settled).toBeUndefined();
     const input = before.requests[0]?.input;
-    if (input === undefined) throw new Error('Missing prepared request');
+    if (input === undefined) {
+      throw new Error('Missing prepared request');
+    }
     expect(Object.isFrozen(before)).toBe(true);
     expect(Object.isFrozen(before.requests)).toBe(true);
     expect(Object.isFrozen(input)).toBe(true);
@@ -507,7 +519,8 @@ describe('isolated fixed Production Provider capture owner', () => {
     const entered = deferred<void>();
     const generation = deferred<void>();
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
-      entered.resolve(); await generation.promise;
+      entered.resolve();
+      await generation.promise;
       await finishMessage({ onEvent });
     });
     client.interrupt.mockImplementationOnce(async () => generation.resolve());
@@ -532,7 +545,8 @@ describe('isolated fixed Production Provider capture owner', () => {
     const entered = deferred<void>();
     const generation = deferred<void>();
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
-      entered.resolve(); await generation.promise;
+      entered.resolve();
+      await generation.promise;
       await finishMessage({ onEvent });
     });
     const { owner } = createOwner({ client, runId: 'once', plan: 'first-only', traceLimits: limits });
@@ -552,11 +566,13 @@ describe('isolated fixed Production Provider capture owner', () => {
     const cleanup = deferred<void>();
     const disposed = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Controlled physical client disposal' });
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
-      entered.resolve(); await generation.promise;
+      entered.resolve();
+      await generation.promise;
       await finishMessage({ onEvent });
     });
     client.dispose.mockImplementationOnce(() => {
-      generation.reject(disposed); return cleanup.promise;
+      generation.reject(disposed);
+      return cleanup.promise;
     });
     const { owner, factory } = createOwner({ client, runId: 'dispose-pending', plan: 'first-continuity-independent', traceLimits: limits });
     const running = owner.run();

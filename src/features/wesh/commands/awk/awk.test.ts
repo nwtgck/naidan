@@ -26,7 +26,9 @@ describe('wesh awk', () => {
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -46,7 +48,9 @@ describe('wesh awk', () => {
   }): Promise<string> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -60,7 +64,9 @@ describe('wesh awk', () => {
   async function readFileBytes({ path }: { path: string }): Promise<Uint8Array> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {

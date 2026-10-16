@@ -16,17 +16,28 @@ export function componentRequirements({ family }: { family: ImageFamily }): { sl
   case 'ernie-image': return [{ slot: 'vae', accepts: ['vae-flux32'], required: true }, { slot: 'lm', accepts: ['lm-ministral3-3b'], required: true }];
   case 'sd-checkpoint': return [{ slot: 'vae', accepts: ['vae-sd4'], required: false }];
   case 'unknown': return [];
-  default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = family;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 export function componentMatch({ candidate, requirement }: { candidate: { family: string, classes: readonly string[], roles: readonly ModelSlot[], issue: string | undefined }, requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): 'matching' | 'unverified' | 'incompatible' {
-  if (candidate.issue) return 'incompatible';
+  if (candidate.issue) {
+    return 'incompatible';
+  }
   // This selector supports standalone VAE files. Embedded decoder tensors do
   // not establish that a whole different checkpoint is usable as a VAE override.
-  if (requirement.slot === 'vae' && candidate.family === 'sd-checkpoint') return 'incompatible';
-  if (candidate.classes.some(value => requirement.accepts.some(accepted => accepted === value))) return 'matching';
-  if (candidate.classes.length || candidate.roles.length && !candidate.roles.includes(requirement.slot)) return 'incompatible';
+  if (requirement.slot === 'vae' && candidate.family === 'sd-checkpoint') {
+    return 'incompatible';
+  }
+  if (candidate.classes.some(value => requirement.accepts.some(accepted => accepted === value))) {
+    return 'matching';
+  }
+  if (candidate.classes.length || candidate.roles.length && !candidate.roles.includes(requirement.slot)) {
+    return 'incompatible';
+  }
   return 'unverified';
 }
 

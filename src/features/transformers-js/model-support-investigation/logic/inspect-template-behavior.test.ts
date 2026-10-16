@@ -28,7 +28,9 @@ function tokenizer(): ModelSupportInvestigationTemplateTokenizer {
     chat_template: '{{ messages }}',
     get_chat_template: vi.fn(({ tools }) => tools ? 'tool template' : 'default template'),
     apply_chat_template: vi.fn((messages, options) => {
-      if (options?.tokenize === false) return 'rendered prompt';
+      if (options?.tokenize === false) {
+        return 'rendered prompt';
+      }
       return messages.length > 1 ? [1, 2, 3, 4, 5] : [1, 2, 3];
     }),
   } as unknown as ModelSupportInvestigationTemplateTokenizer;
@@ -93,7 +95,9 @@ describe('inspectTemplateBehavior', () => {
   it('records the first tool template token difference without inferring a suffix', async () => {
     const value = tokenizer();
     value.apply_chat_template = vi.fn((messages, options) => {
-      if (options?.tokenize === false) return 'rendered prompt';
+      if (options?.tokenize === false) {
+        return 'rendered prompt';
+      }
       return messages.length > 1 ? [1, 9, 3] : [1, 2, 3];
     }) as unknown as ModelSupportInvestigationTemplateTokenizer['apply_chat_template'];
     const result = await inspectTemplateBehavior({
@@ -112,7 +116,9 @@ describe('inspectTemplateBehavior', () => {
   it('records an unsupported template case without failing the whole matrix', async () => {
     const value = tokenizer();
     value.get_chat_template = vi.fn(({ tools }) => {
-      if (tools) throw new Error('tool template unavailable');
+      if (tools) {
+        throw new Error('tool template unavailable');
+      }
       return 'default template';
     });
     const result = await inspectTemplateBehavior({
@@ -175,7 +181,9 @@ Template probe user message.<|im_end|>
   it('preserves selected template and rendered text when tokenization fails', async () => {
     const value = tokenizer();
     value.apply_chat_template = vi.fn((_messages, options) => {
-      if (options?.tokenize === false) return 'rendered before tokenization';
+      if (options?.tokenize === false) {
+        return 'rendered before tokenization';
+      }
       throw new Error('tokenization failed');
     }) as unknown as ModelSupportInvestigationTemplateTokenizer['apply_chat_template'];
     const result = await inspectTemplateBehavior({

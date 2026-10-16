@@ -20,19 +20,33 @@ export function createPipingFetchPool({ capacity, request }: {
     while (active < capacity && queue.length) {
       const item = queue.shift()!;
       if (item.signal.aborted) {
-        item.state = 'settled'; item.removeAbort(); item.reject(item.signal.reason); continue;
+        item.state = 'settled';
+        item.removeAbort();
+        item.reject(item.signal.reason);
+        continue;
       }
-      item.state = 'active'; item.removeAbort(); active++; peak = Math.max(peak, active);
+      item.state = 'active';
+      item.removeAbort();
+      active++;
+      peak = Math.max(peak, active);
       const release = () => {
         switch (item.state) {
         case 'active': break;
         case 'queued': case 'settled': return;
-        default: { const exhaustive: never = item.state; throw new Error(String(exhaustive)); }
-        } item.state = 'settled'; active--; drain();
+        default: {
+          const exhaustive: never = item.state;
+          throw new Error(String(exhaustive));
+        }
+        }
+        item.state = 'settled';
+        active--;
+        drain();
       };
       void Promise.resolve().then(() => request(item.args)).then(response => {
         if (!response.body) {
-          release(); item.resolve(response); return;
+          release();
+          item.resolve(response);
+          return;
         }
         const reader = response.body.getReader();
         item.resolve(new Response(new ReadableStream<Uint8Array>({
@@ -40,22 +54,30 @@ export function createPipingFetchPool({ capacity, request }: {
             try {
               const part = await reader.read();
               if (part.done) {
-                reader.releaseLock(); release(); controller.close();
-              } else controller.enqueue(part.value);
+                reader.releaseLock();
+                release();
+                controller.close();
+              } else {
+                controller.enqueue(part.value);
+              }
             } catch (error) {
-              reader.releaseLock(); release(); controller.error(error);
+              reader.releaseLock();
+              release();
+              controller.error(error);
             }
           },
           async cancel(reason) {
             try {
               await reader.cancel(reason);
             } finally {
-              reader.releaseLock(); release();
+              reader.releaseLock();
+              release();
             }
           },
         }, { highWaterMark: 0 }), { status: response.status, headers: response.headers }));
       }, error => {
-        release(); item.reject(error);
+        release();
+        item.reject(error);
       });
     }
   };
@@ -66,17 +88,27 @@ export function createPipingFetchPool({ capacity, request }: {
     request({ input, init }: { input: FetchArguments['input'], init: FetchArguments['init'] }): Promise<Response> {
       const args = { input, init };
       const signal = args.init?.signal;
-      if (!signal) return Promise.reject(new Error('Finite relay requests require a signal'));
+      if (!signal) {
+        return Promise.reject(new Error('Finite relay requests require a signal'));
+      }
       signal.throwIfAborted();
       return new Promise((resolve, reject) => {
         const abort = () => {
           switch (item.state) {
           case 'queued': break;
           case 'active': case 'settled': return;
-          default: { const exhaustive: never = item.state; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = item.state;
+            throw new Error(String(exhaustive));
           }
-          const index = queue.indexOf(item); if (index >= 0) queue.splice(index, 1);
-          item.state = 'settled'; item.removeAbort(); reject(signal.reason);
+          }
+          const index = queue.indexOf(item);
+          if (index >= 0) {
+            queue.splice(index, 1);
+          }
+          item.state = 'settled';
+          item.removeAbort();
+          reject(signal.reason);
         };
         const item: Queued = {
           args,
@@ -86,8 +118,13 @@ export function createPipingFetchPool({ capacity, request }: {
           reject,
           removeAbort: () => signal.removeEventListener('abort', abort),
         };
-        signal.addEventListener('abort', abort, { once: true }); queue.push(item);
-        if (signal.aborted) abort(); else drain();
+        signal.addEventListener('abort', abort, { once: true });
+        queue.push(item);
+        if (signal.aborted) {
+          abort();
+        } else {
+          drain();
+        }
       });
     },
   };

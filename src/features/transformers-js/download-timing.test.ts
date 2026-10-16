@@ -52,11 +52,15 @@ describe('retained Download timing', () => {
   it('bounds records and per-operation scalars while ignoring late evicted owners', () => {
     const collector = createDownloadTimingCollector();
     const first = collector.begin({ modelId: 'org/first', runtimeEpoch: 0 });
-    for (let i = 0; i < 8; i++) collector.begin({ modelId: 'org/next', runtimeEpoch: i });
+    for (let i = 0; i < 8; i++) {
+      collector.begin({ modelId: 'org/next', runtimeEpoch: i });
+    }
     first.observe({ observation });
     first.finish({ outcome: 'completed' });
     const current = collector.begin({ modelId: 'org/current', runtimeEpoch: 9 });
-    for (let i = 0; i < 130; i++) current.observe({ observation });
+    for (let i = 0; i < 130; i++) {
+      current.observe({ observation });
+    }
     const snapshot = collector.snapshot();
     expect(snapshot.records).toHaveLength(8);
     expect(snapshot.droppedOperations).toBe(2);

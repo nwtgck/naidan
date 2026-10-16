@@ -233,7 +233,9 @@ function pushFilterValidationTasks({
 }): void {
   for (let index = filters.length - 1; index >= 0; index -= 1) {
     const filter = filters[index];
-    if (filter === undefined) throw new Error('jq validation child filter is missing');
+    if (filter === undefined) {
+      throw new Error('jq validation child filter is missing');
+    }
     tasks.push({ kind: 'filter', filter });
   }
 }
@@ -256,7 +258,9 @@ function removeValidationVariable({
   name: string,
 }): void {
   const count = counts.get(name);
-  if (count === undefined) throw new Error(`jq validation variable scope underflow: ${name}`);
+  if (count === undefined) {
+    throw new Error(`jq validation variable scope underflow: ${name}`);
+  }
   if (count === 1) {
     counts.delete(name);
     return;
@@ -278,12 +282,18 @@ function isJqIdentityFilter({ filter }: { readonly filter: JqFilter }): boolean 
   const pending: JqFilter[] = [filter];
   let visited = 0;
   while (pending.length > 0) {
-    if (visited >= 4_096) return false;
+    if (visited >= 4_096) {
+      return false;
+    }
     visited += 1;
     const current = pending.pop();
-    if (current === undefined) throw new Error('jq identity-filter stack is empty');
+    if (current === undefined) {
+      throw new Error('jq identity-filter stack is empty');
+    }
     const kind: string = current.kind;
-    if (kind === 'identity') continue;
+    if (kind === 'identity') {
+      continue;
+    }
     if (kind === 'pipe') {
       const pipe = current as Extract<JqFilter, { kind: 'pipe' }>;
       pending.push(pipe.right, pipe.left);
@@ -316,7 +326,9 @@ function evaluateJqCompileTimeConstant({
   readonly depth?: number,
   readonly budget?: JqCompileTimeBudget,
 }): JqCompileTimeConstant | undefined {
-  if (depth > 128 || budget.remaining <= 0) return undefined;
+  if (depth > 128 || budget.remaining <= 0) {
+    return undefined;
+  }
   budget.remaining -= 1;
   const evaluate = ({
     child,
@@ -359,9 +371,13 @@ function evaluateJqCompileTimeConstant({
     const value: JsonValue[] = [];
     const pending = [...filter.items].reverse();
     while (pending.length > 0) {
-      if (value.length >= JQ_COMPILE_TIME_MAX_ARRAY_ITEMS || budget.remaining <= 0) return undefined;
+      if (value.length >= JQ_COMPILE_TIME_MAX_ARRAY_ITEMS || budget.remaining <= 0) {
+        return undefined;
+      }
       const item = pending.pop();
-      if (item === undefined) throw new Error('jq compile-time array item stack is empty');
+      if (item === undefined) {
+        throw new Error('jq compile-time array item stack is empty');
+      }
       const itemKind: string = item.kind;
       if (itemKind === 'comma') {
         budget.remaining -= 1;
@@ -379,7 +395,9 @@ function evaluateJqCompileTimeConstant({
         }
       }
       const itemValue = evaluate({ child: item });
-      if (itemValue === undefined) return undefined;
+      if (itemValue === undefined) {
+        return undefined;
+      }
       value.push(itemValue.value);
     }
     return { value };
@@ -403,16 +421,24 @@ function evaluateJqCompileTimeConstant({
         }
         }
       })();
-      if (key === undefined) return undefined;
+      if (key === undefined) {
+        return undefined;
+      }
       const entryValue = evaluate({ child: entry.value });
-      if (entryValue === undefined) return undefined;
+      if (entryValue === undefined) {
+        return undefined;
+      }
       defineJsonProperty({ object: value, key, value: entryValue.value });
     }
     return { value };
   }
   case 'pipe':
-    if (isJqIdentityFilter({ filter: filter.left })) return evaluate({ child: filter.right, childInput: input });
-    if (isJqIdentityFilter({ filter: filter.right })) return evaluate({ child: filter.left, childInput: input });
+    if (isJqIdentityFilter({ filter: filter.left })) {
+      return evaluate({ child: filter.right, childInput: input });
+    }
+    if (isJqIdentityFilter({ filter: filter.right })) {
+      return evaluate({ child: filter.left, childInput: input });
+    }
     return undefined;
   case 'unary':
     return undefined;
@@ -420,8 +446,12 @@ function evaluateJqCompileTimeConstant({
     const operator = filter.operator;
     switch (operator) {
     case 'pipe':
-      if (isJqIdentityFilter({ filter: filter.left })) return evaluate({ child: filter.right, childInput: input });
-      if (isJqIdentityFilter({ filter: filter.right })) return evaluate({ child: filter.left, childInput: input });
+      if (isJqIdentityFilter({ filter: filter.left })) {
+        return evaluate({ child: filter.right, childInput: input });
+      }
+      if (isJqIdentityFilter({ filter: filter.right })) {
+        return evaluate({ child: filter.left, childInput: input });
+      }
       return undefined;
     case 'comma':
     case 'alternative':
@@ -447,7 +477,9 @@ function evaluateJqCompileTimeConstant({
     }
     const left = evaluate({ child: filter.left });
     const right = evaluate({ child: filter.right });
-    if (left === undefined || right === undefined) return undefined;
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
     switch (operator) {
     case 'eq':
       return { value: jsonValuesEqual({ left: left.value, right: right.value }) };
@@ -462,8 +494,12 @@ function evaluateJqCompileTimeConstant({
     case 'ge':
       return { value: compareJsonValues({ left: left.value, right: right.value }) >= 0 };
     case 'add':
-      if (left.value === null) return right;
-      if (right.value === null) return left;
+      if (left.value === null) {
+        return right;
+      }
+      if (right.value === null) {
+        return left;
+      }
       if (typeof left.value === 'number' && typeof right.value === 'number') {
         return {
           value: normalizeJqArithmeticResult({

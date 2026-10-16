@@ -27,7 +27,9 @@ describe('wesh diff', () => {
   }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must contain a file name');
+    if (fileName === undefined) {
+      throw new Error('path must contain a file name');
+    }
     let directory = rootHandle;
     for (const segment of segments) {
       directory = await directory.getDirectoryHandle(segment, { create: true });

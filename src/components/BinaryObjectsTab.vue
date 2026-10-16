@@ -53,7 +53,9 @@ const fetchObjects = async () => {
 };
 
 const loadMore = () => {
-  if (isAddingItems.value) return;
+  if (isAddingItems.value) {
+    return;
+  }
   if (displayLimit.value < filteredObjects.value.length) {
     isAddingItems.value = true;
     displayLimit.value += 60; // Larger increments = fewer layout passes
@@ -164,7 +166,9 @@ const handleSort = ({ key }: { key: typeof sortBy.value }) => {
 };
 
 const formatSize = ({ bytes }: { bytes: number }) => {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) {
+    return '0 B';
+  }
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -247,8 +251,12 @@ const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob, size?: number })
 };
 
 const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
-  if (thumbnails.value.has(obj.id) || thumbnailLoading.value.has(obj.id)) return;
-  if (!obj.mimeType.startsWith('image/')) return;
+  if (thumbnails.value.has(obj.id) || thumbnailLoading.value.has(obj.id)) {
+    return;
+  }
+  if (!obj.mimeType.startsWith('image/')) {
+    return;
+  }
 
   thumbnailLoading.value.add(obj.id);
   try {
@@ -287,19 +295,25 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
 let cleanupTimeout: number | null = null;
 
 const performThumbnailCleanup = () => {
-  if (thumbnailCount.value <= 300) return;
+  if (thumbnailCount.value <= 300) {
+    return;
+  }
 
   const idsToDelete: BinaryObjectId[] = [];
   for (const id of thumbnails.value.keys()) {
     if (!visibleIds.has(idToRaw({ id }))) {
       idsToDelete.push(id);
     }
-    if (thumbnailCount.value - idsToDelete.length <= 200) break;
+    if (thumbnailCount.value - idsToDelete.length <= 200) {
+      break;
+    }
   }
 
   for (const id of idsToDelete) {
     const url = thumbnails.value.get(id);
-    if (url) URL.revokeObjectURL(url); // Clean up browser memory
+    if (url) {
+      URL.revokeObjectURL(url);
+    } // Clean up browser memory
     thumbnails.value.delete(id);
     thumbnailCount.value--;
   }
@@ -322,7 +336,9 @@ onMounted(() => {
   }, { threshold: 0, rootMargin: '800px' });
 
   watch(loadMoreSentinel, (el) => {
-    if (el) sentinelObserver?.observe(el);
+    if (el) {
+      sentinelObserver?.observe(el);
+    }
   }, { immediate: true });
 
   // 2. Individual items
@@ -330,16 +346,22 @@ onMounted(() => {
     entries.forEach(entry => {
       const target = entry.target as HTMLElement;
       const id = target.dataset.id;
-      if (!id) return;
+      if (!id) {
+        return;
+      }
 
       if (entry.isIntersecting) {
         visibleIds.add(id);
         const obj = objectMap.value.get(toBinaryObjectId({ raw: id }));
-        if (obj) loadThumbnail({ obj });
+        if (obj) {
+          loadThumbnail({ obj });
+        }
       } else {
         visibleIds.delete(id);
         if (thumbnailCount.value > 300) {
-          if (cleanupTimeout) clearTimeout(cleanupTimeout);
+          if (cleanupTimeout) {
+            clearTimeout(cleanupTimeout);
+          }
           cleanupTimeout = window.setTimeout(performThumbnailCleanup, 3000);
         }
       }
@@ -367,7 +389,9 @@ watch(objects, (newObjs, oldObjs) => {
     for (const oldObj of oldObjs) {
       if (!newIds.has(oldObj.id)) {
         const url = thumbnails.value.get(oldObj.id);
-        if (url) URL.revokeObjectURL(url);
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
         thumbnails.value.delete(oldObj.id);
         thumbnailCount.value--;
       }

@@ -16,9 +16,13 @@ function formatValue({ value }: { value: unknown }): string {
 }
 
 function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
-  if (endpoint === undefined) return undefined;
+  if (endpoint === undefined) {
+    return undefined;
+  }
   const cloned = cloneEndpoint({ endpoint });
-  if (!isHttpEndpoint(cloned)) return cloned;
+  if (!isHttpEndpoint(cloned)) {
+    return cloned;
+  }
   return {
     ...cloned,
     httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),

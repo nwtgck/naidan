@@ -55,7 +55,9 @@ describe('explicit single-text replay observations', () => {
 
   it.each(['id', 'index', 'type', 'text', 'completeness', 'phase'] as const)('rejects changed part %s', field => {
     const events = observedEvents.map(event => {
-      if (event.sequence !== 3 || event.kind !== 'part_text') return event;
+      if (event.sequence !== 3 || event.kind !== 'part_text') {
+        return event;
+      }
       switch (field) {
       case 'id': return { ...event, partId: 'other' };
       case 'index': return { ...event, index: 1 };
@@ -63,7 +65,10 @@ describe('explicit single-text replay observations', () => {
       case 'text': return { ...event, text: 'Rewritten' };
       case 'completeness': return { ...event, completeness: 'complete' as const };
       case 'phase': return { ...event, phase: 'after-settlement' as const };
-      default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = field;
+        throw new Error(String(exhaustive));
+      }
       }
     });
     expect(() => verifySingleTextPartsObservation({ recordedEvents, invocation: sourceInvocation, contract, observedEvents: events, finalized })).toThrow();

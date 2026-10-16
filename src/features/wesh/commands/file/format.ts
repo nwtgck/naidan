@@ -35,8 +35,12 @@ function formatTextQualifiers({
     });
     qualifiers.push(`with ${names.join(', ')} line terminators`);
   }
-  if (text.hasEscapeSequences) qualifiers.push('with escape sequences');
-  if (text.hasOverstriking) qualifiers.push('with overstriking');
+  if (text.hasEscapeSequences) {
+    qualifiers.push('with escape sequences');
+  }
+  if (text.hasOverstriking) {
+    qualifiers.push('with overstriking');
+  }
   return qualifiers.length === 0 ? '' : `, ${qualifiers.join(', ')}`;
 }
 

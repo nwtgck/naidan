@@ -7,30 +7,50 @@ export function parseModelJson({ text }: { text: string }): unknown {
     if (character === '"') {
       const start = offset++;
       for (; offset < text.length; offset++) {
-        if (text[offset] === '\\') offset++;
-        else if (text[offset] === '"') break;
+        if (text[offset] === '\\') {
+          offset++;
+        } else if (text[offset] === '"') {
+          break;
+        }
       }
       const frame = stack.at(-1);
       if (frame?.kind === 'object' && frame.key) {
         const key: unknown = JSON.parse(text.slice(start, offset + 1));
-        if (typeof key !== 'string' || frame.keys.has(key) || ++keyCount > 1_000_000) throw new Error('Duplicate or excessive model JSON keys');
-        frame.keys.add(key); frame.key = false;
+        if (typeof key !== 'string' || frame.keys.has(key) || ++keyCount > 1_000_000) {
+          throw new Error('Duplicate or excessive model JSON keys');
+        }
+        frame.keys.add(key);
+        frame.key = false;
       }
     } else if (character === '{' || character === '[') {
-      if (stack.length >= 64) throw new Error('Model JSON nesting exceeds the inspection limit');
-      switch (character) {
-      case '{': stack.push({ kind: 'object', keys: new Set(), key: true }); break;
-      case '[': stack.push({ kind: 'array', keys: new Set(), key: false }); break;
-      default: { const exhaustive: never = character; throw new Error(String(exhaustive)); }
+      if (stack.length >= 64) {
+        throw new Error('Model JSON nesting exceeds the inspection limit');
       }
-    } else if (character === '}' || character === ']') stack.pop();
-    else if (character === ',') {
+      switch (character) {
+      case '{': stack.push({ kind: 'object', keys: new Set(), key: true });
+        break;
+      case '[': stack.push({ kind: 'array', keys: new Set(), key: false });
+        break;
+      default: {
+        const exhaustive: never = character;
+        throw new Error(String(exhaustive));
+      }
+      }
+    } else if (character === '}' || character === ']') {
+      stack.pop();
+    } else if (character === ',') {
       const frame = stack.at(-1);
       const kind = frame?.kind;
       switch (kind) {
-      case 'object': if (frame) frame.key = true; break;
+      case 'object': if (frame) {
+        frame.key = true;
+      }
+        break;
       case 'array': case undefined: break;
-      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(String(exhaustive));
+      }
       }
     }
   }

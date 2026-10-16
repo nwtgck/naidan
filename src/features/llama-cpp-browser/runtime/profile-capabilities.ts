@@ -26,7 +26,10 @@ export function resolveProfilePreference({ preference, capabilities }: { prefere
   switch (preference) {
   case 'auto': return capabilities?.recommended;
   case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify': return preference;
-  default: { const exhaustive: never = preference; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = preference;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
+  }
   }
 }
 

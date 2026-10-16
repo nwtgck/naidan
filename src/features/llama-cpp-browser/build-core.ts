@@ -19,7 +19,9 @@ const standaloneBinaryIds = {
 function embeddedNotices({ source }: { source: string }): string {
   const comments = source.match(/\/\*[\s\S]*?\*\/|(?:^[ \t]*\/\/[^\n]*(?:\n|$))+/gm) ?? [];
   const notices = comments.filter(comment => /copyright|licen[cs]e|public domain|permission is hereby|redistribution/i.test(comment));
-  if (notices.length === 0) throw new Error('Missing embedded native license notices');
+  if (notices.length === 0) {
+    throw new Error('Missing embedded native license notices');
+  }
   return notices.join('\n\n');
 }
 
@@ -32,7 +34,10 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     switch (mode) {
     case 'standalone': return true;
     case 'hosted': return false;
-    default: { const exhaustive: never = mode; throw new Error(`Unhandled build mode: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(`Unhandled build mode: ${exhaustive}`);
+    }
     }
   })();
   const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : profileSchema.options;
@@ -72,9 +77,13 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
       },
       resolveId(id) {
-        if (!id.startsWith(virtualPrefix)) return;
+        if (!id.startsWith(virtualPrefix)) {
+          return;
+        }
         const resolved = byVirtualId.get(id);
-        if (!resolved) throw new Error(`Unavailable llama.cpp core import: ${id}`);
+        if (!resolved) {
+          throw new Error(`Unavailable llama.cpp core import: ${id}`);
+        }
         // The real package path keeps license collection and module provenance intact.
         return resolved;
       },
@@ -83,13 +92,21 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
       },
       load(id) {
         const filePath = normalizePath(id.split('?')[0]!);
-        if (!filePath.startsWith(profileRoot)) return;
+        if (!filePath.startsWith(profileRoot)) {
+          return;
+        }
         // Reject other native modules before tree shaking can hide their provenance.
         const entry = byId.get(filePath);
-        if (!entry) throw new Error(`Unavailable llama.cpp artifact: ${filePath}`);
-        for (const manifestPath of manifestPaths) this.addWatchFile(manifestPath);
+        if (!entry) {
+          throw new Error(`Unavailable llama.cpp artifact: ${filePath}`);
+        }
+        for (const manifestPath of manifestPaths) {
+          this.addWatchFile(manifestPath);
+        }
         this.addWatchFile(entry.core.filePath);
-        for (const relative of licenseFiles) this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
+        for (const relative of licenseFiles) {
+          this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
+        }
         return readArtifact({ relative: `profiles/${entry.profile}/browser/core.mjs` }).data.toString('utf8');
       },
     },

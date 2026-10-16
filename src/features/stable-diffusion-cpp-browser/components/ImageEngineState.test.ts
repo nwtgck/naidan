@@ -14,7 +14,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 function snapshot(): ImageEngineSnapshot {
@@ -127,7 +128,8 @@ it('allows an idle engine refresh while the generated image is still being saved
   expect(wrapper.find('[data-testid="image-engine-busy"]').exists()).toBe(false);
   const button = wrapper.get<HTMLButtonElement>('[data-testid="image-engine-refresh"]');
   expect(button.element.disabled).toBe(false);
-  await button.trigger('click'); expect(refresh).toHaveBeenCalledOnce();
+  await button.trigger('click');
+  expect(refresh).toHaveBeenCalledOnce();
 });
 
 it.each([

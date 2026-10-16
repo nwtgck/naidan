@@ -33,7 +33,9 @@ useModelLaunchCoordinator();
 watch(
   () => route.path,
   () => {
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      return;
+    }
     if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
       addRecentChat({ id: toChatId({ raw: route.params.id }) });
     }
@@ -60,7 +62,9 @@ watch(
       || !dismissed
       || path !== '/'
       || router.currentRoute.value.query['llama-cpp-browser-model'] !== undefined
-    ) return;
+    ) {
+      return;
+    }
 
     if (len === 0 && !q) {
       const { setActiveFocusArea } = useLayout();
@@ -70,7 +74,9 @@ watch(
         modelId: undefined,
         systemPrompt: undefined,
       });
-      if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+      if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+        return;
+      }
       if (currentChatState.currentChat.value) {
         const path = `/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`;
         documentMetadata?.continueHomeIntroduction({ routePath: path });
@@ -79,7 +85,9 @@ watch(
       return;
     }
 
-    if (!q) return;
+    if (!q) {
+      return;
+    }
 
     let targetGroupId: ChatGroupId | undefined = undefined;
     if (typeof chatGroupId === 'string') {
@@ -96,7 +104,9 @@ watch(
       }
     }
 
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      return;
+    }
     const targetModelId = typeof modelId === 'string' ? modelId : undefined;
     const systemPrompt = typeof systemPromptStr === 'string' && systemPromptStr
       ? {
@@ -124,7 +134,9 @@ watch(
 );
 
 onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
-  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+    return;
+  }
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'o' || event.key === 'O')) {
     event.preventDefault();
@@ -144,7 +156,9 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
 
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'k' || event.key === 'K')) {
     const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-    if (isMac && !event.metaKey) return;
+    if (isMac && !event.metaKey) {
+      return;
+    }
     event.preventDefault();
     useGlobalSearch().toggleSearch();
     return;

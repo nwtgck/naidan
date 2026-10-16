@@ -3,16 +3,22 @@ export function readOffsetVariableWidth({ bytes, offset, label }: {
   offset: number,
   label: string,
 }): { value: number, offset: number } {
-  if (offset >= bytes.byteLength) throw new Error(`truncated ${label}`);
+  if (offset >= bytes.byteLength) {
+    throw new Error(`truncated ${label}`);
+  }
   let byte = bytes[offset]!;
   offset += 1;
   let value = byte & 0x7f;
   while ((byte & 0x80) !== 0) {
-    if (offset >= bytes.byteLength) throw new Error(`truncated ${label}`);
+    if (offset >= bytes.byteLength) {
+      throw new Error(`truncated ${label}`);
+    }
     byte = bytes[offset]!;
     offset += 1;
     value = (value + 1) * 128 + (byte & 0x7f);
-    if (!Number.isSafeInteger(value)) throw new Error(`${label} exceeds JavaScript safe integer range`);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`${label} exceeds JavaScript safe integer range`);
+    }
   }
   return { value, offset };
 }

@@ -54,7 +54,9 @@ describe('tab-memory investigation sessions', () => {
     original.targets.push('org/other');
     original.replayMetadata.splice(0);
     const restored = recallInvestigationSession({ seededTarget: 'org/first' });
-    if (restored?.view !== 'results') throw new Error('Expected retained results');
+    if (restored?.view !== 'results') {
+      throw new Error('Expected retained results');
+    }
     expect(restored?.targets).toEqual(['org/first']);
     expect(await restored?.replayMetadata[0]?.[1][0]?.blob.text()).toBe('{"model_type":"fixture"}');
     restored?.targets.splice(0);

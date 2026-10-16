@@ -25,7 +25,8 @@ describe('aggregated local model service', () => {
   });
 
   it('keeps linked models available and exposes an OPFS failure', async () => {
-    const error = new Error('OPFS unavailable'); vi.mocked(listStoredModels).mockRejectedValue(error);
+    const error = new Error('OPFS unavailable');
+    vi.mocked(listStoredModels).mockRejectedValue(error);
     expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([host]);
     expect(recordOpfsInventoryIssue).toHaveBeenCalledWith({ error });
   });

@@ -21,68 +21,100 @@ type ImportInput = { files: File[], directories: ModelDirectoryInput[] };
 async function importFiles({ collect }: { collect: () => ImportInput | Promise<ImportInput> }): Promise<void> {
   // Returning focus from a native drag or file picker starts a read-only list
   // refresh. That refresh must not disable imports or silently discard the input.
-  if (disposed || props.disabled || active.value !== undefined) return;
+  if (disposed || props.disabled || active.value !== undefined) {
+    return;
+  }
   localError.value = undefined;
   // Reserve the operation before asynchronous entry traversal, not just before
   // writing files. Cancellation/unmount must prevent late writes, and a second
   // drop, download, or deletion must not take over while an entry callback is pending.
-  const controller = new AbortController(); active.value = controller; emit('busy', true);
+  const controller = new AbortController();
+  active.value = controller;
+  emit('busy', true);
   let needsRefresh = false;
   try {
     // Invoke collect during dispatch, before the first await: DataTransfer entries
     // must be captured while the browser still exposes the drop's data store.
     const { files, directories } = await collect();
-    if (disposed || controller.signal.aborted) return;
+    if (disposed || controller.signal.aborted) {
+      return;
+    }
     if (files.some(file => !file.name.toLowerCase().endsWith('.gguf'))) {
-      localError.value = 'invalid-gguf'; return;
+      localError.value = 'invalid-gguf';
+      return;
     }
     for (const directory of directories) {
-      if (controller.signal.aborted) break;
+      if (controller.signal.aborted) {
+        break;
+      }
       needsRefresh = true;
       await llamaCppBrowserService.importDirectory({ directory, signal: controller.signal });
     }
     for (const file of files) {
-      if (controller.signal.aborted) break;
+      if (controller.signal.aborted) {
+        break;
+      }
       needsRefresh = true;
       await llamaCppBrowserService.importModel({ file, signal: controller.signal });
     }
   } catch (error) {
-    if (!disposed && !controller.signal.aborted) localError.value = errorCode({ error });
+    if (!disposed && !controller.signal.aborted) {
+      localError.value = errorCode({ error });
+    }
   } finally {
-    if (!disposed && needsRefresh) emit('changed');
-    active.value = undefined; emit('busy', false);
+    if (!disposed && needsRefresh) {
+      emit('changed');
+    }
+    active.value = undefined;
+    emit('busy', false);
   }
 }
 
 async function importFile({ event }: { event: Event }): Promise<void> {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
-  const files = Array.from(input.files ?? []); input.value = '';
-  if (!files.length) return;
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  if (!files.length) {
+    return;
+  }
   await importFiles({ collect: () => ({ files, directories: [] }) });
 }
 
 async function importDirectory({ event }: { event: Event }): Promise<void> {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
-  const files = Array.from(input.files ?? []); input.value = '';
-  if (!files.length) return;
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  if (!files.length) {
+    return;
+  }
   await importFiles({ collect: () => ({ files: [], directories: [directoryFromFiles({ files })] }) });
 }
 
 function dragEnter({ event }: { event: DragEvent }): void {
-  if (props.disabled || active.value !== undefined || !event.dataTransfer?.types.includes('Files')) return;
+  if (props.disabled || active.value !== undefined || !event.dataTransfer?.types.includes('Files')) {
+    return;
+  }
   dragDepth.value++;
 }
 
 function dragOver({ event }: { event: DragEvent }): void {
-  if (event.dataTransfer) event.dataTransfer.dropEffect = props.disabled || active.value !== undefined ? 'none' : 'copy';
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = props.disabled || active.value !== undefined ? 'none' : 'copy';
+  }
 }
 
 async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   dragDepth.value = 0;
   const transfer = event.dataTransfer;
-  if (!transfer) return;
+  if (!transfer) {
+    return;
+  }
   await importFiles({ collect: () => droppedModels({ transfer }) });
 }
 
@@ -91,7 +123,8 @@ function cancel(): void {
 }
 
 onUnmounted(() => {
-  disposed = true; active.value?.abort();
+  disposed = true;
+  active.value?.abort();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

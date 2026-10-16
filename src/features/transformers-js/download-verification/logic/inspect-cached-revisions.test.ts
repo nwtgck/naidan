@@ -22,7 +22,9 @@ function asDirectoryHandle(value: FakeDirectory): FileSystemDirectoryHandle {
     name: 'fixture',
     async getDirectoryHandle(name: string) {
       const entry = value.entries[name];
-      if (entry?.kind !== 'directory') throw new DOMException('Not found', 'NotFoundError');
+      if (entry?.kind !== 'directory') {
+        throw new DOMException('Not found', 'NotFoundError');
+      }
       return asDirectoryHandle(entry);
     },
     async *entries() {

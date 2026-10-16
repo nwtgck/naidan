@@ -164,8 +164,11 @@ describe('download investigation batch budget', () => {
       await vi.advanceTimersByTimeAsync(20);
       await assertion;
       expect(stop).toHaveBeenCalledOnce();
-      if (result === 'resolve') deferred.resolve('late');
-      else deferred.reject(new Error('late failure'));
+      if (result === 'resolve') {
+        deferred.resolve('late');
+      } else {
+        deferred.reject(new Error('late failure'));
+      }
       await vi.advanceTimersByTimeAsync(100);
       expect(stop).toHaveBeenCalledOnce();
     }

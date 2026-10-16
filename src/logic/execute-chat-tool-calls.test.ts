@@ -33,7 +33,8 @@ function execute({ calls, tools, node, signal, persistContent, onChange }: {
 describe('completed tool call execution', () => {
   it('executes validated defaults but keeps historical arguments unchanged', async () => {
     const completed = call({ id: 'call', name: 'f', argumentsText: ' { } ' });
-    const node = fresh(); const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
+    const node = fresh();
+    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
     await execute({ calls: [completed], tools: [tool({ execute: perform })], node, signal: undefined, persistContent: inline, onChange: () => {} });
     expect(perform).toHaveBeenCalledWith(expect.objectContaining({ args: { n: 4 } }));
     expect(completed.function.arguments).toBe(' { } ');
@@ -41,14 +42,16 @@ describe('completed tool call execution', () => {
   });
 
   it.each(['{"n":', '{"n":"bad"}', '{"n":4,"extra":true}'])('records invalid arguments without executing: %s', async argumentsText => {
-    const node = fresh(); const perform = vi.fn<Tool['execute']>();
+    const node = fresh();
+    const perform = vi.fn<Tool['execute']>();
     await execute({ calls: [call({ id: 'call', name: 'f', argumentsText })], tools: [tool({ execute: perform })], node, signal: undefined, persistContent: inline, onChange: () => {} });
     expect(perform).not.toHaveBeenCalled();
     expect(node.parts[0]?.result).toMatchObject({ status: 'error', error: { code: 'invalid_arguments' } });
   });
 
   it('records an unavailable tool without executing anything else', async () => {
-    const node = fresh(); const perform = vi.fn<Tool['execute']>();
+    const node = fresh();
+    const perform = vi.fn<Tool['execute']>();
     await execute({ calls: [call({ id: 'call', name: 'missing', argumentsText: '{}' })], tools: [tool({ execute: perform })], node, signal: undefined, persistContent: inline, onChange: () => {} });
     expect(perform).not.toHaveBeenCalled();
     expect(node.parts[0]?.result).toMatchObject({ status: 'error', error: { code: 'other', message: { type: 'text', text: 'Tool "missing" not found.' } } });
@@ -56,17 +59,20 @@ describe('completed tool call execution', () => {
 
   it('rejects ambiguous definitions, duplicate calls, and replay into an existing result node', async () => {
     const completed = call({ id: 'call', name: 'f', argumentsText: '{}' });
-    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' })); const implementation = tool({ execute: perform });
+    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
+    const implementation = tool({ execute: perform });
     await expect(execute({ calls: [completed], tools: [implementation, implementation], node: fresh(), signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('definitions');
     await expect(execute({ calls: [completed, completed], tools: [implementation], node: fresh(), signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('tool-call IDs');
-    const node = fresh(); node.parts.push({ type: 'tool_result', result: { toolCallId: completed.id, status: 'executing' } });
+    const node = fresh();
+    node.parts.push({ type: 'tool_result', result: { toolCallId: completed.id, status: 'executing' } });
     await expect(execute({ calls: [completed], tools: [implementation], node, signal: undefined, persistContent: inline, onChange: () => {} })).rejects.toThrow('new tool message');
     expect(perform).not.toHaveBeenCalled();
   });
 
   it('awaits async argument transformations before executing', async () => {
     const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
-    const implementation = tool({ execute: perform }); implementation.parametersSchema = z.object({ n: z.number().transform(async value => value + 1) });
+    const implementation = tool({ execute: perform });
+    implementation.parametersSchema = z.object({ n: z.number().transform(async value => value + 1) });
     await execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{"n":2}' })], tools: [implementation], node: fresh(), signal: undefined, persistContent: inline, onChange: () => {} });
     expect(perform).toHaveBeenCalledWith(expect.objectContaining({ args: { n: 3 } }));
   });
@@ -93,14 +99,18 @@ describe('completed tool call execution', () => {
       onChange: () => {},
       persistContent: inline,
       onEvent: async ({ toolCallId, event }) => {
-        await Promise.resolve(); expect(toolCallId).toBe(completed.id); seen.push(event.type);
+        await Promise.resolve();
+        expect(toolCallId).toBe(completed.id);
+        seen.push(event.type);
       },
     });
     expect(seen).toEqual(['started', 'output']);
   });
 
   it('stores received success before binary persistence and retains it if storage fails', async () => {
-    const node = fresh(); const fault = new Error('disk failed'); const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'already executed' }));
+    const node = fresh();
+    const fault = new Error('disk failed');
+    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'already executed' }));
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({ execute: perform })],
@@ -108,16 +118,20 @@ describe('completed tool call execution', () => {
       signal: undefined,
       onChange: () => {},
       persistContent: async () => {
-        expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { type: 'text', text: 'already executed' } }); throw fault;
+        expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { type: 'text', text: 'already executed' } });
+        throw fault;
       },
     })).rejects.toBe(fault);
-    expect(perform).toHaveBeenCalledTimes(1); expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'already executed' } });
+    expect(perform).toHaveBeenCalledTimes(1);
+    expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'already executed' } });
   });
 
   it('does not enter the next tool until result persistence and notification have completed', async () => {
-    const order: string[] = []; const node = fresh();
+    const order: string[] = [];
+    const node = fresh();
     const perform = vi.fn<Tool['execute']>(async () => {
-      order.push('execute'); return { status: 'success', content: 'text' };
+      order.push('execute');
+      return { status: 'success', content: 'text' };
     });
     await execute({
       calls: [call({ id: 'A', name: 'f', argumentsText: '{}' }), call({ id: 'B', name: 'f', argumentsText: '{}' })],
@@ -128,7 +142,9 @@ describe('completed tool call execution', () => {
         order.push('notify');
       },
       persistContent: async () => {
-        order.push('persist'); await Promise.resolve(); return { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) };
+        order.push('persist');
+        await Promise.resolve();
+        return { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) };
       },
     });
     expect(order).toEqual(['notify', 'execute', 'notify', 'persist', 'notify', 'notify', 'execute', 'notify', 'persist', 'notify']);
@@ -136,29 +152,39 @@ describe('completed tool call execution', () => {
   });
 
   it('keeps an observed result on a late abort and never executes the next call', async () => {
-    const controller = new AbortController(); const node = fresh(); const reason = new Error('user stopped');
+    const controller = new AbortController();
+    const node = fresh();
+    const reason = new Error('user stopped');
     const perform = vi.fn<Tool['execute']>(async () => {
-      controller.abort(reason); return { status: 'success', content: 'side effect done' };
+      controller.abort(reason);
+      return { status: 'success', content: 'side effect done' };
     });
     await expect(execute({ calls: [call({ id: 'A', name: 'f', argumentsText: '{}' }), call({ id: 'B', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: perform })], node, signal: controller.signal, onChange: () => {}, persistContent: inline })).rejects.toBe(reason);
-    expect(perform).toHaveBeenCalledTimes(1); expect(node.parts).toHaveLength(1);
+    expect(perform).toHaveBeenCalledTimes(1);
+    expect(node.parts).toHaveLength(1);
     expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'side effect done' } });
   });
 
   it('does not create executing results when stopped before execution starts', async () => {
-    const controller = new AbortController(); controller.abort(); const node = fresh();
+    const controller = new AbortController();
+    controller.abort();
+    const node = fresh();
     const perform = vi.fn<Tool['execute']>();
     await expect(execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: perform })], node, signal: controller.signal, onChange: () => {}, persistContent: inline })).rejects.toBe(controller.signal.reason);
-    expect(node.parts).toEqual([]); expect(perform).not.toHaveBeenCalled();
+    expect(node.parts).toEqual([]);
+    expect(perform).not.toHaveBeenCalled();
   });
 
   it('records a result instead of leaving executing on a cooperative execution abort', async () => {
-    const node = fresh(); const controller = new AbortController(); const reason = new Error('user stopped');
+    const node = fresh();
+    const controller = new AbortController();
+    const reason = new Error('user stopped');
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
         execute: async () => {
-          controller.abort(reason); throw reason;
+          controller.abort(reason);
+          throw reason;
         },
       })],
       node,
@@ -170,13 +196,15 @@ describe('completed tool call execution', () => {
   });
 
   it('propagates an observer failure rather than treating it as a recoverable tool error', async () => {
-    const node = fresh(); const fault = new Error('observer');
+    const node = fresh();
+    const fault = new Error('observer');
     const completed = call({ id: 'call', name: 'f', argumentsText: '{}' });
     await expect(executeChatToolCalls({
       calls: [completed],
       tools: [tool({
         execute: async ({ onEvent }) => {
-          await onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
+          await onEvent?.({ event: { type: 'started' } });
+          return { status: 'success', content: 'done' };
         },
       })],
       node,
@@ -192,7 +220,9 @@ describe('completed tool call execution', () => {
   });
 
   it('does not leave executing if the pre-execution notification fails', async () => {
-    const node = fresh(); const fault = new Error('notification'); const perform = vi.fn<Tool['execute']>();
+    const node = fresh();
+    const fault = new Error('notification');
+    const perform = vi.fn<Tool['execute']>();
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({ execute: perform })],
@@ -203,18 +233,23 @@ describe('completed tool call execution', () => {
       },
       persistContent: inline,
     })).rejects.toBe(fault);
-    expect(perform).not.toHaveBeenCalled(); expect(node.parts[0]?.result.status).toBe('error');
+    expect(perform).not.toHaveBeenCalled();
+    expect(node.parts[0]?.result.status).toBe('error');
   });
 
   it('only updates its own result node even when another branch has an identical call ID', async () => {
-    const other = fresh(); other.parts.push({ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } });
-    const before = structuredClone(other); const node = fresh();
+    const other = fresh();
+    other.parts.push({ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call' }), status: 'executing' } });
+    const before = structuredClone(other);
+    const node = fresh();
     await execute({ calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })], tools: [tool({ execute: async () => ({ status: 'success', content: 'this branch' }) })], node, signal: undefined, onChange: () => {}, persistContent: inline });
-    expect(other).toEqual(before); expect(node.parts[0]?.result).toMatchObject({ status: 'success' });
+    expect(other).toEqual(before);
+    expect(node.parts[0]?.result).toMatchObject({ status: 'success' });
   });
 
   it('takes a call snapshot before asynchronous work', async () => {
-    const second = call({ id: 'B', name: 'f', argumentsText: '{"n":7}' }); const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
+    const second = call({ id: 'B', name: 'f', argumentsText: '{"n":7}' });
+    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
     await execute({
       calls: [call({ id: 'A', name: 'f', argumentsText: '{}' }), second],
       tools: [tool({ execute: perform })],
@@ -229,12 +264,14 @@ describe('completed tool call execution', () => {
   });
 
   it('ignores asynchronous tool events after the execution has settled', async () => {
-    let late: Parameters<Tool['execute']>[0]['onEvent']; const observer = vi.fn();
+    let late: Parameters<Tool['execute']>[0]['onEvent'];
+    const observer = vi.fn();
     await executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
         execute: async ({ onEvent }) => {
-          late = onEvent; return { status: 'success', content: 'done' };
+          late = onEvent;
+          return { status: 'success', content: 'done' };
         },
       })],
       node: fresh(),
@@ -249,13 +286,16 @@ describe('completed tool call execution', () => {
   });
 
   it('waits for accepted event callbacks even if the tool does not await them', async () => {
-    const release = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
-    let settled = false; const node = fresh();
+    const release = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    let settled = false;
+    const node = fresh();
     const running = executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
         execute: async ({ onEvent }) => {
-          void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'done' };
+          void onEvent?.({ event: { type: 'started' } });
+          return { status: 'success', content: 'done' };
         },
       })],
       node,
@@ -264,19 +304,22 @@ describe('completed tool call execution', () => {
       onChange: () => {},
       persistContent: inline,
       onEvent: async () => {
-        entered.resolve(); await release.promise;
+        entered.resolve();
+        await release.promise;
       },
     }).then(() => {
       settled = true;
     });
     await entered.promise;
     expect(settled).toBe(false);
-    release.resolve(); await running;
+    release.resolve();
+    await running;
     expect(node.parts[0]?.result.status).toBe('success');
   });
 
   it('does not overwrite a result removed during binary persistence', async () => {
-    const node = fresh(); const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
+    const node = fresh();
+    const perform = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'done' }));
     await expect(execute({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({ execute: perform })],
@@ -284,19 +327,23 @@ describe('completed tool call execution', () => {
       signal: undefined,
       onChange: () => {},
       persistContent: async () => {
-        node.parts = []; return { type: 'binary_object', id: toBinaryObjectId({ raw: 'unlinked' }) };
+        node.parts = [];
+        return { type: 'binary_object', id: toBinaryObjectId({ raw: 'unlinked' }) };
       },
     })).rejects.toThrow('changed during persistence');
-    expect(node.parts).toEqual([]); expect(perform).toHaveBeenCalledTimes(1);
+    expect(node.parts).toEqual([]);
+    expect(perform).toHaveBeenCalledTimes(1);
   });
 
   it('owns a rejected event promise even when the tool ignores the callback result', async () => {
-    const fault = new Error('event observer'); const node = fresh();
+    const fault = new Error('event observer');
+    const node = fresh();
     await expect(executeChatToolCalls({
       calls: [call({ id: 'call', name: 'f', argumentsText: '{}' })],
       tools: [tool({
         execute: async ({ onEvent }) => {
-          void onEvent?.({ event: { type: 'started' } }); return { status: 'success', content: 'known outcome' };
+          void onEvent?.({ event: { type: 'started' } });
+          return { status: 'success', content: 'known outcome' };
         },
       })],
       node,
@@ -305,7 +352,8 @@ describe('completed tool call execution', () => {
       onChange: () => {},
       persistContent: inline,
       onEvent: async () => {
-        await Promise.resolve(); throw fault;
+        await Promise.resolve();
+        throw fault;
       },
     })).rejects.toBe(fault);
     expect(node.parts[0]?.result).toMatchObject({ status: 'success', content: { text: 'known outcome' } });
@@ -317,7 +365,9 @@ describe('completed tool call execution', () => {
     const callId = toToolCallId({ raw: 'call' });
     const stop = watch(() => node.parts.find(part => part.result.toolCallId === callId)?.result.status,
       status => {
-        if (status) statuses.push(status);
+        if (status) {
+          statuses.push(status);
+        }
       }, { flush: 'sync' });
     const inserted: ToolMessageNode['parts'][number] = {
       type: 'tool_result',

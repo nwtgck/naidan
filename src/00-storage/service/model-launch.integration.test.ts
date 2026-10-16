@@ -20,11 +20,15 @@ function simulatedWebLocks() {
       lockCalls.push(name);
       const previous = lanes.get(name) ?? Promise.resolve();
       const release = Promise.withResolvers<void>();
-      const tail = previous.then(() => release.promise); lanes.set(name, tail);
+      const tail = previous.then(() => release.promise);
+      lanes.set(name, tail);
       await previous;
       using _cleanupResource = {
         [Symbol.dispose]() {
-          release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
+          release.resolve();
+          if (lanes.get(name) === tail) {
+            lanes.delete(name);
+          }
         },
       };
       return await callback();
@@ -33,7 +37,8 @@ function simulatedWebLocks() {
 }
 
 function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
-  const repository = 'owner/Model-GGUF'; const mainFilePath = 'Model-Q4_K_M.gguf';
+  const repository = 'owner/Model-GGUF';
+  const mainFilePath = 'Model-Q4_K_M.gguf';
   return {
     chatId: toChatId({ raw: `chat-${suffix}` }),
     newChatGroupId: toChatGroupId({ raw: `cg-${suffix}` }),
@@ -48,29 +53,39 @@ function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
 }
 
 beforeEach(() => {
-  localStorage.clear(); lockCalls.length = 0; Object.defineProperty(navigator, 'locks', { configurable: true, value: simulatedWebLocks() });
+  localStorage.clear();
+  lockCalls.length = 0;
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: simulatedWebLocks() });
 });
 
 afterEach(() => {
-  Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks }); vi.restoreAllMocks();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks });
+  vi.restoreAllMocks();
 });
 
 describe('model launch storage service integration', () => {
   it('uses the same metadata then sync lock order as existing nested storage operations', async () => {
-    const service = new StorageService(); await service.init({ type: 'local' }); lockCalls.length = 0;
-    const req = request({ suffix: 'order' }); await service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal });
+    const service = new StorageService();
+    await service.init({ type: 'local' });
+    lockCalls.length = 0;
+    const req = request({ suffix: 'order' });
+    await service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal });
     expect(lockCalls).toEqual([LOCK_METADATA, SYNC_LOCK_KEY, `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: req.chatId })}`]);
   });
 
   it('serializes two storage service instances sharing local storage into one chat group', async () => {
-    const first = new StorageService(); const second = new StorageService();
-    await first.init({ type: 'local' }); await second.init({ type: 'local' });
-    const a = request({ suffix: 'one' }); const b = request({ suffix: 'two' });
+    const first = new StorageService();
+    const second = new StorageService();
+    await first.init({ type: 'local' });
+    await second.init({ type: 'local' });
+    const a = request({ suffix: 'one' });
+    const b = request({ suffix: 'two' });
     await Promise.all([
       first.prepareModelLaunchChat({ request: a, signal: new AbortController().signal }).then(() => {}),
       second.prepareModelLaunchChat({ request: b, signal: new AbortController().signal }).then(() => {}),
     ]);
-    const firstChat = await first.loadChat({ id: a.chatId }); const secondChat = await second.loadChat({ id: b.chatId });
+    const firstChat = await first.loadChat({ id: a.chatId });
+    const secondChat = await second.loadChat({ id: b.chatId });
     expect(firstChat?.groupId).toBeDefined();
     expect(secondChat?.groupId).toBe(firstChat?.groupId);
     expect(firstChat).not.toHaveProperty('modelLaunch');
@@ -80,7 +95,9 @@ describe('model launch storage service integration', () => {
 
   it('serializes memory launches without Web Locks, including duplicate requests', async () => {
     Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
-    const service = new StorageService(); await service.init({ type: 'memory' }); const req = request({ suffix: 'memory' });
+    const service = new StorageService();
+    await service.init({ type: 'memory' });
+    const req = request({ suffix: 'memory' });
     await Promise.all([1, 2, 3].map(async () => {
       await service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal });
     }));
@@ -89,20 +106,27 @@ describe('model launch storage service integration', () => {
 
   it('fails closed for persistent launch without cross-tab locking', async () => {
     Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined });
-    const service = new StorageService(); await service.init({ type: 'local' }); const req = request({ suffix: 'unsupported' });
+    const service = new StorageService();
+    await service.init({ type: 'local' });
+    const req = request({ suffix: 'unsupported' });
     await expect(service.prepareModelLaunchChat({ request: req, signal: new AbortController().signal })).rejects.toThrow('locking');
     expect(await service.loadChatMeta({ id: req.chatId })).toBeNull();
   });
 
   it('does not create anything when cancellation precedes the first write', async () => {
-    const service = new StorageService(); await service.init({ type: 'memory' }); const req = request({ suffix: 'cancelled' });
-    const controller = new AbortController(); controller.abort();
+    const service = new StorageService();
+    await service.init({ type: 'memory' });
+    const req = request({ suffix: 'cancelled' });
+    const controller = new AbortController();
+    controller.abort();
     await expect(service.prepareModelLaunchChat({ request: req, signal: controller.signal })).rejects.toThrow();
-    expect(await service.loadChatMeta({ id: req.chatId })).toBeNull(); expect((await service.loadHierarchy()).items).toEqual([]);
+    expect(await service.loadChatMeta({ id: req.chatId })).toBeNull();
+    expect((await service.loadHierarchy()).items).toEqual([]);
   });
 
   it('keeps the existing settings DTO shape across change and revert', async () => {
-    const service = new StorageService(); await service.init({ type: 'local' });
+    const service = new StorageService();
+    await service.init({ type: 'local' });
     const blank: Settings = { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local', defaultModelId: undefined };
     await service.updateSettings({ updater: () => blank });
     await service.updateSettings({ updater: ({ current }) => ({ ...current!, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'model' }) });
@@ -114,8 +138,12 @@ describe('model launch storage service integration', () => {
   });
 
   it('invalidates the storage capability after a provider replacement', async () => {
-    const service = new StorageService(); await service.init({ type: 'memory' }); const isCurrent = service.captureModelLaunchStorage();
-    expect(isCurrent()).toBe(true); await service.init({ type: 'local' }); expect(isCurrent()).toBe(false);
+    const service = new StorageService();
+    await service.init({ type: 'memory' });
+    const isCurrent = service.captureModelLaunchStorage();
+    expect(isCurrent()).toBe(true);
+    await service.init({ type: 'local' });
+    expect(isCurrent()).toBe(false);
   });
 });
 

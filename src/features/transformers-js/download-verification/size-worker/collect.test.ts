@@ -62,10 +62,12 @@ it('owns a late response after the request deadline without reading its body or 
   const running = collectDownloadSizes({ request, repositoryFetch, signal: new AbortController().signal });
   await vi.advanceTimersByTimeAsync(2_000);
   expect(await running).toEqual({ sizes: [], quotaLimited: false });
-  const cancel = vi.fn(); const pull = vi.fn();
+  const cancel = vi.fn();
+  const pull = vi.fn();
   response.resolve(new Response(new ReadableStream({ pull, cancel }, { highWaterMark: 0 })));
   await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
-  expect(pull).not.toHaveBeenCalled(); expect(repositoryFetch).toHaveBeenCalledOnce();
+  expect(pull).not.toHaveBeenCalled();
+  expect(repositoryFetch).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });
 

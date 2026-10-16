@@ -51,7 +51,9 @@ describe('usePWAUpdate', () => {
   it('publishes the handler atomically with ready status', async () => {
     const handler = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     const stop = watch(status, value => {
-      if (value === 'ready') void update();
+      if (value === 'ready') {
+        void update();
+      }
     }, { flush: 'sync' });
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -99,9 +101,11 @@ describe('usePWAUpdate', () => {
     expect(status.value).toBe('applying');
     await update();
     expect(second).not.toHaveBeenCalled();
-    finish(); await pending;
+    finish();
+    await pending;
     expect(status.value).toBe('ready');
-    await update(); expect(second).toHaveBeenCalledOnce();
+    await update();
+    expect(second).toHaveBeenCalledOnce();
   });
 
   it('clears the action together with availability', async () => {

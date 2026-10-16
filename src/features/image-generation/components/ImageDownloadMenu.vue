@@ -20,15 +20,21 @@ watch(() => [props.preferences.value.format, props.preferences.value.metadata] a
 });
 
 function changeFormat({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const value = event.target.value;
-  if (value !== 'png' && value !== 'webp' && value !== 'jpeg') return;
+  if (value !== 'png' && value !== 'webp' && value !== 'jpeg') {
+    return;
+  }
   format.value = value;
   props.onPreferencesChange({ preferences: { format: value, metadata: includeMetadata.value ? 'include' : 'omit' } });
 }
 
 function changeMetadata({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   includeMetadata.value = event.target.checked;
   props.onPreferencesChange({ preferences: { format: format.value, metadata: includeMetadata.value ? 'include' : 'omit' } });
 }
@@ -38,30 +44,46 @@ let disposed = false;
 
 function close({ restoreFocus }: { restoreFocus: boolean }): void {
   open.value = false;
-  if (restoreFocus && props.active) toggle.value?.focus();
+  if (restoreFocus && props.active) {
+    toggle.value?.focus();
+  }
 }
 
 async function show(): Promise<void> {
-  if (disposed || !props.active || props.disabled) return;
+  if (disposed || !props.active || props.disabled) {
+    return;
+  }
   const rect = anchor.value?.getBoundingClientRect();
   position.value = { left: `${Math.max(8, Math.min(rect?.left ?? 8, window.innerWidth - 304))}px`, top: `${Math.max(8, Math.min(rect?.bottom ?? 8, window.innerHeight - 320))}px` };
   open.value = true;
   await nextTick();
-  if (open.value) panel.value?.focus();
+  if (open.value) {
+    panel.value?.focus();
+  }
 }
 
 async function download(): Promise<void> {
-  if (busy.value || props.disabled) return;
+  if (busy.value || props.disabled) {
+    return;
+  }
   busy.value = true;
   error.value = '';
   try {
     const result = await props.onDownload({ format: format.value, includeMetadata: includeMetadata.value });
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     switch (result.status) {
-    case 'downloaded': close({ restoreFocus: open.value }); break;
+    case 'downloaded': close({ restoreFocus: open.value });
+      break;
     case 'cancelled': break;
-    case 'failed': error.value = result.message; await show(); break;
-    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+    case 'failed': error.value = result.message;
+      await show();
+      break;
+    default: {
+      const exhaustive: never = result;
+      throw new Error(String(exhaustive));
+    }
     }
   } catch (cause) {
     if (!disposed) {
@@ -74,7 +96,9 @@ async function download(): Promise<void> {
 }
 
 function outside({ event }: { event: Event }): void {
-  if (event.target instanceof Node && !anchor.value?.contains(event.target) && !panel.value?.contains(event.target)) close({ restoreFocus: false });
+  if (event.target instanceof Node && !anchor.value?.contains(event.target) && !panel.value?.contains(event.target)) {
+    close({ restoreFocus: false });
+  }
 }
 
 function keydown({ event }: { event: KeyboardEvent }): void {
@@ -82,18 +106,24 @@ function keydown({ event }: { event: KeyboardEvent }): void {
     event.preventDefault();
     close({ restoreFocus: true });
   }
-  if (event.key !== 'Tab') return;
+  if (event.key !== 'Tab') {
+    return;
+  }
   const controls = Array.from(panel.value?.querySelectorAll<HTMLElement>('*') ?? []).filter(control => control.matches('button, select, input') && !control.matches(':disabled'));
   const first = controls[0], last = controls.at(-1);
   if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.value)) {
-    event.preventDefault(); last?.focus();
+    event.preventDefault();
+    last?.focus();
   } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault(); first?.focus();
+    event.preventDefault();
+    first?.focus();
   }
 }
 
 const viewportChanged: EventListener = event => {
-  if (event.target instanceof Node && panel.value?.contains(event.target)) return;
+  if (event.target instanceof Node && panel.value?.contains(event.target)) {
+    return;
+  }
   close({ restoreFocus: false });
 };
 
@@ -102,7 +132,9 @@ const onPointer: EventListener = event => {
 };
 
 watch(() => props.active && !props.disabled, available => {
-  if (!available) close({ restoreFocus: false });
+  if (!available) {
+    close({ restoreFocus: false });
+  }
 });
 onMounted(() => {
   document.addEventListener('pointerdown', onPointer);

@@ -4,7 +4,9 @@
  */
 export function waitForActiveCleanup({ registration }: { registration: ServiceWorkerRegistration }): Promise<void> {
   const active = registration.active;
-  if (!active || active.state !== 'activating') return Promise.resolve();
+  if (!active || active.state !== 'activating') {
+    return Promise.resolve();
+  }
   return new Promise(resolve => {
     const check = () => {
       switch (active.state) {
@@ -14,7 +16,10 @@ export function waitForActiveCleanup({ registration }: { registration: ServiceWo
       case 'installed':
       case 'installing':
       case 'parsed': break;
-      default: { const exhaustive: never = active.state; throw new Error(`Unexpected worker state: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = active.state;
+        throw new Error(`Unexpected worker state: ${exhaustive}`);
+      }
       }
       active.removeEventListener('statechange', check);
       resolve();

@@ -8,6 +8,9 @@ export const ImageEngineState__memory_label = ({ measure }: { measure: "wasm" | 
   case "last-cpu-buffers": return "Últimos búferes de ejecución de CPU informados";
   case "last-non-cpu-buffers": return "Últimos búferes de ejecución no CPU informados";
   case "last-unknown-buffers": return "Últimos búferes de ejecución informados (dispositivo desconocido)";
-  default: { const exhaustive: never = measure; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = measure;
+    throw new Error(String(exhaustive));
+  }
   }
 };

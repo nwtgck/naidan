@@ -15,11 +15,15 @@ export async function verifiedRuntimeModuleBlob({ bytes: input, variant }: {
 }): Promise<Blob> {
   const bytes = runtimeModuleBytesSchema.parse(input);
   const expected = hostedTransformersRuntimeAssetManifestEntry({ variant }).mjs;
-  if (bytes.byteLength !== expected.byteLength) throw new Error('Runtime MJS byte length differs from the build manifest');
+  if (bytes.byteLength !== expected.byteLength) {
+    throw new Error('Runtime MJS byte length differs from the build manifest');
+  }
   const blob = new Blob([Uint8Array.from(bytes)], { type: 'text/javascript' });
   const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
   const actual = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-  if (actual !== expected.sha256) throw new Error('Runtime MJS hash differs from the build manifest');
+  if (actual !== expected.sha256) {
+    throw new Error('Runtime MJS hash differs from the build manifest');
+  }
   return blob;
 }
 
@@ -31,23 +35,33 @@ export async function fetchProductionRuntimeModule({ assets, runtimeFetch }: {
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let failed = false;
   try {
-    if (response.status !== 200 || response.headers.has('Content-Range')) throw new Error('Runtime MJS requires a complete HTTP 200 response');
+    if (response.status !== 200 || response.headers.has('Content-Range')) {
+      throw new Error('Runtime MJS requires a complete HTTP 200 response');
+    }
     const mime = response.headers.get('Content-Type')?.split(';', 1)[0]?.trim().toLowerCase();
     if (!['text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript'].includes(mime ?? '')) {
       throw new Error('Runtime MJS response is not JavaScript');
     }
-    if (!response.body) throw new Error('Runtime MJS response has no body');
+    if (!response.body) {
+      throw new Error('Runtime MJS response has no body');
+    }
     const bytes = new Uint8Array(assets.mjsByteLength);
     let received = 0;
     reader = response.body.getReader();
     while (true) {
       const chunk = await reader.read();
-      if (chunk.done) break;
-      if (chunk.value.byteLength > bytes.byteLength - received) throw new Error('Runtime MJS exceeds the build manifest byte length');
+      if (chunk.done) {
+        break;
+      }
+      if (chunk.value.byteLength > bytes.byteLength - received) {
+        throw new Error('Runtime MJS exceeds the build manifest byte length');
+      }
       bytes.set(chunk.value, received);
       received += chunk.value.byteLength;
     }
-    if (received !== bytes.byteLength) throw new Error('Runtime MJS response ended before its complete byte length');
+    if (received !== bytes.byteLength) {
+      throw new Error('Runtime MJS response ended before its complete byte length');
+    }
     await verifiedRuntimeModuleBlob({ bytes, variant: assets.variant });
     return bytes;
   } catch (error) {
@@ -65,8 +79,10 @@ export async function fetchProductionRuntimeModule({ assets, runtimeFetch }: {
     } catch (error) {
       // Successful reads still fail if releasing their lock fails. An existing
       // primary read/validation failure is never replaced by cleanup failure.
-      // eslint-disable-next-line no-unsafe-finally -- Deliberate success invalidation only, covered by reader-failure regressions.
-      if (!failed) throw error;
+      if (!failed) {
+        // eslint-disable-next-line no-unsafe-finally -- Deliberate success invalidation only, covered by reader-failure regressions.
+        throw error;
+      }
     }
   }
 }

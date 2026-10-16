@@ -5,21 +5,30 @@ import { createImageTrace, createImageDiagnosticBuffer, sanitizeImageLog, imageE
 it('redacts prompt/token dumps and signed URLs before they enter exports', () => {
   expect(sanitizeImageLog({ message: "conditioner.hpp:123 - parse 'private cat' to token text", secrets: [] })).toBe('[prompt/token diagnostic omitted]');
   const text = sanitizeImageLog({ message: 'failed: private cat https://hf.co/file?token=abc', secrets: ['private cat'] });
-  expect(text).not.toContain('private cat'); expect(text).not.toContain('token=abc');
+  expect(text).not.toContain('private cat');
+  expect(text).not.toContain('token=abc');
 });
 
 it('keeps native verbose text opt-in while structural checkpoints work in normal mode', () => {
-  const listener = vi.fn(); const trace = createImageTrace({ debug: 'off', secrets: [], listener, now: () => 10 });
-  trace.native({ message: 'detail', level: 0 }); expect(listener).not.toHaveBeenCalled();
-  trace.native({ message: 'util.h:101  - graph-stage-v1 runner=anima stage=graph event=begin\n', level: 0 }); expect(listener).not.toHaveBeenCalled();
-  trace.emit({ event: 'start', stage: 'generation', message: undefined, fields: {} }); expect(listener).toHaveBeenCalledOnce();
+  const listener = vi.fn();
+  const trace = createImageTrace({ debug: 'off', secrets: [], listener, now: () => 10 });
+  trace.native({ message: 'detail', level: 0 });
+  expect(listener).not.toHaveBeenCalled();
+  trace.native({ message: 'util.h:101  - graph-stage-v1 runner=anima stage=graph event=begin\n', level: 0 });
+  expect(listener).not.toHaveBeenCalled();
+  trace.emit({ event: 'start', stage: 'generation', message: undefined, fields: {} });
+  expect(listener).toHaveBeenCalledOnce();
 });
 
 it('bounds high-frequency logs and reports omitted lines instead of queuing promises', () => {
-  let time = 0; const listener = vi.fn();
+  let time = 0;
+  const listener = vi.fn();
   const trace = createImageTrace({ debug: 'on', secrets: [], listener, now: () => time });
-  for (let i = 0; i < 5000; i++) trace.native({ message: 'native ' + i, level: 0 });
-  expect(listener).toHaveBeenCalledTimes(60); time = 1001;
+  for (let i = 0; i < 5000; i++) {
+    trace.native({ message: 'native ' + i, level: 0 });
+  }
+  expect(listener).toHaveBeenCalledTimes(60);
+  time = 1001;
   trace.native({ message: 'next', level: 0 });
   expect(listener.mock.calls[60]?.[0].diagnostic).toMatchObject({ event: 'dropped', fields: { nativeLines: 4940 } });
 });
@@ -31,8 +40,11 @@ it('exports graph boundaries after verbose saturation without spending or resett
   const begin = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=begin\n';
   const end = 'util.h:101  - graph-stage-v1 runner=anima stage=scheduler-create event=end\n';
   trace.native({ message: first, level: 0 });
-  for (let i = 0; i < 60; i++) trace.native({ message: 'verbose ' + i, level: 0 });
-  trace.native({ message: begin, level: 0 }); trace.native({ message: end, level: 0 });
+  for (let i = 0; i < 60; i++) {
+    trace.native({ message: 'verbose ' + i, level: 0 });
+  }
+  trace.native({ message: begin, level: 0 });
+  trace.native({ message: end, level: 0 });
   trace.native({ message: 'ordinary log after the boundary', level: 0 });
   // Similar text inside an arbitrary log is still ordinary bounded verbosity.
   trace.native({ message: 'prefix ' + begin, level: 0 });
@@ -42,19 +54,27 @@ it('exports graph boundaries after verbose saturation without spending or resett
   trace.native({ message: begin + 'extra line', level: 0 });
   const exported = buffer.text();
   expect(exported).toContain('verbose 59');
-  expect(exported).toContain(JSON.stringify(begin)); expect(exported).toContain(JSON.stringify(end));
-  expect(exported).toContain('runner=[redacted]'); expect(exported).not.toContain('private-runner');
+  expect(exported).toContain(JSON.stringify(begin));
+  expect(exported).toContain(JSON.stringify(end));
+  expect(exported).toContain('runner=[redacted]');
+  expect(exported).not.toContain('private-runner');
   expect(exported.split('\n')).toHaveLength(63);
-  expect(exported).not.toContain('ordinary log'); expect(exported).not.toContain('prefix '); expect(exported).not.toContain('model.cpp');
-  expect(exported).not.toContain('event=other'); expect(exported).not.toContain('extra line');
+  expect(exported).not.toContain('ordinary log');
+  expect(exported).not.toContain('prefix ');
+  expect(exported).not.toContain('model.cpp');
+  expect(exported).not.toContain('event=other');
+  expect(exported).not.toContain('extra line');
 });
 
 it('keeps the export buffer bounded even for graph-stage diagnostics', () => {
   const buffer = createImageDiagnosticBuffer();
   const trace = createImageTrace({ debug: 'on', secrets: [], listener: buffer.append, now: () => 0 });
-  for (let i = 0; i < 2000; i++) trace.native({ message: `util.h:101  - graph-stage-v1 runner=runner-${i} stage=graph event=failed\n`, level: 0 });
+  for (let i = 0; i < 2000; i++) {
+    trace.native({ message: `util.h:101  - graph-stage-v1 runner=runner-${i} stage=graph event=failed\n`, level: 0 });
+  }
   const exported = buffer.text();
-  expect(exported).toContain('runner=runner-1999'); expect(exported).toContain('buffer-truncated');
+  expect(exported).toContain('runner=runner-1999');
+  expect(exported).toContain('buffer-truncated');
   expect(exported.split('\n').length).toBeLessThanOrEqual(1517);
   expect(new TextEncoder().encode(exported).length).toBeLessThan(385 * 1024);
 });
@@ -73,15 +93,23 @@ it('does not let a throwing observer break a native callback', () => {
 
 it('retains initial context and a bounded tail, including while a call is still running', () => {
   const buffer = createImageDiagnosticBuffer();
-  for (let i = 0; i < 6000; i++) buffer.append({ diagnostic: { event: 'native', stage: 'generation', elapsedMs: i, message: 'x'.repeat(1024), fields: { index: i } } });
-  const text = buffer.text(); expect(text.length).toBeLessThan(390 * 1024);
-  expect(text).toContain('"index":0'); expect(text).toContain('"index":5999'); expect(text).toContain('buffer-truncated');
-  buffer.clear(); expect(buffer.text()).toBe('');
+  for (let i = 0; i < 6000; i++) {
+    buffer.append({ diagnostic: { event: 'native', stage: 'generation', elapsedMs: i, message: 'x'.repeat(1024), fields: { index: i } } });
+  }
+  const text = buffer.text();
+  expect(text.length).toBeLessThan(390 * 1024);
+  expect(text).toContain('"index":0');
+  expect(text).toContain('"index":5999');
+  expect(text).toContain('buffer-truncated');
+  buffer.clear();
+  expect(buffer.text()).toBe('');
 });
 
 it('bounds multibyte exports and ignores oversized diagnostic records', () => {
   const buffer = createImageDiagnosticBuffer();
-  for (let i = 0; i < 3000; i++) buffer.append({ diagnostic: { event: 'native', stage: 'generation', elapsedMs: i, message: 'あ'.repeat(2000), fields: {} } });
+  for (let i = 0; i < 3000; i++) {
+    buffer.append({ diagnostic: { event: 'native', stage: 'generation', elapsedMs: i, message: 'あ'.repeat(2000), fields: {} } });
+  }
   expect(new TextEncoder().encode(buffer.text()).length).toBeLessThan(385 * 1024);
   buffer.append({ diagnostic: { event: 'native', stage: 'generation', elapsedMs: 0, fields: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [String(i), 'あ'.repeat(500)])) } });
   expect(new TextEncoder().encode(buffer.text()).length).toBeLessThan(385 * 1024);
@@ -110,7 +138,8 @@ it('extracts only bounded numeric Wasm locations from the original stack', () =>
   const error = new WebAssembly.RuntimeError('private prompt https://private.invalid/?token=secret');
   error.stack = `${error.message}\n at wasm://wasm/abc:wasm-function[6740]:0xae1009\n at wasm://wasm/abc:wasm-function[6078]:0x9d5bf1\n at /home/person/secret/core.mjs:1:1234`;
   expect(imageErrorContext({ error })).toEqual({ errorType: 'wasm-trap', wasmFrames: 'wasm-function[6740]:0xae1009 <- wasm-function[6078]:0x9d5bf1' });
-  const plain = new Error('opaque'); plain.stack = 'custom-private-file-name:42';
+  const plain = new Error('opaque');
+  plain.stack = 'custom-private-file-name:42';
   expect(imageErrorContext({ error: plain })).toEqual({ errorType: 'error', wasmFrames: '' });
   expect(imageErrorContext({ error: { stack: error.stack } })).toEqual({ errorType: 'non-error', wasmFrames: '' });
 });

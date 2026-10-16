@@ -63,7 +63,9 @@ export function createChatCurrentBridge({
     id: ChatId,
   }) {
     const liveChat = liveChatRegistry.get(id);
-    if (liveChat) return liveChat;
+    if (liveChat) {
+      return liveChat;
+    }
     if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
       return currentChatRef.value;
     }

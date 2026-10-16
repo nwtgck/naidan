@@ -83,8 +83,12 @@ export async function runFetch({ context, args }: {
   const all = parsed.optionValues.all === true;
   const prune = parsed.optionValues.prune === true;
   const operands = parsed.positionals;
-  if (operands.length > 1) throw new Error('too many arguments');
-  if (all && operands.length > 0) throw new Error('fetch --all does not take a repository argument');
+  if (operands.length > 1) {
+    throw new Error('too many arguments');
+  }
+  if (all && operands.length > 0) {
+    throw new Error('fetch --all does not take a repository argument');
+  }
   const repository = await discoverRepositoryFromContext({ context });
   const config = await readEffectiveConfig({
     files: context.files,
@@ -98,7 +102,9 @@ export async function runFetch({ context, args }: {
     const names = new Set<string>();
     for (const key of config.keys()) {
       const match = /^remote\.(.+)\.url$/u.exec(key);
-      if (match !== null) names.add(match[1]!);
+      if (match !== null) {
+        names.add(match[1]!);
+      }
     }
     remoteNames = sortGitUtf8Strings({ values: names });
   } else {
@@ -107,9 +113,13 @@ export async function runFetch({ context, args }: {
 
   for (const remoteName of remoteNames) {
     const result = await fetchLocalRemote({ files: context.files, repository, remoteName, prune, config });
-    if (quiet) continue;
+    if (quiet) {
+      continue;
+    }
     const changed = result.branchUpdates.filter(update => update.oldObjectId !== update.newObjectId);
-    if (changed.length > 0 || result.prunedBranches.length > 0) await context.text().error({ text: `From ${result.sourcePath}\n` });
+    if (changed.length > 0 || result.prunedBranches.length > 0) {
+      await context.text().error({ text: `From ${result.sourcePath}\n` });
+    }
     for (const update of changed) {
       if (update.oldObjectId === undefined) {
         await context.text().error({

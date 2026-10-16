@@ -26,7 +26,9 @@ function cacheContainsRequiredCandidateFiles({
   revision: string;
 }): boolean {
   const requiredFiles = (candidate.files ?? []).filter(file => file.requirement === 'required');
-  if (requiredFiles.length === 0) return false;
+  if (requiredFiles.length === 0) {
+    return false;
+  }
   return requiredFiles.every(file => file.cacheMatches.some(match => (
     match.path === `resolve/${revision}/${file.path}`
     && match.hasCompletionMarker

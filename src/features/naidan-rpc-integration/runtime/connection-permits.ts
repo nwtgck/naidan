@@ -10,24 +10,30 @@ export class RpcConnectionPermits {
     const key = new URL(origin).origin;
     let permits = this.origins.get(key);
     if (!permits) {
-      permits = new ConnectionOpenPermits({ capacity: 2, maximumWaiting: 32 }); this.origins.set(key, permits);
+      permits = new ConnectionOpenPermits({ capacity: 2, maximumWaiting: 32 });
+      this.origins.set(key, permits);
     }
     const current = permits;
     const forget = () => {
-      if (current.idle && this.origins.get(key) === current) this.origins.delete(key);
+      if (current.idle && this.origins.get(key) === current) {
+        this.origins.delete(key);
+      }
     };
     try {
       const admission = current.acquire({ signal, mode });
       return {
         promote: admission.promote,
         ready: admission.ready.then(release => () => {
-          release(); forget();
+          release();
+          forget();
         }, error => {
-          forget(); throw error;
+          forget();
+          throw error;
         }),
       };
     } catch (error) {
-      forget(); throw error;
+      forget();
+      throw error;
     }
   }
 }

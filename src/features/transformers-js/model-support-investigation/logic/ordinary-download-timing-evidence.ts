@@ -31,14 +31,18 @@ export function createOrdinaryDownloadTimingEvidenceFile({ snapshot, association
     snapshot,
   });
   const file = new Blob([JSON.stringify(document)], { type: 'application/json' });
-  if (file.size > ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES) throw new Error('Retained Download timing exceeds its export byte budget');
+  if (file.size > ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES) {
+    throw new Error('Retained Download timing exceeds its export byte budget');
+  }
   return file;
 }
 
 export async function readOrdinaryDownloadTimingEvidenceFile({ file }: { file: Blob }) {
   // Worker request Blobs are checked before decoding JSON. Archive callers
   // additionally refuse oversized entries before opening their ZIP stream.
-  if (file.size > ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES) throw new Error('Retained Download timing exceeds its export byte budget');
+  if (file.size > ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES) {
+    throw new Error('Retained Download timing exceeds its export byte budget');
+  }
   return ordinaryDownloadTimingEvidenceSchema.parse(JSON.parse(await file.text()) as unknown);
 }
 
@@ -47,7 +51,9 @@ export async function verifyOrdinaryDownloadTimingEvidence({ archive, associatio
   association: OrdinaryDownloadTimingAssociation;
 }): Promise<void> {
   const file = await archive.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, maximumBytes: ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES });
-  if (file === undefined) return;
+  if (file === undefined) {
+    return;
+  }
   const document = await readOrdinaryDownloadTimingEvidenceFile({ file });
   if (JSON.stringify(document.association) !== JSON.stringify(associationSchema.parse(association))) {
     throw new Error('Retained Download timing export association mismatch');
@@ -59,7 +65,9 @@ export async function prepareRetainedDownloadTimingEvidence({ snapshot, exportId
   exportId: string;
 }): Promise<PreparedEvidenceArchive> {
   const association = associationSchema.parse({ kind: 'retained-export', exportId, investigation: 'not-run' });
-  if (snapshot.records.length === 0) throw new Error('No retained Download timing is available in this service session');
+  if (snapshot.records.length === 0) {
+    throw new Error('No retained Download timing is available in this service session');
+  }
   const file = createOrdinaryDownloadTimingEvidenceFile({ snapshot, association });
   await readOrdinaryDownloadTimingEvidenceFile({ file });
   const files = new Map<string, Blob>();
@@ -73,7 +81,9 @@ export async function createRetainedDownloadTimingEvidence({ snapshot, exportId 
 }): Promise<{ blob: Blob; fileName: string }> {
   const association = associationSchema.parse({ kind: 'retained-export', exportId, investigation: 'not-run' });
   const file = createOrdinaryDownloadTimingEvidenceFile({ snapshot, association });
-  if (snapshot.records.length === 0) throw new Error('No retained Download timing is available in this service session');
+  if (snapshot.records.length === 0) {
+    throw new Error('No retained Download timing is available in this service session');
+  }
   const files = new Map<string, Blob>();
   setEvidenceFile({ files, path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, content: file });
   const blob = await createEvidenceArchive({ files });
@@ -84,7 +94,9 @@ export async function createRetainedDownloadTimingEvidence({ snapshot, exportId 
     }
     await verifyOrdinaryDownloadTimingEvidence({ archive: archive.reader, association });
     const packaged = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, maximumBytes: ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES });
-    if (packaged === undefined || await packaged.text() !== await file.text()) throw new Error('Retained Download timing archive changed its snapshot');
+    if (packaged === undefined || await packaged.text() !== await file.text()) {
+      throw new Error('Retained Download timing archive changed its snapshot');
+    }
   } finally {
     await archive.close();
   }

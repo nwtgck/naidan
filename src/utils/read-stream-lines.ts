@@ -22,21 +22,30 @@ export async function* readStreamLines({ stream, signal, maxLineLength }: {
       // CRLF and LF are framing, never the escaped text inside a JSON field.
       let newline: number;
       while ((newline = buffer.indexOf('\n')) !== -1) {
-        if (newline > maxLineLength) throw new Error('The response line exceeds the supported size.');
+        if (newline > maxLineLength) {
+          throw new Error('The response line exceeds the supported size.');
+        }
         const line = buffer.slice(0, newline);
         buffer = buffer.slice(newline + 1);
         yield line.endsWith('\r') ? line.slice(0, -1) : line;
         signal.throwIfAborted();
       }
-      if (buffer.length > maxLineLength) throw new Error('The response line exceeds the supported size.');
+      if (buffer.length > maxLineLength) {
+        throw new Error('The response line exceeds the supported size.');
+      }
       if (done) {
-        ended = true; break;
+        ended = true;
+        break;
       }
     }
-    if (buffer !== '') yield buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer;
+    if (buffer !== '') {
+      yield buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer;
+    }
   } finally {
     signal.removeEventListener('abort', onAbort);
-    if (!ended) await reader.cancel().catch(() => {});
+    if (!ended) {
+      await reader.cancel().catch(() => {});
+    }
     await cancellation;
     reader.releaseLock();
   }

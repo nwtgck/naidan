@@ -38,9 +38,12 @@ describe('image history request snapshots', () => {
   it('freezes settings, ordered inputs and requested adapter strengths before generation', () => {
     const request = source();
     const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });
-    request.parameters.prompt = 'changed'; request.parameters.seed = '99';
-    request.imageInputs.referenceImages.reverse(); request.imageInputs.strength = 1;
-    request.loras[0]!.strength = 5; request.preview.mode = 'projection';
+    request.parameters.prompt = 'changed';
+    request.parameters.seed = '99';
+    request.imageInputs.referenceImages.reverse();
+    request.imageInputs.strength = 1;
+    request.loras[0]!.strength = 5;
+    request.preview.mode = 'projection';
     expect(snapshot.request.parameters).toMatchObject({ prompt: '癒しの猫', seed: '-1' });
     expect(snapshot.request.imageInputs.referenceImages.map(image => image.name)).toEqual(['first.png', 'second.png']);
     expect(snapshot.request.imageInputs.strength).toBe(0.5);
@@ -73,8 +76,10 @@ describe('image history request snapshots', () => {
     const { record, files } = completed();
     const restored = await prepareImageHistoryReuse({ record, findFile: () => undefined, getImage: async ({ binaryObjectId }) => files.find(file => file.binaryObjectId === binaryObjectId)?.blob });
     expect(restored.parameters.prompt).toBe('癒しの猫');
-    expect(restored.models).toEqual([]); expect(restored.loras).toEqual([]);
-    expect(restored.missing).toHaveLength(2); expect(restored.missingInactive).toHaveLength(1);
+    expect(restored.models).toEqual([]);
+    expect(restored.loras).toEqual([]);
+    expect(restored.missing).toHaveLength(2);
+    expect(restored.missingInactive).toHaveLength(1);
   });
 
   it('keeps a complete base model when only its enabled adapter is missing', async () => {
@@ -146,14 +151,17 @@ it('embeds Unicode request settings and actual preview dimensions only into the 
   const bytes = new Uint8Array(45);
   bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
   new DataView(bytes.buffer).setUint32(8, 13);
-  bytes.set([73, 72, 68, 82], 12); bytes.set([73, 69, 78, 68], 37);
+  bytes.set([73, 72, 68, 82], 12);
+  bytes.set([73, 69, 78, 68], 37);
   const png = new Blob([bytes], { type: 'image/png' });
   const { record } = completed();
   const image = { kind: 'preview' as const, width: 128, height: 128, step: 4, steps: 20, mode: 'projection' as const };
   expect(await imageGenerationDownloadBlob({ png, request: record.request, image, format: 'png', includeMetadata: false })).toBe(png);
   const output = await imageGenerationDownloadBlob({ png, request: record.request, image, format: 'png', includeMetadata: true });
   const text = new TextDecoder().decode(await output.arrayBuffer());
-  expect(text).toContain('iTXt'); expect(text).toContain('癒しの猫'); expect(text).toContain('"seed":"-1"');
+  expect(text).toContain('iTXt');
+  expect(text).toContain('癒しの猫');
+  expect(text).toContain('"seed":"-1"');
   expect(text).toContain('"image":{"kind":"preview","width":128,"height":128,"step":4');
   expect(new Uint8Array(await png.arrayBuffer())).toEqual(bytes);
 });

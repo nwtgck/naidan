@@ -56,12 +56,17 @@ export function captureProviderChat({ provider, request }: {
     case 'fulfilled':
     case 'rejected':
     case 'disposed': return true;
-    default: { const exhaustive: never = settlement; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = settlement;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
   function recordFailure({ source, error }: { source: FailureSource; error: unknown }): void {
-    if (error !== disposed) failure ??= { source, error };
+    if (error !== disposed) {
+      failure ??= { source, error };
+    }
   }
 
   // Retain handlers only for pending reads, not one disposal-Promise handler per token.
@@ -99,7 +104,9 @@ export function captureProviderChat({ provider, request }: {
         }
         return {
           async next() {
-            if (closed || isSettled()) return { done: true, value: undefined };
+            if (closed || isSettled()) {
+              return { done: true, value: undefined };
+            }
             let next: IteratorResult<T>;
             try {
               next = await waitFor({ pending: iterator.next() });
@@ -107,7 +114,9 @@ export function captureProviderChat({ provider, request }: {
               recordFailure({ source, error });
               throw error;
             }
-            if (closed || isSettled()) return { done: true, value: undefined };
+            if (closed || isSettled()) {
+              return { done: true, value: undefined };
+            }
             if (next.done) {
               closed = true;
               onDone({ state: 'exhausted' });
@@ -202,7 +211,10 @@ export function captureProviderChat({ provider, request }: {
       events.push({ kind: 'result', result });
       return item;
     }
-    default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = item;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
@@ -261,7 +273,10 @@ export function captureProviderChat({ provider, request }: {
           case 'chunk':
           case 'part-complete':
           case 'settled': return { ...event };
-          default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = event;
+            throw new Error(String(exhaustive));
+          }
           }
         }),
         // Error objects retain their identity; they are not serialized evidence.
@@ -272,13 +287,18 @@ export function captureProviderChat({ provider, request }: {
       switch (settlement.status) {
       case 'pending':
         disposalRequested = true;
-        for (const reject of waiting) reject(disposed);
+        for (const reject of waiting) {
+          reject(disposed);
+        }
         waiting.clear();
         break;
       case 'fulfilled':
       case 'rejected':
       case 'disposed': break;
-      default: { const exhaustive: never = settlement; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = settlement;
+        throw new Error(String(exhaustive));
+      }
       }
       await completion;
     },

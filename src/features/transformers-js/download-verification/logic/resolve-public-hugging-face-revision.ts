@@ -67,18 +67,27 @@ export async function resolvePublicHuggingFaceRevision({ modelId, repositoryFetc
   if (typeof metadata === 'object' && metadata !== null && 'siblings' in metadata && Array.isArray(metadata.siblings)) {
     for (const sibling of metadata.siblings.slice(0, 256)) {
       const identity = z.object({ rfilename: z.string() }).safeParse(sibling);
-      if (!identity.success) continue;
+      if (!identity.success) {
+        continue;
+      }
       const path = identity.data.rfilename;
-      if (seen.has(path)) invalid.add(path);
+      if (seen.has(path)) {
+        invalid.add(path);
+      }
       seen.add(path);
       const item = siblingSizeSchema.safeParse(sibling);
       if (!item.success) {
-        invalid.add(path); continue;
+        invalid.add(path);
+        continue;
       }
       const { rfilename: _path, size, lfs } = item.data;
       const bytes = size ?? lfs?.size;
-      if (sizeHints.has(path) || size !== undefined && lfs !== undefined && size !== lfs.size) invalid.add(path);
-      if (bytes !== undefined) sizeHints.set(path, bytes);
+      if (sizeHints.has(path) || size !== undefined && lfs !== undefined && size !== lfs.size) {
+        invalid.add(path);
+      }
+      if (bytes !== undefined) {
+        sizeHints.set(path, bytes);
+      }
     }
   }
   const hints = [...sizeHints].filter(([path]) => !invalid.has(path)).map(([path, bytes]) => ({ path, bytes }));

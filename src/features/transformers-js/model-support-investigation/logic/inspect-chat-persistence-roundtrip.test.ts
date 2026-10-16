@@ -8,7 +8,9 @@ describe('inspectChatPersistenceRoundTrip', () => {
   it('preserves model-visible tool history through the production DTO JSON contract', async () => {
     const result = await inspectChatPersistenceRoundTrip();
     expect(result.status).toBe('observed');
-    if (result.status !== 'observed') throw new Error(result.error.message);
+    if (result.status !== 'observed') {
+      throw new Error(result.error.message);
+    }
     expect(result.fixtureId).toBe('parts_history_v2');
     expect(result.method).toBe('chat_content_parts_json_roundtrip_v2');
     expect(result.modelVisibleProjectionMethod).toBe('build_chat_generation_messages_parts_v2');
@@ -83,7 +85,9 @@ source=fixture`,
     expect(first.status).toBe('observed');
     expect(second).toEqual(first);
     expect(fetch).not.toHaveBeenCalled();
-    if (first.status !== 'observed' || second.status !== 'observed') throw new Error('Missing evidence');
+    if (first.status !== 'observed' || second.status !== 'observed') {
+      throw new Error('Missing evidence');
+    }
     expect(second.originalMessages).not.toBe(first.originalMessages);
     expect(first.originalMessages).not.toBe(first.restoredMessages);
     expect(first.originalMessages[2]?.parts).not.toBe(first.restoredMessages[2]?.parts);
@@ -94,13 +98,17 @@ source=fixture`,
     vi.spyOn(persistence, 'roundTripChatContentPersistenceSerialization').mockImplementation(({ content }) => {
       const result = originalRoundTrip({ content });
       const first = result.restored.root.items[0]?.parts[0];
-      if (first?.type !== 'text') throw new Error('Expected fixed system text');
+      if (first?.type !== 'text') {
+        throw new Error('Expected fixed system text');
+      }
       first.text += 'changed';
       return result;
     });
     const result = await inspectChatPersistenceRoundTrip();
     expect(result.status).toBe('observed');
-    if (result.status !== 'observed') throw new Error(result.error.message);
+    if (result.status !== 'observed') {
+      throw new Error(result.error.message);
+    }
     expect(result.exactModelVisibleMatch).toBe(false);
     expect(result.firstMismatchIndex).toBe(0);
     expect(result.originalMessages[0]?.parts[0]).toMatchObject({ text: 'Keep the supplied history unchanged.' });

@@ -140,7 +140,9 @@ export function useChatSearch({ sidebarItems }: {
       })();
     const searchKey = createSearchKey({ trimmedQuery, options, storageType });
 
-    if (searchKey === lastSearchKey) return;
+    if (searchKey === lastSearchKey) {
+      return;
+    }
     lastSearchKey = searchKey;
 
     const runId = ++activeRunId;
@@ -173,7 +175,9 @@ export function useChatSearch({ sidebarItems }: {
       };
 
       const scheduleResultsPublish = () => {
-        if (pendingResultsFrame !== undefined) return;
+        if (pendingResultsFrame !== undefined) {
+          return;
+        }
         pendingResultsFrame = requestAnimationFrame(() => {
           pendingResultsFrame = undefined;
           if (runId === activeRunId) {
@@ -182,10 +186,14 @@ export function useChatSearch({ sidebarItems }: {
         });
       };
 
-      if (runId !== activeRunId) return;
+      if (runId !== activeRunId) {
+        return;
+      }
       publishResults();
 
-      if (trimmedQuery === '') return;
+      if (trimmedQuery === '') {
+        return;
+      }
 
       switch (scope) {
       case 'title_only':
@@ -204,14 +212,20 @@ export function useChatSearch({ sidebarItems }: {
         throw new Error('Global Search content scan requires an initialized storage type');
       }
       const filteredChats = filterSearchChats({ source, options });
-      if (filteredChats.length === 0) return;
+      if (filteredChats.length === 0) {
+        return;
+      }
 
       const client = await getSearchClient({ storageType });
-      if (runId !== activeRunId) return;
+      if (runId !== activeRunId) {
+        return;
+      }
 
       for (const sourceChat of filteredChats) {
         await new Promise(resolve => setTimeout(resolve, 0));
-        if (runId !== activeRunId) return;
+        if (runId !== activeRunId) {
+          return;
+        }
 
         const { chat } = sourceChat;
         try {
@@ -223,10 +237,14 @@ export function useChatSearch({ sidebarItems }: {
               chatId: chat.id,
             },
           });
-          if (runId !== activeRunId) return;
+          if (runId !== activeRunId) {
+            return;
+          }
 
           const matches: ContentMatch[] = response.matches;
-          if (matches.length === 0) continue;
+          if (matches.length === 0) {
+            continue;
+          }
 
           resultStore.addContentMatches({
             source: sourceChat,

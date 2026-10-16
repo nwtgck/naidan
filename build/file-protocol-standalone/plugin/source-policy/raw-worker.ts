@@ -35,8 +35,12 @@ function isSyntheticMemberPath(value: WorkerValuePath): value is SyntheticMember
 }
 
 function memberExpressionName(node: Node | null | undefined): string | null {
-  if (!node || node.type !== 'MemberExpression' || node.computed) return null;
-  if (node.object?.type !== 'Identifier' || node.property?.type !== 'Identifier') return null;
+  if (!node || node.type !== 'MemberExpression' || node.computed) {
+    return null;
+  }
+  if (node.object?.type !== 'Identifier' || node.property?.type !== 'Identifier') {
+    return null;
+  }
   return `${node.object.name}.${node.property.name}`;
 }
 
@@ -51,7 +55,9 @@ function isImportMetaUrl(node: Node | null | undefined): boolean {
 }
 
 function classifyRawWorkerArgument(argument: Node | null | undefined): string {
-  if (!argument) return 'missing';
+  if (!argument) {
+    return 'missing';
+  }
   if (isBabelNodeType(argument, 'StringLiteral') || argument.type === 'TemplateLiteral' && argument.expressions.length === 0) {
     return 'static-url';
   }
@@ -108,8 +114,12 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   }
 
   function staticObjectPropertyName(node: ObjectProperty | ObjectMethod | null | undefined): string | null {
-    if (!node) return null;
-    if (!node.computed && node.key?.type === 'Identifier') return node.key.name;
+    if (!node) {
+      return null;
+    }
+    if (!node.computed && node.key?.type === 'Identifier') {
+      return node.key.name;
+    }
     if (isBabelNodeType(node.key, 'StringLiteral')) {
       return typeof node.key.value === 'string' ? node.key.value : null;
     }
@@ -117,7 +127,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   }
 
   function candidateBindingValues(binding: Binding | undefined, seenBindings: ReadonlySet<Binding>): WorkerValueCandidate[] {
-    if (!binding || seenBindings.has(binding)) return [];
+    if (!binding || seenBindings.has(binding)) {
+      return [];
+    }
     const nextSeen = new Set(seenBindings).add(binding);
     const values: WorkerValueCandidate[] = [];
     const bindingPath = binding.path;
@@ -125,12 +137,18 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       const init = bindingPath.get('init');
       const idPath = bindingPath.get('id');
       if (idPath.isIdentifier?.()) {
-        if (init?.node) values.push({ path: init, seenBindings: nextSeen });
+        if (init?.node) {
+          values.push({ path: init, seenBindings: nextSeen });
+        }
       } else if (idPath.isObjectPattern?.() && init?.node) {
         for (const property of idPath.get('properties')) {
-          if (!property.isObjectProperty?.()) continue;
+          if (!property.isObjectProperty?.()) {
+            continue;
+          }
           const value = property.get('value');
-          if (!value.isIdentifier?.({ name: binding.identifier.name })) continue;
+          if (!value.isIdentifier?.({ name: binding.identifier.name })) {
+            continue;
+          }
           const propertyName = staticObjectPropertyName(property.node);
           if (propertyName) {
             values.push({ path: { syntheticMember: true, objectPath: init, propertyName }, seenBindings: nextSeen });
@@ -139,13 +157,17 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       } else if (idPath.isArrayPattern?.() && init?.isArrayExpression?.()) {
         const index = idPath.get('elements').findIndex(element => element?.isIdentifier?.({ name: binding.identifier.name }));
         const element = index >= 0 ? init.get('elements')[index] : null;
-        if (element?.node) values.push({ path: element, seenBindings: nextSeen });
+        if (element?.node) {
+          values.push({ path: element, seenBindings: nextSeen });
+        }
       }
     } else if (bindingPath.isIdentifier?.()) {
       const parent = bindingPath.parentPath;
       if (parent?.isVariableDeclarator?.() && parent.node.id === bindingPath.node) {
         const init = parent.get('init');
-        if (init?.node) values.push({ path: init, seenBindings: nextSeen });
+        if (init?.node) {
+          values.push({ path: init, seenBindings: nextSeen });
+        }
       } else if (parent?.isObjectProperty?.() && parent.parentPath?.isObjectPattern?.()) {
         const declaration = parent.parentPath.parentPath;
         if (declaration?.isVariableDeclarator?.()) {
@@ -162,7 +184,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
           const init = declaration.get('init');
           if (index >= 0 && init?.isArrayExpression?.()) {
             const element = init.get('elements')[index];
-            if (element?.node) values.push({ path: element, seenBindings: nextSeen });
+            if (element?.node) {
+              values.push({ path: element, seenBindings: nextSeen });
+            }
           }
         }
       }
@@ -175,9 +199,13 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
           values.push({ path: right, seenBindings: nextSeen });
         } else if (left.isObjectPattern?.()) {
           for (const property of left.get('properties')) {
-            if (!property.isObjectProperty?.()) continue;
+            if (!property.isObjectProperty?.()) {
+              continue;
+            }
             const value = property.get('value');
-            if (!value.isIdentifier?.({ name: binding.identifier.name })) continue;
+            if (!value.isIdentifier?.({ name: binding.identifier.name })) {
+              continue;
+            }
             const propertyName = staticObjectPropertyName(property.node);
             if (propertyName) {
               values.push({ path: { syntheticMember: true, objectPath: right, propertyName }, seenBindings: nextSeen });
@@ -186,7 +214,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
         } else if (left.isArrayPattern?.() && right.isArrayExpression?.()) {
           const index = left.get('elements').findIndex(element => element?.isIdentifier?.({ name: binding.identifier.name }));
           const element = index >= 0 ? right.get('elements')[index] : null;
-          if (element?.node) values.push({ path: element, seenBindings: nextSeen });
+          if (element?.node) {
+            values.push({ path: element, seenBindings: nextSeen });
+          }
         }
       }
     }
@@ -194,12 +224,20 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   }
 
   function resolveGlobalObject(valuePath: WorkerValuePath | null | undefined, seenBindings: ReadonlySet<Binding> = new Set<Binding>()): string[] {
-    if (!valuePath) return [];
-    if (isSyntheticMemberPath(valuePath)) return [];
+    if (!valuePath) {
+      return [];
+    }
+    if (isSyntheticMemberPath(valuePath)) {
+      return [];
+    }
     const current = unwrapPath(valuePath);
-    if (!current?.node) return [];
+    if (!current?.node) {
+      return [];
+    }
     if (current.isIdentifier()) {
-      if (unboundGlobalIdentifier(current, ['globalThis', 'self', 'window'])) return [current.node.name];
+      if (unboundGlobalIdentifier(current, ['globalThis', 'self', 'window'])) {
+        return [current.node.name];
+      }
       const binding = current.scope.getBinding(current.node.name);
       return candidateBindingValues(binding, seenBindings)
         .flatMap(candidate => resolveGlobalObject(candidate.path, candidate.seenBindings));
@@ -220,19 +258,29 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
         ...resolveGlobalObject(current.get('right'), seenBindings),
       ];
     }
-    if (current.isAssignmentExpression?.()) return resolveGlobalObject(current.get('right'), seenBindings);
+    if (current.isAssignmentExpression?.()) {
+      return resolveGlobalObject(current.get('right'), seenBindings);
+    }
     return [];
   }
 
   function resolveObjectProperty(objectPath: BabelNodePath | null | undefined, propertyName: string, seenBindings: ReadonlySet<Binding>): WorkerResolution[] {
-    if (!objectPath) return [];
+    if (!objectPath) {
+      return [];
+    }
     const current = unwrapPath(objectPath);
-    if (!current?.node) return [];
+    if (!current?.node) {
+      return [];
+    }
     if (current.isObjectExpression?.()) {
       const results: WorkerResolution[] = [];
       for (const propertyPath of current.get('properties')) {
-        if (!propertyPath.isObjectProperty?.() && !propertyPath.isObjectMethod?.()) continue;
-        if (staticObjectPropertyName(propertyPath.node) !== propertyName) continue;
+        if (!propertyPath.isObjectProperty?.() && !propertyPath.isObjectMethod?.()) {
+          continue;
+        }
+        if (staticObjectPropertyName(propertyPath.node) !== propertyName) {
+          continue;
+        }
         if (propertyPath.isObjectProperty()) {
           results.push(...resolveWorkerValue(propertyPath.get('value'), seenBindings));
         }
@@ -243,11 +291,15 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       const binding = current.scope.getBinding(current.node.name);
       return candidateBindingValues(binding, seenBindings)
         .flatMap(candidate => {
-          if (isSyntheticMemberPath(candidate.path)) return [];
+          if (isSyntheticMemberPath(candidate.path)) {
+            return [];
+          }
           return resolveObjectProperty(candidate.path, propertyName, candidate.seenBindings);
         });
     }
-    if (current.isAssignmentExpression?.()) return resolveObjectProperty(current.get('right'), propertyName, seenBindings);
+    if (current.isAssignmentExpression?.()) {
+      return resolveObjectProperty(current.get('right'), propertyName, seenBindings);
+    }
     if (current.isSequenceExpression?.()) {
       const expressions = current.get('expressions');
       return resolveObjectProperty(expressions.at(-1), propertyName, seenBindings);
@@ -264,23 +316,39 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   }
 
   function functionReturnPaths(functionPath: BabelNodePath | null | undefined): BabelNodePath[] {
-    if (!functionPath?.node) return [];
+    if (!functionPath?.node) {
+      return [];
+    }
     if (!functionPath.isFunctionDeclaration()
       && !functionPath.isFunctionExpression()
-      && !functionPath.isArrowFunctionExpression()) return [];
-    if (functionPath.node.params.length > 0) return [];
+      && !functionPath.isArrowFunctionExpression()) {
+      return [];
+    }
+    if (functionPath.node.params.length > 0) {
+      return [];
+    }
     const body = functionPath.get('body');
-    if (Array.isArray(body)) return [];
-    if (functionPath.isArrowFunctionExpression() && !body.isBlockStatement()) return [body];
-    if (!body.isBlockStatement()) return [];
+    if (Array.isArray(body)) {
+      return [];
+    }
+    if (functionPath.isArrowFunctionExpression() && !body.isBlockStatement()) {
+      return [body];
+    }
+    if (!body.isBlockStatement()) {
+      return [];
+    }
     const returns: BabelNodePath[] = [];
     body.traverse({
       Function(innerPath: BabelNodePath) {
-        if (innerPath !== functionPath) innerPath.skip();
+        if (innerPath !== functionPath) {
+          innerPath.skip();
+        }
       },
       ReturnStatement(returnPath: NodePath<ReturnStatement>) {
         const argument = returnPath.get('argument');
-        if (argument?.node) returns.push(argument);
+        if (argument?.node) {
+          returns.push(argument);
+        }
       },
     });
     return returns;
@@ -288,13 +356,17 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
 
   function resolveFactoryReturns(calleePath: BabelNodePath | null | undefined, seenBindings: ReadonlySet<Binding>): WorkerResolution[] {
     const current = unwrapPath(calleePath);
-    if (!current?.node) return [];
+    if (!current?.node) {
+      return [];
+    }
     if (current.isFunctionExpression?.() || current.isArrowFunctionExpression?.()) {
       return functionReturnPaths(current).flatMap(returnPath => resolveWorkerValue(returnPath, seenBindings));
     }
     if (current.isIdentifier?.()) {
       const binding = current.scope.getBinding(current.node.name);
-      if (!binding || seenBindings.has(binding)) return [];
+      if (!binding || seenBindings.has(binding)) {
+        return [];
+      }
       const nextSeen = new Set(seenBindings).add(binding);
       if (binding.path.isFunctionDeclaration?.()) {
         return functionReturnPaths(binding.path).flatMap(returnPath => resolveWorkerValue(returnPath, nextSeen));
@@ -308,7 +380,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   }
 
   function resolveWorkerValue(valuePath: WorkerValuePath | null | undefined, seenBindings: ReadonlySet<Binding> = new Set<Binding>()): WorkerResolution[] {
-    if (!valuePath) return [];
+    if (!valuePath) {
+      return [];
+    }
     if (isSyntheticMemberPath(valuePath)) {
       const globalForms = resolveGlobalObject(valuePath.objectPath, valuePath.seenBindings ?? seenBindings);
       if (isWorkerConstructorKind(valuePath.propertyName) && globalForms.length > 0) {
@@ -321,7 +395,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       );
     }
     const current = unwrapPath(valuePath);
-    if (!current?.node) return [];
+    if (!current?.node) {
+      return [];
+    }
     if (current.isIdentifier?.()) {
       if (isWorkerConstructorKind(current.node.name) && unboundGlobalIdentifier(current, ['Worker', 'SharedWorker'])) {
         return [{ kind: current.node.name, calleeForm: 'direct' }];
@@ -333,10 +409,14 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
     }
     if (current.isMemberExpression?.() || current.isOptionalMemberExpression?.()) {
       const propertyName = staticMemberPropertyName(current.node);
-      if (!propertyName) return [];
+      if (!propertyName) {
+        return [];
+      }
       if (isWorkerConstructorKind(propertyName)) {
         const objectPath = current.get('object');
-        if (Array.isArray(objectPath)) return [];
+        if (Array.isArray(objectPath)) {
+          return [];
+        }
         const globals = resolveGlobalObject(objectPath, seenBindings);
         if (globals.length > 0) {
           const directForm = objectPath.isIdentifier() && globals.includes(objectPath.node.name)
@@ -346,11 +426,15 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
         }
       }
       const objectPath = current.get('object');
-      if (Array.isArray(objectPath)) return [];
+      if (Array.isArray(objectPath)) {
+        return [];
+      }
       return resolveObjectProperty(objectPath, propertyName, seenBindings)
         .map(result => ({ ...result, calleeForm: 'object-property-alias' }));
     }
-    if (current.isAssignmentExpression?.()) return resolveWorkerValue(current.get('right'), seenBindings);
+    if (current.isAssignmentExpression?.()) {
+      return resolveWorkerValue(current.get('right'), seenBindings);
+    }
     if (current.isSequenceExpression?.()) {
       const expressions = current.get('expressions');
       return resolveWorkerValue(expressions.at(-1), seenBindings);
@@ -372,7 +456,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
       if ((callee.isMemberExpression?.() || callee.isOptionalMemberExpression?.())
         && staticMemberPropertyName(callee.node) === 'bind') {
         const objectPath = callee.get('object');
-        if (Array.isArray(objectPath)) return [];
+        if (Array.isArray(objectPath)) {
+          return [];
+        }
         return resolveWorkerValue(objectPath, seenBindings)
           .map(result => ({ ...result, calleeForm: 'bound-alias' }));
       }
@@ -389,7 +475,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
     extra: Pick<RawWorkerConstructorRecord, 'invocationKind'> | Record<never, never> = {},
   ): void {
     const key = `${node.start}:${node.end}:${resolution.kind}`;
-    if (recorded.has(key)) return;
+    if (recorded.has(key)) {
+      return;
+    }
     recorded.add(key);
     constructors.push({
       kind: resolution.kind,
@@ -408,7 +496,9 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
   babelTraverse(ast, {
     NewExpression(newPath) {
       const callee = newPath.get('callee');
-      if (Array.isArray(callee)) return;
+      if (Array.isArray(callee)) {
+        return;
+      }
       const resolutions = resolveWorkerValue(callee);
       for (const resolution of resolutions) {
         record(newPath.node, resolution, newPath.get('arguments')[0]);
@@ -416,15 +506,23 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
     },
     CallExpression(callPath: NodePath<CallExpression>) {
       const callee = callPath.get('callee');
-      if (!callee.isMemberExpression?.() && !callee.isOptionalMemberExpression?.()) return;
-      if (staticMemberPropertyName(callee.node) !== 'construct') return;
+      if (!callee.isMemberExpression?.() && !callee.isOptionalMemberExpression?.()) {
+        return;
+      }
+      if (staticMemberPropertyName(callee.node) !== 'construct') {
+        return;
+      }
       const reflectObject = callee.get('object');
-      if (Array.isArray(reflectObject) || !unboundGlobalIdentifier(reflectObject, ['Reflect'])) return;
+      if (Array.isArray(reflectObject) || !unboundGlobalIdentifier(reflectObject, ['Reflect'])) {
+        return;
+      }
       const args = callPath.get('arguments');
       const resolutions = resolveWorkerValue(args[0]);
       const constructorArgs = args[1];
       let workerUrlArgument = null;
-      if (constructorArgs?.isArrayExpression?.()) workerUrlArgument = constructorArgs.get('elements')[0];
+      if (constructorArgs?.isArrayExpression?.()) {
+        workerUrlArgument = constructorArgs.get('elements')[0];
+      }
       for (const resolution of resolutions) {
         record(callPath.node, { ...resolution, calleeForm: `Reflect.construct:${resolution.calleeForm}` }, workerUrlArgument, {
           invocationKind: 'Reflect.construct',
@@ -445,9 +543,15 @@ export function createRawWorkerConstructorPolicyPlugin({ diagnostics, allowRawWo
     name: 'naidan-file-protocol-standalone-raw-worker-constructor-policy',
     enforce: 'pre',
     transform(code, id) {
-      if (!inspectSource) return null;
-      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) return null;
-      if (!code.includes('Worker') && !code.includes(reservedBootstrapMarker)) return null;
+      if (!inspectSource) {
+        return null;
+      }
+      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) {
+        return null;
+      }
+      if (!code.includes('Worker') && !code.includes(reservedBootstrapMarker)) {
+        return null;
+      }
       const sourcePath = id.split('?', 1)[0];
       if (code.includes(reservedBootstrapMarker)) {
         throw new Error(
@@ -471,7 +575,9 @@ export function createRawWorkerConstructorPolicyPlugin({ diagnostics, allowRawWo
     },
     generateBundle(_options, bundle) {
       for (const output of Object.values(bundle)) {
-        if (!isOutputChunk(output)) continue;
+        if (!isOutputChunk(output)) {
+          continue;
+        }
         const constructors = findRawWorkerConstructors(output.code, output.fileName);
         for (const constructor of constructors) {
           const expressionSource = output.code.slice(constructor.start, constructor.end);

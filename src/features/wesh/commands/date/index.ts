@@ -78,7 +78,9 @@ function normalizeDateIsoShortBundles({
   let index = 0;
   while (index < args.length) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (token === '--') {
       normalized.push(...args.slice(index));
@@ -116,7 +118,9 @@ function normalizeDateIsoShortBundles({
 
       for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
         const short = shortBody[shortIndex];
-        if (short === undefined) continue;
+        if (short === undefined) {
+          continue;
+        }
 
         if (shortIndex > 0 && short === 'I') {
           normalized.push(
@@ -128,7 +132,9 @@ function normalizeDateIsoShortBundles({
         }
 
         const option = DATE_SHORT_OPTIONS.get(short);
-        if (option === undefined) break;
+        if (option === undefined) {
+          break;
+        }
         switch (option.kind) {
         case 'flag':
           continue;
@@ -480,11 +486,17 @@ function formatTimezoneOffset({
   offset: string,
   colonCount: number,
 }): string {
-  if (colonCount === 0) return offset;
+  if (colonCount === 0) {
+    return offset;
+  }
   const hours = offset.slice(0, 3);
   const minutes = offset.slice(3, 5);
-  if (colonCount === 1) return `${hours}:${minutes}`;
-  if (colonCount === 2) return `${hours}:${minutes}:00`;
+  if (colonCount === 1) {
+    return `${hours}:${minutes}`;
+  }
+  if (colonCount === 2) {
+    return `${hours}:${minutes}:00`;
+  }
   return minutes === '00' ? hours : `${hours}:${minutes}`;
 }
 
@@ -639,7 +651,9 @@ function formatRfcEmailOutput({
 
 function parseEpochDateOperand({ value }: { value: string }): DateInstant | undefined {
   const match = /^[ \t\n\v\f\r]*([+-]?)(\d+)(?:\.(\d+))?[ \t\n\v\f\r]*$/u.exec(value);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const negative = match[1] === '-';
   const wholeSeconds = BigInt(match[2]!);
@@ -665,7 +679,9 @@ function parseEpochDateOperand({ value }: { value: string }): DateInstant | unde
   }
 
   const date = new Date(Number(epochMilliseconds));
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   return {
     date,
     nanosecondsWithinSecond: Number(nanosecondsWithinSecond),
@@ -679,7 +695,9 @@ function parseDateOperand({
   value: string,
   baseTime: number,
 }): DateInstant | undefined {
-  if (containsNonAsciiDateWhitespace({ value })) return undefined;
+  if (containsNonAsciiDateWhitespace({ value })) {
+    return undefined;
+  }
   if (value.startsWith('@')) {
     return parseEpochDateOperand({ value: value.slice(1) });
   }
@@ -701,9 +719,13 @@ function parseDateOperand({
   }
 
   const parsedMilliseconds = parseDateExpressionMilliseconds({ value, baseTime });
-  if (parsedMilliseconds === undefined) return undefined;
+  if (parsedMilliseconds === undefined) {
+    return undefined;
+  }
   const date = new Date(parsedMilliseconds);
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   return {
     date,
     nanosecondsWithinSecond: date.getUTCMilliseconds() * 1_000_000,
@@ -715,7 +737,9 @@ function dateInstantFromMilliseconds({
 }: {
   milliseconds: number,
 }): DateInstant | undefined {
-  if (!Number.isFinite(milliseconds)) return undefined;
+  if (!Number.isFinite(milliseconds)) {
+    return undefined;
+  }
   const epochSeconds = Math.floor(milliseconds / 1000);
   let nanosecondsWithinSecond = Math.round((milliseconds - epochSeconds * 1000) * 1_000_000);
   let adjustedMilliseconds = milliseconds;
@@ -724,7 +748,9 @@ function dateInstantFromMilliseconds({
     nanosecondsWithinSecond = 0;
   }
   const date = new Date(adjustedMilliseconds);
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   return { date, nanosecondsWithinSecond };
 }
 
@@ -864,9 +890,15 @@ export const dateCommandImplementation: WeshCommandImplementation = {
     for (const occurrence of parsed.occurrences) {
       switch (occurrence.kind) {
       case 'value':
-        if (occurrence.key === 'dateString') sourceKinds.add('date');
-        if (occurrence.key === 'referencePath') sourceKinds.add('reference');
-        if (occurrence.key === 'dateFile') sourceKinds.add('file');
+        if (occurrence.key === 'dateString') {
+          sourceKinds.add('date');
+        }
+        if (occurrence.key === 'referencePath') {
+          sourceKinds.add('reference');
+        }
+        if (occurrence.key === 'dateFile') {
+          sourceKinds.add('file');
+        }
         break;
       case 'flag':
       case 'special':
@@ -947,7 +979,9 @@ export const dateCommandImplementation: WeshCommandImplementation = {
       }
 
       const lines = contents.length === 0 ? [] : contents.split('\n');
-      if (contents.endsWith('\n')) lines.pop();
+      if (contents.endsWith('\n')) {
+        lines.pop();
+      }
       let hadInvalidLine = false;
       for (const line of lines) {
         const lineInstant = parseDateOperand({ value: line, baseTime: evaluationTime });

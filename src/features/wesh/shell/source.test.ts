@@ -464,7 +464,9 @@ body
               async read({ maximumBytes: requestedMaximumBytes }: {
                 maximumBytes: number,
               }): Promise<Uint8Array | undefined> {
-                if (sourceOffset >= bytes.length) return undefined;
+                if (sourceOffset >= bytes.length) {
+                  return undefined;
+                }
                 const length = Math.min(sourceChunkSize, requestedMaximumBytes, bytes.length - sourceOffset);
                 const chunk = bytes.subarray(sourceOffset, sourceOffset + length);
                 sourceOffset += length;
@@ -472,12 +474,16 @@ body
               },
             },
           });
-          if (source.kind !== 'bytes') throw new Error('Expected byte-backed stripped source');
+          if (source.kind !== 'bytes') {
+            throw new Error('Expected byte-backed stripped source');
+          }
 
           const output: number[] = [];
           while (true) {
             const chunk = await source.read({ maximumBytes });
-            if (chunk === undefined) break;
+            if (chunk === undefined) {
+              break;
+            }
             expect(chunk.length).toBeLessThanOrEqual(maximumBytes);
             output.push(...chunk);
           }

@@ -29,7 +29,9 @@ vi.mock("@huggingface/transformers", () => {
 
     _getitem(index: number): Tensor {
       const rowSize = this.dims.at(-1);
-      if (rowSize === undefined) throw new Error("Missing row size");
+      if (rowSize === undefined) {
+        throw new Error("Missing row size");
+      }
       return new Tensor("float32", this.data.subarray(index * rowSize, (index + 1) * rowSize), [rowSize]);
     }
   }

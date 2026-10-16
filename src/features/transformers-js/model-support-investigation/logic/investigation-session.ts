@@ -57,11 +57,16 @@ function rememberInvestigationSession({ snapshot }: {
     });
     break;
   }
-  default: { const exhaustive: never = snapshot; throw new Error('Unhandled retained view: ' + exhaustive); }
+  default: {
+    const exhaustive: never = snapshot;
+    throw new Error('Unhandled retained view: ' + exhaustive);
+  }
   }
   const captured = structuredClone(snapshot);
   const previous = sessions.findIndex(session => session.batchId === snapshot.batchId);
-  if (previous >= 0) sessions.splice(previous, 1);
+  if (previous >= 0) {
+    sessions.splice(previous, 1);
+  }
   sessions.unshift(captured);
   sessions.splice(MAX_RETAINED_SESSIONS);
 }
@@ -103,10 +108,14 @@ export function createInvestigationSessionView({ initialSnapshot }: {
       return active;
     },
     remember({ snapshot }: { snapshot: InvestigationSessionSnapshot }): void {
-      if (active) rememberInvestigationSession({ snapshot });
+      if (active) {
+        rememberInvestigationSession({ snapshot });
+      }
     },
     retire({ dispose }: { dispose: () => Promise<void> }): Promise<InvestigationViewTeardown> {
-      if (retirement !== undefined) return retirement;
+      if (retirement !== undefined) {
+        return retirement;
+      }
       // Revoke writes synchronously, before Vue teardown or any awaited cleanup.
       active = false;
       const completion = Promise.withResolvers<InvestigationViewTeardown>();
@@ -129,7 +138,8 @@ export function createInvestigationSessionView({ initialSnapshot }: {
         // that terminal barrier until reload; every new view displays its cause.
         // Reopening a failed view must not retain duplicate inherited failures.
         switch (own.status) {
-        case 'complete': retiringViews.delete(barrier); break;
+        case 'complete': retiringViews.delete(barrier);
+          break;
         case 'failed': break;
         default: {
           const _ex: never = own;

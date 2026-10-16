@@ -19,7 +19,9 @@ const parsed = computed(() => {
   try {
     const data = JSON.parse(props.json);
     const result = GeneratedImageBlockSchema.safeParse(data);
-    if (result.success) return result.data;
+    if (result.success) {
+      return result.data;
+    }
     console.error('Invalid generated image block:', result.error);
     return undefined;
   } catch (e) {
@@ -38,7 +40,9 @@ const handleContextualPreview = inject(MESSAGE_CONTEXTUAL_PREVIEW_KEY, null);
 const { addErrorEvent } = useGlobalEvents();
 
 const displayDims = computed(() => {
-  if (!parsed.value) return { width: 300, height: 300 };
+  if (!parsed.value) {
+    return { width: 300, height: 300 };
+  }
   return getDisplayDimensions({
     width: parsed.value.width,
     height: parsed.value.height,
@@ -48,7 +52,9 @@ const displayDims = computed(() => {
 });
 
 async function loadImage() {
-  if (!parsed.value) return;
+  if (!parsed.value) {
+    return;
+  }
 
   loading.value = true;
   error.value = undefined;
@@ -56,7 +62,9 @@ async function loadImage() {
   try {
     const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
     if (blob) {
-      if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
+      if (imageUrl.value) {
+        URL.revokeObjectURL(imageUrl.value);
+      }
       imageUrl.value = URL.createObjectURL(blob);
       isSupported.value = await ImageDownloadHydrator.detectSupport({ blob });
     } else {
@@ -74,11 +82,15 @@ onMounted(loadImage);
 watch(() => props.json, loadImage);
 
 onUnmounted(() => {
-  if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
+  if (imageUrl.value) {
+    URL.revokeObjectURL(imageUrl.value);
+  }
 });
 
 async function handlePreview() {
-  if (!parsed.value) return;
+  if (!parsed.value) {
+    return;
+  }
 
   if (handleContextualPreview) {
     await handleContextualPreview({ id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
@@ -95,7 +107,9 @@ async function handlePreview() {
 }
 
 async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
-  if (!parsed.value) return;
+  if (!parsed.value) {
+    return;
+  }
 
   const downloadOptions = {
     id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),

@@ -22,9 +22,13 @@ describe('wesh rg', () => {
   async function writeFile({ path, data }: { path: string, data: string }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
     let directory = rootHandle;
-    for (const segment of segments) directory = await directory.getDirectoryHandle(segment, { create: true });
+    for (const segment of segments) {
+      directory = await directory.getDirectoryHandle(segment, { create: true });
+    }
     const file = await directory.getFileHandle(fileName, { create: true });
     const writable = await file.createWritable();
     await writable.write(data);

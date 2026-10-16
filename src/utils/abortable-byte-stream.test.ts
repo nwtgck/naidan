@@ -30,7 +30,8 @@ describe('abortable byte stream ownership', () => {
     const reason = new Error('Consumer no longer needs bytes');
     using _cleanupResource = {
       [Symbol.dispose]() {
-        cleanup.resolve(); reader.releaseLock();
+        cleanup.resolve();
+        reader.releaseLock();
       },
     };
     await promptly({ operation: reader.cancel(reason) });
@@ -114,7 +115,8 @@ describe('abortable byte stream ownership', () => {
     const reason = new Error('Stopped');
     using _cleanupResource = {
       [Symbol.dispose]() {
-        cleanup.resolve(); reader.releaseLock();
+        cleanup.resolve();
+        reader.releaseLock();
       },
     };
     abort.abort(reason);

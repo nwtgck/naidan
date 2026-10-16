@@ -55,16 +55,22 @@ export function useFirefoxWebGpuWarning({ enabled }: { enabled: ComputedRef<bool
   }, { flush: 'sync' });
 
   watch(() => active.value ? options.value?.profile : undefined, (preference, _previous, onCleanup) => {
-    if (preference === undefined || (preference !== 'auto' && !usesWebGpu({ profile: preference }))) return;
+    if (preference === undefined || (preference !== 'auto' && !usesWebGpu({ profile: preference }))) {
+      return;
+    }
     // Ready/checking reports are already owned by the service. Do not retry a
     // failure or revive a released Worker merely because its state changed.
-    if (!needsInitialProbe.value) return;
+    if (!needsInitialProbe.value) {
+      return;
+    }
     const controller = new AbortController();
     const scheduled = scheduleIdleTask({
       timeoutMs: 250,
       fallbackDelayMs: 0,
       task: async () => {
-        if (controller.signal.aborted || !needsInitialProbe.value) return;
+        if (controller.signal.aborted || !needsInitialProbe.value) {
+          return;
+        }
         try {
           // Use the same Worker/build policy as generation, including auto's CPU
           // fallback. This probes support but never loads a model or native runtime.
@@ -84,7 +90,9 @@ export function useFirefoxWebGpuWarning({ enabled }: { enabled: ComputedRef<bool
   });
 
   const visible = computed(() => {
-    if (!active.value || options.value === undefined) return false;
+    if (!active.value || options.value === undefined) {
+      return false;
+    }
     const state = profileState.value;
     switch (state.status) {
     case 'idle': case 'checking': case 'error': return false;

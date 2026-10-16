@@ -59,15 +59,22 @@ it.each(['call', 'signal', 'peer', 'deadline', 'maximum'] as const)('%s reports 
   };
   expect(openStream).toHaveBeenCalledOnce();
   switch (kind) {
-  case 'call': call.cancel({ reason: 'User stopped this call' }); break;
-  case 'signal': signal.abort(); break;
-  case 'peer': parent.abort(); break;
+  case 'call': call.cancel({ reason: 'User stopped this call' });
+    break;
+  case 'signal': signal.abort();
+    break;
+  case 'peer': parent.abort();
+    break;
   case 'deadline': case 'maximum': break;
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
   await vi.advanceTimersByTimeAsync(20);
   const expected = kind === 'deadline' || kind === 'maximum' ? 'DEADLINE_EXCEEDED' : 'CANCELLED';
-  expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
+  expect(resultCode).toBe(expected);
+  expect(closedCode).toBe(expected);
   expect(abort).not.toHaveBeenCalled();
   if (kind !== 'peer') {
     const other = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
@@ -84,7 +91,8 @@ it.each(['call', 'signal', 'peer', 'deadline', 'maximum'] as const)('%s reports 
   opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
   await closing;
   expect(abort).toHaveBeenCalledOnce();
-  expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
+  expect(resultCode).toBe(expected);
+  expect(closedCode).toBe(expected);
 });
 
 it('keeps a cancellation result when a lower open eventually rejects', async () => {

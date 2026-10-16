@@ -24,7 +24,9 @@ function greatestCommonDivisor({ left, right, consumeOperation }: {
 }
 
 function ensureIntegerResultAllowed({ value }: { value: bigint }): void {
-  if (decimalDigitCount({ value }) <= CALCULATOR_LIMITS.maximumCoefficientDigits) return;
+  if (decimalDigitCount({ value }) <= CALCULATOR_LIMITS.maximumCoefficientDigits) {
+    return;
+  }
   throw new NumericLimitError({
     reason: 'coefficient_digits',
     message: `Integer result exceeds ${CALCULATOR_LIMITS.maximumCoefficientDigits} digits.`,
@@ -36,7 +38,9 @@ function requireNonNegative({ value, name, span }: {
   name: string,
   span: { readonly start: number, readonly end: number },
 }): void {
-  if (value >= 0n) return;
+  if (value >= 0n) {
+    return;
+  }
   failCalculatorInput({ code: 'invalid_argument', message: `${name} must be non-negative.`, span, hint: undefined });
 }
 
@@ -92,8 +96,9 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
       for (const [index, value] of values.entries()) {
         runtime.consumeOperations({ count: 1, span: callSpan });
         const integer = integerFromNumericValue({ value, name: 'lcm value', span: argumentSpans[index]! });
-        if (result === 0n || integer === 0n) result = 0n;
-        else {
+        if (result === 0n || integer === 0n) {
+          result = 0n;
+        } else {
           result = absoluteBigInt({
             value: result / greatestCommonDivisor({
               left: result,
@@ -146,7 +151,9 @@ export const INTEGER_CALCULATOR_FUNCTIONS = [
       if (r > n) {
         failCalculatorInput({ code: 'invalid_argument', message: 'combinations requires r <= n.', span: argumentSpans[1], hint: undefined });
       }
-      if (r > n - r) r = n - r;
+      if (r > n - r) {
+        r = n - r;
+      }
       const count = requireIterationLimit({ count: r, span: argumentSpans[1]! });
       let result = 1n;
       for (let index = 1; index <= count; index += 1) {

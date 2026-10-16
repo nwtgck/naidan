@@ -26,7 +26,9 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
       let result = values[0]!;
       for (const value of values.slice(1)) {
         runtime.consumeOperations({ count: 1, span: callSpan });
-        if (compareNumericValues({ left: value, right: result }) < 0) result = value;
+        if (compareNumericValues({ left: value, right: result }) < 0) {
+          result = value;
+        }
       }
       return propagateApproximateInputs({ value: result, inputs: values });
     },
@@ -44,7 +46,9 @@ export const AGGREGATION_CALCULATOR_FUNCTIONS = [
       let result = values[0]!;
       for (const value of values.slice(1)) {
         runtime.consumeOperations({ count: 1, span: callSpan });
-        if (compareNumericValues({ left: value, right: result }) > 0) result = value;
+        if (compareNumericValues({ left: value, right: result }) > 0) {
+          result = value;
+        }
       }
       return propagateApproximateInputs({ value: result, inputs: values });
     },

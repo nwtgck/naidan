@@ -16,7 +16,9 @@ export class NaidanRpcLmProvider implements LmProvider {
   }
 
   private async client(): Promise<NaidanPeerClient> {
-    if (!this.registrationId) throw new Error('Select a connection in Naidan RPC settings');
+    if (!this.registrationId) {
+      throw new Error('Select a connection in Naidan RPC settings');
+    }
     return (await getRpcManager()).client({ id: this.registrationId });
   }
 
@@ -26,16 +28,23 @@ export class NaidanRpcLmProvider implements LmProvider {
       const reader = (await call.result).getReader(), result: string[] = [];
       try {
         for (;;) {
-          const item = await reader.read(); if (item.done) break;
-          if (result.length >= 256) throw new Error('Too many remote models');
+          const item = await reader.read();
+          if (item.done) {
+            break;
+          }
+          if (result.length >= 256) {
+            throw new Error('Too many remote models');
+          }
           result.push(item.value.ref);
         }
       } finally {
         reader.releaseLock();
       }
-      await call.closed; return result;
+      await call.closed;
+      return result;
     } catch (error) {
-      call.cancel({ reason: 'Model listing stopped' }); throw error;
+      call.cancel({ reason: 'Model listing stopped' });
+      throw error;
     }
   }
 
@@ -51,9 +60,11 @@ export class NaidanRpcLmProvider implements LmProvider {
       try {
         const output = await call.result;
         const result = await receiveEvents({ readable: output.events, onEvent, signal: signal ?? new AbortController().signal });
-        await call.closed; return result;
+        await call.closed;
+        return result;
       } catch (error) {
-        call.cancel({ reason: 'Chat generation stopped' }); throw error;
+        call.cancel({ reason: 'Chat generation stopped' });
+        throw error;
       }
     };
   }
@@ -65,13 +76,15 @@ export class NaidanRpcLmProvider implements LmProvider {
   async runChatOperation({ signal, operation }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {
     // A multi-tool operation stays pinned to this session. A later reconnect
     // cannot silently redirect its next generation to a new RPC peer instance.
-    const client = await this.client(); signal?.throwIfAborted();
+    const client = await this.client();
+    signal?.throwIfAborted();
     const stop = new AbortController();
     const scope = createScopedGeneration({ scope: { signal: signal ?? stop.signal, generate: this.generate({ client }) } });
     try {
       await operation({ chat: scope.chat, signal: signal ?? stop.signal });
     } finally {
-      stop.abort(); await scope.close();
+      stop.abort();
+      await scope.close();
     }
   }
 }

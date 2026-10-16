@@ -212,16 +212,22 @@ function* renderOutputChunks({
 }): Iterable<Uint8Array> {
   switch (outputMode.kind) {
   case 'default':
-    if (format !== undefined) throw new Error('Default stat output unexpectedly used a compiled format');
+    if (format !== undefined) {
+      throw new Error('Default stat output unexpectedly used a compiled format');
+    }
     yield textEncoder.encode(renderDefaultStatOutput({ input }));
     return;
   case 'format':
-    if (format === undefined) throw new Error('Formatted stat output is missing its compiled format');
+    if (format === undefined) {
+      throw new Error('Formatted stat output is missing its compiled format');
+    }
     yield* renderCompiledStatFormatChunks({ format, input });
     yield newlineBytes;
     return;
   case 'printf':
-    if (format === undefined) throw new Error('Printf stat output is missing its compiled format');
+    if (format === undefined) {
+      throw new Error('Printf stat output is missing its compiled format');
+    }
     yield* renderCompiledStatFormatChunks({ format, input });
     return;
   default: {
@@ -280,7 +286,9 @@ async function writeOutputChunks({
   let pendingBytes = 0;
 
   const flush = async () => {
-    if (pendingBytes === 0) return;
+    if (pendingBytes === 0) {
+      return;
+    }
     const combined = combineChunks({ chunks: pending, byteLength: pendingBytes });
     pending = [];
     pendingBytes = 0;
@@ -288,13 +296,17 @@ async function writeOutputChunks({
   };
 
   for (const chunk of chunks) {
-    if (chunk.byteLength === 0) continue;
+    if (chunk.byteLength === 0) {
+      continue;
+    }
     if (chunk.byteLength >= OUTPUT_BUFFER_SIZE) {
       await flush();
       await writeAllBytes({ handle, bytes: chunk });
       continue;
     }
-    if (pendingBytes + chunk.byteLength > OUTPUT_BUFFER_SIZE) await flush();
+    if (pendingBytes + chunk.byteLength > OUTPUT_BUFFER_SIZE) {
+      await flush();
+    }
     pending.push(chunk);
     pendingBytes += chunk.byteLength;
   }

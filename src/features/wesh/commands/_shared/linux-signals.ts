@@ -100,7 +100,9 @@ export function parseLinuxSignal({
   const numericText = stripLeadingCLocaleAndTrailingBlankWhitespace({ value });
   if (/^\+?\d+$/u.test(numericText)) {
     const number = Number.parseInt(numericText, 10);
-    if (allowZero && number === 0) return 0;
+    if (allowZero && number === 0) {
+      return 0;
+    }
     return number >= 1 && number <= 64 ? number : undefined;
   }
   return linuxSignalByName({ name: uppercaseAscii({ value }) })?.number;

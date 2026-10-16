@@ -69,9 +69,12 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           const { id: _attachmentId, binaryObjectId, mimeType, originalName, size: _size, uploadedAt: _uploadedAt, ...state } = attachment;
           let blob: Blob;
           switch (state.status) {
-          case 'memory': blob = state.blob; break;
+          case 'memory': blob = state.blob;
+            break;
           case 'persisted':
-            if (!readBinaryObject) throw new Error(`No binary reader for attachment "${originalName}".`);
+            if (!readBinaryObject) {
+              throw new Error(`No binary reader for attachment "${originalName}".`);
+            }
             blob = await readBinaryObject({ binaryObjectId, signal });
             break;
           case 'missing': throw new Error(`Attachment "${originalName}" is missing.`);
@@ -84,7 +87,9 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           if (mimeType.startsWith('image/')) {
             const data = new Uint8Array(await blob.arrayBuffer());
             let binary = '';
-            for (const byte of data) binary += String.fromCharCode(byte);
+            for (const byte of data) {
+              binary += String.fromCharCode(byte);
+            }
             content.push({ type: 'image_url', image_url: { url: `data:${mimeType};base64,${btoa(binary)}` } });
           } else if (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/xml') {
             const text = new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
@@ -107,7 +112,10 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           switch (part.type) {
           case 'text': return part.text;
           case 'image_url': throw new Error('Expected text-only content.');
-          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          default: {
+            const _ex: never = part;
+            throw new Error(`Unhandled content: ${_ex}`);
+          }
           }
         }).join(''),
         reasoning_content: undefined,
@@ -130,7 +138,10 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           case 'reasoning': break;
           case 'text':
           case 'tool_call': throw new Error('This API cannot represent reasoning after text or a tool call.');
-          default: { const _ex: never = phase; throw new Error(`Unhandled projection phase: ${_ex}`); }
+          default: {
+            const _ex: never = phase;
+            throw new Error(`Unhandled projection phase: ${_ex}`);
+          }
           }
           reasoning = (reasoning ?? '') + text;
           break;
@@ -142,9 +153,13 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
           case 'reasoning':
           case 'text': break;
           case 'tool_call': throw new Error('This API cannot represent text after a tool call in the same message.');
-          default: { const _ex: never = phase; throw new Error(`Unhandled projection phase: ${_ex}`); }
+          default: {
+            const _ex: never = phase;
+            throw new Error(`Unhandled projection phase: ${_ex}`);
           }
-          phase = 'text'; content = (content ?? '') + text;
+          }
+          phase = 'text';
+          content = (content ?? '') + text;
           break;
         }
         case 'tool_call': {
@@ -191,7 +206,9 @@ async function resolveToolText({ content, readBinaryObject, signal }: { content:
   switch (content.type) {
   case 'text': return content.text;
   case 'binary_object': {
-    if (!readBinaryObject) throw new Error('No binary reader for the tool result.');
+    if (!readBinaryObject) {
+      throw new Error('No binary reader for the tool result.');
+    }
     const blob = await readBinaryObject({ binaryObjectId: content.id, signal });
     signal?.throwIfAborted();
     const bytes = await blob.arrayBuffer();
@@ -200,7 +217,10 @@ async function resolveToolText({ content, readBinaryObject, signal }: { content:
     // Reject corrupt bytes rather than changing the next model input with replacements.
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   }
-  default: { const _ex: never = content; throw new Error(`Unhandled tool content: ${_ex}`); }
+  default: {
+    const _ex: never = content;
+    throw new Error(`Unhandled tool content: ${_ex}`);
+  }
   }
 }
 
@@ -209,7 +229,10 @@ async function toolText({ result, readBinaryObject, signal }: { result: ToolExec
   case 'executing': throw new Error('A tool result is still executing.');
   case 'success': return resolveToolText({ content: result.content, readBinaryObject, signal });
   case 'error': return formatToolExecutionOutcomeForLm({ outcome: { status: 'error', code: result.error.code, message: await resolveToolText({ content: result.error.message, readBinaryObject, signal }) } });
-  default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled tool result: ${_ex}`);
+  }
   }
 }
 

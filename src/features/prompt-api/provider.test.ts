@@ -34,14 +34,18 @@ async function generate({ provider, messages, model, parameters, tools }: {
 }) {
   const abortController = new AbortController();
   const value = await collectChatGeneration({ items: provider.chat({ debug: undefined, messages, model, parameters, tools, signal: abortController.signal, readBinaryObject: undefined }), abortController });
-  if (value.result.type === 'error') throw value.result.error;
+  if (value.result.type === 'error') {
+    throw value.result.error;
+  }
   return value;
 }
 
 function createTextStream({ chunks }: { chunks: string[] }): ReadableStream<string> {
   return new ReadableStream<string>({
     start(controller) {
-      for (const chunk of chunks) controller.enqueue(chunk);
+      for (const chunk of chunks) {
+        controller.enqueue(chunk);
+      }
       controller.close();
     },
   });
@@ -130,7 +134,9 @@ describe('PromptApiProvider', () => {
         { type: 'image' },
       ],
     }]);
-    if (!Array.isArray(prompt)) throw new Error('Expected a multimodal prompt.');
+    if (!Array.isArray(prompt)) {
+      throw new Error('Expected a multimodal prompt.');
+    }
     const message = prompt[0];
     if (message === undefined || typeof message.content === 'string') {
       throw new Error('Expected multimodal message content.');

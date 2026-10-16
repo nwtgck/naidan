@@ -8,18 +8,23 @@ import { createImageGenerationStorageHarness, generationRunFixture, generationSe
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 
 beforeEach(() => {
-  fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
+  fs = createImageGenerationStorageHarness();
+  vi.stubGlobal('Blob', NodeBlob);
 });
 
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
-  if (!catalog) throw new Error('Missing catalog.');
+  if (!catalog) {
+    throw new Error('Missing catalog.');
+  }
   const store = { storageType: 'opfs' as const, storeId: catalog.id };
-  const session = generationSessionFixture({ id: 'session-aa' }); await service.saveImageGenerationSession({ store, session, expectedRevision: undefined });
+  const session = generationSessionFixture({ id: 'session-aa' });
+  await service.saveImageGenerationSession({ store, session, expectedRevision: undefined });
   const run = generationRunFixture({ id: 'run-aa', sessionId: session.id, count: 2, seed: '42' });
   await service.createImageGenerationRun({ store, run, writeInputs: async () => {} });
   await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
-  const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 }); await service.commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
+  const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 });
+  await service.commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
   const tagId = toImageGenerationTagId({ raw: 'tag-aa' });
   await service.saveImageGenerationCatalog({
     store,
@@ -39,18 +44,22 @@ async function setup() {
 }
 
 it('captures canonical metadata plus all input, result and preview references without leaking unused tags', async () => {
-  const h = await setup(); const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const h = await setup();
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
   expect(snapshot.binaryObjectIds.map(id => idToRaw({ id })).sort()).toEqual(['input-aa', 'reference-aa', 'binary-asset-aa', 'preview-asset-aa'].sort());
   expect(snapshot.metadata.map(entry => entry.path).sort()).toEqual(['session.json', 'draft.json', 'runs/aa/run-aa.json', 'assets/aa/asset-aa.json', 'annotations/aa/asset-aa.json', 'catalog.json'].sort());
   const catalog = await snapshot.metadata.find(entry => entry.path === 'catalog.json')!.blob.text();
-  expect(catalog).toContain('夜景'); expect(catalog).not.toContain('unrelated-private-tag');
+  expect(catalog).toContain('夜景');
+  expect(catalog).not.toContain('unrelated-private-tag');
   const run = await snapshot.metadata.find(entry => entry.path === 'runs/aa/run-aa.json')!.blob.text();
   expect(run).toContain('running'); // Partial runs remain exportable, never fabricated as completed.
 });
 
 it('retains a snapshot even if the original file changes afterwards', async () => {
-  const h = await setup(); const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
-  const file = await fs.file({ path: '/naidan-storage/experimental/image-generation/sessions/aa/session-aa/session.json' }); file.text = '{broken';
+  const h = await setup();
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const file = await fs.file({ path: '/naidan-storage/experimental/image-generation/sessions/aa/session-aa/session.json' });
+  file.text = '{broken';
   expect(await snapshot.metadata.find(entry => entry.path === 'session.json')!.blob.text()).toContain('雨の夜景');
 });
 
@@ -79,7 +88,9 @@ it('excludes translation destinations and authentication from shareable session 
   const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
   for (const entry of snapshot.metadata) {
     const text = await entry.blob.text();
-    expect(text).not.toContain('private-secret'); expect(text).not.toContain('private-translator'); expect(text).not.toContain('private-model');
+    expect(text).not.toContain('private-secret');
+    expect(text).not.toContain('private-translator');
+    expect(text).not.toContain('private-model');
   }
   expect((await service.loadImageGenerationCatalog({ store: h.store })).preferences.translation).toEqual(translation);
 });

@@ -9,10 +9,13 @@ function databaseHarness({ value }: { value: unknown }) {
   const store = {
     get: vi.fn(() => request),
     put: vi.fn((handle: unknown, key: IDBValidKey) => {
-      stored.value = handle; stored.key = key; return request;
+      stored.value = handle;
+      stored.key = key;
+      return request;
     }),
     delete: vi.fn((key: IDBValidKey) => {
-      stored.key = key; return request;
+      stored.key = key;
+      return request;
     }),
   };
   const transaction = {
@@ -62,7 +65,8 @@ describe('host model handles database', () => {
     expect(harness.transaction.objectStore).toHaveBeenCalledWith('handles');
     expect(harness.store.put).toHaveBeenCalledWith(handle, 'registration-1');
     expect(settled).not.toHaveBeenCalled();
-    harness.transaction.oncomplete?.(); await operation;
+    harness.transaction.oncomplete?.();
+    await operation;
     expect(settled).toHaveBeenCalledOnce();
     expect(harness.database.close).toHaveBeenCalledOnce();
   });
@@ -80,19 +84,27 @@ describe('host model handles database', () => {
 
   it('returns undefined only for a missing record and rejects malformed stored values', async () => {
     const missing = databaseHarness({ value: undefined });
-    const read = hostModelHandles.get({ id }); await tick(); missing.transaction.oncomplete?.();
+    const read = hostModelHandles.get({ id });
+    await tick();
+    missing.transaction.oncomplete?.();
     expect(await read).toBeUndefined();
     const malformed = databaseHarness({ value: { name: 'not a handle' } });
     const invalid = hostModelHandles.get({ id });
     const rejected = expect(invalid).rejects.toThrow();
-    await tick(); malformed.transaction.oncomplete?.(); await rejected;
+    await tick();
+    malformed.transaction.oncomplete?.();
+    await rejected;
   });
 
   it('deletes only the IDB record without invoking any filesystem deletion', async () => {
     const handle = { remove: vi.fn(), removeEntry: vi.fn() };
     const harness = databaseHarness({ value: handle });
-    const removal = hostModelHandles.delete({ id }); await tick(); harness.transaction.oncomplete?.(); await removal;
+    const removal = hostModelHandles.delete({ id });
+    await tick();
+    harness.transaction.oncomplete?.();
+    await removal;
     expect(harness.store.delete).toHaveBeenCalledWith('registration-1');
-    expect(handle.remove).not.toHaveBeenCalled(); expect(handle.removeEntry).not.toHaveBeenCalled();
+    expect(handle.remove).not.toHaveBeenCalled();
+    expect(handle.removeEntry).not.toHaveBeenCalled();
   });
 });

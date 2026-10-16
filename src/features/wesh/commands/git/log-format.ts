@@ -7,8 +7,9 @@ export function parseAuthorForLog({ author }: {
     timezone: string;
 } {
   const match = /^(.* <[^>]*>) ([0-9]+) ([+-][0-9]{4})$/u.exec(author);
-  if (match === null)
+  if (match === null) {
     return { identity: author, timestamp: 0, timezone: '+0000' };
+  }
   return { identity: match[1]!, timestamp: Number.parseInt(match[2]!, 10), timezone: match[3]! };
 }
 

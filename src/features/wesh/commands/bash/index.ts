@@ -133,7 +133,9 @@ async function prepareSequentialBashScriptSource({ handle }: {
     if (bytesRead < 0 || bytesRead > remaining) {
       throw new Error(`Invalid Bash sequential script prefix read length: ${bytesRead}`);
     }
-    if (bytesRead === 0) break;
+    if (bytesRead === 0) {
+      break;
+    }
 
     const chunkEnd = totalRead + bytesRead;
     const inspection = inspectBashScriptPrefixChunk({
@@ -180,7 +182,9 @@ async function prepareBashScriptSource({ handle, stat }: {
   case 'file':
   case 'directory':
   case 'symlink':
-    if (await hasBashBinaryScriptPrefix({ handle })) return { kind: 'binary' };
+    if (await hasBashBinaryScriptPrefix({ handle })) {
+      return { kind: 'binary' };
+    }
     return { kind: 'source', source: createHandleShellSource({ handle }) };
   default: {
     const _ex: never = stat.type;
@@ -670,7 +674,9 @@ usage: bash [-c command] [file [argument...]]
                 error,
                 errexit: plan.executionOptions.errexit,
               });
-              if (pathError !== undefined) return pathError;
+              if (pathError !== undefined) {
+                return pathError;
+              }
               throw error;
             }
           }
@@ -720,7 +726,9 @@ usage: bash [-c command] [file [argument...]]
                 error,
                 errexit: plan.executionOptions.errexit,
               });
-              if (readError !== undefined) return readError;
+              if (readError !== undefined) {
+                return readError;
+              }
               throw error;
             }
             switch (preparedSource.kind) {
@@ -753,7 +761,9 @@ usage: bash [-c command] [file [argument...]]
             error,
             errexit: plan.executionOptions.errexit,
           });
-          if (pathError !== undefined) return pathError;
+          if (pathError !== undefined) {
+            return pathError;
+          }
           const message = error instanceof Error ? error.message : String(error);
           await context.text().error({ text: `bash: ${scriptPath}: ${message}\n` });
           return {

@@ -200,8 +200,12 @@ globalThis.__representativeLazyUiWorkerLoader = () => import("./lazy-ui-worker-s
 function requireRolldownOutput({ result }: Readonly<{
   result: RolldownOutput | readonly RolldownOutput[];
 }>): RolldownOutput {
-  if ("output" in result) return result;
-  if (result.length !== 1) throw new Error(`Expected one representative build output; found ${result.length}`);
+  if ("output" in result) {
+    return result;
+  }
+  if (result.length !== 1) {
+    throw new Error(`Expected one representative build output; found ${result.length}`);
+  }
   return result[0];
 }
 

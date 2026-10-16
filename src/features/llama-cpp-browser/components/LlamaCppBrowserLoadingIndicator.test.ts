@@ -10,7 +10,8 @@ vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
     getState: vi.fn<() => EngineState>(() => ({ status: 'idle' })),
     subscribe: vi.fn(({ listener }: { listener: (event: { state: EngineState }) => void }) => {
-      listeners.add(listener); return () => {
+      listeners.add(listener);
+      return () => {
         listeners.delete(listener);
       };
     }),
@@ -18,7 +19,9 @@ vi.mock('@/features/llama-cpp-browser', () => ({
 }));
 
 beforeEach(async () => {
-  vi.clearAllMocks(); listeners.clear(); await ensureAllStringsForTest({ locale: 'en' });
+  vi.clearAllMocks();
+  listeners.clear();
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('scoped inline loading status', () => {
@@ -28,7 +31,8 @@ describe('scoped inline loading status', () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue(state);
     const wrapper = mount(LlamaCppBrowserLoadingIndicator, { props: { scope: 'inference' } });
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
-    expect(wrapper.find('progress').exists()).toBe(false); wrapper.unmount();
+    expect(wrapper.find('progress').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('shows bounded preparation progress and removes itself on completion', async () => {
@@ -37,9 +41,13 @@ describe('scoped inline loading status', () => {
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('100');
     expect(wrapper.text()).toContain('100%');
     expect(wrapper.find('progress').exists()).toBe(false);
-    for (const listener of listeners) listener({ state: { status: 'idle' } });
-    await flushPromises(); expect(wrapper.find('[role="status"]').exists()).toBe(false);
-    wrapper.unmount(); expect(listeners.size).toBe(0);
+    for (const listener of listeners) {
+      listener({ state: { status: 'idle' } });
+    }
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    wrapper.unmount();
+    expect(listeners.size).toBe(0);
   });
 
   it('keeps import status out of chat and inference status out of the import panel', async () => {
@@ -48,12 +56,15 @@ describe('scoped inline loading status', () => {
     const importer = mount(LlamaCppBrowserLoadingIndicator, { props: { scope: 'import' } });
     expect(chat.find('[role="status"]').exists()).toBe(false);
     expect(importer.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('50');
-    for (const listener of listeners) listener({ state: { status: 'working', progress: { phase: 'initializing', completed: 0, total: 0 } } });
+    for (const listener of listeners) {
+      listener({ state: { status: 'working', progress: { phase: 'initializing', completed: 0, total: 0 } } });
+    }
     await flushPromises();
     expect(chat.get('[role="status"]').text()).not.toBe('');
     expect(chat.find('[role="progressbar"]').exists()).toBe(false);
     expect(importer.find('[role="status"]').exists()).toBe(false);
-    chat.unmount(); importer.unmount();
+    chat.unmount();
+    importer.unmount();
   });
 
   it('uses the ordinary response wait after loading, including prefill, without overlapping bars', async () => {
@@ -62,7 +73,9 @@ describe('scoped inline loading status', () => {
     expect(wrapper.findComponent(AssistantWaitingIndicator).exists()).toBe(false);
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('96');
     for (const phase of ['prefill', 'generating'] as const) {
-      for (const listener of listeners) listener({ state: { status: 'working', progress: { phase, completed: 5, total: 10 } } });
+      for (const listener of listeners) {
+        listener({ state: { status: 'working', progress: { phase, completed: 5, total: 10 } } });
+      }
       await flushPromises();
       expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
       expect(wrapper.find('[role="status"]').exists()).toBe(false);

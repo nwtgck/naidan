@@ -152,7 +152,8 @@ describe('prepareProductionModelCandidate', () => {
     const capturedPlans: string[][] = [];
     const expectedResult = result({ files: REQUIRED_MODEL_PATHS.map(path => successfulFile({ path })) });
     const prefetchUrls = vi.fn(async () => {
-      order.push('prefetch'); return expectedResult;
+      order.push('prefetch');
+      return expectedResult;
     });
     const dispose = vi.fn(async () => undefined);
     vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({ prefetchUrls, dispose });
@@ -162,7 +163,9 @@ describe('prepareProductionModelCandidate', () => {
       candidate: CANDIDATE,
       requiredModelPaths: REQUIRED_MODEL_PATHS,
       onPlan: ({ paths }) => {
-        order.push('plan'); capturedPlans.push([...paths]); throw new Error('Broken plan display');
+        order.push('plan');
+        capturedPlans.push([...paths]);
+        throw new Error('Broken plan display');
       },
     });
     expect(order).toEqual(['plan', 'prefetch']);

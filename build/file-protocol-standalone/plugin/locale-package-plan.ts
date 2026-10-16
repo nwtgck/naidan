@@ -36,7 +36,9 @@ function parsePackLocale({ moduleId, supportedLocales }: Readonly<{
   supportedLocales: readonly string[];
 }>): string | undefined {
   const identity = parseResolvedPackModuleIdentity({ id: normalizedModuleId(moduleId) });
-  if (identity === undefined) return undefined;
+  if (identity === undefined) {
+    return undefined;
+  }
   if (!supportedLocales.includes(identity.locale)) {
     throw new Error(`Unknown Boundary Strings pack locale in module ID: ${moduleId}`);
   }
@@ -49,15 +51,23 @@ function parseMessageModuleLocale({ moduleId, supportedLocales }: Readonly<{
 }>): string | undefined {
   const marker = '/src/strings/messages/';
   const markerIndex = moduleId.lastIndexOf(marker);
-  if (markerIndex < 0) return undefined;
+  if (markerIndex < 0) {
+    return undefined;
+  }
   const relative = moduleId.slice(markerIndex + marker.length).replace(/[?#].*$/u, '');
   const segments = relative.split('/');
   const fileName = segments.at(-1);
-  if (fileName === undefined) return undefined;
+  if (fileName === undefined) {
+    return undefined;
+  }
   const match = /^([^./]+)\.(?:[cm]?[jt]s)$/u.exec(fileName);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const locale = match[1];
-  if (locale === undefined) return undefined;
+  if (locale === undefined) {
+    return undefined;
+  }
   if (!supportedLocales.includes(locale)) {
     throw new Error(`Unknown Boundary Strings source locale in module ID: ${moduleId}`);
   }
@@ -81,7 +91,9 @@ function chunkLocaleInfo({ chunk, supportedLocales }: Readonly<{
       rootLocales.add(packLocale);
     }
     const sourceLocale = parseMessageModuleLocale({ moduleId, supportedLocales });
-    if (sourceLocale !== undefined) payloadLocales.add(sourceLocale);
+    if (sourceLocale !== undefined) {
+      payloadLocales.add(sourceLocale);
+    }
   }
 
   if (payloadLocales.size > 1) {
@@ -104,12 +116,20 @@ function followClosure({
   const stack = [...start];
   while (stack.length > 0) {
     const fileName = stack.pop();
-    if (fileName === undefined || visited.has(fileName)) continue;
+    if (fileName === undefined || visited.has(fileName)) {
+      continue;
+    }
     const chunk = chunksByFileName.get(fileName);
-    if (chunk === undefined) throw new Error(`Chunk graph references missing output chunk: ${fileName}`);
+    if (chunk === undefined) {
+      throw new Error(`Chunk graph references missing output chunk: ${fileName}`);
+    }
     visited.add(fileName);
-    for (const imported of chunk.imports) stack.push(imported);
-    for (const imported of chunk.dynamicImports) stack.push(imported);
+    for (const imported of chunk.imports) {
+      stack.push(imported);
+    }
+    for (const imported of chunk.dynamicImports) {
+      stack.push(imported);
+    }
   }
   return visited;
 }
@@ -145,7 +165,9 @@ function packModuleInfo({ moduleId, supportedLocales }: Readonly<{
 }>): Readonly<{ locale: string; boundaryIdentity: string }> | undefined {
   const normalized = normalizedModuleId(moduleId);
   const identity = parseResolvedPackModuleIdentity({ id: normalized });
-  if (identity === undefined) return undefined;
+  if (identity === undefined) {
+    return undefined;
+  }
   if (!supportedLocales.includes(identity.locale)) {
     throw new Error(`Unknown Boundary Strings pack locale in module ID: ${normalized}`);
   }
@@ -203,16 +225,24 @@ function followRetainedModuleClosure({
   const queue = [...start];
   while (queue.length > 0) {
     const rawSourceId = queue.pop();
-    if (rawSourceId === undefined) continue;
+    if (rawSourceId === undefined) {
+      continue;
+    }
     const sourceId = normalizedModuleId(rawSourceId);
-    if (visited.has(sourceId)) continue;
+    if (visited.has(sourceId)) {
+      continue;
+    }
     visited.add(sourceId);
     const info = moduleGraph.get(sourceId);
-    if (info === undefined) continue;
+    if (info === undefined) {
+      continue;
+    }
 
     for (const rawTargetId of info.importedIds) {
       const targetId = normalizedModuleId(rawTargetId);
-      if (!visited.has(targetId) && moduleGraph.has(targetId)) queue.push(targetId);
+      if (!visited.has(targetId) && moduleGraph.has(targetId)) {
+        queue.push(targetId);
+      }
     }
     for (const rawTargetId of info.dynamicallyImportedIds) {
       const targetId = normalizedModuleId(rawTargetId);
@@ -221,8 +251,12 @@ function followRetainedModuleClosure({
         targetModuleId: targetId,
         targetLocale,
         supportedLocales,
-      })) continue;
-      if (!visited.has(targetId) && moduleGraph.has(targetId)) queue.push(targetId);
+      })) {
+        continue;
+      }
+      if (!visited.has(targetId) && moduleGraph.has(targetId)) {
+        queue.push(targetId);
+      }
     }
   }
   return visited;
@@ -239,11 +273,17 @@ function followStaticChunkClosure({
   const stack = [...start];
   while (stack.length > 0) {
     const fileName = stack.pop();
-    if (fileName === undefined || visited.has(fileName)) continue;
+    if (fileName === undefined || visited.has(fileName)) {
+      continue;
+    }
     const chunk = chunksByFileName.get(fileName);
-    if (chunk === undefined) throw new Error(`Chunk graph references missing output chunk: ${fileName}`);
+    if (chunk === undefined) {
+      throw new Error(`Chunk graph references missing output chunk: ${fileName}`);
+    }
     visited.add(fileName);
-    for (const imported of chunk.imports) stack.push(imported);
+    for (const imported of chunk.imports) {
+      stack.push(imported);
+    }
   }
   return visited;
 }
@@ -270,11 +310,17 @@ export function createLocalePackagePlan({
   targetLocale: string;
   supportedLocales: readonly string[];
 }>): LocalePackagePlan {
-  if (!supportedLocales.includes(targetLocale)) throw new Error(`Unsupported target locale: ${targetLocale}`);
-  if (new Set(supportedLocales).size !== supportedLocales.length) throw new Error('supportedLocales contains duplicates');
+  if (!supportedLocales.includes(targetLocale)) {
+    throw new Error(`Unsupported target locale: ${targetLocale}`);
+  }
+  if (new Set(supportedLocales).size !== supportedLocales.length) {
+    throw new Error('supportedLocales contains duplicates');
+  }
 
   const chunksByFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
-  if (chunksByFileName.size !== chunks.length) throw new Error('Duplicate output chunk file names');
+  if (chunksByFileName.size !== chunks.length) {
+    throw new Error('Duplicate output chunk file names');
+  }
   for (const chunk of chunks) {
     for (const dependencyFileName of [...chunk.imports, ...chunk.dynamicImports]) {
       if (!chunksByFileName.has(dependencyFileName)) {
@@ -291,7 +337,9 @@ export function createLocalePackagePlan({
     infos.set(chunk.fileName, info);
     for (const moduleId of renderedModuleIds(chunk)) {
       const locale = parsePackLocale({ moduleId, supportedLocales });
-      if (locale === undefined) continue;
+      if (locale === undefined) {
+        continue;
+      }
       rootChunksByLocale.get(locale)?.add(chunk.fileName);
       rootModulesByLocale.get(locale)?.add(moduleId);
     }
@@ -299,17 +347,23 @@ export function createLocalePackagePlan({
 
   for (const locale of supportedLocales) {
     const roots = rootModulesByLocale.get(locale);
-    if (roots === undefined || roots.size === 0) throw new Error(`No Boundary Strings pack root module found for locale: ${locale}`);
+    if (roots === undefined || roots.size === 0) {
+      throw new Error(`No Boundary Strings pack root module found for locale: ${locale}`);
+    }
   }
 
   const entryModuleIds = [...moduleGraph]
     .filter(([, info]) => info.isEntry === true)
     .map(([moduleId]) => moduleId);
-  if (entryModuleIds.length === 0) throw new Error('No semantic entry modules found');
+  if (entryModuleIds.length === 0) {
+    throw new Error('No semantic entry modules found');
+  }
   const fullModuleClosure = followModuleClosure({ start: entryModuleIds, moduleGraph });
   for (const [locale, roots] of rootModulesByLocale) {
     for (const root of roots) {
-      if (!fullModuleClosure.has(root)) throw new Error(`Locale root module is unreachable from entries: ${locale} -> ${root}`);
+      if (!fullModuleClosure.has(root)) {
+        throw new Error(`Locale root module is unreachable from entries: ${locale} -> ${root}`);
+      }
     }
   }
 
@@ -322,7 +376,9 @@ export function createLocalePackagePlan({
         if (sourceInfo.importedIds.includes(root)) {
           throw new Error(`Locale root module has a static incoming edge: ${locale} ${sourceModuleId} -> ${root}`);
         }
-        if (!sourceInfo.dynamicallyImportedIds.includes(root)) continue;
+        if (!sourceInfo.dynamicallyImportedIds.includes(root)) {
+          continue;
+        }
         if (!isBoundaryLoaderEdge({
           sourceModuleId,
           targetModuleId: root,
@@ -341,8 +397,12 @@ export function createLocalePackagePlan({
   const targetRootChunks = rootChunksByLocale.get(targetLocale) ?? new Set<string>();
   const foreignRootChunks = new Set<string>();
   for (const [locale] of rootModulesByLocale) {
-    if (locale === targetLocale) continue;
-    for (const rootChunk of rootChunksByLocale.get(locale) ?? []) foreignRootChunks.add(rootChunk);
+    if (locale === targetLocale) {
+      continue;
+    }
+    for (const rootChunk of rootChunksByLocale.get(locale) ?? []) {
+      foreignRootChunks.add(rootChunk);
+    }
   }
 
   const retainedModuleClosure = followRetainedModuleClosure({
@@ -389,13 +449,17 @@ export function createLocalePackagePlan({
     }
   }
   for (const root of foreignRootChunks) {
-    if (!removeChunkFileNames.has(root)) throw new Error(`Foreign locale root could not be removed: ${root}`);
+    if (!removeChunkFileNames.has(root)) {
+      throw new Error(`Foreign locale root could not be removed: ${root}`);
+    }
   }
 
   const retainedChunkFileNames = new Set(chunks.map((chunk) => chunk.fileName).filter((fileName) => !removeChunkFileNames.has(fileName)));
   for (const fileName of retainedChunkFileNames) {
     const info = infos.get(fileName);
-    if (info === undefined) throw new Error(`Missing locale information for ${fileName}`);
+    if (info === undefined) {
+      throw new Error(`Missing locale information for ${fileName}`);
+    }
     for (const locale of info.payloadLocales) {
       if (locale !== targetLocale) {
         throw new Error(`Foreign Boundary Strings payload would remain in ${targetLocale} package: ${fileName} contains ${locale}`);
@@ -405,7 +469,9 @@ export function createLocalePackagePlan({
 
   for (const chunk of chunks) {
     const info = infos.get(chunk.fileName);
-    if (info === undefined) continue;
+    if (info === undefined) {
+      continue;
+    }
     if (info.payloadLocales.has(targetLocale) && !retainedChunkFileNames.has(chunk.fileName)) {
       throw new Error(`Target Boundary Strings payload would be removed: ${chunk.fileName}`);
     }
@@ -422,7 +488,9 @@ export function createLocalePackagePlan({
 export function toPackageChunks(bundle: Readonly<Record<string, unknown>>): readonly PackageChunk[] {
   const chunks: PackageChunk[] = [];
   for (const value of Object.values(bundle)) {
-    if (typeof value !== 'object' || value === null || !('type' in value) || value.type !== 'chunk') continue;
+    if (typeof value !== 'object' || value === null || !('type' in value) || value.type !== 'chunk') {
+      continue;
+    }
     const chunk = value as unknown as {
       fileName: string;
           isEntry: boolean;
@@ -460,15 +528,23 @@ function followModuleClosure({
   const queue = [...start];
   while (queue.length > 0) {
     const rawModuleId = queue.pop();
-    if (rawModuleId === undefined) continue;
+    if (rawModuleId === undefined) {
+      continue;
+    }
     const moduleId = normalizedModuleId(rawModuleId);
-    if (visited.has(moduleId)) continue;
+    if (visited.has(moduleId)) {
+      continue;
+    }
     visited.add(moduleId);
     const info = moduleGraph.get(moduleId);
-    if (info === undefined) continue;
+    if (info === undefined) {
+      continue;
+    }
     for (const target of [...info.importedIds, ...info.dynamicallyImportedIds]) {
       const normalizedTarget = normalizedModuleId(target);
-      if (!visited.has(normalizedTarget) && moduleGraph.has(normalizedTarget)) queue.push(normalizedTarget);
+      if (!visited.has(normalizedTarget) && moduleGraph.has(normalizedTarget)) {
+        queue.push(normalizedTarget);
+      }
     }
   }
   return visited;
@@ -516,7 +592,9 @@ export function assertLocalePackageModuleEdgeSafety({
   }
 
   for (const chunk of chunks) {
-    if (!plan.retainedChunkFileNames.has(chunk.fileName)) continue;
+    if (!plan.retainedChunkFileNames.has(chunk.fileName)) {
+      continue;
+    }
     for (const sourceModuleId of renderedModuleIds(chunk)) {
       const moduleInfo = moduleGraph.get(sourceModuleId);
       if (moduleInfo === undefined) {
@@ -534,7 +612,9 @@ export function assertLocalePackageModuleEdgeSafety({
       for (const rawTargetId of moduleInfo.dynamicallyImportedIds) {
         const targetId = normalizedModuleId(rawTargetId);
         const targetChunk = moduleToChunk.get(targetId);
-        if (targetChunk === undefined || !plan.removeChunkFileNames.has(targetChunk)) continue;
+        if (targetChunk === undefined || !plan.removeChunkFileNames.has(targetChunk)) {
+          continue;
+        }
 
         const isAuthorizedBoundaryLoader = isDisabledForeignBoundaryLoader({
           sourceModuleId,
@@ -559,7 +639,9 @@ export function assertLocalePackageModuleEdgeSafety({
   for (const chunk of chunks) {
     for (const moduleId of renderedModuleIds(chunk)) {
       const locale = packLocaleFromAnyModuleId({ moduleId, supportedLocales });
-      if (locale !== undefined && locale !== plan.locale) foreignPackModuleIds.add(moduleId);
+      if (locale !== undefined && locale !== plan.locale) {
+        foreignPackModuleIds.add(moduleId);
+      }
     }
   }
   const foreignModuleClosure = followModuleClosure({
@@ -600,7 +682,9 @@ export function assertLocalePackageWorkerEntryProvenance({
   moduleGraph: PackageModuleGraph;
   workerEntryModuleIds: readonly string[];
 }>): void {
-  if (workerEntryModuleIds.length === 0) throw new Error('At least one standalone Worker entry is required');
+  if (workerEntryModuleIds.length === 0) {
+    throw new Error('At least one standalone Worker entry is required');
+  }
 
   for (const rawWorkerEntryModuleId of workerEntryModuleIds) {
     const workerEntryModuleId = normalizedModuleId(rawWorkerEntryModuleId);
@@ -652,9 +736,13 @@ export function collectPackageModuleGraph({
   // provenance, while retaining the narrow Rolldown runtime exception above.
   for (const chunk of chunks) {
     for (const [rawModuleId, rendered] of Object.entries(chunk.modules)) {
-      if (rendered.renderedLength <= 0) continue;
+      if (rendered.renderedLength <= 0) {
+        continue;
+      }
       const moduleId = normalizedModuleId(rawModuleId);
-      if (graph.has(moduleId)) continue;
+      if (graph.has(moduleId)) {
+        continue;
+      }
       const info = getModuleInfo(rawModuleId);
       if (info === null) {
         if (rawModuleId !== RUNTIME_MODULE_ID) {

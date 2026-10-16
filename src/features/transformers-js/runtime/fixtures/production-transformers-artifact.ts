@@ -72,7 +72,9 @@ async function evaluateArtifactModule({ code, moduleUrl, ortWebGpuUrl, ortCommon
     const namespace = await nativeImport({ moduleUrl: specifier }) as Record<string, unknown>;
     const exports = Object.keys(namespace);
     return new SyntheticModule(exports, function () {
-      for (const name of exports) this.setExport(name, namespace[name]);
+      for (const name of exports) {
+        this.setExport(name, namespace[name]);
+      }
     }, { identifier: specifier });
   });
   await module.evaluate();

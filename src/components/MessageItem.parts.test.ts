@@ -46,7 +46,8 @@ describe('message parts UI boundaries', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信に失敗しました。' } });
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message } });
     expect(wrapper.find('[data-testid="error-message"]').text()).toContain('通信に失敗しました。');
-    expect(message.parts).toEqual([]); wrapper.unmount();
+    expect(message.parts).toEqual([]);
+    wrapper.unmount();
   });
 
   it('a cancelled native partial is displayed without a running border or a fabricated tag', () => {
@@ -54,7 +55,8 @@ describe('message parts UI boundaries', () => {
     const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'c' }), message, mode: 'thinking' } });
     expect(wrapper.findComponent(MessageThinking).exists()).toBe(true);
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);
-    expect(message.parts[0]).toEqual({ type: 'reasoning', text: '  途中の理由', completeness: 'partial' }); wrapper.unmount();
+    expect(message.parts[0]).toEqual({ type: 'reasoning', text: '  途中の理由', completeness: 'partial' });
+    wrapper.unmount();
   });
 
   it('copy raw uses the original text instead of the read-only thinking projection', async () => {
@@ -66,9 +68,12 @@ describe('message parts UI boundaries', () => {
     await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
     await flushPromises();
     const rawButton = document.body.querySelector<HTMLButtonElement>('[data-testid="copy-raw-button"]');
-    expect(rawButton).not.toBeNull(); rawButton!.click(); await flushPromises();
-    expect(writeText).toHaveBeenCalledWith(raw);
-    expect(message.parts[0]).toMatchObject({ text: raw }); wrapper.unmount();
+    expect(rawButton).not.toBeNull();
+rawButton!.click();
+await flushPromises();
+expect(writeText).toHaveBeenCalledWith(raw);
+expect(message.parts[0]).toMatchObject({ text: raw });
+wrapper.unmount();
   });
 
   it('empty earlier text becoming visible does not change the later reasoning identity', () => {
@@ -77,8 +82,12 @@ describe('message parts UI boundaries', () => {
     const { chatFlow } = useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat.value), isProcessing: () => true });
     const first = chatFlow.value[0];
     expect(first?.type).toBe('message');
-    const node = chat.value.root.items[0]; const part = node?.parts[0];
-    if (part?.type !== 'text') throw new Error('Missing test part.'); part.text = 'A';
+    const node = chat.value.root.items[0];
+    const part = node?.parts[0];
+    if (part?.type !== 'text') {
+      throw new Error('Missing test part.');
+    }
+    part.text = 'A';
     const second = chatFlow.value[1];
     expect(second?.type === 'message' && second.key).toBe(first?.type === 'message' && first.key);
   });
@@ -91,6 +100,7 @@ describe('message parts UI boundaries', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="edit-textarea"]');
     expect(textarea.element.value).toBe(raw);
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
-    expect(wrapper.emitted('edit')?.[0]?.[1]).toBe(raw); wrapper.unmount();
+    expect(wrapper.emitted('edit')?.[0]?.[1]).toBe(raw);
+    wrapper.unmount();
   });
 });

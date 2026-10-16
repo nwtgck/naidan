@@ -141,13 +141,15 @@ describe('StorageService Synchronization Wrapper', () => {
   it('keeps binary deletion on its original provider while waiting for the metadata lock', async () => {
     const ready = Promise.withResolvers<void>();
     mockWithLock.mockImplementationOnce(async ({ fn }: { fn: () => Promise<void> }) => {
-      await ready.promise; return fn();
+      await ready.promise;
+      return fn();
     });
     const memoryDelete = vi.spyOn(MemoryStorageProvider.prototype, 'deleteBinaryObject');
     const binaryObjectId = toBinaryObjectId({ raw: 'selected-image' });
     const deleting = service.deleteBinaryObject({ binaryObjectId });
     await service.init({ type: 'memory' });
-    ready.resolve(); await deleting;
+    ready.resolve();
+    await deleting;
     expect(mockProvider.deleteBinaryObject).toHaveBeenCalledExactlyOnceWith({ binaryObjectId });
     expect(memoryDelete).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledExactlyOnceWith({ event: expect.objectContaining({ type: 'binary_objects' }) });
@@ -205,7 +207,8 @@ describe('StorageService Synchronization Wrapper', () => {
     await service.clearAll();
     const updater = vi.fn((): Settings => ({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }));
     await expect(service.updateSettingsForStorage({ isCurrent, updater })).resolves.toBe('changed');
-    expect(updater).not.toHaveBeenCalled(); expect(mockProvider.saveSettings).not.toHaveBeenCalled();
+    expect(updater).not.toHaveBeenCalled();
+    expect(mockProvider.saveSettings).not.toHaveBeenCalled();
   });
 
   it('checks settings ownership again after a delayed provider read', async () => {
@@ -215,8 +218,11 @@ describe('StorageService Synchronization Wrapper', () => {
     const updater = vi.fn((): Settings => ({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }));
     const saving = service.updateSettingsForStorage({ isCurrent, updater });
     await vi.waitFor(() => expect(mockProvider.loadSettings).toHaveBeenCalledOnce());
-    await service.init({ type: 'memory' }); reading.resolve(null);
-    await expect(saving).resolves.toBe('changed'); expect(updater).not.toHaveBeenCalled(); expect(mockProvider.saveSettings).not.toHaveBeenCalled();
+    await service.init({ type: 'memory' });
+    reading.resolve(null);
+    await expect(saving).resolves.toBe('changed');
+    expect(updater).not.toHaveBeenCalled();
+    expect(mockProvider.saveSettings).not.toHaveBeenCalled();
   });
 
   it('should wrap clearAll with lock and notify migration', async () => {

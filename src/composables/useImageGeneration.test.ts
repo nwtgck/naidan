@@ -43,7 +43,9 @@ global.URL.revokeObjectURL = vi.fn();
 if (!global.crypto) {
   (global as any).crypto = {
     getRandomValues: (arr: Uint32Array) => {
-      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 1000000);
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = Math.floor(Math.random() * 1000000);
+      }
       return arr;
     },
   };
@@ -486,7 +488,9 @@ describe('useImageGeneration', () => {
           expect(imageProgressMap.value.get(toChatId({ raw: 'progress-test-chat' }))).toBeUndefined();
 
           // Simulate some progress
-          if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
+          if (params.onProgress) {
+            params.onProgress({ currentStep: 1, totalSteps: 10 });
+          }
           return {
             image: new Blob(['test'], { type: 'image/png' }),
             totalSteps: 10,

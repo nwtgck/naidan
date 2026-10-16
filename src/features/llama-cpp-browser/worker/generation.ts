@@ -29,7 +29,10 @@ function failureOutcome({ error }: { error: unknown }): 'aborted' | 'failed' {
   case 'storage-error': case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'context-full':
   case 'unsupported-input': case 'busy': case 'worker-failed': case 'audio-model-unsupported':
   case 'audio-reference-required': case 'audio-reference-invalid': case 'audio-output-empty': return 'failed';
-  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = code;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -58,8 +61,10 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     measurements.enter({ next: value });
     if (session?.census) {
       switch (value) {
-      case 'prefill-decode': session.census.setPhase({ value: 'prefill' }); break;
-      case 'generation-decode': case 'generation-overlap': session.census.setPhase({ value: 'decode' }); break;
+      case 'prefill-decode': session.census.setPhase({ value: 'prefill' });
+        break;
+      case 'generation-decode': case 'generation-overlap': session.census.setPhase({ value: 'decode' });
+        break;
       case 'audio-info': case 'audio-reference': case 'audio-input': case 'audio-prompt': case 'audio-frame': case 'audio-output':
       case 'media-encode': case 'media-decode': case 'model-resolve': case 'model-load': case 'projector-trace': case 'projector-load':
       case 'image-decode': case 'image-tokenize': case 'image-evaluate': case 'session': case 'cache-prepare': case 'cache-probe':
@@ -67,15 +72,21 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       case 'grammar-switch': case 'native-sample': case 'reasoning-accept': case 'reasoning-replay': case 'token-render':
       case 'partial-parse': case 'stream-emit': case 'final-parse': case 'cleanup': case 'event-loop-yield':
       case 'worker-operation': case 'worker-callback': case 'worker-rpc': case 'worker-error': case 'worker-messageerror':
-        session.census.setPhase({ value: 'other' }); break;
-      default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+        session.census.setPhase({ value: 'other' });
+        break;
+      default: {
+        const exhaustive: never = value;
+        throw new Error(String(exhaustive));
+      }
       }
     }
   };
   let outcome: 'completed' | 'aborted' | 'failed' = 'failed';
   let failure: Pick<Diagnostic, 'stage' | 'failureKind'> | undefined;
   const recordFailure = ({ error, stage }: { error: unknown, stage: DiagnosticStage }) => {
-    if (request.measurement && !failure) failure = { stage, failureKind: classifyFailure({ error }) };
+    if (request.measurement && !failure) {
+      failure = { stage, failureKind: classifyFailure({ error }) };
+    }
   };
   const reportPerformance = (): void => {
     try {
@@ -83,17 +94,24 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         measurements.counters.backendCensus = session.census?.snapshot();
         const memory = measurements.counters.memoryObservation;
         if (memory) {
-          memory.wasmHeapAfterBytes = session.core.module.HEAPU8.byteLength; memory.checkpointRetainedBytes = session.cache.checkpoint?.bytes ?? 0;
+          memory.wasmHeapAfterBytes = session.core.module.HEAPU8.byteLength;
+          memory.checkpointRetainedBytes = session.cache.checkpoint?.bytes ?? 0;
         }
       }
       measurements.counters.checkpoint = checkpointObservation?.snapshot();
       const diagnostic = measurements.finish({ outcome, profile: request.options.profile });
       if (diagnostic) {
-        if (request.measurement) onSummary?.({ diagnostic: { ...diagnostic, ...failure } });
+        if (request.measurement) {
+          onSummary?.({ diagnostic: { ...diagnostic, ...failure } });
+        }
         switch (request.debug) {
-        case 'on': logDiagnostic({ diagnostic }); break;
+        case 'on': logDiagnostic({ diagnostic });
+          break;
         case 'off': case undefined: break;
-        default: { const exhaustive: never = request.debug; void exhaustive; }
+        default: {
+          const exhaustive: never = request.debug;
+          void exhaustive;
+        }
         }
       }
     } catch { /* A performance report must not replace an inference result/error. */ }
@@ -102,7 +120,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   let flushPartial: (() => Promise<void>) | undefined;
   const progress = ({ phase, completed, total }: { phase: Progress['phase'], completed: Progress['completed'], total: Progress['total'] }): void => onProgress({ progress: { phase, completed, total } });
   const checkCancelled = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
   };
   try {
     session = await prepareGenerationSession({ request, onProgress, signal });
@@ -124,7 +144,8 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   cache.initialMemoryState = 'unknown';
   const memoryReset = measurements.counters.memoryReset = { requestedClears: 0, skippedInitialClears: 0 };
   const discardCheckpoint = (): void => {
-    const checkpoint = cache.checkpoint; cache.checkpoint = undefined;
+    const checkpoint = cache.checkpoint;
+    cache.checkpoint = undefined;
     disposePromptCheckpoint({ core, checkpoint });
   };
   let chat: ReturnType<typeof prepareChat> | undefined;
@@ -132,12 +153,18 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   let chatSampler: Awaited<ReturnType<typeof createChatSampler>> | undefined;
   let tokenRenderer: ReturnType<typeof createTokenRenderer> | undefined;
   let prefillOutputs: ReturnType<typeof createPrefillOutputs> | undefined;
-  const allocations: bigint[] = []; let sampler = 0n; let abortCallback: number | bigint | undefined;
+  const allocations: bigint[] = [];
+  let sampler = 0n;
+  let abortCallback: number | bigint | undefined;
   const alloc = ({ bytes }: { bytes: number | bigint }): bigint => {
-    const p = core.alloc({ bytes: bytes }); allocations.push(p); return p;
+    const p = core.alloc({ bytes: bytes });
+    allocations.push(p);
+    return p;
   };
   const record = ({ name }: { name: string }): bigint => {
-    const p = core.allocRecord({ name: name }); allocations.push(p); return p;
+    const p = core.allocRecord({ name: name });
+    allocations.push(p);
+    return p;
   };
   const cleanup = async (): Promise<void> => {
     try {
@@ -145,13 +172,19 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         try {
           await api.llama_set_abort_callback(context, 0n, 0n);
         } finally {
-          if (chatSampler) await chatSampler.dispose();
-          if (sampler !== 0n) await api.llama_sampler_free(sampler);
+          if (chatSampler) {
+            await chatSampler.dispose();
+          }
+          if (sampler !== 0n) {
+            await api.llama_sampler_free(sampler);
+          }
         }
       } finally {
         try {
           try {
-            if (multimodal) await multimodal.dispose();
+            if (multimodal) {
+              await multimodal.dispose();
+            }
           } finally {
             try {
               chat?.dispose();
@@ -164,8 +197,12 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
             }
           }
         } finally {
-          if (abortCallback !== undefined) core.module.removeFunction(abortCallback);
-          for (const pointer of allocations.reverse()) core.free({ pointer });
+          if (abortCallback !== undefined) {
+            core.module.removeFunction(abortCallback);
+          }
+          for (const pointer of allocations.reverse()) {
+            core.free({ pointer });
+          }
         }
       }
     } catch (error) {
@@ -173,7 +210,8 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       recordFailure({ error, stage: 'cleanup' });
       cache.validity = 'invalid';
       discardCheckpoint();
-      logFailure({ stage: 'cleanup', error }); throw error;
+      logFailure({ stage: 'cleanup', error });
+      throw error;
     }
   };
   try {
@@ -181,11 +219,15 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     const measurementSequence = request.measurement?.sequence;
     switch (measurementSequence) {
     case 'fresh':
-      cache.validity = 'invalid'; cache.tokens = [];
+      cache.validity = 'invalid';
+      cache.tokens = [];
       discardCheckpoint();
       break;
     case 'continue': case undefined: break;
-    default: { const exhaustive: never = measurementSequence; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = measurementSequence;
+      throw new Error(String(exhaustive));
+    }
     }
     // Prompt preparation is an ordinary response wait, not another model load.
     sampleMemoryDiagnostics({ core, checkpoint: 'prefill-start' });
@@ -206,7 +248,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       // Keep the host buffer out of the asynchronous generation lifetime.
       const data = new TextEncoder().encode(promptText);
       promptLength = data.byteLength;
-      if (promptLength > 4 * 1024 * 1024) throw new LlamaCppBrowserError({ code: 'context-full' });
+      if (promptLength > 4 * 1024 * 1024) {
+        throw new LlamaCppBrowserError({ code: 'context-full' });
+      }
       if (!chat.images.length) {
         promptPointer = copyNativeUtf8({ core, data });
         allocations.push(promptPointer);
@@ -217,12 +261,14 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     let tokens: bigint;
     if (chat.images.length) {
       // Image identity and native positions are not represented by a token prefix.
-      cache.validity = 'invalid'; cache.tokens = [];
+      cache.validity = 'invalid';
+      cache.tokens = [];
       discardCheckpoint();
       multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images });
       promptTokens = multimodal.textTokens;
       tokens = alloc({ bytes: Math.max(4, promptTokens.length * 4) });
-      const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 });
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
     } else {
       const tokenized = await tokenizePrompt({
@@ -244,19 +290,26 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     const tokenCount = multimodal?.tokenCount ?? promptTokens.length;
     measurements.counters.promptTokens = tokenCount;
     let nextPosition = multimodal?.positions ?? tokenCount;
-    if (tokenCount >= capacity || nextPosition >= capacity) throw new LlamaCppBrowserError({ code: 'context-full' });
+    if (tokenCount >= capacity || nextPosition >= capacity) {
+      throw new LlamaCppBrowserError({ code: 'context-full' });
+    }
     setStage({ value: 'cache-prepare' });
     const cacheValid = (() => {
       switch (cache.validity) {
       case 'valid': return true;
       case 'invalid': return false;
-      default: { const exhaustive: never = cache.validity; throw new Error(`Unknown cache validity: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = cache.validity;
+        throw new Error(`Unknown cache validity: ${exhaustive}`);
+      }
       }
     })();
     const cachedTokens = cache.tokens.length;
     let commonPrefixTokens = 0;
     while (commonPrefixTokens < Math.min(cachedTokens, promptTokens.length)
-      && cache.tokens[commonPrefixTokens] === promptTokens[commonPrefixTokens]) commonPrefixTokens++;
+      && cache.tokens[commonPrefixTokens] === promptTokens[commonPrefixTokens]) {
+      commonPrefixTokens++;
+    }
     // Report only lengths and positions, never token IDs or prompt text. A
     // shorter prompt and a differing token require different investigations.
     const cacheComparison = cachedTokens === 0 ? 'empty-cache'
@@ -277,7 +330,10 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       switch (sequenceRemoval) {
       case 'partial': case 'bounded': return true;
       case 'none': case 'full-only': return false;
-      default: { const exhaustive: never = sequenceRemoval; throw new Error(`Unknown sequence removal capability: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = sequenceRemoval;
+        throw new Error(`Unknown sequence removal capability: ${exhaustive}`);
+      }
       }
     })();
     const checkpointEnabled = !multimodal && memory !== 0n && (() => {
@@ -285,10 +341,15 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       case 'none': return false;
       case 'full-only': case 'bounded': return true;
       case 'partial': return slidingWindow > 0;
-      default: { const exhaustive: never = sequenceRemoval; throw new Error(`Unknown sequence removal capability: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = sequenceRemoval;
+        throw new Error(`Unknown sequence removal capability: ${exhaustive}`);
+      }
       }
     })();
-    if (!cacheValid) discardCheckpoint();
+    if (!cacheValid) {
+      discardCheckpoint();
+    }
     let reusedTokens = reuse ? cachedTokens : 0;
     let reason: Diagnostic['reason'] = reuse ? 'prefix-match' : !cacheValid ? 'cache-invalid'
       : !cachePositionMatches ? 'cache-position' : 'prefix-mismatch';
@@ -313,9 +374,13 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
             reusedTokens = retained;
             cache.tokens.length = retained;
             reason = 'prefix-partial-match';
-          } else reason = 'cache-rollback-failed';
+          } else {
+            reason = 'cache-rollback-failed';
+          }
         }
-      } else reason = 'cache-window';
+      } else {
+        reason = 'cache-window';
+      }
     }
     const checkpoint = cache.checkpoint;
     let restoredCheckpoint = false;
@@ -330,11 +395,15 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         cache.tokens = checkpoint.tokens.slice();
         reason = 'checkpoint-match';
         restoredCheckpoint = true;
-      } else reason = 'checkpoint-invalid';
+      } else {
+        reason = 'checkpoint-invalid';
+      }
     }
     // Full-prefix appends need no restoration. Keeping their earlier checkpoint
     // avoids repeated copies and preserves a boundary before generated thinking.
-    if (!reuse && !restoredCheckpoint) discardCheckpoint();
+    if (!reuse && !restoredCheckpoint) {
+      discardCheckpoint();
+    }
     measurements.counters.reusedTokens = reusedTokens;
     logDiagnostic({
       diagnostic: {
@@ -391,13 +460,20 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       // very same native state back to the host before decoding any new token.
       // A moved boundary still gets a new checkpoint, preserving retry behavior.
       if (restoredCheckpoint) {
-        if (cache.checkpoint?.tokens.length !== boundary) discardCheckpoint();
-        else checkpointObservation?.retained();
+        if (cache.checkpoint?.tokens.length !== boundary) {
+          discardCheckpoint();
+        } else {
+          checkpointObservation?.retained();
+        }
       }
-      if (!cache.checkpoint && boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) checkpointBoundary = boundary;
+      if (!cache.checkpoint && boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) {
+        checkpointBoundary = boundary;
+      }
     }
     const captureAtBoundary = async ({ offset }: { offset: number }): Promise<void> => {
-      if (offset !== checkpointBoundary) return;
+      if (offset !== checkpointBoundary) {
+        return;
+      }
       setStage({ value: 'cache-checkpoint' });
       // The pointer is published only after the native writer has finished.
       // Cancellation cannot free a buffer while that writer still owns it.
@@ -417,19 +493,24 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       nextPosition = await multimodal.evaluate({ context, capacity });
       measurements.counters.prefillDecodedTokens += tokenCount;
       checkCancelled();
-    } else for (let offset = reusedTokens; offset < tokenCount;) {
-      checkCancelled();
-      setStage({ value: 'prefill-decode' });
-      const boundaryLimit = checkpointBoundary !== undefined && offset < checkpointBoundary ? checkpointBoundary - offset : tokenCount - offset;
-      const count = Math.min(prefillBatchTokens, tokenCount - offset, boundaryLimit);
-      await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
+    } else {
+      for (let offset = reusedTokens; offset < tokenCount;) {
+        checkCancelled();
+        setStage({ value: 'prefill-decode' });
+        const boundaryLimit = checkpointBoundary !== undefined && offset < checkpointBoundary ? checkpointBoundary - offset : tokenCount - offset;
+        const count = Math.min(prefillBatchTokens, tokenCount - offset, boundaryLimit);
+        await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
       prefillOutputs!.configure({ batch, count, final: offset + count === tokenCount });
       const status = await api.llama_decode(context, batch);
       sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
       measurements.counters.prefillDecodeCalls++;
       measurements.counters.maximumPrefillBatchTokens = Math.max(measurements.counters.maximumPrefillBatchTokens, count);
-      if (status === 0) measurements.counters.prefillDecodedTokens += count;
-      if (status === 2) checkCancelled();
+      if (status === 0) {
+        measurements.counters.prefillDecodedTokens += count;
+      }
+      if (status === 2) {
+        checkCancelled();
+      }
       if (status !== 0) {
         logDiagnostic({ diagnostic: { event: 'failed', stage, reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
@@ -444,6 +525,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         await new Promise<void>(resolve => setTimeout(resolve, 0));
         prefillYield.yielded();
       }
+      }
     }
     checkCancelled();
     progress({ phase: 'prefill', completed: tokenCount, total: tokenCount });
@@ -451,37 +533,52 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     sampleMemoryDiagnostics({ core, checkpoint: 'prefill-complete' });
     logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount, reusedTokens, evaluatedTokens: tokenCount - reusedTokens } });
     setStage({ value: 'sampler-create' });
-    const sp = record({ name: 'llama_sampler_chain_params' }); await api.llama_sampler_chain_default_params(sp);
+    const sp = record({ name: 'llama_sampler_chain_params' });
+    await api.llama_sampler_chain_default_params(sp);
     sampler = await api.llama_sampler_chain_init(sp);
-    if (sampler === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    if (sampler === 0n) {
+      throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    }
     const addSampler = async ({ child }: { child: bigint }): Promise<void> => {
-      if (child === 0n) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (child === 0n) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       try {
         await api.llama_sampler_chain_add(sampler, child);
       } catch (error) {
-        await api.llama_sampler_free(child); throw error;
+        await api.llama_sampler_free(child);
+        throw error;
       }
     };
     if (request.presencePenalty !== 0 || request.frequencyPenalty !== 0) {
       await addSampler({ child: await api.llama_sampler_init_penalties(await api.llama_vocab_n_tokens(vocab), capacity, 1, request.frequencyPenalty, request.presencePenalty) });
     }
     if (request.presencePenalty !== 0 || request.frequencyPenalty !== 0) {
-      for (const token of promptTokens) await api.llama_sampler_accept(sampler, token);
+      for (const token of promptTokens) {
+        await api.llama_sampler_accept(sampler, token);
+      }
     }
-    if (request.temperature === 0) await addSampler({ child: await api.llama_sampler_init_greedy() });
-    else {
+    if (request.temperature === 0) {
+      await addSampler({ child: await api.llama_sampler_init_greedy() });
+    } else {
       await addSampler({ child: await api.llama_sampler_init_top_k(40) });
       await addSampler({ child: await api.llama_sampler_init_top_p(request.topP, 1n) });
       await addSampler({ child: await api.llama_sampler_init_temp(request.temperature) });
       const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-      if (seed === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (seed === undefined) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       measurements.counters.sampling.seed = seed;
       await addSampler({ child: await api.llama_sampler_init_dist(seed) });
     }
-    const samplingChain = sampler; sampler = 0n;
+    const samplingChain = sampler;
+    sampler = 0n;
     chatSampler = await createChatSampler({ core, vocab, chain: samplingChain, params: chat.params });
     const stream = createOutputStream({ stops: [...request.stop, ...chat.additionalStops], harmony: false, initialChannel: 'final' });
-    let output = ''; let content = ''; let reasoning = ''; let pendingCalls = 0;
+    let output = '';
+    let content = '';
+    let reasoning = '';
+    let pendingCalls = 0;
     const callDrafts: { name: string, arguments: string }[] = [];
     // Keep tool previews and multimodal behavior per-token for now. Ordinary
     // text/reasoning can avoid reparsing a growing prefix for every token.
@@ -500,7 +597,11 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     const parseOutput = ({ partial }: { partial: boolean }): Omit<GenerationResult, 'finishReason'> => {
       outputPacing.parsed({ outputLength: output.length });
       streaming.parsedCodeUnits += output.length;
-      if (partial) streaming.partialParseCalls++; else streaming.finalParseCalls++;
+      if (partial) {
+        streaming.partialParseCalls++;
+      } else {
+        streaming.finalParseCalls++;
+      }
       return chat!.parse({ text: output, partial });
     };
     let deliveryFailed = false;
@@ -512,20 +613,28 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         switch (request.debug) {
         case 'on': return () => performance.now();
         case 'off': case undefined: return request.measurement ? () => performance.now() : undefined;
-        default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = request.debug;
+          throw new Error(String(exhaustive));
+        }
         }
       })(),
     });
     measurements.counters.deliveryDecode = deliveryDecode.counters;
     const send: GenerationCallback = async ({ event }) => {
-      if (!deliveryDecodeActive) setStage({ value: 'stream-emit' });
+      if (!deliveryDecodeActive) {
+        setStage({ value: 'stream-emit' });
+      }
       try {
         await onEvent({ event });
         streaming.deliveredEvents++;
         outputPacing.delivered();
-        if (event.type === 'text' || event.type === 'reasoning') measurements.delivered();
+        if (event.type === 'text' || event.type === 'reasoning') {
+          measurements.delivered();
+        }
       } catch (error) {
-        deliveryFailed = true; throw error;
+        deliveryFailed = true;
+        throw error;
       }
     };
     const validateParsed = ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): void => {
@@ -542,13 +651,20 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       }
     };
     const deliverParsed = async ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): Promise<void> => {
-      if (!deliveryDecodeActive) setStage({ value: 'stream-emit' });
+      if (!deliveryDecodeActive) {
+        setStage({ value: 'stream-emit' });
+      }
       const thought = parsed.reasoningContent.slice(reasoning.length);
       const text = parsed.content.slice(content.length);
       // Commit the accepted parser snapshot before awaiting delivery; never resend a delta.
-      content = parsed.content; reasoning = parsed.reasoningContent;
-      if (thought) await send({ event: { type: 'reasoning', text: thought } });
-      if (text) await send({ event: { type: 'text', text } });
+      content = parsed.content;
+      reasoning = parsed.reasoningContent;
+      if (thought) {
+        await send({ event: { type: 'reasoning', text: thought } });
+      }
+      if (text) {
+        await send({ event: { type: 'text', text } });
+      }
       while (pendingCalls < parsed.toolCalls.length) {
         const index = pendingCalls++;
         callDrafts.push({ name: '', arguments: '' });
@@ -558,11 +674,15 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         const previous = callDrafts[index]!;
         const name = previous.name === call.function.name ? undefined : call.function.name;
         let offset = 0;
-        while (offset < previous.arguments.length && offset < call.function.arguments.length && previous.arguments[offset] === call.function.arguments[offset]) offset++;
+        while (offset < previous.arguments.length && offset < call.function.arguments.length && previous.arguments[offset] === call.function.arguments[offset]) {
+          offset++;
+        }
         const changedArguments = offset !== previous.arguments.length || offset !== call.function.arguments.length;
         callDrafts[index] = { name: call.function.name, arguments: call.function.arguments };
         if (!changedArguments) {
-          if (name !== undefined) await send({ event: { type: 'tool_call_draft', index, name, arguments: undefined } });
+          if (name !== undefined) {
+            await send({ event: { type: 'tool_call_draft', index, name, arguments: undefined } });
+          }
           continue;
         }
         // Native partial parsing can revise an earlier suffix. Do not append a
@@ -585,7 +705,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     measurements.counters.tokenRendering = renderer.counters;
     const nextToken = alloc({ bytes: 4 });
     flushPartial = async () => {
-      if (deliveryFailed) return;
+      if (deliveryFailed) {
+        return;
+      }
       output += stream.push({ text: renderer.finish() }).text + stream.finish();
       setStage({ value: 'partial-parse' });
       await emitParsed({ parsed: parseOutput({ partial: true }) });
@@ -606,20 +728,32 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       // A synchronous delivery failure/cancellation can be known before the
       // pair helper observes its nested promise. Do not start work then.
       checkCancelled();
-      if (deliveryFailed) return;
-      if (!deliveryDecodeActive) setStage({ value: 'generation-decode' });
-      const tokenBytes = core.bytes({ pointer: nextToken, length: 4 }); new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
+      if (deliveryFailed) {
+        return;
+      }
+      if (!deliveryDecodeActive) {
+        setStage({ value: 'generation-decode' });
+      }
+      const tokenBytes = core.bytes({ pointer: nextToken, length: 4 });
+      new DataView(tokenBytes.buffer, tokenBytes.byteOffset, 4).setInt32(0, token, true);
       await api.llama_batch_get_one(batch, nextToken, 1);
       checkCancelled();
-      if (deliveryFailed) return;
+      if (deliveryFailed) {
+        return;
+      }
       if (position !== undefined) {
-        const bytes = core.bytes({ pointer: position, length: 4 }); new DataView(bytes.buffer, bytes.byteOffset, 4).setInt32(0, nextPosition, true);
+        const bytes = core.bytes({ pointer: position, length: 4 });
+        new DataView(bytes.buffer, bytes.byteOffset, 4).setInt32(0, nextPosition, true);
         core.setField({ name: 'llama_batch', pointer: batch, field: 'pos', value: position });
       }
       const status = await api.llama_decode(context, batch);
       sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
-      if (status === 0) measurements.counters.decodedTokens++;
-      if (status === 2) checkCancelled();
+      if (status === 0) {
+        measurements.counters.decodedTokens++;
+      }
+      if (status === 2) {
+        checkCancelled();
+      }
       if (status !== 0) {
         logDiagnostic({ diagnostic: { event: 'failed', stage: 'generation-decode', reason: 'decode-status' } });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
@@ -636,7 +770,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
           logDiagnostic({ diagnostic: { ...throughput, profile: request.options.profile } });
         } catch { /* Progress telemetry must not interrupt inference. */ }
       }
-      if (generated === 0) logDiagnostic({ diagnostic: { event: 'first-token-sampled' } });
+      if (generated === 0) {
+        logDiagnostic({ diagnostic: { event: 'first-token-sampled' } });
+      }
       setStage({ value: 'token-render' });
       checkCancelled();
       const { text: tokenText, endOfGeneration } = await renderer.render({ token, special: chatSampler.preservedTokens.has(token) });
@@ -653,7 +789,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
         partial = parseOutput({ partial: true });
         // Finish every native read before pairing. emitParsed validates the
         // snapshot synchronously; only owned JS strings cross the interval.
-      } else streaming.skippedPartialParses++;
+      } else {
+        streaming.skippedPartialParses++;
+      }
       const terminal = rendered.done || endOfGeneration || (!multimodal && generated + 1 === maximum);
       const pair = partial !== undefined && !terminal && !multimodal && !request.tools?.length
         && partial.toolCalls.length === 0 && pendingCalls === 0
@@ -664,7 +802,8 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       }
       if (rendered.done || endOfGeneration) {
         const stop = stream.getMatchedStop();
-        finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop'; break;
+        finishReason = stop !== undefined && request.stop.includes(stop) ? 'stop_sequence' : 'stop';
+        break;
       }
       if (!multimodal && generated + 1 === maximum) {
         // This answer needs no further logits. Leave its last sampled token
@@ -678,16 +817,22 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       if (pair && partial) {
         const parsed = partial;
         deliveryDecodeActive = deliveryDecode.mode === 'overlap';
-        if (deliveryDecodeActive) setStage({ value: 'generation-overlap' });
+        if (deliveryDecodeActive) {
+          setStage({ value: 'generation-overlap' });
+        }
         try {
           await deliveryDecode.run({ deliver: () => emitParsed({ parsed }), decode: () => decodeToken({ token }) });
         } finally {
           deliveryDecodeActive = false;
         }
-      } else await decodeToken({ token });
+      } else {
+        await decodeToken({ token });
+      }
       checkCancelled();
       // Sampled stop/EOG tokens are deliberately excluded until actually decoded.
-      if (!multimodal) cache.tokens.push(token);
+      if (!multimodal) {
+        cache.tokens.push(token);
+      }
       nextPosition++;
       progress({ phase: 'generating', completed: generated + 1, total: maximum });
       checkCancelled();
@@ -716,7 +861,10 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       }
       break;
     case 'length': case 'stop_sequence': break;
-    default: { const exhaustive: never = finishReason; throw new Error(`Unknown completion: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = finishReason;
+      throw new Error(`Unknown completion: ${exhaustive}`);
+    }
     }
     flushPartial = undefined;
     sampleMemoryDiagnostics({ core, checkpoint: 'generation-complete' });

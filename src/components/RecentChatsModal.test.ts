@@ -170,7 +170,9 @@ describe('RecentChatsModal Component', () => {
     const wrapper = mount(RecentChatsModal);
     const items = wrapper.findAll('.recent-item');
     const secondItem = items[1];
-    if (!secondItem) throw new Error('Second item not found');
+    if (!secondItem) {
+      throw new Error('Second item not found');
+    }
 
     await secondItem.trigger('click');
 

@@ -121,7 +121,9 @@ function createRecord(): Record<string, unknown> {
 function longestSuffixMatchingPrefix({ text, pattern }: { text: string, pattern: string }): number {
   const maxLen = Math.min(pattern.length - 1, text.length);
   for (let len = maxLen; len > 0; len--) {
-    if (pattern.startsWith(text.slice(text.length - len))) return len;
+    if (pattern.startsWith(text.slice(text.length - len))) {
+      return len;
+    }
   }
   return 0;
 }
@@ -321,7 +323,9 @@ class PythonicTokenCursor {
 
     while (true) {
       const argumentName = this.consumeIdentifier();
-      if (argumentNames.has(argumentName)) throw new Error(`Duplicate tool argument: ${argumentName}`);
+      if (argumentNames.has(argumentName)) {
+        throw new Error(`Duplicate tool argument: ${argumentName}`);
+      }
       argumentNames.add(argumentName);
       this.consumePunctuation({ expected: '=' });
       args.push({ name: argumentName, value: this.parseValue({ depth: 0 }) });
@@ -334,15 +338,21 @@ class PythonicTokenCursor {
         this.consumePunctuation({ expected: ')' });
         return { type: 'function-call', name, arguments: args };
       }
-      if (this.peek() === undefined) throw new IncompletePythonicSyntaxError();
+      if (this.peek() === undefined) {
+        throw new IncompletePythonicSyntaxError();
+      }
       throw new Error('Expected "," or ")" after tool argument');
     }
   }
 
   parseValue({ depth }: { depth: number }): PythonicValueAst {
-    if (depth > MAX_VALUE_NESTING_DEPTH) throw new Error('Tool argument nesting is too deep');
+    if (depth > MAX_VALUE_NESTING_DEPTH) {
+      throw new Error('Tool argument nesting is too deep');
+    }
     const token = this.peek();
-    if (token === undefined) throw new IncompletePythonicSyntaxError();
+    if (token === undefined) {
+      throw new IncompletePythonicSyntaxError();
+    }
 
     switch (token.type) {
     case 'string':
@@ -445,7 +455,9 @@ class PythonicTokenCursor {
         }
         }
       })();
-      if (keys.has(key)) throw new Error(`Duplicate object key: ${key}`);
+      if (keys.has(key)) {
+        throw new Error(`Duplicate object key: ${key}`);
+      }
       keys.add(key);
       this.consumePunctuation({ expected: ':' });
       entries.push({ key, value: this.parseValue({ depth }) });
@@ -458,7 +470,9 @@ class PythonicTokenCursor {
         this.consumePunctuation({ expected: '}' });
         return { type: 'object', entries };
       }
-      if (this.peek() === undefined) throw new IncompletePythonicSyntaxError();
+      if (this.peek() === undefined) {
+        throw new IncompletePythonicSyntaxError();
+      }
       throw new Error('Expected "," or "}" in object value');
     }
   }
@@ -482,14 +496,18 @@ class PythonicTokenCursor {
         this.consumePunctuation({ expected: ']' });
         return { type: 'array', items };
       }
-      if (this.peek() === undefined) throw new IncompletePythonicSyntaxError();
+      if (this.peek() === undefined) {
+        throw new IncompletePythonicSyntaxError();
+      }
       throw new Error('Expected "," or "]" in array value');
     }
   }
 
   private consumeAny(): PythonicToken {
     const token = this.tokens[this.index];
-    if (token === undefined) throw new IncompletePythonicSyntaxError();
+    if (token === undefined) {
+      throw new IncompletePythonicSyntaxError();
+    }
     this.index += 1;
     return token;
   }
@@ -521,7 +539,9 @@ function analyzePythonicTokens({ tokens }: { tokens: readonly PythonicToken[] })
 
       if (cursor.peekPunctuation({ expected: ',' })) {
         cursor.consumePunctuation({ expected: ',' });
-        if (cursor.peek() === undefined) return { status: 'incomplete', completedCalls: calls };
+        if (cursor.peek() === undefined) {
+          return { status: 'incomplete', completedCalls: calls };
+        }
         continue;
       }
       if (cursor.peekPunctuation({ expected: ']' })) {
@@ -531,7 +551,9 @@ function analyzePythonicTokens({ tokens }: { tokens: readonly PythonicToken[] })
         }
         return { status: 'complete', ast: { type: 'tool-call-list', calls } };
       }
-      if (cursor.peek() === undefined) return { status: 'incomplete', completedCalls: calls };
+      if (cursor.peek() === undefined) {
+        return { status: 'incomplete', completedCalls: calls };
+      }
       return { status: 'invalid', completedCalls: calls, reason: 'Expected "," or "]" after tool call' };
     }
   } catch (error) {
@@ -563,7 +585,9 @@ class IncrementalPythonicToolCallPayloadParser {
   }
 
   feed({ input }: { input: string }): IncrementalPayloadFeedResult {
-    if (this.terminalStatus) return { ...this.terminalStatus, consumed: 0 };
+    if (this.terminalStatus) {
+      return { ...this.terminalStatus, consumed: 0 };
+    }
 
     for (let index = 0; index < input.length; index++) {
       const lexical = this.lexer.feedCharacter({ character: input[index]! });
@@ -680,7 +704,9 @@ function parseDelimitedPythonicToolCallPayloadAst({ content }: {
   case 'invalid':
     return undefined;
   case 'complete':
-    if (content.slice(result.consumed).trim().length > 0) return undefined;
+    if (content.slice(result.consumed).trim().length > 0) {
+      return undefined;
+    }
     return result.ast;
   default: {
     const _ex: never = result;
@@ -693,7 +719,9 @@ export function parseDelimitedPythonicToolCallPayload({ content }: {
   content: string,
 }): Array<{ name: string, arguments: Record<string, unknown> }> | undefined {
   const ast = parseDelimitedPythonicToolCallPayloadAst({ content });
-  if (!ast) return undefined;
+  if (!ast) {
+    return undefined;
+  }
   return ast.calls.map(call => pythonicFunctionCallAstToParsedCall({ ast: call }));
 }
 
@@ -731,7 +759,9 @@ export class DelimitedPythonicToolCallStreamParser {
     this.process();
     switch (this.mode) {
     case 'text':
-      if (this.pending.length > 0) this.onText({ text: this.pending });
+      if (this.pending.length > 0) {
+        this.onText({ text: this.pending });
+      }
       this.pending = '';
       return;
     case 'payload':
@@ -763,7 +793,9 @@ export class DelimitedPythonicToolCallStreamParser {
     while (this.pending.length > 0) {
       switch (this.mode) {
       case 'text':
-        if (!this.processText()) return;
+        if (!this.processText()) {
+          return;
+        }
         break;
       case 'payload':
         this.processPayload();
@@ -790,12 +822,16 @@ export class DelimitedPythonicToolCallStreamParser {
         pattern: DELIMITED_PYTHONIC_TOOL_CALL_OPEN,
       });
       const safeLength = this.pending.length - holdBack;
-      if (safeLength > 0) this.onText({ text: this.pending.slice(0, safeLength) });
+      if (safeLength > 0) {
+        this.onText({ text: this.pending.slice(0, safeLength) });
+      }
       this.pending = this.pending.slice(safeLength);
       return false;
     }
 
-    if (startIdx > 0) this.onText({ text: this.pending.slice(0, startIdx) });
+    if (startIdx > 0) {
+      this.onText({ text: this.pending.slice(0, startIdx) });
+    }
     this.pending = this.pending.slice(startIdx + DELIMITED_PYTHONIC_TOOL_CALL_OPEN.length);
     this.startBlock();
     return true;
@@ -803,7 +839,9 @@ export class DelimitedPythonicToolCallStreamParser {
 
   private processPayload(): void {
     const payloadParser = this.payloadParser;
-    if (!payloadParser) throw new Error('Pythonic payload parser is unavailable');
+    if (!payloadParser) {
+      throw new Error('Pythonic payload parser is unavailable');
+    }
     const result = payloadParser.feed({ input: this.pending });
     const consumed = this.pending.slice(0, result.consumed);
     this.frameRaw += consumed;
@@ -833,7 +871,9 @@ export class DelimitedPythonicToolCallStreamParser {
     this.pending = this.pending.slice(1);
     this.frameRaw += character;
 
-    if (this.closeMatchIndex === 0 && /\s/.test(character)) return;
+    if (this.closeMatchIndex === 0 && /\s/.test(character)) {
+      return;
+    }
 
     const expected = DELIMITED_PYTHONIC_TOOL_CALL_CLOSE[this.closeMatchIndex];
     if (character !== expected) {
@@ -876,7 +916,9 @@ export class DelimitedPythonicToolCallStreamParser {
   private commitOrRejectCompleteBlock(): void {
     const ast = this.parsedBlockAst;
     const blockId = this.activeBlockId;
-    if (!ast || blockId === undefined) throw new Error('Completed Pythonic tool-call block has no AST');
+    if (!ast || blockId === undefined) {
+      throw new Error('Completed Pythonic tool-call block has no AST');
+    }
 
     if (ast.calls.length === 0) {
       this.onText({ text: this.frameRaw });

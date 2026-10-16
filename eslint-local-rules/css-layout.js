@@ -22,7 +22,9 @@ function blockRange({ node, css }) {
   // source.end.offset. Validate both positions against the original bytes.
   const closing = [node.source.end.offset - suffix.length - 1, node.source.end.offset - 2 * suffix.length]
     .find(index => css[index] === '}' && css.slice(index + 1, index + 1 + suffix.length) === suffix);
-  if (css[opening] !== '{' || closing === undefined) return undefined;
+  if (css[opening] !== '{' || closing === undefined) {
+    return undefined;
+  }
   return { opening, closing, end: closing + 1 + suffix.length };
 }
 
@@ -33,7 +35,9 @@ function declarationRange({ node, css }) {
     ? css[start] : '';
   const propEnd = start + hack.length + node.prop.length;
   const raw = `${hack}${node.prop}${node.raws.between}${rawValue({ node, field: 'value' })}${node.important ? node.raws.important ?? ' !important' : ''}`;
-  if (css.slice(start, start + raw.length) !== raw) return undefined;
+  if (css.slice(start, start + raw.length) !== raw) {
+    return undefined;
+  }
   return { propEnd, end: start + raw.length };
 }
 
@@ -41,7 +45,9 @@ function layoutEdits({ root, css, newline, embedded }) {
   const edits = [];
 
   function replace({ start, end, text }) {
-    if (css.slice(start, end) !== text) edits.push({ start, end, text });
+    if (css.slice(start, end) !== text) {
+      edits.push({ start, end, text });
+    }
   }
 
   function gap({ start, end, depth, mode }) {
@@ -81,7 +87,9 @@ function layoutEdits({ root, css, newline, embedded }) {
             replace({ start: betweenStart, end: range.opening, text: ' ' });
           }
           // Empty blocks do not need to be expanded for reviewability.
-          if (node.nodes.length > 0) visit({ container: node, depth: depth + 1, opening: range.opening, closing: range.closing });
+          if (node.nodes.length > 0) {
+            visit({ container: node, depth: depth + 1, opening: range.opening, closing: range.closing });
+          }
         }
         cursor = range?.end ?? node.source.end.offset;
       } else if (node.type === 'decl') {
@@ -100,7 +108,9 @@ function layoutEdits({ root, css, newline, embedded }) {
             });
           }
           const semicolon = css[range.end] === ';';
-          if (!semicolon) replace({ start: range.end, end: range.end, text: ';' });
+          if (!semicolon) {
+            replace({ start: range.end, end: range.end, text: ';' });
+          }
           cursor = range.end + (semicolon ? 1 : 0);
         }
       } else {
@@ -108,8 +118,11 @@ function layoutEdits({ root, css, newline, embedded }) {
       }
       previous = node;
     }
-    if (closing !== undefined) gap({ start: cursor, end: closing, depth: depth - 1, mode: 'line' });
-    else if (embedded && container.nodes.length > 0) gap({ start: cursor, end: css.length, depth: 0, mode: 'line' });
+    if (closing !== undefined) {
+      gap({ start: cursor, end: closing, depth: depth - 1, mode: 'line' });
+    } else if (embedded && container.nodes.length > 0) {
+      gap({ start: cursor, end: css.length, depth: 0, mode: 'line' });
+    }
   }
 
   visit({ container: root, depth: 0, opening: undefined, closing: undefined });
@@ -148,18 +161,24 @@ export const rule = {
         try {
           stylesheet = parseStylesheet({ css });
         } catch (error) {
-          if (error.name !== 'CssSyntaxError') throw error;
+          if (error.name !== 'CssSyntaxError') {
+            throw error;
+          }
           const index = offset + syntaxErrorOffset({ css, error });
           context.report({ loc: sourceCode.getLocFromIndex(index), messageId: 'syntax', data: { reason: error.reason } });
           return;
         }
       }
       const { root, prefix, unsafe } = stylesheet;
-      if (unsafe) return;
+      if (unsafe) {
+        return;
+      }
       const body = css.slice(prefix);
       const newline = /\r\n|[\n\r]/u.exec(css)?.[0] ?? /\r\n|[\n\r]/u.exec(sourceCode.text)?.[0] ?? '\n';
       const edits = layoutEdits({ root, css: body, newline, embedded });
-      if (edits.length === 0) return;
+      if (edits.length === 0) {
+        return;
+      }
       const protectedComment = hasPositionSensitiveComment({ root });
       context.report({
         loc: sourceCode.getLocFromIndex(offset + prefix + edits[0].start),
@@ -179,11 +198,17 @@ export const rule = {
         }
         const fragment = sourceCode.parserServices.getDocumentFragment?.();
         for (const node of fragment?.children ?? []) {
-          if (node.type !== 'VElement' || node.name !== 'style' || !node.endTag) continue;
+          if (node.type !== 'VElement' || node.name !== 'style' || !node.endTag) {
+            continue;
+          }
           const attributes = node.startTag.attributes;
-          if (attributes.some(attribute => !attribute.directive && attribute.key.name === 'src')) continue;
+          if (attributes.some(attribute => !attribute.directive && attribute.key.name === 'src')) {
+            continue;
+          }
           const language = attributes.find(attribute => !attribute.directive && attribute.key.name === 'lang')?.value?.value;
-          if (language !== undefined && language !== 'css') continue;
+          if (language !== undefined && language !== 'css') {
+            continue;
+          }
           const offset = node.startTag.range[1];
           const end = node.endTag.range[0];
           // Keep <style> tags on their own lines when the body started inline.

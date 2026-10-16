@@ -107,7 +107,8 @@ describe('verified content-route tool publication', () => {
     const chunks: string[] = [];
     const published: unknown[] = [];
     const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
-      streamer.emit(output); return { sequences: [], past_key_values: null };
+      streamer.emit(output);
+      return { sequences: [], past_key_values: null };
     });
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -134,8 +135,11 @@ describe('verified content-route tool publication', () => {
       observationSink: undefined,
       generationCapture: undefined,
     });
-    if (rejected) await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
-    else await operation;
+    if (rejected) {
+      await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
+    } else {
+      await operation;
+    }
     expect(published).toHaveLength(expectedCalls);
     expect(chunks.join('')).toBe(expectedText);
     expect(generate).toHaveBeenCalledOnce();
@@ -181,7 +185,9 @@ literal <think>
     const processor = Object.assign(vi.fn(async () => ({ input_ids: { dims: [1, 2] } })), { batch_decode: vi.fn(() => []) });
     const apply_chat_template = vi.fn(() => prompt);
     const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
-      for (const text of output) streamer.emit(text);
+      for (const text of output) {
+        streamer.emit(text);
+      }
       return { past_key_values: null, sequences: [] };
     });
     await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
@@ -213,7 +219,9 @@ literal <think>
       generationCapture: undefined,
     });
     expect(chunks.join('')).toBe(expected);
-    if (expected === '') expect(chunks).toEqual([]);
+    if (expected === '') {
+      expect(chunks).toEqual([]);
+    }
     expect(tools).toEqual([]);
     expect(apply_chat_template).toHaveBeenCalledOnce();
     expect(processor).toHaveBeenCalledExactlyOnceWith(prompt);
@@ -274,7 +282,8 @@ literal <think>
     const processor = Object.assign(vi.fn(async (_prompt: string, _images?: unknown[]) => prepared), { batch_decode: vi.fn(() => []) });
     const apply_chat_template = vi.fn(() => openPrompt);
     const generate = vi.fn(async ({ streamer }: { streamer: { emit: (text: string) => void } }) => {
-      streamer.emit('Reason</think>Answer'); return { past_key_values: null, sequences: [] };
+      streamer.emit('Reason</think>Answer');
+      return { past_key_values: null, sequences: [] };
     });
     await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: 'synthetic/qwen' }).generate({
       onGenerationEvent: undefined,
@@ -539,7 +548,8 @@ function createInvocationFixture({ inputs, params, modelConfig }: {
   const model = {
     config: modelConfig,
     get generate() {
-      events.push('native-method'); return generate;
+      events.push('native-method');
+      return generate;
     },
   };
   const sink: GenerationStrategyObservationSink = {
@@ -628,7 +638,8 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     Object.defineProperty(inputs, 'extra_input', {
       enumerable: true,
       get() {
-        fixture.events.push('input-getter'); return inputIds;
+        fixture.events.push('input-getter');
+        return inputIds;
       },
     });
     let observed: GenerationInvocationObservation | undefined;
@@ -789,7 +800,8 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     const completed: unknown[] = [];
     let invocations = 0;
     fixture.sink.onGenerateInvocation = () => {
-      ++invocations; throw new Error('Synthetic observer failure');
+      ++invocations;
+      throw new Error('Synthetic observer failure');
     };
     fixture.sink.onGenerateComplete = ({ result }) => {
       completed.push(result);
@@ -807,7 +819,8 @@ describe('actual native invocation observation; isolated strategy boundary', () 
     const failure = new Error('Original synthetic native failure');
     let invocations = 0;
     fixture.sink.onGenerateInvocation = () => {
-      ++invocations; throw new Error('Synthetic observer failure');
+      ++invocations;
+      throw new Error('Synthetic observer failure');
     };
     fixture.generate.mockRejectedValue(failure);
     await expect(fixture.run({ observationSink: fixture.sink, generationCapture: undefined })).rejects.toBe(failure);

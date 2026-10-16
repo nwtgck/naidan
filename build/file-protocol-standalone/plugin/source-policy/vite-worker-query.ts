@@ -19,7 +19,9 @@ import { isBabelNodeType } from './babel-node.js';
 
 function viteWorkerQueryFlags(specifier: string): string[] {
   const queryIndex = specifier.indexOf('?');
-  if (queryIndex < 0) return [];
+  if (queryIndex < 0) {
+    return [];
+  }
   const fragmentIndex = specifier.indexOf('#', queryIndex);
   const query = specifier.slice(queryIndex + 1, fragmentIndex < 0 ? undefined : fragmentIndex);
   const flags: string[] = [];
@@ -41,7 +43,9 @@ function viteWorkerQueryFlags(specifier: string): string[] {
 }
 
 function staticStringValue(node: Node | null | undefined): string | null {
-  if (isBabelNodeType(node, 'StringLiteral')) return node.value;
+  if (isBabelNodeType(node, 'StringLiteral')) {
+    return node.value;
+  }
   if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) {
     return node.quasis[0]?.value?.cooked ?? node.quasis[0]?.value?.raw ?? '';
   }
@@ -60,9 +64,13 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
 
   function record(node: Node, kind: string, specifier: string): void {
     const flags = viteWorkerQueryFlags(specifier);
-    if (flags.length === 0) return;
+    if (flags.length === 0) {
+      return;
+    }
     const key = `${node.start}:${node.end}:${kind}:${specifier}`;
-    if (seen.has(key)) return;
+    if (seen.has(key)) {
+      return;
+    }
     seen.add(key);
     records.push({
       kind,
@@ -89,7 +97,9 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
       throw new Error(`Unhandled import kind: ${exhaustive}`);
     }
     }
-    if (importPath.node.specifiers.length === 0) return true;
+    if (importPath.node.specifiers.length === 0) {
+      return true;
+    }
     return importPath.node.specifiers.some(specifier => specifier.type !== 'ImportSpecifier' || specifier.importKind !== 'type');
   }
 
@@ -106,13 +116,19 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
       throw new Error(`Unhandled export kind: ${exhaustive}`);
     }
     }
-    if (!Array.isArray(exportPath.node.specifiers) || exportPath.node.specifiers.length === 0) return true;
+    if (!Array.isArray(exportPath.node.specifiers) || exportPath.node.specifiers.length === 0) {
+      return true;
+    }
     return exportPath.node.specifiers.some(specifier => specifier.type !== 'ExportSpecifier' || specifier.exportKind !== 'type');
   }
 
   function isImportMetaGlob(callee: Node | null | undefined): boolean {
-    if (callee?.type !== 'MemberExpression' || callee.computed) return false;
-    if (callee.property.type !== 'Identifier' || !['glob', 'globEager'].includes(callee.property.name)) return false;
+    if (callee?.type !== 'MemberExpression' || callee.computed) {
+      return false;
+    }
+    if (callee.property.type !== 'Identifier' || !['glob', 'globEager'].includes(callee.property.name)) {
+      return false;
+    }
     return callee.object?.type === 'MetaProperty'
       && callee.object.meta?.name === 'import'
       && callee.object.property?.name === 'meta';
@@ -120,30 +136,46 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
 
   function globQuerySpecifier(callNode: CallExpression): string | null {
     const options = callNode.arguments?.[1];
-    if (!isBabelNodeType(options, 'ObjectExpression')) return null;
+    if (!isBabelNodeType(options, 'ObjectExpression')) {
+      return null;
+    }
     for (const property of options.properties) {
-      if (!isBabelNodeType(property, 'ObjectProperty')) continue;
+      if (!isBabelNodeType(property, 'ObjectProperty')) {
+        continue;
+      }
       const key = staticObjectPropertyNameForQuery(property);
-      if (key !== 'query') continue;
+      if (key !== 'query') {
+        continue;
+      }
       return staticStringValue(property.value);
     }
     return null;
   }
 
   function staticObjectPropertyNameForQuery(node: ObjectProperty): string | null {
-    if (!node) return null;
-    if (!node.computed && node.key?.type === 'Identifier') return node.key.name;
-    if (isBabelNodeType(node.key, 'StringLiteral')) return node.key.value;
+    if (!node) {
+      return null;
+    }
+    if (!node.computed && node.key?.type === 'Identifier') {
+      return node.key.name;
+    }
+    if (isBabelNodeType(node.key, 'StringLiteral')) {
+      return node.key.value;
+    }
     return null;
   }
 
   babelTraverse(ast, {
     ImportDeclaration(importPath: NodePath<ImportDeclaration>) {
-      if (!runtimeImportDeclaration(importPath)) return;
+      if (!runtimeImportDeclaration(importPath)) {
+        return;
+      }
       record(importPath.node, 'static-import', importPath.node.source.value);
     },
     ExportNamedDeclaration(exportPath: NodePath<ExportNamedDeclaration>) {
-      if (!exportPath.node.source || !runtimeExportDeclaration(exportPath)) return;
+      if (!exportPath.node.source || !runtimeExportDeclaration(exportPath)) {
+        return;
+      }
       record(exportPath.node, 'named-reexport', exportPath.node.source.value);
     },
     ExportAllDeclaration(exportPath: NodePath<ExportAllDeclaration>) {
@@ -164,17 +196,23 @@ function findViteWorkerQueryImports(code: string, id = '<unknown>'): ViteWorkerQ
     CallExpression(callPath) {
       if (isBabelNodeType(callPath.node.callee, 'Import')) {
         const specifier = staticStringValue(callPath.node.arguments?.[0]);
-        if (specifier !== null) record(callPath.node, 'dynamic-import', specifier);
+        if (specifier !== null) {
+          record(callPath.node, 'dynamic-import', specifier);
+        }
         return;
       }
       if (isImportMetaGlob(callPath.node.callee)) {
         const query = globQuerySpecifier(callPath.node);
-        if (query !== null) record(callPath.node, 'import-meta-glob-query', `glob${query.startsWith('?') ? query : `?${query}`}`);
+        if (query !== null) {
+          record(callPath.node, 'import-meta-glob-query', `glob${query.startsWith('?') ? query : `?${query}`}`);
+        }
       }
     },
     ImportExpression(importPath: NodePath<ImportExpression>) {
       const specifier = staticStringValue(importPath.node.source);
-      if (specifier !== null) record(importPath.node, 'dynamic-import', specifier);
+      if (specifier !== null) {
+        record(importPath.node, 'dynamic-import', specifier);
+      }
     },
   });
   return records.sort((left, right) => left.start - right.start || left.kind.localeCompare(right.kind));
@@ -188,11 +226,17 @@ export function createViteWorkerQueryPolicyPlugin({ diagnostics, allowViteWorker
     name: 'naidan-file-protocol-standalone-vite-worker-query-policy',
     enforce: 'pre',
     transform(code, id) {
-      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) return null;
-      if (!/[?&](?:worker|sharedworker)(?:&|['"`]|$)/iu.test(code)) return null;
+      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) {
+        return null;
+      }
+      if (!/[?&](?:worker|sharedworker)(?:&|['"`]|$)/iu.test(code)) {
+        return null;
+      }
       const sourcePath = id.split('?', 1)[0];
       const imports = findViteWorkerQueryImports(code, sourcePath);
-      if (imports.length === 0) return null;
+      if (imports.length === 0) {
+        return null;
+      }
       for (const workerImport of imports) {
         const record = { moduleId: sourcePath, ...workerImport };
         const allowed = typeof allowViteWorkerQueryImport === 'function'

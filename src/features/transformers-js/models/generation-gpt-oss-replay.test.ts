@@ -32,7 +32,9 @@ describe('GPT-OSS Production generation replay', () => {
       const streamer = inputs['streamer'] as TextStreamer;
       const prompt = inputs['input_ids'] as { data: BigInt64Array };
       streamer.put([Array.from(prompt.data)]);
-      for (const id of generatedIds) streamer.put([[BigInt(id)]]);
+      for (const id of generatedIds) {
+        streamer.put([[BigInt(id)]]);
+      }
       streamer.end();
       return { past_key_values: undefined, sequences: { data: BigInt64Array.from([...prompt.data, ...generatedIds.map(BigInt)]) } };
     });

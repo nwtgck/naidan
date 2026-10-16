@@ -13,37 +13,52 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
 });
 
 describe('shared default model action and confirmation', () => {
   it('requires both the endpoint and default reference to match before displaying In use', async () => {
-    const wrapper = mount(LlamaCppBrowserDefaultModelAction, { props: { model, current: { ...current, modelId: model.name }, disabled: false } }); wrappers.push(wrapper);
+    const wrapper = mount(LlamaCppBrowserDefaultModelAction, { props: { model, current: { ...current, modelId: model.name }, disabled: false } });
+    wrappers.push(wrapper);
     expect(wrapper.text()).toBe('Set as default');
     await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.name } });
-    expect(wrapper.text()).toBe('In use'); expect(wrapper.attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toBe('In use');
+    expect(wrapper.attributes('disabled')).toBeDefined();
     await wrapper.setProps({ current: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.id } });
     expect(wrapper.text()).toBe('In use');
   });
 
   it('shows the model transition before endpoint changes and commits nothing until confirmation', async () => {
-    const gate = Promise.withResolvers<'applied' | 'changed'>(); const apply = vi.fn<ApplyDefaultModel>().mockReturnValue(gate.promise);
-    const wrapper = mount(LlamaCppBrowserDefaultModelDialog, { props: { model, current, models: [model], apply }, global: { stubs: { Teleport: true } } }); wrappers.push(wrapper); await flushPromises();
-    const text = wrapper.text(); expect(text.indexOf('old-model')).toBeLessThan(text.indexOf('Ollama'));
+    const gate = Promise.withResolvers<'applied' | 'changed'>();
+    const apply = vi.fn<ApplyDefaultModel>().mockReturnValue(gate.promise);
+    const wrapper = mount(LlamaCppBrowserDefaultModelDialog, { props: { model, current, models: [model], apply }, global: { stubs: { Teleport: true } } });
+    wrappers.push(wrapper);
+    await flushPromises();
+    const text = wrapper.text();
+    expect(text.indexOf('old-model')).toBeLessThan(text.indexOf('Ollama'));
     expect(wrapper.get('[data-testid="llama-default-model-change"]').text()).toContain(model.name);
     expect(apply).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="llama-default-confirm"]').trigger('click');
     expect(apply).toHaveBeenCalledWith({ model, previous: current });
     expect(wrapper.get('[data-testid="llama-default-confirm"]').attributes('disabled')).toBeDefined();
-    gate.resolve('applied'); await flushPromises(); expect(wrapper.emitted('close')).toHaveLength(1);
+    gate.resolve('applied');
+    await flushPromises();
+    expect(wrapper.emitted('close')).toHaveLength(1);
   });
 
   it('omits unchanged endpoint rows, supports cancellation and retains the dialog on save failure', async () => {
     const apply = vi.fn<ApplyDefaultModel>().mockRejectedValue(new Error('Storage unavailable'));
-    const wrapper = mount(LlamaCppBrowserDefaultModelDialog, { props: { model, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, models: [model], apply }, global: { stubs: { Teleport: true } } }); wrappers.push(wrapper); await flushPromises();
+    const wrapper = mount(LlamaCppBrowserDefaultModelDialog, { props: { model, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, models: [model], apply }, global: { stubs: { Teleport: true } } });
+    wrappers.push(wrapper);
+    await flushPromises();
     expect(wrapper.find('[data-testid="llama-default-endpoint-change"]').exists()).toBe(false);
-    await wrapper.get('[data-testid="llama-default-cancel"]').trigger('click'); expect(apply).not.toHaveBeenCalled();
-    await wrapper.get('[data-testid="llama-default-confirm"]').trigger('click'); await flushPromises();
-    expect(wrapper.find('[role="alert"]').exists()).toBe(true); expect(wrapper.emitted('close')).toHaveLength(1);
+    await wrapper.get('[data-testid="llama-default-cancel"]').trigger('click');
+    expect(apply).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-default-confirm"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    expect(wrapper.emitted('close')).toHaveLength(1);
   });
 });

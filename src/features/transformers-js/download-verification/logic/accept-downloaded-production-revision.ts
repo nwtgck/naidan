@@ -52,7 +52,9 @@ export async function acceptDownloadedProductionRevision({
       }
       signal?.throwIfAborted();
       const reportProgress: RuntimeAcceptanceProgressCallback = ({ progress }) => {
-        if (!signal?.aborted) onProgress?.({ progress });
+        if (!signal?.aborted) {
+          onProgress?.({ progress });
+        }
       };
       reportProgress({ progress: { phase: 'revision-acceptance', revision: cacheRevision, candidate: undefined, info: undefined } });
       const client = createAcceptanceClient === undefined
@@ -91,7 +93,9 @@ export async function acceptDownloadedProductionRevision({
                 signal,
               });
             } catch (error) {
-              if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+              if (signal?.aborted === true) {
+                throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+              }
               // A broken ownership/cleanup contract is not another dtype's runtime
               // incompatibility, including after Comlink reconstructs the Error.
               const classification = classifyProductionAcceptanceError({ error });
@@ -127,7 +131,9 @@ export async function acceptDownloadedProductionRevision({
           receipt,
         };
       } catch (error) {
-        if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+        if (signal?.aborted === true) {
+          throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+        }
         load({ outcome: productionAcceptanceFailureStatus({ error }) });
         return {
           modelId,

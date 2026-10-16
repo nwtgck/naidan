@@ -13,7 +13,9 @@ export const rule = {
   create(context) {
     return {
       ImportDeclaration(node) {
-        if (node.source.value !== 'lucide-vue-next') return;
+        if (node.source.value !== 'lucide-vue-next') {
+          return;
+        }
 
         node.specifiers.forEach((specifier) => {
           if (specifier.type === 'ImportSpecifier') {
@@ -21,7 +23,9 @@ export const rule = {
             const importedName = specifier.imported.name;
 
             // If it already ends with Icon, it's correct
-            if (localName.endsWith('Icon')) return;
+            if (localName.endsWith('Icon')) {
+              return;
+            }
 
             context.report({
               node: specifier,

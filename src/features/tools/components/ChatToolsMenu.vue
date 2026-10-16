@@ -58,10 +58,16 @@ onMounted(() => {
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
-  if (!showMenu.value) return;
+  if (!showMenu.value) {
+    return;
+  }
 
-  if (triggerRef.value?.contains(target)) return;
-  if (sheetRef.value?.contains(target)) return;
+  if (triggerRef.value?.contains(target)) {
+    return;
+  }
+  if (sheetRef.value?.contains(target)) {
+    return;
+  }
 
   let current: HTMLElement | null = target as HTMLElement;
   while (current && current !== document.body) {
@@ -80,7 +86,9 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 watch(windowWidth, () => {
-  if (showMenu.value) showMenu.value = false;
+  if (showMenu.value) {
+    showMenu.value = false;
+  }
 });
 
 defineExpose({

@@ -17,8 +17,9 @@ function matchesBranchPatterns({ name, matchers }: {
     name: string;
     matchers: readonly GitWildmatchMatcher[];
 }): boolean {
-  if (matchers.length === 0)
+  if (matchers.length === 0) {
     return true;
+  }
   return matchers.some(matcher => matcher.matches({ value: name }));
 }
 
@@ -60,8 +61,9 @@ async function deleteBranchReflog({ context, repository, refName }: {
     refName: string;
 }): Promise<void> {
   const path = joinPath({ base: repository.commonDirPath, child: `logs/${refName}` });
-  if (await pathExists({ files: context.files, path }))
+  if (await pathExists({ files: context.files, path })) {
     await context.files.unlink({ path });
+  }
 }
 
 import { parseBranchArguments } from "./arguments";
@@ -86,19 +88,23 @@ export async function runBranch({ context, args }: {
     if (move || listOnly || isBranchDeleteMode({ mode: deleteMode })) {
       throw new GitUsageError({ message: 'usage: git branch [<options>] [<branch-name>...]', prefix: 'none' });
     }
-    if (currentBranch !== undefined)
+    if (currentBranch !== undefined) {
       await context.text().print({ text: `${currentBranch}\n` });
+    }
     return { exitCode: 0 };
   }
   if (move) {
-    if (showCurrent || listOnly || isBranchDeleteMode({ mode: deleteMode }))
+    if (showCurrent || listOnly || isBranchDeleteMode({ mode: deleteMode })) {
       throw new Error('options are incompatible');
-    if (operands.length === 0 || operands.length > 2)
+    }
+    if (operands.length === 0 || operands.length > 2) {
       throw new Error('branch name required');
+    }
     const oldName = operands.length === 1 ? currentBranch : operands[0];
     const newName = operands.length === 1 ? operands[0]! : operands[1]!;
-    if (oldName === undefined)
+    if (oldName === undefined) {
       throw new Error('cannot rename the current branch while not on any branch');
+    }
     const oldRefName = branchRefName({ name: oldName });
     const newRefName = branchRefName({ name: newName });
     if (await readRef({ files: context.files, repository, refName: newRefName }) !== undefined) {
@@ -107,8 +113,9 @@ export async function runBranch({ context, args }: {
     const objectId = await readRef({ files: context.files, repository, refName: oldRefName });
     const renamingCurrent = head.symbolicRef === oldRefName;
     if (objectId === undefined) {
-      if (!renamingCurrent)
+      if (!renamingCurrent) {
         throw new Error(`branch '${oldName}' not found`);
+      }
       await setHeadSymbolic({ files: context.files, repository, refName: newRefName });
       await renameLocalConfigSection({
         files: context.files,
@@ -131,8 +138,9 @@ export async function runBranch({ context, args }: {
       oldRefName,
       newRefName,
       reflog: updateBranchReflog ? { identity, timestamp, message } : undefined,
-    }))
+    })) {
       throw new Error(`branch '${oldName}' not found`);
+    }
     if (renamingCurrent) {
       await setHeadSymbolic({ files: context.files, repository, refName: newRefName });
       const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
@@ -168,8 +176,9 @@ export async function runBranch({ context, args }: {
     return { exitCode: 0 };
   }
   if (isBranchDeleteMode({ mode: deleteMode })) {
-    if (listOnly)
+    if (listOnly) {
       throw new Error('options are incompatible');
+    }
     const deletingRemoteTrackingBranches = (() => {
       switch (listMode) {
       case 'local':
@@ -184,8 +193,9 @@ export async function runBranch({ context, args }: {
       }
       }
     })();
-    if (operands.length === 0)
+    if (operands.length === 0) {
       throw new Error('branch name required');
+    }
     const deleteConfig = deletingRemoteTrackingBranches ? undefined : config;
     const graphCache = !deletingRemoteTrackingBranches && requiresMergedBranch({ mode: deleteMode })
       ? createGitCommitGraphCache()
@@ -283,8 +293,9 @@ export async function runBranch({ context, args }: {
       const refs = await listRefs({ files: context.files, repository, prefix: 'refs/heads' });
       for (const ref of refs) {
         const name = ref.refName.slice('refs/heads/'.length);
-        if (!matchesBranchPatterns({ name, matchers: patternMatchers }))
+        if (!matchesBranchPatterns({ name, matchers: patternMatchers })) {
           continue;
+        }
         await context.text().print({ text: `${name === currentBranch ? '*' : ' '} ${name}\n` });
       }
     }
@@ -302,8 +313,9 @@ export async function runBranch({ context, args }: {
           }
           }
         })();
-        if (!matchesBranchPatterns({ name: displayName, matchers: patternMatchers }))
+        if (!matchesBranchPatterns({ name: displayName, matchers: patternMatchers })) {
           continue;
+        }
         const targetSuffix = ref.symbolicTargetRefName === undefined
           ? ''
           : ` -> ${ref.symbolicTargetRefName.slice('refs/remotes/'.length)}`;
@@ -323,8 +335,9 @@ export async function runBranch({ context, args }: {
     throw new Error(`Unhandled branch list mode: ${_ex}`);
   }
   }
-  if (operands.length > 2)
+  if (operands.length > 2) {
     throw new Error('too many arguments');
+  }
   const name = operands[0]!;
   const refName = branchRefName({ name });
   if (await readRef({ files: context.files, repository, refName }) !== undefined) {
@@ -337,8 +350,9 @@ export async function runBranch({ context, args }: {
     startObjectId = await resolveCommitRevision({ files: context.files, repository, expression: operands[1] });
   } else {
     startDescription = currentBranch ?? 'HEAD';
-    if (head.objectId === undefined)
+    if (head.objectId === undefined) {
       throw new Error(`not a valid object name: '${startDescription}'`);
+    }
     startObjectId = head.objectId;
   }
   await readCommit({ files: context.files, repository, objectId: startObjectId });

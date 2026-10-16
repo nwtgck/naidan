@@ -15,31 +15,47 @@ const jpegXmpIdentifier = new TextEncoder().encode('http://ns.adobe.com/xap/1.0/
 export function jpegWithXmp({ bytes, packet }: { bytes: Uint8Array<ArrayBuffer>, packet: Uint8Array<ArrayBuffer> }): Blob {
   // Adobe's standard packet bound also leaves room for the identifier and the
   // 16-bit segment length. Large settings must use PNG or WebP without loss.
-  if (packet.length > 65_502) throw new Error('Generation settings are too large for JPEG metadata. Choose PNG or WebP.');
-  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error('Invalid JPEG header');
+  if (packet.length > 65_502) {
+    throw new Error('Generation settings are too large for JPEG metadata. Choose PNG or WebP.');
+  }
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    throw new Error('Invalid JPEG header');
+  }
   let insertion = 2;
   let reachedImage = false;
   for (let offset = 2; offset < bytes.length;) {
     const markerStart = offset;
-    if (bytes[offset++] !== 0xff) throw new Error('Invalid JPEG segment');
-    while (bytes[offset] === 0xff) offset++;
+    if (bytes[offset++] !== 0xff) {
+      throw new Error('Invalid JPEG segment');
+    }
+    while (bytes[offset] === 0xff) {
+      offset++;
+    }
     const marker = bytes[offset++];
     if (marker === 0xda || marker === 0xd9) {
       reachedImage = true;
       break; // Entropy-coded scan bytes must never be parsed as metadata.
     }
-    if (marker === undefined || marker === 0 || marker === 0xd8 || marker === 1 || marker >= 0xd0 && marker <= 0xd7 || offset + 2 > bytes.length) throw new Error('Invalid JPEG marker');
+    if (marker === undefined || marker === 0 || marker === 0xd8 || marker === 1 || marker >= 0xd0 && marker <= 0xd7 || offset + 2 > bytes.length) {
+      throw new Error('Invalid JPEG marker');
+    }
     const size = bytes[offset]! * 256 + bytes[offset + 1]!;
-    if (size < 2 || offset + size > bytes.length) throw new Error('Truncated JPEG segment');
+    if (size < 2 || offset + size > bytes.length) {
+      throw new Error('Truncated JPEG segment');
+    }
     const payload = bytes.subarray(offset + 2, offset + size);
     if (marker === 0xe1 && jpegXmpIdentifier.every((value, index) => payload[index] === value)) {
       throw new Error('The encoded JPEG unexpectedly contains existing XMP metadata');
     }
     // Keep JFIF/Exif ahead of our APP1 packet. No image segments are rewritten.
-    if (markerStart === insertion && (marker === 0xe0 || marker === 0xe1)) insertion = offset + size;
+    if (markerStart === insertion && (marker === 0xe0 || marker === 0xe1)) {
+      insertion = offset + size;
+    }
     offset += size;
   }
-  if (!reachedImage || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) throw new Error('Incomplete JPEG image');
+  if (!reachedImage || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) {
+    throw new Error('Incomplete JPEG image');
+  }
   const segment = new Uint8Array(4 + jpegXmpIdentifier.length + packet.length);
   segment.set([0xff, 0xe1]);
   new DataView(segment.buffer).setUint16(2, segment.length - 2);
@@ -62,29 +78,43 @@ function riffChunk({ name, payload }: { name: string, payload: Uint8Array<ArrayB
 export function webpWithXmp({ bytes, packet }: { bytes: Uint8Array<ArrayBuffer>, packet: Uint8Array<ArrayBuffer> }): Blob {
   const text = new TextDecoder();
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes.length < 12 || text.decode(bytes.subarray(0, 4)) !== 'RIFF' || text.decode(bytes.subarray(8, 12)) !== 'WEBP' || view.getUint32(4, true) !== bytes.length - 8) throw new Error('Invalid WebP container');
+  if (bytes.length < 12 || text.decode(bytes.subarray(0, 4)) !== 'RIFF' || text.decode(bytes.subarray(8, 12)) !== 'WEBP' || view.getUint32(4, true) !== bytes.length - 8) {
+    throw new Error('Invalid WebP container');
+  }
   const chunks: { name: string, bytes: Uint8Array<ArrayBuffer>, payload: Uint8Array<ArrayBuffer> }[] = [];
   for (let offset = 12; offset < bytes.length;) {
-    if (offset + 8 > bytes.length) throw new Error('Truncated WebP chunk');
+    if (offset + 8 > bytes.length) {
+      throw new Error('Truncated WebP chunk');
+    }
     const size = view.getUint32(offset + 4, true);
     const end = offset + 8 + size;
     const paddedEnd = end + size % 2;
-    if (paddedEnd > bytes.length || size % 2 && bytes[end] !== 0) throw new Error('Invalid WebP chunk padding');
+    if (paddedEnd > bytes.length || size % 2 && bytes[end] !== 0) {
+      throw new Error('Invalid WebP chunk padding');
+    }
     chunks.push({ name: text.decode(bytes.subarray(offset, offset + 4)), bytes: bytes.subarray(offset, paddedEnd), payload: bytes.subarray(offset + 8, end) });
     offset = paddedEnd;
   }
-  if (chunks.some(chunk => chunk.name === 'XMP ')) throw new Error('The encoded WebP unexpectedly contains existing XMP metadata');
+  if (chunks.some(chunk => chunk.name === 'XMP ')) {
+    throw new Error('The encoded WebP unexpectedly contains existing XMP metadata');
+  }
   const extended = chunks.find(chunk => chunk.name === 'VP8X');
   let header: Uint8Array<ArrayBuffer>;
   if (extended) {
-    if (chunks[0] !== extended || extended.payload.length !== 10 || chunks.filter(chunk => chunk.name === 'VP8X').length !== 1) throw new Error('Invalid WebP extended header');
+    if (chunks[0] !== extended || extended.payload.length !== 10 || chunks.filter(chunk => chunk.name === 'VP8X').length !== 1) {
+      throw new Error('Invalid WebP extended header');
+    }
     header = extended.payload.slice();
   } else {
     // Canvas may emit simple lossy or lossless WebP. Their bitstream headers
     // carry the original dimensions and (for VP8L) whether alpha is used.
-    if (chunks.length !== 1) throw new Error('Invalid simple WebP image');
+    if (chunks.length !== 1) {
+      throw new Error('Invalid simple WebP image');
+    }
     const image = chunks[0];
-    if (!image) throw new Error('WebP image data is missing');
+    if (!image) {
+      throw new Error('WebP image data is missing');
+    }
     const data = image.payload;
     let width: number;
     let height: number;
@@ -97,8 +127,12 @@ export function webpWithXmp({ bytes, packet }: { bytes: Uint8Array<ArrayBuffer>,
       width = (bits & 0x3fff) + 1;
       height = (bits >>> 14 & 0x3fff) + 1;
       alpha = !!(bits & 0x10000000);
-    } else throw new Error('Unsupported WebP image header');
-    if (!width || !height) throw new Error('Invalid WebP dimensions');
+    } else {
+      throw new Error('Unsupported WebP image header');
+    }
+    if (!width || !height) {
+      throw new Error('Invalid WebP dimensions');
+    }
     header = new Uint8Array(10);
     header[0] = alpha ? 0x10 : 0;
     for (let byte = 0; byte < 3; byte++) {
@@ -111,7 +145,9 @@ export function webpWithXmp({ bytes, packet }: { bytes: Uint8Array<ArrayBuffer>,
   const xmp = riffChunk({ name: 'XMP ', payload: packet });
   const body = chunks.filter(chunk => chunk !== extended).map(chunk => chunk.bytes);
   const total = 12 + headerChunk.length + body.reduce((sum, chunk) => sum + chunk.length, 0) + xmp.length;
-  if (total > 0xfffffffe) throw new Error('WebP metadata exceeds the container size limit');
+  if (total > 0xfffffffe) {
+    throw new Error('WebP metadata exceeds the container size limit');
+  }
   const riff = bytes.slice(0, 12);
   new DataView(riff.buffer).setUint32(4, total - 8, true);
   return new Blob([riff, headerChunk, ...body, xmp], { type: 'image/webp' });

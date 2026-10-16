@@ -355,8 +355,12 @@ function parseSortList({
 }
 
 function compareStrings({ left, right }: { left: string, right: string }): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
   return 0;
 }
 
@@ -383,7 +387,9 @@ function sortProcesses({
         }
         }
       })();
-      if (comparison !== 0) return comparison * specifier.direction;
+      if (comparison !== 0) {
+        return comparison * specifier.direction;
+      }
     }
     return 0;
   });
@@ -401,12 +407,16 @@ function layoutProcessesAsForest({
 }): PsForestLayout {
   const processByPid = new Map<number, WeshProcessSnapshot>();
   for (const process of processes) {
-    if (!processByPid.has(process.pid)) processByPid.set(process.pid, process);
+    if (!processByPid.has(process.pid)) {
+      processByPid.set(process.pid, process);
+    }
   }
 
   const childrenByParentPid = new Map<number, WeshProcessSnapshot[]>();
   for (const process of processes) {
-    if (process.ppid === process.pid || !processByPid.has(process.ppid)) continue;
+    if (process.ppid === process.pid || !processByPid.has(process.ppid)) {
+      continue;
+    }
     const children = childrenByParentPid.get(process.ppid) ?? [];
     children.push(process);
     childrenByParentPid.set(process.ppid, children);
@@ -417,7 +427,9 @@ function layoutProcessesAsForest({
   const visitedPids = new Set<number>();
 
   const visit = ({ process, depth }: { process: WeshProcessSnapshot, depth: number }): void => {
-    if (visitedPids.has(process.pid)) return;
+    if (visitedPids.has(process.pid)) {
+      return;
+    }
     visitedPids.add(process.pid);
     ordered.push(process);
     depthByPid.set(process.pid, depth);
@@ -442,7 +454,9 @@ function layoutProcessesAsForest({
 }
 
 function forestCommandPrefix({ depth }: { depth: number }): string {
-  if (depth <= 0) return '';
+  if (depth <= 0) {
+    return '';
+  }
   return `${' '.repeat(1 + ((depth - 1) * 4))}\\_ `;
 }
 
@@ -454,7 +468,9 @@ function decorateForestColumns({
   depthByPid: ReadonlyMap<number, number>,
 }): PsColumnDefinition[] {
   return columns.map((column) => {
-    if (column.key !== 'args' && column.key !== 'comm') return column;
+    if (column.key !== 'args' && column.key !== 'comm') {
+      return column;
+    }
     return {
       ...column,
       getValue: ({ process }) => `${forestCommandPrefix({ depth: depthByPid.get(process.pid) ?? 0 })}${column.getValue({ process })}`,
@@ -567,12 +583,16 @@ function formatProcesses({
     width: widths[index]!,
   })).join(' ').replace(/[ \t]+$/u, '');
   const lines: string[] = [];
-  if (includeHeader && header.length > 0) lines.push(header);
+  if (includeHeader && header.length > 0) {
+    lines.push(header);
+  }
   for (const process of processes) {
     let line = '';
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
       const column = columns[columnIndex]!;
-      if (columnIndex > 0) line += ' ';
+      if (columnIndex > 0) {
+        line += ' ';
+      }
       line += formatCell({
         value: sanitizePsValue({ value: column.getValue({ process }) }),
         column,
@@ -708,7 +728,9 @@ export const psCommandImplementation: WeshCommandImplementation = {
         });
         return { exitCode: 1 };
       case 'ok':
-        for (const ppid of parsedPpidList.pids) selectedParentPids.add(ppid);
+        for (const ppid of parsedPpidList.pids) {
+          selectedParentPids.add(ppid);
+        }
         break;
       default: {
         const _ex: never = parsedPpidList;
@@ -777,7 +799,9 @@ export const psCommandImplementation: WeshCommandImplementation = {
         case 'error':
           return parsedFormat;
         case 'ok':
-          for (const column of parsedFormat.columns) combinedColumns.push(column);
+          for (const column of parsedFormat.columns) {
+            combinedColumns.push(column);
+          }
           break;
         default: {
           const _ex: never = parsedFormat;

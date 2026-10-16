@@ -67,17 +67,23 @@ async function classifyCommands({
   const alias = context.getAliases().find(candidate => candidate.name === name);
   if (alias !== undefined) {
     classifications.push({ kind: 'alias', value: alias.value });
-    if (!includeAll) return classifications;
+    if (!includeAll) {
+      return classifications;
+    }
   }
 
   if (!suppressFunctions && hasShellFunction({ context, name })) {
     classifications.push({ kind: 'function' });
-    if (!includeAll) return classifications;
+    if (!includeAll) {
+      return classifications;
+    }
   }
 
   if (shellControlFlowBuiltinNames.has(name)) {
     classifications.push({ kind: 'builtin' });
-    if (!includeAll) return classifications;
+    if (!includeAll) {
+      return classifications;
+    }
   } else {
     const resolved = await resolveCommand({ context, name });
     switch (resolved.kind) {
@@ -93,7 +99,9 @@ async function classifyCommands({
       switch (resolved.resolution) {
       case 'builtin-name':
         classifications.push({ kind: 'builtin' });
-        if (!includeAll) return classifications;
+        if (!includeAll) {
+          return classifications;
+        }
         break;
       case 'path-lookup':
       case 'explicit-path':
@@ -117,7 +125,9 @@ async function classifyCommands({
 
   if (includeAll) {
     const path = await resolvePathClassification({ context, name });
-    if (path !== undefined) classifications.push(path);
+    if (path !== undefined) {
+      classifications.push(path);
+    }
   }
   return classifications;
 }

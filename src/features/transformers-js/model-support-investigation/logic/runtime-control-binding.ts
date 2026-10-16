@@ -61,7 +61,9 @@ export async function withVerifiedRuntimeControl<T>({
   observeBinding: ({ observation }: { observation: RuntimeControlBinding }) => unknown,
   run: () => Promise<T>,
 }): Promise<T> {
-  if (verifiedWasm === undefined) throw new Error('Verified runtime WASM bytes are unavailable for this control');
+  if (verifiedWasm === undefined) {
+    throw new Error('Verified runtime WASM bytes are unavailable for this control');
+  }
   const previousBinary = controlEnvironment.wasmBinary;
   controlEnvironment.wasmBinary = verifiedWasm.bytes;
   try {

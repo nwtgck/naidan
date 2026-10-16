@@ -1665,7 +1665,9 @@ usage: ${name} [-c command] [file [argument...]]
     let literal = '';
 
     const flushLiteral = (): void => {
-      if (literal.length === 0) return;
+      if (literal.length === 0) {
+        return;
+      }
       parts.push({
         text: literal,
         quoted,
@@ -2434,14 +2436,22 @@ usage: ${name} [-c command] [file [argument...]]
             throw new Error(`Missing digits for arithmetic base ${radix}`);
           }
           const digitValue = ({ digit }: { digit: string }): number => {
-            if (digit >= '0' && digit <= '9') return digit.codePointAt(0)! - '0'.codePointAt(0)!;
-            if (digit >= 'a' && digit <= 'z') return digit.codePointAt(0)! - 'a'.codePointAt(0)! + 10;
+            if (digit >= '0' && digit <= '9') {
+              return digit.codePointAt(0)! - '0'.codePointAt(0)!;
+            }
+            if (digit >= 'a' && digit <= 'z') {
+              return digit.codePointAt(0)! - 'a'.codePointAt(0)! + 10;
+            }
             if (digit >= 'A' && digit <= 'Z') {
               const upperValue = digit.codePointAt(0)! - 'A'.codePointAt(0)! + 10;
               return radix <= 36 ? upperValue : upperValue + 26;
             }
-            if (digit === '@') return 62;
-            if (digit === '_') return 63;
+            if (digit === '@') {
+              return 62;
+            }
+            if (digit === '_') {
+              return 63;
+            }
             throw new Error(`Invalid arithmetic digit: ${digit}`);
           };
           let value = 0;
@@ -2964,7 +2974,9 @@ usage: ${name} [-c command] [file [argument...]]
     pattern: string,
     replacement: string,
   }): string {
-    if (pattern.length === 0 && (operator === 'first' || operator === 'all')) return value;
+    if (pattern.length === 0 && (operator === 'first' || operator === 'all')) {
+      return value;
+    }
 
     const compiledPattern = compileShellPattern({ pattern });
     const matchesRange = ({ start, end }: { start: number, end: number }): boolean =>
@@ -2975,8 +2987,12 @@ usage: ${name} [-c command] [file [argument...]]
 
     const longestMatchFrom = ({ start }: { start: number }): number | undefined => {
       for (let end = value.length;;) {
-        if (end >= start && matchesRange({ start, end })) return end;
-        if (end <= start) break;
+        if (end >= start && matchesRange({ start, end })) {
+          return end;
+        }
+        if (end <= start) {
+          break;
+        }
         end = previousShellCharacterIndex({ text: value, index: end });
       }
       return undefined;
@@ -2992,7 +3008,9 @@ usage: ${name} [-c command] [file [argument...]]
         if (matchesRange({ start, end: value.length })) {
           return value.slice(0, start) + replacement;
         }
-        if (start === value.length) break;
+        if (start === value.length) {
+          break;
+        }
         start = nextShellCharacterIndex({ text: value, index: start });
       }
       return value;
@@ -3003,7 +3021,9 @@ usage: ${name} [-c command] [file [argument...]]
         if (end !== undefined) {
           return value.slice(0, start) + replacement + value.slice(end);
         }
-        if (start === value.length) break;
+        if (start === value.length) {
+          break;
+        }
         start = nextShellCharacterIndex({ text: value, index: start });
       }
       return value;
@@ -3018,7 +3038,9 @@ usage: ${name} [-c command] [file [argument...]]
           if (end !== undefined) {
             result += value.slice(cursor, start) + replacement;
             if (end === start) {
-              if (start === value.length) return result;
+              if (start === value.length) {
+                return result;
+              }
               const next = nextShellCharacterIndex({ text: value, index: start });
               result += value.slice(start, next);
               cursor = next;
@@ -3028,7 +3050,9 @@ usage: ${name} [-c command] [file [argument...]]
             matched = true;
             break;
           }
-          if (start === value.length) break;
+          if (start === value.length) {
+            break;
+          }
           start = nextShellCharacterIndex({ text: value, index: start });
         }
         if (!matched) {
@@ -3564,7 +3588,9 @@ usage: ${name} [-c command] [file [argument...]]
       });
 
       const deduplicated = new Set(zeroDepthMatches);
-      for (const m of deepMatches) deduplicated.add(m);
+      for (const m of deepMatches) {
+        deduplicated.add(m);
+      }
       return Array.from(deduplicated);
     }
 
@@ -4384,7 +4410,9 @@ usage: ${name} [-c command] [file [argument...]]
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
   }): Promise<WeshCommandResult> {
-    if (this.shellPid === 0) await this.init();
+    if (this.shellPid === 0) {
+      await this.init();
+    }
 
     try {
       const environment = this.createExecutionEnvironment({
@@ -4510,8 +4538,12 @@ usage: ${name} [-c command] [file [argument...]]
 
       for (const part of node.parts) {
         let shouldExecute = true;
-        if (previousOperator === '&&' && lastResult.exitCode !== 0) shouldExecute = false;
-        if (previousOperator === '||' && lastResult.exitCode === 0) shouldExecute = false;
+        if (previousOperator === '&&' && lastResult.exitCode !== 0) {
+          shouldExecute = false;
+        }
+        if (previousOperator === '||' && lastResult.exitCode === 0) {
+          shouldExecute = false;
+        }
 
         if (!shouldExecute) {
           previousOperator = part.operator;
@@ -4542,7 +4574,9 @@ usage: ${name} [-c command] [file [argument...]]
           environment.waitableChildren.set(jobEnvironment.shellPid, jobTask);
           void jobTask.then(res => {
             const job = this.jobs.get(jobId);
-            if (job) job.status = 'done';
+            if (job) {
+              job.status = 'done';
+            }
             return res;
           });
 
@@ -5036,7 +5070,9 @@ usage: ${name} [-c command] [file [argument...]]
     stdinReferenceOwnership: WeshStdinReferenceOwnership,
   }): Promise<WeshCommandResult> {
     const commands = node.commands;
-    if (commands.length === 0) return { exitCode: 0 };
+    if (commands.length === 0) {
+      return { exitCode: 0 };
+    }
 
     const pipes: Array<{ read: WeshFileHandle, write: WeshFileHandle }> = [];
     for (let i = 0; i < commands.length - 1; i++) {

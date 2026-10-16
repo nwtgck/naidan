@@ -7,7 +7,9 @@ const url = ref<string>(), state = ref<'loading' | 'ready' | 'missing' | 'failed
 const element = ref<HTMLElement>(), visible = ref(false);
 const imageRevision = ref(0);
 watch(() => props.invalidation, event => {
-  if (event?.binaryObjectId === props.binaryObjectId) imageRevision.value++;
+  if (event?.binaryObjectId === props.binaryObjectId) {
+    imageRevision.value++;
+  }
 });
 let observer: IntersectionObserver | undefined;
 let revision = 0;
@@ -19,11 +21,15 @@ onMounted(() => {
   observer = new IntersectionObserver(entries => {
     visible.value = entries.some(entry => entry.isIntersecting);
   });
-  if (element.value) observer.observe(element.value);
+  if (element.value) {
+    observer.observe(element.value);
+  }
 });
 
 function release(): void {
-  if (url.value) URL.revokeObjectURL(url.value);
+  if (url.value) {
+    URL.revokeObjectURL(url.value);
+  }
   url.value = undefined;
 }
 
@@ -31,16 +37,24 @@ watch(() => [props.binaryObjectId, props.getImage, visible.value, imageRevision.
   const current = ++revision;
   release();
   state.value = 'loading';
-  if (!visible) return;
+  if (!visible) {
+    return;
+  }
   try {
     const blob = await props.getImage({ binaryObjectId });
-    if (revision !== current) return;
+    if (revision !== current) {
+      return;
+    }
     if (blob) {
       url.value = URL.createObjectURL(blob);
       state.value = 'ready';
-    } else state.value = 'missing';
+    } else {
+      state.value = 'missing';
+    }
   } catch {
-    if (revision === current) state.value = 'failed';
+    if (revision === current) {
+      state.value = 'failed';
+    }
   }
 }, { immediate: true });
 onBeforeUnmount(() => {

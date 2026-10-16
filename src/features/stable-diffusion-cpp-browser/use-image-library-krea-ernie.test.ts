@@ -66,15 +66,18 @@ it.each([
     },
   }))!;
   library.hostDirectories.destination.value = destination;
-  await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
+  await library.refresh();
+  library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.selectedFacts.value).toMatchObject({ family: krea ? 'krea2' : 'ernie-image', variant: 'turbo' });
-  expect(library.ready.value).toBe(false); expect(library.selectedModels()).toBeUndefined();
+  expect(library.ready.value).toBe(false);
+  expect(library.selectedModels()).toBeUndefined();
   expect(library.benchmarkTargets({ selections: {} })[0]?.missing).toEqual(['vae', 'lm']);
   await library.downloadRecipe({ recipeId: id, selections: {} });
   expect(download).toHaveBeenCalledWith(expect.objectContaining({ files: recipe.files }));
   expect(list).toHaveBeenCalledTimes(2);
   expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryIds: destination === 'opfs' ? [...new Set(entries.map(entry => entry.id))] : undefined }));
-  expect(library.ready.value).toBe(true); expect(library.downloadState.value).toBe('complete');
+  expect(library.ready.value).toBe(true);
+  expect(library.downloadState.value).toBe('complete');
   expect(library.recipeAvailability({ recipeId: id, selections: {} })).toMatchObject({ total: 3, available: 3, selected: true });
   // A fresh inventory scan must also recognize already saved files.
   await library.refresh();
@@ -93,6 +96,7 @@ it.each([
   expect(resolved.preset).toBe(id);
   expect(resolved.parameters).toMatchObject({ steps: 3, guidance: 1 });
   const omitted = library.benchmarkTargets({ selections: { [target.id]: { lm: '' } } })[0]!;
-  expect(omitted.models).toBeUndefined(); expect(omitted.missing).toEqual(['lm']);
+  expect(omitted.models).toBeUndefined();
+  expect(omitted.missing).toEqual(['lm']);
   expect(library.ready.value).toBe(true);
 });

@@ -11,17 +11,23 @@ export async function inspectImageEngine({ core, context, profile, source, model
   },
   context: bigint, profile: string, source: string, modelVersion: string, fileReadCacheBytes: number,
 }): Promise<ImageEngineInspection> {
-  if (core.busy) return { status: 'unavailable', reason: 'busy' };
+  if (core.busy) {
+    return { status: 'unavailable', reason: 'busy' };
+  }
   const runtimeGetter = core.api.sd_ctx_get_runtime_info;
   const memoryGetter = core.api.sd_ctx_get_memory_info;
   const paramsGetter = core.api.sd_ctx_get_params;
-  if (!runtimeGetter || !memoryGetter || !paramsGetter) return { status: 'unavailable', reason: 'unsupported' };
+  if (!runtimeGetter || !memoryGetter || !paramsGetter) {
+    return { status: 'unavailable', reason: 'unsupported' };
+  }
   const allocations: bigint[] = [];
   let poisoned = false;
   let result: ImageEngineInspection;
   try {
     const allocate = ({ record }: { record: string }) => {
-      const pointer = core.allocRecord(record); allocations.push(pointer); return pointer;
+      const pointer = core.allocRecord(record);
+      allocations.push(pointer);
+      return pointer;
     };
     const runtimeRecord = 'sd_runtime_info_t', memoryRecord = 'sd_memory_info_t', paramsRecord = 'sd_ctx_params_t';
     const runtime = allocate({ record: runtimeRecord }), memory = allocate({ record: memoryRecord }), params = allocate({ record: paramsRecord });
@@ -32,7 +38,9 @@ export async function inspectImageEngine({ core, context, profile, source, model
     }
     for (const { record, pointer } of [{ record: runtimeRecord, pointer: runtime }, { record: memoryRecord, pointer: memory }]) {
       if (Number(core.getField(record, pointer, 'version')) !== 1
-        || Number(core.getField(record, pointer, 'struct_size')) !== core.recordSize(record)) throw new Error('Unsupported image engine snapshot layout');
+        || Number(core.getField(record, pointer, 'struct_size')) !== core.recordSize(record)) {
+        throw new Error('Unsupported image engine snapshot layout');
+      }
     }
     const runtimeFlag = ({ field }: { field: string }) => Number(core.getField(runtimeRecord, runtime, field)) === 1;
     const parameter = ({ field }: { field: string }) => core.getField(paramsRecord, params, field);
@@ -43,7 +51,9 @@ export async function inspectImageEngine({ core, context, profile, source, model
     };
     const memoryValue = ({ field }: { field: string }) => {
       const value = core.getField(memoryRecord, memory, field);
-      if (typeof value === 'number' && !Number.isSafeInteger(value)) throw new Error('Inexact image engine memory value');
+      if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+        throw new Error('Inexact image engine memory value');
+      }
       return BigInt(value).toString();
     };
     const bf16Type = Number(parameter({ field: 'webgpu_bf16_type' }));
@@ -96,7 +106,9 @@ export async function inspectImageEngine({ core, context, profile, source, model
   }
   if (!poisoned) {
     try {
-      for (const pointer of allocations.reverse()) core.free(pointer);
+      for (const pointer of allocations.reverse()) {
+        core.free(pointer);
+      }
     } catch (error) {
       result = { status: 'failed', disposition: 'retire-worker', message: (error instanceof Error ? error.message : String(error)).slice(0, 1024) };
     }

@@ -44,7 +44,9 @@ const modalContent = ref<HTMLElement | undefined>(undefined);
 
 function getFocusableElements(): HTMLElement[] {
   const root = modalContent.value;
-  if (root === undefined) return [];
+  if (root === undefined) {
+    return [];
+  }
 
   return Array.from(root.querySelectorAll<HTMLElement>(
     'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
@@ -54,7 +56,9 @@ function getFocusableElements(): HTMLElement[] {
 function handleModalKeydown({ event }: {
   event: KeyboardEvent,
 }): void {
-  if (event.key !== 'Tab') return;
+  if (event.key !== 'Tab') {
+    return;
+  }
 
   const focusableElements = getFocusableElements();
   if (focusableElements.length === 0) {
@@ -65,7 +69,9 @@ function handleModalKeydown({ event }: {
 
   const first = focusableElements[0];
   const last = focusableElements.at(-1);
-  if (first === undefined || last === undefined) return;
+  if (first === undefined || last === undefined) {
+    return;
+  }
 
   if (event.shiftKey && (document.activeElement === first || document.activeElement === modalContent.value)) {
     event.preventDefault();
@@ -83,7 +89,9 @@ const DEFAULT_TYPE = Symbol('default');
 const selectedType = ref<EndpointType | typeof DEFAULT_TYPE>(onboardingDraft.value?.type || DEFAULT_TYPE);
 
 const effectiveType = computed<EndpointType>(() => {
-  if (selectedType.value === DEFAULT_TYPE) return 'openai';
+  if (selectedType.value === DEFAULT_TYPE) {
+    return 'openai';
+  }
   return selectedType.value;
 });
 
@@ -93,7 +101,9 @@ const effectiveType = computed<EndpointType>(() => {
  * reverse proxy path provided by naidan-server via Cookie.
  */
 const getDefaultCustomUrl = () => {
-  if (onboardingDraft.value?.url) return onboardingDraft.value.url;
+  if (onboardingDraft.value?.url) {
+    return onboardingDraft.value.url;
+  }
 
   // Read reverse proxy info from naidan-server via cookie.
   const cookieValue = document.cookie
@@ -101,7 +111,9 @@ const getDefaultCustomUrl = () => {
     .find(row => row.startsWith('reverse_proxy_path='))
     ?.split('=')[1];
 
-  if (!cookieValue) return '';
+  if (!cookieValue) {
+    return '';
+  }
 
   const path = decodeURIComponent(cookieValue);
   // If the path is relative (starts with /), join it with the current origin.
@@ -170,10 +182,14 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (unsubscribe) unsubscribe();
+  if (unsubscribe) {
+    unsubscribe();
+  }
   // Route exclusions can unmount the modal without changing the dismissed flag.
   // The ordinary dismissal watcher never runs in that case.
-  if (show.value) setActiveFocusArea({ area: 'chat' });
+  if (show.value) {
+    setActiveFocusArea({ area: 'chat' });
+  }
 });
 
 // Subscribe and auto-load only while Transformers.js is selected. The service
@@ -201,7 +217,10 @@ watch(
     switch (availability) {
     case 'available': break;
     case 'unavailable-in-standalone': return;
-    default: { const exhaustive: never = availability; throw new Error(`Unhandled availability: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = availability;
+      throw new Error(`Unhandled availability: ${exhaustive}`);
+    }
     }
 
     let cancelled = false;
@@ -269,7 +288,9 @@ let abortController: AbortController | null = null;
 
 watch(effectiveType, (type, _previous, onCleanup) => {
   localRuntimeReady.value = false;
-  if (type !== 'llama_cpp_browser' || getEndpointBuildAvailability({ type }) !== 'available') return;
+  if (type !== 'llama_cpp_browser' || getEndpointBuildAvailability({ type }) !== 'available') {
+    return;
+  }
   const controller = new AbortController();
   const refresh = (): Promise<void> => refreshLocalModels({ signal: controller.signal });
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({
@@ -278,25 +299,34 @@ watch(effectiveType, (type, _previous, onCleanup) => {
     },
   });
   onCleanup(() => {
-    controller.abort(); unsubscribeModels();
+    controller.abort();
+    unsubscribeModels();
   });
   void refresh();
 }, { immediate: true });
 
 function acceptLocalModels({ models }: { models: LocalModel[] }): void {
-  if (!isLlamaCppBrowser.value) return;
+  if (!isLlamaCppBrowser.value) {
+    return;
+  }
   availableModels.value = models.map(model => model.name);
-  if (!availableModels.value.includes(selectedModel.value)) selectedModel.value = availableModels.value[0] ?? '';
+  if (!availableModels.value.includes(selectedModel.value)) {
+    selectedModel.value = availableModels.value[0] ?? '';
+  }
 }
 
 function selectLocalModel({ name }: { name: string }): void {
-  if (isLlamaCppBrowser.value && availableModels.value.includes(name)) selectedModel.value = name;
+  if (isLlamaCppBrowser.value && availableModels.value.includes(name)) {
+    selectedModel.value = name;
+  }
 }
 
 async function refreshLocalModels({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
   try {
     const models = await llamaCppBrowserService.listModels({ signal });
-    if (signal?.aborted || !isLlamaCppBrowser.value) return;
+    if (signal?.aborted || !isLlamaCppBrowser.value) {
+      return;
+    }
     acceptLocalModels({ models });
   } catch { /* The local manager displays the safe feature error. */ }
 }
@@ -335,7 +365,9 @@ const isValidUrl = computed(() => !isHttpEndpointType.value || !!getNormalizedUr
 
 function getNormalizedUrl() {
   let url = customUrl.value.trim();
-  if (!url) return null;
+  if (!url) {
+    return null;
+  }
   if (!url.includes('://')) {
     url = 'http://' + url;
   }
@@ -347,7 +379,9 @@ function getNormalizedUrl() {
 }
 
 function isLocalhost({ url }: { url: string | undefined }) {
-  if (!url) return false;
+  if (!url) {
+    return false;
+  }
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
@@ -439,7 +473,9 @@ async function handleCancelConnect(): Promise<void> {
 }
 
 async function handleConnect() {
-  if (!isEndpointAvailable.value) return;
+  if (!isEndpointAvailable.value) {
+    return;
+  }
   const url = getNormalizedUrl();
 
   if (!url && isHttpEndpointType.value) {
@@ -489,7 +525,9 @@ async function handleConnect() {
 
     availableModels.value = models;
     selectedModel.value = models[0] || '';
-    if (url) customUrl.value = url; // Update UI with normalized URL
+    if (url) {
+      customUrl.value = url;
+    } // Update UI with normalized URL
   } catch (e) {
     if ((e as Error).name === 'AbortError') {
       return;
@@ -522,16 +560,24 @@ async function handleClose() {
 const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) => {
   const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
   switch (result) {
-  case 'applied': selectLocalModel({ name: model.name }); break;
+  case 'applied': selectLocalModel({ name: model.name });
+    break;
   case 'changed': break;
-  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(String(exhaustive));
+  }
   }
   return result;
 };
 
 async function handleFinish() {
-  if (isLlamaCppBrowser.value && !localRuntimeReady.value) return;
-  if (!isEndpointAvailable.value) return;
+  if (isLlamaCppBrowser.value && !localRuntimeReady.value) {
+    return;
+  }
+  if (!isEndpointAvailable.value) {
+    return;
+  }
   const url = getNormalizedUrl();
   const type = effectiveType.value;
 
@@ -595,15 +641,21 @@ async function handleFinish() {
 provideHuggingFaceSession();
 const modelPresetState = useModelPresetCoordinator();
 const modelPreset = computed(() => {
-  const preset = modelPresetState?.value; const target = preset?.target;
+  const preset = modelPresetState?.value;
+  const target = preset?.target;
   switch (target) {
   case 'onboarding': return preset;
   case undefined: case 'settings': return undefined;
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 watch(modelPreset, preset => {
-  if (preset) selectEndpointType({ type: 'llama_cpp_browser' });
+  if (preset) {
+    selectEndpointType({ type: 'llama_cpp_browser' });
+  }
 }, { immediate: true });
 
 defineExpose({

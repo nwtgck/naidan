@@ -19,7 +19,9 @@ type PendingRun = {
  * The byte limit is an admission threshold, not a bound on a single native output:
  * an already computed output is retained even when it crosses that threshold. */
 export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number, byteLimit: number }) {
-  if (!Number.isSafeInteger(maxRuns) || maxRuns < 1 || !Number.isSafeInteger(byteLimit) || byteLimit < 1) throw new Error('Invalid pending image limits.');
+  if (!Number.isSafeInteger(maxRuns) || maxRuns < 1 || !Number.isSafeInteger(byteLimit) || byteLimit < 1) {
+    throw new Error('Invalid pending image limits.');
+  }
   const entries = new Map<ImageGenerationId, PendingRun>();
   const listeners = new Set<() => void>();
   const changed = () => {
@@ -31,14 +33,21 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
   };
   const collect = ({ entry }: { entry: PendingRun }) => {
     const state = entry.sink.snapshot();
-    if (entry.phase === 'retired' && !state.saving && !state.needsRetry) entries.delete(entry.id);
+    if (entry.phase === 'retired' && !state.saving && !state.needsRetry) {
+      entries.delete(entry.id);
+    }
     changed();
   };
   const retry = async ({ id }: { id: ImageGenerationId }): Promise<void> => {
     const entry = entries.get(id);
-    if (!entry) throw new Error('This pending save has already been saved or discarded.');
-    if (entry.phase !== 'retired' || entry.sink.snapshot().saving) throw new Error('Wait for the current run or save to finish.');
-    await entry.sink.retry(); collect({ entry });
+    if (!entry) {
+      throw new Error('This pending save has already been saved or discarded.');
+    }
+    if (entry.phase !== 'retired' || entry.sink.snapshot().saving) {
+      throw new Error('Wait for the current run or save to finish.');
+    }
+    await entry.sink.retry();
+    collect({ entry });
   };
   return {
     list() {
@@ -63,10 +72,14 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
       const blobs = new Set<Blob>();
       for (const entry of entries.values()) {
         const state = entry.sink.snapshot();
-        for (const file of [...state.inputs, ...state.pending.flatMap(output => output.files)]) blobs.add(file.blob);
+        for (const file of [...state.inputs, ...state.pending.flatMap(output => output.files)]) {
+          blobs.add(file.blob);
+        }
       }
       const bytes = [...blobs].reduce((sum, blob) => sum + blob.size, 0);
-      if (entries.size >= maxRuns || bytes >= byteLimit) throw new Error('Save or discard pending image runs before generating again.');
+      if (entries.size >= maxRuns || bytes >= byteLimit) {
+        throw new Error('Save or discard pending image runs before generating again.');
+      }
       const id = generateId<ImageGenerationId>();
       // This closure belongs to the registry, not to a mounted workspace.
       const sink = createImageGenerationRunSink({
@@ -76,7 +89,9 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
         persistence,
         changed: () => {
           const entry = entries.get(id);
-          if (entry) collect({ entry });
+          if (entry) {
+            collect({ entry });
+          }
         },
       });
       const entry: PendingRun = { id, store: { ...store }, sessionId, sink, phase: 'running' };
@@ -89,7 +104,8 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
           await sink.submission.finished({ completion });
         },
       };
-      entries.set(id, entry); changed();
+      entries.set(id, entry);
+      changed();
       return {
         id,
         submission,
@@ -103,7 +119,8 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
               await sink.submission.finished({ completion: { type: 'failed', message: 'Generation ended without a terminal notification.' } });
             }
           } finally {
-            entry.phase = 'retired'; collect({ entry });
+            entry.phase = 'retired';
+            collect({ entry });
           }
         },
       };
@@ -113,9 +130,15 @@ export function createImagePendingRuns({ maxRuns, byteLimit }: { maxRuns: number
     retry,
     discard({ id }: { id: ImageGenerationId }): void {
       const entry = entries.get(id);
-      if (!entry) return;
-      if (entry.phase !== 'retired' || entry.sink.snapshot().saving) throw new Error('Wait for the current run or save to finish.');
-      entries.delete(id); entry.sink.discardPending(); changed();
+      if (!entry) {
+        return;
+      }
+      if (entry.phase !== 'retired' || entry.sink.snapshot().saving) {
+        throw new Error('Wait for the current run or save to finish.');
+      }
+      entries.delete(id);
+      entry.sink.discardPending();
+      changed();
     },
   };
 }

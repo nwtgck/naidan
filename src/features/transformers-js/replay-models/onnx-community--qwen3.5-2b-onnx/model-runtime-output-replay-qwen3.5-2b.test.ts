@@ -20,7 +20,8 @@ const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 installRawReplay({ evidence: undefined });
 
 afterEach(() => {
-  vi.doUnmock('@huggingface/transformers'); vi.resetModules();
+  vi.doUnmock('@huggingface/transformers');
+  vi.resetModules();
 });
 
 function assistant(): AssistantMessageNode {
@@ -38,7 +39,8 @@ function assistant(): AssistantMessageNode {
 
 describe('Qwen3.5 2B original tokenizer and native output controls', () => {
   it.each(['single', 'batch'] as const)('distinguishes atomic added delimiters from ordinary text with %s delivery', async delivery => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = (await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
       revision: archive.summary.revision,
       local_files_only: true,
@@ -50,7 +52,8 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
     // all_special_ids filter alone cannot identify this model's protocol.
     for (const marker of qwen3_5ProtocolTokens) {
       const ids = tokenizer.encode(marker, { add_special_tokens: false });
-      expect(ids).toHaveLength(1); expect(tokenizer.all_special_ids.map(Number)).not.toContain(Number(ids[0]));
+      expect(ids).toHaveLength(1);
+      expect(tokenizer.all_special_ids.map(Number)).not.toContain(Number(ids[0]));
     }
     const encode = ({ text }: { text: string }) => tokenizer.encode(text, { add_special_tokens: false }).map(BigInt);
     const ordinaryMarkers = [...encode({ text: '<thi' }), ...encode({ text: 'nk>literal</thi' }), ...encode({ text: 'nk>' })];
@@ -88,22 +91,33 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
 `,
     })]);
     switch (delivery) {
-    case 'single': for (const id of ids) streamer.put([[id]]); break;
-    case 'batch': streamer.put([ids]); break;
-    default: { const exhaustive: never = delivery; throw new Error(`Unhandled delivery: ${exhaustive}`); }
+    case 'single': for (const id of ids) {
+      streamer.put([[id]]);
     }
-    streamer.end(); decoder.finish({ reason: 'unknown' });
+      break;
+    case 'batch': streamer.put([ids]);
+      break;
+    default: {
+      const exhaustive: never = delivery;
+      throw new Error(`Unhandled delivery: ${exhaustive}`);
+    }
+    }
+    streamer.end();
+    decoder.finish({ reason: 'unknown' });
     expect(events.filter(e => e.type === 'part_start')).toEqual([
       { type: 'part_start', index: 0, kind: 'reasoning' }, { type: 'part_start', index: 1, kind: 'text' },
     ]);
     expect(events.filter(e => e.type === 'text_delta' && e.index === 0).map(e => e.type === 'text_delta' ? e.text : '').join('')).toBe('  理由🙂\n');
     expect(events.filter(e => e.type === 'text_delta' && e.index === 1).map(e => e.type === 'text_delta' ? e.text : '').join('')).toBe('<think>literal</think>Answer  ');
     expect(events.at(-1)).toEqual({ type: 'result', result: { type: 'finished', next: 'user' } });
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]); expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
+    expect(harness.transport).not.toHaveBeenCalled();
   }, 20_000);
 
   it('rejects a non-atomic delimiter rather than scanning visible text for it', async () => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = (await harness.runtime.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined })) as unknown as Context['tokenizer'];
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
@@ -119,7 +133,8 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
   }, 20_000);
 
   it.each(['answer', 'calls', 'partial', 'native_failure'] as const)('connects the actual strategy and local parts for %s', async shape => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const processor = await harness.runtime.AutoProcessor.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined });
     const tokenizer = processor.tokenizer as unknown as Context['tokenizer'];
     vi.doMock('@huggingface/transformers', () => harness.runtime);
@@ -144,20 +159,33 @@ R
 </function>
 </tool_call><|im_end|>`;
       case 'partial': case 'native_failure': return '  未完🙂\n';
-      default: { const exhaustive: never = shape; throw new Error(`Unhandled shape: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = shape;
+        throw new Error(`Unhandled shape: ${exhaustive}`);
+      }
       }
     })();
     const generated = tokenizer.encode(output, { add_special_tokens: false }).map(BigInt);
-    const nativeEnded = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
-    const fault = new Error('synthetic native failure'); const onChunk = vi.fn(); const onToolCalls = vi.fn();
+    const nativeEnded = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const fault = new Error('synthetic native failure');
+    const onChunk = vi.fn();
+    const onToolCalls = vi.fn();
     const nativeGenerate = vi.fn(async ({ streamer, input_ids, past_key_values }: { streamer: NativeStreamerType, input_ids: { data: Iterable<bigint> }, past_key_values: unknown }) => {
-      expect(streamer).toBeInstanceOf(NativeProtocolStreamer); expect(past_key_values).toBeNull();
+      expect(streamer).toBeInstanceOf(NativeProtocolStreamer);
+      expect(past_key_values).toBeNull();
       expect(tokenizer.decode([...input_ids.data], { skip_special_tokens: false }).endsWith(`\
 <|im_start|>assistant
 <think>
 `)).toBe(true);
-      streamer.put([[...input_ids.data]]); streamer.put([generated]); streamer.end(); nativeEnded.resolve(); await release.promise;
-      if (shape === 'native_failure') throw fault;
+      streamer.put([[...input_ids.data]]);
+      streamer.put([generated]);
+      streamer.end();
+      nativeEnded.resolve();
+      await release.promise;
+      if (shape === 'native_failure') {
+        throw fault;
+      }
       return { past_key_values: null };
     });
     const state: Context['runtimeState'] = {
@@ -169,7 +197,8 @@ R
       qwen3_5ConversationState: undefined,
       generationStateOwner: {},
     };
-    const node = assistant(); const abortController = new AbortController();
+    const node = assistant();
+    const abortController = new AbortController();
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
     const operation = consumeChatGeneration({
       onToolCallDraftsChange: undefined,
@@ -204,40 +233,57 @@ R
         },
       }),
     });
-    let settled = false; void operation.then(() => {
+    let settled = false;
+    void operation.then(() => {
       settled = true;
     }, () => {
       settled = true;
     });
-    await nativeEnded.promise; await new Promise(resolve => setTimeout(resolve, 0));
+    await nativeEnded.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(settled).toBe(false);
     // The native stream can finish before its asynchronous model operation.
-    release.resolve(); const result = await operation;
-    expect(nativeGenerate).toHaveBeenCalledOnce(); expect(onChunk).not.toHaveBeenCalled(); expect(onToolCalls).not.toHaveBeenCalled();
+    release.resolve();
+    const result = await operation;
+    expect(nativeGenerate).toHaveBeenCalledOnce();
+    expect(onChunk).not.toHaveBeenCalled();
+    expect(onToolCalls).not.toHaveBeenCalled();
     expect(state.qwen3_5SequenceCache).toBeUndefined();
     switch (shape) {
     case 'answer':
       expect(node.parts.map(p => p.type)).toEqual(['reasoning', 'text']);
       expect(node.parts[0]).toMatchObject({ text: 'R', completeness: 'complete' });
       expect(node.parts[1]).toMatchObject({ text: '答え🙂  ', completeness: 'complete' });
-      expect(result).toEqual({ type: 'finished', next: 'user' }); break;
+      expect(result).toEqual({ type: 'finished', next: 'user' });
+      break;
     case 'calls':
       expect(node.parts.map(p => p.type)).toEqual(['reasoning', 'tool_call']);
       expect(node.parts[1]).toMatchObject({ toolCall: { function: { name: 'calculator', arguments: '{"expression":"17 * 23"}' } } });
-      expect(result).toEqual({ type: 'finished', next: 'tool_results' }); break;
+      expect(result).toEqual({ type: 'finished', next: 'tool_results' });
+      break;
     case 'partial':
       expect(node.parts[0]).toMatchObject({ text: '  未完🙂\n', completeness: 'partial' });
-      expect(result).toEqual({ type: 'interrupted', reason: 'unknown' }); expect(state.qwen3_5ConversationState).toBeUndefined(); break;
+      expect(result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(state.qwen3_5ConversationState).toBeUndefined();
+      break;
     case 'native_failure':
       expect(node.parts[0]).toMatchObject({ text: '  未完🙂\n', completeness: 'partial' });
-      expect(result).toEqual({ type: 'error', error: fault }); expect(state.qwen3_5ConversationState).toBeUndefined(); break;
-    default: { const exhaustive: never = shape; throw new Error(`Unhandled shape: ${exhaustive}`); }
+      expect(result).toEqual({ type: 'error', error: fault });
+      expect(state.qwen3_5ConversationState).toBeUndefined();
+      break;
+    default: {
+      const exhaustive: never = shape;
+      throw new Error(`Unhandled shape: ${exhaustive}`);
     }
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
+    }
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
   }, 20_000);
 
   it('preserves a canonical thought and call prefix through real storage mapping and the original template', async () => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const processor = await harness.runtime.AutoProcessor.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined });
     const tokenizer = processor.tokenizer as unknown as Context['tokenizer'];
     vi.doMock('@huggingface/transformers', () => harness.runtime);
@@ -284,13 +330,19 @@ Calculate.<|im_end|>
           });
           streamer.put([tokenizer.encode(prefix, { add_special_tokens: false }).map(BigInt)]);
           streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]);
-          streamer.end(); codec.finish({ reason: 'unknown' });
-          for (const event of events) await onEvent({ event });
+          streamer.end();
+          codec.finish({ reason: 'unknown' });
+          for (const event of events) {
+            await onEvent({ event });
+          }
         },
       }),
     });
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
-    const call = node.parts.find(p => p.type === 'tool_call'); if (!call) throw new Error('Expected a native completed call.');
+    const call = node.parts.find(p => p.type === 'tool_call');
+    if (!call) {
+      throw new Error('Expected a native completed call.');
+    }
     const tool: ToolMessageNode = {
       id: toMessageId({ raw: 'tool' }),
       role: 'tool',
@@ -311,8 +363,13 @@ Calculate.<|im_end|>
       replies: { items: [node] },
     };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
-    const storage = new MemoryStorageProvider(); const id = toChatId({ raw: 'qwen-native' });
-    await storage.saveChatContent({ id, content: chat }); const loaded = await storage.loadChatContent({ id }); if (!loaded) throw new Error('Expected saved content.');
+    const storage = new MemoryStorageProvider();
+    const id = toChatId({ raw: 'qwen-native' });
+    await storage.saveChatContent({ id, content: chat });
+    const loaded = await storage.loadChatContent({ id });
+    if (!loaded) {
+      throw new Error('Expected saved content.');
+    }
     // The generation and its expected following prompt are independent finite
     // controls. The tool's result was supplied locally, not executed by a model.
     const expected = `\
@@ -347,6 +404,7 @@ R
       const preceding = tokenizer.encode(prefix + native, { add_special_tokens: false });
       expect(ids.slice(0, preceding.length)).toEqual(preceding);
     }
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.transport).not.toHaveBeenCalled();
   }, 20_000);
 });

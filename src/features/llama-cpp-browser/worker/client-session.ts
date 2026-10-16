@@ -24,25 +24,35 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   let debugEnabled = false;
   let waitingTimer: ReturnType<typeof setTimeout> | undefined;
   const stopWaiting = (): void => {
-    if (waitingTimer !== undefined) clearTimeout(waitingTimer); waitingTimer = undefined;
+    if (waitingTimer !== undefined) {
+      clearTimeout(waitingTimer);
+    }
+    waitingTimer = undefined;
   };
   const waitForOperation = ({ diagnostic, started }: { diagnostic: Diagnostic, started: number }): void => {
-    if (!debugEnabled) return;
+    if (!debugEnabled) {
+      return;
+    }
     const report = (): void => {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
       logDiagnostic({ diagnostic: { ...diagnostic, ...lastOperation, stage: diagnostic.stage, event: 'operation-waiting', lastStage: lastOperation?.stage, lastEvent: lastOperation?.event, elapsedMs: performance.now() - started } });
       waitingTimer = setTimeout(report, 30000);
     };
     waitingTimer = setTimeout(report, 15000);
   };
   const recordOperation = ({ diagnostic }: { diagnostic: Diagnostic & { event: 'operation-start' | 'operation-complete' } }): void => {
-    stopWaiting(); lastOperation = diagnostic;
+    stopWaiting();
+    lastOperation = diagnostic;
     switch (diagnostic.event) {
     case 'operation-complete': {
       pendingOperations.delete(diagnostic.stage);
       // A native completion can leave its enclosing helper still running.
       const pending = Array.from(pendingOperations.values()).at(-1);
-      if (pending) waitForOperation(pending);
+      if (pending) {
+        waitForOperation(pending);
+      }
       return;
     }
     case 'operation-start': {
@@ -51,18 +61,26 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       waitForOperation(operation);
       return;
     }
-    default: { const exhaustive: never = diagnostic.event; throw new Error(`Unknown operation event: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = diagnostic.event;
+      throw new Error(`Unknown operation event: ${exhaustive}`);
+    }
     }
   };
   let nextGenerationId = 0;
   let rejectActive: (() => void) | undefined;
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => {
-    if (disposal) return disposal;
+    if (disposal) {
+      return disposal;
+    }
     const completion = Promise.withResolvers<void>();
     disposal = completion.promise;
     stopObservingMemory();
-    disposed = true; debugEnabled = false; stopWaiting(); pendingOperations.clear();
+    disposed = true;
+    debugEnabled = false;
+    stopWaiting();
+    pendingOperations.clear();
     const active = rejectActive !== undefined;
     rejectActive?.();
     worker.removeEventListener('error', onError);
@@ -74,7 +92,8 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         logFailure({ stage: 'cleanup', error });
       }).finally(completion.resolve);
     } catch (error) {
-      logFailure({ stage: 'cleanup', error }); completion.resolve();
+      logFailure({ stage: 'cleanup', error });
+      completion.resolve();
     }
     for (const listener of disposeListeners) {
       try {
@@ -99,27 +118,41 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         lastEvent: lastOperation?.event,
       },
     });
-    event.preventDefault(); dispose();
+    event.preventDefault();
+    dispose();
   };
   const onMessageError = (): void => {
-    logDiagnostic({ diagnostic: { ...lastOperation, event: 'failed', stage: 'worker-messageerror', lastStage: lastOperation?.stage, lastEvent: lastOperation?.event } }); dispose();
+    logDiagnostic({ diagnostic: { ...lastOperation, event: 'failed', stage: 'worker-messageerror', lastStage: lastOperation?.stage, lastEvent: lastOperation?.event } });
+    dispose();
   };
   worker.addEventListener('error', onError);
   worker.addEventListener('messageerror', onMessageError);
   async function invoke<T>({ call, signal, onAbort, abortTimeoutMs }: { call: () => Promise<T>, signal: AbortSignal | undefined, onAbort: (() => void) | undefined, abortTimeoutMs: number | undefined }): Promise<T> {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-    if (disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
-    if (rejectActive) throw new LlamaCppBrowserError({ code: 'busy' });
-    stopWaiting(); pendingOperations.clear(); lastOperation = undefined; lastNativeFailure = undefined;
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
+    if (disposed) {
+      throw new LlamaCppBrowserError({ code: 'worker-failed' });
+    }
+    if (rejectActive) {
+      throw new LlamaCppBrowserError({ code: 'busy' });
+    }
+    stopWaiting();
+    pendingOperations.clear();
+    lastOperation = undefined;
+    lastNativeFailure = undefined;
     let abortTimer: ReturnType<typeof setTimeout> | undefined;
     const abort = (): void => {
       if (!onAbort) {
-        dispose(); return;
+        dispose();
+        return;
       }
       // Native generation needs a bounded escape hatch. Local imports use async
       // streams and must be allowed to finish rollback, even on slow storage:
       // terminating them here leaves hidden partial directories that block retry.
-      if (abortTimeoutMs !== undefined) abortTimer = setTimeout(dispose, abortTimeoutMs);
+      if (abortTimeoutMs !== undefined) {
+        abortTimer = setTimeout(dispose, abortTimeoutMs);
+      }
       onAbort();
     };
     signal?.addEventListener('abort', abort, { once: true });
@@ -128,16 +161,26 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         rejectActive = () => reject(new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : 'worker-failed' }));
         void call().then(resolve, reject);
       });
-      if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      if (signal?.aborted) {
+        throw new LlamaCppBrowserError({ code: 'aborted' });
+      }
       return result;
     } catch (error) {
-      if (!disposed) logFailure({ stage: 'worker-rpc', error });
+      if (!disposed) {
+        logFailure({ stage: 'worker-rpc', error });
+      }
       const code = errorCode({ error });
-      if (signal?.aborted && (code === 'runtime-error' || code === 'worker-failed')) dispose();
+      if (signal?.aborted && (code === 'runtime-error' || code === 'worker-failed')) {
+        dispose();
+      }
       throw new LlamaCppBrowserError({ code: signal?.aborted ? 'aborted' : errorCode({ error }) });
     } finally {
-      stopWaiting(); debugEnabled = false; pendingOperations.clear();
-      if (abortTimer !== undefined) clearTimeout(abortTimer);
+      stopWaiting();
+      debugEnabled = false;
+      pendingOperations.clear();
+      if (abortTimer !== undefined) {
+        clearTimeout(abortTimer);
+      }
       signal?.removeEventListener('abort', abort);
       rejectActive = undefined;
     }
@@ -156,7 +199,9 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
           report: workerProxy({
             // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives a Progress value as a top-level Comlink argument.
             value: (progress: Progress) => {
-              if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(progress) });
+              if (acceptingProgress && !disposed && !signal?.aborted) {
+                onProgress({ progress: progressSchema.parse(progress) });
+              }
             },
           }),
         }),
@@ -173,9 +218,11 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   return {
     subscribeDisposed({ listener }) {
       if (disposed) {
-        listener(); return () => {};
+        listener();
+        return () => {};
       }
-      disposeListeners.add(listener); return () => {
+      disposeListeners.add(listener);
+      return () => {
         disposeListeners.delete(listener);
       };
     },
@@ -183,14 +230,17 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const controller = new AbortController();
       const abort = () => controller.abort();
       signal?.addEventListener('abort', abort, { once: true });
-      if (signal?.aborted) abort();
+      if (signal?.aborted) {
+        abort();
+      }
       // Release is serialized with inference. A wedged cleanup retires the
       // transport instead of handing a still-active runtime to another model.
       const timer = setTimeout(abort, 10000);
       try {
         await invoke({ call: () => remote.release(), signal: controller.signal, onAbort: undefined, abortTimeoutMs: undefined });
       } finally {
-        clearTimeout(timer); signal?.removeEventListener('abort', abort);
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
       }
     },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
@@ -215,7 +265,9 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         await invoke({
           call: () => remote.prepareModel(accepted, workerProxy({
             value: ({ ...event }) => {
-              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+              if (acceptingEvents && !disposed && !signal?.aborted) {
+                onProgress({ progress: progressSchema.parse(event) });
+              }
             },
           })),
           signal,
@@ -242,35 +294,55 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
           call: () => remote.generate(accepted,
             workerProxy({
               value: async ({ event }) => {
-                if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
+                if (acceptingEvents && !disposed) {
+                  await onEvent({ event: generationEventSchema.parse(event) });
+                }
               },
             }),
             workerProxy({
               value: ({ ...event }) => {
-                if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+                if (acceptingEvents && !disposed && !signal?.aborted) {
+                  onProgress({ progress: progressSchema.parse(event) });
+                }
               },
             }),
             workerProxy({
               value: ({ diagnostic }: { diagnostic: unknown }) => {
-                if (!acceptingEvents || disposed) return;
+                if (!acceptingEvents || disposed) {
+                  return;
+                }
                 // Measurement history is collected only from the ordered Worker
                 // notification endpoint, never twice through this proxy callback.
-                if (signal?.aborted) return;
+                if (signal?.aborted) {
+                  return;
+                }
                 debugEnabled = accepted.debug === 'on';
                 const checkpoint = diagnosticSchema.parse(diagnostic);
-                if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-                if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-                if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-                if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+                if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') {
+                  recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                }
+                if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) {
+                  lastOperation = { ...lastOperation, ...checkpoint };
+                }
+                if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') {
+                  lastOperation = checkpoint;
+                }
+                if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) {
+                  lastNativeFailure = checkpoint;
+                }
               },
             }),
             workerProxy({
               value: ({ diagnostic }: { diagnostic: unknown }) => {
                 // A cooperative Stop still owns its terminal summary. Late callbacks
                 // after this call has settled must never reach the next trial.
-                if (!acceptingEvents || disposed || !accepted.measurement) return;
+                if (!acceptingEvents || disposed || !accepted.measurement) {
+                  return;
+                }
                 const summary = diagnosticSchema.parse(diagnostic);
-                if (summary.event !== 'generation-performance' || !summary.performance) throw new Error('Invalid generation summary');
+                if (summary.event !== 'generation-performance' || !summary.performance) {
+                  throw new Error('Invalid generation summary');
+                }
                 onSummary?.({ diagnostic: summary });
               },
             })),
@@ -285,32 +357,44 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         acceptingEvents = false;
         const observed = memory?.finish();
         try {
-          if (observed) onMemoryDiagnostics?.({ memory: observed });
+          if (observed) {
+            onMemoryDiagnostics?.({ memory: observed });
+          }
         } catch { /* Observation must not replace inference success or failure. */ }
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
       const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
-      let acceptingEvents = true; let started = false;
+      let acceptingEvents = true;
+      let started = false;
       const finish = (): void => {
         if (started && acceptingEvents && !disposed && !cancellationSignal?.aborted) {
           void remote.finishAudioGeneration({ generationId: accepted.generationId }).catch(() => {
-            if (acceptingEvents && !disposed) dispose();
+            if (acceptingEvents && !disposed) {
+              dispose();
+            }
           });
         }
       };
       // The completion signal requests a normal partial result. It never arms the abort
       // timeout, terminates the Worker, or reaches the native abort callback.
       completionSignal?.addEventListener('abort', finish, { once: true });
-      let sentVersion = 0; let deliveredVersion = 0;
+      let sentVersion = 0;
+      let deliveredVersion = 0;
       const requestPreview = (): void => {
-        if (!started || !acceptingEvents || disposed || cancellationSignal?.aborted || completionSignal?.aborted || !preview) return;
+        if (!started || !acceptingEvents || disposed || cancellationSignal?.aborted || completionSignal?.aborted || !preview) {
+          return;
+        }
         const requestVersion = preview.requests.version;
-        if (requestVersion <= sentVersion) return;
+        if (requestVersion <= sentVersion) {
+          return;
+        }
         sentVersion = requestVersion;
         void remote.requestAudioPreview({ generationId: accepted.generationId, requestVersion }).catch(() => {
           // A late failure for a completed request must not dispose a new owner.
-          if (acceptingEvents && !disposed) dispose();
+          if (acceptingEvents && !disposed) {
+            dispose();
+          }
         });
       };
       const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
@@ -320,32 +404,52 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
             const pending = remote.generateAudio(accepted,
               workerProxy({
                 value: ({ ...event }) => {
-                  if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+                  if (acceptingEvents && !disposed && !cancellationSignal?.aborted) {
+                    onProgress({ progress: progressSchema.parse(event) });
+                  }
                 },
               }),
               workerProxy({
                 value: ({ diagnostic }: { diagnostic: unknown }) => {
-                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) {
+                    return;
+                  }
                   debugEnabled = accepted.debug === 'on';
                   const checkpoint = diagnosticSchema.parse(diagnostic);
-                  if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-                  if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-                  if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-                  if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+                  if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') {
+                    recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                  }
+                  if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) {
+                    lastOperation = { ...lastOperation, ...checkpoint };
+                  }
+                  if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') {
+                    lastOperation = checkpoint;
+                  }
+                  if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) {
+                    lastNativeFailure = checkpoint;
+                  }
                 },
               }), preview ? workerProxy({
                 // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives an AudioPreviewEvent as a top-level Comlink argument.
                 value: async (event: AudioPreviewEvent) => {
-                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) {
+                    return;
+                  }
                   const acceptedEvent = audioPreviewEventSchema.parse(event);
-                  if (acceptedEvent.requestVersion <= deliveredVersion) return;
-                  if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+                  if (acceptedEvent.requestVersion <= deliveredVersion) {
+                    return;
+                  }
+                  if (acceptedEvent.requestVersion > sentVersion) {
+                    throw new LlamaCppBrowserError({ code: 'worker-failed' });
+                  }
                   deliveredVersion = acceptedEvent.requestVersion;
                   await preview.onPreview({ event: acceptedEvent });
                 },
               }) : undefined);
             started = true;
-            if (completionSignal?.aborted) finish();
+            if (completionSignal?.aborted) {
+              finish();
+            }
             requestPreview();
             return pending;
           },

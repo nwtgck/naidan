@@ -43,7 +43,9 @@ describe('HistoryManipulationModal', () => {
   const originalGetFile = storageService.getFile;
 
   afterEach(() => {
-    for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+    for (const wrapper of wrappers.splice(0)) {
+      wrapper.unmount();
+    }
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
     storageService.getFile = originalGetFile;
@@ -485,15 +487,19 @@ describe('HistoryManipulationModal', () => {
     await wrapper.findAll('[data-testid="remove-history-attachment"]')[1]!.trigger('click');
     await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
     const saved = mockCommit.mock.calls[0]![0].messages;
-    expect(saved[0].parts).toHaveLength(2); expect(saved[1].parts).toHaveLength(1);
-    expect(saved[0].parts[0].text).toBe('A'); expect(saved[1].parts[0].text).toBe('B');
+    expect(saved[0].parts).toHaveLength(2);
+    expect(saved[1].parts).toHaveLength(1);
+    expect(saved[0].parts[0].text).toBe('A');
+    expect(saved[1].parts[0].text).toBe('B');
     expect(mockActiveMessages.value[0]!.parts).toHaveLength(2);
   });
 
   it('removes only the selected occurrence when attachments share the same binary and identity', async () => {
     const attachment: Attachment = { id: toAttachmentId({ raw: 'att' }), binaryObjectId: toBinaryObjectId({ raw: 'bin' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) };
     const message = messageFixture({ id: '1', role: 'user', content: 'A', attachments: [attachment, attachment] });
-    if (message.role !== 'user') throw new Error('Expected user fixture.');
+    if (message.role !== 'user') {
+      throw new Error('Expected user fixture.');
+    }
     message.parts.splice(2, 0, { type: 'text', text: 'between', completeness: 'complete' });
     mockActiveMessages.value = [message];
     const wrapper = await mountModal();
@@ -519,8 +525,11 @@ describe('HistoryManipulationModal', () => {
     const wrapper = await mountModal();
     await wrapper.findAll('button').find(button => button.text().includes('Apply Changes'))!.trigger('click');
     expect(wrapper.find('[inert]').exists()).toBe(true);
-    await wrapper.setProps({ isOpen: false }); await wrapper.setProps({ isOpen: true });
-    finish(); await nextTick(); await nextTick();
+    await wrapper.setProps({ isOpen: false });
+    await wrapper.setProps({ isOpen: true });
+    finish();
+    await nextTick();
+    await nextTick();
     expect(wrapper.emitted('close')).toBeUndefined();
   });
 
@@ -534,7 +543,9 @@ describe('HistoryManipulationModal', () => {
     const wrapper = await mountModal();
     await wrapper.get('[data-testid="remove-history-attachment"]').trigger('click');
     wrapper.unmount();
-    finish(new Blob(['x'])); await nextTick(); await nextTick();
+    finish(new Blob(['x']));
+    await nextTick();
+    await nextTick();
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
@@ -552,7 +563,10 @@ function messageFixture({ id, role, content, attachments }: { id: string; role: 
   switch (role) {
   case 'user': return { ...common, role, parts: [body, ...(attachments ?? []).map(attachment => ({ type: 'attachment' as const, attachment }))] };
   case 'assistant': return { ...common, role, parts: [body], interruption: undefined };
-  default: { const _ex: never = role; throw new Error('Unexpected role: ' + _ex); }
+  default: {
+    const _ex: never = role;
+    throw new Error('Unexpected role: ' + _ex);
+  }
   }
 }
 

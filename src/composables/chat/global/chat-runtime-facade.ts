@@ -66,7 +66,9 @@ export function createChatRuntimeFacade({
   }
 
   const generatingTitle = computed(() => {
-    if (!currentChatRef.value) return false;
+    if (!currentChatRef.value) {
+      return false;
+    }
     return isGeneratingTitle({ chatId: toRaw(currentChatRef.value).id });
   });
 
@@ -85,8 +87,12 @@ export function createChatRuntimeFacade({
   });
 
   const fetchingModels = computed(() => {
-    if (runtimeStore.getTaskCount({ key: { kind: 'fetch', chatId: undefined } }) > 0) return true;
-    if (!currentChatRef.value) return false;
+    if (runtimeStore.getTaskCount({ key: { kind: 'fetch', chatId: undefined } }) > 0) {
+      return true;
+    }
+    if (!currentChatRef.value) {
+      return false;
+    }
     return runtimeStore.getTaskCount({
       key: {
         kind: 'fetch',

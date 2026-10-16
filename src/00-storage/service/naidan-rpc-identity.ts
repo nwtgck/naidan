@@ -5,7 +5,9 @@ import type { NaidanRpcIdentity } from '@/01-models/naidan-rpc';
 function validateIdentity({ value }: { value: unknown }): NaidanRpcIdentity {
   const identity = ExperimentalNaidanRpcIdentitySchemaDto.parse(value), key = identity.privateKey;
   if (key.type !== 'private' || key.extractable || key.algorithm.name !== 'X25519' || key.usages.length !== 1 || key.usages[0] !== 'deriveBits'
-    || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) throw new Error('Invalid RPC identity');
+    || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) {
+    throw new Error('Invalid RPC identity');
+  }
   return identity;
 }
 
@@ -18,17 +20,24 @@ function openDatabase(): Promise<IDBDatabase> {
     let abandoned = false;
     request.onupgradeneeded = () => {
       for (const name of [identityStore]) {
-        if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name);
+        if (!request.result.objectStoreNames.contains(name)) {
+          request.result.createObjectStore(name);
+        }
       }
     };
     request.onblocked = () => {
-      abandoned = true; reject(new Error('Naidan RPC storage is blocked by another tab'));
+      abandoned = true;
+      reject(new Error('Naidan RPC storage is blocked by another tab'));
     };
     request.onerror = () => reject(new Error('Naidan RPC storage could not be opened'));
     request.onsuccess = () => {
       const database = request.result;
       database.onversionchange = () => database.close();
-      if (abandoned) database.close(); else resolve(database);
+      if (abandoned) {
+        database.close();
+      } else {
+        resolve(database);
+      }
     };
   });
 }
@@ -97,8 +106,11 @@ export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIde
       const store = transaction.objectStore(identityStore), request = store.get('self');
       request.onsuccess = () => {
         try {
-          if (request.result === undefined) store.add(key, 'self');
-          else if (validateIdentity({ value: request.result }).publicKey !== key.publicKey) throw new Error('The local RPC identity changed');
+          if (request.result === undefined) {
+            store.add(key, 'self');
+          } else if (validateIdentity({ value: request.result }).publicKey !== key.publicKey) {
+            throw new Error('The local RPC identity changed');
+          }
           result({ value: undefined });
         } catch (error) {
           fail({ error });

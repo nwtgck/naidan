@@ -27,13 +27,16 @@ const props = defineProps<{ disabled: boolean, modelPreset?: ModelPreset }>();
 const emit = defineEmits<{ changed: [], busy: [value: boolean], modelReady: [model: LocalModel], selectionChanged: [] }>();
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
 const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, candidate, projector, multimodal } = useHuggingFaceSession();
-const id = useId(); const details = ref<HTMLDetailsElement>(); const active = ref<AbortController>();
+const id = useId();
+const details = ref<HTMLDetailsElement>();
+const active = ref<AbortController>();
 let inspectionPreset: ModelPreset | undefined;
 let inspecting = false;
 const queue = getDownloadQueue();
 const repositoryJobs = computed(() => queue.jobs.value.filter(job => job.source === 'repository' && job.status !== 'complete' && job.status !== 'cancelled'));
 const queuedDownloadBusy = computed(() => queue.jobs.value.some(job => jobIsBusy({ job })));
-const error = ref<DownloadConflict | 'failed' | 'changed'>(); const pending = shallowRef<(DownloadJournal & { destination: ModelDestination })[]>([]);
+const error = ref<DownloadConflict | 'failed' | 'changed'>();
+const pending = shallowRef<(DownloadJournal & { destination: ModelDestination })[]>([]);
 const errorMessage = computed(() => {
   switch (error.value) {
   case 'projector-conflict': return lazyStrings.LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict();
@@ -42,7 +45,10 @@ const errorMessage = computed(() => {
   case 'changed': return lazyStrings.llamaCppBrowser__files_changed_review_before_deleting();
   case 'failed': return lazyStrings.LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume();
   case undefined: return undefined;
-  default: { const exhaustive: never = error.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = error.value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 // A started journal may also be represented by a session job. Render it only
@@ -61,7 +67,12 @@ const selected = computed(() => {
 const projectorOptions = computed(() => projectorChoices({ files: catalog.value?.projectors ?? [] }));
 const selectedProjector = computed(() => {
   switch (multimodal.value) {
-  case 'off': return undefined; case 'on': break; default: { const exhaustive: never = multimodal.value; throw new Error(String(exhaustive)); }
+  case 'off': return undefined;
+  case 'on': break;
+  default: {
+    const exhaustive: never = multimodal.value;
+    throw new Error(String(exhaustive));
+  }
   }
   const files = catalog.value?.projectors ?? [];
   return files.find(file => file.path === projector.value) ?? preferredProjector({ files });
@@ -82,7 +93,10 @@ const downloadLabel = computed(() => {
   case 'checking': return lazyStrings.LlamaCppBrowserHuggingFaceManager__checking_model();
   case 'installed': return lazyStrings.LlamaCppBrowserHuggingFaceManager__downloaded();
   case 'missing': case 'unavailable': return lazyStrings.LlamaCppBrowserHuggingFaceManager__download();
-  default: { const exhaustive: never = localAvailability.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = localAvailability.value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 let lastAnnouncedSelection: string | undefined;
@@ -92,12 +106,15 @@ function recheckLocalFiles(): void {
 }
 
 const total = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0));
-let disposed = false; const deleting = ref(false);
+let disposed = false;
+const deleting = ref(false);
 const authorizing = ref(false);
 const downloadDestination = useModelDownloadDestination({
   blocked: () => props.disabled || deleting.value,
   changed: () => {
-    recheckLocalFiles(); void refresh(); emit('changed');
+    recheckLocalFiles();
+    void refresh();
+    emit('changed');
   },
 });
 const { destination, unavailable: destinationUnavailable, revision: destinationRevision, failure: destinationFailure } = downloadDestination;
@@ -108,33 +125,50 @@ function percentage({ completed, total }: { completed: number, total: number }):
 }
 
 function size({ bytes }: { bytes: number }): string {
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  if (bytes < 1024 ** 2) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  if (bytes < 1024 ** 3) {
+    return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  }
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
 
 async function refresh(): Promise<void> {
-  if (props.disabled || disposed) return;
+  if (props.disabled || disposed) {
+    return;
+  }
   const version = ++refreshVersion;
   const requestedDestination = destination.value;
   try {
     const journals = await listPendingDownloads({ destination: requestedDestination });
-    if (!disposed && version === refreshVersion) pending.value = journals.map(journal => ({ ...journal, destination: requestedDestination }));
+    if (!disposed && version === refreshVersion) {
+      pending.value = journals.map(journal => ({ ...journal, destination: requestedDestination }));
+    }
   } catch {
-    if (!disposed && version === refreshVersion) error.value ??= 'failed';
+    if (!disposed && version === refreshVersion) {
+      error.value ??= 'failed';
+    }
   }
 }
 
 async function inspect(): Promise<void> {
-  if (active.value || props.disabled || deleting.value) return;
+  if (active.value || props.disabled || deleting.value) {
+    return;
+  }
   inspecting = true;
-  const controller = new AbortController(); active.value = controller; error.value = undefined;
+  const controller = new AbortController();
+  active.value = controller;
+  error.value = undefined;
   try {
     const submittedInput = input.value.trim();
     const { requestedVariant } = parseRepository({ input: submittedInput });
-    const previousCandidate = selected.value?.label; const previousProjector = selectedProjector.value?.path ?? projector.value;
+    const previousCandidate = selected.value?.label;
+    const previousProjector = selectedProjector.value?.path ?? projector.value;
     const next = await getMetadataSession().inspect({ input: submittedInput, signal: controller.signal, freshness: 'refresh' });
-    if (controller.signal.aborted || disposed) return;
+    if (controller.signal.aborted || disposed) {
+      return;
+    }
     const sameRepository = next.repository === catalog.value?.repository;
     const nextChoices = quantizationChoices({ repository: next.repository, models: next.models });
     requestedVariantUnresolved.value = false;
@@ -143,71 +177,108 @@ async function inspect(): Promise<void> {
       // quantization-first presentation. Never select a drafter by its quant alone.
       const exact = nextChoices.filter(choice => choice.label === requestedVariant || variantLabel({ repository: next.repository, path: choice.id }) === requestedVariant);
       const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.id }) === 'model');
-      quantization.value = matches.length === 1 ? matches[0]!.id : ''; candidate.value = '';
+      quantization.value = matches.length === 1 ? matches[0]!.id : '';
+      candidate.value = '';
       requestedVariantUnresolved.value = matches.length !== 1;
     } else if (!sameRepository || !nextChoices.some(choice => choice.id === quantization.value)) {
-      quantization.value = nextChoices[0]?.id ?? ''; candidate.value = '';
+      quantization.value = nextChoices[0]?.id ?? '';
+      candidate.value = '';
     }
     if (sameRepository) {
       candidate.value = next.models.some(model => model.label === previousCandidate) ? previousCandidate! : '';
       projector.value = next.projectors.some(file => file.path === previousProjector) ? previousProjector : '';
     } else {
-      candidate.value = ''; projector.value = ''; multimodal.value = next.projectors.length ? 'on' : 'off';
+      candidate.value = '';
+      projector.value = '';
+      multimodal.value = next.projectors.length ? 'on' : 'off';
     }
-    if (!next.projectors.length) multimodal.value = 'off';
-    catalog.value = next; checkedInput.value = submittedInput;
+    if (!next.projectors.length) {
+      multimodal.value = 'off';
+    }
+    catalog.value = next;
+    checkedInput.value = submittedInput;
   } catch {
-    if (!controller.signal.aborted) error.value = 'failed';
+    if (!controller.signal.aborted) {
+      error.value = 'failed';
+    }
   } finally {
-    inspecting = false; active.value = undefined;
+    inspecting = false;
+    active.value = undefined;
   }
 }
 
 async function download({ selection, destination: requestedDestination }: { selection: DownloadSelection, destination: ModelDestination }): Promise<void> {
-  if (active.value || props.disabled || deleting.value || authorizing.value) return;
-  error.value = undefined; authorizing.value = true;
+  if (active.value || props.disabled || deleting.value || authorizing.value) {
+    return;
+  }
+  error.value = undefined;
+  authorizing.value = true;
   try {
     // Permission can yield to another selector change. The captured destination
     // and displayed file plan remain bound to this explicit Download/Resume.
     const authorized = await downloadDestination.authorize({ destination: requestedDestination });
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     queue.enqueue({ key: selectionKey({ selection }), repository: selection.repository, destination: authorized.destination, expectedRoot: authorized.expectedRoot, source: 'repository', prepare: async () => selection });
   } catch {
-    if (!disposed) error.value = 'failed';
+    if (!disposed) {
+      error.value = 'failed';
+    }
   } finally {
     authorizing.value = false;
   }
 }
 
 async function start(): Promise<void> {
-  const current = catalog.value; const model = selected.value;
-  if (!current || !model || needsProjector.value || !catalogCurrent.value || localAvailability.value !== 'missing' || destinationUnavailable.value) return;
+  const current = catalog.value;
+  const model = selected.value;
+  if (!current || !model || needsProjector.value || !catalogCurrent.value || localAvailability.value !== 'missing' || destinationUnavailable.value) {
+    return;
+  }
   await download({ selection: { repository: current.repository, revision: current.revision, files: selectedFiles.value }, destination: destination.value });
 }
 
 async function remove({ repository, destination: requestedDestination }: { repository: string, destination: ModelDestination }): Promise<void> {
-  if (deleting.value || active.value || props.disabled || queuedDownloadBusy.value) return;
-  deleting.value = true; error.value = undefined;
+  if (deleting.value || active.value || props.disabled || queuedDownloadBusy.value) {
+    return;
+  }
+  deleting.value = true;
+  error.value = undefined;
   try {
     await downloadDestination.authorize({ destination: requestedDestination });
     const id = (() => {
       switch (requestedDestination.kind) {
       case 'opfs': return `hf.co/${repository}`;
       case 'host': return hostModelReference({ directoryId: requestedDestination.directoryId, repository, modelPath: undefined });
-      default: { const exhaustive: never = requestedDestination; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = requestedDestination;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     const plan = await confirmRemoval({ id });
-    if (!plan || disposed) return;
+    if (!plan || disposed) {
+      return;
+    }
     const result = await cancelDownload({ repository, plan, destination: requestedDestination });
     switch (result) {
-    case 'changed': error.value = 'changed'; break;
-    case 'deleted':
-      for (const job of queue.jobs.value) if (job.repository === repository && destinationKey({ destination: job.destination }) === destinationKey({ destination: requestedDestination })) queue.forget({ id: job.id });
+    case 'changed': error.value = 'changed';
       break;
-    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+    case 'deleted':
+      for (const job of queue.jobs.value) {
+        if (job.repository === repository && destinationKey({ destination: job.destination }) === destinationKey({ destination: requestedDestination })) {
+          queue.forget({ id: job.id });
+        }
+      }
+      break;
+    default: {
+      const exhaustive: never = result;
+      throw new Error(String(exhaustive));
     }
-    await refresh(); emit('changed');
+    }
+    await refresh();
+    emit('changed');
   } catch {
     error.value = 'failed';
   } finally {
@@ -217,49 +288,68 @@ async function remove({ repository, destination: requestedDestination }: { repos
 
 watch([selectionToCheck, destination], () => emit('selectionChanged'), { flush: 'sync' });
 watch([selectionToCheck, () => props.disabled, active, deleting, localCheckVersion, destination, destinationRevision], async ([selection, disabled, operation, removing, _version, requestedDestination], _previous, onCleanup) => {
-  let cancelled = false; onCleanup(() => {
+  let cancelled = false;
+  onCleanup(() => {
     cancelled = true;
   });
   if (!selection) {
-    localAvailability.value = 'missing'; return;
+    localAvailability.value = 'missing';
+    return;
   }
   localAvailability.value = 'checking';
-  if (disabled || operation || removing || disposed) return;
+  if (disabled || operation || removing || disposed) {
+    return;
+  }
   try {
     const model = await installedSelection({ selection, destination: requestedDestination });
-    if (cancelled || disposed) return;
+    if (cancelled || disposed) {
+      return;
+    }
     if (!model) {
       const wasInstalled = lastAnnouncedSelection === JSON.stringify({ selection, destination: requestedDestination });
-      localAvailability.value = 'missing'; lastAnnouncedSelection = undefined;
+      localAvailability.value = 'missing';
+      lastAnnouncedSelection = undefined;
       if (wasInstalled) {
-        emit('selectionChanged'); emit('changed');
+        emit('selectionChanged');
+        emit('changed');
       }
       return;
     }
     localAvailability.value = 'installed';
     const identity = JSON.stringify({ selection, destination: requestedDestination });
     if (identity !== lastAnnouncedSelection) {
-      lastAnnouncedSelection = identity; emit('modelReady', model);
+      lastAnnouncedSelection = identity;
+      emit('modelReady', model);
     }
   } catch {
     if (!cancelled && !disposed) {
-      localAvailability.value = 'unavailable'; error.value = 'failed';
+      localAvailability.value = 'unavailable';
+      error.value = 'failed';
     }
   }
 }, { immediate: true });
 watch(destination, () => {
-  pending.value = []; void refresh();
+  pending.value = [];
+  void refresh();
 });
 watch(() => props.disabled, disabled => {
-  if (!disabled) void refresh();
+  if (!disabled) {
+    void refresh();
+  }
 });
 watch([() => props.modelPreset, () => props.disabled, active], ([preset, disabled, operation]) => {
-  if (!preset || disabled || disposed) return;
-  if (operation) {
-    if (inspecting && preset !== inspectionPreset) operation.abort();
+  if (!preset || disabled || disposed) {
     return;
   }
-  if (!preset.claim()) return;
+  if (operation) {
+    if (inspecting && preset !== inspectionPreset) {
+      operation.abort();
+    }
+    return;
+  }
+  if (!preset.claim()) {
+    return;
+  }
   inspectionPreset = preset;
   input.value = preset.input;
   // Privacy exception: an explicit llama-cpp-browser-model URL requests this
@@ -268,7 +358,9 @@ watch([() => props.modelPreset, () => props.disabled, active], ([preset, disable
   void inspect();
 }, { immediate: true, flush: 'post' });
 watch(queue.changed, () => {
-  recheckLocalFiles(); void refresh(); emit('changed');
+  recheckLocalFiles();
+  void refresh();
+  emit('changed');
 });
 watch([active, queuedDownloadBusy, deleting], ([operation, downloading, removing]) => {
   emit('busy', operation !== undefined || downloading || removing);
@@ -278,11 +370,15 @@ onMounted(() => {
   void refresh();
 });
 onUnmounted(() => {
-  disposed = true; active.value?.abort(); window.removeEventListener('focus', recheckLocalFiles);
+  disposed = true;
+  active.value?.abort();
+  window.removeEventListener('focus', recheckLocalFiles);
 });
 
 async function inspectRepository({ input: requestedInput }: { input: string }): Promise<void> {
-  if (props.disabled || active.value || deleting.value || disposed) return;
+  if (props.disabled || active.value || deleting.value || disposed) {
+    return;
+  }
   input.value = requestedInput;
   await inspect();
 }

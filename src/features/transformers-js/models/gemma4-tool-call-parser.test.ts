@@ -11,7 +11,9 @@ const quote = '<|"|>';
 function parse({ chunks }: { chunks: string[] }) {
   const text: string[] = [];
   const parser = new Gemma4ToolCallParser({ toolCalls: 'enabled', ignoredSpecialTokens: [], onText: ({ text: chunk }) => text.push(chunk) });
-  for (const output of chunks) parser.feed({ output });
+  for (const output of chunks) {
+    parser.feed({ output });
+  }
   parser.flush();
   return { text: text.join(''), calls: parser.drainToolCalls() };
 }
@@ -85,7 +87,9 @@ Reason<channel|>Answer<turn|>`;
       ignoredSpecialTokens: ['<bos>', '<pad>'],
       onText: ({ text: chunk }) => text.push(chunk),
     });
-    for (const output of [...'<bos><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><pad>Answer']) parser.feed({ output });
+    for (const output of [...'<bos><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><pad>Answer']) {
+      parser.feed({ output });
+    }
     parser.flush();
     expect(text.join('')).toBe('Answer');
     const calls = parser.drainToolCalls();

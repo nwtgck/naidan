@@ -30,7 +30,8 @@ describe('explicit Provider native request ownership', () => {
     };
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        put.mockRestore(); end.mockRestore();
+        put.mockRestore();
+        end.mockRestore();
         await replay.close();
       },
     };

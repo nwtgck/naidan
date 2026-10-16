@@ -26,14 +26,22 @@ const tab = computed<'generate' | 'models' | 'history' | 'measure'>({
     switch (value) {
     case 'generate': {
       const selected = navigation.value?.view?.selectedSessionId.value;
-      path = selected ? `/image-generation/session/${idToRaw({ id: selected })}` : '/image-generation'; break;
+      path = selected ? `/image-generation/session/${idToRaw({ id: selected })}` : '/image-generation';
+      break;
     }
-    case 'models': path = '/image-generation/models'; break;
+    case 'models': path = '/image-generation/models';
+      break;
     case 'history': return;
-    case 'measure': path = '/image-generation/diagnostics'; break;
-    default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+    case 'measure': path = '/image-generation/diagnostics';
+      break;
+    default: {
+      const exhaustive: never = value;
+      throw new Error(String(exhaustive));
     }
-    if (path !== route.path.replace(/\/+$/, '')) void router.push({ path, query: route.query });
+    }
+    if (path !== route.path.replace(/\/+$/, '')) {
+      void router.push({ path, query: route.query });
+    }
   },
 });
 watch(() => [route.path, navigation.value?.view?.currentSession.value?.id] as const, ([path, selected]) => {

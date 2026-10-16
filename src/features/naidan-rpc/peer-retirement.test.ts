@@ -18,7 +18,8 @@ function idleIncoming() {
       return {
         next: () => next.promise,
         async return() {
-          next.resolve({ done: true, value: undefined }); return { done: true as const, value: undefined };
+          next.resolve({ done: true, value: undefined });
+          return { done: true as const, value: undefined };
         },
       };
     },
@@ -41,8 +42,11 @@ it('retirement joins a pending stream open and aborts its late duplex before ret
   const endedBeforeOpen = ended;
   const aborted = vi.fn();
   opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: aborted });
-  await retired; await rejected;
-  expect(endedBeforeOpen).toBe(false); expect(aborted).toHaveBeenCalledOnce(); expect(ended).toBe(true);
+  await retired;
+  await rejected;
+  expect(endedBeforeOpen).toBe(false);
+  expect(aborted).toHaveBeenCalledOnce();
+  expect(ended).toBe(true);
 });
 
 it('retirement includes the incoming iterator owner, including a late incoming duplex', async () => {
@@ -61,13 +65,18 @@ it('retirement includes the incoming iterator owner, including a late incoming d
     },
   };
   const peer = new NaidanRpcPeer({ transport, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
-  let ended = false; const retiring = peer.retire().then(() => {
+  let ended = false;
+  const retiring = peer.retire().then(() => {
     ended = true;
   });
-  await new Promise(resolve => setTimeout(resolve, 0)); const endedBeforeInput = ended;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const endedBeforeInput = ended;
   next.resolve({ done: false, value: { readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort } });
-  returned.resolve({ done: true, value: undefined }); await retiring; await peer.closed;
-  expect(endedBeforeInput).toBe(false); expect(abort).toHaveBeenCalledOnce();
+  returned.resolve({ done: true, value: undefined });
+  await retiring;
+  await peer.closed;
+  expect(endedBeforeInput).toBe(false);
+  expect(abort).toHaveBeenCalledOnce();
 });
 
 it('joins asynchronous iterator return cleanup even after next has finished', async () => {
@@ -84,7 +93,8 @@ it('joins asynchronous iterator return cleanup even after next has finished', as
           return {
             next: () => next.promise,
             return() {
-              next.resolve({ done: true, value: undefined }); return returned.promise;
+              next.resolve({ done: true, value: undefined });
+              return returned.promise;
             },
           };
         },
@@ -94,11 +104,15 @@ it('joins asynchronous iterator return cleanup even after next has finished', as
     limits: { maxCalls: 2, maxCallTimeoutMs: undefined },
     signal: new AbortController().signal,
   });
-  let ended = false; const retiring = peer.retire().then(() => {
+  let ended = false;
+  const retiring = peer.retire().then(() => {
     ended = true;
   });
-  await peer.closed; await new Promise(resolve => setTimeout(resolve, 0)); const endedBeforeReturn = ended;
-  returned.resolve({ done: true, value: undefined }); await retiring;
+  await peer.closed;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const endedBeforeReturn = ended;
+  returned.resolve({ done: true, value: undefined });
+  await retiring;
   expect(endedBeforeReturn).toBe(false);
 });
 
@@ -116,7 +130,8 @@ it('a failed iterator cleanup is reported only after a late outgoing duplex is r
           return {
             next: () => next.promise,
             return() {
-              next.resolve({ done: true, value: undefined }); return Promise.reject(failure);
+              next.resolve({ done: true, value: undefined });
+              return Promise.reject(failure);
             },
           };
         },
@@ -136,10 +151,16 @@ it('a failed iterator cleanup is reported only after a late outgoing duplex is r
   }, () => {
     settled = true;
   });
-  await peer.closed; await new Promise(resolve => setTimeout(resolve, 0)); const settledBeforeOpen = settled;
-  const abort = vi.fn(); opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
-  await rejected; await resultFailure; await callFailure;
-  expect(settledBeforeOpen).toBe(false); expect(abort).toHaveBeenCalledOnce();
+  await peer.closed;
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const settledBeforeOpen = settled;
+  const abort = vi.fn();
+  opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
+  await rejected;
+  await resultFailure;
+  await callFailure;
+  expect(settledBeforeOpen).toBe(false);
+  expect(abort).toHaveBeenCalledOnce();
   await expect(peer.retire()).rejects.toBe(failure);
 });
 
@@ -158,7 +179,8 @@ it('reports a synchronous iterator return failure through retirement without dro
           return {
             next: () => next.promise,
             return() {
-              next.resolve({ done: true, value: undefined }); throw failure;
+              next.resolve({ done: true, value: undefined });
+              throw failure;
             },
           };
         },
@@ -193,7 +215,8 @@ it('closes an iterator even when creating it synchronously aborts the parent lif
     limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
     signal: lifetime.signal,
   });
-  await peer.retire(); expect(cleanup).toHaveBeenCalledOnce();
+  await peer.retire();
+  expect(cleanup).toHaveBeenCalledOnce();
 });
 
 it('aborts an outgoing duplex when it cannot acquire the framed stream writers', async () => {
@@ -213,12 +236,15 @@ it('aborts an outgoing duplex when it cannot acquire the framed stream writers',
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      locked.releaseLock(); await peer.retire();
+      locked.releaseLock();
+      await peer.retire();
     },
   };
-  await expect(call.result).rejects.toBeInstanceOf(TypeError); await expect(call.closed).rejects.toBeInstanceOf(TypeError);
+  await expect(call.result).rejects.toBeInstanceOf(TypeError);
+  await expect(call.closed).rejects.toBeInstanceOf(TypeError);
   await peer.retire();
-  expect(abort).toHaveBeenCalledOnce(); expect(readable.locked).toBe(false);
+  expect(abort).toHaveBeenCalledOnce();
+  expect(readable.locked).toBe(false);
 });
 
 it('retains a failed late-duplex abort while still joining the other pending opens', async () => {
@@ -238,9 +264,11 @@ it('retains a failed late-duplex abort while still joining the other pending ope
   });
   const calls = [0, 1].map(() => peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined }));
   for (const call of calls) {
-    void call.result.catch(() => {}); void call.closed.catch(() => {});
+    void call.result.catch(() => {});
+    void call.closed.catch(() => {});
   }
-  const retirement = peer.retire(); let settled = false;
+  const retirement = peer.retire();
+  let settled = false;
   void retirement.then(() => {
     settled = true;
   }, () => {
@@ -251,7 +279,9 @@ it('retains a failed late-duplex abort while still joining the other pending ope
     }), otherAbort = vi.fn();
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      for (const opening of openings) opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} });
+      for (const opening of openings) {
+        opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} });
+      }
       await retirement.catch(() => {});
     },
   };
@@ -285,7 +315,8 @@ it('does not report retirement success if an incoming duplex rejected during shu
     limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
     signal: new AbortController().signal,
   });
-  const retirement = peer.retire(); void retirement.catch(() => {});
+  const retirement = peer.retire();
+  void retirement.catch(() => {});
   next.resolve({
     done: false,
     value: {
@@ -330,23 +361,29 @@ it('retains adopted duplex abort failures and waits for framed cleanup before re
     signal: new AbortController().signal,
   });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  void call.result.catch(() => {}); void call.closed.catch(() => {});
+  void call.result.catch(() => {});
+  void call.closed.catch(() => {});
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      ending.resolve(); await peer.retire().catch(() => {});
+      ending.resolve();
+      await peer.retire().catch(() => {});
     },
   };
-  await written.promise; call.cancel({ reason: 'Caller cancelled an adopted call' });
+  await written.promise;
+  call.cancel({ reason: 'Caller cancelled an adopted call' });
   await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
-  const retirement = peer.retire(); let settled = false;
+  const retirement = peer.retire();
+  let settled = false;
   void retirement.then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
   await vi.waitFor(() => expect(writeAbort).toHaveBeenCalledOnce());
-  expect(cancelled).toHaveBeenCalledOnce(); expect(settled).toBe(false);
-  ending.resolve(); await expect(retirement).rejects.toBe(failure);
+  expect(cancelled).toHaveBeenCalledOnce();
+  expect(settled).toBe(false);
+  ending.resolve();
+  await expect(retirement).rejects.toBe(failure);
   await expect(peer.retire()).rejects.toBe(failure);
 });
 
@@ -354,7 +391,8 @@ it('failed outgoing adoption retains capacity until its owned discard completes'
   const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
   const readable = new ReadableStream<Uint8Array>({
     cancel() {
-      entered.resolve(); return gate.promise;
+      entered.resolve();
+      return gate.promise;
     },
   });
   const writable = new WritableStream<Uint8Array>(), writer = writable.getWriter();
@@ -367,24 +405,31 @@ it('failed outgoing adoption retains capacity until its owned discard completes'
   });
   const client = peer.client({ contract: definition });
   const first = client.run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  await expect(first.result).rejects.toBeInstanceOf(TypeError); await expect(first.closed).rejects.toBeInstanceOf(TypeError);
+  await expect(first.result).rejects.toBeInstanceOf(TypeError);
+  await expect(first.closed).rejects.toBeInstanceOf(TypeError);
   await entered.promise;
   const second = client.run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   await expect(second.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-  await expect(second.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' }); expect(open).toHaveBeenCalledOnce();
-  gate.resolve(); writer.releaseLock(); await peer.retire();
+  await expect(second.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  expect(open).toHaveBeenCalledOnce();
+  gate.resolve();
+  writer.releaseLock();
+  await peer.retire();
 });
 
 it.each(['caller', 'callee'] as const)('retains partial constructor release failure for %s', async role => {
   const failure = new Error('Partial reader release failed');
   const readable = new ReadableStream<Uint8Array>(), reader = readable.getReader();
-  const release = reader.releaseLock.bind(reader); release();
+  const release = reader.releaseLock.bind(reader);
+  release();
   const original = readable.getReader.bind(readable);
   let held: ReadableStreamDefaultReader<Uint8Array> | undefined;
   vi.spyOn(readable, 'getReader').mockImplementation(() => {
-    held = original(); vi.spyOn(held, 'releaseLock').mockImplementation(() => {
+    held = original();
+    vi.spyOn(held, 'releaseLock').mockImplementation(() => {
       throw failure;
-    }); return held;
+    });
+    return held;
   });
   const writable = new WritableStream<Uint8Array>(), writer = writable.getWriter();
   const duplex = { readable, writable, closed: Promise.resolve(), abort() {} };
@@ -411,12 +456,17 @@ it.each(['caller', 'callee'] as const)('retains partial constructor release fail
   });
   if (role === 'caller') {
     const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-    await expect(call.result).rejects.toMatchObject({ cause: failure }); await expect(call.closed).rejects.toMatchObject({ cause: failure });
+    await expect(call.result).rejects.toMatchObject({ cause: failure });
+    await expect(call.closed).rejects.toMatchObject({ cause: failure });
     next.resolve({ done: true, value: undefined });
-  } else next.resolve({ done: false, value: duplex });
+  } else {
+    next.resolve({ done: false, value: duplex });
+  }
   expect((await peer.ended).error).toBe(failure);
   await expect(peer.retire()).rejects.toBe(failure);
-  vi.restoreAllMocks(); held?.releaseLock(); writer.releaseLock();
+  vi.restoreAllMocks();
+  held?.releaseLock();
+  writer.releaseLock();
 });
 
 it('logical peer termination preserves the first opaque cause independently of retirement', async () => {
@@ -438,13 +488,19 @@ it('logical peer termination preserves the first opaque cause independently of r
     limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
     signal: new AbortController().signal,
   });
-  const ended = await peer.ended; expect(ended.error).toBe(null); expect(Object.isFrozen(ended)).toBe(true);
-  lowerEnd.resolve({ error: new Error('Later lower error') }); peer.dispose();
+  const ended = await peer.ended;
+  expect(ended.error).toBe(null);
+  expect(Object.isFrozen(ended)).toBe(true);
+  lowerEnd.resolve({ error: new Error('Later lower error') });
+  peer.dispose();
   expect(await peer.ended).toBe(ended);
-  let retired = false; const retirement = peer.retire().then(() => {
+  let retired = false;
+  const retirement = peer.retire().then(() => {
     retired = true;
   });
-  await Promise.resolve(); expect(retired).toBe(false);
-  returned.resolve({ done: true, value: undefined }); await retirement;
+  await Promise.resolve();
+  expect(retired).toBe(false);
+  returned.resolve({ done: true, value: undefined });
+  await retirement;
   await expect(peer.closed).rejects.toBe(null);
 });

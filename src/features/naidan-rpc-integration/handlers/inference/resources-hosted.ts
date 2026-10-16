@@ -21,7 +21,9 @@ import { createVerifiedImageModelFiles } from './verified-image-model-files';
 
 function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFile {
   const file = candidate.files.find(item => item.path === candidate.path)?.file;
-  if (!file) throw new Error('The model file is missing');
+  if (!file) {
+    throw new Error('The model file is missing');
+  }
   return {
     location: candidate.hostSource
       ? { kind: 'host', directoryId: candidate.hostSource.directoryId, path: `${candidate.hostSource.repository}/${candidate.path}` }
@@ -37,17 +39,26 @@ function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerIma
     switch (location.kind) {
     case 'opfs': return own.location.kind === 'opfs' && own.location.path === location.path;
     case 'host': return own.location.kind === 'host' && own.location.directoryId === location.directoryId && own.location.path === location.path;
-    default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = location;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
-  if (present && expected && (own.expected?.size !== expected.size || own.expected.lastModified !== expected.lastModified)) throw new Error('The selected model changed since it was listed');
+  if (present && expected && (own.expected?.size !== expected.size || own.expected.lastModified !== expected.lastModified)) {
+    throw new Error('The selected model changed since it was listed');
+  }
   return present;
 }
 
 function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: ModelSlot }): Request['models'][number] {
-  if (candidate.issue || !candidate.roles.includes(slot)) throw new Error('The model cannot serve the requested role');
+  if (candidate.issue || !candidate.roles.includes(slot)) {
+    throw new Error('The model cannot serve the requested role');
+  }
   const main = candidate.files.find(file => file.path === candidate.path);
-  if (!main) throw new Error('The model file is missing');
+  if (!main) {
+    throw new Error('The model file is missing');
+  }
   return {
     slot,
     file: main.file,
@@ -65,7 +76,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
   let closing: Promise<void> | undefined;
   const operationSignal = ({ signal }: { signal: AbortSignal }) => {
     const combined = AbortSignal.any([signal, lifetime.signal]);
-    combined.throwIfAborted(); return combined;
+    combined.throwIfAborted();
+    return combined;
   };
   let image: ImageClient | undefined;
   const verifiedModels = createVerifiedImageModelFiles();
@@ -82,7 +94,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
     async listChatModels({ signal }) {
       signal = operationSignal({ signal });
       const models = await llamaCppBrowserService.listModels({ signal });
-      signal.throwIfAborted(); return models.map(model => ({ ref: model.name, label: model.name }));
+      signal.throwIfAborted();
+      return models.map(model => ({ ref: model.name, label: model.name }));
     },
     async generateChat({ input, signal, onEvent, onProgress }) {
       signal = operationSignal({ signal });
@@ -94,15 +107,22 @@ export function createReadOnlyResources({ directories }: { directories(): readon
           let phase: 'computing' | 'loading' | 'decoding';
           const current = progress.phase;
           switch (current) {
-          case 'generating': case 'prefill': phase = 'computing'; break;
-          case 'loading': case 'initializing': case 'importing': phase = 'loading'; break;
-          case 'decoding-audio': phase = 'decoding'; break;
-          default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+          case 'generating': case 'prefill': phase = 'computing';
+            break;
+          case 'loading': case 'initializing': case 'importing': phase = 'loading';
+            break;
+          case 'decoding-audio': phase = 'decoding';
+            break;
+          default: {
+            const exhaustive: never = current;
+            throw new Error(String(exhaustive));
+          }
           }
           onProgress({ value: { phase, completed: progress.completed, total: progress.total } });
         },
       });
-      signal.throwIfAborted(); return result;
+      signal.throwIfAborted();
+      return result;
     },
     async listImageModels({ signal }) {
       signal = operationSignal({ signal });
@@ -110,25 +130,37 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       switch (config.kind) {
       case 'unavailable': return [];
       case 'available': break;
-      default: { const exhaustive: never = config; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = config;
+        throw new Error(String(exhaustive));
+      }
       }
       const result: PeerImageCatalogItem[] = [];
       for (const candidate of (await inventory({ signal })).candidates) {
-        if (candidate.issue || candidate.files.length === 0) continue;
+        if (candidate.issue || candidate.files.length === 0) {
+          continue;
+        }
         const roles = candidate.classes.includes('lora') ? ['lora' as const] : candidate.roles;
-        if (!roles.length) continue;
+        if (!roles.length) {
+          continue;
+        }
         const file = selectedFile({ candidate });
         // A split diffusion file is not a ready-to-generate model bundle. Do
         // not infer missing encoders/VAE or use the owner's saved editor preset.
         const selection = candidate.roles.includes('model') && !candidate.classes.includes('lora') ? { primary: { slot: 'model' as const, file }, components: [], loras: [] } : undefined;
         result.push(imageCatalogItemSchema.parse({ label: candidate.path, file, roles, selection, facts: { family: candidate.family, classes: candidate.classes } }));
-        if (result.length > 256) throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
+        if (result.length > 256) {
+          throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
+        }
       }
-      signal.throwIfAborted(); return result;
+      signal.throwIfAborted();
+      return result;
     },
     async generateImage({ input, signal, onProgress, onPreview }) {
       signal = operationSignal({ signal });
-      if (imageBusy) throw createImageGenerationFailure({ error: new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' }), stage: 'admission', reason: 'engine-busy', profile: undefined, gpu: false, nativeContext: undefined });
+      if (imageBusy) {
+        throw createImageGenerationFailure({ error: new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' }), stage: 'admission', reason: 'engine-busy', profile: undefined, gpu: false, nativeContext: undefined });
+      }
       imageBusy = true;
       const retired = Promise.withResolvers<void>();
       imageRetirement = retired.promise;
@@ -143,7 +175,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         const candidates = (await inventory({ signal })).candidates;
         const find = ({ file }: { file: PeerImageFile }) => {
           const candidate = candidates.find(candidate => !candidate.issue && matches({ candidate, file }));
-          if (!candidate) throw new Error('The requested model is missing or outside the permitted roots');
+          if (!candidate) {
+            throw new Error('The requested model is missing or outside the permitted roots');
+          }
           return candidate;
         };
         const selectedModels = [{ candidate: find({ file: selection.primary.file }), slot: selection.primary.slot },
@@ -152,21 +186,30 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         const selectedLoras: ModelCandidate[] = [];
         const loras = selection.loras.map(({ file, strength }) => {
           const candidate = find({ file });
-          if (!candidate.classes.includes('lora') || candidate.files.length !== 1) throw new Error('The requested adapter is not a single LoRA file');
+          if (!candidate.classes.includes('lora') || candidate.files.length !== 1) {
+            throw new Error('The requested adapter is not a single LoRA file');
+          }
           selectedLoras.push(candidate);
           return { file: candidate.files[0]!.file, path: candidate.path, strength };
         });
-        stage = 'runtime-init'; reason = 'runtime-unavailable';
+        stage = 'runtime-init';
+        reason = 'runtime-unavailable';
         const config = configurationSchema.parse(rawConfiguration);
         switch (config.kind) {
         case 'unavailable': throw new Error('Local image inference is not included in this build');
         case 'available': break;
-        default: { const exhaustive: never = config; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = config;
+          throw new Error(String(exhaustive));
+        }
         }
         const artifact = config.artifacts.find(artifact => artifact.profile === initialProfile());
-        if (!artifact) throw new Error('The local image profile is not available');
+        if (!artifact) {
+          throw new Error('The local image profile is not available');
+        }
         profile = artifact.profile;
-        stage = 'input'; reason = 'invalid-input';
+        stage = 'input';
+        reason = 'invalid-input';
         const request = requestSchema.parse({
           artifact,
           models,
@@ -187,7 +230,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
             modelArguments: '',
           },
         });
-        stage = 'model-selection'; reason = 'model-selection-failed';
+        stage = 'model-selection';
+        reason = 'model-selection-failed';
         const preparedModels = await verifiedModels.prepare({
           signal,
           files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
@@ -196,50 +240,72 @@ export function createReadOnlyResources({ directories }: { directories(): readon
               file,
               expectedSha256: (() => {
                 const source = receipt?.source;
-                if (!source) return undefined;
+                if (!source) {
+                  return undefined;
+                }
                 switch (source.kind) {
                 case 'local': return undefined;
                 case 'hugging-face': return source.sha256;
-                default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
+                default: {
+                  const exhaustive: never = source;
+                  throw new Error(String(exhaustive));
+                }
                 }
               })(),
             }))),
         });
         const retainedFile = ({ file }: { file: File }): File => {
           const retained = preparedModels.replacements.get(file);
-          if (!retained) throw new Error('Model file was not verified');
+          if (!retained) {
+            throw new Error('Model file was not verified');
+          }
           return retained;
         };
         // Request is our private validated snapshot; replace only the verified File references.
         for (const model of request.models) {
           model.file = retainedFile({ file: model.file });
-          for (const companion of model.companions ?? []) companion.file = retainedFile({ file: companion.file });
+          for (const companion of model.companions ?? []) {
+            companion.file = retainedFile({ file: companion.file });
+          }
         }
-        for (const lora of request.loras) lora.file = retainedFile({ file: lora.file });
-        stage = 'runtime-init'; reason = 'runtime-unavailable';
-        signal.throwIfAborted(); image ??= createImageEngineClient({ onReleased: () => verifiedModels.clear() });
-        stage = 'worker'; reason = 'engine-failed';
+        for (const lora of request.loras) {
+          lora.file = retainedFile({ file: lora.file });
+        }
+        stage = 'runtime-init';
+        reason = 'runtime-unavailable';
+        signal.throwIfAborted();
+        image ??= createImageEngineClient({ onReleased: () => verifiedModels.clear() });
+        stage = 'worker';
+        reason = 'engine-failed';
         const rawResult = await image.generate({
           request,
           signal,
           onPreview: ({ frame }) => {
-            signal.throwIfAborted(); onPreview({ frame });
+            signal.throwIfAborted();
+            onPreview({ frame });
           },
           onProgress: ({ event }) => {
             signal.throwIfAborted();
             let phase: 'computing' | 'loading' | 'decoding' | 'encoding';
             const current = event.phase;
             switch (current) {
-            case 'sampling': phase = 'computing'; break;
-            case 'runtime': case 'model': phase = 'loading'; break;
-            case 'decoding': case 'encoding': phase = current; break;
-            default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+            case 'sampling': phase = 'computing';
+              break;
+            case 'runtime': case 'model': phase = 'loading';
+              break;
+            case 'decoding': case 'encoding': phase = current;
+              break;
+            default: {
+              const exhaustive: never = current;
+              throw new Error(String(exhaustive));
+            }
             }
             onProgress({ value: { phase, completed: event.step, total: event.steps } });
           },
           onDiagnostic: ({ diagnostic }) => {
             switch (diagnostic.event) {
-            case 'start': case 'complete': case 'progress': stage = diagnostic.stage; break;
+            case 'start': case 'complete': case 'progress': stage = diagnostic.stage;
+              break;
             case 'failed':
               failedStage ??= (() => {
                 const current = diagnostic.stage;
@@ -247,30 +313,42 @@ export function createReadOnlyResources({ directories }: { directories(): readon
                 case 'worker': return stage;
                 case 'runtime-fetch': case 'runtime-init': case 'model-header': case 'model-load': case 'generation':
                 case 'sampling': case 'decoding': case 'encoding': case 'cleanup': return current;
-                default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+                default: {
+                  const exhaustive: never = current;
+                  throw new Error(String(exhaustive));
+                }
                 }
               })();
               nativeContext ??= readImageGenerationNativeFailureContext({ fields: diagnostic.fields });
               break;
             case 'gpu':
               if (/^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(diagnostic.message ?? '')) {
-                gpu = true; failedStage ??= diagnostic.stage;
+                gpu = true;
+                failedStage ??= diagnostic.stage;
               }
               break;
             case 'request': case 'native': case 'file-summary': case 'file-read': case 'waiting': case 'cancelled': case 'dropped': break;
-            default: { const exhaustive: never = diagnostic.event; throw new Error(String(exhaustive)); }
+            default: {
+              const exhaustive: never = diagnostic.event;
+              throw new Error(String(exhaustive));
+            }
             }
           },
         });
         signal.throwIfAborted();
-        stage = 'output-validation'; reason = 'invalid-output';
+        stage = 'output-validation';
+        reason = 'invalid-output';
         const result = workerResultSchema.parse(rawResult);
-        if ('cancelled' in result) throw new DOMException('Image generation cancelled', 'AbortError');
+        if ('cancelled' in result) {
+          throw new DOMException('Image generation cancelled', 'AbortError');
+        }
         preparedModels.commit();
         return result;
       } catch (error) {
         signal.throwIfAborted();
-        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error;
+        }
         const failure = createImageGenerationFailure({ error, stage: failedStage ?? stage, reason, profile, gpu, nativeContext });
         // Detailed native context stays on the provider. Exported context is
         // deliberately limited to the public error fields above.
@@ -290,7 +368,9 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       }
     },
     dispose() {
-      if (closing) return closing;
+      if (closing) {
+        return closing;
+      }
       const completed = Promise.withResolvers<void>();
       closing = completed.promise;
       lifetime.abort();
@@ -300,7 +380,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       // in-flight resource call. Never release another local UI owner's cache.
       let imageDisposal: Promise<void>;
       try {
-        image?.dispose(); imageDisposal = Promise.resolve();
+        image?.dispose();
+        imageDisposal = Promise.resolve();
       } catch (error) {
         imageDisposal = Promise.reject(error);
       }
@@ -310,8 +391,12 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         for (const result of results) {
           switch (result.status) {
           case 'fulfilled': break;
-          case 'rejected': completed.reject(result.reason); return;
-          default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+          case 'rejected': completed.reject(result.reason);
+            return;
+          default: {
+            const exhaustive: never = result;
+            throw new Error(String(exhaustive));
+          }
           }
         }
         completed.resolve();

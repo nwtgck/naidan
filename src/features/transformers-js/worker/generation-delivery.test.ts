@@ -48,7 +48,9 @@ describe('generation callback delivery ownership', () => {
     const owner = createGenerationDelivery({ onFailure: interrupted });
     owner.enqueue({
       deliver: () => {
-        if (kind === 'throw') throw failure;
+        if (kind === 'throw') {
+          throw failure;
+        }
         return Promise.reject(failure);
       },
     });

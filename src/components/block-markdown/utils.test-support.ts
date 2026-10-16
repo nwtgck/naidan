@@ -25,8 +25,12 @@ export function normalizeDom({
   function createCleanNode({ source, parentIsSensitive }: { source: Node, parentIsSensitive: boolean }): Node | null {
     if (source.nodeType === Node.TEXT_NODE) {
       const text = source.textContent || '';
-      if (parentIsSensitive) return document.createTextNode(text);
-      if (trimWhitespaceNodes && text.trim() === '') return null;
+      if (parentIsSensitive) {
+        return document.createTextNode(text);
+      }
+      if (trimWhitespaceNodes && text.trim() === '') {
+        return null;
+      }
       return document.createTextNode(text);
     }
 
@@ -39,7 +43,9 @@ export function normalizeDom({
 
       for (const attrName of preserveAttributes) {
         const val = el.getAttribute(attrName);
-        if (val !== null) cleanEl.setAttribute(attrName, val);
+        if (val !== null) {
+          cleanEl.setAttribute(attrName, val);
+        }
       }
 
       const classesToKeep = Array.from(el.classList).filter(c => preserveClasses.includes(c));
@@ -52,7 +58,9 @@ export function normalizeDom({
           source: child,
           parentIsSensitive: currentIsSensitive,
         });
-        if (cleanChild) cleanEl.appendChild(cleanChild);
+        if (cleanChild) {
+          cleanEl.appendChild(cleanChild);
+        }
       }
 
       return cleanEl;

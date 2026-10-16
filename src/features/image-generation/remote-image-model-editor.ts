@@ -39,7 +39,10 @@ export function remoteImageFileKey({ file }: { file: RemoteImageModelFile }): st
     unhandledLocation satisfies Record<PropertyKey, never>;
     return JSON.stringify([kind, directoryId, path]);
   }
-  default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = location;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -52,7 +55,9 @@ export function remoteImageEditorFromSelection({ selection, family }: { selectio
 export function remoteImageSelectionFromEditor({ editor }: { editor: RemoteImageModelEditor }): PeerImageModelSelection | undefined {
   const { primary, components, loras, ...unhandled } = editor;
   unhandled satisfies Record<PropertyKey, never>;
-  if (!primary) return undefined;
+  if (!primary) {
+    return undefined;
+  }
   const { family: _family, ...selectedPrimary } = primary;
   return imageModelSelectionSchema.parse({
     primary: selectedPrimary,
@@ -63,16 +68,23 @@ export function remoteImageSelectionFromEditor({ editor }: { editor: RemoteImage
     switch (enabled) {
     case 'enabled': return [{ file, strength }];
     case 'disabled': return [];
-    default: { const exhaustive: never = enabled; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = enabled;
+      throw new Error(String(exhaustive));
+    }
     }
     }),
   });
 }
 
 export function remoteImageEditorReady({ editor }: { editor: RemoteImageModelEditor }): boolean {
-  if (!editor.primary) return false;
+  if (!editor.primary) {
+    return false;
+  }
   const required = componentRequirements({ family: knownImageFamily({ family: editor.primary.family }) });
-  if (required.some(item => item.required && !editor.components.some(component => component.slot === item.slot))) return false;
+  if (required.some(item => item.required && !editor.components.some(component => component.slot === item.slot))) {
+    return false;
+  }
   try {
     return remoteImageSelectionFromEditor({ editor }) !== undefined;
   } catch {
@@ -89,10 +101,15 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
       switch (slot) {
       case 'primary': return item.roles.includes('model') || item.roles.includes('diffusion');
       case 'lora': case 'vae': case 'clipL': case 'clipG': case 't5': case 'lm': return item.roles.includes(slot);
-      default: { const exhaustive: never = slot; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = slot;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
-    if (!roleMatches) return [];
+    if (!roleMatches) {
+      return [];
+    }
     const status = requirement && item.facts ? componentMatch({
       candidate: { family: item.facts.family, classes: item.facts.classes, roles: item.roles.filter(role => role !== 'lora'), issue: undefined },
       requirement,
@@ -102,7 +119,10 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
     switch (status) {
     case 'incompatible': return [];
     case 'matching': case 'unverified': break;
-    default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = status;
+      throw new Error(String(exhaustive));
+    }
     }
     return [{
       id: remoteImageFileKey({ file: item.file }),

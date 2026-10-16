@@ -93,8 +93,12 @@ describe('fragment sitemap', () => {
     const readmeLaunches = [...readme.matchAll(/\]\(https:\/\/naidan\.pages\.dev\/#\/\?llama-cpp-browser-model=([^\s)]+)\)/g)].map(match => decodeURIComponent(match[1] ?? ''));
     expect(readmeLaunches.length).toBeGreaterThan(0);
     expect(launches).toEqual(hfRepositories.flatMap(entry => entry.sitemapQuantizations.map(quantization => `hf.co/${entry.hfRepository}:${quantization}`)));
-    for (const launch of retainedLaunches) expect(launches).toContain(launch);
-    for (const launch of readmeLaunches) expect(launches).toContain(launch);
+    for (const launch of retainedLaunches) {
+      expect(launches).toContain(launch);
+    }
+    for (const launch of readmeLaunches) {
+      expect(launches).toContain(launch);
+    }
     expect(launches).toContain('hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M');
     expect(launches).toContain('hf.co/lmstudio-community/gemma-4-E2B-it-GGUF:Q4_K_M');
     const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
@@ -143,7 +147,9 @@ describe('fragment sitemap', () => {
     expect(get.status).toBe(200);
     expect(get.contentType).toBe('application/xml; charset=utf-8');
     expect(typeof get.body).toBe('string');
-    if (typeof get.body !== 'string') throw new Error('Expected XML response');
+    if (typeof get.body !== 'string') {
+      throw new Error('Expected XML response');
+    }
     expect(get.body).toContain('hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M');
     expect(get.length).toBe(Buffer.byteLength(get.body));
     const head = await request({ server, method: 'HEAD', url: '/sitemap.xml' });

@@ -4,11 +4,16 @@ import type { CoreModuleOptions } from './artifacts';
 import { decodeEmbeddedBrotli } from '@/features/file-protocol-standalone/embedded-binary';
 
 function embeddedProfile({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }) {
-  if (baseURL !== undefined) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  if (baseURL !== undefined) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
   switch (profile) {
   case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': return profile;
   case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm32-asyncify': throw new LlamaCppBrowserError({ code: 'unavailable' });
-  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = profile;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
+  }
   }
 }
 
@@ -20,7 +25,10 @@ export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profil
     switch (embedded) {
     case 'webgpu-wasm32-jspi': return import('virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi');
     case 'webgpu-wasm64-jspi': return import('virtual:file-protocol-standalone/binary/llama-cpp-browser');
-    default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = embedded;
+      throw new Error(`Unhandled profile: ${exhaustive}`);
+    }
     }
   })();
   signal?.throwIfAborted();
@@ -34,9 +42,14 @@ export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profil
 export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }): Promise<void> {
   const embedded = embeddedProfile({ profile, baseURL });
   switch (embedded) {
-  case 'webgpu-wasm32-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi'); return;
-  case 'webgpu-wasm64-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi'); return;
-  default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  case 'webgpu-wasm32-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi');
+    return;
+  case 'webgpu-wasm64-jspi': await import('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi');
+    return;
+  default: {
+    const exhaustive: never = embedded;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
+  }
   }
 }
 
@@ -56,7 +69,10 @@ export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
     const module = await factory(moduleOptions);
     return { module, chat: bindNativeChat({ native: module }) };
   }
-  default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = embedded;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
+  }
   }
 }
 

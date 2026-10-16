@@ -5,33 +5,56 @@ import { audioResult } from './wav.test-support';
 /** Deliberately small ABI fixture. This tests ownership and orchestration, not
  * trained model inference or the actual device scheduler. */
 export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
-  let heap = new Uint8Array(1024 * 1024); let cursor = 128;
-  const output = audioResult(); const outputPointer = 500000n;
+  let heap = new Uint8Array(1024 * 1024);
+  let cursor = 128;
+  const output = audioResult();
+  const outputPointer = 500000n;
   const controls = { nativeType: 1, position: 0, capacity: 4096, stopAfter: 2, steps: 0, audio: true, referenceBytes: 24000 * 4, growDuringStep: false };
   const fields = new Map<string, number | bigint>();
-  const owned = new Set<bigint>(); const freed: bigint[] = [];
+  const owned = new Set<bigint>();
+  const freed: bigint[] = [];
   const constants: Record<string, number> = { MTMD_GEN_AUDIO_TYPE_QWEN3TTS: 1, MTMD_GEN_AUDIO_TYPE_POCKETTTS: 2, MTMD_HELPER_GEN_AUDIO_OUTTYPE_WAV: 1, LLAMA_TOKEN_NULL: -1 };
   const bytes = ({ pointer, length }: { pointer: bigint, length: number | bigint }): Uint8Array => {
-    const start = Number(pointer); const end = start + Number(length);
-    if (start < 0 || end > heap.length) throw new Error('Fixture out of bounds');
+    const start = Number(pointer);
+    const end = start + Number(length);
+    if (start < 0 || end > heap.length) {
+      throw new Error('Fixture out of bounds');
+    }
     return heap.subarray(start, end);
   };
   const write = ({ pointer, value, size, signed }: { pointer: bigint, value: number | bigint, size: number, signed: boolean }): void => {
     const view = new DataView(heap.buffer);
     if (size === 8) {
-      if (signed) view.setBigInt64(Number(pointer), BigInt(value), true); else view.setBigUint64(Number(pointer), BigInt(value), true);
+      if (signed) {
+        view.setBigInt64(Number(pointer), BigInt(value), true);
+      } else {
+        view.setBigUint64(Number(pointer), BigInt(value), true);
+      }
     } else if (size === 4) {
-      if (signed) view.setInt32(Number(pointer), Number(value), true); else view.setUint32(Number(pointer), Number(value), true);
-    } else view.setUint8(Number(pointer), Number(value));
+      if (signed) {
+        view.setInt32(Number(pointer), Number(value), true);
+      } else {
+        view.setUint32(Number(pointer), Number(value), true);
+      }
+    } else {
+      view.setUint8(Number(pointer), Number(value));
+    }
   };
   const allocate = ({ bytes: count }: { bytes: number }): bigint => {
-    const pointer = BigInt(cursor); cursor += Math.ceil(count / 8) * 8 + 8; owned.add(pointer); return pointer;
+    const pointer = BigInt(cursor);
+    cursor += Math.ceil(count / 8) * 8 + 8;
+    owned.add(pointer);
+    return pointer;
   };
   const grow = (): void => {
-    const next = new Uint8Array(heap.length * 2); next.set(heap);
+    const next = new Uint8Array(heap.length * 2);
+    next.set(heap);
     // Detach the previous view to model memory growth invalidating JS references.
-    const previous = heap.buffer; heap = next;
-    if (typeof structuredClone === 'function') structuredClone(previous, { transfer: [previous] });
+    const previous = heap.buffer;
+    heap = next;
+    if (typeof structuredClone === 'function') {
+      structuredClone(previous, { transfer: [previous] });
+    }
   };
   const api = {
     mtmd_gen_audio_get_info: vi.fn(async (out: bigint, _projector: bigint) => {
@@ -52,19 +75,22 @@ export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     llama_get_memory: vi.fn(async () => 70n),
     llama_memory_seq_pos_max: vi.fn(async () => controls.position),
     mtmd_helper_gen_audio_step_prompt: vi.fn(async () => {
-      controls.position = 10; return 0;
+      controls.position = 10;
+      return 0;
     }),
     llama_get_embeddings_ith: vi.fn(async () => 10000n),
     llama_sampler_sample: vi.fn(async () => 123),
     mtmd_helper_gen_audio_step_gen: vi.fn(async (_helper: bigint, _token: number, _hidden: bigint, hiddenOut: bigint, stopOut: bigint) => {
       if (controls.growDuringStep) {
-        grow(); controls.growDuringStep = false;
+        grow();
+        controls.growDuringStep = false;
       }
       const stop = controls.steps >= controls.stopAfter;
       write({ pointer: hiddenOut, value: stop ? 0n : 10000n, size: pointerBytes, signed: false });
       write({ pointer: stopOut, value: stop ? 1 : 0, size: 1, signed: false });
       if (!stop) {
-        controls.steps++; controls.position++;
+        controls.steps++;
+        controls.position++;
       }
       return 0;
     }),
@@ -98,20 +124,34 @@ export function audioNativeFixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     alloc: allocate,
     allocRecord: ({ name: _name }: { name: string }) => allocate({ bytes: 128 }),
     free: ({ pointer }: { pointer: bigint }) => {
-      if (!owned.delete(pointer)) throw new Error('Double or foreign free'); freed.push(pointer);
+      if (!owned.delete(pointer)) {
+        throw new Error('Double or foreign free');
+      }
+      freed.push(pointer);
     },
     utf8: ({ text }: { text: string }) => {
-      const encoded = new TextEncoder().encode(text); const pointer = allocate({ bytes: encoded.length + 1 }); bytes({ pointer, length: encoded.length }).set(encoded); return pointer;
+      const encoded = new TextEncoder().encode(text);
+      const pointer = allocate({ bytes: encoded.length + 1 });
+      bytes({ pointer, length: encoded.length }).set(encoded);
+      return pointer;
     },
     constant: ({ name }: { name: string }) => {
-      const value = constants[name]; if (value === undefined) throw new Error('Unknown fixture constant'); return value;
+      const value = constants[name];
+      if (value === undefined) {
+        throw new Error('Unknown fixture constant');
+      }
+      return value;
     },
     setField: ({ name, pointer: _pointer, field, value }: { name: string, pointer: bigint, field: string, value: number | bigint }) => {
       fields.set(`${name}.${field}`, value);
     },
     fieldLayout: ({ name, field }: { name: string, field: string }) => {
-      if (name === 'mtmd_gen_audio_info' && field === 'type') return { kind: 'signed', offset: 0n, size: 4 };
-      if (name === 'mtmd_helper_bitmap_wrapper' && field === 'bitmap') return { kind: 'pointer', offset: 0n, size: pointerBytes };
+      if (name === 'mtmd_gen_audio_info' && field === 'type') {
+        return { kind: 'signed', offset: 0n, size: 4 };
+      }
+      if (name === 'mtmd_helper_bitmap_wrapper' && field === 'bitmap') {
+        return { kind: 'pointer', offset: 0n, size: pointerBytes };
+      }
       throw new Error('Unknown fixture field');
     },
   } as unknown as Core;

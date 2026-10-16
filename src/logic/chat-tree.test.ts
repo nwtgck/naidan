@@ -156,20 +156,30 @@ describe('full-part history preservation', () => {
     const nodes = createBranchFromMessages({ messages: [assistant, tool] });
     expect(nodes.map(node => node.parts)).toEqual([assistant.parts, tool.parts]);
     expect(nodes.map(node => node.createdAt)).toEqual([assistant.createdAt, tool.createdAt]);
-    expect(nodes[0]!.id).not.toBe(assistant.id); expect(nodes[1]!.id).not.toBe(tool.id);
+    expect(nodes[0]!.id).not.toBe(assistant.id);
+    expect(nodes[1]!.id).not.toBe(tool.id);
     expect(nodes[0]!.replies.items).toEqual([nodes[1]]);
     expect(nodes[0]).toMatchObject({ interruption: { type: 'error', message: '日本語' } });
-    const first = nodes[0]!; if (first.role !== 'assistant') throw new Error('Expected assistant');
-    const call = first.parts[2]; if (call?.type !== 'tool_call') throw new Error('Expected call');
+    const first = nodes[0]!;
+    if (first.role !== 'assistant') {
+      throw new Error('Expected assistant');
+    }
+    const call = first.parts[2];
+    if (call?.type !== 'tool_call') {
+      throw new Error('Expected call');
+    }
     call.toolCall.function.arguments = 'edited';
     expect(JSON.stringify(assistant)).toBe(before);
   });
 
   it('copies a long selected path without recursively copying its branches', () => {
     const messages = Array.from({ length: 2500 }, () => historyMessage({ role: 'user', content: 'x', thinking: undefined, modelId: undefined, attachments: undefined }));
-    for (let index = 0; index < messages.length - 1; index++) messages[index]!.replies.items.push(messages[index + 1]!);
+    for (let index = 0; index < messages.length - 1; index++) {
+messages[index]!.replies.items.push(messages[index + 1]!);
+    }
     const nodes = createBranchFromMessages({ messages });
-    expect(nodes).toHaveLength(2500); expect(nodes.at(-1)!.replies.items).toEqual([]);
+    expect(nodes).toHaveLength(2500);
+    expect(nodes.at(-1)!.replies.items).toEqual([]);
     expect(nodes[0]!.replies.items[0]).toBe(nodes[1]);
   });
 });
@@ -181,6 +191,9 @@ function historyMessage({ role, content, thinking, attachments, modelId }: { rol
   case 'user': return { ...common, role, modelId: undefined, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), parts: [body, ...(attachments ?? []).map((attachment) => ({ type: 'attachment' as const, attachment }))] };
   case 'assistant': return { ...common, role, modelId, lmParameters: cloneLmParameters({ lmParameters: EMPTY_LM_PARAMETERS }), interruption: undefined, parts: [...(thinking === undefined ? [] : [{ type: 'reasoning' as const, text: thinking, completeness: 'complete' as const }]), body] };
   case 'system': return { ...common, role, modelId: undefined, lmParameters: undefined, parts: [body] };
-  default: { const _ex: never = role; throw new Error('Unexpected role: ' + _ex); }
+  default: {
+    const _ex: never = role;
+    throw new Error('Unexpected role: ' + _ex);
+  }
   }
 }

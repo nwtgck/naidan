@@ -75,7 +75,9 @@ async function waitForDownloadOperation<T>({ operation, signal, timeoutMs }: {
 async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<DownloadTarget | undefined> {
   if (location.protocol === 'file:' || !globalThis.isSecureContext
     || !('serviceWorker' in navigator) || typeof navigator.serviceWorker.getRegistration !== 'function'
-    || typeof MessageChannel !== 'function' || typeof globalThis.crypto?.randomUUID !== 'function') return;
+    || typeof MessageChannel !== 'function' || typeof globalThis.crypto?.randomUUID !== 'function') {
+    return;
+  }
   // .ready can remain pending forever when no worker is registered (e.g. dev).
   // getRegistration is a local lookup, not register/update or a network request.
   const registration = await waitForDownloadOperation({
@@ -85,9 +87,13 @@ async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<
   });
   signal.throwIfAborted();
   const worker = registration?.active;
-  if (!registration || !worker || worker.state !== 'activated') return;
+  if (!registration || !worker || worker.state !== 'activated') {
+    return;
+  }
   const base = new URL(registration.scope);
-  if (base.origin !== location.origin || !location.pathname.startsWith(base.pathname)) return;
+  if (base.origin !== location.origin || !location.pathname.startsWith(base.pathname)) {
+    return;
+  }
   // An overlapping registration for the reserved path must not receive our
   // navigation. This lookup is local too and contains no token or metadata.
   const destination = new URL(DOWNLOAD_FRAGMENT_PATH, base);
@@ -96,7 +102,9 @@ async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<
     signal,
     timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
   });
-  if (!target || target.scope !== registration.scope || target.active !== worker) return;
+  if (!target || target.scope !== registration.scope || target.active !== worker) {
+    return;
+  }
   // A preload can contact the host before the fetch handler runs. Do not enable,
   // disable or otherwise modify the app's registration; use Blob saving instead.
   if (target.navigationPreload) {
@@ -105,10 +113,14 @@ async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<
       signal,
       timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
     });
-    if (navigationPreloadStateSchema.parse(state).enabled) return;
+    if (navigationPreloadStateSchema.parse(state).enabled) {
+      return;
+    }
   }
   signal.throwIfAborted();
-  if (target.active !== worker || worker.state !== 'activated') return;
+  if (target.active !== worker || worker.state !== 'activated') {
+    return;
+  }
   // A new navigation selects this active worker, not the page's older controller.
   return { registration: target, worker, base };
 }
@@ -130,7 +142,9 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
         // this callback returns but before its caller receives the stream.
         openedStream = opened;
         if (signal.aborted) {
-          if (!opened.locked) void opened.cancel(signal.reason).catch(() => undefined);
+          if (!opened.locked) {
+            void opened.cancel(signal.reason).catch(() => undefined);
+          }
           signal.throwIfAborted();
         }
         return opened;
@@ -143,18 +157,24 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
           throw new Error('Expected a byte stream');
         }
         written += chunk.byteLength;
-        if (size !== undefined && written > size) throw new Error('Download exceeds its declared size');
+        if (size !== undefined && written > size) {
+          throw new Error('Download exceeds its declared size');
+        }
         // Producers may reuse their buffers: Blob parts must own stable bytes.
         chunks.push(Uint8Array.from(chunk));
       },
     }));
     signal.throwIfAborted();
-    if (size !== undefined && written !== size) throw new Error('Download size does not match its declared size');
+    if (size !== undefined && written !== size) {
+      throw new Error('Download size does not match its declared size');
+    }
     downloadBlob({ blob: new Blob(chunks), filename });
   } catch (reason) {
     // Includes a result orphaned by the setup race. A later factory result is
     // handled inside the callback above; never cancel a caller-owned lock.
-    if (openedStream && !openedStream.locked) void openedStream.cancel(reason).catch(() => undefined);
+    if (openedStream && !openedStream.locked) {
+      void openedStream.cancel(reason).catch(() => undefined);
+    }
     throw reason;
   } finally {
     chunks.length = 0;
@@ -217,7 +237,9 @@ async function downloadSource({ openStream, filename, size, signal, fallbackFile
       // Claim may open a save dialog even before the first read. Retrying then
       // could create duplicate downloads. Independent port ordering also means
       // a data pull can arrive before the claimed notification; check both.
-      if (sourceOpened || responseClaimed) throw reason;
+      if (sourceOpened || responseClaimed) {
+        throw reason;
+      }
       // Worker/API/protocol/permission failures before this boundary are safe
       // to retry with the untouched input, after downloadWithWorker's cleanup.
     }
@@ -256,15 +278,22 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
     switch (phase) {
     case 'finished': return true;
     case 'preparing': case 'ready': case 'claimed': return false;
-    default: { const exhaustive: never = phase; throw new Error(`Unknown download phase: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(`Unknown download phase: ${exhaustive}`);
+    }
     }
   };
   const requirePhase = ({ expected }: { expected: Phase }) => {
-    if (phase !== expected) throw new Error(`Unexpected download phase: ${phase}; expected ${expected}`);
+    if (phase !== expected) {
+      throw new Error(`Unexpected download phase: ${phase}; expected ${expected}`);
+    }
   };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const fail = ({ reason }: { reason: unknown }) => {
-    if (isFinished()) return;
+    if (isFinished()) {
+      return;
+    }
     phase = 'finished';
     try {
       channel?.send({ message: { type: 'cancel' }, transferables: [] });
@@ -287,7 +316,9 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
       openStream: async () => {
         signal.throwIfAborted();
         // A broken/outdated peer must not consume the input during negotiation.
-        if (phase !== 'ready' && phase !== 'claimed') throw new Error('Download was not prepared');
+        if (phase !== 'ready' && phase !== 'claimed') {
+          throw new Error('Download was not prepared');
+        }
         return openStream();
       },
     });
@@ -298,16 +329,24 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
       outgoingSchema: downloadControlSchema,
       onError: fail,
       onMessage({ message }) {
-        if (isFinished()) return;
+        if (isFinished()) {
+          return;
+        }
         try {
           switch (message.type) {
           case 'ready':
             requirePhase({ expected: 'preparing' });
-            if (message.version !== DOWNLOAD_VERSION || message.token !== token) throw new Error('Invalid download handshake');
-            if (registration.active !== worker || worker.state !== 'activated') throw new Error('Download worker replaced during preparation');
+            if (message.version !== DOWNLOAD_VERSION || message.token !== token) {
+              throw new Error('Invalid download handshake');
+            }
+            if (registration.active !== worker || worker.state !== 'activated') {
+              throw new Error('Download worker replaced during preparation');
+            }
             phase = 'ready';
             heartbeat = setInterval(() => {
-              if (heartbeatTimeout !== undefined) return;
+              if (heartbeatTimeout !== undefined) {
+                return;
+              }
               try {
                 worker.postMessage(downloadKeepAliveSchema.parse({ type: 'naidan-download/keepalive', version: DOWNLOAD_VERSION, token }), []);
                 heartbeatTimeout = setTimeout(() => fail({ reason: new Error('Download worker stopped responding. Retry the download.') }), 120_000);
@@ -361,7 +400,9 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
       worker.postMessage({ type: 'naidan-download/prepare', version: DOWNLOAD_VERSION, token, metadata }, [control.port2, data.port2]);
       portsTransferred = true;
     }
-    if (signal.aborted) onAbort();
+    if (signal.aborted) {
+      onAbort();
+    }
     await completion.promise;
   } catch (reason) {
     fail({ reason });
@@ -369,8 +410,11 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
   } finally {
     const frame = downloadFrame;
     if (frame) {
-      if (abort.signal.aborted) frame.remove();
-      else setTimeout(() => frame.remove(), 60_000);
+      if (abort.signal.aborted) {
+        frame.remove();
+      } else {
+        setTimeout(() => frame.remove(), 60_000);
+      }
     }
     clearInterval(heartbeat);
     clearTimeout(heartbeatTimeout);
@@ -382,7 +426,8 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
     data?.port1.close();
     // Transferred endpoints belong to the worker; close only local endpoints.
     if (!portsTransferred) {
-      control.port2.close(); data?.port2.close();
+      control.port2.close();
+      data?.port2.close();
     }
   }
 }
@@ -392,7 +437,9 @@ export async function downloadReadableStream({ stream, ...options }: { stream: R
   try {
     await downloadStream({ ...options, openStream: async () => stream });
   } catch (reason) {
-    if (!stream.locked) void stream.cancel(reason).catch(() => undefined);
+    if (!stream.locked) {
+      void stream.cancel(reason).catch(() => undefined);
+    }
     throw reason;
   }
 }

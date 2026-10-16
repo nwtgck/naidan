@@ -83,15 +83,19 @@ describe('mock server v2', () => {
       abortedRequest.once('socket', (socket) => {
         const sendPartialBody = () => {
           abortedRequest.write('a', (error) => {
-            if (error) reject(error);
-            else {
+            if (error) {
+              reject(error);
+            } else {
               abortedRequest.destroy();
               resolve();
             }
           });
         };
-        if (socket.connecting) socket.once('connect', sendPartialBody);
-        else sendPartialBody();
+        if (socket.connecting) {
+          socket.once('connect', sendPartialBody);
+        } else {
+          sendPartialBody();
+        }
       });
     });
     await requestClosed;

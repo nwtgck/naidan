@@ -34,9 +34,13 @@ export function createProviderReplayTestWorkerConstructor({ scriptUrl, start, on
   return class extends ProviderReplayTestWorker {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the browser Worker constructor without changing its arguments.
     constructor(url: string | URL, options: WorkerOptions | undefined) {
-      if (String(url) !== scriptUrl.href) throw new Error(`Unexpected replay Worker script: ${String(url)}`);
+      if (String(url) !== scriptUrl.href) {
+        throw new Error(`Unexpected replay Worker script: ${String(url)}`);
+      }
       workerOptionsSchema.parse(options);
-      if (!pending) throw new Error('Replay supports one Production Realm per fixture; unexpected restart or Download');
+      if (!pending) {
+        throw new Error('Replay supports one Production Realm per fixture; unexpected restart or Download');
+      }
       const callbacks = pending;
       // Validate before super creates native channels or schedules startup.
       super({ start: callbacks.start });
@@ -61,7 +65,9 @@ export class ProviderReplayTestWorker extends EventTarget {
     postMessage: (message, transfer) => this.channel.port2.postMessage(message, transfer as Parameters<MessagePort['postMessage']>[1]),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the external Comlink Endpoint event-listener signature.
     addEventListener: (...args: Parameters<Endpoint['addEventListener']>) => {
-      if (this.terminated) return;
+      if (this.terminated) {
+        return;
+      }
       const [type, listener, options] = args;
       const normalized = readListenerOptions({ options });
       // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited Node platform endpoint installs Comlink's actual listener before observational bookkeeping starts the port.
@@ -79,7 +85,9 @@ export class ProviderReplayTestWorker extends EventTarget {
       this.channel.port2.removeEventListener(type, listener, { capture });
       for (let index = this.endpointListeners.length - 1; index >= 0; index--) {
         const item = this.endpointListeners[index]!;
-        if (item.type === type && item.listener === listener && item.capture === capture) this.endpointListeners.splice(index, 1);
+        if (item.type === type && item.listener === listener && item.capture === capture) {
+          this.endpointListeners.splice(index, 1);
+        }
       }
     },
     start: () => this.channel.port2.start(),
@@ -112,7 +120,9 @@ export class ProviderReplayTestWorker extends EventTarget {
   }
 
   private observeWorkerTransfers() {
-    if (this.observingWorkerTransfers) return;
+    if (this.observingWorkerTransfers) {
+      return;
+    }
     this.observingWorkerTransfers = true;
     this.channel.port2.on('message', data => this.ownTransferredPorts({ value: data }));
   }
@@ -121,7 +131,9 @@ export class ProviderReplayTestWorker extends EventTarget {
   postMessage(message: unknown, transfer: Parameters<MessagePort['postMessage']>[1]) {
     // Closed native ports still validate structured cloning, then discard the
     // send. In particular, Comlink's GC release is not a new live host request.
-    if (!this.terminated) this.hostMessages.push(message);
+    if (!this.terminated) {
+      this.hostMessages.push(message);
+    }
     // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited native Worker platform adapter forwards unchanged structured-clone messages and transferred callback ports.
     this.channel.port1.postMessage(message, transfer);
   }
@@ -134,7 +146,9 @@ export class ProviderReplayTestWorker extends EventTarget {
   private ownTransferredPorts({ value }: { value: unknown }) {
     const visited = new Set<object>();
     const visit = ({ item }: { item: unknown }): void => {
-      if (item === null || typeof item !== 'object' || visited.has(item)) return;
+      if (item === null || typeof item !== 'object' || visited.has(item)) {
+        return;
+      }
       visited.add(item);
       if (item instanceof MessagePort) {
         this.transferredPorts.add(item);
@@ -142,7 +156,9 @@ export class ProviderReplayTestWorker extends EventTarget {
       }
       // This observes native clone payloads without changing their shape or
       // delivery. Worker disposal must also close Comlink's callback channels.
-      for (const child of Object.values(item)) visit({ item: child });
+      for (const child of Object.values(item)) {
+        visit({ item: child });
+      }
     };
     visit({ item: value });
   }
@@ -156,7 +172,9 @@ export class ProviderReplayTestWorker extends EventTarget {
     }
     this.channel.port1.close();
     this.channel.port2.close();
-    for (const port of this.transferredPorts) port.close();
+    for (const port of this.transferredPorts) {
+      port.close();
+    }
     this.transferredPorts.clear();
   }
 }

@@ -344,7 +344,9 @@ class PipeHandle implements WeshFileHandle {
     }
 
     while (this.state.bufferHeadIndex >= this.state.buffer.length) {
-      if (this.closed || this.state.writeRefCount <= 0) return { bytesRead: 0 };
+      if (this.closed || this.state.writeRefCount <= 0) {
+        return { bytesRead: 0 };
+      }
       await new Promise<void>(resolve => this.state.readWaiters.push(resolve));
     }
 
@@ -586,7 +588,9 @@ export class WeshKernel {
 
   async wait({ pid, flags: _flags }: { pid: number, flags?: number }): Promise<{ pid: number, exitCode: number }> {
     const proc = this.processes.get(pid);
-    if (!proc) throw new Error(`No such process: ${pid}`);
+    if (!proc) {
+      throw new Error(`No such process: ${pid}`);
+    }
 
     if (proc.state === 'terminated' || proc.state === 'zombie') {
       return { pid: pid, exitCode: proc.exitCode ?? 0 };
@@ -604,7 +608,9 @@ export class WeshKernel {
 
   async kill({ pid, signal }: { pid: number, signal: number }): Promise<void> {
     const proc = this.processes.get(pid);
-    if (!proc) return;
+    if (!proc) {
+      return;
+    }
     if (proc.state === 'terminated' || proc.state === 'zombie') {
       return;
     }

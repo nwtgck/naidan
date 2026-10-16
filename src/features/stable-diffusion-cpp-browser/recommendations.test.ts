@@ -87,8 +87,11 @@ it.each([
   for (const proof of [undefined, receipt, { ...receipt, source: { ...source, revision: '0'.repeat(40) } }]) {
     const result = await scanImageRepositories({ repositories: [{ id: 'user/renamed', name: 'renamed', files: [{ path: file.name, file, ...(proof ? { receipt: proof } : {}) }] }], signal: undefined });
     const preset = recommendationForSelection({ model: result.candidates[0] });
-    if (proof === receipt) expect(preset).toMatchObject({ id, parameters: { steps: 8, guidance: 1 } });
-    else expect(preset).toBeUndefined();
+    if (proof === receipt) {
+      expect(preset).toMatchObject({ id, parameters: { steps: 8, guidance: 1 } });
+    } else {
+      expect(preset).toBeUndefined();
+    }
   }
 });
 

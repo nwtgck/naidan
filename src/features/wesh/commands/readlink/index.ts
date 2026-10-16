@@ -123,7 +123,9 @@ function describeReadlinkError({
   if (message.includes('Too many levels of symbolic links')) {
     return 'Too many levels of symbolic links';
   }
-  if (message.includes('Not a directory')) return 'Not a directory';
+  if (message.includes('Not a directory')) {
+    return 'Not a directory';
+  }
   return message;
 }
 

@@ -46,7 +46,9 @@ function updateStep({
   detail: string,
 }): ModelSupportInvestigationStep[] {
   return steps.map((step) => {
-    if (step.id === stepId) return { ...step, status, detail };
+    if (step.id === stepId) {
+      return { ...step, status, detail };
+    }
     return step;
   });
 }
@@ -207,83 +209,85 @@ export async function runPartialModelSupportInvestigation({
       status: 'skipped',
       detail: 'Skipped because Repository / Download is not selected by investigation scope',
     });
-  } else switch (externalNetworkPolicy) {
-  case 'deny':
-    emit({
-      stepId: 'repository-information',
-      status: 'skipped',
-      detail: 'Skipped because external network access is disabled by investigation policy',
-    });
-    emit({
-      stepId: 'download-evidence',
-      status: 'skipped',
-      detail: 'Skipped because external network access is disabled by investigation policy',
-    });
-    break;
-  case 'allow':
-    emit({ stepId: 'repository-information', status: 'running', detail: 'Resolving Hugging Face repository metadata and commit SHA' });
-    try {
-      run.repository = await inspectRepository();
-      run.runtimeTarget = runtimeTargetFromRepository({ repository: run.repository });
+  } else {
+    switch (externalNetworkPolicy) {
+    case 'deny':
       emit({
         stepId: 'repository-information',
-        status: 'passed',
-        detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
+        status: 'skipped',
+        detail: 'Skipped because external network access is disabled by investigation policy',
       });
-      // Collection belongs to Repository / Download, not to the absence of
-      // Model Load. Full must preserve the same replay inputs before attempting
-      // any expensive runtime work that may fail or be interrupted.
-      if (collectReplayMetadata !== undefined) {
-        await collectReplayMetadata({
-          run,
-          onSummary: ({ summary }) => {
-            run.replayMetadata = summary;
-            onRunUpdate({ run: structuredClone(run) });
-          },
-        });
-      }
-    } catch (error) {
-      const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
-      errors.push(detail);
-      emit({ stepId: 'repository-information', status: 'failed', detail });
-    }
-
-    if (run.repository === undefined) {
       emit({
         stepId: 'download-evidence',
-        status: 'blocked',
-        detail: 'Blocked because the resolved repository revision is unavailable',
+        status: 'skipped',
+        detail: 'Skipped because external network access is disabled by investigation policy',
       });
-    } else {
-      emit({
-        stepId: 'download-evidence',
-        status: 'running',
-        detail: 'Collecting bounded transport and actual Transformers.js artifact-request evidence against the frozen revision',
-      });
+      break;
+    case 'allow':
+      emit({ stepId: 'repository-information', status: 'running', detail: 'Resolving Hugging Face repository metadata and commit SHA' });
       try {
-        run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
-        const outcome = downloadProbeOutcome({ evidence: run.downloadEvidence });
-        for (const error of outcome.errors) {
-          const cause = new Error(error.message);
-          cause.name = error.name;
-          errors.push(recordStepError({ run, stepId: 'download-evidence', error: cause }).message);
+        run.repository = await inspectRepository();
+        run.runtimeTarget = runtimeTargetFromRepository({ repository: run.repository });
+        emit({
+          stepId: 'repository-information',
+          status: 'passed',
+          detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
+        });
+        // Collection belongs to Repository / Download, not to the absence of
+        // Model Load. Full must preserve the same replay inputs before attempting
+        // any expensive runtime work that may fail or be interrupted.
+        if (collectReplayMetadata !== undefined) {
+          await collectReplayMetadata({
+            run,
+            onSummary: ({ summary }) => {
+              run.replayMetadata = summary;
+              onRunUpdate({ run: structuredClone(run) });
+            },
+          });
         }
+      } catch (error) {
+        const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
+        errors.push(detail);
+        emit({ stepId: 'repository-information', status: 'failed', detail });
+      }
+
+      if (run.repository === undefined) {
         emit({
           stepId: 'download-evidence',
-          status: outcome.status,
-          detail: outcome.detail,
+          status: 'blocked',
+          detail: 'Blocked because the resolved repository revision is unavailable',
         });
-      } catch (error) {
-        const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
-        errors.push(detail);
-        emit({ stepId: 'download-evidence', status: 'failed', detail });
+      } else {
+        emit({
+          stepId: 'download-evidence',
+          status: 'running',
+          detail: 'Collecting bounded transport and actual Transformers.js artifact-request evidence against the frozen revision',
+        });
+        try {
+          run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
+          const outcome = downloadProbeOutcome({ evidence: run.downloadEvidence });
+          for (const error of outcome.errors) {
+            const cause = new Error(error.message);
+            cause.name = error.name;
+            errors.push(recordStepError({ run, stepId: 'download-evidence', error: cause }).message);
+          }
+          emit({
+            stepId: 'download-evidence',
+            status: outcome.status,
+            detail: outcome.detail,
+          });
+        } catch (error) {
+          const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
+          errors.push(detail);
+          emit({ stepId: 'download-evidence', status: 'failed', detail });
+        }
       }
+      break;
+    default: {
+      const _ex: never = externalNetworkPolicy;
+      return _ex;
     }
-    break;
-  default: {
-    const _ex: never = externalNetworkPolicy;
-    return _ex;
-  }
+    }
   }
 
   emit({ stepId: 'existing-model-data', status: 'running', detail: 'Inspecting existing OPFS model files and completion markers' });

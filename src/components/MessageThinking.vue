@@ -30,7 +30,10 @@ const reasoningParts = computed(() => {
   case 'user':
   case 'system':
   case 'tool': return [];
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
 });
 const displayThinking = computed(() => props.partContent !== undefined
@@ -41,12 +44,16 @@ const hasThinking = computed(() => props.partContent !== undefined || reasoningP
 const isThinkingNow = computed(() => props.isActive === true);
 
 const mode = computed<ThinkingMode>(() => {
-  if (isUserExpanded.value) return 'expanded';
+  if (isUserExpanded.value) {
+    return 'expanded';
+  }
   return isThinkingNow.value ? 'collapsed-active' : 'collapsed-finished';
 });
 
 function handleToggleThinking() {
-  if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
+  if (typeof window !== 'undefined' && window.getSelection()?.toString()) {
+    return;
+  }
   isUserExpanded.value = !isUserExpanded.value;
 }
 

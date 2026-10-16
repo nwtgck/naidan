@@ -19,7 +19,9 @@ import { bytesSource, collectBytes } from './codecs/transfer';
 const stops: (() => void)[] = [];
 
 afterEach(() => {
-  for (const stop of stops.splice(0)) stop();
+  for (const stop of stops.splice(0)) {
+    stop();
+  }
 });
 
 function peers({ exposure }: { exposure: NaidanRpcExposure }) {
@@ -41,8 +43,11 @@ function source<T>({ items }: { items: readonly T[] }): ReadableStream<T> {
   let index = 0;
   return new ReadableStream({
     pull(controller) {
-      if (index === items.length) controller.close();
-      else controller.enqueue(items[index++]!);
+      if (index === items.length) {
+        controller.close();
+      } else {
+        controller.enqueue(items[index++]!);
+      }
     },
   }, { highWaterMark: 0 });
 }
@@ -57,7 +62,9 @@ async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[
   };
   for (;;) {
     const next = await reader.read();
-    if (next.done) return items;
+    if (next.done) {
+      return items;
+    }
     items.push(next.value);
   }
 }

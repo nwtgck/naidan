@@ -221,7 +221,9 @@ function translateJqQuotedLiterals({ source }: { source: string }): string {
         character: quotedCharacter,
       });
     }
-    if (quotedEnd === -1) break;
+    if (quotedEnd === -1) {
+      break;
+    }
     index = quotedEnd + 1;
   }
   return output;
@@ -261,8 +263,9 @@ function stripExtendedMode({ source }: { source: string }): string {
       continue;
     }
     if (!inBracket && character === "#") {
-      while (index + 1 < source.length && source[index + 1] !== "\n")
+      while (index + 1 < source.length && source[index + 1] !== "\n") {
         index += 1;
+      }
       continue;
     }
     output += character;
@@ -281,7 +284,9 @@ function splitTopLevelAlternatives({ source }: { source: string }): string[] {
     const character = source[index]!;
     if (character === "\\") {
       current += character;
-      if (index + 1 < source.length) current += source[++index]!;
+      if (index + 1 < source.length) {
+        current += source[++index]!;
+      }
       continue;
     }
     if (character === "[" && !inBracket) {
@@ -295,8 +300,12 @@ function splitTopLevelAlternatives({ source }: { source: string }): string[] {
       continue;
     }
     if (!inBracket) {
-      if (character === "(") groupDepth += 1;
-      if (character === ")") groupDepth = Math.max(0, groupDepth - 1);
+      if (character === "(") {
+        groupDepth += 1;
+      }
+      if (character === ")") {
+        groupDepth = Math.max(0, groupDepth - 1);
+      }
       if (character === "|" && groupDepth === 0) {
         alternatives.push(current);
         current = "";
@@ -315,7 +324,9 @@ function unwrapWholeNonCapturingGroup({
 }: {
   source: string;
 }): string | undefined {
-  if (!source.startsWith("(?:")) return undefined;
+  if (!source.startsWith("(?:")) {
+    return undefined;
+  }
   let depth = 1;
   let inBracket = false;
   for (let index = 3; index < source.length; index += 1) {
@@ -332,14 +343,20 @@ function unwrapWholeNonCapturingGroup({
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
+    if (inBracket) {
+      continue;
+    }
     if (character === "(") {
       depth += 1;
       continue;
     }
-    if (character !== ")") continue;
+    if (character !== ")") {
+      continue;
+    }
     depth -= 1;
-    if (depth !== 0) continue;
+    if (depth !== 0) {
+      continue;
+    }
     return index === source.length - 1
       ? source.slice(3, index)
       : undefined;
@@ -357,11 +374,17 @@ function findIgnoreEmptyAlternativeSources({
   // Independent alternatives renumber captures, so this generic nullable-path
   // fallback remains restricted to capture-free patterns. Captured explicit
   // empty alternatives use the full-source disabling path below.
-  if (captureNames.length !== 0) return [];
+  if (captureNames.length !== 0) {
+    return [];
+  }
   const topLevel = splitTopLevelAlternatives({ source });
-  if (topLevel.length > 1) return topLevel;
+  if (topLevel.length > 1) {
+    return topLevel;
+  }
   const unwrapped = unwrapWholeNonCapturingGroup({ source });
-  if (unwrapped === undefined) return [];
+  if (unwrapped === undefined) {
+    return [];
+  }
   const nested = splitTopLevelAlternatives({ source: unwrapped });
   return nested.length > 1 ? nested : [];
 }
@@ -381,7 +404,9 @@ function emptyAlternativeRanges({
   const ranges: JqSourceRange[] = [];
   let cursor = contentStart;
   for (const alternative of alternatives) {
-    if (alternative.length === 0) ranges.push({ start: cursor, end: cursor });
+    if (alternative.length === 0) {
+      ranges.push({ start: cursor, end: cursor });
+    }
     cursor += alternative.length + 1;
   }
   return ranges;
@@ -422,16 +447,22 @@ function findIgnoreEmptyAlternativeRanges({
     }
 
     const group = parseJqGroupPrefix({ source, startIndex });
-    if (group === undefined) return [];
+    if (group === undefined) {
+      return [];
+    }
     if (
       group.prefix === '(?='
       || group.prefix === '(?!'
       || group.prefix === '(?<='
       || group.prefix === '(?<!'
-    ) return [];
+    ) {
+      return [];
+    }
 
     const groupEndIndex = groupEnds.get(startIndex);
-    if (groupEndIndex !== endIndex - 1) return [];
+    if (groupEndIndex !== endIndex - 1) {
+      return [];
+    }
     return visitWholeExpression({
       startIndex: group.contentStart,
       endIndex: groupEndIndex,
@@ -454,8 +485,9 @@ function translateResetMatchStart({ source }: { source: string }): string {
         if (character === "\\") {
           const next = alternative[index + 1];
           if (next === "K") {
-            if (groupDepth !== 0 || inBracket)
+            if (groupDepth !== 0 || inBracket) {
               throw new Error("unsupported \\K placement");
+            }
             markerIndex = index;
             markerCount += 1;
           }
@@ -471,16 +503,23 @@ function translateResetMatchStart({ source }: { source: string }): string {
           continue;
         }
         if (!inBracket) {
-          if (character === "(") groupDepth += 1;
-          if (character === ")") groupDepth = Math.max(0, groupDepth - 1);
+          if (character === "(") {
+            groupDepth += 1;
+          }
+          if (character === ")") {
+            groupDepth = Math.max(0, groupDepth - 1);
+          }
         }
       }
 
-      if (markerCount === 0) return alternative;
-      if (markerCount > 1)
+      if (markerCount === 0) {
+        return alternative;
+      }
+      if (markerCount > 1) {
         throw new Error(
           "multiple \\K operators in one alternative are unsupported",
         );
+      }
       const prefix = alternative.slice(0, markerIndex);
       const suffix = alternative.slice(markerIndex + 2);
       return prefix.length === 0 ? suffix : `(?<=${prefix})${suffix}`;
@@ -548,7 +587,9 @@ function translateJqComplementaryCharacterClass({
 }): TranslatedJqCharacterClass | undefined {
   let index = startIndex + 1;
   const negated = source[index] === "^";
-  if (negated) index += 1;
+  if (negated) {
+    index += 1;
+  }
   let explicitContent = "";
   let hasPositive = false;
   let hasNegative = false;
@@ -558,19 +599,29 @@ function translateJqComplementaryCharacterClass({
     const character = source[index]!;
     if (character === "\\") {
       const next = source[index + 1];
-      if (next === undefined) return undefined;
-      if (next === set.positiveOperator) hasPositive = true;
-      else if (next === set.negativeOperator) hasNegative = true;
-      else explicitContent += character + next;
+      if (next === undefined) {
+        return undefined;
+      }
+      if (next === set.positiveOperator) {
+        hasPositive = true;
+      } else if (next === set.negativeOperator) {
+        hasNegative = true;
+      } else {
+        explicitContent += character + next;
+      }
       index += 1;
       firstContent = false;
       continue;
     }
-    if (character === "]" && !firstContent) break;
+    if (character === "]" && !firstContent) {
+      break;
+    }
     explicitContent += character;
     firstContent = false;
   }
-  if (index >= source.length || source[index] !== "]") return undefined;
+  if (index >= source.length || source[index] !== "]") {
+    return undefined;
+  }
   if (!hasPositive && !hasNegative) {
     return {
       source: source.slice(startIndex, index + 1),
@@ -734,7 +785,9 @@ function getJqBareLiteralAlphabeticEscape({
   source: string;
   startIndex: number;
 }): string | undefined {
-  if (source[startIndex] !== "\\") return undefined;
+  if (source[startIndex] !== "\\") {
+    return undefined;
+  }
   const escaped = source[startIndex + 1];
   if (
     escaped === undefined ||
@@ -925,11 +978,15 @@ function parseJqCodePointEscape({
   source: string;
   startIndex: number;
 }): { readonly atom: JqCharacterClassAtom; readonly endIndex: number } | undefined {
-  if (source[startIndex] !== "\\") return undefined;
+  if (source[startIndex] !== "\\") {
+    return undefined;
+  }
   const operator = source[startIndex + 1];
   if ((operator === "x" || operator === "o") && source[startIndex + 2] === "{") {
     const closingIndex = source.indexOf("}", startIndex + 3);
-    if (closingIndex === -1) return undefined;
+    if (closingIndex === -1) {
+      return undefined;
+    }
     const digits = source.slice(startIndex + 3, closingIndex);
     const { digitPattern, radix } = (() => {
       switch (operator) {
@@ -943,9 +1000,13 @@ function parseJqCodePointEscape({
       }
       }
     })();
-    if (!digitPattern.test(digits)) return undefined;
+    if (!digitPattern.test(digits)) {
+      return undefined;
+    }
     const codePoint = Number.parseInt(digits, radix);
-    if (!Number.isSafeInteger(codePoint) || codePoint > 0x10ffff) return undefined;
+    if (!Number.isSafeInteger(codePoint) || codePoint > 0x10ffff) {
+      return undefined;
+    }
     return {
       atom: {
         source: source.slice(startIndex, closingIndex + 1),
@@ -1097,7 +1158,9 @@ function translateJqCharacterClassRange({
   start: JqCharacterClassAtom;
   end: JqCharacterClassAtom;
 }): string | undefined {
-  if (!start.raw && !end.raw) return undefined;
+  if (!start.raw && !end.raw) {
+    return undefined;
+  }
   if (
     start.codePoint === undefined ||
     start.storage === undefined ||
@@ -1113,7 +1176,9 @@ function translateJqCharacterClassRange({
     start.storage === "single-byte" && end.storage === "single-byte";
   const lower = Math.max(start.codePoint, singleByteRange ? 0 : 0x00);
   const upper = Math.min(end.codePoint, singleByteRange ? 0x7f : 0x10ffff);
-  if (lower > upper) return "";
+  if (lower > upper) {
+    return "";
+  }
   return `${encodeJqCodePointLiteral({ codePoint: lower })}-${encodeJqCodePointLiteral({ codePoint: upper })}`;
 }
 
@@ -1122,8 +1187,12 @@ function renderJqCharacterClassAtom({
 }: {
   atom: JqCharacterClassAtom;
 }): string {
-  if (!atom.raw) return atom.source;
-  if (!atom.reachable || atom.codePoint === undefined) return "";
+  if (!atom.raw) {
+    return atom.source;
+  }
+  if (!atom.reachable || atom.codePoint === undefined) {
+    return "";
+  }
   return encodeJqCodePointLiteral({ codePoint: atom.codePoint });
 }
 
@@ -1132,7 +1201,9 @@ function translateJqHexEscapesInCharacterClass({
 }: {
   source: string;
 }): string {
-  if (!source.includes("\\x")) return source;
+  if (!source.includes("\\x")) {
+    return source;
+  }
   const { negated, tokens } = parseJqCharacterClassTokens({ source });
   let output = negated ? "^" : "";
   for (let index = 0; index < tokens.length; index += 1) {
@@ -1154,7 +1225,9 @@ function translateJqHexEscapesInCharacterClass({
         continue;
       }
     }
-    if (start === undefined) continue;
+    if (start === undefined) {
+      continue;
+    }
     switch (start.type) {
     case "atom":
       output += renderJqCharacterClassAtom({ atom: start.atom });
@@ -1369,7 +1442,9 @@ function translateJqDotOperators({ source }: { source: string }): string {
     const character = source[index]!;
     if (character === "\\") {
       output += character;
-      if (index + 1 < source.length) output += source[++index]!;
+      if (index + 1 < source.length) {
+        output += source[++index]!;
+      }
       continue;
     }
     if (character === "[" && !inBracket) {
@@ -1454,10 +1529,14 @@ function unwrapWholeInlineModifierGroup({
   source: string;
 }): WholeInlineModifierGroup | undefined {
   const prefix = /^\(\?([imsx]*)(?:-([imsx]+))?:/u.exec(source);
-  if (prefix === null) return undefined;
+  if (prefix === null) {
+    return undefined;
+  }
   const enabled = new Set(prefix[1] ?? "");
   const disabled = new Set(prefix[2] ?? "");
-  if (enabled.size === 0 && disabled.size === 0) return undefined;
+  if (enabled.size === 0 && disabled.size === 0) {
+    return undefined;
+  }
 
   let depth = 1;
   let inBracket = false;
@@ -1475,15 +1554,23 @@ function unwrapWholeInlineModifierGroup({
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
+    if (inBracket) {
+      continue;
+    }
     if (character === "(") {
       depth += 1;
       continue;
     }
-    if (character !== ")") continue;
+    if (character !== ")") {
+      continue;
+    }
     depth -= 1;
-    if (depth !== 0) continue;
-    if (index !== source.length - 1) return undefined;
+    if (depth !== 0) {
+      continue;
+    }
+    if (index !== source.length - 1) {
+      return undefined;
+    }
     return {
       source: source.slice(prefix[0].length, index),
       enabled,
@@ -1502,8 +1589,12 @@ function resolveScopedModifier({
   modifier: string;
   scoped: WholeInlineModifierGroup | undefined;
 }): boolean {
-  if (scoped?.enabled.has(modifier) === true) return true;
-  if (scoped?.disabled.has(modifier) === true) return false;
+  if (scoped?.enabled.has(modifier) === true) {
+    return true;
+  }
+  if (scoped?.disabled.has(modifier) === true) {
+    return false;
+  }
   return initial;
 }
 
@@ -1516,8 +1607,12 @@ function consumeLeadingInlineModifiers({ source }: { source: string }): {
 
   while (true) {
     const match = /^\(\?([imsx]+)\)/u.exec(remaining);
-    if (match === null) break;
-    for (const modifier of match[1]!) modifiers.add(modifier);
+    if (match === null) {
+      break;
+    }
+    for (const modifier of match[1]!) {
+      modifiers.add(modifier);
+    }
     remaining = remaining.slice(match[0].length);
   }
 
@@ -1547,8 +1642,12 @@ function applyJqModifierChanges({
     modifier: string;
     current: boolean;
   }): boolean => {
-    if (enabled.includes(modifier)) return true;
-    if (disabled.includes(modifier)) return false;
+    if (enabled.includes(modifier)) {
+      return true;
+    }
+    if (disabled.includes(modifier)) {
+      return false;
+    }
     return current;
   };
   return {
@@ -1570,7 +1669,9 @@ function findJqEscapeEnd({
   startIndex: number;
 }): number {
   const escaped = source[startIndex + 1];
-  if (escaped === undefined) return startIndex;
+  if (escaped === undefined) {
+    return startIndex;
+  }
   const delimiter = source[startIndex + 2];
   if (
     (escaped === "p" ||
@@ -1601,10 +1702,12 @@ function findJqEscapeEnd({
     const end = source.indexOf(closing, startIndex + 3);
     return end === -1 ? startIndex + 1 : end;
   }
-  if (escaped === "x" && /^[0-9A-Fa-f]{2}/u.test(source.slice(startIndex + 2)))
+  if (escaped === "x" && /^[0-9A-Fa-f]{2}/u.test(source.slice(startIndex + 2))) {
     return startIndex + 3;
-  if (escaped === "c" && source[startIndex + 2] !== undefined)
+  }
+  if (escaped === "c" && source[startIndex + 2] !== undefined) {
     return startIndex + 2;
+  }
   return startIndex + 1;
 }
 
@@ -1616,8 +1719,12 @@ function findJqCharacterClassEnd({
   startIndex: number;
 }): number {
   let index = startIndex + 1;
-  if (source[index] === "^") index += 1;
-  if (source[index] === "]") return index;
+  if (source[index] === "^") {
+    index += 1;
+  }
+  if (source[index] === "]") {
+    return index;
+  }
   for (; index < source.length; index += 1) {
     if (source[index] === "\\") {
       index = findJqEscapeEnd({ source, startIndex: index });
@@ -1634,7 +1741,9 @@ function findJqCharacterClassEnd({
         continue;
       }
     }
-    if (source[index] === "]") return index;
+    if (source[index] === "]") {
+      return index;
+    }
   }
   throw new Error("unterminated regular expression character class");
 }
@@ -1653,7 +1762,9 @@ function consumeJqModifierHeader({
   source: string,
   startIndex: number,
 }): JqModifierHeader | undefined {
-  if (source[startIndex] !== '(' || source[startIndex + 1] !== '?') return undefined;
+  if (source[startIndex] !== '(' || source[startIndex + 1] !== '?') {
+    return undefined;
+  }
   let index = startIndex + 2;
   const enabledStart = index;
   while (
@@ -1661,7 +1772,9 @@ function consumeJqModifierHeader({
     || source[index] === 'm'
     || source[index] === 's'
     || source[index] === 'x'
-  ) index += 1;
+  ) {
+    index += 1;
+  }
   const enabled = source.slice(enabledStart, index);
   let disabled = '';
   if (source[index] === '-') {
@@ -1672,12 +1785,18 @@ function consumeJqModifierHeader({
       || source[index] === 'm'
       || source[index] === 's'
       || source[index] === 'x'
-    ) index += 1;
-    if (index === disabledStart) return undefined;
+    ) {
+      index += 1;
+    }
+    if (index === disabledStart) {
+      return undefined;
+    }
     disabled = source.slice(disabledStart, index);
   }
   const marker = source[index];
-  if (marker !== ':' && marker !== ')') return undefined;
+  if (marker !== ':' && marker !== ')') {
+    return undefined;
+  }
   return { enabled, disabled, marker, endIndex: index + 1 };
 }
 
@@ -1698,9 +1817,13 @@ function mapJqGroupEndIndexes({ source }: { source: string }): ReadonlyMap<numbe
       groupStarts.push(index);
       continue;
     }
-    if (character !== ')') continue;
+    if (character !== ')') {
+      continue;
+    }
     const groupStart = groupStarts.pop();
-    if (groupStart !== undefined) groupEnds.set(groupStart, index);
+    if (groupStart !== undefined) {
+      groupEnds.set(groupStart, index);
+    }
   }
   return groupEnds;
 }
@@ -1717,7 +1840,9 @@ function translateJqAsciiCaseInsensitiveBracket({
   let translated = "[";
   let index = startIndex + 1;
   const negated = source[index] === "^";
-  if (negated) translated += source[index++]!;
+  if (negated) {
+    translated += source[index++]!;
+  }
   let hasClassContent = false;
   if (source[index] === "]") {
     translated += source[index++]!;
@@ -1761,8 +1886,9 @@ function translateJqAsciiCaseInsensitiveBracket({
       (nestedMarker === ":" || nestedMarker === "." || nestedMarker === "=")
     ) {
       const nestedEnd = source.indexOf(`${nestedMarker}]`, index + 2);
-      if (nestedEnd === -1 || nestedEnd >= classEnd)
+      if (nestedEnd === -1 || nestedEnd >= classEnd) {
         throw new Error("unterminated regular expression character class");
+      }
       const expression = source.slice(index, nestedEnd + 2);
       translated +=
         expression === "[:lower:]" || expression === "[:upper:]"
@@ -1781,10 +1907,12 @@ function translateJqAsciiCaseInsensitiveBracket({
       const range = `${character}-${rangeEnd}`;
       translated += range;
       hasClassContent = true;
-      if (/^[a-z]-[a-z]$/u.test(range))
+      if (/^[a-z]-[a-z]$/u.test(range)) {
         translated += `${character.toUpperCase()}-${rangeEnd.toUpperCase()}`;
-      if (/^[A-Z]-[A-Z]$/u.test(range))
+      }
+      if (/^[A-Z]-[A-Z]$/u.test(range)) {
         translated += `${character.toLowerCase()}-${rangeEnd.toLowerCase()}`;
+      }
       if (
         !/^[A-Za-z]-[A-Za-z]$/u.test(range) &&
         (character.toLocaleLowerCase() !== character.toLocaleUpperCase() ||
@@ -1803,9 +1931,13 @@ function translateJqAsciiCaseInsensitiveBracket({
   }
 
   const alternatives: string[] = [];
-  if (hasClassContent) alternatives.push(`${translated}]`);
+  if (hasClassContent) {
+    alternatives.push(`${translated}]`);
+  }
   alternatives.push(...new Set(fullFoldAlternatives));
-  if (alternatives.length === 0) alternatives.push(`${translated}]`);
+  if (alternatives.length === 0) {
+    alternatives.push(`${translated}]`);
+  }
   return {
     source: alternatives.length === 1
       ? alternatives[0]!
@@ -1828,12 +1960,16 @@ function parseJqGroupPrefix({
   }
   if (source.startsWith('(?<', startIndex) && /^[A-Za-z]$/u.test(source[startIndex + 3] ?? '')) {
     let index = startIndex + 4;
-    while (/^[A-Za-z0-9_]$/u.test(source[index] ?? '')) index += 1;
+    while (/^[A-Za-z0-9_]$/u.test(source[index] ?? '')) {
+      index += 1;
+    }
     if (source[index] === '>') {
       return { prefix: source.slice(startIndex, index + 1), contentStart: index + 1 };
     }
   }
-  if (source[startIndex] === '(') return { prefix: '(', contentStart: startIndex + 1 };
+  if (source[startIndex] === '(') {
+    return { prefix: '(', contentStart: startIndex + 1 };
+  }
   return undefined;
 }
 
@@ -1852,7 +1988,9 @@ function findJqLocalModifierQuantifierEnd({
     quantifierEnd = startIndex + 1;
   } else if (marker === '{') {
     const match = /^\{\d+(?:,\d*)?\}/u.exec(source.slice(startIndex, endIndex));
-    if (match === null) return undefined;
+    if (match === null) {
+      return undefined;
+    }
     quantifierEnd = startIndex + match[0].length;
   } else {
     return undefined;
@@ -1860,7 +1998,9 @@ function findJqLocalModifierQuantifierEnd({
   if (
     quantifierEnd < endIndex
     && (source[quantifierEnd] === '?' || source[quantifierEnd] === '+')
-  ) quantifierEnd += 1;
+  ) {
+    quantifierEnd += 1;
+  }
   return quantifierEnd;
 }
 
@@ -1888,7 +2028,9 @@ function translateJqLocalModifierSegment({
   };
 
   const flushLiteralRun = ({ frame }: { frame: TranslationFrame }): void => {
-    if (frame.literalRun.length === 0) return;
+    if (frame.literalRun.length === 0) {
+      return;
+    }
     frame.parts.push(
       frame.state.ignoreCase
         ? translateJqUnicodeFullCaseFoldLiteral({
@@ -2185,11 +2327,19 @@ function containsJqLocalModifier({ source }: { source: string }): boolean {
       inBracket = false;
       continue;
     }
-    if (inBracket || character !== '(' || source[index + 1] !== '?') continue;
+    if (inBracket || character !== '(' || source[index + 1] !== '?') {
+      continue;
+    }
     const modifier = consumeJqModifierHeader({ source, startIndex: index });
-    if (modifier === undefined) continue;
-    if (modifier.enabled.length === 0 && modifier.disabled.length === 0) continue;
-    if (index !== 0 || modifier.marker === ':') return true;
+    if (modifier === undefined) {
+      continue;
+    }
+    if (modifier.enabled.length === 0 && modifier.disabled.length === 0) {
+      continue;
+    }
+    if (index !== 0 || modifier.marker === ':') {
+      return true;
+    }
     index = modifier.endIndex - 1;
   }
   return false;
@@ -2217,18 +2367,26 @@ function captureNamesFromSource({
       inBracket = false;
       continue;
     }
-    if (inBracket || character !== "(") continue;
+    if (inBracket || character !== "(") {
+      continue;
+    }
 
     if (source[index + 1] !== "?") {
       names.push(null);
       continue;
     }
 
-    if (source[index + 2] !== "<") continue;
+    if (source[index + 2] !== "<") {
+      continue;
+    }
     const marker = source[index + 3];
-    if (marker === "=" || marker === "!") continue;
+    if (marker === "=" || marker === "!") {
+      continue;
+    }
     const end = source.indexOf(">", index + 3);
-    if (end === -1) continue;
+    if (end === -1) {
+      continue;
+    }
     names.push(source.slice(index + 3, end));
   }
 
@@ -2282,9 +2440,13 @@ function collectJqCapturingGroups({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (character !== "(") continue;
+    if (character !== "(") {
+      continue;
+    }
     const endIndex = groupEnds.get(index);
-    if (endIndex === undefined) continue;
+    if (endIndex === undefined) {
+      continue;
+    }
     if (source[index + 1] !== "?") {
       groups.push({
         startIndex: index,
@@ -2295,11 +2457,17 @@ function collectJqCapturingGroups({
       });
       continue;
     }
-    if (source[index + 2] !== "<") continue;
+    if (source[index + 2] !== "<") {
+      continue;
+    }
     const marker = source[index + 3];
-    if (marker === "=" || marker === "!") continue;
+    if (marker === "=" || marker === "!") {
+      continue;
+    }
     const nameEnd = source.indexOf(">", index + 3);
-    if (nameEnd === -1 || nameEnd >= endIndex) continue;
+    if (nameEnd === -1 || nameEnd >= endIndex) {
+      continue;
+    }
     groups.push({
       startIndex: index,
       endIndex,
@@ -2334,7 +2502,9 @@ function parseJqSubexpressionCall({
     return undefined;
   }
   const endIndex = source.indexOf(closing, startIndex + 3);
-  if (endIndex === -1) return undefined;
+  if (endIndex === -1) {
+    return undefined;
+  }
   return {
     endIndex,
     reference: source.slice(startIndex + 3, endIndex),
@@ -2348,17 +2518,23 @@ function parseJqRegularExpressionBackreference({
   source: string;
   startIndex: number;
 }): JqRegularExpressionBackreference | undefined {
-  if (source[startIndex] !== "\\") return undefined;
+  if (source[startIndex] !== "\\") {
+    return undefined;
+  }
   const escaped = source[startIndex + 1];
   if (escaped !== undefined && /[1-9]/u.test(escaped)) {
     let endIndex = startIndex + 1;
-    while (/\d/u.test(source[endIndex + 1] ?? "")) endIndex += 1;
+    while (/\d/u.test(source[endIndex + 1] ?? "")) {
+      endIndex += 1;
+    }
     return {
       endIndex,
       reference: source.slice(startIndex + 1, endIndex + 1),
     };
   }
-  if (escaped !== "k") return undefined;
+  if (escaped !== "k") {
+    return undefined;
+  }
   const opening = source[startIndex + 2];
   let closing: string;
   switch (opening) {
@@ -2372,7 +2548,9 @@ function parseJqRegularExpressionBackreference({
     return undefined;
   }
   const endIndex = source.indexOf(closing, startIndex + 3);
-  if (endIndex === -1) return undefined;
+  if (endIndex === -1) {
+    return undefined;
+  }
   return {
     endIndex,
     reference: source.slice(startIndex + 3, endIndex),
@@ -2394,7 +2572,9 @@ function countJqRuntimeValidationMarkers({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (source[index] !== "\\") continue;
+    if (source[index] !== "\\") {
+      continue;
+    }
     const backreference = parseJqRegularExpressionBackreference({
       source,
       startIndex: index,
@@ -2409,7 +2589,9 @@ function countJqRuntimeValidationMarkers({
       positionOperator === "y"
       || positionOperator === "Y"
       || positionOperator === "G"
-    ) count += 1;
+    ) {
+      count += 1;
+    }
     const call = parseJqSubexpressionCall({ source, startIndex: index });
     if (call !== undefined) {
       count += 1;
@@ -2440,20 +2622,26 @@ function jqCaptureDefinitelyParticipatesBeforeBackreference({
     target.startIndex < segmentStartIndex ||
     target.endIndex >= backreferenceStartIndex ||
     backreferenceStartIndex >= segmentEndIndex
-  ) return false;
+  ) {
+    return false;
+  }
 
   const parentGroupStart = ({ position }: { position: number }): number | undefined => {
     let parent: number | undefined;
     for (const [startIndex, endIndex] of groupEndIndexes) {
       if (startIndex < position && position < endIndex) {
-        if (parent === undefined || startIndex > parent) parent = startIndex;
+        if (parent === undefined || startIndex > parent) {
+          parent = startIndex;
+        }
       }
     }
     return parent;
   };
   const targetParent = parentGroupStart({ position: target.startIndex });
   const backreferenceParent = parentGroupStart({ position: backreferenceStartIndex });
-  if (targetParent !== backreferenceParent) return false;
+  if (targetParent !== backreferenceParent) {
+    return false;
+  }
 
   const parentContentStart = targetParent === undefined
     ? segmentStartIndex
@@ -2476,7 +2664,9 @@ function jqCaptureDefinitelyParticipatesBeforeBackreference({
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
+    if (inBracket) {
+      continue;
+    }
     if (character === "(") {
       nestedDepth += 1;
       continue;
@@ -2485,19 +2675,27 @@ function jqCaptureDefinitelyParticipatesBeforeBackreference({
       nestedDepth = Math.max(0, nestedDepth - 1);
       continue;
     }
-    if (character === "|" && nestedDepth === 0) branchStart = index + 1;
+    if (character === "|" && nestedDepth === 0) {
+      branchStart = index + 1;
+    }
   }
-  if (target.startIndex < branchStart) return false;
+  if (target.startIndex < branchStart) {
+    return false;
+  }
 
   const quantifier = parseJqProgressQuantifier({
     source,
     startIndex: target.endIndex + 1,
     endIndex: segmentEndIndex,
   });
-  if (quantifier?.minimumRepetitions === 0) return false;
+  if (quantifier?.minimumRepetitions === 0) {
+    return false;
+  }
 
   const group = parseJqGroupPrefix({ source, startIndex: target.startIndex });
-  if (group === undefined) return false;
+  if (group === undefined) {
+    return false;
+  }
   return !jqExpressionCanMatchEmpty({
     source,
     startIndex: group.contentStart,
@@ -2540,9 +2738,13 @@ function containsJqRegularExpressionBackreference({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (source[index] !== "\\") continue;
+    if (source[index] !== "\\") {
+      continue;
+    }
     const escaped = source[index + 1];
-    if (escaped !== undefined && /[1-9]/u.test(escaped)) return true;
+    if (escaped !== undefined && /[1-9]/u.test(escaped)) {
+      return true;
+    }
     if (
       escaped === "k" &&
       (source[index + 2] === "<" || source[index + 2] === "'")
@@ -2604,9 +2806,13 @@ function jqSimpleBoundedCaptureAlternativeAtomCount({
         ? findJqEscapeEnd({ source, startIndex: index })
         : index + String.fromCodePoint(source.codePointAt(index) ?? 0).length - 1;
     const atom = source.slice(index, endIndex + 1);
-    if (!isJqSimpleSingleCodePointCaptureAtom({ source: atom })) return undefined;
+    if (!isJqSimpleSingleCodePointCaptureAtom({ source: atom })) {
+      return undefined;
+    }
     atomCount += 1;
-    if (atomCount > maximumAtomCount) return undefined;
+    if (atomCount > maximumAtomCount) {
+      return undefined;
+    }
     index = endIndex + 1;
   }
   return atomCount === 0 ? undefined : atomCount;
@@ -2644,7 +2850,9 @@ function isJqSimpleBoundedCaptureExpression({
       source: source.slice(alternativeStartIndex, endIndex),
       maximumAtomCount: JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_ALTERNATIVE_CODE_POINTS,
     });
-    if (atomCount === undefined) return false;
+    if (atomCount === undefined) {
+      return false;
+    }
     remainingExpressionTokens -= atomCount + (includesSeparator ? 1 : 0);
     alternativeStartIndex = endIndex + (includesSeparator ? 1 : 0);
     return remainingExpressionTokens >= 0;
@@ -2658,8 +2866,12 @@ function isJqSimpleBoundedCaptureExpression({
       index = findJqEscapeEnd({ source, startIndex: index });
       continue;
     }
-    if (source[index] === "(" || source[index] === ")") return false;
-    if (source[index] !== "|") continue;
+    if (source[index] === "(" || source[index] === ")") {
+      return false;
+    }
+    if (source[index] !== "|") {
+      continue;
+    }
     if (!consumeAlternative({ endIndex: index, includesSeparator: true })) {
       return false;
     }
@@ -2706,7 +2918,9 @@ function jqQuantifiedBackreferenceTargetFiniteCharacters({
   if (
     findJqCharacterClassEnd({ source, startIndex: 0 }) !== source.length - 1
     || source[1] === "^"
-  ) return undefined;
+  ) {
+    return undefined;
+  }
 
   const characters: string[] = [];
   for (let index = 1; index < source.length - 1;) {
@@ -2720,7 +2934,9 @@ function jqQuantifiedBackreferenceTargetFiniteCharacters({
       || character === "-"
       || characters.length
         >= JQ_MAX_QUANTIFIED_BACKREFERENCE_FINITE_CLASS_CODE_POINTS
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     characters.push(character);
     index = endIndex + 1;
   }
@@ -2753,9 +2969,13 @@ function jqMinimumTwoBackreferenceTargetHasStableCaseFold({
   allowMultipleCaseFoldEquivalenceClasses: boolean;
 }): boolean {
   const characters = jqQuantifiedBackreferenceTargetFiniteCharacters({ source });
-  if (characters === undefined) return false;
+  if (characters === undefined) {
+    return false;
+  }
   const representative = characters[0];
-  if (representative === undefined) return false;
+  if (representative === undefined) {
+    return false;
+  }
   for (const character of characters) {
     // Greedy and lazy references may split a later sibling-alternative
     // character from an older capture-history branch. The bounded state does
@@ -2776,7 +2996,9 @@ function jqMinimumTwoBackreferenceTargetHasStableCaseFold({
           hasInputSuffix: true,
         })
       )
-    ) return false;
+    ) {
+      return false;
+    }
     for (const variant of [
       character.toUpperCase(),
       character.toLowerCase(),
@@ -2786,7 +3008,9 @@ function jqMinimumTwoBackreferenceTargetHasStableCaseFold({
       // Multi-code-point folds multiply the bounded history state and were an
       // order of magnitude slower for minimum-two references. Keep them on the
       // established native path even when their small semantic corpus agrees.
-      if ([...variant].length !== 1) return false;
+      if ([...variant].length !== 1) {
+        return false;
+      }
       if (
         !jqCaseInsensitiveBackreferenceCharactersEqual({
           left: character,
@@ -2798,7 +3022,9 @@ function jqMinimumTwoBackreferenceTargetHasStableCaseFold({
           right: variant,
           hasInputSuffix: true,
         })
-      ) return false;
+      ) {
+        return false;
+      }
     }
   }
   return true;
@@ -2844,7 +3070,9 @@ function requiredSimpleBackreferenceTargetIndexes({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (source[index] !== "\\") continue;
+    if (source[index] !== "\\") {
+      continue;
+    }
     const backreference = parseJqRegularExpressionBackreference({
       source,
       startIndex: index,
@@ -2873,13 +3101,17 @@ function requiredSimpleBackreferenceTargetIndexes({
                 backreferenceQuantifier.endIndex === endIndex
                 || source[backreferenceQuantifier.endIndex] === "|"
               );
-      if (!quantifiedBackreferenceIsCompatible) return undefined;
+      if (!quantifiedBackreferenceIsCompatible) {
+        return undefined;
+      }
     }
     const target = (() => {
       if (/^[1-9]\d*$/u.test(backreference.reference)) {
         return groups[Number.parseInt(backreference.reference, 10) - 1];
       }
-      if (/^-\d+$/u.test(backreference.reference)) return undefined;
+      if (/^-\d+$/u.test(backreference.reference)) {
+        return undefined;
+      }
       const namedTargets = groups.filter((group) =>
         group.name === backreference.reference && group.startIndex < index
       );
@@ -2895,12 +3127,16 @@ function requiredSimpleBackreferenceTargetIndexes({
           group.logicalIndex !== target.logicalIndex && group.name === target.name
         )
       )
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     if (
       source[target.endIndex + 1] !== "?"
       || source[target.endIndex + 2] === "?"
       || source[target.endIndex + 2] === "+"
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     const targetSource = source.slice(target.contentStartIndex, target.endIndex);
     if (
       !simpleAtomsPrevalidated
@@ -2908,7 +3144,9 @@ function requiredSimpleBackreferenceTargetIndexes({
       && !jqPositiveVariableBackreferenceTargetHasStableFiniteCaseFold({
         source: targetSource,
       })
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     if (
       backreferenceQuantifier !== undefined
       && backreferenceQuantifier.minimumRepetitions >= 2
@@ -2916,7 +3154,9 @@ function requiredSimpleBackreferenceTargetIndexes({
         source: targetSource,
         allowMultipleCaseFoldEquivalenceClasses: backreferenceQuantifier.possessive,
       })
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     // A matching pre-fold group signature already proved the original target
     // against the simple atom and token budgets. Full Unicode case-folding may
     // only have expanded those atoms into controlled noncapturing alternatives.
@@ -2928,7 +3168,9 @@ function requiredSimpleBackreferenceTargetIndexes({
           source: targetSource,
           maximumAtomCount: 1,
         }) === 1;
-    if (!targetIsSimpleBoundedCapture) return undefined;
+    if (!targetIsSimpleBoundedCapture) {
+      return undefined;
+    }
     const enclosingGroups = [...groupEndIndexes.entries()].filter(
       ([groupStartIndex, groupEndIndex]) =>
         groupStartIndex >= startIndex
@@ -2937,10 +3179,16 @@ function requiredSimpleBackreferenceTargetIndexes({
         && groupEndIndex <= endIndex,
     );
     if (index === target.endIndex + 2) {
-      if (enclosingGroups.length !== 0) return undefined;
+      if (enclosingGroups.length !== 0) {
+        return undefined;
+      }
     } else {
-      if (zeroMinimumBackreferenceQuantifier) return undefined;
-      if (enclosingGroups.length !== 1) return undefined;
+      if (zeroMinimumBackreferenceQuantifier) {
+        return undefined;
+      }
+      if (enclosingGroups.length !== 1) {
+        return undefined;
+      }
       const [wrapperStartIndex, wrapperEndIndex] = enclosingGroups[0]!;
       const wrapper = parseJqGroupPrefix({ source, startIndex: wrapperStartIndex });
       if (
@@ -2948,7 +3196,9 @@ function requiredSimpleBackreferenceTargetIndexes({
         || target.endIndex + 2 !== wrapperEndIndex
         || source[wrapperEndIndex + 1] !== "?"
         || index !== wrapperEndIndex + 2
-      ) return undefined;
+      ) {
+        return undefined;
+      }
       const prefixSource = source.slice(wrapper.contentStart, target.startIndex);
       // The pre-fold signature similarly proves the original wrapper prefix;
       // case-fold expansion may vary its width but cannot add arbitrary syntax.
@@ -2958,12 +3208,16 @@ function requiredSimpleBackreferenceTargetIndexes({
           source: prefixSource,
           maximumAtomCount: JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_PREFIX_CODE_POINTS,
         });
-      if (!prefixIsSimpleBoundedSequence) return undefined;
+      if (!prefixIsSimpleBoundedSequence) {
+        return undefined;
+      }
       if (groups.some((group) =>
         group.logicalIndex !== target.logicalIndex
         && group.startIndex > wrapperStartIndex
         && group.endIndex < wrapperEndIndex
-      )) return undefined;
+      )) {
+        return undefined;
+      }
     }
     found = true;
     targetLogicalIndexes.push(target.logicalIndex);
@@ -3040,7 +3294,9 @@ function collectSimpleCaptureHistoryGroupSignatures({
       allowMinimumTwoVariableBackreferenceQuantifier,
       allowZeroMinimumBackreferenceQuantifier,
     });
-    if (targetLogicalIndexes === undefined) continue;
+    if (targetLogicalIndexes === undefined) {
+      continue;
+    }
     signatures.add(simpleCaptureHistoryGroupSignature({
       groups,
       groupStartIndex,
@@ -3057,7 +3313,9 @@ function isJqDirectOptionalBackreferenceHistoryAlternative({
   source: string;
 }): boolean {
   const groups = collectJqCapturingGroups({ source });
-  if (groups.length !== 1) return false;
+  if (groups.length !== 1) {
+    return false;
+  }
   const target = groups[0]!;
   if (target.startIndex !== 0 || source[target.endIndex + 1] !== "?") {
     return false;
@@ -3067,15 +3325,21 @@ function isJqDirectOptionalBackreferenceHistoryAlternative({
     jqQuantifiedBackreferenceTargetFiniteCharacters({
       source: source.slice(target.contentStartIndex, target.endIndex),
     })?.length !== 1
-  ) return false;
+  ) {
+    return false;
+  }
 
   const backreference = parseJqRegularExpressionBackreference({
     source,
     startIndex: target.endIndex + 2,
   });
-  if (backreference === undefined) return false;
+  if (backreference === undefined) {
+    return false;
+  }
   const targetReference = target.name ?? String(target.logicalIndex + 1);
-  if (backreference.reference !== targetReference) return false;
+  if (backreference.reference !== targetReference) {
+    return false;
+  }
 
   const quantifier = parseJqBackreferenceQuantifier({
     source,
@@ -3094,7 +3358,9 @@ function isJqLongestWholeMatchGuardedOptionalBackreferenceHistoryAlternative({
   source: string;
 }): boolean {
   const groups = collectJqCapturingGroups({ source });
-  if (groups.length !== 1) return false;
+  if (groups.length !== 1) {
+    return false;
+  }
   const target = groups[0]!;
   if (target.startIndex !== 0 || source[target.endIndex + 1] !== "?") {
     return false;
@@ -3104,7 +3370,9 @@ function isJqLongestWholeMatchGuardedOptionalBackreferenceHistoryAlternative({
   // Unicode property classes have measured capture-history differences even
   // when the bounded and native whole-match spans agree. Keep them on the
   // native path; the longest replay proof covers the remaining simple atoms.
-  if (/\\[pP]\{/u.test(targetSource)) return false;
+  if (/\\[pP]\{/u.test(targetSource)) {
+    return false;
+  }
   const alternatives = splitTopLevelAlternatives({ source: targetSource });
   if (
     alternatives.length === 0
@@ -3120,15 +3388,21 @@ function isJqLongestWholeMatchGuardedOptionalBackreferenceHistoryAlternative({
         source: alternative,
         maximumAtomCount: 2,
       }) ?? 0), 0) > 2
-  ) return false;
+  ) {
+    return false;
+  }
 
   const backreference = parseJqRegularExpressionBackreference({
     source,
     startIndex: target.endIndex + 2,
   });
-  if (backreference === undefined) return false;
+  if (backreference === undefined) {
+    return false;
+  }
   const targetReference = target.name ?? String(target.logicalIndex + 1);
-  if (backreference.reference !== targetReference) return false;
+  if (backreference.reference !== targetReference) {
+    return false;
+  }
 
   const quantifier = parseJqBackreferenceQuantifier({
     source,
@@ -3149,10 +3423,14 @@ function isJqTerminalOptionalCaptureHistorySiblingAlternative({
   const directCharacters = jqQuantifiedBackreferenceTargetFiniteCharacters({
     source,
   });
-  if (directCharacters?.length === 1) return true;
+  if (directCharacters?.length === 1) {
+    return true;
+  }
 
   const groups = collectJqCapturingGroups({ source });
-  if (groups.length !== 1) return false;
+  if (groups.length !== 1) {
+    return false;
+  }
   const group = groups[0]!;
   if (group.startIndex !== 0 || group.endIndex !== source.length - 1) {
     return false;
@@ -3167,7 +3445,9 @@ function isJqTerminalOptionalCaptureHistoryDeadSiblingAlternative({
 }: {
   source: string;
 }): boolean {
-  if (!source.startsWith("(?:") || !source.endsWith("(?!))")) return false;
+  if (!source.startsWith("(?:") || !source.endsWith("(?!))")) {
+    return false;
+  }
   return isJqTerminalOptionalCaptureHistorySiblingAlternative({
     source: source.slice(3, -5),
   });
@@ -3180,7 +3460,9 @@ function isJqTerminalOptionalCaptureHistoryProjectionReplayContent({
 }): boolean {
   const alternatives = splitTopLevelAlternatives({ source });
   const firstAlternative = alternatives[0];
-  if (firstAlternative === undefined) return false;
+  if (firstAlternative === undefined) {
+    return false;
+  }
   const firstAlternativeGroups = collectJqCapturingGroups({
     source: firstAlternative,
   });
@@ -3240,7 +3522,9 @@ function rewriteJqTerminalOptionalCaptureHistoryGroup({
     || quantifier.maximumRepetitions !== null
     || !quantifier.greedy
     || source.slice(groupEndIndex + 1, quantifier.endIndex) !== "*"
-  ) return source;
+  ) {
+    return source;
+  }
 
   const content = source.slice(group.contentStart, groupEndIndex);
   const alternatives = splitTopLevelAlternatives({ source: content });
@@ -3254,7 +3538,9 @@ function rewriteJqTerminalOptionalCaptureHistoryGroup({
         source: alternative,
       })
     )
-  ) return source;
+  ) {
+    return source;
+  }
 
   const rewrittenContent = [
     alternatives[0]!,
@@ -3274,7 +3560,9 @@ function rewriteJqTerminalOptionalCaptureHistoryAlternative({
   source: string;
   depth: number;
 }): string {
-  if (depth >= JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) return source;
+  if (depth >= JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) {
+    return source;
+  }
   const groupEndIndexes = mapJqGroupEndIndexes({ source });
 
   for (const [groupStartIndex, groupEndIndex] of groupEndIndexes) {
@@ -3282,7 +3570,9 @@ function rewriteJqTerminalOptionalCaptureHistoryAlternative({
       source,
       startIndex: groupEndIndex + 1,
     });
-    if (quantifier?.endIndex !== source.length) continue;
+    if (quantifier?.endIndex !== source.length) {
+      continue;
+    }
     return rewriteJqTerminalOptionalCaptureHistoryGroup({
       source,
       groupStartIndex,
@@ -3294,17 +3584,23 @@ function rewriteJqTerminalOptionalCaptureHistoryAlternative({
   const terminalGroup = [...groupEndIndexes.entries()].find(
     ([, groupEndIndex]) => groupEndIndex === source.length - 1,
   );
-  if (terminalGroup === undefined) return source;
+  if (terminalGroup === undefined) {
+    return source;
+  }
   const [groupStartIndex, groupEndIndex] = terminalGroup;
   const group = parseJqGroupPrefix({ source, startIndex: groupStartIndex });
-  if (group?.prefix !== "(?:") return source;
+  if (group?.prefix !== "(?:") {
+    return source;
+  }
 
   const content = source.slice(group.contentStart, groupEndIndex);
   const rewrittenContent = rewriteJqTerminalOptionalCaptureHistoryBranchesAtDepth({
     source: content,
     depth: depth + 1,
   });
-  if (rewrittenContent === content) return source;
+  if (rewrittenContent === content) {
+    return source;
+  }
   return source.slice(0, group.contentStart)
     + rewrittenContent
     + source.slice(groupEndIndex);
@@ -3317,7 +3613,9 @@ function rewriteJqTerminalOptionalCaptureHistoryBranchesAtDepth({
   source: string;
   depth: number;
 }): string {
-  if (depth >= JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) return source;
+  if (depth >= JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) {
+    return source;
+  }
   return splitTopLevelAlternatives({ source })
     .map((alternative) => rewriteJqTerminalOptionalCaptureHistoryAlternative({
       source: alternative,
@@ -3345,7 +3643,9 @@ function isJqNullableFirstSelectionSimpleNullableAlternative({
   if (source.length === 0 || collectJqCapturingGroups({ source }).length !== 0) {
     return false;
   }
-  if (containsJqRegularExpressionBackreference({ source })) return false;
+  if (containsJqRegularExpressionBackreference({ source })) {
+    return false;
+  }
 
   let atomSource: string;
   let quantifierStartIndex: number;
@@ -3355,7 +3655,9 @@ function isJqNullableFirstSelectionSimpleNullableAlternative({
     if (
       groupEndIndex === undefined
       || group?.prefix !== "(?:"
-    ) return false;
+    ) {
+      return false;
+    }
     atomSource = source.slice(group.contentStart, groupEndIndex);
     quantifierStartIndex = groupEndIndex + 1;
   } else {
@@ -3413,17 +3715,23 @@ function rewriteJqNullableFirstRepeatedAlternativeSelection({
     collectJqCapturingGroups({ source }).length !== 0
     || containsJqRegularExpressionBackreference({ source })
     || splitTopLevelAlternatives({ source }).length !== 1
-  ) return source;
+  ) {
+    return source;
+  }
 
   const groupEndIndexes = mapJqGroupEndIndexes({ source });
   for (const [groupStartIndex, groupEndIndex] of groupEndIndexes) {
     const isTopLevel = ![...groupEndIndexes].some(([otherStart, otherEnd]) =>
       otherStart < groupStartIndex && groupEndIndex < otherEnd
     );
-    if (!isTopLevel) continue;
+    if (!isTopLevel) {
+      continue;
+    }
 
     const group = parseJqGroupPrefix({ source, startIndex: groupStartIndex });
-    if (group?.prefix !== "(?:") continue;
+    if (group?.prefix !== "(?:") {
+      continue;
+    }
     const quantifier = parseJqCaptureHistoryGroupQuantifier({
       source,
       startIndex: groupEndIndex + 1,
@@ -3433,12 +3741,16 @@ function rewriteJqNullableFirstRepeatedAlternativeSelection({
       || !quantifier.greedy
       || quantifier.maximumRepetitions === 0
       || quantifier.endIndex >= source.length
-    ) continue;
+    ) {
+      continue;
+    }
 
     const continuation = source.slice(quantifier.endIndex);
     if (!isJqNullableFirstSelectionCloneSafeContinuation({
       source: continuation,
-    })) continue;
+    })) {
+      continue;
+    }
 
     const content = source.slice(group.contentStart, groupEndIndex);
     const alternatives = splitTopLevelAlternatives({ source: content });
@@ -3454,7 +3766,9 @@ function rewriteJqNullableFirstRepeatedAlternativeSelection({
           source: alternative,
         })
       )
-    ) continue;
+    ) {
+      continue;
+    }
 
     const guardedContinuation = `(?!(?:${continuation}))`;
     const rewrittenContent = [
@@ -3491,7 +3805,9 @@ function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
     if (
       quantifier?.maximumRepetitions !== null
       || !quantifier.greedy
-    ) continue;
+    ) {
+      continue;
+    }
 
     const groupContentStart = parseJqGroupPrefix({
       source,
@@ -3502,7 +3818,9 @@ function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
       startIndex: groupContentStart,
       endIndex: groupEndIndex,
       groupEndIndexes,
-    })) continue;
+    })) {
+      continue;
+    }
 
     const targetLogicalIndexes = requiredSimpleBackreferenceTargetIndexes({
       source,
@@ -3515,7 +3833,9 @@ function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
       allowMinimumTwoVariableBackreferenceQuantifier: false,
       allowZeroMinimumBackreferenceQuantifier: false,
     });
-    if (targetLogicalIndexes?.length !== 1) continue;
+    if (targetLogicalIndexes?.length !== 1) {
+      continue;
+    }
 
     const target = groups[targetLogicalIndexes[0]!];
     if (
@@ -3524,17 +3844,23 @@ function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
       || groups.filter((group) =>
         group.startIndex >= groupStartIndex && group.endIndex <= groupEndIndex
       ).length !== 1
-    ) continue;
+    ) {
+      continue;
+    }
 
     const targetCharacters = jqQuantifiedBackreferenceTargetFiniteCharacters({
       source: source.slice(target.contentStartIndex, target.endIndex),
     });
-    if (targetCharacters?.length !== 1) continue;
+    if (targetCharacters?.length !== 1) {
+      continue;
+    }
 
     // This seven-code-point proof covers only the exact greedy `?` target
     // quantifier. Keep the structural assumption explicit instead of relying
     // on the following backreference parse to reject every other quantifier.
-    if (source[target.endIndex + 1] !== "?") continue;
+    if (source[target.endIndex + 1] !== "?") {
+      continue;
+    }
     const backreferenceStartIndex = target.endIndex + 2;
     const backreference = parseJqRegularExpressionBackreference({
       source,
@@ -3547,12 +3873,16 @@ function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
         startIndex: backreference.endIndex + 1,
       }) !== undefined
       || source[backreference.endIndex + 1] !== "|"
-    ) continue;
+    ) {
+      continue;
+    }
 
     const siblingCharacters = jqQuantifiedBackreferenceTargetFiniteCharacters({
       source: source.slice(backreference.endIndex + 2, groupEndIndex),
     });
-    if (siblingCharacters?.length !== 1) continue;
+    if (siblingCharacters?.length !== 1) {
+      continue;
+    }
 
     signatures.add(simpleCaptureHistoryGroupSignature({
       groups,
@@ -3631,7 +3961,9 @@ function parseJqBackreferenceQuantifier({
   const match = /^(?:([?*+])|\{(\d+)(?:,(\d*))?\})([?+]?)/u.exec(
     source.slice(startIndex),
   );
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   let minimumRepetitions: number;
   let maximumRepetitions: number | null;
@@ -3681,7 +4013,9 @@ function parseJqCaptureHistoryGroupQuantifier({
 }): JqCaptureHistoryGroupQuantifier | undefined {
   const simple = /^([*+])([?+]?)/u.exec(source.slice(startIndex));
   if (simple !== null) {
-    if (simple[2] === "+") return undefined;
+    if (simple[2] === "+") {
+      return undefined;
+    }
     return {
       endIndex: startIndex + simple[0].length,
       minimumRepetitions: simple[1] === "+" ? 1 : 0,
@@ -3693,7 +4027,9 @@ function parseJqCaptureHistoryGroupQuantifier({
   const bounded = /^\{(\d+)(?:,(\d*))?\}([?+]?)/u.exec(
     source.slice(startIndex),
   );
-  if (bounded === null || bounded[3] === "+") return undefined;
+  if (bounded === null || bounded[3] === "+") {
+    return undefined;
+  }
   const minimumRepetitions = Number.parseInt(bounded[1]!, 10);
   const maximumRepetitions = bounded[2] === undefined
     ? minimumRepetitions
@@ -3706,7 +4042,9 @@ function parseJqCaptureHistoryGroupQuantifier({
       maximumRepetitions < minimumRepetitions
       || maximumRepetitions > JQ_MAX_BOUNDED_CAPTURE_HISTORY_REPETITIONS
     )
-  ) return undefined;
+  ) {
+    return undefined;
+  }
   return {
     endIndex: startIndex + bounded[0].length,
     minimumRepetitions,
@@ -3733,7 +4071,9 @@ function parseJqProgressQuantifier({
   const match = /^(?:([?*+])|\{(\d+)(?:,(\d*))?\})(?:[?+]?)/u.exec(
     source.slice(startIndex, endIndex),
   );
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   let minimumRepetitions: number;
   let maximumRepetitions: number | null;
@@ -3802,7 +4142,9 @@ function jqExpressionRangeFixedCodePointLength({
           findJqEscapeEnd({ source, startIndex: index }) + 1,
           sequenceEnd,
         );
-        if (call !== undefined || backreference !== undefined) return undefined;
+        if (call !== undefined || backreference !== undefined) {
+          return undefined;
+        }
         const escaped = source[index + 1];
         if (
           escaped === "A"
@@ -3837,7 +4179,9 @@ function jqExpressionRangeFixedCodePointLength({
           groupEndIndex === undefined
           || groupEndIndex >= sequenceEnd
           || group === undefined
-        ) return undefined;
+        ) {
+          return undefined;
+        }
         atomEnd = groupEndIndex + 1;
         atomLength = group.prefix === "(?="
           || group.prefix === "(?!"
@@ -3845,12 +4189,16 @@ function jqExpressionRangeFixedCodePointLength({
           || group.prefix === "(?<!"
           ? 0
           : groupFixedCodePointLengths.get(index);
-        if (atomLength === undefined) return undefined;
+        if (atomLength === undefined) {
+          return undefined;
+        }
       } else if (character === "^" || character === "$") {
         atomLength = 0;
       } else {
         const codePoint = source.codePointAt(index);
-        if (codePoint === undefined) return undefined;
+        if (codePoint === undefined) {
+          return undefined;
+        }
         atomEnd = index + (codePoint > 0xffff ? 2 : 1);
         atomLength = 1;
       }
@@ -3865,7 +4213,9 @@ function jqExpressionRangeFixedCodePointLength({
           if (
             quantifier.maximumRepetitions === null
             || quantifier.minimumRepetitions !== quantifier.maximumRepetitions
-          ) return undefined;
+          ) {
+            return undefined;
+          }
           atomLength *= quantifier.minimumRepetitions;
         }
         atomEnd = quantifier.endIndex;
@@ -3885,9 +4235,14 @@ function jqExpressionRangeFixedCodePointLength({
         sequenceStart: alternativeStart,
         sequenceEnd: index,
       });
-      if (alternativeLength === undefined) return undefined;
-      if (fixedLength === undefined) fixedLength = alternativeLength;
-      else if (fixedLength !== alternativeLength) return undefined;
+      if (alternativeLength === undefined) {
+        return undefined;
+      }
+      if (fixedLength === undefined) {
+        fixedLength = alternativeLength;
+      } else if (fixedLength !== alternativeLength) {
+        return undefined;
+      }
       alternativeStart = index + 1;
       index += 1;
       continue;
@@ -3974,7 +4329,9 @@ function jqCaseFoldedCaptureCandidateSource({
             source,
             startIndex: index,
           }) !== undefined
-        ) return undefined;
+        ) {
+          return undefined;
+        }
         const escaped = source[index + 1];
         if (
           escaped === "A"
@@ -3986,21 +4343,29 @@ function jqCaseFoldedCaptureCandidateSource({
           || escaped === "Y"
           || escaped === "z"
           || escaped === "Z"
-        ) return undefined;
+        ) {
+          return undefined;
+        }
         if (escaped === undefined || /[A-Za-z0-9]/u.test(escaped)) {
           return undefined;
         }
         const escapeEnd = findJqEscapeEnd({ source, startIndex: index });
-        if (escapeEnd >= endIndex) return undefined;
+        if (escapeEnd >= endIndex) {
+          return undefined;
+        }
         parts.push(source.slice(index, escapeEnd + 1));
         index = escapeEnd + 1;
         continue;
       }
       if (character === "[") {
         const classEnd = findJqCharacterClassEnd({ source, startIndex: index });
-        if (classEnd >= endIndex) return undefined;
+        if (classEnd >= endIndex) {
+          return undefined;
+        }
         const characterClass = source.slice(index, classEnd + 1);
-        if (characterClass.includes("\\")) return undefined;
+        if (characterClass.includes("\\")) {
+          return undefined;
+        }
         parts.push(characterClass);
         index = classEnd + 1;
         continue;
@@ -4016,19 +4381,27 @@ function jqCaseFoldedCaptureCandidateSource({
           || nested.prefix === "(?!"
           || nested.prefix === "(?<="
           || nested.prefix === "(?<!"
-        ) return undefined;
+        ) {
+          return undefined;
+        }
         const rewritten = rewriteRange({
           startIndex: nested.contentStart,
           endIndex: groupEndIndex,
         });
-        if (rewritten === undefined) return undefined;
+        if (rewritten === undefined) {
+          return undefined;
+        }
         parts.push("(?:", rewritten, ")");
         index = groupEndIndex + 1;
         continue;
       }
-      if (character === "^" || character === "$") return undefined;
+      if (character === "^" || character === "$") {
+        return undefined;
+      }
       const codePoint = source.codePointAt(index);
-      if (codePoint === undefined) return undefined;
+      if (codePoint === undefined) {
+        return undefined;
+      }
       const width = codePoint > 0xffff ? 2 : 1;
       parts.push(source.slice(index, index + width));
       index += width;
@@ -4040,7 +4413,9 @@ function jqCaseFoldedCaptureCandidateSource({
     startIndex: group.contentStartIndex,
     endIndex: group.endIndex,
   });
-  if (candidate === undefined) return undefined;
+  if (candidate === undefined) {
+    return undefined;
+  }
   try {
     const translated = translateJqLocalModifierSegment({
       source: candidate,
@@ -4074,8 +4449,9 @@ function repeatJqCaseFoldedCaptureCandidateSource({
     return `(?:${source})`;
   }
   let quantifier: string;
-  if (minimumRepetitions === 0 && maximumRepetitions === 1) quantifier = "?";
-  else if (minimumRepetitions === 0 && maximumRepetitions === null) {
+  if (minimumRepetitions === 0 && maximumRepetitions === 1) {
+    quantifier = "?";
+  } else if (minimumRepetitions === 0 && maximumRepetitions === null) {
     quantifier = "*";
   } else if (minimumRepetitions === 1 && maximumRepetitions === null) {
     quantifier = "+";
@@ -4188,7 +4564,9 @@ function jqExpressionRangeCanMatchEmpty({
           groupEndIndex === undefined
           || groupEndIndex >= sequenceEnd
           || group === undefined
-        ) return true;
+        ) {
+          return true;
+        }
         atomEnd = groupEndIndex + 1;
         atomCanMatchEmpty = group.prefix === "(?="
           || group.prefix === "(?!"
@@ -4209,8 +4587,12 @@ function jqExpressionRangeCanMatchEmpty({
       if (
         quantifier?.minimumRepetitions === 0
         || quantifier?.maximumRepetitions === 0
-      ) atomCanMatchEmpty = true;
-      if (!atomCanMatchEmpty) return false;
+      ) {
+        atomCanMatchEmpty = true;
+      }
+      if (!atomCanMatchEmpty) {
+        return false;
+      }
       index = quantifier?.endIndex ?? atomEnd;
     }
     return true;
@@ -4223,7 +4605,9 @@ function jqExpressionRangeCanMatchEmpty({
       if (sequenceCanMatchEmpty({
         sequenceStart: alternativeStart,
         sequenceEnd: index,
-      })) return true;
+      })) {
+        return true;
+      }
       alternativeStart = index + 1;
       index += 1;
       continue;
@@ -4238,7 +4622,9 @@ function jqExpressionRangeCanMatchEmpty({
     }
     if (source[index] === "(") {
       const groupEndIndex = groupEndIndexes.get(index);
-      if (groupEndIndex === undefined || groupEndIndex >= endIndex) return true;
+      if (groupEndIndex === undefined || groupEndIndex >= endIndex) {
+        return true;
+      }
       index = groupEndIndex + 1;
       continue;
     }
@@ -4272,7 +4658,9 @@ function validateJqSubexpressionCallProgress({
     backreferenceStartIndex: number;
   }) => readonly number[];
 }): void {
-  if (groups.length === 0) return;
+  if (groups.length === 0) {
+    return;
+  }
 
   const groupStartIndexes = [...groupEndIndexes.keys()].toSorted(
     (left, right) => right - left,
@@ -4368,7 +4756,9 @@ function validateJqSubexpressionCallProgress({
       }
       if (source[scanIndex] === "(") {
         const groupEndIndex = groupEndIndexes.get(scanIndex);
-        if (groupEndIndex === undefined || groupEndIndex >= task.endIndex) break;
+        if (groupEndIndex === undefined || groupEndIndex >= task.endIndex) {
+          break;
+        }
         scanIndex = groupEndIndex + 1;
         continue;
       }
@@ -4445,7 +4835,9 @@ function validateJqSubexpressionCallProgress({
             groupEndIndex === undefined
             || groupEndIndex >= alternative.endIndex
             || group === undefined
-          ) break;
+          ) {
+            break;
+          }
           atomEnd = groupEndIndex + 1;
           nestedGroupContent = {
             startIndex: group.contentStart,
@@ -4484,7 +4876,9 @@ function validateJqSubexpressionCallProgress({
         if (
           quantifier?.minimumRepetitions === 0
           || maximumRepetitions === 0
-        ) atomCanMatchEmpty = true;
+        ) {
+          atomCanMatchEmpty = true;
+        }
         prefixCanMatchEmpty = prefixCanMatchEmpty && atomCanMatchEmpty;
         index = quantifier?.endIndex ?? atomEnd;
       }
@@ -4508,7 +4902,9 @@ function validateJqSubexpressionCallProgress({
     for (const target of zeroConsumptionEdges[logicalIndex]!) {
       const nextCount = (incomingEdgeCounts[target] ?? 0) - 1;
       incomingEdgeCounts[target] = nextCount;
-      if (nextCount === 0) ready.push(target);
+      if (nextCount === 0) {
+        ready.push(target);
+      }
     }
   }
   if (visitedCount !== groups.length) {
@@ -4586,7 +4982,9 @@ function jqExpressionCanMatchEmpty({
           groupEndIndex === undefined
           || groupEndIndex >= sequenceEnd
           || group === undefined
-        ) return true;
+        ) {
+          return true;
+        }
         atomEnd = groupEndIndex + 1;
         atomCanMatchEmpty = group.prefix === "(?="
           || group.prefix === "(?!"
@@ -4614,10 +5012,14 @@ function jqExpressionCanMatchEmpty({
           : quantifier[1] === "+"
             ? 1
             : Number.parseInt(quantifier[2]!, 10);
-        if (minimum === 0) atomCanMatchEmpty = true;
+        if (minimum === 0) {
+          atomCanMatchEmpty = true;
+        }
         atomEnd += quantifier[0].length;
       }
-      if (!atomCanMatchEmpty) return false;
+      if (!atomCanMatchEmpty) {
+        return false;
+      }
       index = atomEnd;
     }
     return true;
@@ -4630,7 +5032,9 @@ function jqExpressionCanMatchEmpty({
       if (sequenceCanMatchEmpty({
         sequenceStart: alternativeStart,
         sequenceEnd: index,
-      })) return true;
+      })) {
+        return true;
+      }
       alternativeStart = index + 1;
       index += 1;
       continue;
@@ -4645,7 +5049,9 @@ function jqExpressionCanMatchEmpty({
     }
     if (source[index] === "(") {
       const groupEndIndex = groupEndIndexes.get(index);
-      if (groupEndIndex === undefined || groupEndIndex >= endIndex) return true;
+      if (groupEndIndex === undefined || groupEndIndex >= endIndex) {
+        return true;
+      }
       index = groupEndIndex + 1;
       continue;
     }
@@ -4687,8 +5093,12 @@ function jqExpressionCanMatchEmptyAtAnyPosition({
       index = findJqEscapeEnd({ source, startIndex: index });
       continue;
     }
-    if (character === "^" || character === "$") return false;
-    if (character !== "(") continue;
+    if (character === "^" || character === "$") {
+      return false;
+    }
+    if (character !== "(") {
+      continue;
+    }
     const group = parseJqGroupPrefix({ source, startIndex: index });
     if (
       group?.prefix === "(?=" ||
@@ -4728,7 +5138,9 @@ function countJqRegularExpressionAlternations({
       inBracket = false;
       continue;
     }
-    if (!inBracket && character === "|") count += 1;
+    if (!inBracket && character === "|") {
+      count += 1;
+    }
   }
   return count;
 }
@@ -4803,7 +5215,9 @@ function expandJqSubexpressionCalls({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (source[index] !== "\\") continue;
+    if (source[index] !== "\\") {
+      continue;
+    }
     const call = parseJqSubexpressionCall({ source, startIndex: index });
     if (call !== undefined) {
       calls.push({ startIndex: index, call });
@@ -4856,7 +5270,9 @@ function expandJqSubexpressionCalls({
   const groupByStart = new Map(groups.map((group) => [group.startIndex, group]));
   const groupsByName = new Map<string, JqCapturingGroupDescriptor[]>();
   for (const group of groups) {
-    if (group.name === null) continue;
+    if (group.name === null) {
+      continue;
+    }
     const named = groupsByName.get(group.name) ?? [];
     named.push(group);
     groupsByName.set(group.name, named);
@@ -4915,8 +5331,11 @@ function expandJqSubexpressionCalls({
     let upper = groupStartIndexes.length;
     while (lower < upper) {
       const middle = lower + Math.floor((upper - lower) / 2);
-      if (groupStartIndexes[middle]! < sourceIndex) lower = middle + 1;
-      else upper = middle;
+      if (groupStartIndexes[middle]! < sourceIndex) {
+        lower = middle + 1;
+      } else {
+        upper = middle;
+      }
     }
     return lower;
   };
@@ -4941,7 +5360,9 @@ function expandJqSubexpressionCalls({
     }
     if (/^[1-9]\d*$/u.test(reference)) {
       const group = groups[Number.parseInt(reference, 10) - 1];
-      if (group === undefined) throw new Error(`invalid ${description}`);
+      if (group === undefined) {
+        throw new Error(`invalid ${description}`);
+      }
       return group;
     }
     const named = groupsByName.get(reference);
@@ -4991,7 +5412,9 @@ function expandJqSubexpressionCalls({
     if (
       activeLogicalIndexes.has(target.logicalIndex)
       || activeLogicalIndexes.size >= JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH
-    ) return true;
+    ) {
+      return true;
+    }
     const nextActiveLogicalIndexes = new Set(activeLogicalIndexes);
     nextActiveLogicalIndexes.add(target.logicalIndex);
     return jqExpressionCanMatchEmpty({
@@ -5076,7 +5499,9 @@ function expandJqSubexpressionCalls({
     activeCalls: ReadonlySet<number>;
     depth: number;
   }): boolean => {
-    if (depth > JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) return false;
+    if (depth > JQ_MAX_SUBEXPRESSION_CALL_EXPANSION_DEPTH) {
+      return false;
+    }
     for (let index = startIndex; index < endIndex; index += 1) {
       const character = source[index]!;
       if (character === "[") {
@@ -5086,12 +5511,16 @@ function expandJqSubexpressionCalls({
         );
         continue;
       }
-      if (character !== "\\") continue;
+      if (character !== "\\") {
+        continue;
+      }
 
       const call = parseJqSubexpressionCall({ source, startIndex: index });
       if (call !== undefined) {
         const target = resolveCall({ call, callStartIndex: index });
-        if (activeCalls.has(target.logicalIndex)) return false;
+        if (activeCalls.has(target.logicalIndex)) {
+          return false;
+        }
         const nextActiveCalls = new Set(activeCalls);
         nextActiveCalls.add(target.logicalIndex);
         if (!segmentUsesLinearRuntimeCandidates({
@@ -5099,7 +5528,9 @@ function expandJqSubexpressionCalls({
           endIndex: target.endIndex,
           activeCalls: nextActiveCalls,
           depth: depth + 1,
-        })) return false;
+        })) {
+          return false;
+        }
         index = call.endIndex;
         continue;
       }
@@ -5123,7 +5554,9 @@ function expandJqSubexpressionCalls({
             segmentEndIndex: endIndex,
             groupEndIndexes,
           })
-        ) return false;
+        ) {
+          return false;
+        }
         index = backreference.endIndex;
         continue;
       }
@@ -5133,7 +5566,9 @@ function expandJqSubexpressionCalls({
         positionOperator === "y" ||
         positionOperator === "Y" ||
         positionOperator === "G"
-      ) return false;
+      ) {
+        return false;
+      }
       index = Math.min(
         findJqEscapeEnd({ source, startIndex: index }),
         endIndex - 1,
@@ -5168,8 +5603,12 @@ function expandJqSubexpressionCalls({
     const physicalCaptures = physicalCapturesByLogicalIndex[logicalIndex] ?? [];
     physicalCaptures.push(physicalIndex);
     physicalCapturesByLogicalIndex[logicalIndex] = physicalCaptures;
-    if (recursiveProjection) recursiveCaptureLogicalIndexes.add(logicalIndex);
-    if (!rewritesBackreferences) return originalPrefix;
+    if (recursiveProjection) {
+      recursiveCaptureLogicalIndexes.add(logicalIndex);
+    }
+    if (!rewritesBackreferences) {
+      return originalPrefix;
+    }
     return "(";
   };
 
@@ -5216,7 +5655,9 @@ function expandJqSubexpressionCalls({
             quantifier?.maximumRepetitions !== null
             || !quantifier.greedy
             || groupEndIndex === undefined
-          ) return undefined;
+          ) {
+            return undefined;
+          }
           const groupContentStart = parseJqGroupPrefix({
             source,
             startIndex: index,
@@ -5230,7 +5671,9 @@ function expandJqSubexpressionCalls({
           })) {
             if (calls.some(({ startIndex: callStartIndex }) =>
               callStartIndex >= groupContentStart && callStartIndex < groupEndIndex
-            )) return undefined;
+            )) {
+              return undefined;
+            }
             const strictFallbackTargetLogicalIndexes =
               requiredSimpleBackreferenceTargetIndexes({
                 source,
@@ -5262,7 +5705,9 @@ function expandJqSubexpressionCalls({
                     allowMinimumTwoVariableBackreferenceQuantifier: true,
                     allowZeroMinimumBackreferenceQuantifier: true,
                   });
-                if (relaxedTargetLogicalIndexes === undefined) return undefined;
+                if (relaxedTargetLogicalIndexes === undefined) {
+                  return undefined;
+                }
                 const signature = simpleCaptureHistoryGroupSignature({
                   groups,
                   groupStartIndex: index,
@@ -5310,7 +5755,9 @@ function expandJqSubexpressionCalls({
                   })
                 )
               )
-            ) return undefined;
+            ) {
+              return undefined;
+            }
             hasNullableUnboundedSimpleCaptureHistory = true;
             hasTerminalOptionalCaptureHistoryProjectionReplay ||= terminalProjectionReplay;
             hasWholeMatchGuardedOptionalCaptureHistoryProjectionReplay ||=
@@ -5635,9 +6082,13 @@ function expandJqSubexpressionCalls({
             && quantifier?.possessive === true
             && minimumRepetitions >= 2
             && maximumRepetitions !== minimumRepetitions;
-          if (candidates.length > 1) append({ parts, value: "(?:" });
+          if (candidates.length > 1) {
+            append({ parts, value: "(?:" });
+          }
           for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-            if (candidateIndex > 0) append({ parts, value: "|" });
+            if (candidateIndex > 0) {
+              append({ parts, value: "|" });
+            }
             const candidate = candidates[candidateIndex]!;
             const targetCaptureIndex = candidate.physicalIndex;
             const {
@@ -5726,7 +6177,9 @@ function expandJqSubexpressionCalls({
               sourceEnd,
             });
           }
-          if (candidates.length > 1) append({ parts, value: ")" });
+          if (candidates.length > 1) {
+            append({ parts, value: ")" });
+          }
           index = quantifier === undefined
             ? backreference.endIndex
             : quantifier.endIndex - 1;
@@ -5809,7 +6262,9 @@ function collectJqPhysicalCaptureSourceRanges({
   readonly sourceStart: number;
   readonly sourceEnd: number;
 }[] {
-  if (physicalCaptureIndexes.size === 0) return [];
+  if (physicalCaptureIndexes.size === 0) {
+    return [];
+  }
   const requested = [...physicalCaptureIndexes].toSorted((left, right) => left - right);
   const groupEndIndexes = mapJqGroupEndIndexes({ source });
   const ranges: {
@@ -5830,7 +6285,9 @@ function collectJqPhysicalCaptureSourceRanges({
       index = findJqCharacterClassEnd({ source, startIndex: index });
       continue;
     }
-    if (character !== "(") continue;
+    if (character !== "(") {
+      continue;
+    }
 
     let sourceStart: number | undefined;
     if (source[index + 1] !== "?") {
@@ -5841,14 +6298,20 @@ function collectJqPhysicalCaptureSourceRanges({
       && source[index + 3] !== "!"
     ) {
       const nameEnd = source.indexOf(">", index + 3);
-      if (nameEnd < 0) throw new Error("expanded physical capture name is unterminated");
+      if (nameEnd < 0) {
+        throw new Error("expanded physical capture name is unterminated");
+      }
       sourceStart = nameEnd + 1;
     }
-    if (sourceStart === undefined) continue;
+    if (sourceStart === undefined) {
+      continue;
+    }
 
     captureIndex += 1;
     const target = requested[requestedIndex]!;
-    if (captureIndex < target) continue;
+    if (captureIndex < target) {
+      continue;
+    }
     if (captureIndex > target) {
       throw new Error("expanded physical capture index is missing");
     }
@@ -5886,7 +6349,9 @@ function rewriteDuplicateNamedCaptureGroups({
     const character = source[index]!;
     if (character === "\\") {
       output += character;
-      if (index + 1 < source.length) output += source[++index]!;
+      if (index + 1 < source.length) {
+        output += source[++index]!;
+      }
       continue;
     }
     if (character === "[" && !inBracket) {
@@ -5945,7 +6410,9 @@ function consumeLeadingJqSearchStartAnchorAlternative({
   }
 
   const groupEnd = mapJqGroupEndIndexes({ source }).get(0);
-  if (groupEnd === undefined) return { source, anchored: false };
+  if (groupEnd === undefined) {
+    return { source, anchored: false };
+  }
 
   let contentStart: number;
   if (source.startsWith("(?:") || source.startsWith("(?=")) {
@@ -5970,7 +6437,9 @@ function consumeLeadingJqSearchStartAnchorAlternative({
     source: source.slice(contentStart, groupEnd),
     depth: depth + 1,
   });
-  if (!inner.anchored) return { source, anchored: false };
+  if (!inner.anchored) {
+    return { source, anchored: false };
+  }
   return {
     source: source.slice(0, contentStart) +
       inner.source +
@@ -5987,7 +6456,9 @@ function consumeLeadingJqSearchStartAnchor({
   depth: number;
 }): { readonly source: string; readonly anchored: boolean } {
   const alternatives = splitTopLevelAlternatives({ source });
-  if (alternatives.length === 0) return { source, anchored: false };
+  if (alternatives.length === 0) {
+    return { source, anchored: false };
+  }
   const consumed = alternatives.map((alternative) =>
     consumeLeadingJqSearchStartAnchorAlternative({
       source: alternative,
@@ -6479,7 +6950,9 @@ function compileJqRegularExpressionInternal({
         });
       }
     }
-    if (replacements.length === 0) return source;
+    if (replacements.length === 0) {
+      return source;
+    }
 
     const parts: string[] = [];
     let cursor = 0;
@@ -6562,7 +7035,9 @@ function compileJqRegularExpressionInternal({
           const cached = cacheable
             ? cache?.get(maximumRepetitions)
             : undefined;
-          if (cached !== undefined) return cached;
+          if (cached !== undefined) {
+            return cached;
+          }
           const compiledFallback = compileJqRegularExpressionInternal({
             pattern,
             flags,
@@ -6602,7 +7077,9 @@ function compileJqRegularExpressionInternal({
             cacheable &&
             cachedMaximumRepetitions === maximumRepetitions &&
             cachedResult !== undefined
-          ) return cachedResult;
+          ) {
+            return cachedResult;
+          }
           const compiledFallback = compileJqRegularExpressionInternal({
             pattern,
             flags,
@@ -6645,7 +7122,9 @@ function compileJqRegularExpressionInternal({
             cacheable &&
             cachedMaximumRepetitions === maximumRepetitions &&
             cachedResult !== undefined
-          ) return cachedResult;
+          ) {
+            return cachedResult;
+          }
           const sourceBudget =
             backreferenceAlternatives.length === 1
             && backreferenceAlternatives[0]?.comparison === "exact"
@@ -6772,8 +7251,12 @@ function hasAlternationOrLazyQuantifier({ source }: { source: string }): boolean
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
-    if (character === "|") return true;
+    if (inBracket) {
+      continue;
+    }
+    if (character === "|") {
+      return true;
+    }
     if (
       character === "?" &&
       index > 0 &&
@@ -6845,7 +7328,9 @@ function findLongestMatchAtStart({
       startIndex,
       endIndex: candidateEnds[candidateIndex]!,
     });
-    if (match !== null) return match;
+    if (match !== null) {
+      return match;
+    }
   }
   return null;
 }
@@ -6906,9 +7391,13 @@ function collectLongestMatchCandidates({
   while (nextSearchIndex <= input.length) {
     search.lastIndex = nextSearchIndex;
     const first = search.exec(input) as RegExpExecArrayWithIndices | null;
-    if (first === null) break;
+    if (first === null) {
+      break;
+    }
     const firstRange = first.indices[0];
-    if (firstRange === undefined) break;
+    if (firstRange === undefined) {
+      break;
+    }
     const candidate = needsLocalLongestSearch
       ? findLongestMatchAtStart({ input, regex, startIndex: first.index })
       : first;
@@ -6965,8 +7454,11 @@ function firstCandidateAtOrAfter({
   let upper = candidates.length;
   while (lower < upper) {
     const middle = lower + Math.floor((upper - lower) / 2);
-    if (candidates[middle]!.start < startIndex) lower = middle + 1;
-    else upper = middle;
+    if (candidates[middle]!.start < startIndex) {
+      lower = middle + 1;
+    } else {
+      upper = middle;
+    }
   }
   return lower;
 }
@@ -7011,7 +7503,9 @@ function rankLongestMatches({
     .filter((candidate): candidate is RankedLongestMatchCandidate =>
       candidate !== undefined,
     );
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) {
+    return [];
+  }
 
   const suffixBest: number[] = new Array(candidates.length);
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
@@ -7032,7 +7526,9 @@ function rankLongestMatches({
     const bestIndex = suffixBest[candidateIndex]!;
     const best = candidates[bestIndex]!;
     selected.push(best.raw);
-    if (!global) break;
+    if (!global) {
+      break;
+    }
     const nextStart = best.end > best.start
       ? best.end
       : advanceAfterEmptyMatch({ input, index: best.end });
@@ -7072,7 +7568,9 @@ function isInteriorSurrogateBoundary({
   input: string;
   index: number;
 }): boolean {
-  if (index <= 0 || index >= input.length) return false;
+  if (index <= 0 || index >= input.length) {
+    return false;
+  }
   const previous = input.charCodeAt(index - 1);
   const current = input.charCodeAt(index);
   return (
@@ -7101,7 +7599,9 @@ function advanceAfterEmptyMatch({
   input: string;
   index: number;
 }): number {
-  if (index >= input.length) return input.length + 1;
+  if (index >= input.length) {
+    return input.length + 1;
+  }
   return index + codePointLengthAt({ input, index });
 }
 
@@ -7112,7 +7612,9 @@ function utf8ByteLengthAt({
   input: string;
   index: number;
 }): number {
-  if (index >= input.length) return 0;
+  if (index >= input.length) {
+    return 0;
+  }
   return JQ_REGEXP_UTF8_ENCODER.encode(
     input.slice(index, index + codePointLengthAt({ input, index })),
   ).byteLength;
@@ -7125,7 +7627,9 @@ function isJqWordCharacterAt({
   input: string;
   index: number;
 }): boolean {
-  if (index >= input.length) return false;
+  if (index >= input.length) {
+    return false;
+  }
   const character = String.fromCodePoint(input.codePointAt(index)!);
   return JQ_WORD_CHARACTER_REGEXP.test(character);
 }
@@ -7139,7 +7643,9 @@ function shouldDuplicateEmptyMatchAcrossUtf8Bytes({
   index: number;
   mode: "none" | "any" | "word" | "non-word";
 }): boolean {
-  if (index >= input.length) return false;
+  if (index >= input.length) {
+    return false;
+  }
   switch (mode) {
   case "none":
     return false;
@@ -7237,7 +7743,9 @@ function collectFirstJqGraphemeRange({
   input: string;
 }): { readonly start: number; readonly end: number } | undefined {
   const first = JQ_GRAPHEME_SEGMENTER.segment(input)[Symbol.iterator]().next();
-  if (first.done) return undefined;
+  if (first.done) {
+    return undefined;
+  }
   return splitJqLegacyGraphemeSegment({
     segment: first.value.segment,
     start: first.value.index,
@@ -7258,7 +7766,9 @@ function findFirstJqNonGraphemeBoundary({
         input,
         index: range.start,
       });
-      if (boundary < range.end) return boundary;
+      if (boundary < range.end) {
+        return boundary;
+      }
     }
   }
   return undefined;
@@ -7294,7 +7804,9 @@ function collectJqSpecialRegularExpressionMatches({
       ? []
       : [{ start: 0, end: input.length, text: input, captures: [] }];
   case "grapheme-boundary": {
-    if (ignoreEmpty) return [];
+    if (ignoreEmpty) {
+      return [];
+    }
     if (!global) {
       return [{ start: 0, end: 0, text: "", captures: [] }];
     }
@@ -7330,7 +7842,9 @@ function collectJqSpecialRegularExpressionMatches({
     return global ? matches : matches.slice(0, 1);
   }
   case "non-grapheme-boundary": {
-    if (input.length === 0 || ignoreEmpty) return [];
+    if (input.length === 0 || ignoreEmpty) {
+      return [];
+    }
     if (!global) {
       const boundary = findFirstJqNonGraphemeBoundary({ input });
       return boundary === undefined
@@ -7352,7 +7866,9 @@ function collectJqSpecialRegularExpressionMatches({
       index += character.length;
       if (index < input.length && !graphemeBoundaries.has(index)) {
         ranges.push({ start: index, end: index });
-        if (!global) break;
+        if (!global) {
+          break;
+        }
       }
     }
     return ranges.map(({ start, end }) => ({
@@ -7363,7 +7879,9 @@ function collectJqSpecialRegularExpressionMatches({
     }));
   }
   case "grapheme": {
-    if (input.length === 0) return [];
+    if (input.length === 0) {
+      return [];
+    }
     if (!global && !longest) {
       const first = collectFirstJqGraphemeRange({ input });
       return first === undefined
@@ -7394,7 +7912,9 @@ function collectJqSpecialRegularExpressionMatches({
       while (candidateIndex < ranges.length) {
         const bestIndex = suffixBest[candidateIndex]!;
         longestRanges.push(ranges[bestIndex]!);
-        if (!global) break;
+        if (!global) {
+          break;
+        }
         candidateIndex = bestIndex + 1;
       }
       selected = longestRanges;
@@ -7497,7 +8017,9 @@ function jqCaseInsensitiveBackreferenceMatches({
 }): boolean {
   const targetCharacters = [...target];
   const candidateCharacters = [...candidate];
-  if (targetCharacters.length !== candidateCharacters.length) return false;
+  if (targetCharacters.length !== candidateCharacters.length) {
+    return false;
+  }
   return targetCharacters.every((targetCharacter, index) =>
     jqCaseInsensitiveBackreferenceCharactersEqual({
       left: targetCharacter,
@@ -7553,7 +8075,9 @@ function runtimeAlternativeRejections({
   const rejected: JqRuntimeAlternativeRejection[] = [];
   for (const alternative of compiled.backreferenceAlternatives) {
     const marker = raw.indices[alternative.markerCaptureIndex];
-    if (marker === undefined) continue;
+    if (marker === undefined) {
+      continue;
+    }
     const target = raw.indices[alternative.targetCaptureIndex];
     const participatingNewerCaptureIndex =
       alternative.newerTargetCaptureIndexes.find(
@@ -7662,7 +8186,9 @@ function runtimeAlternativeRejections({
         validLengths.push(repetition * targetCodePointLength);
       }
     }
-    if (alternative.minimumRepetitions === 0) validLengths.unshift(0);
+    if (alternative.minimumRepetitions === 0) {
+      validLengths.unshift(0);
+    }
     if (alternative.possessive) {
       const availableCharacters = [...input.slice(marker[0])];
       const maximumAvailableRepetitions = Math.min(
@@ -7688,7 +8214,9 @@ function runtimeAlternativeRejections({
           target: targetText,
           candidate: chunk,
           hasInputSuffix: chunkEnd < input.length,
-        })) break;
+        })) {
+          break;
+        }
         possessiveRepetitions = repetition;
       }
       if (possessiveRepetitions >= alternative.minimumRepetitions) {
@@ -7715,7 +8243,9 @@ function runtimeAlternativeRejections({
       candidateRepetitions <= maximumRepetitions &&
       allChunksMatch &&
       validLengths.includes(candidateCharacters.length);
-    if (candidateIsValid) continue;
+    if (candidateIsValid) {
+      continue;
+    }
 
     const preferredLength = alternative.greedy
       ? validLengths.at(-1)
@@ -7756,7 +8286,9 @@ function runtimeAlternativeRejections({
   }
   for (const assertion of compiled.positionAssertions) {
     const marker = raw.indices[assertion.markerCaptureIndex];
-    if (marker === undefined) continue;
+    if (marker === undefined) {
+      continue;
+    }
     const valid = (() => {
       switch (assertion.kind) {
       case "boundary": {
@@ -7850,7 +8382,9 @@ function applyRuntimeAlternativeRejection({
 }): JqRuntimeAlternativeState | undefined {
   switch (rejection.kind) {
   case "disable": {
-    if (state.disabled.has(rejection.id)) return undefined;
+    if (state.disabled.has(rejection.id)) {
+      return undefined;
+    }
     const disabled = new Set(state.disabled);
     disabled.add(rejection.id);
     const constraints = new Map(
@@ -7877,7 +8411,9 @@ function applyRuntimeAlternativeRejection({
   }
   case "case-fold-length":
   case "case-fold-retry-length": {
-    if (state.disabled.has(rejection.id)) return undefined;
+    if (state.disabled.has(rejection.id)) {
+      return undefined;
+    }
     const previous = state.caseFoldedBackreferenceLengthConstraints.get(
       rejection.id,
     );
@@ -7974,7 +8510,9 @@ function findFirstValidBackreferenceMatch({
     const stateKey = runtimeAlternativeStateKey({ state });
     const key = `${sticky ? "y" : "g"}:${searchStartCodePointIndex ?? "-"}:${stateKey}`;
     const existing = regexByState.get(key);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     const base = compiled.create({
       global: true,
       disabledBackreferenceAlternatives: state.disabled,
@@ -8006,8 +8544,12 @@ function findFirstValidBackreferenceMatch({
       candidateIndex -= 1
     ) {
       const endIndex = candidateEnds[candidateIndex]!;
-      if (endIndex >= beforeEndIndex) continue;
-      if (requireNonEmpty && endIndex === startIndex) continue;
+      if (endIndex >= beforeEndIndex) {
+        continue;
+      }
+      if (requireNonEmpty && endIndex === startIndex) {
+        continue;
+      }
       const queue: JqRuntimeAlternativeState[] = [
         initialRuntimeAlternativeState(),
       ];
@@ -8039,7 +8581,9 @@ function findFirstValidBackreferenceMatch({
           startIndex,
           endIndex,
         });
-        if (raw === null) continue;
+        if (raw === null) {
+          continue;
+        }
         const rejections = runtimeAlternativeRejections({
           input,
           raw,
@@ -8047,15 +8591,23 @@ function findFirstValidBackreferenceMatch({
           context,
           searchStartIndex: startIndex,
         });
-        if (rejections.length === 0) return raw;
+        if (rejections.length === 0) {
+          return raw;
+        }
         for (const rejection of rejections) {
           const next = applyRuntimeAlternativeRejection({ state, rejection });
-          if (next === undefined) continue;
+          if (next === undefined) {
+            continue;
+          }
           const key = runtimeAlternativeStateKey({ state: next });
-          if (queued.has(key)) continue;
+          if (queued.has(key)) {
+            continue;
+          }
           queued.add(key);
           queue.push(next);
-          if (compiled.prioritizeEarlyRuntimeAlternativeRejections) break;
+          if (compiled.prioritizeEarlyRuntimeAlternativeRejections) {
+            break;
+          }
         }
       }
     }
@@ -8094,9 +8646,15 @@ function findFirstValidBackreferenceMatch({
       });
       regex.lastIndex = requiredStartIndex ?? rejectedStart ?? candidateSearchIndex;
       const raw = regex.exec(input) as RegExpExecArrayWithIndices | null;
-      if (raw === null) continue;
-      if (requiredStartIndex !== undefined && raw.index !== requiredStartIndex) continue;
-      if (rejectedStart !== undefined && raw.index !== rejectedStart) continue;
+      if (raw === null) {
+        continue;
+      }
+      if (requiredStartIndex !== undefined && raw.index !== requiredStartIndex) {
+        continue;
+      }
+      if (rejectedStart !== undefined && raw.index !== rejectedStart) {
+        continue;
+      }
       rejectedStart ??= raw.index;
       rejectedEnd ??= raw.indices[0]?.[1];
       const wholeRange = raw.indices[0];
@@ -8139,12 +8697,18 @@ function findFirstValidBackreferenceMatch({
       const nextStates: JqRuntimeAlternativeState[] = [];
       for (const rejection of rejections) {
         const next = applyRuntimeAlternativeRejection({ state, rejection });
-        if (next === undefined) continue;
+        if (next === undefined) {
+          continue;
+        }
         const key = runtimeAlternativeStateKey({ state: next });
-        if (queued.has(key)) continue;
+        if (queued.has(key)) {
+          continue;
+        }
         queued.add(key);
         nextStates.push(next);
-        if (compiled.prioritizeEarlyRuntimeAlternativeRejections) break;
+        if (compiled.prioritizeEarlyRuntimeAlternativeRejections) {
+          break;
+        }
       }
       if (compiled.prioritizeEarlyRuntimeAlternativeRejections) {
         // The bounded history fallback unrolls independent nullable repetitions.
@@ -8157,16 +8721,22 @@ function findFirstValidBackreferenceMatch({
         queue.push(...nextStates);
       }
     }
-    if (rejectedStart === undefined) return null;
+    if (rejectedStart === undefined) {
+      return null;
+    }
     if (rejectedEnd !== undefined) {
       const shorter = findValidAtShorterEnd({
         startIndex: rejectedStart,
         beforeEndIndex: rejectedEnd,
         searchStartCodePointIndex,
       });
-      if (shorter !== null) return shorter;
+      if (shorter !== null) {
+        return shorter;
+      }
     }
-    if (requiredStartIndex !== undefined) return null;
+    if (requiredStartIndex !== undefined) {
+      return null;
+    }
     candidateSearchIndex = advanceAfterEmptyMatch({
       input,
       index: rejectedStart,
@@ -8211,7 +8781,9 @@ function selectLongestBackreferenceMatches({
         start: range[0],
         end: range[1],
       });
-      if (byteLength <= selectedByteLength) continue;
+      if (byteLength <= selectedByteLength) {
+        continue;
+      }
       selected = candidate;
       selectedByteLength = byteLength;
     }
@@ -8227,7 +8799,9 @@ function selectLongestBackreferenceMatches({
   }): RegExp => {
     const key = `${searchStartIndex ?? "-"}:${runtimeAlternativeStateKey({ state })}`;
     const existing = regexByState.get(key);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     const base = compiled.create({
       global: false,
       disabledBackreferenceAlternatives: state.disabled,
@@ -8282,9 +8856,13 @@ function selectLongestBackreferenceMatches({
     // is absent untouched; later candidates expose any remaining rejection.
     for (const rejection of rejections) {
       const next = applyRuntimeAlternativeRejection({ state, rejection });
-      if (next === undefined) continue;
+      if (next === undefined) {
+        continue;
+      }
       const key = runtimeAlternativeStateKey({ state: next });
-      if (queued.has(key)) continue;
+      if (queued.has(key)) {
+        continue;
+      }
       queued.add(key);
       queue.push(next);
       return;
@@ -8318,7 +8896,9 @@ function selectLongestBackreferenceMatches({
       const state = queue[queueIndex]!;
       const regex = createRuntimeRegex({ state, searchStartIndex });
       const raw = findPrimaryLongestCandidateAtStart({ regex, startIndex });
-      if (raw === null) continue;
+      if (raw === null) {
+        continue;
+      }
       const rejections = runtimeAlternativeRejections({
         input,
         raw,
@@ -8367,7 +8947,9 @@ function selectLongestBackreferenceMatches({
       candidateIndex -= 1
     ) {
       const endIndex = candidateEnds[candidateIndex]!;
-      if (endIndex >= beforeEndIndex) continue;
+      if (endIndex >= beforeEndIndex) {
+        continue;
+      }
       const queue: JqRuntimeAlternativeState[] = [
         initialRuntimeAlternativeState(),
       ];
@@ -8391,7 +8973,9 @@ function selectLongestBackreferenceMatches({
           startIndex,
           endIndex,
         });
-        if (raw === null) continue;
+        if (raw === null) {
+          continue;
+        }
         const rejections = runtimeAlternativeRejections({
           input,
           raw,
@@ -8399,7 +8983,9 @@ function selectLongestBackreferenceMatches({
           context,
           searchStartIndex,
         });
-        if (rejections.length === 0) return raw;
+        if (rejections.length === 0) {
+          return raw;
+        }
         enqueueFirstActionableRejection({ state, rejections, queue, queued });
       }
     }
@@ -8431,7 +9017,9 @@ function selectLongestBackreferenceMatches({
       startSearch.lastIndex = nextSearchIndex;
       const syntactic = startSearch.exec(input) as
         RegExpExecArrayWithIndices | null;
-      if (syntactic === null) break;
+      if (syntactic === null) {
+        break;
+      }
       const startIndex = syntactic.index;
       const {
         candidates: validAtStart,
@@ -8522,7 +9110,9 @@ function selectLongestBackreferenceMatches({
         ...unresolved,
         searchStartIndex,
       });
-      if (fallback !== undefined) candidates.push(fallback);
+      if (fallback !== undefined) {
+        candidates.push(fallback);
+      }
     }
     return candidates;
   };
@@ -8540,11 +9130,17 @@ function selectLongestBackreferenceMatches({
         global: false,
         ignoreEmpty: compiled.ignoreEmpty,
       });
-      if (best === undefined) break;
+      if (best === undefined) {
+        break;
+      }
       selected.push(best);
-      if (!global) break;
+      if (!global) {
+        break;
+      }
       const range = best.indices[0];
-      if (range === undefined) break;
+      if (range === undefined) {
+        break;
+      }
       searchStartIndex = range[1] > range[0]
         ? range[1]
         : advanceAfterEmptyMatch({ input, index: range[1] });
@@ -8595,16 +9191,22 @@ function boundedSimpleCaptureHistoryInputCodePointLength({
   for (const codePoint of input) {
     length += 1;
     firstCodePoint ??= codePoint;
-    if (codePoint !== firstCodePoint) uniform = false;
+    if (codePoint !== firstCodePoint) {
+      uniform = false;
+    }
     if (
       length >
         JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_UNIFORM_INPUT_CODE_POINTS
-    ) return undefined;
+    ) {
+      return undefined;
+    }
   }
   if (
     length <=
       JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_INPUT_CODE_POINTS
-  ) return length;
+  ) {
+    return length;
+  }
   return allowSingletonRequiredSevenCodePoints
     || (allowUniformSevenCodePoints && uniform)
     ? length
@@ -8628,7 +9230,9 @@ function boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
       return undefined;
     }
   }
-  if (length <= staticMarkerBudget) return undefined;
+  if (length <= staticMarkerBudget) {
+    return undefined;
+  }
   return length;
 }
 
@@ -8761,10 +9365,14 @@ export function collectJqRegularExpressionMatches({
         // existing state/materialization limit, preserve the bounded native
         // behavior instead of turning a previously valid expression into an
         // error. Unexpected failures still propagate.
-        if (!(error instanceof JqRegularExpressionRuntimeError)) throw error;
+        if (!(error instanceof JqRegularExpressionRuntimeError)) {
+          throw error;
+        }
       }
     }
-    if (guardedBaselineMatches !== undefined) return guardedBaselineMatches;
+    if (guardedBaselineMatches !== undefined) {
+      return guardedBaselineMatches;
+    }
   }
 
   const expansionAlternations =
@@ -8844,9 +9452,13 @@ export function collectJqRegularExpressionMatches({
           compiled: fallback,
           global,
         });
-        if (fallbackMatches.length !== 0) return fallbackMatches;
+        if (fallbackMatches.length !== 0) {
+          return fallbackMatches;
+        }
       } catch (error: unknown) {
-        if (!(error instanceof JqRegularExpressionRuntimeError)) throw error;
+        if (!(error instanceof JqRegularExpressionRuntimeError)) {
+          throw error;
+        }
       }
     }
   }
@@ -8878,7 +9490,9 @@ export function collectJqRegularExpressionMatches({
           global,
         });
       } catch (error: unknown) {
-        if (!(error instanceof JqRegularExpressionRuntimeError)) throw error;
+        if (!(error instanceof JqRegularExpressionRuntimeError)) {
+          throw error;
+        }
       }
     }
 
@@ -8918,7 +9532,9 @@ export function collectJqRegularExpressionMatches({
             });
           return sameSpans ? fallbackMatches : baselineMatches;
         } catch (error: unknown) {
-          if (!(error instanceof JqRegularExpressionRuntimeError)) throw error;
+          if (!(error instanceof JqRegularExpressionRuntimeError)) {
+            throw error;
+          }
         }
       }
     }
@@ -8965,10 +9581,14 @@ export function collectJqRegularExpressionMatches({
             preferNonEmptyAtSearchStart: previousAcceptedEmptyMatch,
           })
         : (longestMatches[longestMatchIndex++] ?? null);
-    if (rawCandidate === null) break;
+    if (rawCandidate === null) {
+      break;
+    }
     let raw: RegExpExecArrayWithIndices = rawCandidate;
     let wholeRange: [number, number] | undefined = raw.indices[0];
-    if (wholeRange === undefined) break;
+    if (wholeRange === undefined) {
+      break;
+    }
     if (
       compiled.ignoreEmpty &&
       wholeRange[0] === wholeRange[1] &&
@@ -8993,7 +9613,9 @@ export function collectJqRegularExpressionMatches({
           });
       raw = nonEmptyAlternative ?? raw;
       wholeRange = raw.indices[0];
-      if (wholeRange === undefined) break;
+      if (wholeRange === undefined) {
+        break;
+      }
     }
     const start: number = wholeRange[0];
     const end: number = wholeRange[1];
@@ -9092,7 +9714,9 @@ export function collectJqRegularExpressionMatches({
       }
     }
 
-    if (!global && !ignoredEmptyMatch) break;
+    if (!global && !ignoredEmptyMatch) {
+      break;
+    }
     previousAcceptedEmptyMatch = !ignoredEmptyMatch && start === end;
     searchIndex = start === end ? advanceAfterEmptyMatch({ input, index: end }) : end;
     if (
@@ -9113,7 +9737,9 @@ export function codePointOffset({
   input: string;
   codeUnitOffset: number;
 }): number {
-  if (codeUnitOffset < 0) return -1;
+  if (codeUnitOffset < 0) {
+    return -1;
+  }
   let codePointCount = 0;
   for (let index = 0; index < codeUnitOffset;) {
     const codePoint = input.codePointAt(index);

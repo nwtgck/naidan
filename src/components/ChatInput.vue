@@ -204,7 +204,9 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
-  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+    return;
+  }
   await chatModels.fetchForChat({
     chatId: props.chatId,
   });
@@ -311,7 +313,9 @@ function closeImageEditor() {
 
 function saveEditedImage({ blob }: { blob: Blob }) {
   titleActivity.noteActivity();
-  if (!editingAttachment.value) return;
+  if (!editingAttachment.value) {
+    return;
+  }
 
   const index = attachments.value.findIndex(a => a.id === editingAttachmentId.value);
   if (index !== -1) {
@@ -374,7 +378,9 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 async function processFiles({ files }: { files: File[] }) {
   titleActivity.noteActivity();
   for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
+    if (!file.type.startsWith('image/')) {
+      continue;
+    }
 
     const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
@@ -406,7 +412,9 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
 }
 
 async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: string }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
     chatId: props.chatId,
@@ -414,7 +422,9 @@ async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: strin
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
   void storageService.getVolumeDirectoryHandle({ volumeId }).then(handle => {
-    if (handle) startVolumeExtensionScan({ volumeId, handle });
+    if (handle) {
+      startVolumeExtensionScan({ volumeId, handle });
+    }
   });
 }
 
@@ -422,7 +432,9 @@ async function attachCopyAsVolume({ entries, name }: {
   entries: Array<{ file: File, relativePath: string }>,
   name: string,
 }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const copyId = generateId<VolumeCopyOperationId>();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
@@ -456,7 +468,9 @@ async function attachCopyAsVolume({ entries, name }: {
 }
 
 async function attachLinkAsVolume() {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const releaseActivity = titleActivity.hold();
   try {
     // @ts-expect-error: File System Access API
@@ -478,7 +492,9 @@ async function attachLinkAsVolume() {
 
 // Handlers for ChatAttachMenu emits
 async function onAttachFilesSelected({ files }: { files: File[] }) {
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    return;
+  }
   if (files.every(f => f.type.startsWith('image/'))) {
     await processFiles({ files });
   } else {
@@ -505,7 +521,9 @@ async function collectFilesFromDirectoryEntry(
     const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
       reader.readEntries(resolve, reject),
     );
-    if (batch.length === 0) break;
+    if (batch.length === 0) {
+      break;
+    }
     allEntries.push(...batch);
   }
   const results: Array<{ file: File, relativePath: string }> = [];
@@ -529,7 +547,9 @@ async function collectFilesFromDirectoryEntry(
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
 async function processDropItems({ items }: { items: DataTransferItem[] }) {
   titleActivity.noteActivity();
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   const releaseActivity = titleActivity.hold();
   try {
@@ -541,7 +561,9 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
     // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
     const collected: DropCollected[] = [];
     for (const item of items) {
-      if (item.kind !== 'file') continue;
+      if (item.kind !== 'file') {
+        continue;
+      }
       if ('getAsFileSystemHandle' in item) {
         // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
         collected.push({
@@ -596,7 +618,9 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
       }
       case 'raw-file': {
         const file = c.item.getAsFile();
-        if (file) plainFiles.push(file);
+        if (file) {
+          plainFiles.push(file);
+        }
         break;
       }
       default: {
@@ -615,9 +639,13 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 }
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const mounts = chatMountList.value;
-  if (mounts.length === 0) return;
+  if (mounts.length === 0) {
+    return;
+  }
 
   const { buildWorkerMountsForChat } = await loadChatWorkerMountsModule();
   const workerMounts = await buildWorkerMountsForChat({
@@ -643,11 +671,14 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
     if (vol.id === volumeId) {
-      volumeType = vol.type; break;
+      volumeType = vol.type;
+      break;
     }
   }
 
@@ -673,7 +704,9 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   }
 
   const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
   await chatMounts.removeMount({
     chatId: props.chatId,
     volumeId,
@@ -693,12 +726,15 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
 }
 
 async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId, readOnly: boolean }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
     if (vol.id === volumeId) {
-      volumeType = vol.type; break;
+      volumeType = vol.type;
+      break;
     }
   }
 
@@ -749,7 +785,9 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
 
 async function handlePaste({ event }: { event: ClipboardEvent }) {
   const items = event.clipboardData?.items;
-  if (!items) return;
+  if (!items) {
+    return;
+  }
 
   const files: File[] = [];
   for (let i = 0; i < items.length; i++) {
@@ -903,7 +941,9 @@ function toggleSubmerged() {
 }
 
 async function handleGenerateImage() {
-  if (!chat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if (!chat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) {
+    return;
+  }
 
   const prompt = input.value;
   const currentAttachments = [...attachments.value];
@@ -932,11 +972,15 @@ async function handleGenerateImage() {
 }
 
 async function handleSend() {
-  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) {
+    return;
+  }
   finishHomeIntroduction();
 
   if (isImageMode.value) {
-    if (props.isSubmissionEnabled === false) return;
+    if (props.isSubmissionEnabled === false) {
+      return;
+    }
     await handleGenerateImage();
     return;
   }
@@ -1065,7 +1109,9 @@ watch(
     () => props.autoSendPrompt,
   ],
   async ([chatValue, interaction]) => {
-    if (interaction !== 'enabled' || !chatValue) return;
+    if (interaction !== 'enabled' || !chatValue) {
+      return;
+    }
 
     /**
      * Model discovery must not delay textarea focus or URL-driven auto-send.
@@ -1076,7 +1122,9 @@ watch(
     void fetchModels();
 
     await nextTick();
-    if (!isInteractiveChatCurrent({ chatValue })) return;
+    if (!isInteractiveChatCurrent({ chatValue })) {
+      return;
+    }
 
     adjustTextareaHeight({ force: false });
     focusInput({
@@ -1084,8 +1132,12 @@ watch(
       visibilityPolicy: 'preserve',
     });
 
-    if (!props.autoSendPrompt || autoSendState.value === 'sent') return;
-    if (!isInteractiveChatCurrent({ chatValue })) return;
+    if (!props.autoSendPrompt || autoSendState.value === 'sent') {
+      return;
+    }
+    if (!isInteractiveChatCurrent({ chatValue })) {
+      return;
+    }
 
     autoSendState.value = 'sent';
     input.value = props.autoSendPrompt;
@@ -1143,7 +1195,9 @@ function focusInput({
   visibilityPolicy?: FocusInputVisibilityPolicy,
 } = {}) {
   const applyFocus = () => {
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      return;
+    }
     switch (activeFocusArea.value) {
     case 'sidebar':
     case 'search':

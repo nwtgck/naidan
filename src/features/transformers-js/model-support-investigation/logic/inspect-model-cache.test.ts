@@ -26,7 +26,9 @@ function toDirectoryHandle({ value }: { value: FakeDirectory }): FileSystemDirec
     name: 'fake',
     async getDirectoryHandle(name: string) {
       const child = value.children[name];
-      if (child?.kind !== 'directory') throw new DOMException('Not found', 'NotFoundError');
+      if (child?.kind !== 'directory') {
+        throw new DOMException('Not found', 'NotFoundError');
+      }
       return toDirectoryHandle({ value: child });
     },
     async *entries() {

@@ -17,7 +17,8 @@ class LifecycleWorker extends EventTarget {
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
 
   async publishReady() {
-    this.startup.start(); await this.startup.ready;
+    this.startup.start();
+    await this.startup.ready;
   }
 }
 
@@ -37,7 +38,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const session of sessions.splice(0)) session.dispose();
+  for (const session of sessions.splice(0)) {
+    session.dispose();
+  }
   vi.useRealTimers();
   vi.resetAllMocks();
 });
@@ -59,8 +62,11 @@ describe('Production Worker startup ownership', () => {
     operation.emit({ kind: 'load-start', details: {} });
     worker.dispatchEvent(new MessageEvent('message', { data: messages[0] }));
     expect(observeLoadDiagnostic).toHaveBeenCalledTimes(1);
-    if (terminal === 'dispose') session.dispose();
-    else await vi.advanceTimersByTimeAsync(100);
+    if (terminal === 'dispose') {
+      session.dispose();
+    } else {
+      await vi.advanceTimersByTimeAsync(100);
+    }
     worker.dispatchEvent(new MessageEvent('message', { data: messages[0] }));
     expect(observeLoadDiagnostic).toHaveBeenCalledTimes(1);
   });
@@ -71,7 +77,9 @@ describe('Production Worker startup ownership', () => {
       worker: worker as unknown as Worker,
       startupTimeoutMs: 100,
       observeLoadDiagnostic: () => {
-        if (mode === 'throw') throw new Error('Diagnostic failure');
+        if (mode === 'throw') {
+          throw new Error('Diagnostic failure');
+        }
         return Promise.reject(new Error('Diagnostic failure'));
       },
     });
@@ -97,7 +105,8 @@ describe('Production Worker startup ownership', () => {
     expect(platform.revokeObjectURL).not.toHaveBeenCalled();
     await session.run({ operation: async () => 'model unloaded, Realm still reusable' });
     expect(platform.blobs.size).toBe(1);
-    session.dispose(); session.dispose();
+    session.dispose();
+    session.dispose();
     expect(platform.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(platform.createObjectURL.mock.results[0]?.value);
     expect(platform.blobs.size).toBe(0);
   });
@@ -163,7 +172,11 @@ describe('Production Worker startup ownership', () => {
     const secondEntered = Promise.withResolvers<void>();
     let calls = 0;
     const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockImplementation(() => {
-      if (++calls === 1) firstEntered.resolve(); else secondEntered.resolve();
+      if (++calls === 1) {
+        firstEntered.resolve();
+      } else {
+        secondEntered.resolve();
+      }
       return releaseDigest.promise;
     });
     const first = fixture();
@@ -205,11 +218,13 @@ describe('Production Worker startup ownership', () => {
     let exposed = false;
     const startup = startProductionWorkerRuntime({
       loadEntry: async () => {
-        await entry.promise; exposed = true;
+        await entry.promise;
+        exposed = true;
         return { requestId: '11111111-1111-4111-8111-111111111111' };
       },
       postMessage: args => {
-        expect(exposed).toBe(true); postMessage(args);
+        expect(exposed).toBe(true);
+        postMessage(args);
       },
     });
     expect(postMessage).not.toHaveBeenCalled();

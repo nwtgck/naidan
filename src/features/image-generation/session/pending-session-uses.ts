@@ -24,7 +24,9 @@ export function createImagePendingSessionUses() {
     },
     removeSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): void {
       for (const [id, entry] of entries) {
-        if (entry.store.storageType === store.storageType && entry.store.storeId === store.storeId && entry.sessionId === sessionId) entries.delete(id);
+        if (entry.store.storageType === store.storageType && entry.store.storeId === store.storeId && entry.sessionId === sessionId) {
+          entries.delete(id);
+        }
       }
     },
   };

@@ -34,7 +34,9 @@ describe('wesh date', () => {
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -45,7 +47,9 @@ describe('wesh date', () => {
     const writable = await handle.createWritable();
     await writable.write(data);
     await writable.close();
-    if (mtime !== undefined) handle.lastModified = mtime;
+    if (mtime !== undefined) {
+      handle.lastModified = mtime;
+    }
     return handle;
   }
 

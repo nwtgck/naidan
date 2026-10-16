@@ -33,10 +33,13 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       modelId,
       paths: resources.map(item => item.path),
       response: ({ path }) => {
-        if (path !== target.path) return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        if (path !== target.path) {
+          return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        }
         return new Response(new ReadableStream<Uint8Array>({
           pull() {
-            targetPulls++; throw new Error('Refused allocation must precede source reads');
+            targetPulls++;
+            throw new Error('Refused allocation must precede source reads');
           },
         }, { highWaterMark: 0 }),
         { headers: { 'Content-Length': String(target.bytes) } });
@@ -86,7 +89,8 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     const download = vi.spyOn(h.service, 'downloadModel');
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        download.mockRestore(); await h.close();
+        download.mockRestore();
+        await h.close();
       },
     };
     await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
@@ -111,18 +115,24 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       response: ({ path }) => {
         const index = resources.findIndex(item => item.path === path);
         const parts = [new Uint8Array([index, 11, 22]), new Uint8Array([33, 44, index])];
-        chunks.push(parts); expected.set(path, parts.flatMap(part => [...part]));
+        chunks.push(parts);
+        expected.set(path, parts.flatMap(part => [...part]));
         let ordinal = 0;
         return new Response(new ReadableStream<Uint8Array>({
           async pull(controller) {
             if (ordinal === 0 && path === resources[0]?.path) {
-              entered.resolve(); await release.promise;
+              entered.resolve();
+              await release.promise;
             }
             pulls.push(path);
             const part = parts[ordinal++];
-            if (part === undefined) throw new Error('Unexpected extra source pull');
+            if (part === undefined) {
+              throw new Error('Unexpected extra source pull');
+            }
             controller.enqueue(part);
-            if (ordinal === parts.length) controller.close();
+            if (ordinal === parts.length) {
+              controller.close();
+            }
           },
         }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
       },
@@ -146,12 +156,18 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     const model = await loading;
     expect(h.raw.sessions).toHaveBeenCalledTimes(1);
     const call = h.raw.sessions.mock.calls[0];
-    if (call === undefined) throw new Error('Missing ORT boundary');
+    if (call === undefined) {
+      throw new Error('Missing ORT boundary');
+    }
     const core = z.instanceof(Uint8Array).parse(call[0]);
     const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
     const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
     expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
-    for (const parts of chunks) for (const part of parts) part.fill(255);
+    for (const parts of chunks) {
+      for (const part of parts) {
+        part.fill(255);
+      }
+    }
     for (const item of resources) {
       expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
       expect(pulls.filter(path => path === item.path)).toHaveLength(2);

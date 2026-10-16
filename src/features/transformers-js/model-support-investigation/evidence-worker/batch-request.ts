@@ -57,7 +57,9 @@ export async function readModelSupportInvestigationBatchEvidenceWorkerRequest({
     schemaVersion: result.data.schemaVersion,
     batchId: result.data.batchId,
     items: result.data.items.map(({ run, providerCaptureEvidence, providerInvestigationEvidence, ...item }) => {
-      if (run === undefined && (providerCaptureEvidence !== undefined || providerInvestigationEvidence !== undefined)) throw new Error('Provider capture Evidence requires its investigation run');
+      if (run === undefined && (providerCaptureEvidence !== undefined || providerInvestigationEvidence !== undefined)) {
+        throw new Error('Provider capture Evidence requires its investigation run');
+      }
       return { ...item, run: run === undefined ? undefined : decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }) };
     }) as unknown as ModelSupportInvestigationBatchEvidenceItem[],
   };

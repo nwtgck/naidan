@@ -13,7 +13,9 @@ function firstMismatchIndex({ left, right }: {
 }): number | undefined {
   const commonLength = Math.min(left.length, right.length);
   for (let index = 0; index < commonLength; index += 1) {
-    if (left[index] !== right[index]) return index;
+    if (left[index] !== right[index]) {
+      return index;
+    }
   }
   return left.length === right.length ? undefined : commonLength;
 }

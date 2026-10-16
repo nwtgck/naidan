@@ -11,10 +11,14 @@ import type { NaidanRpcClient, NaidanRpcImplementation } from '@/features/naidan
 export const peerDocumentLimits = Object.freeze({ depth: 32, nodes: 65536 });
 
 export const relativeModelPathSchema = z.string().min(1).max(4096).refine(path => {
-  if (/[\\:%]/.test(path) || path.startsWith('/')) return false;
+  if (/[\\:%]/.test(path) || path.startsWith('/')) {
+    return false;
+  }
   for (let i = 0; i < path.length; i++) {
     const code = path.charCodeAt(i);
-    if (code < 32 || code === 127) return false;
+    if (code < 32 || code === 127) {
+      return false;
+    }
   }
   return path.split('/').every(part => part !== '' && part !== '.' && part !== '..');
 }, 'Use a relative path inside an existing model root');
@@ -29,7 +33,9 @@ export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value
     }
   }
   // The larger bound is reserved for encoded Host aliases and file paths.
-  if (value.length > 512) return false;
+  if (value.length > 512) {
+    return false;
+  }
   if (!value.startsWith('hf.co/') || !value.includes(':')) {
     return relativeModelPathSchema.safeParse(value).success;
   }

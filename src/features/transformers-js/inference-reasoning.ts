@@ -8,13 +8,20 @@ const ReasoningSchema = z.object({
 
 /** Validate before a model template can close a stored reasoning segment. */
 export function readCompleteInferenceReasoning({ message }: { message: InferenceMessage }): string | undefined {
-  if (message.reasoning === undefined) return undefined;
-  if (message.role !== 'assistant') throw new Error('Only assistant messages can contain structured reasoning.');
+  if (message.reasoning === undefined) {
+    return undefined;
+  }
+  if (message.role !== 'assistant') {
+    throw new Error('Only assistant messages can contain structured reasoning.');
+  }
   const { text, completeness } = ReasoningSchema.parse(message.reasoning);
   switch (completeness) {
   case 'complete': return text;
   case 'partial': throw new Error('The model template cannot close unfinished structured reasoning.');
-  default: { const exhaustive: never = completeness; throw new Error(`Unhandled reasoning completeness: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = completeness;
+    throw new Error(`Unhandled reasoning completeness: ${exhaustive}`);
+  }
   }
 }
 

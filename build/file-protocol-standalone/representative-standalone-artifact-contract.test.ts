@@ -16,7 +16,9 @@ import {
 let fixture: Awaited<ReturnType<typeof buildRepresentativeStandaloneArtifactFixture>> | undefined;
 
 function getFixture(): Awaited<ReturnType<typeof buildRepresentativeStandaloneArtifactFixture>> {
-  if (fixture === undefined) throw new Error("Representative standalone artifact fixture has not been built");
+  if (fixture === undefined) {
+    throw new Error("Representative standalone artifact fixture has not been built");
+  }
   return fixture;
 }
 
@@ -35,7 +37,9 @@ function requireOutputItem({ output, fileName }: Readonly<{
   fileName: string;
 }>): OutputAsset | OutputChunk {
   const item = output.output.find(candidate => candidate.fileName === fileName);
-  if (item === undefined) throw new Error(`Expected representative output ${fileName}`);
+  if (item === undefined) {
+    throw new Error(`Expected representative output ${fileName}`);
+  }
   return item;
 }
 
@@ -44,7 +48,9 @@ function requireAssetText({ output, fileName }: Readonly<{
   fileName: string;
 }>): string {
   const item = requireOutputItem({ output, fileName });
-  if (item.type !== "asset") throw new Error(`Expected representative output ${fileName} to be an asset`);
+  if (item.type !== "asset") {
+    throw new Error(`Expected representative output ${fileName} to be an asset`);
+  }
   return readAssetText({ asset: item });
 }
 
@@ -76,7 +82,9 @@ function findOutputFileContaining({ output, marker, extension }: Readonly<{
 
 function basename({ fileName }: Readonly<{fileName: string}>): string {
   const value = fileName.split("/").at(-1);
-  if (value === undefined) throw new Error(`Expected output basename for ${fileName}`);
+  if (value === undefined) {
+    throw new Error(`Expected output basename for ${fileName}`);
+  }
   return value;
 }
 
@@ -105,7 +113,9 @@ describe("file-protocol standalone representative artifact contract", () => {
   });
 
   afterAll(() => {
-    if (fixture === undefined) return;
+    if (fixture === undefined) {
+      return;
+    }
     removeRepresentativeStandaloneArtifactFixture({ root: fixture.root });
     fixture = undefined;
   });
@@ -302,7 +312,9 @@ describe("file-protocol standalone representative artifact contract", () => {
 
     expect(requireWorkerChunk({ output, workerName: "editor" }).dynamicImports).toContain(workerLazyChunk.fileName);
     for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
-      if (workerName === "editor") continue;
+      if (workerName === "editor") {
+        continue;
+      }
       expect(requireWorkerChunk({ output, workerName }).dynamicImports).not.toContain(workerLazyChunk.fileName);
     }
     expect(workerLazyChunk.code).toContain("representative-worker-lazy");
@@ -331,7 +343,9 @@ describe("file-protocol standalone representative artifact contract", () => {
     const { output } = getFixture();
     const entryChunk = requireUiEntryChunk({ output });
     const payload = output.output.find(item => item.type === "asset" && item.fileName.endsWith(".txt"));
-    if (payload === undefined) throw new Error("Expected representative ?url payload output");
+    if (payload === undefined) {
+      throw new Error("Expected representative ?url payload output");
+    }
 
     expect(entryChunk.code).toContain(basename({ fileName: payload.fileName }));
   });

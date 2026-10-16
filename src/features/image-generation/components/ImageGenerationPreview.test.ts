@@ -14,7 +14,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
+  wrapper?.unmount();
+  wrapper = undefined;
+  vi.unstubAllGlobals();
 });
 
 it.each([
@@ -73,10 +75,13 @@ it('keeps preview images while typing a larger retention limit, including when a
   });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      stop(); gallery.clear();
+      stop();
+      gallery.clear();
     },
   };
-  for (let i = 0; i < 5; i++) add();
+  for (let i = 0; i < 5; i++) {
+    add();
+  }
   wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
   const input = wrapper.get<HTMLInputElement>('[data-testid="image-preview-limit"]');
   for (const draft of ['1', '10', '100']) {
@@ -91,7 +96,9 @@ it('keeps preview images while typing a larger retention limit, including when a
   expect(gallery.entries()).toHaveLength(8);
   await input.trigger('change');
   expect(view.maxPreviews.value).toBe(100);
-  for (let i = 0; i < 94; i++) add();
+  for (let i = 0; i < 94; i++) {
+    add();
+  }
   expect(gallery.entries()).toHaveLength(100);
   await input.setValue('2');
   expect(view.maxPreviews.value).toBe(2);
@@ -119,7 +126,9 @@ it.each(['card', 'viewer'])('keeps a retained preview downloadable from its %s a
   }];
   view.downloadPreview = vi.fn(async () => ({ status: 'downloaded' as const }));
   wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' }, global: { stubs: { Teleport: true } } });
-  if (location === 'viewer') await wrapper.get('[data-testid="image-preview-snapshot"] button').trigger('click');
+  if (location === 'viewer') {
+    await wrapper.get('[data-testid="image-preview-snapshot"] button').trigger('click');
+  }
   const menu = () => wrapper!.get(location === 'viewer' ? '[data-testid="image-viewer"] [data-testid="image-download-menu"]' : '[data-testid="image-preview-snapshot"] [data-testid="image-download-menu"]');
   const download = () => menu().get<HTMLButtonElement>('[data-testid="image-download-default"]');
   expect(download().element.disabled).toBe(false);
@@ -142,7 +151,8 @@ function openPreview({ width = 32, height = 32, mode = 'projection', maxEdge = 2
 } = {}) {
   // Use the view-only facade with synthetic frame metadata. No native inference.
   const view = { ...useImageGeneration(), supported: computed(() => true), busy: computed(() => true) };
-  view.parameters.value.width = 512; view.parameters.value.height = 512;
+  view.parameters.value.width = 512;
+  view.parameters.value.height = 512;
   view.preview.value = { ...view.preview.value, enabled: true, maxEdge };
   view.livePreview.value = {
     type: 'naidan-image-preview-v1',

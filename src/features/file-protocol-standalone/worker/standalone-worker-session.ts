@@ -31,7 +31,9 @@ async function runCleanupStep({
       }),
     ]);
   } finally {
-    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
   }
 }
 
@@ -90,8 +92,12 @@ async function disposeStandaloneWorkerSessionOnce<Api extends object>({
     session.worker.terminate();
   }
 
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, 'Standalone Worker cleanup failed');
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Standalone Worker cleanup failed');
+  }
 }
 
 export function disposeStandaloneWorkerSession<Api extends object>({
@@ -104,7 +110,9 @@ export function disposeStandaloneWorkerSession<Api extends object>({
   cleanupTimeoutMs: number,
 }): Promise<void> {
   const existingDisposal = disposalPromises.get(session);
-  if (existingDisposal !== undefined) return existingDisposal;
+  if (existingDisposal !== undefined) {
+    return existingDisposal;
+  }
 
   const disposal = disposeStandaloneWorkerSessionOnce({
     session,

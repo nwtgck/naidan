@@ -277,7 +277,9 @@ export function useFileExplorerDirectoryDownload({
         signal: downloadAbort.signal,
       });
       const response = await job.result;
-      if (generation !== archiveGeneration) return;
+      if (generation !== archiveGeneration) {
+        return;
+      }
       switch (response.status) {
       case 'cancelled':
         break;

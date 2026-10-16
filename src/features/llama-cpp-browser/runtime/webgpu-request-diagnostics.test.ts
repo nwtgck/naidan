@@ -6,8 +6,11 @@ function fixture() {
   const buffers = new WeakSet<object>();
   const queue = {
     writeBuffer: vi.fn(function (this: unknown, buffer: object, offset: number) {
-      expect(this).toBe(queue); expect(buffers.has(buffer)).toBe(true);
-      if (offset < 0) throw failure;
+      expect(this).toBe(queue);
+      expect(buffers.has(buffer)).toBe(true);
+      if (offset < 0) {
+        throw failure;
+      }
     }),
   };
   const failure = new Error('native failure');
@@ -17,8 +20,12 @@ function fixture() {
     createBuffer: vi.fn(function (this: unknown, descriptor: GPUBufferDescriptor) {
       expect(this).toBe(device);
       const size = descriptor.size;
-      if (size < 0) throw failure;
-      const buffer = Object.freeze({ size }); buffers.add(buffer); return buffer;
+      if (size < 0) {
+        throw failure;
+      }
+      const buffer = Object.freeze({ size });
+      buffers.add(buffer);
+      return buffer;
     }),
   };
   return { device: device as unknown as GPUDevice, failure, queue, buffers };
@@ -26,7 +33,8 @@ function fixture() {
 
 describe('passive GPU API request totals', () => {
   it('preserves actual buffer identity and does not read descriptor getters twice', () => {
-    const raw = fixture(); const observer = createGpuRequestObserver();
+    const raw = fixture();
+    const observer = createGpuRequestObserver();
     expect(observer.snapshot()).toMatchObject({ bufferCount: 0, writeCount: 0 });
     const device = observer.wrapDevice({ device: raw.device });
     const size = vi.fn(() => 64);
@@ -36,13 +44,16 @@ describe('passive GPU API request totals', () => {
       },
       usage: 0,
     });
-    expect(size).toHaveBeenCalledTimes(1); expect(raw.buffers.has(buffer)).toBe(true);
+    expect(size).toHaveBeenCalledTimes(1);
+    expect(raw.buffers.has(buffer)).toBe(true);
     expect(Object.isFrozen(buffer)).toBe(true);
     expect(observer.snapshot()).toMatchObject({ bufferBytes: 64, bufferCount: 1 });
   });
 
   it('counts TypedArray elements and ArrayBuffer/DataView bytes without copying or changing arguments', () => {
-    const raw = fixture(); const observer = createGpuRequestObserver(); const device = observer.wrapDevice({ device: raw.device });
+    const raw = fixture();
+    const observer = createGpuRequestObserver();
+    const device = observer.wrapDevice({ device: raw.device });
     const buffer = device.createBuffer({ size: 128, usage: 0 });
     const floats = new Float32Array(10);
     device.queue.writeBuffer(buffer, 0, floats, 2, 3);
@@ -55,15 +66,19 @@ describe('passive GPU API request totals', () => {
   });
 
   it('preserves native error identity and excludes synchronously rejected calls', () => {
-    const raw = fixture(); const observer = createGpuRequestObserver(); const device = observer.wrapDevice({ device: raw.device });
+    const raw = fixture();
+    const observer = createGpuRequestObserver();
+    const device = observer.wrapDevice({ device: raw.device });
     const buffer = device.createBuffer({ size: 128, usage: 0 });
     try {
-      device.createBuffer({ size: -1, usage: 0 }); expect.fail('Expected native error');
+      device.createBuffer({ size: -1, usage: 0 });
+      expect.fail('Expected native error');
     } catch (error) {
       expect(error).toBe(raw.failure);
     }
     try {
-      device.queue.writeBuffer(buffer, -1, new Uint8Array(1)); expect.fail('Expected native error');
+      device.queue.writeBuffer(buffer, -1, new Uint8Array(1));
+      expect.fail('Expected native error');
     } catch (error) {
       expect(error).toBe(raw.failure);
     }
@@ -71,7 +86,9 @@ describe('passive GPU API request totals', () => {
   });
 
   it('drops unavailable diagnostic counters without replacing a native result', () => {
-    const raw = fixture(); const observer = createGpuRequestObserver(); const device = observer.wrapDevice({ device: raw.device });
+    const raw = fixture();
+    const observer = createGpuRequestObserver();
+    const device = observer.wrapDevice({ device: raw.device });
     const result = device.createBuffer({ size: Number.MAX_SAFE_INTEGER, usage: 0 });
     expect(result.size).toBe(Number.MAX_SAFE_INTEGER);
     expect(device.createBuffer({ size: 1, usage: 0 }).size).toBe(1);
@@ -79,14 +96,18 @@ describe('passive GPU API request totals', () => {
   });
 
   it('isolates runtime counters and returns immutable snapshots', () => {
-    const first = createGpuRequestObserver(); const second = createGpuRequestObserver();
-    const core = {}; associateGpuRequests({ core, snapshot: first.snapshot });
+    const first = createGpuRequestObserver();
+    const second = createGpuRequestObserver();
+    const core = {};
+    associateGpuRequests({ core, snapshot: first.snapshot });
     const device = first.wrapDevice({ device: fixture().device });
     device.createBuffer({ size: 1, usage: 0 });
     const old = readGpuRequests({ core })!;
     device.createBuffer({ size: 2, usage: 0 });
-    expect(old.bufferBytes).toBe(1); expect(readGpuRequests({ core })!.bufferBytes).toBe(3);
-    expect(second.snapshot()).toMatchObject({ bufferBytes: 0, writeBytes: 0 }); expect(readGpuRequests({ core: {} })).toBeUndefined();
+    expect(old.bufferBytes).toBe(1);
+    expect(readGpuRequests({ core })!.bufferBytes).toBe(3);
+    expect(second.snapshot()).toMatchObject({ bufferBytes: 0, writeBytes: 0 });
+    expect(readGpuRequests({ core: {} })).toBeUndefined();
   });
 });
 
@@ -110,28 +131,34 @@ it('does not turn a diagnostic size getter failure into a failed native operatio
 });
 
 it('composes with the real dispatch navigator without eagerly requesting adapters or devices', async () => {
-  const raw = fixture(); const observer = createGpuRequestObserver();
+  const raw = fixture();
+  const observer = createGpuRequestObserver();
   const adapter = {
     requestDevice: vi.fn(function (this: unknown) {
-      expect(this).toBe(adapter); return Promise.resolve(raw.device);
+      expect(this).toBe(adapter);
+      return Promise.resolve(raw.device);
     }),
   };
   const gpu = {
     requestAdapter: vi.fn(function (this: unknown) {
-      expect(this).toBe(gpu); return Promise.resolve(adapter);
+      expect(this).toBe(gpu);
+      return Promise.resolve(adapter);
     }),
   };
   const navigator = { gpu } as unknown as Pick<Navigator, 'gpu'>;
   const scoped = createCoreWebGpuNavigator({ navigator, report() {}, observeDevice: observer.wrapDevice })!;
-  expect(gpu.requestAdapter).not.toHaveBeenCalled(); expect(adapter.requestDevice).not.toHaveBeenCalled();
+  expect(gpu.requestAdapter).not.toHaveBeenCalled();
+  expect(adapter.requestDevice).not.toHaveBeenCalled();
   const scopedAdapter = await scoped.gpu.requestAdapter();
   const device = await scopedAdapter!.requestDevice();
   const buffer = device.createBuffer({ size: 1024, usage: 0 });
   device.queue.writeBuffer(buffer, 0, new Uint8Array(256));
   expect(raw.buffers.has(buffer)).toBe(true);
   expect(observer.snapshot()).toMatchObject({ bufferCount: 1, bufferBytes: 1024, writeCount: 1, writeBytes: 256 });
-  expect(gpu.requestAdapter).toHaveBeenCalledTimes(1); expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
-  expect(navigator.gpu).toBe(gpu); expect(raw.device.queue).toBe(raw.queue);
+  expect(gpu.requestAdapter).toHaveBeenCalledTimes(1);
+  expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
+  expect(navigator.gpu).toBe(gpu);
+  expect(raw.device.queue).toBe(raw.queue);
 });
 
 function queueFixture({ promise }: { promise: Promise<void> }) {
@@ -140,7 +167,8 @@ function queueFixture({ promise }: { promise: Promise<void> }) {
       expect(this).toBe(queue);
     }),
     onSubmittedWorkDone: vi.fn(function (this: unknown) {
-      expect(this).toBe(queue); return promise;
+      expect(this).toBe(queue);
+      return promise;
     }),
   };
   const observer = createGpuRequestObserver();
@@ -167,7 +195,9 @@ describe('measurement-only existing queue completion observations', () => {
     expect(device.queue.onSubmittedWorkDone()).toBe(promise);
     const old = observer.snapshot()!;
     expect(old.queue).toMatchObject({ submitCount: 1, completionWaitCount: 1, completionWaitPending: 1 });
-    now = 35; resolve(); await promise;
+    now = 35;
+    resolve();
+    await promise;
     expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitPending: 0, completionWaitDurationMs: 25 });
     expect(old.queue!.completionWaitPending).toBe(1);
     expect(queue.submit).toHaveBeenCalledExactlyOnceWith(commands);
@@ -200,7 +230,10 @@ describe('measurement-only existing queue completion observations', () => {
     first();
     const second = beginGpuMeasurement({ now: () => 20 });
     try {
-      device.queue.submit([]); first(); resolve(); await promise;
+      device.queue.submit([]);
+      first();
+      resolve();
+      await promise;
       expect(observer.snapshot()!.queue).toMatchObject({ submitCount: 1, completionWaitCount: 0, completionWaitResolved: 0, completionWaitPending: 0 });
     } finally {
       second();
@@ -216,7 +249,8 @@ describe('measurement-only existing queue completion observations', () => {
     let calls = 0;
     Object.assign(queue, {
       onSubmittedWorkDone() {
-        calls++; return promise;
+        calls++;
+        return promise;
       },
     });
     device.queue.submit([]);
@@ -239,7 +273,8 @@ describe('measurement-only existing queue completion observations', () => {
         finish();
       },
     };
-    expect(device.queue.onSubmittedWorkDone()).toBe(promise); await promise;
+    expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+    await promise;
     expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitDurationMs: undefined, longestCompletionWaitDurationMs: undefined });
     const error = new Error('native');
     queue.submit.mockImplementation(() => {
@@ -270,12 +305,14 @@ it('captures only actual selected adapter/device metadata, treating redaction an
   const gpu = { requestAdapter: vi.fn(() => Promise.resolve(adapter)) };
   const navigator = createCoreWebGpuNavigator({ navigator: { gpu } as unknown as Pick<Navigator, 'gpu'>, report() {}, observeDevice: observer.wrapDevice })!;
   expect(observer.snapshot()!.metadata).toBeUndefined();
-  const selected = await navigator.gpu.requestAdapter(); await selected!.requestDevice();
+  const selected = await navigator.gpu.requestAdapter();
+  await selected!.requestDevice();
   const snapshot = observer.snapshot()!;
   expect(snapshot.metadata).toEqual({ adapterInfo: { vendor: 'vendor' }, fallbackAdapter: false, adapterFeatures: ['shader-f16', 'timestamp-query'], deviceFeatures: ['shader-f16'], deviceLimits: { maxComputeWorkgroupsPerDimension: 65535 } });
   snapshot.metadata!.adapterInfo!.vendor = 'changed';
   expect(observer.snapshot()!.metadata!.adapterInfo!.vendor).toBe('vendor');
-  expect(gpu.requestAdapter).toHaveBeenCalledTimes(1); expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
+  expect(gpu.requestAdapter).toHaveBeenCalledTimes(1);
+  expect(adapter.requestDevice).toHaveBeenCalledTimes(1);
 });
 
 it('prefers current adapter-info fallback status over the legacy adapter property', () => {
@@ -291,7 +328,9 @@ it('caps outstanding native wait observers across closed request windows without
   Object.assign(queue, { onSubmittedWorkDone: () => gate.promise });
   const then = vi.spyOn(gate.promise, 'then');
   const closeFirst = beginGpuMeasurement({ now: () => 1 });
-  for (let i = 0; i < 300; i++) expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
+  for (let i = 0; i < 300; i++) {
+    expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
+  }
   const first = observer.snapshot()!;
   expect(first.queue).toMatchObject({ completionWaitCount: 300, completionWaitPending: 256, completionWaitUnobserved: 44 });
   expect(then).toHaveBeenCalledTimes(256);
@@ -299,18 +338,21 @@ it('caps outstanding native wait observers across closed request windows without
   const closeSecond = beginGpuMeasurement({ now: () => 2 });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      closeSecond(); then.mockRestore();
+      closeSecond();
+      then.mockRestore();
     },
   };
   expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
   expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
   expect(then).toHaveBeenCalledTimes(256);
-  gate.resolve(); await gate.promise;
+  gate.resolve();
+  await gate.promise;
   // Old settlement frees observer slots, but cannot mutate either old snapshot
   // or the new request's outcomes. It never reports skipped waits as complete.
   expect(first.queue!.completionWaitPending).toBe(256);
   expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 0, completionWaitPending: 0, completionWaitUnobserved: 1 });
-  device.queue.onSubmittedWorkDone(); await gate.promise;
+  device.queue.onSubmittedWorkDone();
+  await gate.promise;
   expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 2, completionWaitResolved: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
 });
 
@@ -319,7 +361,9 @@ it('keeps the bounded completion observer budget local to each runtime', () => {
   const first = queueFixture({ promise: never });
   const second = queueFixture({ promise: never });
   const closeFirst = beginGpuMeasurement({ now: () => 0 });
-  for (let i = 0; i < 256; i++) first.device.queue.onSubmittedWorkDone();
+  for (let i = 0; i < 256; i++) {
+    first.device.queue.onSubmittedWorkDone();
+  }
   closeFirst();
   const closeSecond = beginGpuMeasurement({ now: () => 1 });
   using _cleanupResource = {

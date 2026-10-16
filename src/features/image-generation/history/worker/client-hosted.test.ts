@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({ query: vi.fn(), release: vi.fn(), workers: [] 
 vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => ({ query: mocks.query }), releaseWorkerRemote: () => mocks.release() }));
 
 beforeEach(() => {
-  vi.resetAllMocks(); mocks.workers.length = 0;
+  vi.resetAllMocks();
+  mocks.workers.length = 0;
   vi.stubGlobal('Worker', class extends EventTarget {
     constructor() {
-      super(); mocks.workers.push(this);
+      super();
+      mocks.workers.push(this);
     }
 
     terminate() {
@@ -51,7 +53,8 @@ it('settles pending reads and disposal without waiting for a release acknowledge
   const first = expect(client.query({ query })).rejects.toMatchObject({ name: 'AbortError' });
   const second = expect(client.query({ query })).rejects.toMatchObject({ name: 'AbortError' });
   await client.dispose();
-  await first; await second;
+  await first;
+  await second;
   expect(mocks.terminate).toHaveBeenCalledTimes(1);
   await expect(client.query({ query })).rejects.toThrow('disposed');
   await client.dispose();

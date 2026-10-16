@@ -29,13 +29,17 @@ describe('privacy broker runtime dependency headers', () => {
       listener.listen(0, '127.0.0.1', resolve);
     });
     const address = listener.address();
-    if (address === null || typeof address === 'string') throw new Error('Missing test server address');
+    if (address === null || typeof address === 'string') {
+      throw new Error('Missing test server address');
+    }
     base = `http://127.0.0.1:${address.port}`;
   });
 
   afterAll(async () => {
     listener.closeAllConnections();
-    if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
+    if (listener.listening) {
+      await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
+    }
     await vite?.close();
   });
 
@@ -44,7 +48,9 @@ describe('privacy broker runtime dependency headers', () => {
     const visited = new Set<string>();
     while (pending.length > 0) {
       const url = pending.pop();
-      if (url === undefined || visited.has(url)) continue;
+      if (url === undefined || visited.has(url)) {
+        continue;
+      }
       visited.add(url);
       const response = await fetch(base + url, { headers: { Origin: 'null' } });
       expect(response.status, url).toBe(200);
@@ -54,7 +60,9 @@ describe('privacy broker runtime dependency headers', () => {
       // Optimized shared chunks can retain relative imports; follow those too.
       for (const match of source.matchAll(/(?:from\s*|import\s*)["']([^"']+)["']/g)) {
         const specifier = match[1];
-        if (specifier === undefined || !(specifier.startsWith('/') || specifier.startsWith('.'))) continue;
+        if (specifier === undefined || !(specifier.startsWith('/') || specifier.startsWith('.'))) {
+          continue;
+        }
         const dependency = new URL(specifier, base + url);
         pending.push(dependency.pathname + dependency.search);
       }
@@ -66,7 +74,9 @@ describe('privacy broker runtime dependency headers', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
     const etag = response.headers.get('etag');
     await response.text();
-    if (etag === null) throw new Error('Missing module ETag');
+    if (etag === null) {
+      throw new Error('Missing module ETag');
+    }
     const cached = await fetch(base + '/src/utils/worker-transport.ts', { headers: { Origin: 'null', 'If-None-Match': etag } });
     expect(cached.status).toBe(304);
     expect(cached.headers.get('access-control-allow-origin')).toBe('*');

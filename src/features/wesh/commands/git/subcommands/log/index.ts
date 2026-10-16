@@ -40,7 +40,9 @@ async function readCachedLogHead({ context, repository, cache }: {
   repository: Awaited<ReturnType<typeof discoverRepository>>,
   cache: LogReferenceCache,
 }): Promise<GitHeadState> {
-  if (cache.head !== undefined) return cache.head;
+  if (cache.head !== undefined) {
+    return cache.head;
+  }
   const head = await readHead({ files: context.files, repository });
   cache.head = head;
   return head;
@@ -51,7 +53,9 @@ async function readCachedLogRefs({ context, repository, cache }: {
   repository: Awaited<ReturnType<typeof discoverRepository>>,
   cache: LogReferenceCache,
 }): Promise<GitListedRef[]> {
-  if (cache.refs !== undefined) return cache.refs;
+  if (cache.refs !== undefined) {
+    return cache.refs;
+  }
   const refs = await listRefs({ files: context.files, repository, prefix: 'refs' });
   cache.refs = refs;
   return refs;
@@ -63,7 +67,9 @@ async function tryPeelCachedLogRef({ context, repository, cache, objectId }: {
   cache: LogReferenceCache,
   objectId: string,
 }): Promise<string | undefined> {
-  if (cache.peeledCommitObjectIds.has(objectId)) return cache.peeledCommitObjectIds.get(objectId);
+  if (cache.peeledCommitObjectIds.has(objectId)) {
+    return cache.peeledCommitObjectIds.get(objectId);
+  }
   let peeled: string | undefined;
   try {
     peeled = await peelToCommitObjectId({ files: context.files, repository, objectId });
@@ -89,8 +95,9 @@ function logDecorationRefName({ refName, mode }: {
   }
   }
   for (const prefix of ['refs/heads/', 'refs/remotes/', 'refs/tags/']) {
-    if (refName.startsWith(prefix))
+    if (refName.startsWith(prefix)) {
       return refName.slice(prefix.length);
+    }
   }
   return refName;
 }
@@ -123,7 +130,9 @@ async function collectLogDecorations({ context, repository, mode, cache }: {
   const tags = refs.filter(ref => ref.refName.startsWith('refs/tags/'));
   for (const ref of [...tags].reverse()) {
     const objectId = await tryPeelCachedLogRef({ context, repository, cache, objectId: ref.objectId });
-    if (objectId === undefined) continue;
+    if (objectId === undefined) {
+      continue;
+    }
     add({
       objectId,
       label: `tag: ${logDecorationRefName({ refName: ref.refName, mode })}`,
@@ -135,8 +144,9 @@ async function collectLogDecorations({ context, repository, mode, cache }: {
   }
   const localRefs = refs.filter(ref => ref.refName.startsWith('refs/heads/'));
   for (const ref of [...localRefs].reverse()) {
-    if (ref.refName === head.symbolicRef)
+    if (ref.refName === head.symbolicRef) {
       continue;
+    }
     add({ objectId: ref.objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
   }
   const miscellaneousRefs = refs.filter(ref =>
@@ -146,7 +156,9 @@ async function collectLogDecorations({ context, repository, mode, cache }: {
   );
   for (const ref of [...miscellaneousRefs].reverse()) {
     const objectId = await tryPeelCachedLogRef({ context, repository, cache, objectId: ref.objectId });
-    if (objectId === undefined) continue;
+    if (objectId === undefined) {
+      continue;
+    }
     add({ objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
   }
   return new Map([...labelsByObjectId].map(([objectId, labels]) => [objectId, ` (${labels.join(', ')})`]));
@@ -206,8 +218,9 @@ export async function runLog({ context, args }: {
       excludeExpressions.push(left);
       includeExpressions.push(right);
     } else if (term.startsWith('^')) {
-      if (term.length === 1)
+      if (term.length === 1) {
         throw new Error('empty excluded revision');
+      }
       excludeExpressions.push(term.slice(1));
     } else {
       includeExpressions.push(term);
@@ -217,10 +230,14 @@ export async function runLog({ context, args }: {
   const excludeObjectIds: string[] = [];
   if (allRefs) {
     const head = await readCachedLogHead({ context, repository, cache: referenceCache });
-    if (head.objectId !== undefined) includeObjectIds.push(head.objectId);
+    if (head.objectId !== undefined) {
+      includeObjectIds.push(head.objectId);
+    }
     for (const ref of await readCachedLogRefs({ context, repository, cache: referenceCache })) {
       const objectId = await tryPeelCachedLogRef({ context, repository, cache: referenceCache, objectId: ref.objectId });
-      if (objectId !== undefined) includeObjectIds.push(objectId);
+      if (objectId !== undefined) {
+        includeObjectIds.push(objectId);
+      }
     }
   }
   for (const expression of includeExpressions) {
@@ -318,8 +335,9 @@ export async function runLog({ context, args }: {
         '',
         ...messageLines,
       ];
-      if (entryIndex + 1 < graphHistory.length)
+      if (entryIndex + 1 < graphHistory.length) {
         lines.push('');
+      }
       return {
         objectId: entry.objectId,
         parentObjectIds: entry.commit.parentObjectIds,
@@ -332,22 +350,26 @@ export async function runLog({ context, args }: {
   let count = 0;
   for (const entry of history) {
     const committerTimestamp = parseAuthorForLog({ author: entry.commit.committer }).timestamp;
-    if (sinceTimestamp !== undefined && committerTimestamp < sinceTimestamp)
+    if (sinceTimestamp !== undefined && committerTimestamp < sinceTimestamp) {
       continue;
-    if (untilTimestamp !== undefined && committerTimestamp > untilTimestamp)
+    }
+    if (untilTimestamp !== undefined && committerTimestamp > untilTimestamp) {
       continue;
+    }
     if (grepPatterns.length > 0 && !entry.commit.message.split('\n').some(
       line => testAnyGitBasicRegex({ regexes: grepPatterns, value: line }),
-    ))
+    )) {
       continue;
+    }
     const entryPathOperands = isFollowHistoryCommit(entry)
       ? entry.parentFollowPath !== undefined && entry.parentFollowPath !== entry.followPath
         ? [entry.followPath, entry.parentFollowPath]
         : [entry.followPath]
       : pathOperands;
     if (pickaxeString !== undefined || pickaxeRegex !== undefined) {
-      if (entry.commit.parentObjectIds.length > 1)
+      if (entry.commit.parentObjectIds.length > 1) {
         continue;
+      }
       const search = pickaxeString !== undefined
         ? { type: 'string' as const, bytes: new TextEncoder().encode(pickaxeString) }
         : { type: 'regex' as const, pattern: pickaxeRegex! };
@@ -361,18 +383,21 @@ export async function runLog({ context, args }: {
         detectRenames,
         detectCopies,
         renameLimit,
-      }))
+      })) {
         continue;
+      }
     }
-    if (count >= maxCount)
+    if (count >= maxCount) {
       break;
+    }
     const decoration = decorations.get(entry.objectId) ?? '';
     if (format !== undefined) {
       const formatted = oneline
         ? `${entry.objectId.slice(0, 7)}${decoration} ${commitSubject({ commit: entry.commit })}`
         : formatCommitTemplate({ objectId: entry.objectId, commit: entry.commit, format });
-      if (format !== '')
+      if (format !== '') {
         await context.text().print({ text: `${formatted}\n` });
+      }
     } else {
       const author = parseAuthorForLog({ author: entry.commit.author });
       const message = entry.commit.message.replace(/\n+$/u, '').split('\n').map(line => `    ${line}`).join('\n');
@@ -380,8 +405,9 @@ export async function runLog({ context, args }: {
         text: `commit ${entry.objectId}${decoration}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n\n`,
       });
     }
-    if (format !== undefined && format !== '' && (nameOnly || nameStatus))
+    if (format !== undefined && format !== '' && (nameOnly || nameStatus)) {
       await context.text().print({ text: '\n' });
+    }
     if (entry.commit.parentObjectIds.length <= 1) {
       const leftRevision = entry.commit.parentObjectIds[0];
       if (showStat) {

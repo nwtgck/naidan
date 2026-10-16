@@ -96,7 +96,9 @@ describe('read-update-write chat content', () => {
       id,
       updater: ({ current }) => {
         expect(current).toEqual(before);
-        if (!current) throw new Error('The repaired content must exist.');
+        if (!current) {
+          throw new Error('The repaired content must exist.');
+        }
         return current;
       },
     });
@@ -125,7 +127,9 @@ describe('read-update-write chat content', () => {
     await service.updateChatContent({
       id,
       updater: ({ current }) => {
-        if (!current) throw new Error('Legacy content must exist.');
+        if (!current) {
+          throw new Error('Legacy content must exist.');
+        }
         return current;
       },
     });
@@ -152,9 +156,11 @@ describe('read-update-write chat metadata', () => {
       const save = vi.spyOn(LocalStorageProvider.prototype, 'saveChatMeta');
       const updater = vi.fn(({ current }: { current: ChatMeta | null }) => current ?? replacementMeta);
       await expect(service.updateChatMeta({ id, updater })).rejects.toThrow();
-      expect(updater).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+      expect(updater).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
       expect(localStorage.getItem(metaKey)).toBe(raw);
-      expect(notify).not.toHaveBeenCalled(); expect(report).toHaveBeenCalledOnce();
+      expect(notify).not.toHaveBeenCalled();
+      expect(report).toHaveBeenCalledOnce();
       expect(locks).toHaveBeenCalledWith(LOCK_METADATA);
     });
   }
@@ -178,11 +184,14 @@ it('reports a read failure without notifying a successful write or running user 
   const failure = new DOMException('Access denied', 'SecurityError');
   const getItem = Storage.prototype.getItem;
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function(this: Storage, key: string) {
-    if (key === contentKey) throw failure;
+    if (key === contentKey) {
+      throw failure;
+    }
     return getItem.call(this, key);
   });
   const updater = vi.fn(() => replacementContent);
   await expect(service.updateChatContent({ id, updater })).rejects.toBe(failure);
-  expect(updater).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
+  expect(updater).not.toHaveBeenCalled();
+  expect(notify).not.toHaveBeenCalled();
   expect(report).toHaveBeenCalledOnce();
 });

@@ -43,7 +43,9 @@ describe('jq iterative branch cardinality proof', () => {
   const parsedFilter = ({ source }: { source: string }): JqFilter => {
     const parsed = parseJqProgram({ source });
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) throw new Error(parsed.message);
+    if (!parsed.ok) {
+      throw new Error(parsed.message);
+    }
     return parsed.program.filter;
   };
 
@@ -107,15 +109,21 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(updated.ok).toBe(true);
-    if (!updated.ok || !isJsonObject(updated.value)) return;
+    if (!updated.ok || !isJsonObject(updated.value)) {
+      return;
+    }
     expect(updated.value).not.toBe(root);
     const updatedChanged = updated.value.changed;
     expect(updatedChanged).not.toBe(changed);
     expect(updated.value.unchanged).toBe(unchanged);
     expect(changed.value).toBe(1);
-    if (updatedChanged === undefined) return;
+    if (updatedChanged === undefined) {
+      return;
+    }
     expect(isJsonObject(updatedChanged)).toBe(true);
-    if (!isJsonObject(updatedChanged)) return;
+    if (!isJsonObject(updatedChanged)) {
+      return;
+    }
     expect(updatedChanged.value).toBe(2);
   });
 
@@ -130,7 +138,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(updated.ok).toBe(true);
-    if (!updated.ok) return;
+    if (!updated.ok) {
+      return;
+    }
     expect(updated.value).toBe(root);
   });
 
@@ -152,13 +162,19 @@ describe('jq internal value safety and path updates', () => {
     const deleted = applyPathDeletion({ root, path: nestedValuePath });
 
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok || !isJsonObject(deleted.value)) return;
+    if (!deleted.ok || !isJsonObject(deleted.value)) {
+      return;
+    }
     expect(deleted.value.unchanged).toBe(unchanged);
     expect(Object.hasOwn(changed, 'value')).toBe(true);
     const deletedChanged = deleted.value.changed;
-    if (deletedChanged === undefined) return;
+    if (deletedChanged === undefined) {
+      return;
+    }
     expect(isJsonObject(deletedChanged)).toBe(true);
-    if (!isJsonObject(deletedChanged)) return;
+    if (!isJsonObject(deletedChanged)) {
+      return;
+    }
     expect(Object.hasOwn(deletedChanged, 'value')).toBe(false);
     expect(deletedChanged.retained).toBe(2);
   });
@@ -495,12 +511,16 @@ describe('jq internal value safety and path updates', () => {
     ]) {
       const compiled = compileJqRegularExpression({ pattern, flags: 'i' });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) continue;
+      if (!compiled.ok) {
+        continue;
+      }
       const fallback = compiled.compileBoundedSimpleCaptureHistoryFallback?.({
         maximumRepetitions: 4,
       });
       expect(fallback?.ok).toBe(true);
-      if (fallback?.ok) expect(fallback.emptyByteContinuation).toBe('any');
+      if (fallback?.ok) {
+        expect(fallback.emptyByteContinuation).toBe('any');
+      }
     }
 
     for (const pattern of [
@@ -510,12 +530,16 @@ describe('jq internal value safety and path updates', () => {
     ]) {
       const compiled = compileJqRegularExpression({ pattern, flags: '' });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) continue;
+      if (!compiled.ok) {
+        continue;
+      }
       const fallback = compiled.compileBoundedSimpleCaptureHistoryFallback?.({
         maximumRepetitions: 4,
       });
       expect(fallback?.ok).toBe(true);
-      if (fallback?.ok) expect(fallback.emptyByteContinuation).toBe('none');
+      if (fallback?.ok) {
+        expect(fallback.emptyByteContinuation).toBe('none');
+      }
     }
   });
 
@@ -526,11 +550,15 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     const compileFallback =
       compiled.compileBoundedSimpleCaptureHistoryFallback;
     expect(compileFallback).toBeDefined();
-    if (compileFallback === undefined) return;
+    if (compileFallback === undefined) {
+      return;
+    }
 
     expect(compileFallback({ maximumRepetitions: 4 })).toBe(
       compileFallback({ maximumRepetitions: 4 }),
@@ -597,10 +625,14 @@ describe('jq internal value safety and path updates', () => {
       flags: '',
     });
     expect(largePattern.ok).toBe(true);
-    if (!largePattern.ok) return;
+    if (!largePattern.ok) {
+      return;
+    }
     const compileFallback = largePattern.compileBoundedPlainCaptureHistoryFallback;
     expect(compileFallback).toBeDefined();
-    if (compileFallback === undefined) return;
+    if (compileFallback === undefined) {
+      return;
+    }
     expect(compileFallback({ maximumRepetitions: 33 }).ok).toBe(true);
     const overBudget = compileFallback({ maximumRepetitions: 64 });
     expect(overBudget).toEqual({
@@ -637,7 +669,9 @@ describe('jq internal value safety and path updates', () => {
     }) => {
       const compiled = compileJqRegularExpression({ pattern, flags });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) return undefined;
+      if (!compiled.ok) {
+        return undefined;
+      }
       return collectJqRegularExpressionMatches({
         input,
         compiled,
@@ -662,10 +696,14 @@ describe('jq internal value safety and path updates', () => {
         flags: '',
       });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) return;
+      if (!compiled.ok) {
+        return;
+      }
       const fallback = compiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
       expect(fallback).toBeDefined();
-      if (fallback === undefined) return;
+      if (fallback === undefined) {
+        return;
+      }
       expect(fallback({ maximumRepetitions: 771 }).ok).toBe(true);
       expect(fallback({ maximumRepetitions: 1203 }).ok).toBe(true);
       const boundary = fallback({ maximumRepetitions: 2048 });
@@ -683,10 +721,14 @@ describe('jq internal value safety and path updates', () => {
         flags: '',
       });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) return;
+      if (!compiled.ok) {
+        return;
+      }
       const fallback = compiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
       expect(fallback).toBeDefined();
-      if (fallback === undefined) return;
+      if (fallback === undefined) {
+        return;
+      }
       expect(fallback({ maximumRepetitions: 512 }).ok).toBe(true);
       const boundary = fallback({ maximumRepetitions: 1200 });
       expect(boundary.ok).toBe(true);
@@ -978,11 +1020,15 @@ describe('jq internal value safety and path updates', () => {
         flags,
       });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) return [];
+      if (!compiled.ok) {
+        return [];
+      }
       const compileFallback =
         compiled.compileBoundedSimpleCaptureHistoryFallback;
       expect(compileFallback).toBeDefined();
-      if (compileFallback === undefined) return [];
+      if (compileFallback === undefined) {
+        return [];
+      }
 
       const replayWidths: number[] = [];
       collectJqRegularExpressionMatches({
@@ -1035,7 +1081,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     const matches = collectJqRegularExpressionMatches({
       input: 'aaaaaaa',
       compiled,
@@ -1061,7 +1109,9 @@ describe('jq internal value safety and path updates', () => {
     for (const pattern of patterns) {
       const compiled = compileJqRegularExpression({ pattern, flags: 'i' });
       expect(compiled.ok).toBe(true);
-      if (!compiled.ok) continue;
+      if (!compiled.ok) {
+        continue;
+      }
 
       const nonEmptyMatches = collectJqRegularExpressionMatches({
         input: 'KaAa1K',
@@ -1123,7 +1173,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     const matches = collectJqRegularExpressionMatches({
       input: '1xAaya😀',
       compiled,
@@ -1202,7 +1254,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     const input = `${'('.repeat(130)}x${')'.repeat(130)}`;
     expect(() =>
       collectJqRegularExpressionMatches({ input, compiled, global: false }),
@@ -1216,7 +1270,9 @@ describe('jq internal value safety and path updates', () => {
     const compiled = compileJqRegularExpression({ pattern, flags: '' });
 
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     expect(compiled.create({ global: false }).test('A')).toBe(true);
     expect(compiled.create({ global: false }).test('b')).toBe(false);
   });
@@ -1318,7 +1374,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(materialized.ok).toBe(true);
-    if (!materialized.ok) return;
+    if (!materialized.ok) {
+      return;
+    }
     expect(materialized.paths).toHaveLength(1);
     expect(materialized.paths[0]?.segments).toHaveLength(depth);
     expect(materialized.paths[0]?.segments[0]).toEqual({
@@ -1363,11 +1421,15 @@ describe('jq internal value safety and path updates', () => {
     const parsed = parseJqProgram({ source: `.${'[0+0]'.repeat(depth)} = 2` });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(validateJqProgram({ program: parsed.program, variables: [] })).toEqual({ ok: true });
     const evaluated = evaluateJqFilter({ filter: parsed.program.filter, input: null });
     expect(evaluated.ok).toBe(true);
-    if (!evaluated.ok) return;
+    if (!evaluated.ok) {
+      return;
+    }
     expect(evaluated.outputs).toHaveLength(1);
     const path: JqPath = {
       segments: Array.from({ length: depth }, () => ({
@@ -1390,13 +1452,17 @@ describe('jq internal value safety and path updates', () => {
 
     expect(assignment.ok).toBe(true);
     expect(binding.ok).toBe(true);
-    if (!assignment.ok || !binding.ok) return;
+    if (!assignment.ok || !binding.ok) {
+      return;
+    }
 
     const assigned = evaluateJqFilter({ filter: assignment.program.filter, input: {} });
     const bound = evaluateJqFilter({ filter: binding.program.filter, input: { value: 1 } });
     expect(assigned.ok).toBe(true);
     expect(bound).toEqual({ ok: true, outputs: [{ value: 1 }] });
-    if (!assigned.ok) return;
+    if (!assigned.ok) {
+      return;
+    }
 
     const path: JqPath = {
       segments: Array.from({ length: depth }, () => ({
@@ -1438,7 +1504,9 @@ describe('jq internal value safety and path updates', () => {
     for (const { source, variables, expected } of cases) {
       const parsed = parseJqProgram({ source });
       expect(parsed.ok).toBe(true);
-      if (!parsed.ok) continue;
+      if (!parsed.ok) {
+        continue;
+      }
       expect(validateJqProgram({ program: parsed.program, variables })).toEqual(expected);
     }
   });
@@ -1457,11 +1525,15 @@ describe('jq internal value safety and path updates', () => {
     ]) {
       const parsed = parseJqProgram({ source });
       expect(parsed.ok).toBe(true);
-      if (!parsed.ok) continue;
+      if (!parsed.ok) {
+        continue;
+      }
       expect(validateJqProgram({ program: parsed.program, variables: [] })).toEqual({ ok: true });
       const evaluated = evaluateJqFilter({ filter: parsed.program.filter, input: {} });
       expect(evaluated.ok).toBe(false);
-      if (evaluated.ok) continue;
+      if (evaluated.ok) {
+        continue;
+      }
       expect(evaluated.error.message).toBe('maximum jq evaluation depth exceeded');
     }
   });
@@ -1478,7 +1550,9 @@ describe('jq internal value safety and path updates', () => {
     expect(accepted.ok).toBe(true);
     expect(rejected.ok).toBe(true);
     expect(unbounded.ok).toBe(true);
-    if (!accepted.ok || !rejected.ok || !unbounded.ok) return;
+    if (!accepted.ok || !rejected.ok || !unbounded.ok) {
+      return;
+    }
 
     const acceptedResult = evaluateJqFilter({
       filter: accepted.program.filter,
@@ -1495,7 +1569,9 @@ describe('jq internal value safety and path updates', () => {
         userDefinitions: program.userDefinitions,
       });
       expect(evaluated.ok).toBe(false);
-      if (evaluated.ok) continue;
+      if (evaluated.ok) {
+        continue;
+      }
       expect(evaluated.error.message).toBe('maximum jq evaluation depth exceeded');
     }
   });
@@ -1514,7 +1590,9 @@ describe('jq internal value safety and path updates', () => {
 
     const rejected = parseJqProgram({ source: nestedInterpolation({ depth: 129 }) });
     expect(rejected.ok).toBe(false);
-    if (rejected.ok) return;
+    if (rejected.ok) {
+      return;
+    }
     expect(rejected.message).toContain('string interpolation nesting exceeds limit 128');
   });
 
@@ -1532,7 +1610,9 @@ describe('jq internal value safety and path updates', () => {
     for (const source of nestedSources({ depth: 257 })) {
       const rejected = parseJqProgram({ source });
       expect(rejected.ok).toBe(false);
-      if (rejected.ok) continue;
+      if (rejected.ok) {
+        continue;
+      }
       expect(rejected.message).toBe('parser structural nesting exceeds limit 256');
     }
   });
@@ -1555,7 +1635,9 @@ describe('jq internal value safety and path updates', () => {
     ]) {
       const rejected = parseJqProgram({ source });
       expect(rejected.ok).toBe(false);
-      if (rejected.ok) continue;
+      if (rejected.ok) {
+        continue;
+      }
       expect(rejected.message).toBe('parser prefix nesting exceeds limit 128');
     }
   });
@@ -1567,7 +1649,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(validateJqProgram({ program: parsed.program, variables: [] })).toEqual({ ok: true });
     let current = parsed.program.filter;
     let branchCount = 0;
@@ -1580,7 +1664,9 @@ describe('jq internal value safety and path updates', () => {
 
     const evaluated = evaluateJqFilter({ filter: parsed.program.filter, input: false });
     expect(evaluated.ok).toBe(false);
-    if (evaluated.ok) return;
+    if (evaluated.ok) {
+      return;
+    }
     expect(evaluated.error.message).toBe('maximum jq evaluation depth exceeded');
   });
 
@@ -1591,10 +1677,14 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     const evaluated = evaluateJqFilter({ filter: parsed.program.filter, input: null });
     expect(evaluated.ok).toBe(true);
-    if (!evaluated.ok) return;
+    if (!evaluated.ok) {
+      return;
+    }
     expect(evaluated.outputs).toHaveLength(depth + 1);
     expect(evaluated.outputs[0]).toBe(0);
     expect(evaluated.outputs.at(-1)).toBe('x');
@@ -1607,10 +1697,14 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      return;
+    }
     expect(validateJqProgram({ program: parsed.program, variables: [] })).toEqual({ ok: true });
     expect(parsed.program.filter.kind).toBe('assign');
-    if (parsed.program.filter.kind !== 'assign') return;
+    if (parsed.program.filter.kind !== 'assign') {
+      return;
+    }
 
     const materialized = materializeJqPathExpression({
       root: null,
@@ -1624,7 +1718,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(materialized.ok).toBe(true);
-    if (!materialized.ok) return;
+    if (!materialized.ok) {
+      return;
+    }
     expect(materialized.paths).toHaveLength(1);
     expect(materialized.paths[0]?.segments).toHaveLength(depth);
     expect(materialized.paths[0]?.segments[0]).toEqual({
@@ -1665,7 +1761,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(materialized.ok).toBe(true);
-    if (!materialized.ok) return;
+    if (!materialized.ok) {
+      return;
+    }
     expect(materialized.paths).toHaveLength(depth);
     expect(materialized.paths[0]?.segments[0]).toEqual({
       kind: 'field',
@@ -1718,7 +1816,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(materialized.ok).toBe(true);
-    if (!materialized.ok) return;
+    if (!materialized.ok) {
+      return;
+    }
     expect(evaluationCount).toBe(depth);
     expect(materialized.paths).toHaveLength(1);
     expect(materialized.paths[0]?.segments).toHaveLength(depth);
@@ -1773,7 +1873,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(updated.ok).toBe(true);
-    if (!updated.ok) return;
+    if (!updated.ok) {
+      return;
+    }
     const readBack = readJqPathValue({ root: updated.value, path });
     expect(readBack).toEqual({ ok: true, value: 2, skipped: false });
   });
@@ -1795,7 +1897,9 @@ describe('jq internal value safety and path updates', () => {
     const deleted = applyPathDeletion({ root, path });
 
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok) return;
+    if (!deleted.ok) {
+      return;
+    }
     expect(readJqPathValue({ root: deleted.value, path })).toEqual({
       ok: true,
       value: undefined,
@@ -1838,7 +1942,9 @@ describe('jq internal value safety and path updates', () => {
     const deleted = applyPathDeletions({ root, paths });
 
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok || !isJsonObject(deleted.value)) return;
+    if (!deleted.ok || !isJsonObject(deleted.value)) {
+      return;
+    }
     expect(deleted.value.retained).toBe(3);
     for (const path of paths) {
       expect(readJqPathValue({ root: deleted.value, path })).toEqual({
@@ -1875,12 +1981,16 @@ describe('jq internal value safety and path updates', () => {
       update: () => ({ ok: true, value: 2 }),
     });
     expect(updated.ok).toBe(true);
-    if (!updated.ok) return;
+    if (!updated.ok) {
+      return;
+    }
 
     let nested: JsonValue = updated.value;
     for (let index = 0; index < depth; index += 1) {
       expect(isJsonObject(nested)).toBe(true);
-      if (!isJsonObject(nested)) return;
+      if (!isJsonObject(nested)) {
+        return;
+      }
       nested = nested[`level-${index}`]!;
     }
     expect(nested).toBe(2);
@@ -1904,7 +2014,9 @@ describe('jq internal value safety and path updates', () => {
       index: 0,
       optional: false,
     }));
-    for (let index = 0; index < depth; index += 1) root = [root];
+    for (let index = 0; index < depth; index += 1) {
+      root = [root];
+    }
     const leftPath: JqPath = {
       segments: [...prefix, { kind: 'field', key: 'left', optional: false }],
     };
@@ -1915,7 +2027,9 @@ describe('jq internal value safety and path updates', () => {
     const deleted = applyPathDeletions({ root, paths: [leftPath, rightPath] });
 
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok) return;
+    if (!deleted.ok) {
+      return;
+    }
     expect(readJqPathValue({ root: deleted.value, path: leftPath })).toEqual({
       ok: true,
       value: undefined,
@@ -1961,7 +2075,9 @@ describe('jq internal value safety and path updates', () => {
       index: 0,
       optional: false,
     }));
-    for (let index = 0; index < depth; index += 1) root = [root];
+    for (let index = 0; index < depth; index += 1) {
+      root = [root];
+    }
     const leftPath: JqPath = {
       segments: [...prefix, { kind: 'index', index: 0, optional: false }],
     };
@@ -1972,13 +2088,17 @@ describe('jq internal value safety and path updates', () => {
     const deleted = applyPathDeletions({ root, paths: [leftPath, rightPath] });
 
     expect(deleted.ok).toBe(true);
-    if (!deleted.ok) return;
+    if (!deleted.ok) {
+      return;
+    }
     let deletedLeaf: JsonValue = deleted.value;
     let sourceLeaf: JsonValue = root;
     for (let index = 0; index < depth; index += 1) {
       expect(Array.isArray(deletedLeaf)).toBe(true);
       expect(Array.isArray(sourceLeaf)).toBe(true);
-      if (!Array.isArray(deletedLeaf) || !Array.isArray(sourceLeaf)) return;
+      if (!Array.isArray(deletedLeaf) || !Array.isArray(sourceLeaf)) {
+        return;
+      }
       deletedLeaf = deletedLeaf[0]!;
       sourceLeaf = sourceLeaf[0]!;
     }
@@ -2006,7 +2126,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(evaluated.ok).toBe(true);
-    if (!evaluated.ok) return;
+    if (!evaluated.ok) {
+      return;
+    }
     expect(readJqPathValue({ root: evaluated.outputs[0]!, path: { segments } })).toEqual({
       ok: true,
       value: 2,
@@ -2033,7 +2155,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(evaluated.ok).toBe(true);
-    if (!evaluated.ok) return;
+    if (!evaluated.ok) {
+      return;
+    }
     expect(evaluated.outputs).toHaveLength(depth);
     expect(evaluated.outputs[0]).toEqual(['0']);
     expect(evaluated.outputs.at(-1)).toEqual([String(depth - 1)]);
@@ -2096,7 +2220,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(evaluated.ok).toBe(true);
-    if (!evaluated.ok) return;
+    if (!evaluated.ok) {
+      return;
+    }
     expect(evaluated.outputs).toHaveLength(1);
     const path: JqPath = {
       segments: Array.from({ length: depth }, (_, index) => ({
@@ -2127,13 +2253,19 @@ describe('jq internal value safety and path updates', () => {
     }
 
     let normalized = normalizeJsonValue({ value: source });
-    if (normalized === source) throw new Error('normalization must clone the root container');
+    if (normalized === source) {
+      throw new Error('normalization must clone the root container');
+    }
     for (let index = 0; index < depth; index += 1) {
       if (index % 2 === 0) {
-        if (!Array.isArray(normalized)) throw new Error(`expected array at depth ${index}`);
+        if (!Array.isArray(normalized)) {
+          throw new Error(`expected array at depth ${index}`);
+        }
         normalized = normalized[0]!;
       } else {
-        if (!isJsonObject(normalized)) throw new Error(`expected object at depth ${index}`);
+        if (!isJsonObject(normalized)) {
+          throw new Error(`expected object at depth ${index}`);
+        }
         normalized = normalized.value!;
       }
     }
@@ -2143,7 +2275,9 @@ describe('jq internal value safety and path updates', () => {
   it('serializes deeply nested values without recursive stack growth', () => {
     const depth = 5_000;
     let value: JsonValue = 1;
-    for (let index = 0; index < depth; index += 1) value = [value];
+    for (let index = 0; index < depth; index += 1) {
+      value = [value];
+    }
 
     const serialized = stringifyJson({
       value,
@@ -2205,7 +2339,9 @@ describe('jq internal value safety and path updates', () => {
     });
 
     expect(isJsonObject(normalized)).toBe(true);
-    if (!isJsonObject(normalized)) return;
+    if (!isJsonObject(normalized)) {
+      return;
+    }
     expect(Object.getPrototypeOf(normalized)).toBeNull();
     expect(Object.hasOwn(normalized, '__proto__')).toBe(true);
     expect(Object.hasOwn(normalized, 'constructor')).toBe(true);
@@ -2273,7 +2409,9 @@ describe('jq internal value safety and path updates', () => {
       flags: '',
     });
     expect(direct.ok).toBe(true);
-    if (!direct.ok) return;
+    if (!direct.ok) {
+      return;
+    }
     expect(direct.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay).toBe(true);
 
     const global = compileJqRegularExpression({
@@ -2281,7 +2419,9 @@ describe('jq internal value safety and path updates', () => {
       flags: 'g',
     });
     expect(global.ok).toBe(true);
-    if (!global.ok) return;
+    if (!global.ok) {
+      return;
+    }
     expect(global.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay).toBe(true);
 
     const broaderOrdinary = compileJqRegularExpression({
@@ -2289,7 +2429,9 @@ describe('jq internal value safety and path updates', () => {
       flags: '',
     });
     expect(broaderOrdinary.ok).toBe(true);
-    if (!broaderOrdinary.ok) return;
+    if (!broaderOrdinary.ok) {
+      return;
+    }
     expect(
       broaderOrdinary.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
     ).toBe(false);
@@ -2299,7 +2441,9 @@ describe('jq internal value safety and path updates', () => {
       flags: 'l',
     });
     expect(broaderLongest.ok).toBe(true);
-    if (!broaderLongest.ok) return;
+    if (!broaderLongest.ok) {
+      return;
+    }
     expect(
       broaderLongest.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
     ).toBe(true);
@@ -2349,7 +2493,9 @@ describe('jq internal value safety and path updates', () => {
       flags: 'g',
     });
     expect(compiled.ok).toBe(true);
-    if (!compiled.ok) return;
+    if (!compiled.ok) {
+      return;
+    }
     expect(compiled.compileBoundedSimpleCaptureHistoryFallback).toBeDefined();
     expect(compiled.uniformSevenCodePointCaptureHistoryReplayCompatible).toBe(false);
 
@@ -2358,7 +2504,9 @@ describe('jq internal value safety and path updates', () => {
       flags: 'g',
     });
     expect(namedLocal.ok).toBe(true);
-    if (!namedLocal.ok) return;
+    if (!namedLocal.ok) {
+      return;
+    }
     expect(namedLocal.compileBoundedSimpleCaptureHistoryFallback).toBeUndefined();
 
     const matches = collectJqRegularExpressionMatches({

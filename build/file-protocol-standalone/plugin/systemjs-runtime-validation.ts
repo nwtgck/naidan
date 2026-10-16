@@ -14,7 +14,9 @@ export function createSystemJsRuntimeValidationPlugin({
     async buildStart() {
       const runtimeSource = await fs.readFile(systemRuntimePath, 'utf8');
       assertSupportedSystemJsRuntime({ source: runtimeSource });
-      if (systemRuntimeSourceMapPath === undefined) return;
+      if (systemRuntimeSourceMapPath === undefined) {
+        return;
+      }
 
       const sourceMapSource = await fs.readFile(systemRuntimeSourceMapPath);
       assertMatchingSystemJsSourceMap({ runtimeSource, sourceMapSource });

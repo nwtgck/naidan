@@ -483,7 +483,9 @@ describe('StorageTab.vue Tests', () => {
 
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-      if (storageTab) await storageTab.trigger('click');
+      if (storageTab) {
+        await storageTab.trigger('click');
+      }
       await flushPromises();
       await vi.dynamicImportSettled();
 
@@ -508,7 +510,9 @@ describe('StorageTab.vue Tests', () => {
 
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-      if (storageTab) await storageTab.trigger('click');
+      if (storageTab) {
+        await storageTab.trigger('click');
+      }
       await flushPromises();
       await vi.dynamicImportSettled();
 

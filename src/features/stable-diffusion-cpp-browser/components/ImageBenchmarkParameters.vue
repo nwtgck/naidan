@@ -14,7 +14,8 @@ function text({ event }: { event: Event }): string {
 }
 
 function numeric({ event }: { event: Event }): number {
-  const value = text({ event }); return value.trim() ? Number(value) : NaN;
+  const value = text({ event });
+  return value.trim() ? Number(value) : NaN;
 }
 
 function checked({ event }: { event: Event }): boolean {
@@ -29,41 +30,70 @@ function resolution({ edge }: { edge: number }): void {
 }
 
 function sampler({ event }: { event: Event }): void {
-  const value = samplerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'sampler', value });
+  const value = samplerOptions.find(option => option === text({ event }));
+  if (value !== undefined) {
+    emit('change', { key: 'sampler', value });
+  }
 }
 
 function scheduler({ event }: { event: Event }): void {
-  const value = schedulerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'scheduler', value });
+  const value = schedulerOptions.find(option => option === text({ event }));
+  if (value !== undefined) {
+    emit('change', { key: 'scheduler', value });
+  }
 }
 
 function bf16WeightType({ event }: { event: Event }): void {
   const value = text({ event });
-  if (value === 'f32' || value === 'f16') emit('change', { key: 'bf16WeightType', value });
+  if (value === 'f32' || value === 'f16') {
+    emit('change', { key: 'bf16WeightType', value });
+  }
 }
 
 function setOverride({ key, event }: { key: keyof Parameters, event: Event }): void {
-  if (!checked({ event })) emit('inherit', key);
-  else {
+  if (!checked({ event })) {
+    emit('inherit', key);
+  } else {
     // Existing typed property values are only paired with their own key.
     switch (key) {
-    case 'prompt': emit('change', { key, value: props.values.prompt }); break;
-    case 'negativePrompt': emit('change', { key, value: props.values.negativePrompt }); break;
-    case 'width': emit('change', { key, value: props.values.width }); break;
-    case 'height': emit('change', { key, value: props.values.height }); break;
-    case 'steps': emit('change', { key, value: props.values.steps }); break;
-    case 'guidance': emit('change', { key, value: props.values.guidance }); break;
-    case 'seed': emit('change', { key, value: props.values.seed }); break;
-    case 'sampler': emit('change', { key, value: props.values.sampler }); break;
-    case 'scheduler': emit('change', { key, value: props.values.scheduler }); break;
-    case 'distilledGuidance': emit('change', { key, value: props.values.distilledGuidance }); break;
-    case 'conditioningCacheSize': emit('change', { key, value: props.values.conditioningCacheSize }); break;
-    case 'vaeTiling': emit('change', { key, value: props.values.vaeTiling }); break;
-    case 'vaeTileSize': emit('change', { key, value: props.values.vaeTileSize }); break;
-    case 'flashAttention': emit('change', { key, value: props.values.flashAttention }); break;
-    case 'bf16WeightType': emit('change', { key, value: props.values.bf16WeightType }); break;
-    case 'qwenVaePolicy': emit('change', { key, value: props.values.qwenVaePolicy }); break;
-    case 'modelArguments': emit('change', { key, value: props.values.modelArguments }); break;
-    default: { const exhaustive: never = key; throw new Error(String(exhaustive)); }
+    case 'prompt': emit('change', { key, value: props.values.prompt });
+      break;
+    case 'negativePrompt': emit('change', { key, value: props.values.negativePrompt });
+      break;
+    case 'width': emit('change', { key, value: props.values.width });
+      break;
+    case 'height': emit('change', { key, value: props.values.height });
+      break;
+    case 'steps': emit('change', { key, value: props.values.steps });
+      break;
+    case 'guidance': emit('change', { key, value: props.values.guidance });
+      break;
+    case 'seed': emit('change', { key, value: props.values.seed });
+      break;
+    case 'sampler': emit('change', { key, value: props.values.sampler });
+      break;
+    case 'scheduler': emit('change', { key, value: props.values.scheduler });
+      break;
+    case 'distilledGuidance': emit('change', { key, value: props.values.distilledGuidance });
+      break;
+    case 'conditioningCacheSize': emit('change', { key, value: props.values.conditioningCacheSize });
+      break;
+    case 'vaeTiling': emit('change', { key, value: props.values.vaeTiling });
+      break;
+    case 'vaeTileSize': emit('change', { key, value: props.values.vaeTileSize });
+      break;
+    case 'flashAttention': emit('change', { key, value: props.values.flashAttention });
+      break;
+    case 'bf16WeightType': emit('change', { key, value: props.values.bf16WeightType });
+      break;
+    case 'qwenVaePolicy': emit('change', { key, value: props.values.qwenVaePolicy });
+      break;
+    case 'modelArguments': emit('change', { key, value: props.values.modelArguments });
+      break;
+    default: {
+      const exhaustive: never = key;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 }

@@ -47,18 +47,26 @@ const capabilities = computed(() => {
   switch (current.status) {
   case 'ready': return current.capabilities;
   case 'idle': case 'checking': case 'error': return undefined;
-  default: { const exhaustive: never = current; throw new Error(`Unhandled profile state: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = current;
+    throw new Error(`Unhandled profile state: ${exhaustive}`);
+  }
   }
 });
 const selectedProfile = computed(() => resolveProfilePreference({ preference: options.value.profile, capabilities: capabilities.value }));
 const runtimeReady = computed(() => capabilities.value?.profiles.some(entry => entry.profile === selectedProfile.value && entry.status === 'available') === true);
 
 function failureReason({ entry }: { entry: ProfileCapabilities['profiles'][number] | undefined }): ProfileUnavailableReason | undefined {
-  if (!entry) return undefined;
+  if (!entry) {
+    return undefined;
+  }
   switch (entry.status) {
   case 'unavailable': return entry.reason;
   case 'available': return undefined;
-  default: { const exhaustive: never = entry; throw new Error(`Unhandled profile availability: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = entry;
+    throw new Error(`Unhandled profile availability: ${exhaustive}`);
+  }
   }
 }
 
@@ -90,23 +98,32 @@ let unsubscribeProfiles: (() => void) | undefined;
 
 async function probeProfiles(): Promise<void> {
   profileController?.abort();
-  const controller = new AbortController(); profileController = controller;
+  const controller = new AbortController();
+  profileController = controller;
   try {
     await llamaCppBrowserService.probeProfiles({ signal: controller.signal });
   } catch (error) {
-    if (!disposed && !controller.signal.aborted) profileState.value = { status: 'error', code: errorCode({ error }) };
+    if (!disposed && !controller.signal.aborted) {
+      profileState.value = { status: 'error', code: errorCode({ error }) };
+    }
   }
 }
 
 function applyOptions(): void {
   const parsed = runtimeOptionsSchema.safeParse(options.value);
-  if (parsed.success && !profileDisabled({ profile: parsed.data.profile })) llamaCppBrowserService.setOptions({ options: parsed.data });
+  if (parsed.success && !profileDisabled({ profile: parsed.data.profile })) {
+    llamaCppBrowserService.setOptions({ options: parsed.data });
+  }
 }
 
 async function saveContextTokens({ value }: { value: number | string | undefined }): Promise<void> {
-  if (contextDisabled.value) return;
+  if (contextDisabled.value) {
+    return;
+  }
   const parsed = chatContextTokensSchema.safeParse(value ?? defaultChatContextTokens);
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    return;
+  }
   const contextTokens = value === undefined ? undefined : parsed.data;
   contextSaving.value = true;
   contextSaveFailed.value = false;
@@ -123,7 +140,10 @@ async function saveContextTokens({ value }: { value: number | string | undefined
     case 'saved': case 'changed':
       contextTokensDraft.value = storedContextTokens.value ?? defaultChatContextTokens;
       break;
-    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
     }
   } catch {
     contextSaveFailed.value = true;
@@ -133,7 +153,9 @@ async function saveContextTokens({ value }: { value: number | string | undefined
 }
 
 function releaseRuntime(): void {
-  if (!props.releaseDisabled) llamaCppBrowserService.release();
+  if (!props.releaseDisabled) {
+    llamaCppBrowserService.release();
+  }
 }
 
 onMounted(() => {
@@ -145,7 +167,10 @@ onMounted(() => {
   void probeProfiles();
 });
 onUnmounted(() => {
-  disposed = true; profileController?.abort(); unsubscribeProfiles?.(); emit('runtimeReady', false);
+  disposed = true;
+  profileController?.abort();
+  unsubscribeProfiles?.();
+  emit('runtimeReady', false);
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

@@ -141,11 +141,21 @@ function decodeBase64Value({
 }: {
   byte: number,
 }): number | undefined {
-  if (byte >= 0x41 && byte <= 0x5a) return byte - 0x41;
-  if (byte >= 0x61 && byte <= 0x7a) return byte - 0x61 + 26;
-  if (byte >= 0x30 && byte <= 0x39) return byte - 0x30 + 52;
-  if (byte === 0x2b) return 62;
-  if (byte === 0x2f) return 63;
+  if (byte >= 0x41 && byte <= 0x5a) {
+    return byte - 0x41;
+  }
+  if (byte >= 0x61 && byte <= 0x7a) {
+    return byte - 0x61 + 26;
+  }
+  if (byte >= 0x30 && byte <= 0x39) {
+    return byte - 0x30 + 52;
+  }
+  if (byte === 0x2b) {
+    return 62;
+  }
+  if (byte === 0x2f) {
+    return 63;
+  }
   return undefined;
 }
 
@@ -167,7 +177,9 @@ async function decodeStream({
   let requiresSecondPadding = false;
 
   const flush = async (): Promise<void> => {
-    if (outputLength === 0) return;
+    if (outputLength === 0) {
+      return;
+    }
     await writeAllBytesToHandle({
       handle: context.stdout,
       data: output.subarray(0, outputLength),
@@ -180,7 +192,9 @@ async function decodeStream({
   }: {
     byte: number,
   }): Promise<void> => {
-    if (outputLength === output.byteLength) await flush();
+    if (outputLength === output.byteLength) {
+      await flush();
+    }
     output[outputLength] = byte;
     outputLength += 1;
   };
@@ -194,11 +208,15 @@ async function decodeStream({
     stream: await openCommandInputStream({ context, input }),
   })) {
     for (const byte of chunk) {
-      if (byte === 0x0a) continue;
+      if (byte === 0x0a) {
+        continue;
+      }
 
       const value = decodeBase64Value({ byte });
       if (value !== undefined) {
-        if (requiresSecondPadding) await failInvalidInput();
+        if (requiresSecondPadding) {
+          await failInvalidInput();
+        }
 
         switch (quantumLength) {
         case 0:
@@ -234,25 +252,37 @@ async function decodeStream({
           continue;
         }
         if (quantumLength === 2) {
-          if ((second & 0x0f) !== 0) await failInvalidInput();
+          if ((second & 0x0f) !== 0) {
+            await failInvalidInput();
+          }
           requiresSecondPadding = true;
           continue;
         }
         if (quantumLength === 3) {
-          if ((third & 0x03) !== 0) await failInvalidInput();
+          if ((third & 0x03) !== 0) {
+            await failInvalidInput();
+          }
           quantumLength = 0;
           continue;
         }
         await failInvalidInput();
       }
 
-      if (!ignoreGarbage) await failInvalidInput();
+      if (!ignoreGarbage) {
+        await failInvalidInput();
+      }
     }
   }
 
-  if (requiresSecondPadding || quantumLength === 1) await failInvalidInput();
-  if (quantumLength === 2 && (second & 0x0f) !== 0) await failInvalidInput();
-  if (quantumLength === 3 && (third & 0x03) !== 0) await failInvalidInput();
+  if (requiresSecondPadding || quantumLength === 1) {
+    await failInvalidInput();
+  }
+  if (quantumLength === 2 && (second & 0x0f) !== 0) {
+    await failInvalidInput();
+  }
+  if (quantumLength === 3 && (third & 0x03) !== 0) {
+    await failInvalidInput();
+  }
   await flush();
 }
 

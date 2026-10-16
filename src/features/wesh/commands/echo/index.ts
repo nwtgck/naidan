@@ -21,9 +21,15 @@ function isOctalByte({ value }: { value: number }): boolean {
 }
 
 function hexDigitValue({ value }: { value: number }): number | undefined {
-  if (value >= 0x30 && value <= 0x39) return value - 0x30;
-  if (value >= 0x41 && value <= 0x46) return value - 0x41 + 10;
-  if (value >= 0x61 && value <= 0x66) return value - 0x61 + 10;
+  if (value >= 0x30 && value <= 0x39) {
+    return value - 0x30;
+  }
+  if (value >= 0x41 && value <= 0x46) {
+    return value - 0x41 + 10;
+  }
+  if (value >= 0x61 && value <= 0x66) {
+    return value - 0x61 + 10;
+  }
   return undefined;
 }
 
@@ -32,7 +38,9 @@ type EchoArgumentEscapeScan = 'none' | 'escape' | number;
 
 function scanEchoArgumentEscapes({ value }: { value: string }): EchoArgumentEscapeScan {
   const firstBackslashOffset = value.indexOf('\\');
-  if (firstBackslashOffset === -1) return 'none';
+  if (firstBackslashOffset === -1) {
+    return 'none';
+  }
 
   let candidateOffset = value.indexOf('\\c', firstBackslashOffset);
   while (candidateOffset !== -1) {
@@ -41,7 +49,9 @@ function scanEchoArgumentEscapes({ value }: { value: string }): EchoArgumentEsca
       runStart -= 1;
     }
     const backslashCount = candidateOffset - runStart + 1;
-    if (backslashCount % 2 === 1) return candidateOffset;
+    if (backslashCount % 2 === 1) {
+      return candidateOffset;
+    }
     candidateOffset = value.indexOf('\\c', candidateOffset + 2);
   }
   return 'escape';
@@ -60,7 +70,9 @@ function joinEchoArguments({
   end: number,
 }): string {
   const count = end - start;
-  if (count <= 0) return '';
+  if (count <= 0) {
+    return '';
+  }
   let joined = args[start]!;
   for (let index = start + 1; index < end; index += 1) {
     joined += ` ${args[index]!}`;
@@ -150,7 +162,9 @@ function interpretEscapes({ value }: { value: string }): {
       let digitCount = 0;
       while (digitCount < 2 && readOffset < output.byteLength) {
         const digit = hexDigitValue({ value: output[readOffset]! });
-        if (digit === undefined) break;
+        if (digit === undefined) {
+          break;
+        }
         parsed = (parsed * 16) + digit;
         digitCount += 1;
         readOffset += 1;
@@ -225,11 +239,15 @@ async function writeEscapedArguments({
   let joined = '';
   let hasEscapes = false;
   for (let index = positionalStart; index < context.args.length; index += 1) {
-    if (index > positionalStart) joined += ' ';
+    if (index > positionalStart) {
+      joined += ' ';
+    }
 
     const value = context.args[index]!;
     const escapeScan = scanEchoArgumentEscapes({ value });
-    if (escapeScan !== 'none') hasEscapes = true;
+    if (escapeScan !== 'none') {
+      hasEscapes = true;
+    }
     if (typeof escapeScan === 'number') {
       joined += value.slice(0, escapeScan + 2);
       break;
@@ -288,7 +306,9 @@ export const echoCommandImplementation: WeshCommandImplementation = {
     const mayParseOptions = !posixlyCorrect || context.args[0] === '-n';
     while (mayParseOptions && positionalStart < context.args.length) {
       const token = context.args[positionalStart]!;
-      if (token.length < 2 || token.charCodeAt(0) !== 0x2d) break;
+      if (token.length < 2 || token.charCodeAt(0) !== 0x2d) {
+        break;
+      }
 
       let tokenNoNewline = false;
       let tokenEscapeMode: 'enable' | 'disable' | undefined;
@@ -308,12 +328,20 @@ export const echoCommandImplementation: WeshCommandImplementation = {
           validOptionToken = false;
           break;
         }
-        if (!validOptionToken) break;
+        if (!validOptionToken) {
+          break;
+        }
       }
-      if (!validOptionToken) break;
+      if (!validOptionToken) {
+        break;
+      }
 
-      if (tokenNoNewline) noNewline = true;
-      if (!posixlyCorrect && tokenEscapeMode !== undefined) escapeMode = tokenEscapeMode;
+      if (tokenNoNewline) {
+        noNewline = true;
+      }
+      if (!posixlyCorrect && tokenEscapeMode !== undefined) {
+        escapeMode = tokenEscapeMode;
+      }
       positionalStart += 1;
     }
 

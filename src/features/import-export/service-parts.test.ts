@@ -55,7 +55,9 @@ function fixture() {
     clearAll: vi.fn(async () => {}),
     dumpWithoutLock: vi.fn<() => Promise<StorageSnapshot>>(),
     restore: vi.fn(async ({ snapshot }: { snapshot: StorageSnapshot }) => {
-      for await (const chunk of snapshot.contentStream) received.push(chunk);
+      for await (const chunk of snapshot.contentStream) {
+        received.push(chunk);
+      }
     }),
   } satisfies IImportExportStorage;
   return { storage, received, service: new ImportExportService({ storage }) };
@@ -80,7 +82,11 @@ async function readExport({ stream }: { stream: ReadableStream<Uint8Array> }): P
   const reader = stream.getReader();
   try {
     while (true) {
-      const item = await reader.read(); if (item.done) break; chunks.push(Uint8Array.from(item.value));
+      const item = await reader.read();
+      if (item.done) {
+        break;
+      }
+      chunks.push(Uint8Array.from(item.value));
     }
   } finally {
     reader.releaseLock();
@@ -90,7 +96,9 @@ async function readExport({ stream }: { stream: ReadableStream<Uint8Array> }): P
 
 async function exportedContent({ zip }: { zip: JSZip }) {
   const name = Object.keys(zip.files).find(name => name.endsWith('chat-contents/chat.json'));
-  if (!name) throw new Error('Missing exported chat.');
+  if (!name) {
+    throw new Error('Missing exported chat.');
+  }
   return ChatContentSchemaDto.parse(JSON.parse(await zip.file(name)!.async('string')));
 }
 
@@ -98,7 +106,10 @@ function dump({ storage, content, binaries }: { storage: ReturnType<typeof fixtu
   storage.dumpWithoutLock.mockResolvedValue({
     structure: { settings, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
     contentStream: (async function* () {
-      for (const id of binaries) yield binary({ id }); yield { type: 'chat', data: content };
+      for (const id of binaries) {
+        yield binary({ id });
+      }
+      yield { type: 'chat', data: content };
     })(),
   });
 }
@@ -191,13 +202,17 @@ describe('parts archive boundaries', () => {
           { id: 'parent', title: 'Parent', createdAt: 1, updatedAt: 2, debugEnabled: false, titleGeneration: 'inherit' },
         ],
       }));
-      if (parentContent === 'empty') zip.file('chat-contents/parent.json', JSON.stringify({ root: { items: [] } }));
+      if (parentContent === 'empty') {
+        zip.file('chat-contents/parent.json', JSON.stringify({ root: { items: [] } }));
+      }
     }
 
     await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
 
     const fork = f.received.find(chunk => chunk.type === 'chat' && chunk.data.title === 'Parts');
-    if (fork?.type !== 'chat') throw new Error('Missing imported fork.');
+    if (fork?.type !== 'chat') {
+      throw new Error('Missing imported fork.');
+    }
     const metas = f.storage.restore.mock.calls[0]![0].snapshot.structure.chatMetas;
     const expectedChatId = origin === 'self' ? fork.data.id : origin === 'imported' ? metas.find(meta => meta.title === 'Parent')!.id : 'parent';
     const expectedMessageId = origin === 'self' ? fork.data.root!.items[0]!.id : 'a';
@@ -235,17 +250,25 @@ describe('parts archive boundaries', () => {
 <think>literal</think>
  [Generation Aborted] `,
     })]);
-    if (a.parts === undefined) throw new Error('Expected V2.');
-    expect(a.createdAt).toBe(7); expect('timestamp' in a).toBe(false); expect('thinking' in a).toBe(false);
-    expect(f.storage.restore).not.toHaveBeenCalled(); expect(f.storage.clearAll).not.toHaveBeenCalled();
+    if (a.parts === undefined) {
+      throw new Error('Expected V2.');
+    }
+    expect(a.createdAt).toBe(7);
+    expect('timestamp' in a).toBe(false);
+    expect('thinking' in a).toBe(false);
+    expect(f.storage.restore).not.toHaveBeenCalled();
+    expect(f.storage.clearAll).not.toHaveBeenCalled();
   });
 
   it('keeps empty and repeated parts, partial state, time, and recorded error language', async () => {
     const a = modernAssistant({ parts: [{ type: 'reasoning', text: '' }, { type: 'text', text: '' }, { type: 'text', text: '  🙂\r\n', completeness: 'partial' }] });
-    const original = chat({ root: { items: [a] } }); const before = JSON.stringify(original); const f = fixture();
+    const original = chat({ root: { items: [a] } });
+    const before = JSON.stringify(original);
+    const f = fixture();
     dump({ storage: f.storage, content: original, binaries: [] });
     const content = await exportedContent({ zip: await readExport(await f.service.exportData({})) });
-    expect(content.root.items).toEqual(original.root?.items); expect(JSON.stringify(original)).toBe(before);
+    expect(content.root.items).toEqual(original.root?.items);
+    expect(JSON.stringify(original)).toBe(before);
   });
 
   it('filters current-thread binary references from text and success/error tool results', async () => {
@@ -271,12 +294,17 @@ describe('parts archive boundaries', () => {
           },
         }],
       },
-    }); content.currentLeafId = 'tool';
-    const f = fixture(); dump({ storage: f.storage, content, binaries: ['image', 'good', 'error', 'other-image'] });
+    });
+    content.currentLeafId = 'tool';
+    const f = fixture();
+    dump({ storage: f.storage, content, binaries: ['image', 'good', 'error', 'other-image'] });
     const zip = await readExport(await f.service.exportData({ exclude: ['chat_history'] }));
-    for (const id of ['image', 'good', 'error']) expect(Object.keys(zip.files).some(name => name.endsWith(`/${id}.bin`))).toBe(true);
+    for (const id of ['image', 'good', 'error']) {
+      expect(Object.keys(zip.files).some(name => name.endsWith(`/${id}.bin`))).toBe(true);
+    }
     expect(Object.keys(zip.files).some(name => name.endsWith('/other-image.bin'))).toBe(false);
-    const saved = await exportedContent({ zip }); expect(saved.root.items[0]!.replies.items).toHaveLength(1);
+    const saved = await exportedContent({ zip });
+    expect(saved.root.items[0]!.replies.items).toHaveLength(1);
   });
 
   it('appends V2 with ordered parts, all binary reference forms, and no call re-execution', async () => {
@@ -303,31 +331,53 @@ describe('parts archive boundaries', () => {
           },
         }],
       },
-    }); dto.currentLeafId = 'tool';
-    const zip = await archive({ content: dto }); addBinary({ zip, id: 'image' }); addBinary({ zip, id: 'error' });
-    const f = fixture(); await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
-    const imported = f.received.find(chunk => chunk.type === 'chat'); if (imported?.type !== 'chat') throw new Error('No imported content.');
-    const assistant = imported.data.root?.items[0]; if (assistant?.role !== 'assistant' || !assistant.parts) throw new Error('No assistant.');
+    });
+    dto.currentLeafId = 'tool';
+    const zip = await archive({ content: dto });
+    addBinary({ zip, id: 'image' });
+    addBinary({ zip, id: 'error' });
+    const f = fixture();
+    await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
+    const imported = f.received.find(chunk => chunk.type === 'chat');
+    if (imported?.type !== 'chat') {
+      throw new Error('No imported content.');
+    }
+    const assistant = imported.data.root?.items[0];
+    if (assistant?.role !== 'assistant' || !assistant.parts) {
+      throw new Error('No assistant.');
+    }
     const binaries = f.received.filter(chunk => chunk.type === 'binary_object');
-    expect(binaries).toHaveLength(2); expect(binaries.map(b => b.id)).not.toContain('image');
+    expect(binaries).toHaveLength(2);
+    expect(binaries.map(b => b.id)).not.toContain('image');
     expect(assistant.parts.map(part => part.type)).toEqual(['reasoning', 'text', 'tool_call']);
-    for (const part of assistant.parts) expect(part).not.toHaveProperty('id');
+    for (const part of assistant.parts) {
+      expect(part).not.toHaveProperty('id');
+    }
     const image = binaries.find(b => b.name === 'image')!;
     expect(assistant.parts[0]).toMatchObject({ text: marker({ id: 'image' }) });
     expect(assistant.parts[1]).toMatchObject({ text: `leading\n${marker({ id: image.id })}\ntrailing` });
     expect(assistant.parts[2]).toMatchObject({ toolCall: parts[2]!.toolCall });
-    const tool = assistant.replies.items[0]; if (tool?.role !== 'tool') throw new Error('No tool.');
+    const tool = assistant.replies.items[0];
+    if (tool?.role !== 'tool') {
+      throw new Error('No tool.');
+    }
     expect(tool.parts[0]).toMatchObject({ result: { content: { id: image.id } } });
     expect(tool.parts[1]).toMatchObject({ result: { error: { message: { id: binaries.find(b => b.name === 'error')!.id } } } });
-    expect(imported.data.currentLeafId).toBe(tool.id); expect(f.storage.clearAll).not.toHaveBeenCalled();
+    expect(imported.data.currentLeafId).toBe(tool.id);
+    expect(f.storage.clearAll).not.toHaveBeenCalled();
   });
 
   it('remaps escaped top-level image keys while leaving nested metadata and invalid blocks alone', async () => {
     const raw = marker({ id: 'image' }).replace('"binaryObjectId"', '"binary\\u004fbjectId"') + `\n\`\`\`${IMAGE_BLOCK_LANG}\nnot-json\n\`\`\``;
-    const zip = await archive({ content: chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: raw }] })] } }) }); addBinary({ zip, id: 'image' });
-    const f = fixture(); await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
-    const imported = f.received.find(c => c.type === 'chat'); const binary = f.received.find(c => c.type === 'binary_object');
-    if (imported?.type !== 'chat' || binary?.type !== 'binary_object') throw new Error('Missing restored chunks.');
+    const zip = await archive({ content: chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: raw }] })] } }) });
+    addBinary({ zip, id: 'image' });
+    const f = fixture();
+    await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode: 'append' }) });
+    const imported = f.received.find(c => c.type === 'chat');
+    const binary = f.received.find(c => c.type === 'binary_object');
+    if (imported?.type !== 'chat' || binary?.type !== 'binary_object') {
+      throw new Error('Missing restored chunks.');
+    }
     expect(imported.data.root?.items[0]?.parts?.[0]).toMatchObject({ text: raw.replace('"image"', JSON.stringify(binary.id)) });
   });
 
@@ -336,15 +386,22 @@ describe('parts archive boundaries', () => {
       const dto = chat({ root: { items: [modernAssistant({ parts: [] })] } });
       const zip = await archive({ content: dto });
       zip.file('chat-contents/chat.json', JSON.stringify({ root: { items: [{ id: 'a', role: 'assistant', createdAt: 0, content: 'legacy lure', timestamp: 0, parts: null, replies: { items: [] } }] } }));
-      const f = fixture(); await expect(f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) })).rejects.toThrow(/chat content/);
-      expect(f.storage.clearAll).not.toHaveBeenCalled(); expect(f.storage.updateSettings).not.toHaveBeenCalled(); expect(f.storage.restore).not.toHaveBeenCalled();
+      const f = fixture();
+      await expect(f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) })).rejects.toThrow(/chat content/);
+      expect(f.storage.clearAll).not.toHaveBeenCalled();
+      expect(f.storage.updateSettings).not.toHaveBeenCalled();
+      expect(f.storage.restore).not.toHaveBeenCalled();
     });
 
     it(`restores valid V2 in ${mode} without interpreting a literal think block`, async () => {
       const dto = chat({ root: { items: [modernAssistant({ parts: [{ type: 'text', text: '<think> literal </think>', completeness: 'partial' }] })] } });
-      const zip = await archive({ content: dto }); const f = fixture();
+      const zip = await archive({ content: dto });
+      const f = fixture();
       await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) });
-      const imported = f.received.find(c => c.type === 'chat'); if (imported?.type !== 'chat') throw new Error('No chat.');
+      const imported = f.received.find(c => c.type === 'chat');
+      if (imported?.type !== 'chat') {
+        throw new Error('No chat.');
+      }
       expect(imported.data.root?.items[0]).toMatchObject({ createdAt: 0, interruption: { type: 'error', message: '接続が切れました: offline' }, parts: [{ type: 'text', text: '<think> literal </think>', completeness: 'partial' }] });
     });
   }

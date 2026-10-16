@@ -22,7 +22,8 @@ const currentChat = ref<Chat | null>(null);
 const automaticChat: Chat = { id: toChatId({ raw: 'automatic' }), groupId: undefined, title: null, root: { items: [] }, debugEnabled: false, createdAt: 1, updatedAt: 1 };
 const settingsStore = { initialized, isOnboardingDismissed, settings, init };
 const createNewChat = vi.fn(async () => {
-  currentChat.value = automaticChat; chats.value = [automaticChat];
+  currentChat.value = automaticChat;
+  chats.value = [automaticChat];
 });
 vi.mock('@/components/MainAppSurface.vue', () => ({ default: defineComponent({ setup: () => () => h(RouterView) }) }));
 vi.mock('@/components/AppAuxiliaryUi.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
@@ -51,7 +52,11 @@ function expectMetadata({ metadata }: { metadata: PageMetadata }): void {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); initialized.value = false; chats.value = []; currentChat.value = null; document.head.innerHTML = '';
+  vi.clearAllMocks();
+  initialized.value = false;
+  chats.value = [];
+  currentChat.value = null;
+  document.head.innerHTML = '';
   applyDocumentMetadata({ document, page: HOME_METADATA, documentTitle: HOME_METADATA.title });
 });
 
@@ -66,14 +71,18 @@ describe('unattended app startup metadata', () => {
     { path: '/chat/ordinary', dismissed: true, existing: false, metadata: APPLICATION_METADATA },
   ])('keeps the settled metadata for $path (dismissed=$dismissed, existing=$existing)', async ({ path, dismissed, existing, metadata }) => {
     isOnboardingDismissed.value = dismissed;
-    if (existing) chats.value = [automaticChat];
+    if (existing) {
+      chats.value = [automaticChat];
+    }
     const initializing = Promise.withResolvers<void>();
     const restoringChats = Promise.withResolvers<void>();
     init.mockImplementationOnce(async () => {
-      await initializing.promise; initialized.value = true;
+      await initializing.promise;
+      initialized.value = true;
     });
     loadChats.mockReturnValueOnce(restoringChats.promise);
-    const history = createMemoryHistory(); history.replace(path);
+    const history = createMemoryHistory();
+    history.replace(path);
     const page = { template: '<div data-testid="page" />' };
     const router = createRouter({ history, routes: ['/', '/chat/:id', '/audio-generation', '/image-generation', '/image-generation/session/:id'].map(path => ({ path, component: page })) });
     const navigationGate = createInitialNavigationGate({ router });
@@ -86,7 +95,8 @@ describe('unattended app startup metadata', () => {
     };
     expectMetadata({ metadata: HOME_METADATA });
     const startup = startApp({ startupState, settingsStore: settingsStore as unknown as ReturnType<typeof useSettings>, router, navigationGate, window });
-    initializing.resolve(); await flushPromises();
+    initializing.resolve();
+    await flushPromises();
     expect(startupState.value.kind).toBe('starting-main');
     expectMetadata({ metadata: HOME_METADATA });
     restoringChats.resolve();
@@ -114,11 +124,13 @@ describe('unattended app startup metadata', () => {
       expect(createNewChat).toHaveBeenCalledTimes(2);
       expect(router.currentRoute.value.path).toBe('/chat/automatic');
       expectMetadata({ metadata: APPLICATION_METADATA });
-      creating.resolve(); await flushPromises();
+      creating.resolve();
+      await flushPromises();
     }
     if (path === '/' && !dismissed) {
       const onboarding = wrapper.getComponent(OnboardingModal);
-      isOnboardingDismissed.value = true; onboarding.vm.$emit('dismiss');
+      isOnboardingDismissed.value = true;
+      onboarding.vm.$emit('dismiss');
       await flushPromises();
       expectMetadata({ metadata: APPLICATION_METADATA });
     }

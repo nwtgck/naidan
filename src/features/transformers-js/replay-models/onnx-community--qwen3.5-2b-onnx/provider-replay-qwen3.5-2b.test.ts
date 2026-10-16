@@ -102,7 +102,10 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
         }],
       });
     }
-    default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = message;
+      throw new Error(String(exhaustive));
+    }
     }
   });
 }
@@ -288,7 +291,9 @@ const QWEN_TOOL_INPUT_STOP = 'Qwen2B tool input captured; no generated output su
 function snapshotQwenInput({ context }: { context: Parameters<ProviderReplayGenerate>[0] }) {
   const { options, runtime } = context;
   function tensorSnapshot({ value }: { value: unknown }) {
-    if (!(value instanceof runtime.Tensor)) return undefined;
+    if (!(value instanceof runtime.Tensor)) {
+      return undefined;
+    }
     return {
       type: value.type,
       dims: [...value.dims],
@@ -366,7 +371,9 @@ async function createQwenToolInputReplay() {
     await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Actual Qwen processor/tokenizer unavailable');
+    if (!processor?.tokenizer) {
+      throw new Error('Actual Qwen processor/tokenizer unavailable');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(processor.tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
     const serializer = await import('@/features/transformers-js/models/qwen3_5');
@@ -412,7 +419,9 @@ function verifyQwenToolInput({
   expect(replay.builderSpy).toHaveBeenCalledTimes(before + 1);
   expect(replay.processorSpy).toHaveBeenCalledTimes(before + 1);
   const call = replay.builderSpy.mock.calls[before];
-  if (!call) throw new Error('No actual Qwen builder invocation');
+  if (!call) {
+    throw new Error('No actual Qwen builder invocation');
+  }
   const { tokenizer: actualTokenizer, ...builderInput } = call[0];
   expect(actualTokenizer).toBe(replay.tokenizer);
   const observed = observedBuilderInputSchema.parse(builderInput);
@@ -440,7 +449,9 @@ function verifyQwenToolInput({
   expect(replay.processorSpy.mock.calls[before]).toStrictEqual([expectedPrompt]);
   expect(replay.inputs).toHaveLength(before + 1);
   const context = replay.inputs[before];
-  if (!context) throw new Error('No actual inference boundary');
+  if (!context) {
+    throw new Error('No actual inference boundary');
+  }
   const { options, runtime } = context;
   if (!options.input_ids || !options.attention_mask) {
     throw new Error('Expected actual Qwen processor tensors');
@@ -609,7 +620,9 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
   }));
   const builderSpy = vi.spyOn(serializer, 'buildQwen3_5Prompt').mockImplementation(args => {
     const tokenizer = harness.observations.processors[0]?.tokenizer;
-    if (!tokenizer) throw new Error('Historical serializer requires the actual selected tokenizer');
+    if (!tokenizer) {
+      throw new Error('Historical serializer requires the actual selected tokenizer');
+    }
     expect(args.tokenizer).toBe(tokenizer);
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
     const { tokenizer: _tokenizer, ...raw } = args;
@@ -626,7 +639,10 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
       switch (message.role) {
       case 'user': case 'system': return `<|im_start|>${message.role}\n${message.content}<|im_end|>`;
       case 'assistant': return ['<|im_start|>assistant', ...(message.content.length === 0 ? [] : [message.content]), '<|im_end|>'].join('\n');
-      default: { const exhaustive: never = message.role; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = message.role;
+        throw new Error(String(exhaustive));
+      }
       }
     });
     const prefix = (() => {
@@ -643,7 +659,10 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
 <|im_start|>assistant
 <think>
 `;
-      default: { const exhaustive: never = expectedMode; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = expectedMode;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     const firstSystem = observed.messages[0]?.role === 'system' ? [historicalMessages[0]!] : [];
@@ -658,7 +677,8 @@ async function installHistoricalQwenSerializer({ harness, capture, effort, expec
     builderSpy,
     serviceSpy,
     restore() {
-      builderSpy.mockRestore(); operationSpy.mockRestore();
+      builderSpy.mockRestore();
+      operationSpy.mockRestore();
     },
   };
 }
@@ -696,7 +716,9 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
       expect(tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
       expect(builderSpy).toHaveBeenCalledOnce();
       const builderCall = builderSpy?.mock.calls[0];
-      if (!builderCall) throw new Error('Qwen recorded replay requires the actual public serializer');
+      if (!builderCall) {
+        throw new Error('Qwen recorded replay requires the actual public serializer');
+      }
       const { tokenizer: builderTokenizer, ...builderInput } = builderCall[0];
       expect(builderTokenizer).toBe(tokenizer);
       const observed = recordedQwenBuilderSchema.parse(builderInput);
@@ -732,7 +754,9 @@ async function createRecordedQwenOutputControl({ capture, effort, expectedMode, 
     await harness.service.loadDownloadedModel({ modelId: replay.identity.modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Expected real Qwen2 processor/tokenizer');
+    if (!processor?.tokenizer) {
+      throw new Error('Expected real Qwen2 processor/tokenizer');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex'))
       .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
@@ -827,7 +851,8 @@ async function createHistoricalMutationControl() {
     adapter,
     generate,
     async close() {
-      adapter.restore(); await harness.close();
+      adapter.restore();
+      await harness.close();
     },
   };
 }
@@ -853,7 +878,9 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
       } catch (error) {
         legacyAttempts.push({ status: 'rejected', error });
       } finally {
-        if (put && end) streamCalls.push({ put: put.mock.calls.length, end: end.mock.calls.length });
+        if (put && end) {
+          streamCalls.push({ put: put.mock.calls.length, end: end.mock.calls.length });
+        }
         put?.mockRestore();
         end?.mockRestore();
       }
@@ -866,7 +893,9 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
     verifyNativeInput() {
       expect(inputs).toHaveLength(1);
       const actual = inputs[0];
-      if (!actual?.options.input_ids || !actual.options.attention_mask) throw new Error('Expected actual current native Qwen tensors');
+      if (!actual?.options.input_ids || !actual.options.attention_mask) {
+        throw new Error('Expected actual current native Qwen tensors');
+      }
       const { options, tokenizer } = actual;
       const thinking = effort === undefined ? {} : { enable_thinking: effort !== 'none' };
       expect(tokenizer.apply_chat_template(capture.replay.scenario.messages, { tokenize: false, add_generation_prompt: true, ...thinking })).toBe(expectedNativePrompt);
@@ -878,7 +907,9 @@ async function createCurrentQwenHistoricalOutputControl({ capture, effort, expec
       expect(legacyAttempts).toHaveLength(1);
       expect(legacyAttempts[0]).toMatchObject({ status: 'rejected', error: expect.any(Error) });
       const attempt = legacyAttempts[0];
-      if (attempt?.status !== 'rejected') throw new Error('Historical output unexpectedly passed its causal gate');
+      if (attempt?.status !== 'rejected') {
+        throw new Error('Historical output unexpectedly passed its causal gate');
+      }
       expect(attempt.error).toHaveProperty('message', expect.stringContaining('Replay causal mismatch: actual source input'));
       expect(streamCalls).toEqual([{ put: 0, end: 0 }]);
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1011,7 +1042,9 @@ describe('Qwen3.5 2B Provider / basic', () => {
   it('rejects a changed selected template at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
     const tokenizer = control.harness.observations.processors[0]!.tokenizer;
-    if (tokenizer === undefined) throw new Error('Expected the selected native tokenizer');
+    if (tokenizer === undefined) {
+      throw new Error('Expected the selected native tokenizer');
+    }
     const template = vi.spyOn(tokenizer, 'get_chat_template').mockReturnValue('changed synthetic template');
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
@@ -1225,7 +1258,9 @@ describe('Qwen3.5 2B Provider / basic', () => {
     const processor = harness.observations.processors[0]!;
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     const tokenizer = processor.tokenizer;
-    if (!tokenizer) throw new Error('Actual processor did not expose its tokenizer');
+    if (!tokenizer) {
+      throw new Error('Actual processor did not expose its tokenizer');
+    }
     expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
     expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: false, add_generation_prompt: true })).toBe(evidence.nativeTemplate.renderedText);
     expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
@@ -1277,7 +1312,9 @@ describe('Qwen3.5 2B Provider / basic', () => {
     const { options, tokenizer } = inputs[0]!;
     const input = options.input_ids;
     const mask = options.attention_mask;
-    if (!input || !mask) throw new Error('Expected actual processor tensors');
+    if (!input || !mask) {
+      throw new Error('Expected actual processor tensors');
+    }
     const actualInput = Array.from(input.data, BigInt);
     expect(Array.from(mask.data, BigInt)).toEqual(actualInput.map(() => 1n));
     expect(input.dims).toEqual([1, actualInput.length]);
@@ -1308,7 +1345,9 @@ describe('Qwen3.5 2B Provider / basic', () => {
         expectedMode: 'default',
         expectedPrompt: recordedQwenUserPrompt,
         verifyBeforeRelease: ({ context }) => {
-          if (!(context.options.input_ids instanceof context.runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
+          if (!(context.options.input_ids instanceof context.runtime.Tensor)) {
+            throw new Error('Expected actual Qwen input Tensor');
+          }
           expect(context.options.input_ids.dims).toEqual([1, 13]);
           expect(firstQwenCapture.replay.modelReplay.generatedTokenIds).toHaveLength(16);
         },
@@ -1502,7 +1541,9 @@ Okay, the user is asking for a template for a user message.`,
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0]!;
     const tokenizer = processor.tokenizer;
-    if (!tokenizer) throw new Error('Actual Qwen processor tokenizer unavailable');
+    if (!tokenizer) {
+      throw new Error('Actual Qwen processor tokenizer unavailable');
+    }
     expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
     // Independent native control runs before public generation, so an input
     // adaptation failure cannot hide a changed tokenizer/template fixture.
@@ -1586,7 +1627,9 @@ Continue with one short sentence.<|im_end|>
 <|im_start|>assistant
 `,
         verifyBeforeRelease: ({ context }) => {
-          if (!(context.options.input_ids instanceof context.runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
+          if (!(context.options.input_ids instanceof context.runtime.Tensor)) {
+            throw new Error('Expected actual Qwen input Tensor');
+          }
           expect(context.options.input_ids.dims).toEqual([1, 46]);
           expect(historyQwenCapture.replay.modelReplay.generatedTokenIds).toHaveLength(16);
         },
@@ -1722,7 +1765,9 @@ A separate synthetic Qwen conversation.<|im_end|>
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent-input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent-input replay');
+        }
         return next(context);
       },
     });
@@ -1790,7 +1835,9 @@ A separate synthetic Qwen conversation.<|im_end|>
     const { options, tokenizer } = native;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
     const processor = harness.observations.processors[0];
-    if (!processor) throw new Error('Expected actual loaded Qwen2 processor');
+    if (!processor) {
+      throw new Error('Expected actual loaded Qwen2 processor');
+    }
     expect(tokenizer).toBe(processor.tokenizer);
     // This independent next-input contract uses the existing Production
     // serializer, not a claim of native-default parity. Keep that distinct
@@ -1799,7 +1846,9 @@ A separate synthetic Qwen conversation.<|im_end|>
     expect(tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true })).toBe(nativeDefaultPrompt);
     expect(nativeDefaultPrompt).not.toBe(historicalNextPrompt);
     const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
-    if (!options.input_ids || !options.attention_mask) throw new Error('Expected actual next-input tensors');
+    if (!options.input_ids || !options.attention_mask) {
+      throw new Error('Expected actual next-input tensors');
+    }
     expect(options.input_ids.type).toBe('int64');
     expect(options.input_ids.location).toBe('cpu');
     expect(options.input_ids.dims).toEqual([1, ids.length]);
@@ -2023,7 +2072,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
 
 `,
         verifyBeforeRelease: ({ context: { tokenizer, runtime, options } }) => {
-          if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
+          if (!(options.input_ids instanceof runtime.Tensor)) {
+            throw new Error('Expected actual Qwen input Tensor');
+          }
           const native = tokenizer.apply_chat_template(evidence.nativeTemplate.messages, {
             tokenize: true,
             return_dict: true,
@@ -2036,7 +2087,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
           expect(nativeTensors.input_ids.dims).toEqual([1, 17]);
           expect(options.input_ids.dims).toEqual([1, 17]);
           expect(Array.from(nativeTensors.input_ids.data, Number)).toEqual(evidence.nativeTemplate.inputIds);
-          if (!(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen TextStreamer');
+          if (!(options.streamer instanceof runtime.TextStreamer)) {
+            throw new Error('Expected actual Qwen TextStreamer');
+          }
           const put = vi.spyOn(options.streamer, 'put');
           const end = vi.spyOn(options.streamer, 'end');
           try {
@@ -2099,7 +2152,9 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
         expectedMode: 'enabled',
         expectedPrompt: recordedQwenUserPrompt + '<think>\n\n',
         verifyBeforeRelease: ({ context }) => {
-          if (!(context.options.input_ids instanceof context.runtime.Tensor)) throw new Error('Expected actual Qwen input Tensor');
+          if (!(context.options.input_ids instanceof context.runtime.Tensor)) {
+            throw new Error('Expected actual Qwen input Tensor');
+          }
           expect(context.options.input_ids.dims).toEqual([1, 15]);
           expect(enabledQwenCapture.replay.modelReplay.generatedTokenIds).toEqual([248069]);
         },
@@ -2457,7 +2512,9 @@ Use the weather tool for Tokyo.<|im_end|>
     const userHeader = '<|im_start|>user\n';
     expect(nativeFirst.renderedText.split(userHeader)).toHaveLength(2);
     const nativeSystem = nativeFirst.renderedText.split(userHeader)[0];
-    if (nativeSystem === undefined) throw new Error('Missing recorded native tool prelude');
+    if (nativeSystem === undefined) {
+      throw new Error('Missing recorded native tool prelude');
+    }
     const strictNativeSystem = nativeSystem.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
     const nativeSuffix = `\
 <|im_start|>user
@@ -2658,9 +2715,13 @@ Use the weather tool for Tokyo.<|im_end|>
         toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
       }],
     });
-    if (callAssistant?.role !== 'assistant') throw new Error('Expected tool-calling assistant');
+    if (callAssistant?.role !== 'assistant') {
+      throw new Error('Expected tool-calling assistant');
+    }
     const call = callAssistant.parts[0];
-    if (call?.type !== 'tool_call') throw new Error('Expected structured tool call');
+    if (call?.type !== 'tool_call') {
+      throw new Error('Expected structured tool call');
+    }
     expect(toolResult).toMatchObject({
       role: 'tool',
       parts: [{
@@ -2749,9 +2810,12 @@ describe('Qwen3.5 2B Provider / images', () => {
     const { context, evidence: recorded } = readProviderRequestEvidence({ catalog, caseId: 'image' });
     const request = recorded.request;
     const invocation = recorded.invocations[0];
-    if (request === undefined || invocation === undefined) throw new Error('Missing complete image request');
+    if (request === undefined || invocation === undefined) {
+      throw new Error('Missing complete image request');
+    }
     expect(recorded.invocations).toHaveLength(1);
-    expect(recorded.inputGaps).toEqual([]); expect(recorded.unavailableOutputOrdinals).toEqual([]);
+    expect(recorded.inputGaps).toEqual([]);
+    expect(recorded.unavailableOutputOrdinals).toEqual([]);
     const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
     const revision = 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb';
     expect([context.modelId, context.metadataRevision, context.observedCacheRevision]).toEqual([modelId, revision, revision]);
@@ -2762,7 +2826,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     expect(context.loadReceipt.processor).toBe('qwen3_5-processor');
     const fixture = readModelFixture({ modelId });
     expect(context.metadata.map(row => row.path).sort()).toEqual([...fixture.files.keys()].sort());
-    for (const row of context.metadata) expect(createHash('sha256').update(fixture.files.get(row.path)!).digest('hex')).toBe(row.sha256);
+    for (const row of context.metadata) {
+      expect(createHash('sha256').update(fixture.files.get(row.path)!).digest('hex')).toBe(row.sha256);
+    }
     const imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
     const nativeMessages = [{
       role: 'user' as const,
@@ -2838,7 +2904,8 @@ describe('Qwen3.5 2B Provider / images', () => {
       { sequence: 1, phase: 'before-settlement', kind: 'chunk', chunk: 'A' },
     ]);
     expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-    expect(generations).toBe(1); expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(generations).toBe(1);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
     expect(platform.observations.decodes).toHaveLength(1);
     expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
     expect(harness.observations.workers).toHaveLength(1);
@@ -2905,7 +2972,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
+    if (!processor?.tokenizer) {
+      throw new Error('Expected actual Qwen2 processor/tokenizer');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(harness.runtime.env.version).toBe('4.2.0');
     expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex'))
@@ -2913,7 +2982,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     expect(processor.tokenizer.apply_chat_template(nativeMessages, { tokenize: false, add_generation_prompt: true }))
       .toBe(qwen2NativeImagePrompt);
     const imageProcessor = processor.image_processor;
-    if (typeof imageProcessor !== 'function') throw new Error('Expected actual callable image processor');
+    if (typeof imageProcessor !== 'function') {
+      throw new Error('Expected actual callable image processor');
+    }
     expect(Reflect.get(imageProcessor, 'config')).toEqual(selectedConfig);
     // TJS 4.2 AutoImageProcessor reads preprocessor_config; inherited
     // uses_processor_config=false leaves the separate nested normalize=true
@@ -3029,10 +3100,14 @@ describe('Qwen3.5 2B Provider / images', () => {
     expect(observed.settlement).toEqual({ status: 'fulfilled' });
     expect(inputs).toHaveLength(1);
     const actual = inputs[0];
-    if (!actual) throw new Error('Public Qwen2 image input did not reach generation');
+    if (!actual) {
+      throw new Error('Public Qwen2 image input did not reach generation');
+    }
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
+    if (!processor?.tokenizer) {
+      throw new Error('Expected actual Qwen2 processor/tokenizer');
+    }
     expect(actual.tokenizer).toBe(processor.tokenizer);
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(createHash('sha256').update(actual.tokenizer.get_chat_template()).digest('hex'))
@@ -3068,7 +3143,9 @@ describe('Qwen3.5 2B Provider / images', () => {
     };
     expect(imageInput, JSON.stringify(imageInput)).toEqual({ imageFetches: [imageUrl], hasPixels: true, hasGrid: true });
     const { input_ids, attention_mask, pixel_values, image_grid_thw } = actual.options;
-    if (!input_ids || !attention_mask || !pixel_values || !image_grid_thw) throw new Error('Expected four actual image Tensor snapshots');
+    if (!input_ids || !attention_mask || !pixel_values || !image_grid_thw) {
+      throw new Error('Expected four actual image Tensor snapshots');
+    }
     const tensors = { input_ids, attention_mask, pixel_values, image_grid_thw };
     expect(actual.optionKeys).toEqual([
       'attention_mask', 'do_sample', 'image_grid_thw', 'input_ids', 'max_new_tokens', 'past_key_values',
@@ -3317,7 +3394,9 @@ describe('Qwen3.5 2B Provider / sequences', () => {
     expect(recorded.loadReceipt.autoClass).toBe('AutoModelForCausalLM');
     const platform = createProviderReplayTestImagePlatform();
     const gap = recorded.nativeInputGaps?.[0];
-    if (gap === undefined) throw new Error('Missing observed Qwen image input');
+    if (gap === undefined) {
+      throw new Error('Missing observed Qwen image input');
+    }
     const vision = ['onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data'];
     // The source local inventory already held vision files. Current routing now
     // actually plans them; this is an intentional source correction, not the
@@ -3367,14 +3446,20 @@ describe('Qwen3.5 2B Provider / sequences', () => {
       switch (input.value.kind) {
       case 'tensor': {
         const tensor = tensors[z.enum(['input_ids', 'attention_mask', 'pixel_values', 'image_grid_thw']).parse(input.name)];
-        if (!tensor || !ArrayBuffer.isView(tensor.data)) throw new Error('Missing actual Qwen image Tensor snapshot');
+        if (!tensor || !ArrayBuffer.isView(tensor.data)) {
+          throw new Error('Missing actual Qwen image Tensor snapshot');
+        }
         const { kind: _kind, ...fact } = input.value;
         const bytes = new Uint8Array(tensor.data.buffer, tensor.data.byteOffset, tensor.data.byteLength);
         expect({ dtype: tensor.type, dims: tensor.dims, byteLength: bytes.byteLength, sha256: createHash('sha256').update(bytes).digest('hex') }, input.name).toEqual(fact);
         break;
       }
-      case 'image-sizes': case 'scalar': expect(values[input.name], input.name).toEqual(input.value.value); break;
-      default: { const exhaustive: never = input.value; throw new Error(String(exhaustive)); }
+      case 'image-sizes': case 'scalar': expect(values[input.name], input.name).toEqual(input.value.value);
+        break;
+      default: {
+        const exhaustive: never = input.value;
+        throw new Error(String(exhaustive));
+      }
       }
     }
     expect(options.past_key_values).toBeNull();

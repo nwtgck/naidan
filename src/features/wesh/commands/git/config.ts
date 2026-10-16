@@ -129,7 +129,9 @@ function parseExplicitConfigValue({ rawValue }: { rawValue: string }): string {
   let started = false;
 
   const appendPendingWhitespace = () => {
-    if (pendingWhitespace.length === 0) return;
+    if (pendingWhitespace.length === 0) {
+      return;
+    }
     result += pendingWhitespace;
     pendingWhitespace = '';
   };
@@ -165,16 +167,22 @@ function parseExplicitConfigValue({ rawValue }: { rawValue: string }): string {
     }
 
     if (character === '"') {
-      if (!inQuotes && started) appendPendingWhitespace();
+      if (!inQuotes && started) {
+        appendPendingWhitespace();
+      }
       inQuotes = !inQuotes;
       started = true;
       continue;
     }
 
-    if (!inQuotes && (character === '#' || character === ';')) break;
+    if (!inQuotes && (character === '#' || character === ';')) {
+      break;
+    }
 
     if (!inQuotes && /\s/u.test(character)) {
-      if (started) pendingWhitespace += character;
+      if (started) {
+        pendingWhitespace += character;
+      }
       continue;
     }
 
@@ -183,8 +191,12 @@ function parseExplicitConfigValue({ rawValue }: { rawValue: string }): string {
     started = true;
   }
 
-  if (escaped) throw new Error('config value ends with an incomplete escape');
-  if (inQuotes) throw new Error('config value has an unterminated quote');
+  if (escaped) {
+    throw new Error('config value ends with an incomplete escape');
+  }
+  if (inQuotes) {
+    throw new Error('config value has an unterminated quote');
+  }
   return result;
 }
 
@@ -210,7 +222,9 @@ function parseConfigSubsection({ rawSubsection }: { rawSubsection: string }): st
     }
     result += character;
   }
-  if (escaped) throw new Error('config subsection ends with an incomplete escape');
+  if (escaped) {
+    throw new Error('config subsection ends with an incomplete escape');
+  }
   return result;
 }
 
@@ -219,7 +233,9 @@ function parseConfigSectionHeader({ line }: { line: string }): {
   subsection: string | undefined,
 } | undefined {
   const match = /^\s*\[([^\s\]"]+)(?:\s+"((?:\\[\\"]|[^"\\])*)")?\]\s*(?:[#;].*)?$/u.exec(line);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   return {
     section: match[1]!,
     subsection: match[2] === undefined
@@ -235,18 +251,24 @@ export function parseConfigEntries({ text }: { text: string }): GitConfigEntry[]
   const logicalText = text.replace(/\\\r?\n/gu, '');
   for (const rawLine of logicalText.split(/\r?\n/u)) {
     const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith("#") || line.startsWith(";")) continue;
+    if (line.length === 0 || line.startsWith("#") || line.startsWith(";")) {
+      continue;
+    }
     const sectionHeader = parseConfigSectionHeader({ line });
     if (sectionHeader !== undefined) {
       section = sectionHeader.section;
       subsection = sectionHeader.subsection;
       continue;
     }
-    if (line.startsWith('[')) throw new Error(`bad config line: ${line}`);
+    if (line.startsWith('[')) {
+      throw new Error(`bad config line: ${line}`);
+    }
     const assignment = /^([^=\s]+)\s*=([\s\S]*)$/u.exec(line);
     if (assignment !== null) {
       const name = assignment[1]!;
-      if (!isValidConfigVariableName({ name })) throw new Error(`invalid config variable name: ${name}`);
+      if (!isValidConfigVariableName({ name })) {
+        throw new Error(`invalid config variable name: ${name}`);
+      }
       result.push({
         key: section === undefined ? name.toLowerCase() : normalizeConfigKey({ section, subsection, name }),
         value: { kind: 'explicit', value: parseExplicitConfigValue({ rawValue: assignment[2]! }) },
@@ -256,7 +278,9 @@ export function parseConfigEntries({ text }: { text: string }): GitConfigEntry[]
     const implicit = /^([^=\s]+)$/u.exec(line);
     if (implicit !== null) {
       const name = implicit[1]!;
-      if (!isValidConfigVariableName({ name })) throw new Error(`invalid config variable name: ${name}`);
+      if (!isValidConfigVariableName({ name })) {
+        throw new Error(`invalid config variable name: ${name}`);
+      }
       result.push({
         key: section === undefined ? name.toLowerCase() : normalizeConfigKey({ section, subsection, name }),
         value: { kind: 'implicit-boolean' },
@@ -270,7 +294,9 @@ export function parseConfigEntries({ text }: { text: string }): GitConfigEntry[]
 
 export function parseConfig({ text }: { text: string }): GitConfig {
   const result: GitConfig = new Map();
-  for (const entry of parseConfigEntries({ text })) result.set(entry.key, entry.value);
+  for (const entry of parseConfigEntries({ text })) {
+    result.set(entry.key, entry.value);
+  }
   return result;
 }
 
@@ -279,7 +305,9 @@ export async function readLocalConfig({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitConfig> {
   const path = joinPath({ base: repository.commonDirPath, child: "config" });
-  if (!await pathExists({ files, path })) return new Map();
+  if (!await pathExists({ files, path })) {
+    return new Map();
+  }
   return parseConfig({ text: await readFileText({ files, path }) });
 }
 
@@ -288,7 +316,9 @@ export async function readLocalConfigEntries({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitConfigEntry[]> {
   const path = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path })) return [];
+  if (!await pathExists({ files, path })) {
+    return [];
+  }
   return parseConfigEntries({ text: await readFileText({ files, path }) });
 }
 
@@ -298,8 +328,12 @@ function globalConfigPath({ homePath, cwd, env }: {
   env: ReadonlyMap<string, string>,
 }): string {
   const override = env.get('GIT_CONFIG_GLOBAL');
-  if (override === undefined) return joinPath({ base: homePath, child: '.gitconfig' });
-  if (override.length === 0) return '';
+  if (override === undefined) {
+    return joinPath({ base: homePath, child: '.gitconfig' });
+  }
+  if (override.length === 0) {
+    return '';
+  }
   return joinPath({ base: cwd, child: override });
 }
 
@@ -310,7 +344,9 @@ export async function readGlobalConfigEntries({ files, homePath, cwd, env }: {
   env: ReadonlyMap<string, string>,
 }): Promise<GitConfigEntry[]> {
   const path = globalConfigPath({ homePath, cwd, env });
-  if (!await pathExists({ files, path })) return [];
+  if (!await pathExists({ files, path })) {
+    return [];
+  }
   return parseConfigEntries({ text: await readFileText({ files, path }) });
 }
 
@@ -334,16 +370,24 @@ export async function readGlobalConfig({ files, homePath, cwd, env }: {
   env: ReadonlyMap<string, string>,
 }): Promise<GitConfig> {
   const result: GitConfig = new Map();
-  for (const entry of await readGlobalConfigEntries({ files, homePath, cwd, env })) result.set(entry.key, entry.value);
+  for (const entry of await readGlobalConfigEntries({ files, homePath, cwd, env })) {
+    result.set(entry.key, entry.value);
+  }
   return result;
 }
 
 function parseEnvironmentCommandConfigCount({ rawCount }: { rawCount: string | undefined }): number {
-  if (rawCount === undefined || rawCount.trim().length === 0) return 0;
+  if (rawCount === undefined || rawCount.trim().length === 0) {
+    return 0;
+  }
   const normalized = rawCount.trim();
-  if (!/^\+?[0-9]+$/u.test(normalized)) throw new Error('invalid GIT_CONFIG_COUNT');
+  if (!/^\+?[0-9]+$/u.test(normalized)) {
+    throw new Error('invalid GIT_CONFIG_COUNT');
+  }
   const count = Number(normalized);
-  if (!Number.isSafeInteger(count)) throw new Error('invalid GIT_CONFIG_COUNT');
+  if (!Number.isSafeInteger(count)) {
+    throw new Error('invalid GIT_CONFIG_COUNT');
+  }
   return count;
 }
 
@@ -356,7 +400,9 @@ export function readCommandConfigEntries({ env }: {
     for (let index = 0; index < count; index += 1) {
       const key = env.get(`GIT_CONFIG_KEY_${index}`);
       const value = env.get(`GIT_CONFIG_VALUE_${index}`);
-      if (key === undefined || value === undefined) throw new Error(`missing command config entry ${index}`);
+      if (key === undefined || value === undefined) {
+        throw new Error(`missing command config entry ${index}`);
+      }
       const { section, subsection, name } = parseConfigKey({ key });
       result.push({
         key: normalizeConfigKey({ section, subsection, name }),
@@ -426,8 +472,11 @@ export function resolveWorktreeContentConfig({ config }: { config: GitConfig }):
   let autoCrlf: GitAutoCrlf = 'false';
   if (rawAutoCrlf !== undefined) {
     const normalized = rawAutoCrlf.trim().toLowerCase();
-    if (normalized === 'input') autoCrlf = 'input';
-    else autoCrlf = getBooleanConfigValue({ config, key: 'core.autocrlf' }) ? 'true' : 'false';
+    if (normalized === 'input') {
+      autoCrlf = 'input';
+    } else {
+      autoCrlf = getBooleanConfigValue({ config, key: 'core.autocrlf' }) ? 'true' : 'false';
+    }
   }
 
   const rawEol = getConfigValue({ config, key: 'core.eol' });
@@ -450,15 +499,21 @@ export async function readWorktreeContentConfig({ files, repository, homePath, c
 
 function validateSafeCrlfConfig({ config }: { config: GitConfig }): string | undefined {
   const safeCrlf = getConfigValue({ config, key: 'core.safecrlf' });
-  if (safeCrlf === undefined) return undefined;
-  if (safeCrlf.trim().toLowerCase() === 'warn') return safeCrlf;
+  if (safeCrlf === undefined) {
+    return undefined;
+  }
+  if (safeCrlf.trim().toLowerCase() === 'warn') {
+    return safeCrlf;
+  }
   parseBooleanConfig({ key: 'core.safecrlf', value: safeCrlf });
   return safeCrlf;
 }
 
 export function assertSupportedSafeCrlfClean({ config }: { config: GitConfig }): void {
   const safeCrlf = validateSafeCrlfConfig({ config });
-  if (safeCrlf === undefined) return;
+  if (safeCrlf === undefined) {
+    return;
+  }
   const normalized = safeCrlf.trim().toLowerCase();
   if (normalized === 'warn' || parseBooleanConfig({ key: 'core.safecrlf', value: safeCrlf })) {
     throw new Error(`core.safecrlf=${safeCrlf} is not supported yet`);
@@ -484,15 +539,21 @@ export interface GitConfigKeyParts {
 export function parseConfigKey({ key }: { key: string }): GitConfigKeyParts {
   const firstSeparator = key.indexOf('.');
   const lastSeparator = key.lastIndexOf('.');
-  if (firstSeparator <= 0 || lastSeparator === key.length - 1) throw new Error(`invalid key: ${key}`);
+  if (firstSeparator <= 0 || lastSeparator === key.length - 1) {
+    throw new Error(`invalid key: ${key}`);
+  }
   const section = key.slice(0, firstSeparator);
   const name = key.slice(lastSeparator + 1);
   if (!/^[A-Za-z0-9-]+$/u.test(section) || !isValidConfigVariableName({ name })) {
     throw new Error(`invalid key: ${key}`);
   }
-  if (firstSeparator === lastSeparator) return { section, subsection: undefined, name };
+  if (firstSeparator === lastSeparator) {
+    return { section, subsection: undefined, name };
+  }
   const subsection = key.slice(firstSeparator + 1, lastSeparator);
-  if (subsection.length === 0 || /[\0\r\n]/u.test(subsection)) throw new Error(`invalid key: ${key}`);
+  if (subsection.length === 0 || /[\0\r\n]/u.test(subsection)) {
+    throw new Error(`invalid key: ${key}`);
+  }
   return { section, subsection, name };
 }
 
@@ -502,14 +563,18 @@ function sectionHeaderMatches({ line, section, subsection }: {
   subsection: string | undefined,
 }): boolean {
   const header = parseConfigSectionHeader({ line });
-  if (header === undefined || header.section.toLowerCase() !== section.toLowerCase()) return false;
+  if (header === undefined || header.section.toLowerCase() !== section.toLowerCase()) {
+    return false;
+  }
   return subsection === undefined
     ? header.subsection === undefined
     : header.subsection === subsection;
 }
 
 function assertPersistableConfigValue({ key, value }: { key: string, value: string }): void {
-  if (value.includes('\0')) throw new Error(`config value for '${key}' contains NUL`);
+  if (value.includes('\0')) {
+    throw new Error(`config value for '${key}' contains NUL`);
+  }
 }
 
 function formatConfigValueForWrite({ value }: { value: string }): string {
@@ -527,7 +592,9 @@ function formatSectionHeader({ section, subsection }: {
   section: string,
   subsection: string | undefined,
 }): string {
-  if (subsection === undefined) return `[${section}]`;
+  if (subsection === undefined) {
+    return `[${section}]`;
+  }
   const escapedSubsection = subsection
     .replace(/\\/gu, '\\\\')
     .replace(/"/gu, '\\"');
@@ -536,7 +603,9 @@ function formatSectionHeader({ section, subsection }: {
 
 function parseConfigEntryName({ line }: { line: string }): string | undefined {
   const assignment = /^\s*([^=\s]+)\s*=[\s\S]*$/u.exec(line);
-  if (assignment !== null) return assignment[1]!;
+  if (assignment !== null) {
+    return assignment[1]!;
+  }
   return /^\s*([^=\s]+)\s*$/u.exec(line)?.[1];
 }
 
@@ -558,14 +627,20 @@ function findLastConfigSectionPhysicalRange({ lines, section, subsection }: {
   let activeStart: number | undefined;
   let lastMatch: ConfigSectionPhysicalRange | undefined;
   for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*\[/u.test(lines[index]!)) continue;
+    if (!/^\s*\[/u.test(lines[index]!)) {
+      continue;
+    }
     if (activeStart !== undefined) {
       lastMatch = { start: activeStart, endExclusive: index };
       activeStart = undefined;
     }
-    if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) activeStart = index;
+    if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) {
+      activeStart = index;
+    }
   }
-  if (activeStart !== undefined) lastMatch = { start: activeStart, endExclusive: lines.length };
+  if (activeStart !== undefined) {
+    lastMatch = { start: activeStart, endExclusive: lines.length };
+  }
   return lastMatch;
 }
 
@@ -574,7 +649,9 @@ function getConfigEntryPhysicalRange({ lines, start }: {
   start: number,
 }): ConfigEntryPhysicalRange {
   let endExclusive = start + 1;
-  while (endExclusive < lines.length && lines[endExclusive - 1]!.endsWith('\\')) endExclusive += 1;
+  while (endExclusive < lines.length && lines[endExclusive - 1]!.endsWith('\\')) {
+    endExclusive += 1;
+  }
   return { start, endExclusive };
 }
 
@@ -595,7 +672,9 @@ function findConfigEntryPhysicalRanges({ lines, section, subsection, name }: {
     const range = getConfigEntryPhysicalRange({ lines, start: index });
     if (inTargetSection) {
       const entryName = parseConfigEntryName({ line });
-      if (entryName?.toLowerCase() === name.toLowerCase()) matches.push(range);
+      if (entryName?.toLowerCase() === name.toLowerCase()) {
+        matches.push(range);
+      }
     }
     index = range.endExclusive - 1;
   }
@@ -611,11 +690,15 @@ function findMatchingConfigEntryPhysicalRanges({ currentText, lines, section, su
   valuePattern: GitConfigValuePattern | undefined,
 }): ConfigEntryPhysicalRange[] {
   const ranges = findConfigEntryPhysicalRanges({ lines, section, subsection, name });
-  if (valuePattern === undefined) return ranges;
+  if (valuePattern === undefined) {
+    return ranges;
+  }
 
   const normalizedKey = normalizeConfigKey({ section, subsection, name });
   const entries = parseConfigEntries({ text: currentText }).filter(entry => entry.key === normalizedKey);
-  if (entries.length !== ranges.length) throw new Error(`config entry range mismatch for '${normalizedKey}'`);
+  if (entries.length !== ranges.length) {
+    throw new Error(`config entry range mismatch for '${normalizedKey}'`);
+  }
   return ranges.filter((_range, index) => configValueMatchesPattern({
     value: getRawConfigValue({ value: entries[index]!.value }),
     valuePattern,
@@ -645,14 +728,20 @@ async function setConfigValueAtPath({ files, path, key, value, valuePattern }: {
     name,
     valuePattern,
   });
-  if (matchingEntryRanges.length > 1) return 'multiple';
+  if (matchingEntryRanges.length > 1) {
+    return 'multiple';
+  }
 
   if (matchingEntryRanges.length === 1) {
     const [range] = matchingEntryRanges;
     lines.splice(range!.start, range!.endExclusive - range!.start, `\t${name} = ${formatConfigValueForWrite({ value })}`);
   } else if (targetSection === undefined) {
-    if (lines.length === 1 && lines[0] === '') lines.length = 0;
-    if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('');
+    if (lines.length === 1 && lines[0] === '') {
+      lines.length = 0;
+    }
+    if (lines.length > 0 && lines[lines.length - 1] !== '') {
+      lines.push('');
+    }
     lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
   } else {
     lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
@@ -708,8 +797,12 @@ async function addConfigValueAtPath({ files, path, key, value }: {
   const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
   const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
   if (targetSection === undefined) {
-    if (lines.length === 1 && lines[0] === '') lines.length = 0;
-    if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('');
+    if (lines.length === 1 && lines[0] === '') {
+      lines.length = 0;
+    }
+    if (lines.length > 0 && lines[lines.length - 1] !== '') {
+      lines.push('');
+    }
     lines.push(formatSectionHeader({ section, subsection }), `\t${name} = ${formatConfigValueForWrite({ value })}`);
   } else {
     lines.splice(targetSection.endExclusive, 0, `\t${name} = ${formatConfigValueForWrite({ value })}`);
@@ -745,7 +838,9 @@ async function unsetConfigValueAtPath({ files, path, key, all, valuePattern }: {
   valuePattern: GitConfigValuePattern | undefined,
 }): Promise<'missing' | 'multiple' | 'removed'> {
   const { section, subsection, name } = parseConfigKey({ key });
-  if (!await pathExists({ files, path })) return 'missing';
+  if (!await pathExists({ files, path })) {
+    return 'missing';
+  }
   const currentText = await readFileText({ files, path });
   const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
   const matches = findMatchingConfigEntryPhysicalRanges({
@@ -756,8 +851,12 @@ async function unsetConfigValueAtPath({ files, path, key, all, valuePattern }: {
     name,
     valuePattern,
   });
-  if (matches.length === 0) return 'missing';
-  if (!all && matches.length > 1) return 'multiple';
+  if (matches.length === 0) {
+    return 'missing';
+  }
+  if (!all && matches.length > 1) {
+    return 'multiple';
+  }
   const removal = all ? matches : [matches[0]!];
   for (const range of [...removal].sort((left, right) => right.start - left.start)) {
     lines.splice(range.start, range.endExclusive - range.start);
@@ -807,22 +906,34 @@ export async function removeLocalConfigSection({ files, repository, section, sub
   subsection: string,
 }): Promise<boolean> {
   const path = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path })) return false;
+  if (!await pathExists({ files, path })) {
+    return false;
+  }
   const lines = (await readFileText({ files, path })).replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
   let sectionStart: number | undefined;
   let sectionEnd: number | undefined;
   for (let index = 0; index < lines.length; index += 1) {
-    if (!/^\s*\[/u.test(lines[index]!)) continue;
+    if (!/^\s*\[/u.test(lines[index]!)) {
+      continue;
+    }
     if (sectionStart !== undefined) {
       sectionEnd = index;
       break;
     }
-    if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) sectionStart = index;
+    if (sectionHeaderMatches({ line: lines[index]!, section, subsection })) {
+      sectionStart = index;
+    }
   }
-  if (sectionStart === undefined) return false;
-  if (sectionEnd === undefined) sectionEnd = lines.length;
+  if (sectionStart === undefined) {
+    return false;
+  }
+  if (sectionEnd === undefined) {
+    sectionEnd = lines.length;
+  }
   lines.splice(sectionStart, sectionEnd - sectionStart);
-  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  while (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
   await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
   return true;
 }
@@ -836,7 +947,9 @@ export async function renameLocalConfigSection({ files, repository, section, old
   newSubsection: string,
 }): Promise<boolean> {
   const path = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path })) return false;
+  if (!await pathExists({ files, path })) {
+    return false;
+  }
   const lines = (await readFileText({ files, path })).replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
   let sourceIndex: number | undefined;
   for (let index = 0; index < lines.length; index += 1) {
@@ -845,7 +958,9 @@ export async function renameLocalConfigSection({ files, repository, section, old
       break;
     }
   }
-  if (sourceIndex === undefined) return false;
+  if (sourceIndex === undefined) {
+    return false;
+  }
   lines[sourceIndex] = formatSectionHeader({ section, subsection: newSubsection });
   await replaceTextViaLock({ files, path, text: `${lines.join('\n')}\n` });
   return true;
@@ -853,7 +968,9 @@ export async function renameLocalConfigSection({ files, repository, section, old
 
 export function getConfigValue({ config, key }: { config: GitConfig, key: string }): string | undefined {
   const value = config.get(normalizeConfigKeyString({ key }));
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   return getRawConfigValue({ value });
 }
 
@@ -890,13 +1007,17 @@ function getLogAllRefUpdatesConfigValue({ config }: {
 }): GitLogAllRefUpdatesConfigValue | undefined {
   const key = 'core.logallrefupdates';
   const value = config.get(key);
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   switch (value.kind) {
   case 'implicit-boolean':
     throw new Error(`missing value for '${key}'`);
   case 'explicit': {
     const normalized = value.value.trim().toLowerCase();
-    if (normalized === 'always') return 'always';
+    if (normalized === 'always') {
+      return 'always';
+    }
     return parseBooleanConfig({ key, value: value.value }) ? 'enabled' : 'disabled';
   }
   default: {
@@ -928,7 +1049,9 @@ export function getBooleanConfigValue({ config, key }: {
 }): boolean | undefined {
   const normalizedKey = normalizeConfigKeyString({ key });
   const value = config.get(normalizedKey);
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   switch (value.kind) {
   case 'implicit-boolean':
     return true;
@@ -944,12 +1067,18 @@ export function getBooleanConfigValue({ config, key }: {
 function parseGitConfigInt({ key, value }: { key: string, value: string | undefined }): number {
   const text = value ?? '';
   const match = /^[\t\n\v\f\r ]*([+-]?)(?:(0[xX][0-9a-fA-F]+)|(0[0-7]*)|([1-9][0-9]*))([kKmMgG]?)$/u.exec(text);
-  if (match === null) throw new Error(`bad numeric config value '${text}' for '${key}': invalid unit`);
+  if (match === null) {
+    throw new Error(`bad numeric config value '${text}' for '${key}': invalid unit`);
+  }
   const sign = match[1] === '-' ? -1n : 1n;
   let magnitude: bigint;
-  if (match[2] !== undefined) magnitude = BigInt(match[2]);
-  else if (match[3] !== undefined) magnitude = BigInt(`0o${match[3].slice(1) || '0'}`);
-  else magnitude = BigInt(match[4]!);
+  if (match[2] !== undefined) {
+    magnitude = BigInt(match[2]);
+  } else if (match[3] !== undefined) {
+    magnitude = BigInt(`0o${match[3].slice(1) || '0'}`);
+  } else {
+    magnitude = BigInt(match[4]!);
+  }
   const unit = match[5]!.toLowerCase();
   const factor = unit === 'k' ? 1024n : unit === 'm' ? 1024n * 1024n : unit === 'g' ? 1024n * 1024n * 1024n : 1n;
   const parsed = sign * magnitude * factor;
@@ -963,7 +1092,9 @@ function parseGitConfigInt({ key, value }: { key: string, value: string | undefi
 export function getDiffRenameLimitConfigValue({ config }: { config: GitConfig }): number | undefined {
   const key = 'diff.renamelimit';
   const value = config.get(key);
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   switch (value.kind) {
   case 'implicit-boolean':
     return parseGitConfigInt({ key, value: undefined });
@@ -983,9 +1114,13 @@ export function getDiffRenamesConfigMode({ config }: {
 }): GitDiffRenamesConfigMode {
   const key = 'diff.renames';
   const value = config.get(key);
-  if (value === undefined || value.kind === 'implicit-boolean') return 'renames';
+  if (value === undefined || value.kind === 'implicit-boolean') {
+    return 'renames';
+  }
   const normalized = value.value.trim().toLowerCase();
-  if (normalized === 'copy' || normalized === 'copies') return 'copies';
+  if (normalized === 'copy' || normalized === 'copies') {
+    return 'copies';
+  }
   return parseBooleanConfig({ key, value: value.value }) ? 'renames' : 'disabled';
 }
 

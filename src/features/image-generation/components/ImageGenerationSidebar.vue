@@ -20,24 +20,36 @@ const isGeneration = computed(() => route.path.replace(/\/+$/, '') === '/image-g
 
 async function remove({ session }: { session: ImageGenerationSession }): Promise<void> {
   const view = props.navigation.view, storeId = view?.store.value?.storeId;
-  if (!view || !storeId || view.busy.value) return;
-  if (!await showConfirm({ title: await ensureStrings.imageGeneration__delete_session(), message: await ensureStrings.imageGeneration__delete_session_notice({ title: session.title }), confirmButtonVariant: 'danger', confirmButtonText: await ensureStrings.imageGeneration__delete_session() })) return;
-  if (view.store.value?.storeId !== storeId) return;
+  if (!view || !storeId || view.busy.value) {
+    return;
+  }
+  if (!await showConfirm({ title: await ensureStrings.imageGeneration__delete_session(), message: await ensureStrings.imageGeneration__delete_session_notice({ title: session.title }), confirmButtonVariant: 'danger', confirmButtonText: await ensureStrings.imageGeneration__delete_session() })) {
+    return;
+  }
+  if (view.store.value?.storeId !== storeId) {
+    return;
+  }
   const selected = view.selectedSessionId.value === session.id;
-  if (await view.deleteSession({ sessionId: session.id }) && selected) props.navigation.openGeneration();
+  if (await view.deleteSession({ sessionId: session.id }) && selected) {
+    props.navigation.openGeneration();
+  }
 }
 
 async function rename({ session }: { session: ImageGenerationSession }): Promise<void> {
   const title = await showPrompt({ title: await ensureStrings.imageGeneration__rename_session(), defaultValue: session.title });
-  if (typeof title === 'string') await props.navigation.view?.renameSession({ sessionId: session.id, title });
+  if (typeof title === 'string') {
+    await props.navigation.view?.renameSession({ sessionId: session.id, title });
+  }
 }
 
 async function select({ session }: { session: ImageGenerationSession }): Promise<void> {
-  await props.navigation.view?.selectSession({ sessionId: session.id }); props.navigation.openGeneration();
+  await props.navigation.view?.selectSession({ sessionId: session.id });
+  props.navigation.openGeneration();
 }
 
 async function create(): Promise<void> {
-  await props.navigation.view?.newSession({ preserveDraft: false }); props.navigation.openGeneration();
+  await props.navigation.view?.newSession({ preserveDraft: false });
+  props.navigation.openGeneration();
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -65,7 +65,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
+  wrapper?.unmount();
+  wrapper = undefined;
+  vi.unstubAllGlobals();
 });
 
 it('keeps manual model-file generation available when catalog OPFS downloads are unavailable', async () => {
@@ -83,7 +85,8 @@ it('keeps manual model-file generation available when catalog OPFS downloads are
   view.historySaving.enabled.value = false;
   mocks.generate.mockResolvedValue({ png: new Blob(['png']), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false });
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-generate"]').element.disabled).toBe(false);
-  await wrapper.get('[data-testid="image-generate"]').trigger('submit'); await flushPromises();
+  await wrapper.get('[data-testid="image-generate"]').trigger('submit');
+  await flushPromises();
   expect(mocks.generate).toHaveBeenCalledOnce();
   expect(mocks.generate.mock.calls[0]?.[0].request.models).toEqual([{ slot: 'model', file }]);
   expect(mocks.download).not.toHaveBeenCalled();
@@ -130,25 +133,33 @@ it('keeps history reuse and existing image actions available during model downlo
 });
 
 it('publishes downloaded inventory while a history image is being read without replacing the request', async () => {
-  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper = mount(ImageGenerationLab);
+  await flushPromises();
   const view = wrapper.getComponent(ImageGenerationEditor).props('view');
   const recipe = imageModelRecipes[0]!;
   const request = requestFixture();
   const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }), createdAt: 1 });
   const record = finishImageGenerationSnapshot({ snapshot, result: { png: new Blob(['png']), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false }, previews: [], elapsedMs: 1 }).record;
-  const pendingDownload = Promise.withResolvers<void>(); mocks.download.mockReturnValue(pendingDownload.promise);
+  const pendingDownload = Promise.withResolvers<void>();
+  mocks.download.mockReturnValue(pendingDownload.promise);
   const downloading = view.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  await flushPromises(); await wrapper.get('[data-testid="image-tab-history"]').trigger('click');
-  view.history.selected.value = record; await flushPromises();
-  const pendingImage = Promise.withResolvers<Blob>(); mocks.getFile.mockReturnValueOnce(pendingImage.promise);
-  await wrapper.get('[data-testid="image-history-use-initial"]').trigger('click'); await flushPromises();
+  await flushPromises();
+  await wrapper.get('[data-testid="image-tab-history"]').trigger('click');
+  view.history.selected.value = record;
+  await flushPromises();
+  const pendingImage = Promise.withResolvers<Blob>();
+  mocks.getFile.mockReturnValueOnce(pendingImage.promise);
+  await wrapper.get('[data-testid="image-history-use-initial"]').trigger('click');
+  await flushPromises();
   expect(view.historyActions.busy.value).toBe(true);
   mocks.inspect.mockResolvedValue(await readyInventory());
-  pendingDownload.resolve(); await downloading;
+  pendingDownload.resolve();
+  await downloading;
   expect(view.library.downloadState.value).toBe('complete');
   expect(view.library.main.value).toBe('');
   expect(view.historyActions.busy.value).toBe(true);
-  pendingImage.resolve(new Blob(['image'], { type: 'image/png' })); await flushPromises();
+  pendingImage.resolve(new Blob(['image'], { type: 'image/png' }));
+  await flushPromises();
   expect(view.imageInputs.value.initImage).toBeDefined();
   expect(wrapper.get('[data-testid="image-tab-generate"]').attributes('aria-selected')).toBe('true');
   expect(view.library.recipeAvailability({ recipeId: recipe.id, selections: {} })).toMatchObject({ available: 3, total: 3 });
@@ -162,7 +173,8 @@ it('publishes downloaded inventory during independent history save retries witho
   const view = wrapper.getComponent(ImageGenerationEditor).props('view');
   view.parameters.value = requestFixture().parameters;
   view.files.value = { model: requestFixture().models[0]!.file };
-  await view.generate({ submission: undefined }); await flushPromises();
+  await view.generate({ submission: undefined });
+  await flushPromises();
   expect(view.historySaving.pendingCount.value).toBe(1);
   const pendingDownload = Promise.withResolvers<void>();
   mocks.download.mockReturnValue(pendingDownload.promise);
@@ -175,11 +187,15 @@ it('publishes downloaded inventory during independent history save retries witho
   expect(view.historySaving.status.value).toBe('saving');
   const previousInspections = mocks.inspect.mock.calls.length;
   mocks.inspect.mockResolvedValue(await readyInventory());
-  pendingDownload.resolve(); await downloading; await flushPromises();
+  pendingDownload.resolve();
+  await downloading;
+  await flushPromises();
   expect(view.library.downloading.value).toBe(false);
   expect(view.library.downloadState.value).toBe('complete');
   expect(mocks.inspect).toHaveBeenCalledTimes(previousInspections + 1);
-  pendingSave.resolve(); await downloading; await flushPromises();
+  pendingSave.resolve();
+  await downloading;
+  await flushPromises();
   expect(view.historySaving.status.value).toBe('saved');
   expect(view.library.downloadState.value).toBe('complete');
   expect(view.library.main.value).toBe('');
@@ -189,24 +205,29 @@ it('publishes downloaded inventory during independent history save retries witho
 
 it('generates with saved files during downloads and keeps the active request when later jobs finish', async () => {
   mocks.inspect.mockResolvedValue(await readyInventory());
-  wrapper = mount(ImageGenerationLab); await flushPromises();
+  wrapper = mount(ImageGenerationLab);
+  await flushPromises();
   const view = wrapper.getComponent(ImageGenerationEditor).props('view');
   const originalModel = view.library.main.value;
   expect(view.library.ready.value).toBe(true);
-  const transfer = Promise.withResolvers<void>(); mocks.download.mockReturnValueOnce(transfer.promise);
+  const transfer = Promise.withResolvers<void>();
+  mocks.download.mockReturnValueOnce(transfer.promise);
   const downloading = view.library.downloadRecipe({ recipeId: 'sdxl-base-1.0', selections: {} });
   await flushPromises();
   const requestParameters = { ...requestFixture().parameters, prompt: 'the current request' };
-  view.parameters.value = requestParameters; view.historySaving.enabled.value = false;
+  view.parameters.value = requestParameters;
+  view.historySaving.enabled.value = false;
   const native = Promise.withResolvers<{ png: Blob, width: number, height: number, modelVersion: string, uniformOutput: boolean }>();
   mocks.generate.mockReturnValueOnce(native.promise);
   expect(wrapper.get<HTMLButtonElement>('[data-testid="image-generate"]').element.disabled).toBe(false);
-  await wrapper.get('[data-testid="image-generate"]').trigger('submit'); await flushPromises();
+  await wrapper.get('[data-testid="image-generate"]').trigger('submit');
+  await flushPromises();
   expect(mocks.generate).toHaveBeenCalledOnce();
   const activeRequest = mocks.generate.mock.calls[0]![0].request;
   const queued = view.library.downloadRecipe({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
   expect(view.library.downloadQueue.value).toHaveLength(2);
-  transfer.resolve(); await Promise.all([downloading, queued]);
+  transfer.resolve();
+  await Promise.all([downloading, queued]);
   expect(view.busy.value).toBe(true);
   expect(view.library.main.value).toBe(originalModel);
   expect(activeRequest.parameters.prompt).toBe('the current request');

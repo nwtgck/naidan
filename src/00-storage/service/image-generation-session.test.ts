@@ -10,16 +10,20 @@ let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 
 beforeEach(() => {
-  fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
+  fs = createImageGenerationStorageHarness();
+  vi.stubGlobal('Blob', NodeBlob);
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
-  if (!catalog) throw new Error('Missing catalog.');
+  if (!catalog) {
+    throw new Error('Missing catalog.');
+  }
   const store = { storeId: catalog.id, storageType: 'opfs' as const };
   const session = generationSessionFixture({ id: 'session-aa' });
   await service.saveImageGenerationSession({ store, session, expectedRevision: undefined });
@@ -34,7 +38,8 @@ describe('image generation session deletion', () => {
     const other = generationSessionFixture({ id: 'session-bb' });
     await service.saveImageGenerationSession({ store: h.store, session: other, expectedRevision: undefined });
     const binaries = await fs.root.getDirectoryHandle('binary-objects', { create: true });
-    const file = await binaries.getFileHandle('shared-image.bin', { create: true }); file.text = 'image bytes';
+    const file = await binaries.getFileHandle('shared-image.bin', { create: true });
+    file.text = 'image bytes';
     await service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: 0 });
     expect(await service.loadImageGenerationSession({ store: h.store, sessionId: h.session.id })).toBeUndefined();
     expect((await service.listImageGenerationSessions({ store: h.store })).items.map(session => session.id)).toEqual([other.id]);
@@ -61,7 +66,8 @@ describe('image generation session deletion', () => {
     fs.faults.add(`remove:${root}/sessions/aa/session-aa/draft.json`);
     await expect(service.deleteImageGenerationSession({ store: h.store, sessionId: h.session.id, expectedRevision: 0 })).rejects.toThrow('Injected');
     const pending = (await service.listImageGenerationSessions({ store: h.store })).items[0]!;
-    expect(pending.state).toBe('deleting'); expect(pending.title).toBe(h.session.title);
+    expect(pending.state).toBe('deleting');
+    expect(pending.title).toBe(h.session.title);
     await expect(service.saveImageGenerationSession({ store: h.store, session: { ...h.session, revision: 2 }, expectedRevision: 1 })).rejects.toThrow('deleted');
     const writeInputs = vi.fn(async () => {});
     await expect(service.saveImageGenerationDraft({ store: h.store, draft: { ...h.draft, revision: 1 }, expectedRevision: 0, writeInputs })).rejects.toThrow();
@@ -106,7 +112,8 @@ describe('experimental translation and visibility persistence', () => {
     const encoded = imageGenerationCatalogToDto({ catalog: h.catalog });
     const raw = { ...encoded, preferences: { assistantLayout: 'docked', experimentalNoticeDismissedAt: undefined } };
     const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse(raw) });
-    expect(decoded.preferences.assistantVisibility).toBe('closed'); expect(decoded.preferences.translation).toBeUndefined();
+    expect(decoded.preferences.assistantVisibility).toBe('closed');
+    expect(decoded.preferences.translation).toBeUndefined();
   });
 
   it('accepts future override fields and preserves known preferences when editing', async () => {
@@ -141,7 +148,8 @@ describe('accepted session activity and translation parameters', () => {
   });
 
   it('round trips explicit zero, empty stop and reasoning off while accepting unknown fields but rejecting unknown enum values', async () => {
-    const h = await setup(); const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
+    const h = await setup();
+    const dto = imageGenerationCatalogToDto({ catalog: h.catalog });
     const preferences = { ...dto.preferences, translation: { lmParameters: { temperature: 0, stop: [], reasoning: { effort: 'none' } } }, generationMonitorPresentation: 'compact-progress' };
     const decoded = imageGenerationCatalogToDomain({ dto: ExperimentalImageGenerationCatalogSchemaDto.parse({ ...dto, preferences }) });
     expect(decoded.preferences.translation?.lmParameters).toMatchObject({ temperature: 0, stop: [], reasoning: { effort: 'none' } });
@@ -161,14 +169,21 @@ it.each(['missing', 'stale', 'dirty'] as const)('preserves unavailable RPC sibli
   await service.createImageGenerationRun({ store: h.store, run: local, writeInputs: async () => {} });
   const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
   const raw = JSON.parse((await fs.file({ path: `${path}/local-aa.json` })).text);
-  raw.id = 'remote-aa'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
-  const remote = await directory.getFileHandle('remote-aa.json', { create: true }); remote.text = JSON.stringify(raw);
+  raw.id = 'remote-aa';
+  raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
+  const remote = await directory.getFileHandle('remote-aa.json', { create: true });
+  remote.text = JSON.stringify(raw);
   const preserved = remote.text;
-  if (state === 'missing') await directory.removeEntry('index.json');
-  else {
+  if (state === 'missing') {
+    await directory.removeEntry('index.json');
+  } else {
     const index = await directory.getFileHandle('index.json');
-    const value = JSON.parse(index.text); value.items.push({ ...value.items[0], id: 'remote-aa' }); index.text = JSON.stringify(value);
-    if (state === 'dirty') (await directory.getFileHandle('index.dirty', { create: true })).text = 'interrupted';
+    const value = JSON.parse(index.text);
+    value.items.push({ ...value.items[0], id: 'remote-aa' });
+    index.text = JSON.stringify(value);
+    if (state === 'dirty') {
+      (await directory.getFileHandle('index.dirty', { create: true })).text = 'interrupted';
+    }
   }
   const activity = await fs.file({ path: `${root}/session-activity.json` });
   const sequence = JSON.parse(activity.text).sequence;
@@ -177,7 +192,8 @@ it.each(['missing', 'stale', 'dirty'] as const)('preserves unavailable RPC sibli
     expect(remote.text).toBe(preserved);
   }
   const listed = await service.listImageGenerationRuns({ store: h.store, sessionId: h.session.id });
-  expect(listed.items).toHaveLength(3); expect(listed.warningCount).toBe(1);
+  expect(listed.items).toHaveLength(3);
+  expect(listed.warningCount).toBe(1);
   expect(directory.children.has('remote-aa.json')).toBe(true);
   expect(JSON.parse(activity.text).sequence).toBe(sequence + 2);
   expect(JSON.parse((await fs.file({ path: `${path}/next-aa.json` })).text).acceptedOrder).toBe(sequence + 1);
@@ -191,10 +207,13 @@ it('uses a cold stale RPC summary only for presentation and rejects canonical ac
   const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
   const localFile = await fs.file({ path: `${path}/local-aa.json` });
   const raw = JSON.parse(localFile.text);
-  raw.id = 'remote-aa'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
-  const remote = await directory.getFileHandle('remote-aa.json', { create: true }); remote.text = JSON.stringify(raw);
+  raw.id = 'remote-aa';
+  raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
+  const remote = await directory.getFileHandle('remote-aa.json', { create: true });
+  remote.text = JSON.stringify(raw);
   const index = await directory.getFileHandle('index.json'), cached = JSON.parse(index.text);
-  cached.items.push({ ...cached.items[0], id: 'remote-aa' }); index.text = JSON.stringify(cached);
+  cached.items.push({ ...cached.items[0], id: 'remote-aa' });
+  index.text = JSON.stringify(cached);
   const activity = await fs.file({ path: `${root}/session-activity.json` });
   const session = await fs.file({ path: `${root}/sessions/aa/session-aa/session.json` });
   const preserved = [localFile, remote, index, activity, session].map(file => file.text);
@@ -202,14 +221,17 @@ it('uses a cold stale RPC summary only for presentation and rejects canonical ac
 
   // Reopen from persisted bytes before any read can validate the opaque record.
   const reopened = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'forbid' });
-  if (!reopened) throw new Error('Missing reopened catalog.');
+  if (!reopened) {
+    throw new Error('Missing reopened catalog.');
+  }
   const store = { storageType: 'opfs' as const, storeId: reopened.id };
   fs.reads.length = 0;
   const listed = await service.listImageGenerationRuns({ store, sessionId: h.session.id });
   const snapshot = await service.readImageGenerationSessionIndex({ store, sessionId: h.session.id });
   for (const result of [listed, snapshot.runs]) {
     expect(result.items.map(item => item.id).sort()).toEqual(['local-aa', 'remote-aa']);
-    expect(result.warningCount).toBe(0); expect(result.warnings).toEqual([]);
+    expect(result.warningCount).toBe(0);
+    expect(result.warnings).toEqual([]);
   }
   expect(fs.reads.some(name => name.endsWith('/local-aa.json') || name.endsWith('/remote-aa.json'))).toBe(false);
 
@@ -233,20 +255,28 @@ it.each(['wrong-id', 'wrong-session', 'wrong-width-type', 'wrong-seed-type'] as 
   await service.createImageGenerationRun({ store: h.store, run: local, writeInputs: async () => {} });
   const path = `${root}/sessions/aa/session-aa/runs/aa`, directory = await fs.directory({ path });
   const raw = JSON.parse((await fs.file({ path: `${path}/local-aa.json` })).text);
-  raw.id = 'remote-aa'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
+  raw.id = 'remote-aa';
+  raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'old-registration', peerId: 'B'.repeat(43), label: 'Unavailable' };
   switch (corruption) {
-  case 'wrong-id': raw.id = 'different-aa'; break;
-  case 'wrong-session': raw.sessionId = 'other-session'; break;
-  case 'wrong-width-type': raw.request.parameters.width = '0'; break;
-  case 'wrong-seed-type': raw.seeds = [43]; break;
+  case 'wrong-id': raw.id = 'different-aa';
+    break;
+  case 'wrong-session': raw.sessionId = 'other-session';
+    break;
+  case 'wrong-width-type': raw.request.parameters.width = '0';
+    break;
+  case 'wrong-seed-type': raw.seeds = [43];
+    break;
   }
-  const remote = await directory.getFileHandle('remote-aa.json', { create: true }); remote.text = JSON.stringify(raw);
+  const remote = await directory.getFileHandle('remote-aa.json', { create: true });
+  remote.text = JSON.stringify(raw);
   const activity = await fs.file({ path: `${root}/session-activity.json` }), activityBefore = activity.text;
   const binaries = await fs.root.getDirectoryHandle('binary-objects', { create: true });
-  const input = await binaries.getFileHandle('input-aa', { create: true }); input.text = 'preserved input bytes';
+  const input = await binaries.getFileHandle('input-aa', { create: true });
+  input.text = 'preserved input bytes';
   const before = fs.writes.length, writeInputs = vi.fn(async () => {});
   await expect(service.createImageGenerationRun({ store: h.store, run: generationRunFixture({ id: 'next-aa', sessionId: h.session.id, count: 1, seed: '42' }), writeInputs })).rejects.toThrow();
-  expect(writeInputs).not.toHaveBeenCalled(); expect(fs.writes).toHaveLength(before);
+  expect(writeInputs).not.toHaveBeenCalled();
+  expect(fs.writes).toHaveLength(before);
   expect(directory.children.has('next-aa.json')).toBe(false);
   expect(activity.text).toBe(activityBefore);
   expect(input.text).toBe('preserved input bytes');
@@ -273,10 +303,13 @@ it('keeps unsupported translation endpoints non-executable and preserves revisio
   const activity = await fs.file({ path: `${root}/session-activity.json` }), beforeRetry = activity.text;
   const record = await fs.file({ path: `${root}/sessions/aa/session-aa/session.json` }), firstBytes = record.text;
   await service.saveImageGenerationSession({ store: h.store, session: first, expectedRevision: 0 });
-  expect(activity.text).toBe(beforeRetry); expect(record.text).toBe(firstBytes);
+  expect(activity.text).toBe(beforeRetry);
+  expect(record.text).toBe(firstBytes);
   const writes = fs.writes.length;
   await expect(service.saveImageGenerationSession({ store: h.store, session: { ...first, translation: translation({ marker: 'B' }) }, expectedRevision: 0 })).rejects.toThrow('conflict');
-  expect(fs.writes).toHaveLength(writes); expect(activity.text).toBe(beforeRetry); expect(record.text).toBe(firstBytes);
+  expect(fs.writes).toHaveLength(writes);
+  expect(activity.text).toBe(beforeRetry);
+  expect(record.text).toBe(firstBytes);
   const second = await service.saveImageGenerationSession({ store: h.store, session: { ...first, revision: 2, translation: translation({ marker: 'B' }) }, expectedRevision: 1 });
   expect(second.activityOrder).toBe(first.activityOrder! + 1);
   expect(JSON.parse(record.text).translation.endpoint).toEqual({ type: 'experimental_type' });
@@ -288,15 +321,19 @@ it('keeps unsupported translation endpoints non-executable and preserves revisio
 it.each(['invalid-json', 'wrong-shard'] as const)('preflights %s session indexes before reserving activity', async corruption => {
   const h = await setup();
   const index = await fs.file({ path: `${root}/sessions/aa/index.json` });
-  if (corruption === 'invalid-json') index.text = '{broken';
-  else {
-    const raw = JSON.parse(index.text); raw.items[0].id = 'other-bb'; index.text = JSON.stringify(raw);
+  if (corruption === 'invalid-json') {
+    index.text = '{broken';
+  } else {
+    const raw = JSON.parse(index.text);
+    raw.items[0].id = 'other-bb';
+    index.text = JSON.stringify(raw);
   }
   const activity = await fs.file({ path: `${root}/session-activity.json` }), activityBefore = activity.text;
   const session = await fs.file({ path: `${root}/sessions/aa/session-aa/session.json` }), sessionBefore = session.text;
   const writes = fs.writes.length;
   await expect(service.saveImageGenerationSession({ store: h.store, session: { ...h.session, title: 'new title', revision: 1 }, expectedRevision: 0 })).rejects.toThrow();
-  expect(activity.text).toBe(activityBefore); expect(session.text).toBe(sessionBefore);
+  expect(activity.text).toBe(activityBefore);
+  expect(session.text).toBe(sessionBefore);
   expect(fs.writes).toHaveLength(writes);
 });
 

@@ -11,11 +11,17 @@ class MemoryCache {
 
   async match(input: RequestInfo | URL, options?: CacheQueryOptions): Promise<Response | undefined> {
     const key = cacheKey(input);
-    if (!options?.ignoreSearch) return this.entries.get(key)?.clone();
-    const path = new URL(key); path.search = '';
+    if (!options?.ignoreSearch) {
+      return this.entries.get(key)?.clone();
+    }
+    const path = new URL(key);
+    path.search = '';
     for (const [candidate, response] of this.entries) {
-      const url = new URL(candidate); url.search = '';
-      if (url.href === path.href) return response.clone();
+      const url = new URL(candidate);
+      url.search = '';
+      if (url.href === path.href) {
+        return response.clone();
+      }
     }
     return undefined;
   }
@@ -39,7 +45,8 @@ export class MemoryCacheStorage {
   async open(name: string): Promise<Cache> {
     let cache = this.stores.get(name);
     if (!cache) {
-      cache = new MemoryCache(); this.stores.set(name, cache);
+      cache = new MemoryCache();
+      this.stores.set(name, cache);
     }
     return cache as unknown as Cache;
   }
@@ -54,9 +61,13 @@ export class MemoryCacheStorage {
 
   async match(input: RequestInfo | URL, options?: MultiCacheQueryOptions): Promise<Response | undefined> {
     for (const [name, cache] of this.stores) {
-      if (options?.cacheName && name !== options.cacheName) continue;
+      if (options?.cacheName && name !== options.cacheName) {
+        continue;
+      }
       const hit = await cache.match(input, options);
-      if (hit) return hit;
+      if (hit) {
+        return hit;
+      }
     }
     return undefined;
   }
@@ -99,7 +110,9 @@ class LifetimeEvent extends Event {
     }
     // An install fails after its lifetime tasks settle, not before diagnostics
     // registered during the failure have had their delivery opportunity.
-    if (failure) throw failure.reason;
+    if (failure) {
+      throw failure.reason;
+    }
   }
 }
 
@@ -110,11 +123,14 @@ class RequestEvent extends LifetimeEvent {
   readonly request: Request;
 
   constructor(request: Request) {
-    super('fetch'); this.request = request;
+    super('fetch');
+    this.request = request;
   }
 
   respondWith(response: Promise<Response> | Response): void {
-    if (this.response) throw new Error('respondWith called twice');
+    if (this.response) {
+      throw new Error('respondWith called twice');
+    }
     this.response = Promise.resolve(response);
   }
 }
@@ -143,8 +159,11 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
         // turns a returned rejected Promise into an uncaught exception. Workbox
         // registers that SAME promise via waitUntil, which we observe above.
         wrapper = event => {
-          if (typeof listener === 'function') listener.call(global, event);
-          else listener.handleEvent(event);
+          if (typeof listener === 'function') {
+            listener.call(global, event);
+          } else {
+            listener.handleEvent(event);
+          }
         };
         listeners.set(listener, wrapper);
       }
@@ -152,7 +171,9 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     },
     removeEventListener(type: string, listener: EventListenerOrEventListenerObject) {
       const wrapper = listeners.get(listener);
-      if (wrapper) target.removeEventListener(type, wrapper);
+      if (wrapper) {
+        target.removeEventListener(type, wrapper);
+      }
     },
     skipWaiting,
   };
@@ -208,9 +229,12 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     // requests, so supply their read-only event metadata explicitly.
     const request = new Request(url, { method, ...(referrer ? { referrer } : {}) });
     Object.defineProperty(request, 'destination', { value: destination });
-    if (navigation) Object.defineProperty(request, 'mode', { value: 'navigate' });
+    if (navigation) {
+      Object.defineProperty(request, 'mode', { value: 'navigate' });
+    }
     const event = new RequestEvent(request);
-    event.clientId = clientId; event.resultingClientId = resultingClientId;
+    event.clientId = clientId;
+    event.resultingClientId = resultingClientId;
     target.dispatchEvent(event);
     const response = await (event.response ?? fetch(request));
     return { response, completed: event.finished() };
@@ -246,7 +270,8 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
         close() {},
       }] : [],
     });
-    target.dispatchEvent(event); await event.finished();
+    target.dispatchEvent(event);
+    await event.finished();
     return reply;
   }
   return { lifecycle, request, streamRequest, message, messageWithPorts };

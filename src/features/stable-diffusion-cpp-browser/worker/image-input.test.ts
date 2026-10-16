@@ -15,7 +15,9 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     height: number;
 
     constructor(width: number, height: number) {
-      this.width = width; this.height = height; canvases.push(this);
+      this.width = width;
+      this.height = height;
+      canvases.push(this);
     }
 
     getContext() {
@@ -25,7 +27,9 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const core = {
     pointerBytes,
     alloc: vi.fn((bytes: number | bigint) => {
-      const ptr = next; next += BigInt(bytes); return ptr;
+      const ptr = next;
+      next += BigInt(bytes);
+      return ptr;
     }),
     bytes: vi.fn((pointer: bigint, length: number | bigint) => memory.subarray(Number(pointer), Number(pointer) + Number(length))),
     fieldAddress: vi.fn(() => 64n),
@@ -43,7 +47,8 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     context,
     owned,
     keep({ pointer }: { pointer: bigint }) {
-      owned.push(pointer); return pointer;
+      owned.push(pointer);
+      return pointer;
     },
   };
 }
@@ -83,33 +88,44 @@ it.each([4, 8] as const)('writes independent init and ordered reference records 
 it('does no decoding or allocation for text-only generation', async () => {
   const h = harness({ pointerBytes: 4 });
   await writeImageInputs({ core: h.core, params: 8n, inputs: emptyImageInputs(), keep: h.keep, checkCancelled() {}, onDecoded() {} });
-  expect(createImageBitmap).not.toHaveBeenCalled(); expect(h.core.alloc).not.toHaveBeenCalled();
+  expect(createImageBitmap).not.toHaveBeenCalled();
+  expect(h.core.alloc).not.toHaveBeenCalled();
 });
 
 it('closes a decoded bitmap when cancelled before copying pixels', async () => {
-  const h = harness({ pointerBytes: 8 }); let checks = 0;
+  const h = harness({ pointerBytes: 8 });
+  let checks = 0;
   await expect(writeImageInputs({
     core: h.core,
     params: 8n,
     inputs: { ...emptyImageInputs(), initImage: file },
     keep: h.keep,
     checkCancelled() {
-      if (++checks === 2) throw new DOMException('Stopped', 'AbortError');
+      if (++checks === 2) {
+        throw new DOMException('Stopped', 'AbortError');
+      }
     },
     onDecoded() {},
   })).rejects.toMatchObject({ name: 'AbortError' });
-  expect(h.bitmap.close).toHaveBeenCalledOnce(); expect(h.core.alloc).not.toHaveBeenCalled(); expect(h.canvases).toHaveLength(0);
+  expect(h.bitmap.close).toHaveBeenCalledOnce();
+  expect(h.core.alloc).not.toHaveBeenCalled();
+  expect(h.canvases).toHaveLength(0);
 });
 
 it('rejects unsafe native dimensions before canvas/native allocation and closes the bitmap', async () => {
-  const h = harness({ pointerBytes: 4 }); h.bitmap.width = 2147483647;
+  const h = harness({ pointerBytes: 4 });
+  h.bitmap.width = 2147483647;
   await expect(writeImageInputs({ core: h.core, params: 8n, inputs: { ...emptyImageInputs(), initImage: file }, keep: h.keep, checkCancelled() {}, onDecoded() {} })).rejects.toThrow('addressable');
-  expect(h.bitmap.close).toHaveBeenCalledOnce(); expect(h.core.alloc).not.toHaveBeenCalled();
+  expect(h.bitmap.close).toHaveBeenCalledOnce();
+  expect(h.core.alloc).not.toHaveBeenCalled();
 });
 
 it('does not publish a zero native allocation and still releases the bitmap/canvas', async () => {
-  const h = harness({ pointerBytes: 8 }); h.core.alloc.mockReturnValue(0n);
+  const h = harness({ pointerBytes: 8 });
+  h.core.alloc.mockReturnValue(0n);
   await expect(writeImageInputs({ core: h.core, params: 8n, inputs: { ...emptyImageInputs(), initImage: file }, keep: h.keep, checkCancelled() {}, onDecoded() {} })).rejects.toThrow('allocate input');
-  expect(h.owned).toEqual([]); expect(h.core.setField).not.toHaveBeenCalled(); expect(h.bitmap.close).toHaveBeenCalledOnce();
+  expect(h.owned).toEqual([]);
+  expect(h.core.setField).not.toHaveBeenCalled();
+  expect(h.bitmap.close).toHaveBeenCalledOnce();
   expect(h.canvases[0]).toMatchObject({ width: 0, height: 0 });
 });

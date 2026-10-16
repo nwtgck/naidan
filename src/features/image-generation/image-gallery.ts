@@ -6,11 +6,16 @@ export function createImageGallery<T extends object>({ maxBytes, initialLimit }:
   let next = 0, used = 0, limit = initialLimit;
   let items: { entry: GalleryEntry<T>, bytes: number, blob: Blob }[] = [];
   const revoke = ({ item }: { item: { entry: GalleryEntry<T>, bytes: number } }) => {
-    URL.revokeObjectURL(item.entry.url); used -= item.bytes;
+    URL.revokeObjectURL(item.entry.url);
+    used -= item.bytes;
   };
   function trim(): void {
     while (items.length > limit || used > maxBytes) {
-      const item = items.pop(); if (!item) break; revoke({ item });
+      const item = items.pop();
+      if (!item) {
+        break;
+      }
+      revoke({ item });
     }
   }
   return {
@@ -18,9 +23,14 @@ export function createImageGallery<T extends object>({ maxBytes, initialLimit }:
       // Include one decoded RGBA surface in accounting; browser internals may
       // use additional storage, so this is an ownership budget, not a heap cap.
       const bytes = blob.size + width * height * 4;
-      if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > maxBytes) throw new Error('Image exceeds gallery memory budget');
+      if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > maxBytes) {
+        throw new Error('Image exceeds gallery memory budget');
+      }
       const entry = { ...metadata, id: ++next, url: URL.createObjectURL(blob) };
-      items.unshift({ entry, bytes, blob }); used += bytes; trim(); return entry;
+      items.unshift({ entry, bytes, blob });
+      used += bytes;
+      trim();
+      return entry;
     },
     entries(): GalleryEntry<T>[] {
       return items.map(item => item.entry);
@@ -29,17 +39,24 @@ export function createImageGallery<T extends object>({ maxBytes, initialLimit }:
       return items.find(item => item.entry.id === id)?.blob;
     },
     setLimit({ value }: { value: number }): void {
-      if (!Number.isInteger(value) || value < 1 || value > 100) return;
-      limit = value; trim();
+      if (!Number.isInteger(value) || value < 1 || value > 100) {
+        return;
+      }
+      limit = value;
+      trim();
     },
     remove({ id }: { id: number }): void {
       const item = items.find(item => item.entry.id === id);
       if (item) {
-        items = items.filter(value => value !== item); revoke({ item });
+        items = items.filter(value => value !== item);
+        revoke({ item });
       }
     },
     clear(): void {
-      for (const item of items) revoke({ item }); items = [];
+      for (const item of items) {
+        revoke({ item });
+      }
+      items = [];
     },
     bytes(): number {
       return used;

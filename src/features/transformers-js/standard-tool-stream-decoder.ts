@@ -15,7 +15,9 @@ export function createToolStreamDecodeView({ tokenizer, preservedDelimiterIds }:
   const allowed = new Set(preservedDelimiterIds.map(BigInt));
   const excluded = new Set([...specials].map(BigInt).filter(id => !allowed.has(id)));
   const decode: typeof tokenizer.decode = (tokens, options) => {
-    if (!Array.isArray(tokens)) throw new Error('The tool stream decoder requires a token array');
+    if (!Array.isArray(tokens)) {
+      throw new Error('The tool stream decoder requires a token array');
+    }
     const visible = tokens.map(BigInt).filter(token => !excluded.has(token));
     return visible.length === 0 ? '' : tokenizer.decode(visible, options);
   };

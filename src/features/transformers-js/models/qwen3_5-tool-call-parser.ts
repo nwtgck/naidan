@@ -19,7 +19,9 @@ function buildToolCall({ name, parameters }: {
   name: string,
   parameters: Record<string, unknown>,
 }): ToolCall {
-  if (!finiteJsonValueSchema.safeParse(parameters).success) throw new Error('Non-finite Qwen tool argument');
+  if (!finiteJsonValueSchema.safeParse(parameters).success) {
+    throw new Error('Non-finite Qwen tool argument');
+  }
   return {
     id: generateId<ToolCallId>(),
     type: 'function',
@@ -35,23 +37,33 @@ type XmlParameterType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'a
 function xmlParameterTypes({ schema, depth }: { schema: WorkerToolJsonValue | undefined; depth: number }): Set<XmlParameterType> | undefined {
   if (depth > 16 || schema === null || typeof schema !== 'object' || Array.isArray(schema)
     || schema.$ref !== undefined || schema.allOf !== undefined
-    || (schema.anyOf !== undefined && schema.oneOf !== undefined)) return undefined;
+    || (schema.anyOf !== undefined && schema.oneOf !== undefined)) {
+    return undefined;
+  }
   const branches = schema.anyOf ?? schema.oneOf;
   if (branches !== undefined) {
-    if (!Array.isArray(branches) || branches.length === 0 || schema.type !== undefined) return undefined;
+    if (!Array.isArray(branches) || branches.length === 0 || schema.type !== undefined) {
+      return undefined;
+    }
     const types = new Set<XmlParameterType>();
     for (const branch of branches) {
       const branchTypes = xmlParameterTypes({ schema: branch, depth: depth + 1 });
-      if (branchTypes === undefined) return undefined;
-      for (const type of branchTypes) types.add(type);
+      if (branchTypes === undefined) {
+        return undefined;
+      }
+      for (const type of branchTypes) {
+        types.add(type);
+      }
     }
     return types;
   }
   const types = new Set<XmlParameterType>();
   for (const type of Array.isArray(schema.type) ? schema.type : [schema.type]) {
     switch (type) {
-    case 'integer': types.add('number'); break;
-    case 'string': case 'number': case 'boolean': case 'null': case 'object': case 'array': types.add(type); break;
+    case 'integer': types.add('number');
+      break;
+    case 'string': case 'number': case 'boolean': case 'null': case 'object': case 'array': types.add(type);
+      break;
     default: return undefined;
     }
   }
@@ -71,7 +83,9 @@ function decodeXmlParameter({ value, name, parameterName, tools }: {
       decoded = JSON.parse(value) as unknown;
       // JSON numeric syntax can overflow to Infinity, including in containers.
       // Never let JSON.stringify silently turn it into an executable null.
-      if (!finiteJsonValueSchema.safeParse(decoded).success) return value;
+      if (!finiteJsonValueSchema.safeParse(decoded).success) {
+        return value;
+      }
     } catch {
       return value;
     }
@@ -90,11 +104,19 @@ function decodeXmlParameter({ value, name, parameterName, tools }: {
   // Unknown tools still reach the Provider's existing unknown-tool handling.
   // Unresolved schemas retain legacy scalar decoding, but never guess that a
   // JSON-looking string is an object/array. Final tool validation stays in Zod.
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  if (value === 'null') return null;
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  if (value === 'null') {
+    return null;
+  }
   const numericValue = Number(value);
-  if (!Number.isNaN(numericValue) && `${numericValue}` === value) return numericValue;
+  if (!Number.isNaN(numericValue) && `${numericValue}` === value) {
+    return numericValue;
+  }
   return value;
 }
 
@@ -104,20 +126,30 @@ export function parseQwen3_5NativeToolCall({ content, tools }: {
   tools: readonly WorkerToolDefinition[] | undefined,
 }): ToolCall {
   const matched = content.trim().match(/^<function=([^\n>]+)>([\s\S]*)<\/function>$/);
-  if (!matched) throw new Error('Unsupported or incomplete Qwen native tool body.');
+  if (!matched) {
+    throw new Error('Unsupported or incomplete Qwen native tool body.');
+  }
   const name = matched[1]!;
   let remaining = matched[2]!;
   const parameters = Object.create(null) as Record<string, unknown>;
   while (remaining.trim().length > 0) {
     const parameter = remaining.match(/^\s*<parameter=([^\n>]+)>([\s\S]*?)<\/parameter>/);
-    if (!parameter) throw new Error('Unexpected content in Qwen native tool parameters.');
+    if (!parameter) {
+      throw new Error('Unexpected content in Qwen native tool parameters.');
+    }
     const parameterName = parameter[1]!;
-    if (Object.hasOwn(parameters, parameterName)) throw new Error('Duplicate Qwen native tool parameter.');
+    if (Object.hasOwn(parameters, parameterName)) {
+      throw new Error('Duplicate Qwen native tool parameter.');
+    }
     // The original template inserts one LF on each side of an argument value.
     // Preserve any further whitespace belonging to the value itself.
     let value = parameter[2]!;
-    if (value.startsWith('\n')) value = value.slice(1);
-    if (value.endsWith('\n')) value = value.slice(0, -1);
+    if (value.startsWith('\n')) {
+      value = value.slice(1);
+    }
+    if (value.endsWith('\n')) {
+      value = value.slice(0, -1);
+    }
     parameters[parameterName] = decodeXmlParameter({ value, name, parameterName, tools });
     remaining = remaining.slice(parameter[0].length);
   }
@@ -130,20 +162,28 @@ function tryParseQwen3_5ToolCall({ content, tools }: {
 }): ToolCall | null {
   const trimmed = content.trim();
   const jsonToolCall = tryParseJsonLikeToolCall({ content: trimmed });
-  if (jsonToolCall) return jsonToolCall;
+  if (jsonToolCall) {
+    return jsonToolCall;
+  }
 
   const functionMatch = trimmed.match(/^<function=([^\n>]+)>\s*([\s\S]*?)\s*<\/function>$/);
-  if (!functionMatch) return null;
+  if (!functionMatch) {
+    return null;
+  }
 
   const [, name, body] = functionMatch;
-  if (!name || body === undefined) return null;
+  if (!name || body === undefined) {
+    return null;
+  }
   const parameters = Object.create(null) as Record<string, unknown>;
   const parameterPattern = /<parameter=([^\n>]+)>\s*([\s\S]*?)\s*<\/parameter>/g;
 
   let match: RegExpExecArray | null;
   while ((match = parameterPattern.exec(body)) !== null) {
     const [, parameterName, rawValue] = match;
-    if (!parameterName || rawValue === undefined) continue;
+    if (!parameterName || rawValue === undefined) {
+      continue;
+    }
     const value = rawValue.trim();
 
     parameters[parameterName] = decodeXmlParameter({ value, name, parameterName, tools });
@@ -156,7 +196,9 @@ function tryParseJsonLikeToolCall({ content }: { content: string }): ToolCall | 
   const strict = tryParseStrictJson({ content });
   const relaxed = strict ?? tryParseRelaxedJson({ content });
   const validated = toolCallPayloadSchema.safeParse(relaxed);
-  if (!validated.success) return null;
+  if (!validated.success) {
+    return null;
+  }
 
   return buildToolCall({
     name: validated.data.name,
@@ -207,11 +249,21 @@ class RelaxedJsonValueParser {
       throw new Error('Unexpected end of input');
     }
 
-    if (next === '{') return this.parseObject();
-    if (next === '[') return this.parseArray();
-    if (next === '"') return this.parseString({ quote: '"' });
-    if (next === '\'') return this.parseString({ quote: '\'' });
-    if (next === '-' || this.isDigit({ char: next })) return this.parseNumber();
+    if (next === '{') {
+      return this.parseObject();
+    }
+    if (next === '[') {
+      return this.parseArray();
+    }
+    if (next === '"') {
+      return this.parseString({ quote: '"' });
+    }
+    if (next === '\'') {
+      return this.parseString({ quote: '\'' });
+    }
+    if (next === '-' || this.isDigit({ char: next })) {
+      return this.parseNumber();
+    }
     return this.parseKeywordOrIdentifier();
   }
 
@@ -283,8 +335,12 @@ class RelaxedJsonValueParser {
   private parseObjectKey(): string {
     this.skipWhitespace();
     const next = this.peek();
-    if (next === '"') return this.parseString({ quote: '"' });
-    if (next === '\'') return this.parseString({ quote: '\'' });
+    if (next === '"') {
+      return this.parseString({ quote: '"' });
+    }
+    if (next === '\'') {
+      return this.parseString({ quote: '\'' });
+    }
 
     const identifier = this.parseIdentifier();
     if (!relaxedIdentifierPattern.test(identifier)) {
@@ -299,7 +355,9 @@ class RelaxedJsonValueParser {
 
     while (!this.isAtEnd()) {
       const char = this.consumeAny();
-      if (char === quote) return result;
+      if (char === quote) {
+        return result;
+      }
       if (char !== '\\') {
         result += char;
         continue;
@@ -460,7 +518,9 @@ export class Qwen3_5ToolCallParser {
       }
 
       const endIdx = this.pending.indexOf(TOOL_CALL_CLOSE, TOOL_CALL_OPEN.length);
-      if (endIdx === -1) return;
+      if (endIdx === -1) {
+        return;
+      }
 
       const inner = this.pending.slice(TOOL_CALL_OPEN.length, endIdx);
       this.pending = this.pending.slice(endIdx + TOOL_CALL_CLOSE.length);

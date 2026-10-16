@@ -33,8 +33,12 @@ const OBSERVATION_QUIESCENCE_MS = 500;
 const OBSERVATION_TIMEOUT_MS = 10_000;
 
 function requestUrl({ input }: { input: RequestInfo | URL }): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
   return input.url;
 }
 
@@ -269,7 +273,9 @@ const workerApi: WorkerServerApi<DownloadVerificationModelArtifactRequestWorker>
       }
     } finally {
       lifetime = { kind: 'retired' };
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
       barrier.dispose();
     }
   },

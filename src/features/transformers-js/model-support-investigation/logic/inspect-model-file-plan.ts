@@ -32,9 +32,15 @@ export type ModelSupportInvestigationGetModelFiles = ({ modelId, device, dtype }
 }) => Promise<string[]>;
 
 function fileKind({ path }: { path: string }): ModelSupportInvestigationPlannedFile["kind"] {
-  if (path === "config.json") return "config";
-  if (path.endsWith(".onnx")) return "core-onnx";
-  if (/\.onnx_data(?:_\d+)?$/u.test(path)) return "external-data";
+  if (path === "config.json") {
+    return "config";
+  }
+  if (path.endsWith(".onnx")) {
+    return "core-onnx";
+  }
+  if (/\.onnx_data(?:_\d+)?$/u.test(path)) {
+    return "external-data";
+  }
   return "optional-config";
 }
 
@@ -80,7 +86,9 @@ function repositoryObservation({ file }: {
 function cacheObservation({ file }: {
   file: ModelSupportInvestigationCacheFile,
 }): ModelSupportInvestigationPlannedFileCacheMatch["observation"] {
-  if (file.size === 0) return "zero-byte-observed-revision-unknown";
+  if (file.size === 0) {
+    return "zero-byte-observed-revision-unknown";
+  }
   return file.hasCompletionMarker
     ? "complete-marker-observed-revision-unknown"
     : "incomplete-observed-revision-unknown";
@@ -90,7 +98,9 @@ function cacheMatches({ cache, repositoryPath }: {
   cache: ModelSupportInvestigationCacheInventory | undefined,
   repositoryPath: string,
 }): ModelSupportInvestigationPlannedFileCacheMatch[] {
-  if (cache === undefined) return [];
+  if (cache === undefined) {
+    return [];
+  }
   return cache.files
     .filter(file => file.repositoryPath === repositoryPath)
     .map(file => ({
@@ -137,7 +147,9 @@ function plannedCandidate({
   cache: ModelSupportInvestigationCacheInventory | undefined,
 }): ModelSupportInvestigationCandidateFilePlan {
   const pathCounts = new Map<string, number>();
-  for (const path of registryPaths) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+  for (const path of registryPaths) {
+    pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+  }
   const duplicatePaths = [...pathCounts]
     .filter(([, count]) => count > 1)
     .map(([path]) => path)
@@ -239,7 +251,9 @@ function localPlannedCandidate({
   cache: ModelSupportInvestigationCacheInventory,
 }): ModelSupportInvestigationCandidateFilePlan {
   const pathCounts = new Map<string, number>();
-  for (const path of registryPaths) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+  for (const path of registryPaths) {
+    pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+  }
   const duplicatePaths = [...pathCounts]
     .filter(([, count]) => count > 1)
     .map(([path]) => path)

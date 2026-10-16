@@ -62,9 +62,10 @@ describe('legacy uploaded-file reference edits', () => {
   });
 
   it('reports an unresolved reference rather than guessing a different filename', () => {
-    const input = legacy(); input.attachments[0]!.originalName = 'absent.png';
-    const result = remapLegacyUploadedFileReferences({ serialized: JSON.stringify({ root: { items: [input] } }), binaryObjectIds: copyIds() });
-    expect(result).toEqual({ serialized: undefined, unresolvedReferences: 1 });
+    const input = legacy();
+input.attachments[0]!.originalName = 'absent.png';
+const result = remapLegacyUploadedFileReferences({ serialized: JSON.stringify({ root: { items: [input] } }), binaryObjectIds: copyIds() });
+expect(result).toEqual({ serialized: undefined, unresolvedReferences: 1 });
   });
 
   it('does not remap an existing binary reference on retry', () => {

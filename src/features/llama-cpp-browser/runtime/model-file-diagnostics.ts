@@ -4,7 +4,9 @@ export function createModelFileDiagnostics({ ordinal, source }: { ordinal: numbe
   size: number,
   read: ({ destination, offset }: { destination: Uint8Array, offset: number }) => number,
 } }) {
-  if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > 65535 || !Number.isSafeInteger(source.size) || source.size < 0) throw new RangeError('Invalid model shard geometry');
+  if (!Number.isSafeInteger(ordinal) || ordinal < 1 || ordinal > 65535 || !Number.isSafeInteger(source.size) || source.size < 0) {
+    throw new RangeError('Invalid model shard geometry');
+  }
   const counters = {
     ordinal,
     sizeBytes: source.size,
@@ -19,14 +21,20 @@ export function createModelFileDiagnostics({ ordinal, source }: { ordinal: numbe
     source: {
       size: source.size,
       read({ destination, offset }: { destination: Uint8Array, offset: number }): number {
-        if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.size) throw new RangeError('Invalid model read offset');
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.size) {
+          throw new RangeError('Invalid model read offset');
+        }
         counters.sourceCalls++;
         counters.lastOffsetBytes = offset;
         try {
           const count = source.read({ destination, offset });
-          if (!Number.isSafeInteger(count) || count < 0 || count > destination.byteLength || count > source.size - offset) throw new RangeError('Invalid model read count');
+          if (!Number.isSafeInteger(count) || count < 0 || count > destination.byteLength || count > source.size - offset) {
+            throw new RangeError('Invalid model read count');
+          }
           counters.sourceBytes += count;
-          if (count > 0) counters.maximumReadEndBytes = Math.max(counters.maximumReadEndBytes, offset + count);
+          if (count > 0) {
+            counters.maximumReadEndBytes = Math.max(counters.maximumReadEndBytes, offset + count);
+          }
           return count;
         } catch (error) {
           counters.failures++;

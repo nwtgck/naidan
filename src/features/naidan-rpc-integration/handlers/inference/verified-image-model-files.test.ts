@@ -54,7 +54,8 @@ it('retains only the last committed configuration and keeps roots and members di
   (await prepared({ cache, value: first, key: 'root-a/model', signal })).commit();
   const other = file({ text: 'weights' });
   const next = await prepared({ cache, value: other, key: 'root-b/model', signal });
-  expect(next.replacements.get(other)).toBe(other); next.commit();
+  expect(next.replacements.get(other)).toBe(other);
+  next.commit();
   const former = file({ text: 'weights' });
   expect((await prepared({ cache, value: former, key: 'root-a/model', signal })).replacements.get(former)).toBe(former);
   cache.clear();
@@ -90,13 +91,15 @@ it('bounds each read, checks the tail, and never calls File.arrayBuffer for the 
 it('does not commit cancelled verification or fallback through cancellation of the old snapshot', async () => {
   const cache = createVerifiedImageModelFiles(), stop = new AbortController(), signal = stop.signal;
   const original = file({ text: 'weights' }), snapshot = await prepared({ cache, value: original, key: 'root/model', signal });
-  stop.abort(); expect(() => snapshot.commit()).toThrow();
+  stop.abort();
+  expect(() => snapshot.commit()).toThrow();
   const fresh = file({ text: 'weights' }), active = new AbortController();
   expect((await prepared({ cache, value: fresh, key: 'root/model', signal: active.signal })).replacements.get(fresh)).toBe(fresh);
   (await prepared({ cache, value: original, key: 'root/model', signal: active.signal })).commit();
   const reason = new DOMException('Cancel old snapshot verification', 'AbortError');
   vi.spyOn(original, 'slice').mockImplementation(() => {
-    active.abort(reason); throw reason;
+    active.abort(reason);
+    throw reason;
   });
   await expect(prepared({ cache, value: fresh, key: 'root/model', signal: active.signal })).rejects.toBe(reason);
 });

@@ -25,7 +25,9 @@ function normalizeArchiveRelativePath({ value }: {
 function assertPackageDefinitions({ packages }: {
   packages: readonly ZipPackageDefinition[];
 }): void {
-  if (packages.length === 0) throw new Error('At least one ZIP package definition is required');
+  if (packages.length === 0) {
+    throw new Error('At least one ZIP package definition is required');
+  }
 
   const zipFileNames = new Set<string>();
   for (const definition of packages) {
@@ -59,7 +61,9 @@ function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '', opti
       addDirectoryToZip(zip, basePath, itemRelativePath, options);
       continue;
     }
-    if (options.excludedFileNames?.has(zipFileName) === true) continue;
+    if (options.excludedFileNames?.has(zipFileName) === true) {
+      continue;
+    }
 
     const content = options.fileOverrides?.get(zipFileName) ?? fs.readFileSync(itemPath);
     zip.file(zipFileName, content);
@@ -83,7 +87,9 @@ async function stageZipPackage({
   const finalPath = path.resolve(archiveDirectory, definition.zipFileName);
   const zip = new JSZip();
   const folder = zip.folder(definition.folderName);
-  if (folder === null) throw new Error(`Could not create ZIP folder: ${definition.folderName}`);
+  if (folder === null) {
+    throw new Error(`Could not create ZIP folder: ${definition.folderName}`);
+  }
   addDirectoryToZip(folder, sourceDirectory, '', {
     excludedFileNames: definition.excludedFileNames,
     fileOverrides: definition.fileOverrides,
@@ -98,7 +104,9 @@ async function stageZipPackage({
     compressionOptions: { level: 9 },
   });
 
-  if (!fs.existsSync(archiveDirectory)) fs.mkdirSync(archiveDirectory, { recursive: true });
+  if (!fs.existsSync(archiveDirectory)) {
+    fs.mkdirSync(archiveDirectory, { recursive: true });
+  }
   const temporaryPath = `${finalPath}.tmp-${process.pid}-${ordinal}`;
   const backupPath = `${finalPath}.bak-${process.pid}-${ordinal}`;
   try {
@@ -117,9 +125,13 @@ function promoteStagedZipPackages({ staged }: {
   const promoted: StagedZipPackage[] = [];
   try {
     for (const item of staged) {
-      if (!fs.existsSync(item.finalPath)) continue;
+      if (!fs.existsSync(item.finalPath)) {
+        continue;
+      }
       const stat = fs.lstatSync(item.finalPath);
-      if (!stat.isFile()) throw new Error(`Existing ZIP package path is not a file: ${item.finalPath}`);
+      if (!stat.isFile()) {
+        throw new Error(`Existing ZIP package path is not a file: ${item.finalPath}`);
+      }
       fs.renameSync(item.finalPath, item.backupPath);
       backedUp.push(item);
     }
@@ -128,18 +140,28 @@ function promoteStagedZipPackages({ staged }: {
       promoted.push(item);
     }
   } catch (error) {
-    for (const item of promoted.reverse()) fs.rmSync(item.finalPath, { force: true });
-    for (const item of backedUp.reverse()) {
-      if (fs.existsSync(item.backupPath)) fs.renameSync(item.backupPath, item.finalPath);
+    for (const item of promoted.reverse()) {
+      fs.rmSync(item.finalPath, { force: true });
     }
-    for (const item of staged) fs.rmSync(item.temporaryPath, { force: true });
+    for (const item of backedUp.reverse()) {
+      if (fs.existsSync(item.backupPath)) {
+        fs.renameSync(item.backupPath, item.finalPath);
+      }
+    }
+    for (const item of staged) {
+      fs.rmSync(item.temporaryPath, { force: true });
+    }
     throw error;
   }
 
   // Backup cleanup is deliberately outside the rollback transaction: after all
   // final names exist, a cleanup failure must not delete a complete new release.
-  for (const item of backedUp) fs.rmSync(item.backupPath, { force: true });
-  for (const item of staged) console.log(`  \u2713 Created package: ${item.finalPath}`);
+  for (const item of backedUp) {
+    fs.rmSync(item.backupPath, { force: true });
+  }
+  for (const item of staged) {
+    console.log(`  \u2713 Created package: ${item.finalPath}`);
+  }
 }
 
 export async function createZipPackages({
@@ -154,7 +176,9 @@ export async function createZipPackages({
   packages: readonly ZipPackageDefinition[];
 }>): Promise<void> {
   assertPackageDefinitions({ packages });
-  if (!fs.existsSync(sourceDirectory)) return;
+  if (!fs.existsSync(sourceDirectory)) {
+    return;
+  }
 
   const staged: StagedZipPackage[] = [];
   try {
@@ -168,7 +192,9 @@ export async function createZipPackages({
       }));
     }
   } catch (error) {
-    for (const item of staged) fs.rmSync(item.temporaryPath, { force: true });
+    for (const item of staged) {
+      fs.rmSync(item.temporaryPath, { force: true });
+    }
     throw error;
   }
   promoteStagedZipPackages({ staged });

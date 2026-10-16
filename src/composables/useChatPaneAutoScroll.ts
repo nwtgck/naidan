@@ -126,7 +126,9 @@ function getFirstAssistantVisibleTarget({
   chatFlow: ChatFlowItem[],
   latestUserTurnId: MessageId | undefined,
 }): ChatPaneScrollTarget | undefined {
-  if (!latestUserTurnId) return undefined;
+  if (!latestUserTurnId) {
+    return undefined;
+  }
 
   let currentUserTurnId: MessageId | undefined;
   for (const item of chatFlow) {

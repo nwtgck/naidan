@@ -32,17 +32,23 @@ describe('GPT-OSS public conversation cache ownership', () => {
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)]
         .map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual GPT-OSS native input');
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+          throw new Error('Expected actual GPT-OSS native input');
+        }
         seenPast.push(options.past_key_values);
         expect(options).not.toHaveProperty('continuationOwner');
-        if (seenPast.length === 2) secondInput = [...options.input_ids.data as BigInt64Array];
+        if (seenPast.length === 2) {
+          secondInput = [...options.input_ids.data as BigInt64Array];
+        }
         const text = seenPast.length === 1
           ? '<|start|>assistant to=functions.lookup_weather<|channel|>commentary<|message|>{"city":"Tokyo"}<|call|>'
           : '<|start|>assistant<|channel|>final<|message|>Sunny.<|return|>';
         // Synthetic native outputs test cache ownership, not observed logits/KV.
         const generated = tokenizer.encode(text, { add_special_tokens: false });
         options.streamer.put(options.input_ids.tolist());
-        for (const id of generated) options.streamer.put([[BigInt(id)]]);
+        for (const id of generated) {
+          options.streamer.put([[BigInt(id)]]);
+        }
         options.streamer.end();
         const sequence = BigInt64Array.from([...options.input_ids.data as BigInt64Array, ...generated.map(BigInt)]);
         const cache = { get_seq_length: () => sequence.length - 1 };
@@ -54,7 +60,9 @@ describe('GPT-OSS public conversation cache ownership', () => {
             let renderCount = 0;
             templateSpy = vi.spyOn(tokenizer, 'apply_chat_template').mockImplementation((...args) => {
               renderCount += 1;
-              if (renderCount === 2) throw new Error('Only optimization base rendering failed');
+              if (renderCount === 2) {
+                throw new Error('Only optimization base rendering failed');
+              }
               return original(...args);
             });
           }
@@ -70,7 +78,8 @@ describe('GPT-OSS public conversation cache ownership', () => {
     };
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        templateSpy?.mockRestore(); await harness.close();
+        templateSpy?.mockRestore();
+        await harness.close();
       },
     };
     const first = await runProviderReplayTurn({

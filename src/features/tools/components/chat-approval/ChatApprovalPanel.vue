@@ -27,7 +27,9 @@ function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): strin
 }
 
 const approvalTitle = computed(() => {
-  if (actionLabel.value === undefined) return undefined;
+  if (actionLabel.value === undefined) {
+    return undefined;
+  }
   return lazyStrings.chatApproval__allow_action({ actionLabel: actionLabel.value });
 });
 

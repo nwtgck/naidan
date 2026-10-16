@@ -21,7 +21,9 @@ function resetSharedStorage() {
   };
 }
 
-if (!shared[STORAGE_KEY]) resetSharedStorage();
+if (!shared[STORAGE_KEY]) {
+  resetSharedStorage();
+}
 
 const getShared = () => shared[STORAGE_KEY];
 
@@ -94,7 +96,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         }),
         getSidebarStructure: vi.fn().mockImplementation(async () => {
           const s = getShared();
-          if (!s || !s.hierarchy) return [];
+          if (!s || !s.hierarchy) {
+            return [];
+          }
           return ((s.hierarchy.items || []) as TestHierarchyNode[]).map((node) => {
             if (node.type === 'chat') {
               const chat = s.chats.get(node.id);
@@ -128,8 +132,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           const s = getShared();
           const current = s.chats.get(id);
           const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
-          if (current) s.chats.set(id, { ...current, ...updatedMeta });
-          else s.chats.set(id, { id, ...updatedMeta });
+          if (current) {
+            s.chats.set(id, { ...current, ...updatedMeta });
+          } else {
+            s.chats.set(id, { id, ...updatedMeta });
+          }
           await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } })));
         }),
         updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
@@ -142,8 +149,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           const current = s.chats.get(id);
           const existingContent = current ? { root: current.root, currentLeafId: current.currentLeafId } : { root: { items: [] } };
           const updatedContent = await updater({ current: JSON.parse(JSON.stringify(existingContent)) });
-          if (current) s.chats.set(id, { ...current, ...updatedContent });
-          else s.chats.set(id, { id, ...updatedContent });
+          if (current) {
+            s.chats.set(id, { ...current, ...updatedContent });
+          } else {
+            s.chats.set(id, { id, ...updatedContent });
+          }
           await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_content', id, timestamp: Date.now() } })));
         }),
         updateChatGroup: vi.fn().mockImplementation(async ({ id, updater }) => {

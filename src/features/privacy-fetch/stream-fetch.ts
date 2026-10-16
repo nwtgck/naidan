@@ -47,7 +47,9 @@ export async function fetchPrivacyStream({ request }: { request: PrivacyFetchReq
   if (!parsed.success || !validation.ok) {
     throw createPrivacyFetchError({ code: 'rejected', message: 'Unsupported privacy fetch stream request' });
   }
-  if (signal?.aborted) throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
+  if (signal?.aborted) {
+    throw createPrivacyFetchError({ code: 'aborted', message: 'Privacy fetch was aborted' });
+  }
   const response = await fetch(validation.normalizedUrl, {
     method: 'GET',
     credentials: 'omit',

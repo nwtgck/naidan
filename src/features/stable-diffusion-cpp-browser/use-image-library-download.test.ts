@@ -11,7 +11,9 @@ import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTex
 const scopes: ReturnType<typeof effectScope>[] = [];
 
 afterEach(() => {
-  for (const scope of scopes.splice(0)) scope.stop();
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
 });
 
 const recipe = imageModelRecipes[0]!;
@@ -31,10 +33,12 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
 }
 
 function harness({ download, initial }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[] }) {
-  let entries = initial; const blocked = ref(false);
+  let entries = initial;
+  const blocked = ref(false);
   const downloader = vi.fn(download ?? (async () => undefined));
   const list = vi.fn(async (_options: { signal?: AbortSignal }) => entries), onSelection = vi.fn();
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => blocked.value,
@@ -79,7 +83,9 @@ it('keeps an independent save that begins during final inspection from changing 
   h.list.mockReturnValueOnce(reading.promise);
   const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
-  h.block(); reading.resolve(wanted); await operation;
+  h.block();
+  reading.resolve(wanted);
+  await operation;
   expect(h.library.downloading.value).toBe(false);
   expect(h.library.main.value).toBe('');
   h.unblock();
@@ -95,11 +101,19 @@ it.each(['cancel', 'dispose'] as const)('settles pending publication on %s while
   const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
   expect(h.library.downloading.value).toBe(true);
-  if (action === 'cancel') h.library.cancelDownload(); else h.scope.stop();
+  if (action === 'cancel') {
+    h.library.cancelDownload();
+  } else {
+    h.scope.stop();
+  }
   await operation;
   expect(h.library.downloading.value).toBe(false);
-  if (action === 'cancel') expect(h.library.downloadState.value).toBe('paused');
-  h.unblock(); reading.resolve([]); await new Promise(resolve => setImmediate(resolve));
+  if (action === 'cancel') {
+    expect(h.library.downloadState.value).toBe('paused');
+  }
+  h.unblock();
+  reading.resolve([]);
+  await new Promise(resolve => setImmediate(resolve));
   expect(h.list).toHaveBeenCalledOnce();
 });
 
@@ -125,12 +139,14 @@ it('finds completed files on the next refresh after cancellation interrupts the 
   h.list.mockReturnValueOnce(reading.promise);
   const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
-  h.library.cancelDownload(); await operation;
+  h.library.cancelDownload();
+  await operation;
   await h.library.refresh();
   expect(h.list).toHaveBeenCalledTimes(2);
   expect(h.downloader).toHaveBeenCalledOnce();
   expect(h.library.ready.value).toBe(true);
-  reading.resolve([]); await new Promise(resolve => setImmediate(resolve));
+  reading.resolve([]);
+  await new Promise(resolve => setImmediate(resolve));
   expect(h.library.ready.value).toBe(true);
 });
 
@@ -140,15 +156,19 @@ it('does not retry a real inspection failure when the editor later becomes avail
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.downloadState.value).toBe('incomplete');
   expect(h.library.failure.value).toBe('Repository unavailable');
-  h.block(); h.unblock(); await new Promise(resolve => setImmediate(resolve));
+  h.block();
+  h.unblock();
+  await new Promise(resolve => setImmediate(resolve));
   expect(h.list).toHaveBeenCalledOnce();
 });
 
 it('does not fetch on construction, refresh, or explicit selection from local files', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const h = harness({ initial: files.map(file => repository({ file, user: true })), download: undefined });
-  expect(h.list).not.toHaveBeenCalled(); expect(h.downloader).not.toHaveBeenCalled();
-  await h.library.refresh(); h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
+  expect(h.list).not.toHaveBeenCalled();
+  expect(h.downloader).not.toHaveBeenCalled();
+  await h.library.refresh();
+  h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.ready.value).toBe(true);
   expect(h.library.selectedModels()?.map(model => model.path)).toEqual(files.map(file => file.path));
   expect(h.downloader).not.toHaveBeenCalled();
@@ -182,7 +202,8 @@ it('keeps identical repository files in OPFS and two linked roots distinct and c
 
 it('downloads the requested quantization without replacing an existing model selection', async () => {
   const defaults = selectedRecipeFiles({ recipe, selections: {} });
-  const choices = { diffusion: 'q8-0' }; const wanted = selectedRecipeFiles({ recipe, selections: choices });
+  const choices = { diffusion: 'q8-0' };
+  const wanted = selectedRecipeFiles({ recipe, selections: choices });
   const h = harness({ initial: defaults.map(file => repository({ file, user: true })), download: undefined });
   await h.library.refresh();
   h.downloader.mockImplementation(async ({ files }) => {
@@ -190,11 +211,13 @@ it('downloads the requested quantization without replacing an existing model sel
     h.update({ repositories: [...defaults.map(file => repository({ file, user: true })), ...wanted.map(file => repository({ file, user: false }))] });
   });
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: choices });
-  expect(h.library.downloadState.value).toBe('complete'); expect(h.library.ready.value).toBe(true);
+  expect(h.library.downloadState.value).toBe('complete');
+  expect(h.library.ready.value).toBe(true);
   expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q4_K.gguf');
   h.library.chooseRecipe({ recipeId: recipe.id, selections: choices });
   expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
-  await h.library.refresh(); expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
+  await h.library.refresh();
+  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
 });
 
 it('keeps the desired recipe while directories arrive in separate actions; no conversion or merged repo is needed', async () => {
@@ -203,7 +226,8 @@ it('keeps the desired recipe while directories arrive in separate actions; no co
   h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
   for (let count = 1; count <= files.length; count++) {
     h.update({ repositories: files.slice(0, count).map(file => repository({ file, user: true })) });
-    await h.library.refresh(); expect(h.library.ready.value).toBe(count === files.length);
+    await h.library.refresh();
+    expect(h.library.ready.value).toBe(count === files.length);
   }
   expect(h.library.selectedModels()).toHaveLength(3);
   expect(h.downloader).not.toHaveBeenCalled();
@@ -217,8 +241,10 @@ it('preserves a failure and still refreshes completed files instead of selecting
     throw new Error('Second repository denied');
   });
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(h.library.downloadState.value).toBe('failed'); expect(h.library.failure.value).toContain('Second repository denied');
-  expect(h.library.models.value).toHaveLength(1); expect(h.library.ready.value).toBe(false);
+  expect(h.library.downloadState.value).toBe('failed');
+  expect(h.library.failure.value).toContain('Second repository denied');
+  expect(h.library.models.value).toHaveLength(1);
+  expect(h.library.ready.value).toBe(false);
 });
 
 it('deduplicates active downloads and pauses without publishing a completion', async () => {
@@ -229,10 +255,14 @@ it('deduplicates active downloads and pauses without publishing a completion', a
     }),
   });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(h.library.downloading.value).toBe(true); expect(h.library.ready.value).toBe(false);
-  await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} }); expect(h.downloader).toHaveBeenCalledTimes(1);
-  h.library.cancelDownload(); await running;
-  expect(h.library.downloadState.value).toBe('paused'); expect(h.library.downloading.value).toBe(false);
+  expect(h.library.downloading.value).toBe(true);
+  expect(h.library.ready.value).toBe(false);
+  await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  expect(h.downloader).toHaveBeenCalledTimes(1);
+  h.library.cancelDownload();
+  await running;
+  expect(h.library.downloadState.value).toBe('paused');
+  expect(h.library.downloading.value).toBe(false);
 });
 
 it('aborts a pending download on scope disposal and ignores late completion', async () => {
@@ -246,15 +276,18 @@ it('aborts a pending download on scope disposal and ignores late completion', as
   });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(signal).toBeDefined());
-  h.scope.stop(); await running;
-  expect(signal?.aborted).toBe(true); expect(h.list).not.toHaveBeenCalled();
+  h.scope.stop();
+  await running;
+  expect(signal?.aborted).toBe(true);
+  expect(h.list).not.toHaveBeenCalled();
 });
 
 it('keeps uninspected files unavailable until post-download inventory resolves', async () => {
   const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
   const pending = Promise.withResolvers<LocalImageRepository[]>();
   const list = vi.fn(() => pending.promise);
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const view = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => false,
@@ -273,7 +306,8 @@ it('keeps uninspected files unavailable until post-download inventory resolves',
   expect(view.ready.value).toBe(false);
   view.chooseRecipe({ recipeId: recipe.id, selections: {} });
   expect(view.main.value).toBe('');
-  pending.resolve(wanted); await operation;
+  pending.resolve(wanted);
+  await operation;
   expect(view.downloading.value).toBe(false);
   expect(view.downloadState.value).toBe('complete');
   expect(view.ready.value).toBe(true);
@@ -292,7 +326,8 @@ it('queues explicit downloads in click order with immutable variants while the e
   const third = h.library.downloadRecipe({ recipeId: thirdRecipe.id, selections: {} });
   await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
   expect(h.library.downloadQueue.value.map(job => job.state)).toEqual(['downloading', 'queued', 'queued']);
-  gate.resolve(); await Promise.all([first, second, third]);
+  gate.resolve();
+  await Promise.all([first, second, third]);
   expect(h.downloader).toHaveBeenCalledTimes(3);
   expect(h.downloader.mock.calls[1]![0].files[0]!.path).toBe('z_image_turbo-Q8_0.gguf');
   expect(h.downloader.mock.calls[2]![0].files).toEqual(selectedRecipeFiles({ recipe: thirdRecipe, selections: {} }));
@@ -324,9 +359,11 @@ it('pauses the entire queue and resumes the original job before the next variant
   const first = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   const second = h.library.downloadRecipe({ recipeId: recipe.id, selections: { diffusion: 'q8-0' } });
   await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
-  h.library.cancelDownload(); await first;
+  h.library.cancelDownload();
+  await first;
   expect(h.library.downloadQueue.value.map(job => job.state)).toEqual(['paused', 'queued']);
-  await h.library.resumeDownload(); await second;
+  await h.library.resumeDownload();
+  await second;
   expect(h.downloader).toHaveBeenCalledTimes(3);
   expect(h.downloader.mock.calls[1]![0].files).toEqual(h.downloader.mock.calls[0]![0].files);
   expect(h.downloader.mock.calls[2]![0].files[0]!.path).toBe('z_image_turbo-Q8_0.gguf');
@@ -339,8 +376,10 @@ it('removes a queued item without fetching it or modifying its partial files', a
   const first = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   const second = h.library.downloadRecipe({ recipeId: recipe.id, selections: { diffusion: 'q8-0' } });
   const queued = h.library.downloadQueue.value.find(job => job.state === 'queued')!;
-  h.library.removeQueuedDownload({ id: queued.id }); await second;
-  gate.resolve(); await first;
+  h.library.removeQueuedDownload({ id: queued.id });
+  await second;
+  gate.resolve();
+  await first;
   expect(h.downloader).toHaveBeenCalledOnce();
 });
 
@@ -349,25 +388,30 @@ it('keeps saved models usable and preserves a manual selection made during anoth
   const alternate = selectedRecipeFiles({ recipe, selections: { diffusion: 'q8-0' } });
   const h = harness({ initial: [...defaults, ...alternate].map(file => repository({ file, user: false })), download: undefined });
   await h.library.refresh();
-  const gate = Promise.withResolvers<void>(); h.downloader.mockImplementationOnce(() => gate.promise);
+  const gate = Promise.withResolvers<void>();
+  h.downloader.mockImplementationOnce(() => gate.promise);
   const downloading = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.ready.value).toBe(true);
   h.library.chooseRecipe({ recipeId: recipe.id, selections: { diffusion: 'q8-0' } });
   expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
-  gate.resolve(); await downloading;
+  gate.resolve();
+  await downloading;
   expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
 });
 
 it('does not interrupt a history file read when another download is enqueued', async () => {
   const wanted = selectedRecipeFiles({ recipe, selections: {} }).map(file => repository({ file, user: false }));
   const h = harness({ initial: wanted, download: undefined });
-  const reading = Promise.withResolvers<LocalImageRepository[]>(); h.list.mockReturnValueOnce(reading.promise);
+  const reading = Promise.withResolvers<LocalImageRepository[]>();
+  h.list.mockReturnValueOnce(reading.promise);
   const restoring = h.library.prepareHistoryFiles({ requiredFiles: [] });
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
   const downloading = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
   expect(h.list.mock.calls[0]![0].signal?.aborted).toBe(false);
-  reading.resolve(wanted); await restoring; await downloading;
+  reading.resolve(wanted);
+  await restoring;
+  await downloading;
   expect(h.list).toHaveBeenCalledTimes(2);
   expect(h.library.downloadState.value).toBe('complete');
 });
@@ -375,7 +419,8 @@ it('does not interrupt a history file read when another download is enqueued', a
 it('retains unrelated user Files after a completed catalog publication without relying on size or timestamp identity', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const initial = files.map(file => repository({ file, user: true }));
-  const h = harness({ initial, download: undefined }); await h.library.refresh();
+  const h = harness({ initial, download: undefined });
+  await h.library.refresh();
   const before = h.library.selectedModels()!;
   const snapshots = initial.map(entry => ({ ...entry, files: entry.files.map(file => ({ ...file, file: new File([file.file], file.file.name, { lastModified: file.file.lastModified }) })) }));
   h.downloader.mockImplementation(async () => {

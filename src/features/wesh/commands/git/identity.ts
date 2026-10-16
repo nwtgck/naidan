@@ -60,9 +60,13 @@ export function resolveGitTimestamp({ env, role }: {
   const explicit = env.get(`GIT_${role}_DATE`);
   if (explicit !== undefined) {
     const internal = /^@?([0-9]+)\s+([+-][0-9]{4})$/u.exec(explicit.trim());
-    if (internal !== null) return `${internal[1]} ${internal[2]}`;
+    if (internal !== null) {
+      return `${internal[1]} ${internal[2]}`;
+    }
     const parsed = new Date(explicit);
-    if (Number.isNaN(parsed.getTime())) throw new Error(`invalid date format: ${explicit}`);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`invalid date format: ${explicit}`);
+    }
     const timezoneMatch = /([+-][0-9]{2}):?([0-9]{2})$/u.exec(explicit);
     const timezone = timezoneMatch === null ? '+0000' : `${timezoneMatch[1]}${timezoneMatch[2]}`;
     return `${Math.floor(parsed.getTime() / 1000)} ${timezone}`;

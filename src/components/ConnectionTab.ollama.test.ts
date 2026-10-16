@@ -320,7 +320,8 @@ describe('ConnectionTab Ollama management integration', () => {
     const wrapper = mount(ConnectionTab, { props: { modelValue: createSettings({ endpointType: 'ollama' }), availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        wrapper.unmount(); vi.unstubAllGlobals();
+        wrapper.unmount();
+        vi.unstubAllGlobals();
       },
     };
     await flushPromises();
@@ -361,7 +362,9 @@ describe('Naidan RPC endpoint availability', () => {
 
   it('preserves disabled saved RPC endpoints instead of silently selecting another provider', async () => {
     const settings = createSettings({ endpointType: 'naidan_rpc' });
-    if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');
+    if (typeof settings.titleGeneration !== 'object') {
+      throw new Error('Expected title settings');
+    }
     settings.titleGeneration.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
     using _cleanupResource = {

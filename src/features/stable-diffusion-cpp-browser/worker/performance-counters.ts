@@ -7,18 +7,28 @@ export function createWaitAccounting({ now }: { now: () => number }) {
   let completedMs = 0, pendingStarts = 0, unionMs = 0, unionStart = 0, maxMs = 0;
   return {
     start(): ({ failed }: { failed: boolean }) => void {
-      const start = now(); started++; pendingStarts += start;
-      if (pending++ === 0) unionStart = start;
+      const start = now();
+      started++;
+      pendingStarts += start;
+      if (pending++ === 0) {
+        unionStart = start;
+      }
       peak = Math.max(peak, pending);
       let done = false;
       return ({ failed }) => {
-        if (done) return;
+        if (done) {
+          return;
+        }
         done = true;
         const end = now(), duration = Math.max(0, end - start);
-        settled++; rejected += Number(failed); completedMs += duration; maxMs = Math.max(maxMs, duration);
+        settled++;
+        rejected += Number(failed);
+        completedMs += duration;
+        maxMs = Math.max(maxMs, duration);
         pendingStarts -= start;
         if (--pending === 0) {
-          unionMs += Math.max(0, end - unionStart); pendingStarts = 0;
+          unionMs += Math.max(0, end - unionStart);
+          pendingStarts = 0;
         }
       };
     },
@@ -48,7 +58,9 @@ export function uploadByteLength({ data, dataOffset = 0, size }: {
     const elementBytes = ArrayBuffer.isView(data) && 'BYTES_PER_ELEMENT' in data ? Number(data.BYTES_PER_ELEMENT) : 1;
     const offset = dataOffset * elementBytes;
     const bytes = size === undefined ? data.byteLength - offset : size * elementBytes;
-    if (![offset, bytes, data.byteLength].every(value => Number.isSafeInteger(value) && value >= 0) || offset + bytes > data.byteLength) return undefined;
+    if (![offset, bytes, data.byteLength].every(value => Number.isSafeInteger(value) && value >= 0) || offset + bytes > data.byteLength) {
+      return undefined;
+    }
     return bytes;
   } catch {
     return undefined;

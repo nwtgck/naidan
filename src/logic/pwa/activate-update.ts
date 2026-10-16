@@ -13,22 +13,31 @@ export function activateUpdate({ worker, signal }: {
     }
     let settled = false;
     const finish = ({ error }: { error?: Error } = {}) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timer);
       worker.removeEventListener('statechange', check);
       signal.removeEventListener('abort', abort);
-      if (error) reject(error); else resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
     const check = () => {
       const state = worker.state;
       switch (state) {
-      case 'activated': finish(); break;
-      case 'redundant': finish({ error: new Error('The selected update was replaced or could not activate. Try again.') }); break;
+      case 'activated': finish();
+        break;
+      case 'redundant': finish({ error: new Error('The selected update was replaced or could not activate. Try again.') });
+        break;
       case 'installed':
       case 'activating': break;
       case 'parsed':
-      case 'installing': finish({ error: new Error('The selected update has not finished installation.') }); break;
+      case 'installing': finish({ error: new Error('The selected update has not finished installation.') });
+        break;
       default: {
         const exhaustive: never = state;
         finish({ error: new Error(`Unexpected service worker state: ${exhaustive}`) });

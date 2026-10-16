@@ -28,7 +28,9 @@ export type HfRepositoryName = typeof hfRepositories[number]['hfRepository'];
 
 export function getHfRepository({ hfRepository }: { hfRepository: HfRepositoryName }): typeof hfRepositories[number] {
   const entry = hfRepositories.find(entry => entry.hfRepository === hfRepository);
-  if (!entry) throw new Error(`Unregistered Hugging Face repository: ${hfRepository}`);
+  if (!entry) {
+    throw new Error(`Unregistered Hugging Face repository: ${hfRepository}`);
+  }
   return entry;
 }
 

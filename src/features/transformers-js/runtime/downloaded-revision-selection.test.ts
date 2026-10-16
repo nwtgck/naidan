@@ -32,10 +32,14 @@ async function seedImmutable({ harness, paths, malformedConfig, targetRevision }
   fs.enter({ nextPhase: 'fixture-setup', mutationPolicy: 'read-write' });
   for (const path of paths) {
     const source = fs.files.get(`${cachePrefix}main/${path}`);
-    if (source === undefined) throw new Error(`Unprovided fixture path ${path}`);
+    if (source === undefined) {
+      throw new Error(`Unprovided fixture path ${path}`);
+    }
     const key = `${cachePrefix}${targetRevision}/${path}`;
     let directory = fs.root;
-    for (const part of key.split('/').slice(0, -1)) directory = await directory.getDirectoryHandle(part, { create: true });
+    for (const part of key.split('/').slice(0, -1)) {
+      directory = await directory.getDirectoryHandle(part, { create: true });
+    }
     fs.files.set(key, malformedConfig && path === 'config.json' ? new TextEncoder().encode('{broken') : Uint8Array.from(source));
     const slash = key.lastIndexOf('/');
     fs.files.set(`${key.slice(0, slash + 1)}.${key.slice(slash + 1)}.complete`, new Uint8Array());
@@ -73,8 +77,11 @@ describe('ordinary offline revision selection through the actual Production Work
       async [Symbol.asyncDispose]() {
         release.resolve();
         await writer;
-        if (originalLocks === undefined) Reflect.deleteProperty(navigator, 'locks');
-        else Object.defineProperty(navigator, 'locks', originalLocks);
+        if (originalLocks === undefined) {
+          Reflect.deleteProperty(navigator, 'locks');
+        } else {
+          Object.defineProperty(navigator, 'locks', originalLocks);
+        }
         await harness.close();
       },
     };

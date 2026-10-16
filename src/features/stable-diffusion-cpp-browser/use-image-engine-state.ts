@@ -15,47 +15,86 @@ export function useImageEngineState({ client, supported, progress, modelResident
   let revision = 0, disposed = false;
   const canRefresh = computed(() => opened.value && supported.value && modelResident.value && !progress.value && status.value !== 'refreshing' && !disposed);
   async function refresh(): Promise<void> {
-    if (disposed || !opened.value || status.value === 'refreshing') return;
+    if (disposed || !opened.value || status.value === 'refreshing') {
+      return;
+    }
     if (!supported.value) {
-      status.value = 'unavailable'; reason.value = 'unsupported'; return;
+      status.value = 'unavailable';
+      reason.value = 'unsupported';
+      return;
     }
     if (progress.value) {
-      status.value = 'unavailable'; reason.value = 'busy'; return;
+      status.value = 'unavailable';
+      reason.value = 'busy';
+      return;
     }
     const owner = client();
     if (!owner || !modelResident.value) {
-      status.value = 'unavailable'; reason.value = 'not-loaded'; return;
+      status.value = 'unavailable';
+      reason.value = 'not-loaded';
+      return;
     }
     const operation = ++revision;
-    status.value = 'refreshing'; error.value = ''; reason.value = undefined;
+    status.value = 'refreshing';
+    error.value = '';
+    reason.value = undefined;
     try {
       const result = await owner.inspectEngine();
-      if (disposed || !opened.value || operation !== revision || owner !== client()) return;
+      if (disposed || !opened.value || operation !== revision || owner !== client()) {
+        return;
+      }
       switch (result.status) {
-      case 'ready': snapshot.value = result.snapshot; status.value = 'idle'; break;
-      case 'unavailable': status.value = 'unavailable'; reason.value = result.reason; break;
-      case 'failed': status.value = 'failed'; error.value = result.message; break;
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      case 'ready': snapshot.value = result.snapshot;
+        status.value = 'idle';
+        break;
+      case 'unavailable': status.value = 'unavailable';
+        reason.value = result.reason;
+        break;
+      case 'failed': status.value = 'failed';
+        error.value = result.message;
+        break;
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
       }
     } catch (cause) {
-      if (disposed || !opened.value || operation !== revision || owner !== client()) return;
-      status.value = 'failed'; error.value = (cause instanceof Error ? cause.message : String(cause)).slice(0, 1024);
+      if (disposed || !opened.value || operation !== revision || owner !== client()) {
+        return;
+      }
+      status.value = 'failed';
+      error.value = (cause instanceof Error ? cause.message : String(cause)).slice(0, 1024);
     }
   }
   function setOpened({ opened: value }: { opened: boolean }): void {
-    if (disposed || opened.value === value) return;
-    opened.value = value; ++revision; status.value = 'idle'; error.value = ''; reason.value = undefined;
-    if (value) void refresh();
+    if (disposed || opened.value === value) {
+      return;
+    }
+    opened.value = value;
+    ++revision;
+    status.value = 'idle';
+    error.value = '';
+    reason.value = undefined;
+    if (value) {
+      void refresh();
+    }
   }
   function invalidate(): void {
-    ++revision; snapshot.value = undefined; error.value = '';
-    reason.value = 'released'; status.value = opened.value ? 'unavailable' : 'idle';
+    ++revision;
+    snapshot.value = undefined;
+    error.value = '';
+    reason.value = 'released';
+    status.value = opened.value ? 'unavailable' : 'idle';
   }
   function afterRun(): void {
-    if (opened.value) void refresh();
+    if (opened.value) {
+      void refresh();
+    }
   }
   function dispose(): void {
-    disposed = true; opened.value = false; invalidate();
+    disposed = true;
+    opened.value = false;
+    invalidate();
   }
   const view: ImageEngineStateView = { opened, status, snapshot, reason, error, canRefresh, setOpened, refresh };
   return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), view, invalidate, afterRun, dispose };

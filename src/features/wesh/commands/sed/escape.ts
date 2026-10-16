@@ -29,7 +29,9 @@ export function decodeSedExtendedEscape({
   backslashIndex: number;
 }): SedDecodedEscape | undefined {
   const escaped = source[backslashIndex + 1];
-  if (escaped === undefined) return undefined;
+  if (escaped === undefined) {
+    return undefined;
+  }
 
   const decoded = decodeSedSingleCharacterEscape({ escaped });
   if (decoded !== undefined) {
@@ -38,9 +40,13 @@ export function decodeSedExtendedEscape({
 
   if (escaped === 'c') {
     const controlled = source[backslashIndex + 2];
-    if (controlled === undefined) return undefined;
+    if (controlled === undefined) {
+      return undefined;
+    }
     const codePoint = controlled.codePointAt(0);
-    if (codePoint === undefined) return undefined;
+    if (codePoint === undefined) {
+      return undefined;
+    }
     const normalizedCodePoint = codePoint >= 0x61 && codePoint <= 0x7a
       ? codePoint - 0x20
       : codePoint;
@@ -63,10 +69,14 @@ export function decodeSedExtendedEscape({
       return undefined;
     }
   })();
-  if (numericEscape === undefined) return undefined;
+  if (numericEscape === undefined) {
+    return undefined;
+  }
 
   const match = numericEscape.pattern.exec(source.slice(backslashIndex + 2));
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const byte = Number.parseInt(match[0], numericEscape.radix) & 0xff;
   return {
     value: decodeCommandDataBytes({ bytes: Uint8Array.of(byte) }),

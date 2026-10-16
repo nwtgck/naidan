@@ -19,29 +19,40 @@ function isMissing({ error }: { error: unknown }): boolean {
 
 function userModelName({ id }: { id: string }): string {
   const parts = id.split('/');
-  if (parts.length !== 2 || parts[0] !== 'user' || !allowedModelDirectory({ name: parts[1]! })) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (parts.length !== 2 || parts[0] !== 'user' || !allowedModelDirectory({ name: parts[1]! })) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   return parts[1]!;
 }
 
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-  if (!navigator.locks) throw new LlamaCppBrowserError({ code: "unavailable" });
+  if (!navigator.locks) {
+    throw new LlamaCppBrowserError({ code: "unavailable" });
+  }
   return navigator.locks.request(lockName, operation);
 }
 
 export async function withModelMutationLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-  if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  if (!navigator.locks) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
   return navigator.locks.request(mutationLockName, operation);
 }
 
 export async function listStoredModels(): Promise<LocalModel[]> {
-  const root = await existingUserModelDirectory(); const result: LocalModel[] = [];
+  const root = await existingUserModelDirectory();
+  const result: LocalModel[] = [];
   for await (const [name, folder] of root?.entries() ?? []) {
-    if (folder.kind !== 'directory' || !allowedModelDirectory({ name })) continue;
+    if (folder.kind !== 'directory' || !allowedModelDirectory({ name })) {
+      continue;
+    }
     try {
       const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${name}`, name }) });
       result.push({ ...model, name: `user/${name}` });
     } catch (error) {
-      if (!(error instanceof LlamaCppBrowserError) && !isMissing({ error })) throw error;
+      if (!(error instanceof LlamaCppBrowserError) && !isMissing({ error })) {
+        throw error;
+      }
     }
   }
   result.push(...await listHuggingFaceModels());
@@ -49,7 +60,9 @@ export async function listStoredModels(): Promise<LocalModel[]> {
 }
 
 export async function importStoredModel({ file, onProgress, signal }: { file: File, signal: AbortSignal | undefined, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
-  if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) {
+    throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+  }
   const started = performance.now();
   logDiagnostic({ diagnostic: { event: 'import-start', bytes: file.size } });
   const model = await importModelDirectory({ signal, directory: { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] }, onProgress });
@@ -61,7 +74,10 @@ function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undef
   switch (choice) {
   case 'include': case undefined: return true;
   case 'keep': return false;
-  default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = choice;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -70,23 +86,34 @@ function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undef
  */
 async function storedRepositoryModel({ id }: { id: string }): Promise<ModelDirectory> {
   const { repository, variant } = parseModelReference({ name: id });
-  if (variant === undefined) return resolveRepositoryModel({ name: id });
+  if (variant === undefined) {
+    return resolveRepositoryModel({ name: id });
+  }
   const selected = (await repositoryDirectories({ repository })).find(model => model.id === id);
-  if (!selected) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (!selected) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   return selected;
 }
 
 async function removalTarget({ id, sharedProjector }: { id: string, sharedProjector: 'include' | 'keep' | undefined }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined, projectors: string[], affectedVariants: number }> {
-  let parent: FileSystemDirectoryHandle; let name: string; let selectedPaths: string[] | undefined; let projectors: string[] = []; let affectedVariants = 0;
+  let parent: FileSystemDirectoryHandle;
+  let name: string;
+  let selectedPaths: string[] | undefined;
+  let projectors: string[] = [];
+  let affectedVariants = 0;
   if (id.startsWith('hf.co/') || id.startsWith('host/')) {
     const host = id.startsWith('host/') ? parseHostModelReference({ name: id }) : undefined;
     const { repository, variant } = host ? { repository: host.repository, variant: host.modelPath } : parseModelReference({ name: id });
     if (host) {
       parent = await hostModelRoot({ destination: host.destination, mode: 'readwrite' });
-      parent = await parent.getDirectoryHandle(repository.split('/')[0]!); name = repository.split('/')[1]!;
+      parent = await parent.getDirectoryHandle(repository.split('/')[0]!);
+      name = repository.split('/')[1]!;
     } else {
       parent = await opfsRoot();
-      for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) parent = await parent.getDirectoryHandle(segment);
+      for (const segment of [OPFS_MODELS_DIR, 'huggingface.co', ...repository.split('/'), 'resolve']) {
+        parent = await parent.getDirectoryHandle(segment);
+      }
       name = 'main';
     }
     const folder = await parent.getDirectoryHandle(name);
@@ -95,12 +122,18 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
       try {
         pending = await readJournal({ folder });
       } catch (error) {
-        if (!isMissing({ error })) throw error;
+        if (!isMissing({ error })) {
+          throw error;
+        }
       }
     }
     if (pending) {
-      if (host) for (let index = 0; index < pending.selection.files.length; index++) {
-        if (!pending.reused?.[index]) await hostDownloadMarker({ folder, selection: pending.selection, index, action: 'check' });
+      if (host) {
+        for (let index = 0; index < pending.selection.files.length; index++) {
+          if (!pending.reused?.[index]) {
+            await hostDownloadMarker({ folder, selection: pending.selection, index, action: 'check' });
+          }
+        }
       }
       selectedPaths = [pendingName, ...pending.selection.files.filter((_file, index) => !pending.reused?.[index]).flatMap(file => host ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])];
     } else {
@@ -118,7 +151,9 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
     // Select GGUF files and our transient marker; shared metadata is not ours.
     selectedPaths = files.filter(file => (file.path === pendingName || /\.gguf$/i.test(file.path)) && !projectors.includes(file.path)).map(file => file.path);
   }
-  if (includeSharedProjector({ choice: sharedProjector })) selectedPaths?.push(...projectors);
+  if (includeSharedProjector({ choice: sharedProjector })) {
+    selectedPaths?.push(...projectors);
+  }
   return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths, projectors, affectedVariants };
 }
 
@@ -149,7 +184,8 @@ export async function prepareModelRemoval({ id }: { id: string }): Promise<Model
 }
 
 export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
-  const request = await prepareModelRemoval({ id }); return request.sharedPlan ?? request.plan;
+  const request = await prepareModelRemoval({ id });
+  return request.sharedPlan ?? request.plan;
 }
 
 export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult> {
@@ -162,12 +198,18 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
       switch (result) {
       case 'changed': return result;
       case 'deleted': break;
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
       }
       try {
-        await parent.getDirectoryHandle(name); await parent.removeEntry(name);
+        await parent.getDirectoryHandle(name);
+        await parent.removeEntry(name);
       } catch (error) {
-        if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
+        if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) {
+          throw error;
+        }
       }
       return result;
     },
@@ -175,16 +217,24 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
 }
 
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
-  if (name.startsWith('host/')) return resolveHostModel({ name });
-  if (name.startsWith('hf.co/')) return storedRepositoryModel({ id: name });
+  if (name.startsWith('host/')) {
+    return resolveHostModel({ name });
+  }
+  if (name.startsWith('hf.co/')) {
+    return storedRepositoryModel({ id: name });
+  }
   const directory = userModelName({ id: name });
   try {
     const parent = await existingUserModelDirectory();
-    if (!parent) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    if (!parent) {
+      throw new LlamaCppBrowserError({ code: 'missing-model' });
+    }
     const folder = await parent.getDirectoryHandle(directory);
     return await resolveDirectory({ folder, id: name, name: directory });
   } catch (error) {
-    if (isMissing({ error })) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    if (isMissing({ error })) {
+      throw new LlamaCppBrowserError({ code: 'missing-model' });
+    }
     throw error;
   }
 }

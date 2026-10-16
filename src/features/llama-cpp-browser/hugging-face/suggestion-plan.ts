@@ -20,18 +20,28 @@ function matchingCandidates({ quantization, models }: { quantization: SuggestedQ
 /** Pure resolution: approximate catalog fields never validate or identify files. */
 export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { quantization: SuggestedQuantization, catalog: RepositoryCatalog, multimodal: MultimodalDownload }): DownloadSelection {
   // Do not silently follow a renamed/transferred repository for one-click installs.
-  if (catalog.repository.toLowerCase() !== quantization.hfRepository.toLowerCase()) throw new SuggestionPlanError();
+  if (catalog.repository.toLowerCase() !== quantization.hfRepository.toLowerCase()) {
+    throw new SuggestionPlanError();
+  }
   const candidates = matchingCandidates({ quantization, models: catalog.models });
-  if (candidates.length !== 1) throw new SuggestionPlanError();
+  if (candidates.length !== 1) {
+    throw new SuggestionPlanError();
+  }
   const files = [...candidates[0]!.files];
   switch (multimodal) {
   case 'off': break;
   case 'on': {
     const projector = preferredProjector({ files: catalog.projectors });
-    if (!projector) throw new SuggestionPlanError();
-    files.push(projector); break;
+    if (!projector) {
+      throw new SuggestionPlanError();
+    }
+    files.push(projector);
+    break;
   }
-  default: { const exhaustive: never = multimodal; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = multimodal;
+    throw new Error(String(exhaustive));
+  }
   }
   return selectionSchema.parse({ repository: catalog.repository, revision: catalog.revision, files });
 }
@@ -48,12 +58,17 @@ export function findLocalSuggestedModel({ quantization, models, destination }: {
           return model.id.toLowerCase().startsWith(prefix) ? decodeURIComponent(model.id.slice(prefix.length)) : undefined;
         }
         case 'host': {
-          if (!model.id.startsWith('host/')) return undefined;
+          if (!model.id.startsWith('host/')) {
+            return undefined;
+          }
           const reference = parseHostModelReference({ name: model.id });
           // Native directory IDs and filesystem paths are case-sensitive.
           return reference.destination.directoryId === target.directoryId && reference.repository === quantization.hfRepository ? reference.modelPath : undefined;
         }
-        default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = target;
+          throw new Error(String(exhaustive));
+        }
         }
       })();
       return path !== undefined && artifactRole({ path }) === 'model' && quantizationName({ path }) === quantization.preferredQuantization;

@@ -21,17 +21,25 @@ async function prepare({ input }: { input: EvidenceStreamRequest }): Promise<Pre
     const { run, recovery } = await readModelSupportInvestigationEvidenceWorkerRequest({ request });
     const sidecars = replayMetadata === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata);
     const timing = ordinaryDownloadTiming === undefined ? undefined : await readOrdinaryDownloadTimingEvidenceFile({ file: ordinaryDownloadTiming });
-    if (timing !== undefined && (timing.association.kind !== 'investigation-run' || timing.association.runId !== run.runId)) throw new Error('Retained Download timing run association mismatch');
+    if (timing !== undefined && (timing.association.kind !== 'investigation-run' || timing.association.runId !== run.runId)) {
+      throw new Error('Retained Download timing run association mismatch');
+    }
     return await preparePartialModelSupportEvidence({ run, recovery, replayMetadata: sidecars, nativeEvidence, ordinaryDownloadTiming: timing?.snapshot });
 
   }
   case 'batch': {
     const { request, replayMetadata, nativeEvidence, ordinaryDownloadTiming } = input;
     const { batchId, items } = await readModelSupportInvestigationBatchEvidenceWorkerRequest({ request });
-    if (replayMetadata !== undefined && replayMetadata.length !== items.length) throw new Error('Replay sidecar target count mismatch');
-    if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) throw new Error('Native sidecar target count mismatch');
+    if (replayMetadata !== undefined && replayMetadata.length !== items.length) {
+      throw new Error('Replay sidecar target count mismatch');
+    }
+    if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) {
+      throw new Error('Native sidecar target count mismatch');
+    }
     const timing = ordinaryDownloadTiming === undefined ? undefined : await readOrdinaryDownloadTimingEvidenceFile({ file: ordinaryDownloadTiming });
-    if (timing !== undefined && (timing.association.kind !== 'investigation-batch' || timing.association.batchId !== batchId)) throw new Error('Retained Download timing batch association mismatch');
+    if (timing !== undefined && (timing.association.kind !== 'investigation-batch' || timing.association.batchId !== batchId)) {
+      throw new Error('Retained Download timing batch association mismatch');
+    }
     return await prepareBatchModelSupportEvidence({
       batchId,
       ordinaryDownloadTiming: timing?.snapshot,

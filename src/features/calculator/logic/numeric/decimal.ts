@@ -32,8 +32,12 @@ export function compareScaledIntegerMagnitudes({
   if (leftCoefficient < 0n || rightCoefficient < 0n) {
     throw new Error('Scaled magnitude comparison requires non-negative coefficients.');
   }
-  if (leftCoefficient === 0n) return rightCoefficient === 0n ? 0 : -1;
-  if (rightCoefficient === 0n) return 1;
+  if (leftCoefficient === 0n) {
+    return rightCoefficient === 0n ? 0 : -1;
+  }
+  if (rightCoefficient === 0n) {
+    return 1;
+  }
   const leftDigits = leftCoefficient.toString();
   const rightDigits = rightCoefficient.toString();
   const leftAdjustedLength = leftDigits.length + leftExponent;
@@ -45,7 +49,9 @@ export function compareScaledIntegerMagnitudes({
   for (let index = 0; index < comparisonLength; index += 1) {
     const leftDigit = index < leftDigits.length ? leftDigits.charCodeAt(index) : 48;
     const rightDigit = index < rightDigits.length ? rightDigits.charCodeAt(index) : 48;
-    if (leftDigit !== rightDigit) return leftDigit < rightDigit ? -1 : 1;
+    if (leftDigit !== rightDigit) {
+      return leftDigit < rightDigit ? -1 : 1;
+    }
   }
   return 0;
 }
@@ -102,7 +108,9 @@ export function createDecimal({ coefficient, exponent }: {
   coefficient: bigint,
   exponent: number,
 }): Decimal {
-  if (coefficient === 0n) return { coefficient: 0n, exponent: 0 };
+  if (coefficient === 0n) {
+    return { coefficient: 0n, exponent: 0 };
+  }
   let normalizedCoefficient = coefficient;
   let normalizedExponent = exponent;
   while (normalizedCoefficient % 10n === 0n) {
@@ -144,7 +152,9 @@ export function parseDecimalLiteral({ literal }: { literal: string }): Decimal {
     ? 0
     : parseBoundedExponent({ text: match.groups.exponent });
   const combined = `${integer}${fraction}`.replace(/^0+/u, '');
-  if (combined.length === 0) return createDecimal({ coefficient: 0n, exponent: 0 });
+  if (combined.length === 0) {
+    return createDecimal({ coefficient: 0n, exponent: 0 });
+  }
   const trailingZeroCount = combined.length - combined.replace(/0+$/u, '').length;
   const coefficientText = trailingZeroCount === 0 ? combined : combined.slice(0, -trailingZeroCount);
   if (coefficientText.length > CALCULATOR_LIMITS.maximumCoefficientDigits) {
@@ -168,7 +178,9 @@ export function absoluteDecimal({ decimal }: { decimal: Decimal }): Decimal {
 }
 
 export function adjustedDecimalExponent({ decimal }: { decimal: Decimal }): number {
-  if (decimal.coefficient === 0n) return 0;
+  if (decimal.coefficient === 0n) {
+    return 0;
+  }
   return decimalDigitCount({ value: decimal.coefficient }) + decimal.exponent - 1;
 }
 
@@ -182,10 +194,18 @@ function compareAbsoluteDecimals({ left, right }: { left: Decimal, right: Decima
 }
 
 export function compareDecimals({ left, right }: { left: Decimal, right: Decimal }): number {
-  if (left.coefficient === 0n) return right.coefficient === 0n ? 0 : right.coefficient < 0n ? 1 : -1;
-  if (right.coefficient === 0n) return left.coefficient < 0n ? -1 : 1;
-  if (left.coefficient < 0n && right.coefficient >= 0n) return -1;
-  if (left.coefficient >= 0n && right.coefficient < 0n) return 1;
+  if (left.coefficient === 0n) {
+    return right.coefficient === 0n ? 0 : right.coefficient < 0n ? 1 : -1;
+  }
+  if (right.coefficient === 0n) {
+    return left.coefficient < 0n ? -1 : 1;
+  }
+  if (left.coefficient < 0n && right.coefficient >= 0n) {
+    return -1;
+  }
+  if (left.coefficient >= 0n && right.coefficient < 0n) {
+    return 1;
+  }
   const comparison = compareAbsoluteDecimals({
     left: absoluteDecimal({ decimal: left }),
     right: absoluteDecimal({ decimal: right }),
@@ -200,8 +220,12 @@ function shouldRoundUp({ quotient, remainder, divisor, mode }: {
   mode: DecimalRoundingMode,
 }): boolean {
   const doubled = remainder * 2n;
-  if (doubled < divisor) return false;
-  if (doubled > divisor) return true;
+  if (doubled < divisor) {
+    return false;
+  }
+  if (doubled > divisor) {
+    return true;
+  }
   return mode === 'half_away_from_zero' || quotient % 2n !== 0n;
 }
 
@@ -213,15 +237,21 @@ export function roundDecimalToSignificantDigits({ decimal, significantDigits, mo
   if (!Number.isInteger(significantDigits) || significantDigits < 1) {
     throw new Error(`Invalid significant digit count: ${significantDigits}`);
   }
-  if (decimal.coefficient === 0n) return decimal;
+  if (decimal.coefficient === 0n) {
+    return decimal;
+  }
   const digits = decimalDigitCount({ value: decimal.coefficient });
-  if (digits <= significantDigits) return decimal;
+  if (digits <= significantDigits) {
+    return decimal;
+  }
   const droppedDigits = digits - significantDigits;
   const divisor = powerOfTen({ exponent: droppedDigits, reason: 'alignment' });
   const absolute = absoluteBigInt({ value: decimal.coefficient });
   let quotient = absolute / divisor;
   const remainder = absolute % divisor;
-  if (shouldRoundUp({ quotient, remainder, divisor, mode })) quotient += 1n;
+  if (shouldRoundUp({ quotient, remainder, divisor, mode })) {
+    quotient += 1n;
+  }
   return createDecimal({
     coefficient: decimal.coefficient < 0n ? -quotient : quotient,
     exponent: decimal.exponent + droppedDigits,
@@ -233,17 +263,25 @@ export function roundDecimalToDecimalPlaces({ decimal, decimalPlaces, mode }: {
   decimalPlaces: number,
   mode: DecimalRoundingMode,
 }): Decimal {
-  if (!Number.isSafeInteger(decimalPlaces)) throw new Error(`Invalid decimal place count: ${decimalPlaces}`);
+  if (!Number.isSafeInteger(decimalPlaces)) {
+    throw new Error(`Invalid decimal place count: ${decimalPlaces}`);
+  }
   const targetExponent = -decimalPlaces;
-  if (decimal.coefficient === 0n || decimal.exponent >= targetExponent) return decimal;
+  if (decimal.coefficient === 0n || decimal.exponent >= targetExponent) {
+    return decimal;
+  }
   const droppedDigits = targetExponent - decimal.exponent;
   const digits = decimalDigitCount({ value: decimal.coefficient });
-  if (droppedDigits > digits + 1) return createDecimal({ coefficient: 0n, exponent: 0 });
+  if (droppedDigits > digits + 1) {
+    return createDecimal({ coefficient: 0n, exponent: 0 });
+  }
   const divisor = powerOfTen({ exponent: droppedDigits, reason: 'alignment' });
   const absolute = absoluteBigInt({ value: decimal.coefficient });
   let quotient = absolute / divisor;
   const remainder = absolute % divisor;
-  if (shouldRoundUp({ quotient, remainder, divisor, mode })) quotient += 1n;
+  if (shouldRoundUp({ quotient, remainder, divisor, mode })) {
+    quotient += 1n;
+  }
   return createDecimal({
     coefficient: decimal.coefficient < 0n ? -quotient : quotient,
     exponent: targetExponent,
@@ -257,8 +295,12 @@ export function addApproximateDecimals({ left, right, significantDigits }: {
 }): Decimal {
   const roundedLeft = roundDecimalToSignificantDigits({ decimal: left, significantDigits, mode: 'half_even' });
   const roundedRight = roundDecimalToSignificantDigits({ decimal: right, significantDigits, mode: 'half_even' });
-  if (roundedLeft.coefficient === 0n) return roundedRight;
-  if (roundedRight.coefficient === 0n) return roundedLeft;
+  if (roundedLeft.coefficient === 0n) {
+    return roundedRight;
+  }
+  if (roundedRight.coefficient === 0n) {
+    return roundedLeft;
+  }
   const gap = Math.abs(
     adjustedDecimalExponent({ decimal: roundedLeft }) - adjustedDecimalExponent({ decimal: roundedRight }),
   );
@@ -331,8 +373,12 @@ export function divideIntegerRatioToDecimal({ numerator, denominator, decimalExp
   decimalExponent: number,
   significantDigits: number,
 }): Decimal {
-  if (denominator <= 0n) throw new Error('Decimal ratio denominator must be positive.');
-  if (numerator === 0n) return createDecimal({ coefficient: 0n, exponent: 0 });
+  if (denominator <= 0n) {
+    throw new Error('Decimal ratio denominator must be positive.');
+  }
+  if (numerator === 0n) {
+    return createDecimal({ coefficient: 0n, exponent: 0 });
+  }
   const negative = numerator < 0n;
   const absoluteNumerator = absoluteBigInt({ value: numerator });
   const adjustedExponent = adjustedRatioExponent({ numerator: absoluteNumerator, denominator, decimalExponent });
@@ -345,7 +391,9 @@ export function divideIntegerRatioToDecimal({ numerator, denominator, decimalExp
     : denominator * powerOfTen({ exponent: -shift, reason: 'materialized_integer' });
   let quotient = scaledNumerator / scaledDenominator;
   const remainder = scaledNumerator % scaledDenominator;
-  if (shouldRoundUp({ quotient, remainder, divisor: scaledDenominator, mode: 'half_even' })) quotient += 1n;
+  if (shouldRoundUp({ quotient, remainder, divisor: scaledDenominator, mode: 'half_even' })) {
+    quotient += 1n;
+  }
   return createDecimal({
     coefficient: negative ? -quotient : quotient,
     exponent: adjustedExponent - significantDigits + 1,
@@ -357,7 +405,9 @@ export function divideApproximateDecimals({ numerator, denominator, significantD
   denominator: Decimal,
   significantDigits: number,
 }): Decimal {
-  if (denominator.coefficient === 0n) throw new Error('Cannot divide Decimal by zero.');
+  if (denominator.coefficient === 0n) {
+    throw new Error('Cannot divide Decimal by zero.');
+  }
   const sign = denominator.coefficient < 0n ? -1n : 1n;
   return divideIntegerRatioToDecimal({
     numerator: numerator.coefficient * sign,
@@ -373,16 +423,24 @@ export function powerApproximateDecimalInteger({ base, exponent, significantDigi
   significantDigits: number,
   consumeOperation: () => void,
 }): Decimal {
-  if (!Number.isSafeInteger(exponent)) throw new Error(`Invalid Decimal exponent: ${exponent}`);
-  if (exponent === 0) return createDecimal({ coefficient: 1n, exponent: 0 });
+  if (!Number.isSafeInteger(exponent)) {
+    throw new Error(`Invalid Decimal exponent: ${exponent}`);
+  }
+  if (exponent === 0) {
+    return createDecimal({ coefficient: 1n, exponent: 0 });
+  }
   let remaining = Math.abs(exponent);
   let factor = roundDecimalToSignificantDigits({ decimal: base, significantDigits, mode: 'half_even' });
   let result = createDecimal({ coefficient: 1n, exponent: 0 });
   while (remaining > 0) {
     consumeOperation();
-    if (remaining % 2 === 1) result = multiplyApproximateDecimals({ left: result, right: factor, significantDigits });
+    if (remaining % 2 === 1) {
+      result = multiplyApproximateDecimals({ left: result, right: factor, significantDigits });
+    }
     remaining = Math.floor(remaining / 2);
-    if (remaining > 0) factor = multiplyApproximateDecimals({ left: factor, right: factor, significantDigits });
+    if (remaining > 0) {
+      factor = multiplyApproximateDecimals({ left: factor, right: factor, significantDigits });
+    }
   }
   return exponent > 0
     ? result
@@ -398,8 +456,12 @@ export function integerRootFloor({ value, degree, consumeOperation }: {
   degree: 2 | 3,
   consumeOperation: () => void,
 }): bigint {
-  if (value < 0n) throw new Error('Integer root requires a non-negative value.');
-  if (value < 2n) return value;
+  if (value < 0n) {
+    throw new Error('Integer root requires a non-negative value.');
+  }
+  if (value < 2n) {
+    return value;
+  }
   const bitLength = value.toString(2).length;
   let current = 1n << BigInt(Math.ceil(bitLength / degree));
   while (true) {
@@ -414,7 +476,9 @@ export function integerRootFloor({ value, degree, consumeOperation }: {
       while (true) {
         const upper = current + 1n;
         const upperPower = degree === 2 ? upper * upper : upper * upper * upper;
-        if (upperPower > value) return current;
+        if (upperPower > value) {
+          return current;
+        }
         consumeOperation();
         current = upper;
       }
@@ -429,9 +493,13 @@ export function rootApproximateDecimal({ decimal, degree, significantDigits, con
   significantDigits: number,
   consumeOperation: () => void,
 }): Decimal {
-  if (decimal.coefficient === 0n) return decimal;
+  if (decimal.coefficient === 0n) {
+    return decimal;
+  }
   const negative = decimal.coefficient < 0n;
-  if (negative && degree === 2) throw new Error('Square root requires a non-negative Decimal.');
+  if (negative && degree === 2) {
+    throw new Error('Square root requires a non-negative Decimal.');
+  }
   const absolute = absoluteDecimal({ decimal });
   const exponentRemainder = ((absolute.exponent % degree) + degree) % degree;
   const adjustedCoefficient = absolute.coefficient * powerOfTen({
@@ -458,7 +526,9 @@ export function rootApproximateDecimal({ decimal, degree, significantDigits, con
     exponent: droppedDigits * degree,
     reason: 'materialized_integer',
   });
-  if (left > midpointPower || (left === midpointPower && rounded % 2n !== 0n)) rounded += 1n;
+  if (left > midpointPower || (left === midpointPower && rounded % 2n !== 0n)) {
+    rounded += 1n;
+  }
   return createDecimal({
     coefficient: negative ? -rounded : rounded,
     exponent: adjustedExponent - scaleDigits + droppedDigits,
@@ -469,7 +539,9 @@ export function truncateDecimalToInteger({ decimal, mode }: {
   decimal: Decimal,
   mode: 'floor' | 'ceil' | 'trunc' | 'round_half_away',
 }): Decimal {
-  if (decimal.coefficient === 0n || decimal.exponent >= 0) return decimal;
+  if (decimal.coefficient === 0n || decimal.exponent >= 0) {
+    return decimal;
+  }
   const droppedDigits = -decimal.exponent;
   const digits = decimalDigitCount({ value: decimal.coefficient });
   if (droppedDigits > digits) {
@@ -493,15 +565,21 @@ export function truncateDecimalToInteger({ decimal, mode }: {
   const remainder = absolute % divisor;
   switch (mode) {
   case 'floor':
-    if (decimal.coefficient < 0n && remainder !== 0n) quotient += 1n;
+    if (decimal.coefficient < 0n && remainder !== 0n) {
+      quotient += 1n;
+    }
     break;
   case 'ceil':
-    if (decimal.coefficient > 0n && remainder !== 0n) quotient += 1n;
+    if (decimal.coefficient > 0n && remainder !== 0n) {
+      quotient += 1n;
+    }
     break;
   case 'trunc':
     break;
   case 'round_half_away':
-    if (remainder * 2n >= divisor) quotient += 1n;
+    if (remainder * 2n >= divisor) {
+      quotient += 1n;
+    }
     break;
   default: {
     const _exhaustive: never = mode;
@@ -512,20 +590,26 @@ export function truncateDecimalToInteger({ decimal, mode }: {
 }
 
 export function serializeDecimalExact({ decimal }: { decimal: Decimal }): string {
-  if (decimal.coefficient === 0n) return '0';
+  if (decimal.coefficient === 0n) {
+    return '0';
+  }
   const negative = decimal.coefficient < 0n;
   const digits = absoluteBigInt({ value: decimal.coefficient }).toString();
   let body: string;
   if (decimal.exponent >= 0) {
     const length = digits.length + decimal.exponent + (negative ? 1 : 0);
-    if (length > CALCULATOR_LIMITS.maximumOutputLength) return serializeDecimal({ decimal });
+    if (length > CALCULATOR_LIMITS.maximumOutputLength) {
+      return serializeDecimal({ decimal });
+    }
     body = `${digits}${'0'.repeat(decimal.exponent)}`;
   } else {
     const decimalPoint = digits.length + decimal.exponent;
     const length = decimalPoint > 0
       ? digits.length + 1 + (negative ? 1 : 0)
       : 2 - decimalPoint + digits.length + (negative ? 1 : 0);
-    if (length > CALCULATOR_LIMITS.maximumOutputLength) return serializeDecimal({ decimal });
+    if (length > CALCULATOR_LIMITS.maximumOutputLength) {
+      return serializeDecimal({ decimal });
+    }
     body = decimalPoint > 0
       ? `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`
       : `0.${'0'.repeat(-decimalPoint)}${digits}`;
@@ -534,7 +618,9 @@ export function serializeDecimalExact({ decimal }: { decimal: Decimal }): string
 }
 
 export function serializeDecimal({ decimal }: { decimal: Decimal }): string {
-  if (decimal.coefficient === 0n) return '0';
+  if (decimal.coefficient === 0n) {
+    return '0';
+  }
   const negative = decimal.coefficient < 0n;
   const digits = absoluteBigInt({ value: decimal.coefficient }).toString();
   const adjusted = digits.length + decimal.exponent - 1;
@@ -543,8 +629,9 @@ export function serializeDecimal({ decimal }: { decimal: Decimal }): string {
     ? digits.length + decimal.exponent
     : Math.max(1, digits.length + decimal.exponent) + 1 + Math.max(0, -(digits.length + decimal.exponent));
   if (adjusted >= -6 && adjusted <= 20 && plainLength <= CALCULATOR_LIMITS.maximumOutputLength) {
-    if (decimal.exponent >= 0) body = `${digits}${'0'.repeat(decimal.exponent)}`;
-    else {
+    if (decimal.exponent >= 0) {
+      body = `${digits}${'0'.repeat(decimal.exponent)}`;
+    } else {
       const decimalPoint = digits.length + decimal.exponent;
       body = decimalPoint > 0
         ? `${digits.slice(0, decimalPoint)}.${digits.slice(decimalPoint)}`

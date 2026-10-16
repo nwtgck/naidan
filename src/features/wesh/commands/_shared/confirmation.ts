@@ -12,7 +12,9 @@ export function createTextInputLineReader({
       pendingLines = [];
       pendingLineIndex = 0;
       const result = await iterator.next();
-      if (result.done) return undefined;
+      if (result.done) {
+        return undefined;
+      }
 
       const lines = result.value.split('\n');
       if (result.value.endsWith('\n')) {

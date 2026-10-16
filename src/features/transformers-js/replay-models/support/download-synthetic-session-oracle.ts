@@ -33,10 +33,14 @@ export function createSyntheticModelBody({ modelId, revision, path }: { modelId:
 }
 
 export function readSyntheticModelBody({ bytes }: { bytes: Uint8Array }): SyntheticBodyIdentity {
-  if (bytes.byteLength > 4096) throw new Error('Synthetic model body exceeds the fixture size limit');
+  if (bytes.byteLength > 4096) {
+    throw new Error('Synthetic model body exceeds the fixture size limit');
+  }
   const body = bodySchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
   const expected = createHash('sha256').update(JSON.stringify(body.identity)).digest('hex');
-  if (body.sha256 !== expected) throw new Error('Synthetic model body checksum mismatch');
+  if (body.sha256 !== expected) {
+    throw new Error('Synthetic model body checksum mismatch');
+  }
   return body.identity;
 }
 
@@ -53,15 +57,21 @@ export function inspectSyntheticOrtSession({ modelId, revision, repositoryPaths,
     if (identity.modelId !== modelId || identity.revision !== revision) {
       throw new Error(`Synthetic model identity mismatch: ${identity.modelId}@${identity.revision}`);
     }
-    if (!repositoryPaths.has(identity.path)) throw new Error(`Synthetic model path is not in the repository inventory: ${identity.path}`);
+    if (!repositoryPaths.has(identity.path)) {
+      throw new Error(`Synthetic model path is not in the repository inventory: ${identity.path}`);
+    }
     return identity;
   }
   const identity = readIdentity({ bytes: z.instanceof(Uint8Array).parse(core) });
-  if (!identity.path.endsWith('.onnx')) throw new Error('Synthetic ORT core must identify an ONNX core path');
+  if (!identity.path.endsWith('.onnx')) {
+    throw new Error('Synthetic ORT core must identify an ONNX core path');
+  }
   const parsedOptions = optionsSchema.parse(options);
   const externalData = (parsedOptions.externalData ?? []).map(({ path, data }) => {
     const externalIdentity = readIdentity({ bytes: data });
-    if (`onnx/${path}` !== externalIdentity.path) throw new Error(`Synthetic external data binding mismatch: ${path} versus ${externalIdentity.path}`);
+    if (`onnx/${path}` !== externalIdentity.path) {
+      throw new Error(`Synthetic external data binding mismatch: ${path} versus ${externalIdentity.path}`);
+    }
     const coreExternalPrefix = `${identity.path}_data`;
     const suffix = externalIdentity.path.slice(coreExternalPrefix.length);
     if (!externalIdentity.path.startsWith(coreExternalPrefix) || (suffix !== '' && !/^_\d+$/u.test(suffix))) {

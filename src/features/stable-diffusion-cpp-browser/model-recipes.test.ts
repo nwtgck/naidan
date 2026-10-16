@@ -18,7 +18,9 @@ it('lists revision-pinned component and checkpoint recipes with original inner p
       if (recipe.id === 'qwen-image-2.1-turbo' && file.role === 'diffusion') {
         // Temporary test-only source revision until Abiray's SHA is verified.
         expect(file.revision).toBe('main');
-      } else expect(file.revision).toMatch(/^[0-9a-f]{40}$/);
+      } else {
+        expect(file.revision).toMatch(/^[0-9a-f]{40}$/);
+      }
       expect(validModelPath({ path: file.path })).toBe(true);
       expect(file.path).not.toContain('00001-of');
       expect(imageRecipeLink({ file, action: 'download' })).toBe(`https://huggingface.co/${file.repository}/resolve/${file.revision}/${file.path}?download=true`);
@@ -90,7 +92,10 @@ it('recognizes every catalog layout without flattening paths or merging reposito
       case 'anima-turbo-1.1': return { family: 'anima', diffusion: animaTensors, vae: wanVaeTensors, vaeClass: 'vae-wan16', architecture: 'qwen3', width: 1024, layers: 28, lmClass: 'lm-qwen3-06b' };
       case 'krea2-turbo': return { family: 'krea2', diffusion: krea2Tensors, vae: wanVaeTensors, vaeClass: 'vae-wan16', architecture: 'qwen3vl', width: 2560, layers: 36, lmClass: 'lm-qwen3vl-4b' };
       case 'ernie-image-turbo': return { family: 'ernie-image', diffusion: ernieImageTensors, vae: flux2VaeTensors, vaeClass: 'vae-flux32', architecture: 'mistral3', width: 3072, layers: 26, lmClass: 'lm-ministral3-3b' };
-      default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = recipe.id;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     const sdxl = recipe.id === 'sdxl-base-1.0';
@@ -105,8 +110,11 @@ it('recognizes every catalog layout without flattening paths or merging reposito
     expect(inventory.issues).toEqual([]);
     expect(inventory.candidates.find(candidate => candidate.roles.includes(sdxl ? 'model' : 'diffusion'))?.family).toBe(facts.family);
     expect(inventory.candidates.find(candidate => candidate.family === 'unknown' && candidate.roles.includes('vae'))?.classes).toContain(facts.vaeClass);
-    if (!sdxl) expect(inventory.candidates.find(candidate => candidate.roles.includes('lm'))?.classes).toContain(facts.lmClass);
-    else expect(inventory.candidates.some(candidate => candidate.roles.includes('lm'))).toBe(false);
+    if (!sdxl) {
+      expect(inventory.candidates.find(candidate => candidate.roles.includes('lm'))?.classes).toContain(facts.lmClass);
+    } else {
+      expect(inventory.candidates.some(candidate => candidate.roles.includes('lm'))).toBe(false);
+    }
   }
 });
 
@@ -131,7 +139,8 @@ it('discovers the ERNIE default using the case-sensitive path in its pinned repo
     policyName: 'huggingface_models',
     body: new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(JSON.stringify([published]))); controller.close();
+        controller.enqueue(new TextEncoder().encode(JSON.stringify([published])));
+        controller.close();
       },
     }),
   }));

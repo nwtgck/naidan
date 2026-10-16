@@ -39,7 +39,10 @@ function containsChat({ hierarchy, chatId, chatGroupId }: { hierarchy: Hierarchy
     switch (item.type) {
     case 'chat': return chatGroupId === undefined && item.id === chatId;
     case 'chat_group': return (chatGroupId === undefined || item.id === chatGroupId) && item.chat_ids.includes(chatId);
-    default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = item;
+      throw new Error(String(exhaustive));
+    }
     }
   });
 }
@@ -57,18 +60,29 @@ export async function restoreModelLaunch({ provider, chatId, input, requestedVar
   switch (phase) {
   case 'detached': return undefined;
   case undefined: case 'active': case 'reserved': break;
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
   const meta = await provider.loadChatMeta({ id: chatId });
   const content = await provider.loadChatContent({ id: chatId });
-  if (meta === null || content === null || meta.groupId == null || meta.endpoint !== undefined || meta.modelId !== undefined) return undefined;
+  if (meta === null || content === null || meta.groupId == null || meta.endpoint !== undefined || meta.modelId !== undefined) {
+    return undefined;
+  }
   const chatGroup = await provider.loadChatGroup({ id: meta.groupId });
-  if (chatGroup === null || !matchesModel({ chatGroup, modelId: accepted.modelId })) return undefined;
+  if (chatGroup === null || !matchesModel({ chatGroup, modelId: accepted.modelId })) {
+    return undefined;
+  }
   const prefix = await modelLaunchChatGroupPrefix({ modelId: accepted.modelId });
   const rawId = idToRaw({ id: chatGroup.id });
-  if (rawId !== prefix && !rawId.startsWith(`${prefix}-`)) return undefined;
+  if (rawId !== prefix && !rawId.startsWith(`${prefix}-`)) {
+    return undefined;
+  }
   const dto = await provider.loadHierarchy();
-  if (dto === null || !containsChat({ hierarchy: hierarchyToDomain({ dto }), chatId, chatGroupId: chatGroup.id })) return undefined;
+  if (dto === null || !containsChat({ hierarchy: hierarchyToDomain({ dto }), chatId, chatGroupId: chatGroup.id })) {
+    return undefined;
+  }
   const launch: ChatModelLaunch = { version: 1, input, requestedVariant, target: accepted, chatGroupId: chatGroup.id, phase: 'active' };
   session.set(chatId, launch);
   return structuredClone(launch);
@@ -89,13 +103,22 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
   switch (initialPhase) {
   case 'detached': throw new Error('The model launch chat was removed');
   case undefined: case 'active': case 'reserved': break;
-  default: { const exhaustive: never = initialPhase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = initialPhase;
+    throw new Error(String(exhaustive));
   }
-  if (launch !== undefined && launch.input !== input) throw new Error('The model launch request changed');
+  }
+  if (launch !== undefined && launch.input !== input) {
+    throw new Error('The model launch request changed');
+  }
   if (launch?.phase === 'active' && mode === 'create-or-resume') {
-    if (!containsChat({ hierarchy, chatId, chatGroupId: launch.chatGroupId })) throw new Error('The model launch chat was moved or removed');
+    if (!containsChat({ hierarchy, chatId, chatGroupId: launch.chatGroupId })) {
+      throw new Error('The model launch chat was moved or removed');
+    }
     const chat = await provider.loadChat({ id: chatId });
-    if (chat === null) throw new Error('The model launch chat is missing');
+    if (chat === null) {
+      throw new Error('The model launch chat is missing');
+    }
     return chat;
   }
   if (launch === undefined && mode === 'create-or-resume' && existing !== null && content !== null) {
@@ -104,11 +127,17 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
     if (restored !== undefined) {
       const chat = await provider.loadChat({ id: chatId });
-      if (chat !== null) return chat;
+      if (chat !== null) {
+        return chat;
+      }
     }
   }
-  if (content !== null && content.root.items.length > 0) throw new Error('Cannot change a model launch with conversation content');
-  if (existing?.endpoint !== undefined || existing?.modelId !== undefined) throw new Error('The chat settings were changed');
+  if (content !== null && content.root.items.length > 0) {
+    throw new Error('Cannot change a model launch with conversation content');
+  }
+  if (existing?.endpoint !== undefined || existing?.modelId !== undefined) {
+    throw new Error('The chat settings were changed');
+  }
   let chatGroup: ChatGroup;
   let createChatGroup = false;
   switch (launch?.phase) {
@@ -130,17 +159,26 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
   case undefined: case 'active': {
     switch (mode) {
     case 'create-or-resume':
-      if (existing !== null || content !== null || containsChat({ hierarchy, chatId, chatGroupId: undefined })) throw new Error('The model launch chat ID is already in use');
+      if (existing !== null || content !== null || containsChat({ hierarchy, chatId, chatGroupId: undefined })) {
+        throw new Error('The model launch chat ID is already in use');
+      }
       break;
     case 'retarget': {
       if (launch === undefined || existing === null || content === null || expectedTarget === undefined
         || JSON.stringify(launch.target) !== JSON.stringify(expectedTarget)
-        || !containsChat({ hierarchy, chatId, chatGroupId: launch.chatGroupId })) throw new Error('The model launch changed before selecting a model');
+        || !containsChat({ hierarchy, chatId, chatGroupId: launch.chatGroupId })) {
+        throw new Error('The model launch changed before selecting a model');
+      }
       const previous = await provider.loadChatGroup({ id: launch.chatGroupId });
-      if (previous === null || !matchesModel({ chatGroup: previous, modelId: expectedTarget.modelId })) throw new Error('The chat group settings changed');
+      if (previous === null || !matchesModel({ chatGroup: previous, modelId: expectedTarget.modelId })) {
+        throw new Error('The chat group settings changed');
+      }
       break;
     }
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
     }
     // A namespaced existing ID, not a display name or added persistence field,
     // identifies automatically created chat groups. Manual groups are untouched.
@@ -153,7 +191,9 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     const primaryId = toChatGroupId({ raw: prefix });
     const primary = reusable === undefined ? await provider.loadChatGroup({ id: primaryId }) : undefined;
     const id = primary == null ? primaryId : toChatGroupId({ raw: `${prefix}-${idToRaw({ id: newChatGroupId })}` });
-    if (reusable === undefined && primary != null && await provider.loadChatGroup({ id }) !== null) throw new Error('The model chat group ID is already in use');
+    if (reusable === undefined && primary != null && await provider.loadChatGroup({ id }) !== null) {
+      throw new Error('The model chat group ID is already in use');
+    }
     chatGroup = reusable ?? {
       id,
       name: chatGroupName,
@@ -170,45 +210,69 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     break;
   }
   case 'detached': throw new Error('The model launch chat was removed');
-  default: { const exhaustive: never = launch!.phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = launch!.phase;
+    throw new Error(String(exhaustive));
   }
-  if (!matchesModel({ chatGroup, modelId: launch.target.modelId })) throw new Error('The reserved chat group settings changed');
-  if (createChatGroup) await provider.saveChatGroup({ chatGroup });
+  }
+  if (!matchesModel({ chatGroup, modelId: launch.target.modelId })) {
+    throw new Error('The reserved chat group settings changed');
+  }
+  if (createChatGroup) {
+    await provider.saveChatGroup({ chatGroup });
+  }
   if (existing === null) {
     const now = Date.now();
     await provider.saveChatMeta({ meta: { id: chatId, title: null, createdAt: now, updatedAt: now, debugEnabled: false } });
   }
-  if (content === null) await provider.saveChatContent({ id: chatId, content: { root: { items: [] }, currentLeafId: undefined } });
+  if (content === null) {
+    await provider.saveChatContent({ id: chatId, content: { root: { items: [] }, currentLeafId: undefined } });
+  }
   for (const item of hierarchy.items) {
     switch (item.type) {
-    case 'chat_group': item.chat_ids = item.chat_ids.filter(id => id !== chatId); break;
+    case 'chat_group': item.chat_ids = item.chat_ids.filter(id => id !== chatId);
+      break;
     case 'chat': break;
-    default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = item;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   hierarchy.items = hierarchy.items.filter(item => item.type !== 'chat' || item.id !== chatId);
   const destination = hierarchy.items.find(item => item.type === 'chat_group' && item.id === chatGroup.id);
-  if (destination === undefined) hierarchy.items.unshift({ type: 'chat_group', id: chatGroup.id, chat_ids: [chatId] });
-  else {
+  if (destination === undefined) {
+    hierarchy.items.unshift({ type: 'chat_group', id: chatGroup.id, chat_ids: [chatId] });
+  } else {
     switch (destination.type) {
-    case 'chat_group': destination.chat_ids.unshift(chatId); break;
+    case 'chat_group': destination.chat_ids.unshift(chatId);
+      break;
     case 'chat': throw new Error('Invalid chat group destination');
-    default: { const exhaustive: never = destination; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = destination;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   await provider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: hierarchy }) });
   session.set(chatId, { ...launch, phase: 'active' });
   const chat = await provider.loadChat({ id: chatId });
-  if (chat === null) throw new Error('The saved model launch chat could not be read');
+  if (chat === null) {
+    throw new Error('The saved model launch chat could not be read');
+  }
   return chat;
 }
 
 /** A same-session repair is never permission to undo an explicit removal. */
 export async function detachRemovedModelLaunchOwners({ provider, before: _before, after }: { provider: IStorageProvider, before: Hierarchy, after: Hierarchy }): Promise<void> {
   const session = sessions.get(provider);
-  if (session === undefined) return;
+  if (session === undefined) {
+    return;
+  }
   for (const [chatId, launch] of session) {
-    if (!containsChat({ hierarchy: after, chatId, chatGroupId: launch.chatGroupId })) session.set(chatId, { ...launch, phase: 'detached' });
+    if (!containsChat({ hierarchy: after, chatId, chatGroupId: launch.chatGroupId })) {
+      session.set(chatId, { ...launch, phase: 'detached' });
+    }
   }
 }
 

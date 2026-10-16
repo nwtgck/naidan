@@ -146,7 +146,9 @@ async function processSedLines({
   }: {
     phase: SedInputReadPhase;
   }): Promise<IteratorResult<SedTextLine>> => {
-    if (inputReadState !== undefined) inputReadState.phase = phase;
+    if (inputReadState !== undefined) {
+      inputReadState.phase = phase;
+    }
     return await iterator.next();
   };
 
@@ -176,7 +178,9 @@ async function processSedLines({
           path: action.path,
           writer,
         });
-        if (termination !== undefined) return termination;
+        if (termination !== undefined) {
+          return termination;
+        }
         break;
       }
       case "readFileLine":
@@ -212,7 +216,9 @@ async function processSedLines({
     } catch (error: unknown) {
       failures.push(error);
     }
-    if (failures.length === 1) throw failures[0];
+    if (failures.length === 1) {
+      throw failures[0];
+    }
     if (failures.length > 1) {
       throw new AggregateError(failures, "sed: failed to close input streams");
     }
@@ -243,7 +249,9 @@ async function processSedLines({
         patternSeparator: String.fromCharCode(delimiterByte),
         consumeNextLine: async () => {
           const next = await ensureLookahead();
-          if (next.done) return undefined;
+          if (next.done) {
+            return undefined;
+          }
           lineNumber += 1;
           const consumed = next.value;
           lookahead = undefined;
@@ -437,7 +445,9 @@ async function executeSedLine({
   let substitutionSucceeded = false;
 
   const flushPendingAppends = (): void => {
-    for (const pendingAppend of pendingAppends) actions.push(pendingAppend);
+    for (const pendingAppend of pendingAppends) {
+      actions.push(pendingAppend);
+    }
     pendingAppends.length = 0;
   };
   let commandIndex = 0;
@@ -743,8 +753,9 @@ async function executeSedLine({
       continue;
     }
     case "next": {
-      if (!quiet)
+      if (!quiet) {
         actions.push({ kind: "output", output: { ...patternSpace } });
+      }
       flushPendingAppends();
       const actionTermination = await flushActions({ actions });
       actions.length = 0;
@@ -951,10 +962,14 @@ async function executeSedLine({
     if (unbuffered && actions.length > 0) {
       const actionTermination = await flushActions({ actions });
       actions.length = 0;
-      if (actionTermination !== undefined) termination = actionTermination;
+      if (actionTermination !== undefined) {
+        termination = actionTermination;
+      }
     }
 
-    if (termination !== undefined) break;
+    if (termination !== undefined) {
+      break;
+    }
     if (deleted) {
       settleRanges({
         startIndex: commandIndex + 1,
@@ -968,7 +983,9 @@ async function executeSedLine({
   }
 
   const shouldFlushCycleOutput = (() => {
-    if (termination === undefined) return true;
+    if (termination === undefined) {
+      return true;
+    }
     switch (termination.kind) {
     case "quit":
       return true;
@@ -1082,12 +1099,16 @@ export const sedCommandImplementation: WeshCommandImplementation = {
         }
         }
       })();
-      if (rawValue === undefined) continue;
+      if (rawValue === undefined) {
+        continue;
+      }
       if (semantic.key === "expression") {
         scripts.push(rawValue);
         continue;
       }
-      if (semantic.key !== "scriptFile") continue;
+      if (semantic.key !== "scriptFile") {
+        continue;
+      }
       const scriptFile = rawValue;
       try {
         if (scriptFile.length === 0) {
@@ -1219,7 +1240,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
     const inPlaceSuffix = (() => {
       let suffix: string | undefined;
       for (const occurrence of parsed.deferred) {
-        if (occurrence.semantic.tag !== "in-place") continue;
+        if (occurrence.semantic.tag !== "in-place") {
+          continue;
+        }
         switch (occurrence.value.kind) {
         case "none":
           suffix = "";
@@ -1317,7 +1340,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
           characterLocaleMode,
           unbuffered,
         });
-        if (termination === undefined) return await finish({ exitCode: 0 });
+        if (termination === undefined) {
+          return await finish({ exitCode: 0 });
+        }
         switch (termination.kind) {
         case "quit":
         case "fatal":
@@ -1482,7 +1507,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             if (termination !== undefined) {
               switch (termination.kind) {
               case "quit":
-                if (exitCode === 0) exitCode = termination.exitCode;
+                if (exitCode === 0) {
+                  exitCode = termination.exitCode;
+                }
                 break;
               case "fatal":
                 exitCode = termination.exitCode;
@@ -1505,7 +1532,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
                 ? `sed: couldn't follow symlink ${file}: ${message}\n`
                 : `sed: ${file}: ${message}\n`,
             });
-            if (followSymlinks) break;
+            if (followSymlinks) {
+              break;
+            }
           }
         }
         await bufferedStdout.flush();
@@ -1513,7 +1542,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
       }
 
       inPlaceFileLoop: for (const file of files) {
-        if (file === undefined) continue;
+        if (file === undefined) {
+          continue;
+        }
 
         try {
           const lexicalFullPath = file.startsWith("/")
@@ -1561,7 +1592,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
             throw new Error(`Unhandled sed in-place input type: ${_ex}`);
           }
           }
-          if (exitCode === 4) break;
+          if (exitCode === 4) {
+            break;
+          }
 
           let temporary: Awaited<ReturnType<typeof createSedTemporaryFile>>;
           try {
@@ -1685,7 +1718,9 @@ export const sedCommandImplementation: WeshCommandImplementation = {
               }
 
               if (termination !== undefined) {
-                if (exitCode === 0) exitCode = termination.exitCode;
+                if (exitCode === 0) {
+                  exitCode = termination.exitCode;
+                }
                 break inPlaceFileLoop;
               }
             } catch (error: unknown) {

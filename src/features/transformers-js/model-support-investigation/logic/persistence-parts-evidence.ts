@@ -152,7 +152,9 @@ export function firstPersistencePartsMismatch({ expected, actual }: {
 }): number | undefined {
   const sharedLength = Math.min(expected.length, actual.length);
   for (let index = 0; index < sharedLength; index += 1) {
-    if (JSON.stringify(expected[index]) !== JSON.stringify(actual[index])) return index;
+    if (JSON.stringify(expected[index]) !== JSON.stringify(actual[index])) {
+      return index;
+    }
   }
   return expected.length === actual.length ? undefined : sharedLength;
 }

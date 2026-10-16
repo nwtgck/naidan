@@ -13,7 +13,9 @@ describe('Hugging Face range validation', () => {
   });
 
   it('does not promote 416 or other errors to a completed download', () => {
-    for (const status of [416, 404, 500]) expect(() => responseOffset({ status, headers: new Headers(), offset: 128, size: 128 })).toThrow();
+    for (const status of [416, 404, 500]) {
+      expect(() => responseOffset({ status, headers: new Headers(), offset: 128, size: 128 })).toThrow();
+    }
     expect(() => responseOffset({ status: 206, headers: new Headers({ 'content-range': 'bytes 24-127/128', 'content-length': '103' }), offset: 24, size: 128 })).toThrow();
   });
 });

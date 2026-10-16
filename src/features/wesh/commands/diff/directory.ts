@@ -430,7 +430,9 @@ function pairDirectoryEntries({
       leftEntries: leftEntries.get(key) ?? [],
       rightEntries: rightEntries.get(key) ?? [],
     });
-    for (const pair of groupedPairs) pairs.push(pair);
+    for (const pair of groupedPairs) {
+      pairs.push(pair);
+    }
   }
   return pairs;
 }
@@ -1073,7 +1075,9 @@ export async function compareDirectories({
 
     for (let index = childDirectories.length - 1; index >= 0; index--) {
       const child = childDirectories[index];
-      if (child !== undefined) pending.push(child);
+      if (child !== undefined) {
+        pending.push(child);
+      }
     }
   }
 

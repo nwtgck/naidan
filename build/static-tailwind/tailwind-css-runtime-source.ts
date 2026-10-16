@@ -33,7 +33,9 @@ export function createTailwindCssRegistry({ document, scheduleFlush }: {
   function placeStyleFirst({ style }: {
     style: HTMLStyleElement;
   }): HTMLStyleElement {
-    if (document.head.firstElementChild !== style) document.head.prepend(style);
+    if (document.head.firstElementChild !== style) {
+      document.head.prepend(style);
+    }
     return style;
   }
 
@@ -43,7 +45,9 @@ export function createTailwindCssRegistry({ document, scheduleFlush }: {
       ? styleElement
       : existingStyles[0];
     for (const existing of existingStyles) {
-      if (existing !== selected) existing.remove();
+      if (existing !== selected) {
+        existing.remove();
+      }
     }
     if (selected !== undefined) {
       styleElement = selected;
@@ -65,18 +69,24 @@ export function createTailwindCssRegistry({ document, scheduleFlush }: {
           current === undefined
           || current.version < version
           || (current.version === version && current.moduleId < moduleId)
-        ) fragmentByOrder.set(order, { moduleId, order, css, version });
+        ) {
+          fragmentByOrder.set(order, { moduleId, order, css, version });
+        }
       }
     }
     const fragments = [...fragmentByOrder.values()]
       .sort((left, right) => left.order - right.order || (left.moduleId < right.moduleId ? -1 : left.moduleId > right.moduleId ? 1 : 0));
     const css = fragments.map(({ css: fragmentCss }) => fragmentCss).join('\n');
     const style = ensureStyleElement();
-    if (style.textContent !== css) style.textContent = css;
+    if (style.textContent !== css) {
+      style.textContent = css;
+    }
   }
 
   function requestFlush(): void {
-    if (scheduled) return;
+    if (scheduled) {
+      return;
+    }
     scheduled = true;
     scheduleFlush({ callback: flush });
   }
@@ -109,7 +119,9 @@ export function createTailwindCssRegistry({ document, scheduleFlush }: {
         ));
         registrationVersion += 1;
         modules.set(moduleId, { fragments: normalized, version: registrationVersion });
-        if (changesVisibleOrder) requestFlush();
+        if (changesVisibleOrder) {
+          requestFlush();
+        }
         return;
       }
       registrationVersion += 1;
@@ -117,7 +129,9 @@ export function createTailwindCssRegistry({ document, scheduleFlush }: {
       requestFlush();
     },
     unregister({ moduleId }) {
-      if (!modules.delete(moduleId)) return;
+      if (!modules.delete(moduleId)) {
+        return;
+      }
       requestFlush();
     },
     flush,

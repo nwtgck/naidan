@@ -19,12 +19,14 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const link of links.splice(0)) {
-    link.port1.close();link.port2.close();
+    link.port1.close();
+    link.port2.close();
   }
 });
 
 function connect() {
-  const link = new MessageChannel();links.push(link);
+  const link = new MessageChannel();
+  links.push(link);
   exposeWorkerRemote<LlamaCppWorkerApi>({ api: createWorkerApi(), endpoint: link.port1 });
   return wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: link.port2 });
 }
@@ -56,7 +58,9 @@ describe('structured generation over the actual Comlink MessageChannel transport
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
-        if (event.type === 'tool_call_draft') await gate.promise;
+        if (event.type === 'tool_call_draft') {
+          await gate.promise;
+        }
       },
     }), workerProxy({ value: () => {} }));
     await vi.waitFor(() => expect(events).toHaveLength(2));
@@ -69,39 +73,58 @@ describe('structured generation over the actual Comlink MessageChannel transport
   });
 
   it('acknowledges cloned reasoning and text before the native producer advances', async () => {
-    const gate = Promise.withResolvers<void>();let stage = 0;const events: GenerationEvent[] = [];
+    const gate = Promise.withResolvers<void>();
+    let stage = 0;
+    const events: GenerationEvent[] = [];
     native.generate.mockImplementation(async ({ onEvent }) => {
-      stage = 1;await onEvent({ event: { type: 'reasoning', text: ' R\n' } });stage = 2;
-      await onEvent({ event: { type: 'text', text: '<think>literal</think>  ' } });stage = 3;
+      stage = 1;
+      await onEvent({ event: { type: 'reasoning', text: ' R\n' } });
+      stage = 2;
+      await onEvent({ event: { type: 'text', text: '<think>literal</think>  ' } });
+      stage = 3;
       return { content: '<think>literal</think>  ', reasoningContent: ' R\n', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
     using _cleanupResource = {
       [Symbol.dispose]() {
-        gate.resolve();releaseWorkerRemote({ remote });
+        gate.resolve();
+        releaseWorkerRemote({ remote });
       },
     };
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
-        events.push(event);if (event.type === 'reasoning') await gate.promise;
+        events.push(event);
+        if (event.type === 'reasoning') {
+          await gate.promise;
+        }
       },
     }), workerProxy({ value: () => {} }));
-    await vi.waitFor(() => expect(events).toHaveLength(1));expect(stage).toBe(1);gate.resolve();
-    expect(await pending).toMatchObject({ content: '<think>literal</think>  ', reasoningContent: ' R\n' });expect(stage).toBe(3);expect(events.map(e => e.type)).toEqual(['reasoning', 'text']);
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    expect(stage).toBe(1);
+    gate.resolve();
+    expect(await pending).toMatchObject({ content: '<think>literal</think>  ', reasoningContent: ' R\n' });
+    expect(stage).toBe(3);
+    expect(events.map(e => e.type)).toEqual(['reasoning', 'text']);
   });
 
   it('delivers accepted content and confirmed calls during cancellation before closing the RPC', async () => {
-    const gate = Promise.withResolvers<void>();let signal: AbortSignal | undefined;const events: GenerationEvent[] = [];
+    const gate = Promise.withResolvers<void>();
+    let signal: AbortSignal | undefined;
+    const events: GenerationEvent[] = [];
     const call = { id: 'c', type: 'function' as const, function: { name: 'f', arguments: ' {"a":1} ' } };
     native.generate.mockImplementation(async args => {
-      signal = args.signal;await args.onEvent({ event: { type: 'text', text: 'accepted' } });await gate.promise;
-      await args.onEvent({ event: { type: 'tool_call_start', index: 0 } });await args.onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });
+      signal = args.signal;
+      await args.onEvent({ event: { type: 'text', text: 'accepted' } });
+      await gate.promise;
+      await args.onEvent({ event: { type: 'tool_call_start', index: 0 } });
+      await args.onEvent({ event: { type: 'tool_call', index: 0, toolCall: call } });
       return { content: 'accepted', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
     });
     const remote = connect();
     using _cleanupResource = {
       [Symbol.dispose]() {
-        gate.resolve();releaseWorkerRemote({ remote });
+        gate.resolve();
+        releaseWorkerRemote({ remote });
       },
     };
     const pending = remote.generate(request(), workerProxy({
@@ -109,14 +132,19 @@ describe('structured generation over the actual Comlink MessageChannel transport
         events.push(event);
       },
     }), workerProxy({ value: () => {} }));
-    await vi.waitFor(() => expect(events).toHaveLength(1));await remote.cancelGeneration({ generationId: 1 });expect(signal?.aborted).toBe(true);
-    gate.resolve();await pending;expect(events).toEqual([{ type: 'text', text: 'accepted' }, { type: 'tool_call_start', index: 0 }, { type: 'tool_call', index: 0, toolCall: call }]);
+    await vi.waitFor(() => expect(events).toHaveLength(1));
+    await remote.cancelGeneration({ generationId: 1 });
+    expect(signal?.aborted).toBe(true);
+    gate.resolve();
+    await pending;
+    expect(events).toEqual([{ type: 'text', text: 'accepted' }, { type: 'tool_call_start', index: 0 }, { type: 'tool_call', index: 0, toolCall: call }]);
   });
 
   it('propagates a failed content acknowledgement without sending later output or retaining the active operation', async () => {
     let after = false;
     native.generate.mockImplementationOnce(async ({ onEvent }) => {
-      await onEvent({ event: { type: 'text', text: 'A' } });after = true;
+      await onEvent({ event: { type: 'text', text: 'A' } });
+      after = true;
       return { content: 'A', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
@@ -136,15 +164,19 @@ describe('structured generation over the actual Comlink MessageChannel transport
   });
 
   it.each(['complete', 'cancel', 'delivery-failure'] as const)('retains request ownership across paired delivery/decode on %s', async outcome => {
-    const started = Promise.withResolvers<void>(); const nativeGate = Promise.withResolvers<void>(); const deliveryGate = Promise.withResolvers<void>();
-    let advanced = false; let returned = false;
+    const started = Promise.withResolvers<void>();
+    const nativeGate = Promise.withResolvers<void>();
+    const deliveryGate = Promise.withResolvers<void>();
+    let advanced = false;
+    let returned = false;
     const events: GenerationEvent[] = [];
     native.generate.mockImplementationOnce(async ({ onEvent, signal }) => {
       const pair = createDeliveryDecode({ mode: 'overlap', signal, now: undefined });
       await pair.run({
         deliver: () => onEvent({ event: { type: 'text', text: 'first' } }),
         decode: async () => {
-          started.resolve(); await nativeGate.promise;
+          started.resolve();
+          await nativeGate.promise;
         },
       });
       advanced = true;
@@ -153,7 +185,8 @@ describe('structured generation over the actual Comlink MessageChannel transport
     const remote = connect();
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
-        events.push(event); await deliveryGate.promise;
+        events.push(event);
+        await deliveryGate.promise;
       },
     }), workerProxy({ value: () => {} }));
     const observed = pending.then(value => ({ type: 'ok' as const, value }), error => ({ type: 'error' as const, error: error as Error })).finally(() => {
@@ -161,21 +194,35 @@ describe('structured generation over the actual Comlink MessageChannel transport
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        nativeGate.resolve(); deliveryGate.resolve(); await observed; releaseWorkerRemote({ remote });
+        nativeGate.resolve();
+        deliveryGate.resolve();
+        await observed;
+        releaseWorkerRemote({ remote });
       },
     };
-    await started.promise; await vi.waitFor(() => expect(events).toHaveLength(1));
+    await started.promise;
+    await vi.waitFor(() => expect(events).toHaveLength(1));
     await expect(remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
-    if (outcome === 'cancel') await remote.cancelGeneration({ generationId: 1 });
-    if (outcome === 'delivery-failure') deliveryGate.reject(new Error('private receiver details')); else deliveryGate.resolve();
+    if (outcome === 'cancel') {
+      await remote.cancelGeneration({ generationId: 1 });
+    }
+    if (outcome === 'delivery-failure') {
+      deliveryGate.reject(new Error('private receiver details'));
+    } else {
+      deliveryGate.resolve();
+    }
     await new Promise<void>(resolve => setTimeout(resolve, 5));
-    expect(advanced).toBe(false); expect(returned).toBe(false);
+    expect(advanced).toBe(false);
+    expect(returned).toBe(false);
     nativeGate.resolve();
     const result = await observed;
-    if (outcome === 'complete') expect(result).toMatchObject({ type: 'ok', value: { content: 'first' } });
-    else {
+    if (outcome === 'complete') {
+      expect(result).toMatchObject({ type: 'ok', value: { content: 'first' } });
+    } else {
       expect(result.type).toBe('error');
-      if (result.type === 'error') expect(result.error.message).toContain(outcome === 'cancel' ? 'aborted' : 'worker-failed');
+      if (result.type === 'error') {
+        expect(result.error.message).toContain(outcome === 'cancel' ? 'aborted' : 'worker-failed');
+      }
     }
     expect(events).toEqual([{ type: 'text', text: 'first' }]);
     native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });

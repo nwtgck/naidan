@@ -23,16 +23,24 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
   let assistant: AssistantMessageNode | undefined;
   let tool: ToolMessageNode | undefined;
   function recordAppliedContent(): void {
-    if (assistant !== undefined) trace.observeAssistant({ message: assistant });
+    if (assistant !== undefined) {
+      trace.observeAssistant({ message: assistant });
+    }
     for (const part of tool?.parts ?? []) {
-      if (part.result.status === 'executing' || settledTools.has(part)) continue;
+      if (part.result.status === 'executing' || settledTools.has(part)) {
+        continue;
+      }
       const result = part.result;
       switch (result.status) {
       case 'success':
         switch (result.content.type) {
-        case 'text': trace.callbacks.onToolResult({ id: result.toolCallId, result: { status: 'success', content: result.content.text } }); break;
+        case 'text': trace.callbacks.onToolResult({ id: result.toolCallId, result: { status: 'success', content: result.content.text } });
+          break;
         case 'binary_object': throw new Error('Capture tool content must be inline');
-        default: { const exhaustive: never = result.content; throw new Error('Unhandled tool content: ' + exhaustive); }
+        default: {
+          const exhaustive: never = result.content;
+          throw new Error('Unhandled tool content: ' + exhaustive);
+        }
         }
         break;
       case 'error':
@@ -40,7 +48,10 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
         // omits error messages; it must not make those strings replay authority.
         trace.callbacks.onToolResult({ id: result.toolCallId, result: { status: 'error', code: result.error.code, message: '' } });
         break;
-      default: { const exhaustive: never = result; throw new Error('Unhandled captured tool result: ' + exhaustive); }
+      default: {
+        const exhaustive: never = result;
+        throw new Error('Unhandled captured tool result: ' + exhaustive);
+      }
       }
       settledTools.add(part);
     }
@@ -81,7 +92,8 @@ export async function generateProductionProviderCapture({ provider, modelId, inp
           modelId: undefined,
           lmParameters: undefined,
         };
-        generated.push(tool); settledTools.clear();
+        generated.push(tool);
+        settledTools.clear();
         return tool;
       },
       buildMessages: ({ excludedMessageId }) => [

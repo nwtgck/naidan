@@ -153,7 +153,8 @@ it('keeps a read error primary even when cancellation rejects and reader release
 it('does not certify successful reading when the only failure is reader release', async () => {
   const stream = new ReadableStream<Uint8Array>({
     start: controller => {
-      controller.enqueue(originalBytes); controller.close();
+      controller.enqueue(originalBytes);
+      controller.close();
     },
   });
   const response = new Response(stream, { headers: { 'Content-Type': 'text/javascript' } });
@@ -162,7 +163,8 @@ it('does not certify successful reading when the only failure is reader release'
   const failure = new Error('fixture release failed');
   const nativeRelease = reader.releaseLock.bind(reader);
   vi.spyOn(reader, 'releaseLock').mockImplementation(() => {
-    nativeRelease(); throw failure;
+    nativeRelease();
+    throw failure;
   });
   const h = guardedResponse({ response });
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toBe(failure);

@@ -21,7 +21,9 @@ const FIND_EXPRESSION_TOKENS = new Set([
 ]);
 
 function isFindExpressionToken({ token }: { token: string }): boolean {
-  if (FIND_EXPRESSION_TOKENS.has(token)) return true;
+  if (FIND_EXPRESSION_TOKENS.has(token)) {
+    return true;
+  }
   return token.startsWith('-') && token !== '-';
 }
 
@@ -35,8 +37,12 @@ export function parseFindLikeArgv({
 
   while (index < args.length) {
     const token = args[index];
-    if (token === undefined) break;
-    if (isFindExpressionToken({ token })) break;
+    if (token === undefined) {
+      break;
+    }
+    if (isFindExpressionToken({ token })) {
+      break;
+    }
     paths.push(token);
     index += 1;
   }

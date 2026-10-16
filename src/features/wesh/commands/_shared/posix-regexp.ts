@@ -49,12 +49,18 @@ function consumeBracketSubexpression({
   source: string,
   startIndex: number,
 }): { marker: PosixBracketSubexpressionMarker, content: string, endIndex: number } | undefined {
-  if (source[startIndex] !== '[') return undefined;
+  if (source[startIndex] !== '[') {
+    return undefined;
+  }
   const marker = source[startIndex + 1];
-  if (marker !== ':' && marker !== '.' && marker !== '=') return undefined;
+  if (marker !== ':' && marker !== '.' && marker !== '=') {
+    return undefined;
+  }
   const closing = `${marker}]`;
   const contentEnd = source.indexOf(closing, startIndex + 2);
-  if (contentEnd < 0) return undefined;
+  if (contentEnd < 0) {
+    return undefined;
+  }
   return {
     marker,
     content: source.slice(startIndex + 2, contentEnd),
@@ -78,8 +84,12 @@ function consumeBracketExpression({
   startIndex: number,
 }): { source: string, endIndex: number } | undefined {
   let index = startIndex + 1;
-  if (source[index] === '^') index += 1;
-  if (source[index] === ']') index += 1;
+  if (source[index] === '^') {
+    index += 1;
+  }
+  if (source[index] === ']') {
+    index += 1;
+  }
 
   while (index < source.length) {
     const subexpression = consumeBracketSubexpression({ source, startIndex: index });
@@ -183,7 +193,9 @@ function translateBracketExpression({
     if (subexpression !== undefined && subexpression.endIndex < contentEnd) {
       switch (subexpression.marker) {
       case ':': {
-        if (!translatePosixClasses) break;
+        if (!translatePosixClasses) {
+          break;
+        }
         const rawName = subexpression.content;
         const name = rawName.toLowerCase() as PosixCharacterClassName;
         const replacement = characterClasses[name];
@@ -350,9 +362,15 @@ function validatePosixBackreferences({
 
     if (source[index] === '\\') {
       const next = source[index + 1];
-      if (next === undefined) continue;
-      if (/^[1-9]$/u.test(next)) references.push(Number(next));
-      if (syntax === 'basic' && next === '(') captureGroupCount += 1;
+      if (next === undefined) {
+        continue;
+      }
+      if (/^[1-9]$/u.test(next)) {
+        references.push(Number(next));
+      }
+      if (syntax === 'basic' && next === '(') {
+        captureGroupCount += 1;
+      }
       index += 1;
       continue;
     }
@@ -376,17 +394,23 @@ function consumeJavaScriptRegexEscape({
   startIndex: number,
 }): number {
   const escaped = source[startIndex + 1];
-  if (escaped === undefined) return startIndex + 1;
+  if (escaped === undefined) {
+    return startIndex + 1;
+  }
   if (
     (escaped === 'p' || escaped === 'P' || escaped === 'u' || escaped === 'x')
     && source[startIndex + 2] === '{'
   ) {
     const closingBrace = source.indexOf('}', startIndex + 3);
-    if (closingBrace >= 0) return closingBrace + 1;
+    if (closingBrace >= 0) {
+      return closingBrace + 1;
+    }
   }
   if (escaped === 'k' && source[startIndex + 2] === '<') {
     const closingAngle = source.indexOf('>', startIndex + 3);
-    if (closingAngle >= 0) return closingAngle + 1;
+    if (closingAngle >= 0) {
+      return closingAngle + 1;
+    }
   }
   return startIndex + 2;
 }
@@ -399,14 +423,20 @@ function consumeJavaScriptRegexClass({
   startIndex: number,
 }): number {
   let index = startIndex + 1;
-  if (source[index] === '^') index += 1;
-  if (source[index] === ']') index += 1;
+  if (source[index] === '^') {
+    index += 1;
+  }
+  if (source[index] === ']') {
+    index += 1;
+  }
   while (index < source.length) {
     if (source[index] === '\\') {
       index = consumeJavaScriptRegexEscape({ source, startIndex: index });
       continue;
     }
-    if (source[index] === ']') return index + 1;
+    if (source[index] === ']') {
+      return index + 1;
+    }
     index += 1;
   }
   return source.length;
@@ -423,9 +453,13 @@ function consumeJavaScriptRegexQuantifier({
   if (character === '*' || character === '+' || character === '?') {
     return { endIndex: startIndex + 1, text: character };
   }
-  if (character !== '{') return undefined;
+  if (character !== '{') {
+    return undefined;
+  }
   const match = /^\{\d+(?:,\d*)?\}/u.exec(source.slice(startIndex));
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   return {
     endIndex: startIndex + match[0].length,
     text: match[0],
@@ -492,7 +526,9 @@ function normalizeRepeatedJavaScriptRegexQuantifiers({
     let index = nextIndex;
     while (index < source.length) {
       const quantifier = consumeJavaScriptRegexQuantifier({ source, startIndex: index });
-      if (quantifier === undefined) break;
+      if (quantifier === undefined) {
+        break;
+      }
       quantifiedAtom = quantifierCount === 0
         ? [quantifiedAtom, quantifier.text]
         : ['(?:', quantifiedAtom, ')', quantifier.text];
@@ -1049,7 +1085,9 @@ export function findPosixLeftmostLongestMatch({
   const searchRegex = new RegExp(regex.source, `${baseFlags}g`);
   searchRegex.lastIndex = startIndex;
   const firstMatch = searchRegex.exec(source);
-  if (firstMatch === null || firstMatch.index === undefined) return undefined;
+  if (firstMatch === null || firstMatch.index === undefined) {
+    return undefined;
+  }
 
   const leftmostIndex = firstMatch.index;
   const canUseGreedyFastPath = !regex.source.includes('|')
@@ -1079,7 +1117,9 @@ export function findPosixLeftmostLongestMatch({
         endIndex,
         flags: baseFlags,
       });
-      if (exactMatch === undefined) continue;
+      if (exactMatch === undefined) {
+        continue;
+      }
 
       return {
         index: leftmostIndex,
@@ -1098,7 +1138,9 @@ export function findPosixLeftmostLongestMatch({
     const endIndex = candidateEnds[candidateIndex]!;
     exactEndRegex.lastIndex = endIndex;
     const exactEndMatch = exactEndRegex.exec(source);
-    if (exactEndMatch === null) continue;
+    if (exactEndMatch === null) {
+      continue;
+    }
     const exactMatch = matchExactRange({
       regex,
       source,
@@ -1106,7 +1148,9 @@ export function findPosixLeftmostLongestMatch({
       endIndex,
       flags: baseFlags,
     });
-    if (exactMatch === undefined) continue;
+    if (exactMatch === undefined) {
+      continue;
+    }
 
     return {
       index: leftmostIndex,
@@ -1131,9 +1175,13 @@ export function splitByPosixLeftmostLongestMatches({
 
   while (searchIndex <= source.length) {
     const match = findPosixLeftmostLongestMatch({ regex, source, startIndex: searchIndex });
-    if (match === undefined) break;
+    if (match === undefined) {
+      break;
+    }
     if (match.text.length === 0) {
-      if (match.index >= source.length) break;
+      if (match.index >= source.length) {
+        break;
+      }
       const codePoint = source.codePointAt(match.index);
       searchIndex = match.index + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
       continue;

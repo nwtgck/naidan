@@ -25,7 +25,10 @@ function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
 const releases: ReturnType<typeof vi.fn>[] = [];
 
 beforeEach(() => {
-  releases.length = 0; host.load.mockReset(); host.loadAudio.mockReset(); let pointer = 100n;
+  releases.length = 0;
+  host.load.mockReset();
+  host.loadAudio.mockReset();
+  let pointer = 100n;
   host.core = {
     api: {
       llama_model_default_params: vi.fn(async () => {}),
@@ -73,7 +76,8 @@ beforeEach(() => {
     })),
   };
   host.load.mockImplementation(async ({ debug }) => {
-    const release = vi.fn(async () => {}); releases.push(release);
+    const release = vi.fn(async () => {});
+    releases.push(release);
     return { pointer: BigInt(30 + releases.length), debug, release };
   });
 });
@@ -88,7 +92,10 @@ afterEach(async () => {
 
 describe('resident projector debug changes', () => {
   it('records failed model-load capacity without replacing the native error', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     core.module.HEAPU8 = new Uint8Array(65536);
     const failure = new Error('native load failure');
     vi.mocked(core.api.llama_model_load_from_file).mockImplementation(async () => {
@@ -108,7 +115,10 @@ describe('resident projector debug changes', () => {
   });
 
   it('records successful preparation and retained capacity when releasing the model', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     core.module.HEAPU8 = new Uint8Array(65536);
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
@@ -124,9 +134,16 @@ describe('resident projector debug changes', () => {
   });
 
   it('caches request-invariant native chat metadata and configures a wider logical prefill batch', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(first.vocab).toBe(11n); expect(first.contextTokens).toBe(64); expect(first.memory).toBe(21n); expect(first.nativeRollbackTokens).toBe(0); expect(first.prefillBatchTokens).toBe(512);
+    expect(first.vocab).toBe(11n);
+    expect(first.contextTokens).toBe(64);
+    expect(first.memory).toBe(21n);
+    expect(first.nativeRollbackTokens).toBe(0);
+    expect(first.prefillBatchTokens).toBe(512);
     const metadataCalls = {
       vocab: vi.mocked(core.api.llama_model_get_vocab).mock.calls.length,
       context: vi.mocked(core.api.llama_n_ctx).mock.calls.length,
@@ -135,7 +152,11 @@ describe('resident projector debug changes', () => {
       batch: vi.mocked(core.api.llama_n_batch).mock.calls.length,
     };
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(next.vocab).toBe(first.vocab); expect(next.contextTokens).toBe(first.contextTokens); expect(next.memory).toBe(first.memory); expect(next.nativeRollbackTokens).toBe(first.nativeRollbackTokens); expect(next.prefillBatchTokens).toBe(first.prefillBatchTokens);
+    expect(next.vocab).toBe(first.vocab);
+    expect(next.contextTokens).toBe(first.contextTokens);
+    expect(next.memory).toBe(first.memory);
+    expect(next.nativeRollbackTokens).toBe(first.nativeRollbackTokens);
+    expect(next.prefillBatchTokens).toBe(first.prefillBatchTokens);
     expect(vi.mocked(core.api.llama_model_get_vocab).mock.calls.length).toBe(metadataCalls.vocab);
     expect(vi.mocked(core.api.llama_n_ctx).mock.calls.length).toBe(metadataCalls.context);
     expect(vi.mocked(core.api.llama_get_memory).mock.calls.length).toBe(metadataCalls.memory);
@@ -146,10 +167,14 @@ describe('resident projector debug changes', () => {
   });
 
   it('falls back to the conservative logical prefill batch before shrinking the context', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.mocked(core.api.llama_init_from_model).mockResolvedValueOnce(0n).mockResolvedValueOnce(20n);
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(session.contextTokens).toBe(64); expect(session.prefillBatchTokens).toBe(128);
+    expect(session.contextTokens).toBe(64);
+    expect(session.prefillBatchTokens).toBe(128);
     expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
     const nBatchValues = vi.mocked(core.setField).mock.calls
       .filter(([args]) => args.name === 'llama_context_params' && args.field === 'n_batch')
@@ -158,14 +183,20 @@ describe('resident projector debug changes', () => {
   });
 
   it('uses the actual native batch capacity when it is smaller than requested', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.mocked(core.api.llama_n_batch).mockResolvedValue(64);
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(session.prefillBatchTokens).toBe(64);
   });
 
   it.each([0, -1, NaN, Infinity, 1.5])('rejects invalid native batch capacity %s before generation', async capacity => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.mocked(core.api.llama_n_batch).mockResolvedValue(capacity);
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('runtime-error');
     expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n);
@@ -174,7 +205,10 @@ describe('resident projector debug changes', () => {
   });
 
   it('preserves the conservative logical batch for audio contexts', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     await prepareAudioSession({
       request: request({ debug: 'off' }),
       contextTokens: 64,
@@ -186,7 +220,10 @@ describe('resident projector debug changes', () => {
   });
 
   it('frees model weights even when releasing the cached native template throws', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     vi.mocked(core.chat.releaseModel).mockImplementationOnce(() => {
       throw new Error('template cleanup');
@@ -197,21 +234,30 @@ describe('resident projector debug changes', () => {
   });
 
   it.each([true, false])('uses the effective native sliding window when swa_full is %s', async fullRetention => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.spyOn(core, 'bytes').mockReturnValue(new Uint8Array(8).fill(fullRetention ? 1 : 0));
     vi.mocked(core.api.llama_model_n_swa).mockResolvedValue(128);
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(session.slidingWindow).toBe(fullRetention ? 0 : 128);
-    if (fullRetention) expect(core.api.llama_model_n_swa).not.toHaveBeenCalled();
-    else expect(core.api.llama_model_n_swa).toHaveBeenCalledExactlyOnceWith(session.model);
+    if (fullRetention) {
+      expect(core.api.llama_model_n_swa).not.toHaveBeenCalled();
+    } else {
+      expect(core.api.llama_model_n_swa).toHaveBeenCalledExactlyOnceWith(session.model);
+    }
   });
 
   it.each(['release', 'cancel'] as const)('disposes an owned host checkpoint exactly once on %s', async operation => {
     const session = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     session.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
     const free = vi.spyOn(session.core, 'free');
-    if (operation === 'release') await releaseSession({ releaseRuntime: false });
-    else await expect(prepareSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
+    if (operation === 'release') {
+      await releaseSession({ releaseRuntime: false });
+    } else {
+      await expect(prepareSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
+    }
     expect(session.cache.checkpoint).toBeUndefined();
     expect(free.mock.calls.filter(([args]) => args.pointer === 999n)).toHaveLength(1);
     await releaseSession({ releaseRuntime: true });
@@ -220,55 +266,78 @@ describe('resident projector debug changes', () => {
 
   it('recreates only the projector and preserves the LM context and text KV state', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    first.cache.tokens.push(1, 2, 3); first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
+    first.cache.tokens.push(1, 2, 3);
+    first.cache.validity = 'valid';
+    first.cache.initialMemoryState = 'unknown';
     const next = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
-    expect(next.model).toBe(first.model); expect(next.context).toBe(first.context); expect(next.cache).toBe(first.cache);
-    expect(next.cache).toEqual({ tokens: [1, 2, 3], validity: 'valid', checkpoint: undefined, initialMemoryState: 'unknown' }); expect(next.projector).not.toBe(first.projector);
+    expect(next.model).toBe(first.model);
+    expect(next.context).toBe(first.context);
+    expect(next.cache).toBe(first.cache);
+    expect(next.cache).toEqual({ tokens: [1, 2, 3], validity: 'valid', checkpoint: undefined, initialMemoryState: 'unknown' });
+    expect(next.projector).not.toBe(first.projector);
     expect(releases[0]).toHaveBeenCalledOnce();
     await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     expect(host.load).toHaveBeenCalledTimes(2);
     await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(releases[1]).toHaveBeenCalledOnce(); expect(host.load.mock.calls.map(([args]) => args.debug)).toEqual(['off', 'on', 'off']);
-    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce(); expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
-    expect(first.sequenceRemoval).toBe('partial'); expect(next.sequenceRemoval).toBe('partial');
+    expect(releases[1]).toHaveBeenCalledOnce();
+    expect(host.load.mock.calls.map(([args]) => args.debug)).toEqual(['off', 'on', 'off']);
+    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(first.sequenceRemoval).toBe('partial');
+    expect(next.sequenceRemoval).toBe('partial');
     expect(host.core?.api.llama_decode).toHaveBeenCalledOnce();
-    expect(host.core?.api.llama_free).not.toHaveBeenCalled(); expect(host.core?.api.llama_model_free).not.toHaveBeenCalled();
+    expect(host.core?.api.llama_free).not.toHaveBeenCalled();
+    expect(host.core?.api.llama_model_free).not.toHaveBeenCalled();
   });
 
   it('can retry a failed projector replacement without discarding the resident LM or KV', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    first.cache.tokens.push(7); first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
+    first.cache.tokens.push(7);
+    first.cache.validity = 'valid';
+    first.cache.initialMemoryState = 'unknown';
     host.load.mockRejectedValueOnce(new Error('projector initialization failed'));
     await expect(prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} })).rejects.toThrow();
     expect(releases[0]).toHaveBeenCalledOnce();
     const retry = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(retry.context).toBe(first.context); expect(retry.cache).toEqual({ tokens: [7], validity: 'valid', checkpoint: undefined, initialMemoryState: 'unknown' });
-    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce(); expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(retry.context).toBe(first.context);
+    expect(retry.cache).toEqual({ tokens: [7], validity: 'valid', checkpoint: undefined, initialMemoryState: 'unknown' });
+    expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(host.core?.api.llama_init_from_model).toHaveBeenCalledOnce();
   });
 
   it('does not replace the projector for an already cancelled request', async () => {
     const first = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
-    expect(host.load).toHaveBeenCalledOnce(); expect(releases[0]).not.toHaveBeenCalled();
+    expect(host.load).toHaveBeenCalledOnce();
+    expect(releases[0]).not.toHaveBeenCalled();
     const next = await prepareSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
     expect(next.projector).toBe(first.projector);
   });
 
   it('keeps a cleaned context available after a declined capability probe', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.mocked(core.api.llama_decode).mockResolvedValueOnce(2);
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(first.sequenceRemoval).toBe('none'); expect(next.sequenceRemoval).toBe('none');
-    expect(first.context).toBe(next.context); expect(first.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
+    expect(first.sequenceRemoval).toBe('none');
+    expect(next.sequenceRemoval).toBe('none');
+    expect(first.context).toBe(next.context);
+    expect(first.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
     expect(core.api.llama_decode).toHaveBeenCalledOnce();
     expect(core.api.llama_memory_clear).toHaveBeenCalledTimes(2);
     expect(core.api.llama_synchronize).toHaveBeenCalledOnce();
-    expect(core.api.llama_free).not.toHaveBeenCalled(); expect(core.api.llama_model_free).not.toHaveBeenCalled();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+    expect(core.api.llama_model_free).not.toHaveBeenCalled();
   });
 
   it('releases a new context whose native capability probe traps and can retry', async () => {
-    const core = host.core; if (!core) throw new Error('Expected native fixture');
+    const core = host.core;
+    if (!core) {
+      throw new Error('Expected native fixture');
+    }
     vi.mocked(core.api.llama_decode).mockRejectedValueOnce(new WebAssembly.RuntimeError('fixture trap'));
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow();
     expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n);
@@ -284,7 +353,8 @@ describe('resident projector debug changes', () => {
 
 describe('dedicated audio context configuration', () => {
   it('uses embeddings, bounded context and no chat cache-removal probe', async () => {
-    const core = host.core!; vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
+    const core = host.core!;
+    vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
     const loaded = await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 4096, audioBackend: 'cpu', onProgress: () => {}, signal: undefined });
     expect(loaded.projector).not.toBe(0n);
     expect(core.setField).toHaveBeenCalledWith(expect.objectContaining({ name: 'llama_context_params', field: 'n_ctx', value: 4096 }));
@@ -292,17 +362,21 @@ describe('dedicated audio context configuration', () => {
     expect(core.setField).toHaveBeenCalledWith(expect.objectContaining({ name: 'llama_context_params', field: 'pooling_type' }));
     expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'cpu' }));
     expect(host.load).toHaveBeenCalledOnce(); // The test's audio loader delegates to the common fixture.
-    expect(core.api.llama_decode).not.toHaveBeenCalled(); expect(core.api.llama_memory_seq_rm).not.toHaveBeenCalled();
+    expect(core.api.llama_decode).not.toHaveBeenCalled();
+    expect(core.api.llama_memory_seq_rm).not.toHaveBeenCalled();
   });
 
   it('releases resident chat state before allocating an audio context and honors the explicit backend', async () => {
-    const core = host.core!; await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
+    const core = host.core!;
+    await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
     await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 2048, audioBackend: 'profile', onProgress: () => {}, signal: undefined });
-    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n); expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(20n);
+    expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
     const releaseTemplates = vi.mocked(core.chat.releaseModel);
     expect(releaseTemplates).toHaveBeenCalledExactlyOnceWith({ assertIdle: core.assertIdle, model: 10n });
     expect(releaseTemplates.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(core.api.llama_model_free).mock.invocationCallOrder[0]!);
-    expect(releases[0]).toHaveBeenCalledOnce(); expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'profile' }));
+    expect(releases[0]).toHaveBeenCalledOnce();
+    expect(host.loadAudio).toHaveBeenCalledWith(expect.objectContaining({ backend: 'profile' }));
     expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
 
@@ -319,7 +393,8 @@ describe('preparing a conversation without generating one', () => {
     const prepared = await prepareSession({ request: { model: full.model, options: full.options, debug: full.debug, assetBaseURL: full.assetBaseURL }, signal: undefined, onProgress: () => {} });
     expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
     const readyForSend = await prepareSession({ request: full, signal: undefined, onProgress: () => {} });
-    expect(readyForSend.model).toBe(prepared.model); expect(readyForSend.context).toBe(prepared.context);
+    expect(readyForSend.model).toBe(prepared.model);
+    expect(readyForSend.context).toBe(prepared.context);
     expect(host.core?.api.llama_model_load_from_file).toHaveBeenCalledOnce();
   });
 });
@@ -332,7 +407,8 @@ describe('one-use synchronized initial memory proof', () => {
     expect(host.core!.api.llama_synchronize).toHaveBeenCalledOnce();
     first.cache.initialMemoryState = 'unknown';
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(next.cache).toBe(first.cache); expect(next.cache.initialMemoryState).toBe('unknown');
+    expect(next.cache).toBe(first.cache);
+    expect(next.cache.initialMemoryState).toBe('unknown');
     expect(host.core!.api.llama_memory_clear).toHaveBeenCalledTimes(2);
   });
 
@@ -346,32 +422,44 @@ describe('one-use synchronized initial memory proof', () => {
 
   it('revokes released state even if the next model reuses the same numeric pointers', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    await releaseSession({ releaseRuntime: false }); expect(first.cache.initialMemoryState).toBe('unknown');
+    await releaseSession({ releaseRuntime: false });
+    expect(first.cache.initialMemoryState).toBe('unknown');
     const second = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(first.context).toBe(second.context); expect(first.cache).not.toBe(second.cache);
+    expect(first.context).toBe(second.context);
+    expect(first.cache).not.toBe(second.cache);
     expect(second.cache.initialMemoryState).toBe('probe-cleared');
   });
 
   it.each(['clear', 'synchronize', 'metadata'] as const)('does not publish a usable context after %s fails', async failure => {
     const api = host.core!.api;
     switch (failure) {
-    case 'clear': vi.mocked(api.llama_memory_clear).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('clear fixture')); break;
-    case 'synchronize': vi.mocked(api.llama_synchronize).mockRejectedValueOnce(new Error('synchronize fixture')); break;
-    case 'metadata': vi.mocked(api.llama_model_get_vocab).mockRejectedValueOnce(new Error('metadata fixture')); break;
-    default: { const exhaustive: never = failure; throw new Error(exhaustive); }
+    case 'clear': vi.mocked(api.llama_memory_clear).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('clear fixture'));
+      break;
+    case 'synchronize': vi.mocked(api.llama_synchronize).mockRejectedValueOnce(new Error('synchronize fixture'));
+      break;
+    case 'metadata': vi.mocked(api.llama_model_get_vocab).mockRejectedValueOnce(new Error('metadata fixture'));
+      break;
+    default: {
+      const exhaustive: never = failure;
+      throw new Error(exhaustive);
+    }
     }
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow(`${failure} fixture`);
-    expect(api.llama_free).toHaveBeenCalledOnce(); expect(api.llama_model_free).toHaveBeenCalledOnce();
+    expect(api.llama_free).toHaveBeenCalledOnce();
+    expect(api.llama_model_free).toHaveBeenCalledOnce();
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(next.cache.initialMemoryState).toBe('probe-cleared'); expect(api.llama_init_from_model).toHaveBeenCalledTimes(2);
+    expect(next.cache.initialMemoryState).toBe('probe-cleared');
+    expect(api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
 
   it('never claims a clear for absent native memory or an audio context', async () => {
     vi.mocked(host.core!.api.llama_get_memory).mockResolvedValue(0n);
     const chat = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(chat.cache.initialMemoryState).toBe('unknown'); expect(host.core!.api.llama_memory_clear).not.toHaveBeenCalled();
+    expect(chat.cache.initialMemoryState).toBe('unknown');
+    expect(host.core!.api.llama_memory_clear).not.toHaveBeenCalled();
     const audio = await prepareAudioSession({ request: request({ debug: 'off' }), contextTokens: 64, audioBackend: 'cpu', signal: undefined, onProgress: () => {} });
-    expect(audio.cache.initialMemoryState).toBe('unknown'); expect(host.core!.api.llama_synchronize).not.toHaveBeenCalled();
+    expect(audio.cache.initialMemoryState).toBe('unknown');
+    expect(host.core!.api.llama_synchronize).not.toHaveBeenCalled();
   });
 });
 
@@ -380,13 +468,20 @@ describe('on-demand generation companions', () => {
     const req = request({ debug: 'off' });
     switch (kind) {
     case 'plain': break;
-    case 'text-parts': req.messages[0]!.content = [{ type: 'text', text: 'hello' }]; break;
-    case 'marker': req.messages[0]!.content = '<__media__> image.png'; break;
+    case 'text-parts': req.messages[0]!.content = [{ type: 'text', text: 'hello' }];
+      break;
+    case 'marker': req.messages[0]!.content = '<__media__> image.png';
+      break;
     case 'tool-history':
       req.messages = [{ role: 'assistant', content: '', tool_calls: [{ id: 'a', type: 'function', function: { name: 'lookup', arguments: '{}' } }] },
-        { role: 'tool', content: 'plain result', tool_call_id: 'a' }, { role: 'user', content: 'continue' }]; break;
-    case 'reasoning': req.messages = [{ role: 'assistant', content: 'answer', reasoning_content: 'thought' }, { role: 'user', content: 'continue' }]; break;
-    default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+        { role: 'tool', content: 'plain result', tool_call_id: 'a' }, { role: 'user', content: 'continue' }];
+      break;
+    case 'reasoning': req.messages = [{ role: 'assistant', content: 'answer', reasoning_content: 'thought' }, { role: 'user', content: 'continue' }];
+      break;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
     }
     const companion = host.directory!.files[1]!;
     const openCompanion = vi.spyOn(companion.handle as FileSystemFileHandle & { createSyncAccessHandle(): Promise<unknown> }, 'createSyncAccessHandle');
@@ -395,11 +490,15 @@ describe('on-demand generation companions', () => {
     expect(first.projector).toBe(0n);
     expect(first.context).not.toBe(0n);
     expect(first.cache.initialMemoryState).toBe('probe-cleared');
-    expect(host.load).not.toHaveBeenCalled(); expect(host.loadAudio).not.toHaveBeenCalled();
+    expect(host.load).not.toHaveBeenCalled();
+    expect(host.loadAudio).not.toHaveBeenCalled();
     expect(openCompanion).not.toHaveBeenCalled();
-    first.cache.tokens = [1, 2]; first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
+    first.cache.tokens = [1, 2];
+    first.cache.validity = 'valid';
+    first.cache.initialMemoryState = 'unknown';
     const again = await prepareGenerationSession({ request: req, signal: undefined, onProgress: () => {} });
-    expect(again.context).toBe(first.context); expect(again.cache).toBe(first.cache);
+    expect(again.context).toBe(first.context);
+    expect(again.cache).toBe(first.cache);
     expect(again.cache.tokens).toEqual([1, 2]);
     expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
     expect(first.core.api.llama_init_from_model).toHaveBeenCalledOnce();
@@ -407,16 +506,19 @@ describe('on-demand generation companions', () => {
   });
 
   it('reports no companion when the directory has none', async () => {
-    host.directory!.projectorPath = undefined; host.directory!.files = host.directory!.files.slice(0, 1);
-    const session = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(session.preparation).toEqual({ projector: 'absent', releasedTextContext: false });
-    expect(host.load).not.toHaveBeenCalled();
+    host.directory!.projectorPath = undefined;
+host.directory!.files = host.directory!.files.slice(0, 1);
+const session = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+expect(session.preparation).toEqual({ projector: 'absent', releasedTextContext: false });
+expect(host.load).not.toHaveBeenCalled();
   });
 
   it.each(['latest', 'history'] as const)('loads the companion before context creation for an image in %s', async location => {
     const req = request({ debug: 'off' });
     req.messages[0]!.content = [{ type: 'image', blob: new Blob(['image fixture']) }];
-    if (location === 'history') req.messages.push({ role: 'assistant', content: 'prior reply' }, { role: 'user', content: 'tell me more' });
+    if (location === 'history') {
+      req.messages.push({ role: 'assistant', content: 'prior reply' }, { role: 'user', content: 'tell me more' });
+    }
     const session = await prepareGenerationSession({ request: req, signal: undefined, onProgress: () => {} });
     expect(session.projector).not.toBe(0n);
     expect(session.preparation).toEqual({ projector: 'loaded', releasedTextContext: false });
@@ -427,7 +529,9 @@ describe('on-demand generation companions', () => {
   it.each(['image', 'explicit-prepare'] as const)('releases only the text context before promoting to %s', async operation => {
     const req = request({ debug: 'off' });
     const first = await prepareGenerationSession({ request: req, signal: undefined, onProgress: () => {} });
-    first.cache.tokens = [7]; first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
+    first.cache.tokens = [7];
+    first.cache.validity = 'valid';
+    first.cache.initialMemoryState = 'unknown';
     first.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [7], positionMin: 0, positionMax: 0 };
     const free = vi.spyOn(first.core, 'free');
     vi.mocked(first.core.api.llama_init_from_model).mockResolvedValueOnce(22n);
@@ -444,18 +548,25 @@ describe('on-demand generation companions', () => {
     switch (operation) {
     case 'image':
       req.messages[0]!.content = [{ type: 'image', blob: new Blob(['image']) }];
-      next = await prepareGenerationSession({ request: req, signal: undefined, onProgress: () => {} }); break;
-    case 'explicit-prepare': next = await prepareSession({ request: req, signal: undefined, onProgress: () => {} }); break;
-    default: { const exhaustive: never = operation; throw new Error(String(exhaustive)); }
+      next = await prepareGenerationSession({ request: req, signal: undefined, onProgress: () => {} });
+      break;
+    case 'explicit-prepare': next = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+      break;
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
     }
     expect(next.preparation).toEqual({ projector: 'loaded', releasedTextContext: true });
-    expect(next.context).toBe(22n); expect(next.model).toBe(first.model);
+    expect(next.context).toBe(22n);
+    expect(next.model).toBe(first.model);
     expect(next.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
     expect(next.core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
     expect(next.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
     const again = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     expect(again.preparation).toEqual({ projector: 'reused', releasedTextContext: false });
-    expect(again.context).toBe(next.context); expect(host.load).toHaveBeenCalledOnce();
+    expect(again.context).toBe(next.context);
+    expect(host.load).toHaveBeenCalledOnce();
     await releaseSession({ releaseRuntime: true });
     expect(vi.mocked(next.core.api.llama_free).mock.calls).toEqual([[20n], [22n]]);
     expect(free.mock.calls.filter(([args]) => args.pointer === 999n)).toHaveLength(1);
@@ -464,17 +575,25 @@ describe('on-demand generation companions', () => {
 
   it('retains a loaded companion without reloading its debug trace for text-only requests', async () => {
     const first = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    first.cache.tokens = [3]; first.cache.validity = 'valid'; first.cache.initialMemoryState = 'unknown';
+    first.cache.tokens = [3];
+    first.cache.validity = 'valid';
+    first.cache.initialMemoryState = 'unknown';
     const text = await prepareGenerationSession({ request: request({ debug: 'on' }), signal: undefined, onProgress: () => {} });
-    expect(text.projector).toBe(0n); expect(text.context).toBe(first.context);
+    expect(text.projector).toBe(0n);
+    expect(text.context).toBe(first.context);
     expect(text.preparation).toEqual({ projector: 'retained', releasedTextContext: false });
-    expect(text.cache.tokens).toEqual([3]); expect(releases[0]).not.toHaveBeenCalled(); expect(host.load).toHaveBeenCalledOnce();
-    const image = request({ debug: 'on' }); image.messages[0]!.content = [{ type: 'image', blob: new Blob(['image']) }];
-    const next = await prepareGenerationSession({ request: image, signal: undefined, onProgress: () => {} });
-    expect(next.preparation).toEqual({ projector: 'loaded', releasedTextContext: false });
-    expect(next.context).toBe(first.context); expect(next.cache.tokens).toEqual([3]);
-    expect(host.load).toHaveBeenCalledTimes(2); expect(releases[0]).toHaveBeenCalledOnce();
-    expect(first.core.api.llama_free).not.toHaveBeenCalled();
+    expect(text.cache.tokens).toEqual([3]);
+    expect(releases[0]).not.toHaveBeenCalled();
+    expect(host.load).toHaveBeenCalledOnce();
+    const image = request({ debug: 'on' });
+image.messages[0]!.content = [{ type: 'image', blob: new Blob(['image']) }];
+const next = await prepareGenerationSession({ request: image, signal: undefined, onProgress: () => {} });
+expect(next.preparation).toEqual({ projector: 'loaded', releasedTextContext: false });
+expect(next.context).toBe(first.context);
+expect(next.cache.tokens).toEqual([3]);
+expect(host.load).toHaveBeenCalledTimes(2);
+expect(releases[0]).toHaveBeenCalledOnce();
+expect(first.core.api.llama_free).not.toHaveBeenCalled();
   });
 
   it('does not release a populated context until its native destruction has settled', async () => {
@@ -482,13 +601,17 @@ describe('on-demand generation companions', () => {
     const gate = Promise.withResolvers<void>();
     const entered = Promise.withResolvers<void>();
     vi.mocked(first.core.api.llama_free).mockImplementationOnce(async () => {
-      entered.resolve(); await gate.promise;
+      entered.resolve();
+      await gate.promise;
     });
     const pending = prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     await entered.promise;
-    expect(host.load).not.toHaveBeenCalled(); expect(first.core.api.llama_init_from_model).toHaveBeenCalledOnce();
-    gate.resolve(); await pending;
-    expect(host.load).toHaveBeenCalledOnce(); expect(first.core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
+    expect(host.load).not.toHaveBeenCalled();
+    expect(first.core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    gate.resolve();
+    await pending;
+    expect(host.load).toHaveBeenCalledOnce();
+    expect(first.core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
   });
 
   it('honors cancellation after context destruction without beginning the companion load', async () => {
@@ -499,7 +622,8 @@ describe('on-demand generation companions', () => {
     });
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
     expect(host.load).not.toHaveBeenCalled();
-    expect(first.cache.initialMemoryState).toBe('unknown'); expect(first.cache.validity).toBe('invalid');
+    expect(first.cache.initialMemoryState).toBe('unknown');
+    expect(first.cache.validity).toBe('invalid');
     const retry = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(retry.preparation.projector).toBe('deferred');
     expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
@@ -513,32 +637,41 @@ describe('on-demand generation companions', () => {
       request: request({ debug: 'off' }),
       signal: controller.signal,
       onProgress: ({ progress }) => {
-        if (progress.phase === 'initializing') controller.abort();
+        if (progress.phase === 'initializing') {
+          controller.abort();
+        }
       },
     })).rejects.toThrow('aborted');
-    expect(first.core.api.llama_free).not.toHaveBeenCalled(); expect(host.load).not.toHaveBeenCalled();
+    expect(first.core.api.llama_free).not.toHaveBeenCalled();
+    expect(host.load).not.toHaveBeenCalled();
   });
 
   it('retains batch and context fallback after allocating the first deferred projector', async () => {
     const first = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     vi.mocked(first.core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
     vi.mocked(first.core.api.llama_init_from_model).mockResolvedValueOnce(0n).mockResolvedValueOnce(0n).mockResolvedValueOnce(22n);
-    const set = vi.mocked(first.core.setField); set.mockClear();
+    const set = vi.mocked(first.core.setField);
+    set.mockClear();
     const next = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(next.context).toBe(22n); expect(next.preparation.releasedTextContext).toBe(true);
+    expect(next.context).toBe(22n);
+    expect(next.preparation.releasedTextContext).toBe(true);
     expect(set.mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([512, 128, 128]);
     expect(set.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual([32768, 32768, 16384]);
-    expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledOnce(); expect(host.load).toHaveBeenCalledOnce();
+    expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(host.load).toHaveBeenCalledOnce();
   });
 
   it('does not continue native allocation after text-context destruction fails', async () => {
     const first = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     vi.mocked(first.core.api.llama_free).mockRejectedValueOnce(new WebAssembly.RuntimeError('destruction trap'));
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('destruction trap');
-    expect(host.load).not.toHaveBeenCalled(); expect(first.core.api.llama_init_from_model).toHaveBeenCalledOnce();
-    expect(first.cache.validity).toBe('invalid'); expect(first.cache.initialMemoryState).toBe('unknown');
+    expect(host.load).not.toHaveBeenCalled();
+    expect(first.core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(first.cache.validity).toBe('invalid');
+    expect(first.cache.initialMemoryState).toBe('unknown');
     await releaseSession({ releaseRuntime: true });
-    expect(first.core.api.llama_free).toHaveBeenCalledOnce(); expect(first.core.api.llama_model_free).toHaveBeenCalledOnce();
+    expect(first.core.api.llama_free).toHaveBeenCalledOnce();
+    expect(first.core.api.llama_model_free).toHaveBeenCalledOnce();
   });
 
   it('can prepare text again after a declined first companion load without retrying it implicitly', async () => {
@@ -546,18 +679,23 @@ describe('on-demand generation companions', () => {
     host.load.mockRejectedValueOnce(new Error('companion declined'));
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('companion declined');
     const retry = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(retry.projector).toBe(0n); expect(host.load).toHaveBeenCalledOnce();
+    expect(retry.projector).toBe(0n);
+    expect(host.load).toHaveBeenCalledOnce();
     expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
     expect(first.core.api.llama_init_from_model).toHaveBeenCalledTimes(2);
     const image = await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(image.projector).not.toBe(0n); expect(image.preparation.releasedTextContext).toBe(true);
+    expect(image.projector).not.toBe(0n);
+    expect(image.preparation.releasedTextContext).toBe(true);
   });
 
   it('owns a companion completed during cancellation and releases it exactly once', async () => {
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    const controller = new AbortController(); const original = host.load.getMockImplementation()!;
+    const controller = new AbortController();
+    const original = host.load.getMockImplementation()!;
     host.load.mockImplementationOnce(async args => {
-      const result = await original(args); controller.abort(); return result;
+      const result = await original(args);
+      controller.abort();
+      return result;
     });
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
     await releaseSession({ releaseRuntime: true });
@@ -566,7 +704,8 @@ describe('on-demand generation companions', () => {
 
   it('does not prepare any model for an already aborted text request', async () => {
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: AbortSignal.abort(), onProgress: () => {} })).rejects.toThrow('aborted');
-    expect(host.load).not.toHaveBeenCalled(); expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
+    expect(host.load).not.toHaveBeenCalled();
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 
   it('keeps file-identity invalidation for a deferred companion', async () => {
@@ -575,7 +714,8 @@ describe('on-demand generation companions', () => {
     host.directory!.files = [host.directory!.files[0]!, { ...companion, file: new File(['changed'], companion.path, { lastModified: 2 }) }];
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     expect(first.core.api.llama_model_free).toHaveBeenCalledOnce();
-    expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledTimes(2); expect(host.load).not.toHaveBeenCalled();
+    expect(first.core.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+    expect(host.load).not.toHaveBeenCalled();
   });
 });
 
@@ -583,26 +723,35 @@ describe('model read-window ownership', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('shares a single cache across split-file mounts rather than allocating one per shard', async () => {
-    const core = host.core!; const original = modelReadModule.createModelReadCache;
+    const core = host.core!;
+    const original = modelReadModule.createModelReadCache;
     const caches: ReturnType<typeof original>[] = [];
     vi.spyOn(modelReadModule, 'createModelReadCache').mockImplementation(args => {
-      const cache = original(args); caches.push(cache); vi.spyOn(cache, 'wrap'); return cache;
+      const cache = original(args);
+      caches.push(cache);
+      vi.spyOn(cache, 'wrap');
+      return cache;
     });
     core.api.llama_model_load_from_splits = vi.fn(async () => 10n);
     core.bytes = ({ length }) => new Uint8Array(Number(length)).fill(1);
     host.directory!.files = Array.from({ length: 4 }, (_, i) => ({ ...host.directory!.files[0]!, path: `model-${i}.gguf` }));
     host.directory!.projectorPath = undefined;
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    expect(caches).toHaveLength(1); expect(caches[0]!.wrap).toHaveBeenCalledTimes(4);
+    expect(caches).toHaveLength(1);
+    expect(caches[0]!.wrap).toHaveBeenCalledTimes(4);
     expect(core.api.llama_model_load_from_splits).toHaveBeenCalledOnce();
     expect(() => caches[0]!.wrap({ source: { size: 0, read: () => 0 } })).toThrow('disposed');
   });
 
   it('holds the read window until cancelled native loading settles and the reader is closed', async () => {
-    const core = host.core!; const original = modelReadModule.createModelReadCache;
+    const core = host.core!;
+    const original = modelReadModule.createModelReadCache;
     const caches: ReturnType<typeof original>[] = [];
     vi.spyOn(modelReadModule, 'createModelReadCache').mockImplementation(args => {
-      const cache = original(args); caches.push(cache); vi.spyOn(cache, 'dispose'); return cache;
+      const cache = original(args);
+      caches.push(cache);
+      vi.spyOn(cache, 'dispose');
+      return cache;
     });
     const close = vi.fn();
     host.directory!.projectorPath = undefined;
@@ -622,10 +771,13 @@ describe('model read-window ownership', () => {
     const rejected = expect(loading).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce());
     controller.abort();
-    expect(close).not.toHaveBeenCalled(); expect(caches[0]!.dispose).not.toHaveBeenCalled();
-    complete(10n); await rejected;
+    expect(close).not.toHaveBeenCalled();
+    expect(caches[0]!.dispose).not.toHaveBeenCalled();
+    complete(10n);
+    await rejected;
     expect(core.api.llama_model_free).toHaveBeenCalledWith(10n);
-    expect(close).toHaveBeenCalledOnce(); expect(caches[0]!.dispose).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(caches[0]!.dispose).toHaveBeenCalledOnce();
   });
 });
 
@@ -684,7 +836,9 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     expect(events).toEqual(['native-free', 'remove-1', 'close-1']);
     await releaseSession({ releaseRuntime: false });
     expect(core.api.llama_model_free).toHaveBeenCalledOnce();
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
   });
 
   it('keeps the retained reader alive across requests and an old request cancellation', async () => {
@@ -710,14 +864,17 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     const released = releaseSession({ releaseRuntime: false });
     await vi.waitFor(() => expect(core.api.llama_model_free).toHaveBeenCalledOnce());
     expect(resources[1]!.close).not.toHaveBeenCalled();
-    gate.resolve(); await released;
+    gate.resolve();
+    await released;
     expect(resources[1]!.close).toHaveBeenCalledOnce();
   });
 
   it('releases all shards for a runtime with streaming support but an ordinary model', async () => {
     const { resources } = enableFileRows({ index: -1 });
     await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
   });
 
   it('fails closed on an invalid native shard result and frees the unpublished model', async () => {
@@ -725,18 +882,23 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('runtime-error');
     expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
     expect(events[0]).toBe('native-free');
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
   });
 
   it('frees all shards after a cancelled streaming model load before ownership publication', async () => {
     const { core, resources } = enableFileRows({ index: 1 });
     const controller = new AbortController();
     vi.mocked(core.api.llama_model_load_from_splits).mockImplementationOnce(async () => {
-      controller.abort(); return 10n;
+      controller.abort();
+      return 10n;
     });
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
     expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
   });
 
   it('still closes retained storage if model destruction throws', async () => {
@@ -761,8 +923,12 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     expect(core.module.removeFunction).toHaveBeenCalledExactlyOnceWith(1);
     const pointers = [...allocated.mock.results, ...records.mock.results, ...strings.mock.results].map(result => result.value);
     expect(pointers).toHaveLength(6);
-    for (const pointer of pointers) expect(free.mock.calls.filter(([args]) => args.pointer === pointer)).toHaveLength(1);
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const pointer of pointers) {
+      expect(free.mock.calls.filter(([args]) => args.pointer === pointer)).toHaveLength(1);
+    }
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
     expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
   });
 
@@ -815,7 +981,9 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
       throw new Error('callback cleanup failed');
     });
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBeUndefined();
-    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
     expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
   });
 
@@ -831,51 +999,70 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
   });
 
   it('does not open another shard or enter native loading after a pending acquisition is cancelled', async () => {
-    const { core, resources, mount } = shards(); const first = resources[0]!;
-    const pending = Promise.withResolvers<typeof first.access>(); first.open.mockReturnValueOnce(pending.promise);
+    const { core, resources, mount } = shards();
+    const first = resources[0]!;
+    const pending = Promise.withResolvers<typeof first.access>();
+    first.open.mockReturnValueOnce(pending.promise);
     const controller = new AbortController();
     const result = prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} });
     const rejection = expect(result).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(first.open).toHaveBeenCalledOnce());
-    controller.abort(); expect(first.close).not.toHaveBeenCalled();
-    pending.resolve(first.access); await rejection;
-    expect(first.close).toHaveBeenCalledOnce(); expect(mount).not.toHaveBeenCalled();
-    expect(resources[1]!.open).not.toHaveBeenCalled(); expect(resources[2]!.open).not.toHaveBeenCalled();
+    controller.abort();
+    expect(first.close).not.toHaveBeenCalled();
+    pending.resolve(first.access);
+    await rejection;
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(mount).not.toHaveBeenCalled();
+    expect(resources[1]!.open).not.toHaveBeenCalled();
+    expect(resources[2]!.open).not.toHaveBeenCalled();
     expect(core.api.llama_model_default_params).not.toHaveBeenCalled();
     expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
   });
 
   it('preserves acquisition rejection and does not close a handle that was never acquired', async () => {
-    const { core, resources } = shards(); const error = new DOMException('fixture storage failure', 'NotAllowedError');
+    const { core, resources } = shards();
+    const error = new DOMException('fixture storage failure', 'NotAllowedError');
     resources[1]!.open.mockRejectedValueOnce(error);
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(error);
-    expect(resources[0]!.close).toHaveBeenCalledOnce(); expect(resources[1]!.close).not.toHaveBeenCalled();
-    expect(resources[2]!.open).not.toHaveBeenCalled(); expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
+    expect(resources[0]!.close).toHaveBeenCalledOnce();
+    expect(resources[1]!.close).not.toHaveBeenCalled();
+    expect(resources[2]!.open).not.toHaveBeenCalled();
+    expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
   });
 
   it('does not start model loading when the initial loading progress callback cancels', async () => {
-    const { core, resources } = shards(); const controller = new AbortController();
+    const { core, resources } = shards();
+    const controller = new AbortController();
     await expect(prepareGenerationSession({
       request: request({ debug: 'off' }),
       signal: controller.signal,
       onProgress: ({ progress }) => {
-        if (progress.phase === 'loading' && progress.completed === 0) controller.abort();
+        if (progress.phase === 'loading' && progress.completed === 0) {
+          controller.abort();
+        }
       },
     })).rejects.toThrow('aborted');
     expect(core.api.llama_model_load_from_splits).not.toHaveBeenCalled();
     for (const item of resources) {
-      expect(item.close).toHaveBeenCalledOnce(); expect(item.remove).toHaveBeenCalledOnce();
+      expect(item.close).toHaveBeenCalledOnce();
+      expect(item.remove).toHaveBeenCalledOnce();
     }
   });
 
   it.each(['cancel', 'throw'] as const)('does not allocate context parameters after progress %s', async failure => {
-    const { core } = shards(); const allocRecord = vi.spyOn(core, 'allocRecord'); const controller = new AbortController();
+    const { core } = shards();
+    const allocRecord = vi.spyOn(core, 'allocRecord');
+    const controller = new AbortController();
     await expect(prepareGenerationSession({
       request: request({ debug: 'off' }),
       signal: controller.signal,
       onProgress: ({ progress }) => {
-        if (progress.phase !== 'initializing' || !vi.mocked(core.api.llama_model_load_from_splits).mock.calls.length) return;
-        if (failure === 'throw') throw new Error('progress failure');
+        if (progress.phase !== 'initializing' || !vi.mocked(core.api.llama_model_load_from_splits).mock.calls.length) {
+          return;
+        }
+        if (failure === 'throw') {
+          throw new Error('progress failure');
+        }
         controller.abort();
       },
     })).rejects.toThrow(failure === 'throw' ? 'progress failure' : 'aborted');
@@ -884,26 +1071,35 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
   });
 
   it.each([0, 1, 2])('attempts every independent close when shard %i fails', async failedIndex => {
-    const { resources, events } = shards(); const failure = new Error('fixture close failure');
+    const { resources, events } = shards();
+    const failure = new Error('fixture close failure');
     resources[failedIndex]!.close.mockImplementationOnce(() => {
-      events.push(`close-${failedIndex}`); throw failure;
-    });
-    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
-    expect(events).toEqual(['remove-2', 'remove-1', 'remove-0', 'close-2', 'close-1', 'close-0']);
-    for (const item of resources) expect(item.close).toHaveBeenCalledOnce();
-    await releaseSession({ releaseRuntime: false });
-    for (const item of resources) expect(item.close).toHaveBeenCalledOnce();
-  });
-
-  it.each([0, 1, 2])('attempts every unmount and close when unmount %i fails', async failedIndex => {
-    const { resources, events } = shards(); const failure = new Error('fixture unmount failure');
-    resources[failedIndex]!.remove.mockImplementationOnce(() => {
-      events.push(`remove-${failedIndex}`); throw failure;
+      events.push(`close-${failedIndex}`);
+      throw failure;
     });
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
     expect(events).toEqual(['remove-2', 'remove-1', 'remove-0', 'close-2', 'close-1', 'close-0']);
     for (const item of resources) {
-      expect(item.remove).toHaveBeenCalledOnce(); expect(item.close).toHaveBeenCalledOnce();
+      expect(item.close).toHaveBeenCalledOnce();
+    }
+    await releaseSession({ releaseRuntime: false });
+    for (const item of resources) {
+      expect(item.close).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each([0, 1, 2])('attempts every unmount and close when unmount %i fails', async failedIndex => {
+    const { resources, events } = shards();
+    const failure = new Error('fixture unmount failure');
+    resources[failedIndex]!.remove.mockImplementationOnce(() => {
+      events.push(`remove-${failedIndex}`);
+      throw failure;
+    });
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
+    expect(events).toEqual(['remove-2', 'remove-1', 'remove-0', 'close-2', 'close-1', 'close-0']);
+    for (const item of resources) {
+      expect(item.remove).toHaveBeenCalledOnce();
+      expect(item.close).toHaveBeenCalledOnce();
     }
   });
 
@@ -917,7 +1113,8 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     });
     await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBeUndefined();
     for (const item of resources) {
-      expect(item.remove).toHaveBeenCalledOnce(); expect(item.close).toHaveBeenCalledOnce();
+      expect(item.remove).toHaveBeenCalledOnce();
+      expect(item.close).toHaveBeenCalledOnce();
     }
   });
 });
@@ -927,7 +1124,8 @@ describe('measurement-only loaded descriptor ownership', () => {
     const core = host.core!;
     core.api.llama_model_n_layer = vi.fn(async () => 64);
     const measured = { ...request({ debug: 'off' }), measurement: { sequence: 'fresh' as const } };
-    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    const receive = vi.fn();
+    const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
     using _cleanupResource = {
       [Symbol.dispose]() {
         stop();
@@ -950,11 +1148,15 @@ describe('measurement-only loaded descriptor ownership', () => {
 
 function configurableContextFixture() {
   const core = host.core;
-  if (!core) throw new Error('Expected native fixture');
+  if (!core) {
+    throw new Error('Expected native fixture');
+  }
   let allocatedTarget = 0;
   vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(131072);
   vi.mocked(core.setField).mockImplementation(({ name, field, value }) => {
-    if (name === 'llama_context_params' && field === 'n_ctx') allocatedTarget = Number(value);
+    if (name === 'llama_context_params' && field === 'n_ctx') {
+      allocatedTarget = Number(value);
+    }
   });
   vi.mocked(core.api.llama_n_ctx).mockImplementation(async () => allocatedTarget);
   const prepare = ({ contextTokens }: { contextTokens: number | undefined }) => prepareGenerationSession({

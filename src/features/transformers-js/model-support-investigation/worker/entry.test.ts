@@ -87,12 +87,16 @@ vi.mock("@huggingface/transformers", () => {
     put(value: bigint[][]): void {
       if (this.nextTokensArePrompt) {
         this.nextTokensArePrompt = false;
-        if (this.skipPrompt) return;
+        if (this.skipPrompt) {
+          return;
+        }
       }
       const output = this.tokenizer.decode(value[0]?.map(Number) ?? [], {
         skip_special_tokens: this.skipSpecialTokens,
       });
-      if (output.length > 0) this.callback(output);
+      if (output.length > 0) {
+        this.callback(output);
+      }
     }
 
     end(): void {
@@ -189,7 +193,9 @@ vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "attempt-1") });
 
 function exposedWorker(): WorkerServerApi<IModelSupportInvestigationWorker> {
   const value = mocks.expose.mock.calls[0]?.[0] as WorkerServerApi<IModelSupportInvestigationWorker> | undefined;
-  if (value === undefined) throw new Error("Investigation Worker was not exposed");
+  if (value === undefined) {
+    throw new Error("Investigation Worker was not exposed");
+  }
   return value;
 }
 
@@ -211,7 +217,9 @@ describe("model-support-investigation worker", () => {
     const { env } = await import("@huggingface/transformers");
 
     const configuredFetch = env.fetch;
-    if (typeof configuredFetch !== "function") throw new Error("Investigation fetch was not configured");
+    if (typeof configuredFetch !== "function") {
+      throw new Error("Investigation fetch was not configured");
+    }
 
     await expect(configuredFetch(
       "https://huggingface.co/org/model/resolve/main/tokenizer.json",
@@ -411,7 +419,9 @@ describe("model-support-investigation worker", () => {
     mocks.modelFromPretrained.mockImplementationOnce(async () => {
       const url = "https://huggingface.co/org/model/resolve/main/onnx/model.onnx";
       await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
-      if (typeof env.fetch !== "function") throw new Error("Investigation cache-only fetch is unavailable");
+      if (typeof env.fetch !== "function") {
+        throw new Error("Investigation cache-only fetch is unavailable");
+      }
       await env.fetch(url);
       throw new Error("unreachable");
     });

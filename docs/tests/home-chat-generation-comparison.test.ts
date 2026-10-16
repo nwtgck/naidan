@@ -51,7 +51,9 @@ describe('homepage GGUF generation comparison', () => {
         expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
         expect(offsets[1]! - offsets[0]!).toBeLessThan(0.28);
       }
-      for (const index of characters.keys()) expect(generated[index]?.parentElement).toBe(moving[index]?.parentElement);
+      for (const index of characters.keys()) {
+        expect(generated[index]?.parentElement).toBe(moving[index]?.parentElement);
+      }
     }
   });
 

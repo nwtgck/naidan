@@ -54,18 +54,25 @@ describe('shared browser core package integration', () => {
   it('reads the combined inventory and emits five verified hosted Wasm payloads', async () => {
     const files = new Map<string, Uint8Array>();
     const hook = createLlamaCppRuntimeAssetsPlugin({ rootDir: repo }).generateBundle;
-    if (typeof hook !== 'function') throw new Error('Expected hosted asset hook');
+    if (typeof hook !== 'function') {
+      throw new Error('Expected hosted asset hook');
+    }
     await hook.call({
       emitFile(file: { type: string, fileName?: string, source?: Uint8Array }) {
-        if (file.type !== 'asset' || !file.fileName || !file.source) throw new Error('Unexpected runtime emission');
-        files.set(file.fileName, file.source); return file.fileName;
+        if (file.type !== 'asset' || !file.fileName || !file.source) {
+          throw new Error('Unexpected runtime emission');
+        }
+        files.set(file.fileName, file.source);
+        return file.fileName;
       },
     } as never, {} as never, {} as never, false);
     expect(files.size).toBe(5);
     for (const profile of profiles) {
       const name = `llama-cpp-browser-runtime/profiles/${profile}/core.wasm.gz`;
       const bytes = files.get(name);
-      if (!bytes) throw new Error(`Missing hosted runtime asset: ${profile}`);
+      if (!bytes) {
+        throw new Error(`Missing hosted runtime asset: ${profile}`);
+      }
       expect(gunzipSync(bytes).equals(readFileSync(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`)))).toBe(true);
     }
   });
@@ -81,7 +88,8 @@ describe('shared browser core package integration', () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await server.close(); rmSync(root, { recursive: true, force: true });
+        await server.close();
+        rmSync(root, { recursive: true, force: true });
       },
     };
     const id = `virtual:llama-cpp-browser-core/${profile}`;
@@ -103,7 +111,9 @@ describe('shared browser core package integration', () => {
     expect(source).toContain('@vite-ignore');
     expect(source.includes('hostNavigator')).toBe(profile.startsWith('webgpu-'));
     const load = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin.load;
-    if (typeof load !== 'function') throw new Error('Expected a load hook');
+    if (typeof load !== 'function') {
+      throw new Error('Expected a load hook');
+    }
     expect(await load.call({ addWatchFile() {} } as never, realPath)).toBe(source);
   });
 
@@ -134,19 +144,28 @@ describe('shared browser core package integration', () => {
       writeFileSync(path.join(artifact, update.relative), update.data);
       const innerFile = inner.files.find(file => file.path === update.relative.slice('llama-cpp-browser-core/'.length));
       const coreFile = rootManifest.files.find(file => file.path === update.relative);
-      if (!innerFile || !coreFile) throw new Error('Missing test inventory entries');
+      if (!innerFile || !coreFile) {
+        throw new Error('Missing test inventory entries');
+      }
       for (const file of [innerFile, coreFile]) {
-        file.bytes = update.data.length; file.sha256 = createHash('sha256').update(update.data).digest('hex');
+        file.bytes = update.data.length;
+        file.sha256 = createHash('sha256').update(update.data).digest('hex');
       }
     }
-    const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
+    const innerData = JSON.stringify(inner);
+    writeFileSync(innerPath, innerData);
     const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
-    if (!innerManifest) throw new Error('Missing test runtime manifest');
-    innerManifest.bytes = Buffer.byteLength(innerData); innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
+    if (!innerManifest) {
+      throw new Error('Missing test runtime manifest');
+    }
+    innerManifest.bytes = Buffer.byteLength(innerData);
+    innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
     writeFileSync(rootPath, JSON.stringify(rootManifest));
     const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: root, mode });
     const load = corePlugin.load;
-    if (typeof load !== 'function') throw new Error('Expected a load hook');
+    if (typeof load !== 'function') {
+      throw new Error('Expected a load hook');
+    }
     expect(await load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toBe(data.toString('utf8'));
     for (const binary of embeddedBinaries) {
       const bytes = readFileSync(binary.filePath);
@@ -198,24 +217,38 @@ describe('shared browser core package integration', () => {
     });
     await module.evaluate();
     const factory: unknown = Reflect.get(module.namespace, 'default');
-    if (typeof factory !== 'function') throw new Error('Missing core factory');
+    if (typeof factory !== 'function') {
+      throw new Error('Missing core factory');
+    }
     const native: unknown = await factory({ wasmBinary: supplied, print() {}, printErr() {} });
-    if (typeof native !== 'object' || native === null) throw new Error('Missing native module');
+    if (typeof native !== 'object' || native === null) {
+      throw new Error('Missing native module');
+    }
     const version: unknown = Reflect.get(native, '_lcb_callback_metadata_version');
-    if (typeof version !== 'function') throw new Error('Missing synchronous callback metadata version');
+    if (typeof version !== 'function') {
+      throw new Error('Missing synchronous callback metadata version');
+    }
     expect(Reflect.apply(version, native, [])).toBe(1);
-    for (const name of callbackGetters) expect(typeof Reflect.get(native, `_lcb_callback_${name}`)).toBe('function');
+    for (const name of callbackGetters) {
+      expect(typeof Reflect.get(native, `_lcb_callback_${name}`)).toBe('function');
+    }
     const count: unknown = Reflect.get(native, '_lcb_callback_ggml_backend_dev_count');
-    if (typeof count !== 'function') throw new Error('Missing synchronous callback device count');
+    if (typeof count !== 'function') {
+      throw new Error('Missing synchronous callback device count');
+    }
     const deviceCount: unknown = Reflect.apply(count, native, []);
     expect(typeof deviceCount).toBe('bigint'); // Not a Promise, even though the ordinary API may be asynchronous.
     expect(deviceCount).toBeGreaterThanOrEqual(0n);
     expect(instantiate).toHaveBeenCalledOnce();
     const compiledBytes = instantiate.mock.calls[0]?.[0];
-    if (!ArrayBuffer.isView(compiledBytes)) throw new Error('Expected a compiled byte view');
+    if (!ArrayBuffer.isView(compiledBytes)) {
+      throw new Error('Expected a compiled byte view');
+    }
     // Compare the full Wasm payload without expanding its bytes into matcher entries.
     expect(Buffer.from(compiledBytes.buffer, compiledBytes.byteOffset, compiledBytes.byteLength).equals(binary)).toBe(true);
-    if (input === 'complete-buffer') expect(compiledBytes.buffer).toBe(supplied);
+    if (input === 'complete-buffer') {
+      expect(compiledBytes.buffer).toBe(supplied);
+    }
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

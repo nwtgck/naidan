@@ -115,7 +115,9 @@ export class HarmonyStreamParser {
   }
 
   push({ token }: { token: string }): HarmonyDelta | null {
-    if (this._done) return null;
+    if (this._done) {
+      return null;
+    }
 
     switch (token) {
     case SPECIAL_TOKENS.START:
@@ -160,25 +162,33 @@ export class HarmonyStreamParser {
 
   /** Decoded ordinary token text is data, even when it spells a control token. */
   pushText({ text: token }: { text: string }): HarmonyDelta | null {
-    if (this._done) return null;
+    if (this._done) {
+      return null;
+    }
     switch (this._state) {
     case State.HEADER_ROLE: {
       this._buf += token;
       const cleaned = this._extractRecipient({ text: this._buf });
-      if (this._current) this._current.role = cleaned;
+      if (this._current) {
+        this._current.role = cleaned;
+      }
       return null;
     }
 
     case State.HEADER_CHANNEL: {
       this._buf += token;
       const cleaned = this._extractRecipient({ text: this._buf });
-      if (this._current) this._current.channel = cleaned;
+      if (this._current) {
+        this._current.channel = cleaned;
+      }
       return null;
     }
 
     case State.HEADER_CONSTRAIN: {
       this._buf += token;
-      if (this._current) this._current.contentType = `${SPECIAL_TOKENS.CONSTRAIN}${this._buf.trim()}`;
+      if (this._current) {
+        this._current.contentType = `${SPECIAL_TOKENS.CONSTRAIN}${this._buf.trim()}`;
+      }
       return null;
     }
 
@@ -202,7 +212,9 @@ export class HarmonyStreamParser {
     const deltas: HarmonyDelta[] = [];
     for (const token of tokens) {
       const d = this.push({ token });
-      if (d) deltas.push(d);
+      if (d) {
+        deltas.push(d);
+      }
     }
     return deltas;
   }

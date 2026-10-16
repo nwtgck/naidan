@@ -21,7 +21,9 @@ const tokens = computed(() => {
 const NON_RENDERING_TYPES = new Set(['space', 'def']);
 const lastRenderableIndex = computed(() => {
   for (let i = tokens.value.length - 1; i >= 0; i--) {
-    if (!NON_RENDERING_TYPES.has(tokens.value[i]!.type)) return i;
+    if (!NON_RENDERING_TYPES.has(tokens.value[i]!.type)) {
+      return i;
+    }
   }
   return tokens.value.length - 1;
 });

@@ -42,12 +42,16 @@ export function collectChatMedia({ messages, order }: {
       switch (part.type) {
       case 'attachment': {
         const attachment = part.attachment;
-        if (!attachment.mimeType.startsWith('image/')) break;
+        if (!attachment.mimeType.startsWith('image/')) {
+          break;
+        }
         let memoryBlob: Blob | undefined;
         switch (attachment.status) {
         case 'missing': continue;
-        case 'persisted': memoryBlob = undefined; break;
-        case 'memory': memoryBlob = attachment.blob; break;
+        case 'persisted': memoryBlob = undefined;
+          break;
+        case 'memory': memoryBlob = attachment.blob;
+          break;
         default: {
           const unhandled: never = attachment;
           throw new Error(`Unhandled media attachment: ${unhandled}`);
@@ -81,9 +85,13 @@ export function collectChatMedia({ messages, order }: {
           const blockIndex = occurrence++;
           try {
             const parsed = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] ?? ''));
-            if (!parsed.success) continue;
+            if (!parsed.success) {
+              continue;
+            }
             const data = parsed.data;
-            if (!sharedPrompt) sharedPrompt = data.prompt;
+            if (!sharedPrompt) {
+              sharedPrompt = data.prompt;
+            }
             items.push({
               id: JSON.stringify([idToRaw({ id: message.id }), getMessagePartDisplayKey({ part }), blockIndex]),
               messageId: message.id,
@@ -116,14 +124,20 @@ export function collectChatMedia({ messages, order }: {
       }
       }
     }
-    if (items.length === 0) continue;
-    if (!sharedPrompt) sharedPrompt = stripNaidanSentinels({ content: getMessageText({ message }) }).trim().slice(0, 100);
+    if (items.length === 0) {
+      continue;
+    }
+    if (!sharedPrompt) {
+      sharedPrompt = stripNaidanSentinels({ content: getMessageText({ message }) }).trim().slice(0, 100);
+    }
     items.forEach((item, index) => {
-      item.index = index + 1; item.total = items.length;
+      item.index = index + 1;
+      item.total = items.length;
     });
     switch (order) {
     case 'forward': break;
-    case 'reverse': items.reverse(); break;
+    case 'reverse': items.reverse();
+      break;
     default: {
       const unhandled: never = order;
       throw new Error(`Unhandled media order: ${unhandled}`);

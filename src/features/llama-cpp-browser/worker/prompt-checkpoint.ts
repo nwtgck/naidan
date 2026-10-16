@@ -20,7 +20,9 @@ export type PromptCheckpoint = {
 };
 
 export function disposePromptCheckpoint({ core, checkpoint }: { core: Pick<Core, 'free'>, checkpoint: PromptCheckpoint | undefined }): void {
-  if (checkpoint) core.free({ pointer: checkpoint.pointer });
+  if (checkpoint) {
+    core.free({ pointer: checkpoint.pointer });
+  }
 }
 
 /** Keep one host-side Wasm allocation, with no duplicate JavaScript state buffer.
@@ -33,10 +35,14 @@ export async function capturePromptCheckpoint({ core, context, tokens, observer 
     const api = core.api;
     observer?.enter({ phase: 'capture-position' });
     const memory = await api.llama_get_memory(context);
-    if (memory === 0n || tokens.length === 0) return undefined;
+    if (memory === 0n || tokens.length === 0) {
+      return undefined;
+    }
     const positionMin = await api.llama_memory_seq_pos_min(memory, 0);
     const positionMax = await api.llama_memory_seq_pos_max(memory, 0);
-    if (positionMin < 0 || positionMin > positionMax || positionMax !== tokens.length - 1) return undefined;
+    if (positionMin < 0 || positionMin > positionMax || positionMax !== tokens.length - 1) {
+      return undefined;
+    }
     observer?.enter({ phase: 'capture-size' });
     const size = await api.llama_state_seq_get_size_ext(context, 0, partialOnly);
     const pointerLimit = (1n << BigInt(core.pointerBytes * 8)) - 1n;
@@ -65,7 +71,9 @@ export async function capturePromptCheckpoint({ core, context, tokens, observer 
       owned = false;
       return checkpoint;
     } finally {
-      if (owned) core.free({ pointer });
+      if (owned) {
+        core.free({ pointer });
+      }
     }
   } finally {
     observer?.end();
@@ -84,14 +92,22 @@ export async function restorePromptCheckpoint({ core, context, checkpoint, obser
     const api = core.api;
     observer?.enter({ phase: 'restore-memory' });
     const memory = await api.llama_get_memory(context);
-    if (memory === 0n) return false;
+    if (memory === 0n) {
+      return false;
+    }
     observer?.enter({ phase: 'restore-write' });
-    if (await api.llama_state_seq_set_data_ext(context, pointer, BigInt(bytes), 0, partialOnly) !== BigInt(bytes)) return false;
+    if (await api.llama_state_seq_set_data_ext(context, pointer, BigInt(bytes), 0, partialOnly) !== BigInt(bytes)) {
+      return false;
+    }
     observer?.enter({ phase: 'restore-trim' });
-    if (!await api.llama_memory_seq_rm(memory, 0, tokens.length, -1)) return false;
+    if (!await api.llama_memory_seq_rm(memory, 0, tokens.length, -1)) {
+      return false;
+    }
     observer?.enter({ phase: 'restore-verify' });
     if (await api.llama_memory_seq_pos_min(memory, 0) !== positionMin
-      || await api.llama_memory_seq_pos_max(memory, 0) !== positionMax) return false;
+      || await api.llama_memory_seq_pos_max(memory, 0) !== positionMax) {
+      return false;
+    }
     logDiagnostic({ diagnostic: { event: 'checkpoint-restored', bytes, tokens: tokens.length, elapsedMs: performance.now() - started } });
     return true;
   } finally {
@@ -105,13 +121,19 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
   core: CheckpointCore, vocab: bigint, prompt: string, promptPointer: bigint, generationPrompt: string, tokens: number[], onTokenize: () => void,
 }): Promise<number> {
   const fallback = Math.max(0, tokens.length - 1);
-  if (!generationPrompt || !prompt.endsWith(generationPrompt)) return fallback;
+  if (!generationPrompt || !prompt.endsWith(generationPrompt)) {
+    return fallback;
+  }
   const prefix = prompt.slice(0, -generationPrompt.length);
   const length = new TextEncoder().encode(prefix).length;
-  if (tokens.length < 2) return fallback;
+  if (tokens.length < 2) {
+    return fallback;
+  }
   let capacity = Math.min(tokens.length - 1, 65536);
   let pointer = core.tryAlloc({ bytes: capacity * 4 });
-  if (pointer === undefined) return fallback;
+  if (pointer === undefined) {
+    return fallback;
+  }
   try {
     // Validate before passing native code a writable range, and reacquire the
     // view after it settles because tokenization can grow Wasm memory.
@@ -120,28 +142,39 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
     let count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
     if (Number.isInteger(count) && count >= -2147483647 && count < -capacity && count > -tokens.length) {
       const required = -count;
-      const previous = pointer; pointer = undefined;
+      const previous = pointer;
+      pointer = undefined;
       core.free({ pointer: previous });
       capacity = required;
       pointer = core.tryAlloc({ bytes: capacity * 4 });
-      if (pointer === undefined) return fallback;
+      if (pointer === undefined) {
+        return fallback;
+      }
       core.bytes({ pointer, length: capacity * 4 });
       onTokenize();
       count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
-      if (count !== required) return fallback;
+      if (count !== required) {
+        return fallback;
+      }
     }
     // A checkpoint is optional. Failed/overflowing tokenization must never
     // cause a huge allocation or invent a prefix boundary.
-    if (!Number.isInteger(count) || count < 1 || count > capacity || count >= tokens.length) return fallback;
+    if (!Number.isInteger(count) || count < 1 || count > capacity || count >= tokens.length) {
+      return fallback;
+    }
     const bytes = core.bytes({ pointer, length: count * 4 });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let common = 0;
-    while (common < count && view.getInt32(common * 4, true) === tokens[common]) common++;
+    while (common < count && view.getInt32(common * 4, true) === tokens[common]) {
+      common++;
+    }
     // Tokenization can merge across the generation suffix boundary. Capture
     // before that changed token instead of assuming the text split is a token split.
     return common > 0 ? common : fallback;
   } finally {
-    if (pointer !== undefined) core.free({ pointer });
+    if (pointer !== undefined) {
+      core.free({ pointer });
+    }
   }
 }
 

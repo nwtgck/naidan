@@ -17,7 +17,8 @@ vi.mock('llama-cpp-browser-core/api/schema.mjs', () => ({
 }));
 
 afterEach(() => {
-  vi.resetAllMocks(); vi.unstubAllGlobals();
+  vi.resetAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('core-factory WebGPU scope', () => {
@@ -60,7 +61,9 @@ describe('core-factory WebGPU scope', () => {
     host.load.mockRejectedValueOnce(handoff);
     await expect(createCore({ profile: 'cpu-wasm32', baseURL: 'https://fixture.invalid/', moduleOptions: { wasmBinary, print() {}, printErr() {} } })).rejects.toBe(handoff);
     const supplied = host.load.mock.calls[0]![0].moduleOptions.wasmBinary;
-    if (!(supplied instanceof ArrayBuffer)) throw new Error('Expected an exact factory buffer');
+    if (!(supplied instanceof ArrayBuffer)) {
+      throw new Error('Expected an exact factory buffer');
+    }
     expect(supplied).not.toBe(storage.buffer);
     expect(new Uint8Array(supplied)).toEqual(new Uint8Array([0, 97, 115, 109]));
   });
@@ -72,7 +75,9 @@ describe('core-factory WebGPU scope', () => {
     host.load.mockRejectedValueOnce(handoff);
     await expect(createCore({ profile: 'cpu-wasm32', baseURL: 'https://fixture.invalid/', moduleOptions: { wasmBinary, print() {}, printErr() {} } })).rejects.toBe(handoff);
     const supplied = host.load.mock.calls[0]![0].moduleOptions.wasmBinary;
-    if (!(supplied instanceof ArrayBuffer)) throw new Error('Expected an ordinary factory buffer');
+    if (!(supplied instanceof ArrayBuffer)) {
+      throw new Error('Expected an ordinary factory buffer');
+    }
     expect(new Uint8Array(supplied)).toEqual(wasmBinary);
   });
 

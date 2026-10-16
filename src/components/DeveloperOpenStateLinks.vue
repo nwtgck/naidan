@@ -93,7 +93,9 @@ async function createCurrentStateURL({ target }: { target: DeploymentTarget }) {
 }
 
 async function copyCurrentStateURL({ target }: { target: DeploymentTarget }) {
-  if (activeAction.value) return;
+  if (activeAction.value) {
+    return;
+  }
 
   activeAction.value = { type: 'copy', host: target.host };
   try {
@@ -112,7 +114,9 @@ async function copyCurrentStateURL({ target }: { target: DeploymentTarget }) {
 }
 
 async function openCurrentState({ target }: { target: DeploymentTarget }) {
-  if (activeAction.value) return;
+  if (activeAction.value) {
+    return;
+  }
 
   activeAction.value = { type: 'open', host: target.host };
   try {

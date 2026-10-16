@@ -21,7 +21,9 @@ const columns = computed<FileExplorerColumn[]>(() => {
   const size = lazyStrings.fileExplorer__size();
   const modified = lazyStrings.fileExplorer__modified();
   const type = lazyStrings.fileExplorer__type();
-  if (name === undefined || size === undefined || modified === undefined || type === undefined) return [];
+  if (name === undefined || size === undefined || modified === undefined || type === undefined) {
+    return [];
+  }
 
   return [
     { label: name, field: 'name', class: twClassString('flex-1', 'min-w-0') },
@@ -139,7 +141,9 @@ function onBackgroundNativeContextMenu({ event }: { event: MouseEvent }): void {
 }
 
 function onBackgroundClick({ event }: { event: MouseEvent }): void {
-  if (backgroundLongPress.consumeClick({ event })) return;
+  if (backgroundLongPress.consumeClick({ event })) {
+    return;
+  }
   if ((event.target as HTMLElement).dataset.listBackground) {
     ctx.applySelection({ action: { type: 'clear' } });
   }

@@ -65,7 +65,9 @@ export async function createFileExplorerDirectoryArchive({
   const signal = abortController.signal;
   const forwardAbort = () => abortController.abort(parentSignal.reason);
   parentSignal.addEventListener('abort', forwardAbort, { once: true });
-  if (parentSignal.aborted) forwardAbort();
+  if (parentSignal.aborted) {
+    forwardAbort();
+  }
   const stream = createAbortableByteStream({
     stream: output.stream,
     signal,

@@ -88,7 +88,8 @@ describe('privacy stream transport', () => {
     const { buffer } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
       status: 206,
@@ -119,7 +120,8 @@ describe('privacy stream transport', () => {
     const { buffer, fetchMock } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([4, 5])); controller.close();
+          controller.enqueue(new Uint8Array([4, 5]));
+          controller.close();
         },
       }),
       status: 206,
@@ -143,7 +145,8 @@ describe('privacy stream transport', () => {
     mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode('{}')); controller.close();
+          controller.enqueue(new TextEncoder().encode('{}'));
+          controller.close();
         },
       }),
       status: 200,
@@ -188,7 +191,9 @@ describe('privacy stream transport', () => {
     const { buffer } = mockResponse({
       body: new ReadableStream({
         pull(controller) {
-          reads++; controller.enqueue(new Uint8Array(300 * 1024).fill(7)); controller.close();
+          reads++;
+          controller.enqueue(new Uint8Array(300 * 1024).fill(7));
+          controller.close();
         },
       }, { highWaterMark: 0 }),
       status,

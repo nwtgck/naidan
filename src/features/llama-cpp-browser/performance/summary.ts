@@ -14,7 +14,9 @@ export function trialRates({ trial }: { trial: PerformanceTrial }) {
 }
 
 function median({ values }: { values: number[] }): number | undefined {
-  if (!values.length) return undefined;
+  if (!values.length) {
+    return undefined;
+  }
   const sorted = values.toSorted((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1]! + sorted[middle]!) / 2;
@@ -28,7 +30,9 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     reusedTokens: number | undefined, generatedTokens: number | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
     const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
-    if (!step || step.role !== 'measurement' || trial.status !== 'succeeded' || trial.exclusion.length) continue;
+    if (!step || step.role !== 'measurement' || trial.status !== 'succeeded' || trial.exclusion.length) {
+      continue;
+    }
     const metrics = trial.summary?.performance;
     const condition = {
       modelIndex: trial.modelIndex,
@@ -45,7 +49,8 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     };
     const key = JSON.stringify(condition);
     const group = groups.get(key) ?? { ...condition, trials: [] };
-    group.trials.push(trial); groups.set(key, group);
+    group.trials.push(trial);
+    groups.set(key, group);
   }
   return Array.from(groups.values(), ({ trials, ...condition }) => ({
     ...condition,
@@ -54,7 +59,8 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     medianElapsedMs: median({ values: trials.flatMap(trial => trial.elapsedMs === undefined ? [] : [trial.elapsedMs]) }),
     medianGenerationTokensPerSecond: median({
       values: trials.flatMap(trial => {
-        const value = trialRates({ trial }).generationTokensPerSecond; return value === undefined ? [] : [value];
+        const value = trialRates({ trial }).generationTokensPerSecond;
+        return value === undefined ? [] : [value];
       }),
     }),
   }));
@@ -66,10 +72,18 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
 function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial, position: 'before' | 'after' }) {
   const events = trial.summary?.performance?.preparationEvents;
   const reasons: string[] = [], uncertainties: string[] = [];
-  if (events === undefined || !events.some(event => event.event === 'model-reused')) uncertainties.push(`${position}-model-reuse-unconfirmed`);
-  if (events !== undefined && events.length >= 64) uncertainties.push(`${position}-preparation-evidence-at-cap`);
-  if (events?.some(event => event.event === 'load-start' || event.event === 'load-complete')) reasons.push(`${position}-model-reloaded`);
-  if (events?.some(event => event.event === 'context-retry')) reasons.push(`${position}-context-retried`);
+  if (events === undefined || !events.some(event => event.event === 'model-reused')) {
+    uncertainties.push(`${position}-model-reuse-unconfirmed`);
+  }
+  if (events !== undefined && events.length >= 64) {
+    uncertainties.push(`${position}-preparation-evidence-at-cap`);
+  }
+  if (events?.some(event => event.event === 'load-start' || event.event === 'load-complete')) {
+    reasons.push(`${position}-model-reloaded`);
+  }
+  if (events?.some(event => event.event === 'context-retry')) {
+    reasons.push(`${position}-context-retried`);
+  }
   return { reasons, uncertainties };
 }
 
@@ -82,25 +96,45 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
     const before = snapshot.trials.find(trial => trial.stepId === beforeStep.id);
     const after = snapshot.trials.find(trial => trial.stepId === afterStep?.id);
     const reasons: string[] = [], uncertainties: string[] = [];
-    if (!before || !after) reasons.push('missing-attempt');
+    if (!before || !after) {
+      reasons.push('missing-attempt');
+    }
     if (before && after) {
       for (const preparation of [warmPreparationEvidence({ trial: before, position: 'before' }), warmPreparationEvidence({ trial: after, position: 'after' })]) {
-        reasons.push(...preparation.reasons); uncertainties.push(...preparation.uncertainties);
+        reasons.push(...preparation.reasons);
+        uncertainties.push(...preparation.uncertainties);
       }
-      if (before.status !== 'succeeded' || after.status !== 'succeeded') reasons.push('unsuccessful-attempt');
-      if (before.exclusion.length || after.exclusion.length) reasons.push('excluded-attempt');
+      if (before.status !== 'succeeded' || after.status !== 'succeeded') {
+        reasons.push('unsuccessful-attempt');
+      }
+      if (before.exclusion.length || after.exclusion.length) {
+        reasons.push('excluded-attempt');
+      }
       const a = before.summary?.performance, b = after.summary?.performance;
-      if (!a || !b) reasons.push('missing-summary');
-      else for (const field of ['contextTokens', 'prefillBatchTokens', 'promptTokens', 'reusedTokens', 'nonEogTokens'] as const) {
-        if (a[field] === undefined || b[field] === undefined || a[field] !== b[field]) reasons.push(`different-or-missing-${field}`);
+      if (!a || !b) {
+        reasons.push('missing-summary');
+      } else {
+        for (const field of ['contextTokens', 'prefillBatchTokens', 'promptTokens', 'reusedTokens', 'nonEogTokens'] as const) {
+          if (a[field] === undefined || b[field] === undefined || a[field] !== b[field]) {
+            reasons.push(`different-or-missing-${field}`);
+          }
+        }
       }
-      if (JSON.stringify(before.input) !== JSON.stringify(after.input) || JSON.stringify(before.options) !== JSON.stringify(after.options)) reasons.push('different-input-or-options');
-      if (before.output?.content !== after.output?.content || before.output?.reasoningContent !== after.output?.reasoningContent || JSON.stringify(before.output?.toolCalls) !== JSON.stringify(after.output?.toolCalls)) reasons.push('different-generated-output');
-      if (before.output?.finishReason !== after.output?.finishReason) reasons.push('different-finish-reason');
+      if (JSON.stringify(before.input) !== JSON.stringify(after.input) || JSON.stringify(before.options) !== JSON.stringify(after.options)) {
+        reasons.push('different-input-or-options');
+      }
+      if (before.output?.content !== after.output?.content || before.output?.reasoningContent !== after.output?.reasoningContent || JSON.stringify(before.output?.toolCalls) !== JSON.stringify(after.output?.toolCalls)) {
+        reasons.push('different-generated-output');
+      }
+      if (before.output?.finishReason !== after.output?.finishReason) {
+        reasons.push('different-finish-reason');
+      }
     }
     const a = before ? trialRates({ trial: before }).generationTokensPerSecond : undefined;
     const b = after ? trialRates({ trial: after }).generationTokensPerSecond : undefined;
-    if (a === undefined || b === undefined || a <= 0) reasons.push('insufficient-output-for-rate');
+    if (a === undefined || b === undefined || a <= 0) {
+      reasons.push('insufficient-output-for-rate');
+    }
     return {
       modelIndex: beforeStep.modelIndex,
       repetition: beforeStep.repetition,

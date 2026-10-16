@@ -12,7 +12,8 @@ function fixture() {
 }
 
 it('passes the actual six-argument ABI in mode/interval/denoised/noisy order and keeps OFF callback nonnull', async () => {
-  const h = fixture(); await h.control.start();
+  const h = fixture();
+  await h.control.start();
   expect(h.set).toHaveBeenCalledExactlyOnceWith(123n, 3, 2, 0, 0, 0n);
   expect(h.raw).not.toHaveBeenCalled();
   h.control.update({ control: h.message({ revision: 1, enabled: true }) });
@@ -25,12 +26,18 @@ it('passes the actual six-argument ABI in mode/interval/denoised/noisy order and
 });
 
 it('rejects malformed, old, foreign and mode-changing updates; close never calls native', async () => {
-  const h = fixture(); await h.control.start(); const valid = h.message({ revision: 2, enabled: true });
+  const h = fixture();
+  await h.control.start();
+  const valid = h.message({ revision: 2, enabled: true });
   expect(h.control.update({ control: valid })).toBe(true);
-  for (const input of [valid, { ...valid, runId: 99, revision: 3 }, { ...valid, revision: 3, settings: { ...valid.settings, interval: 0 } }, { ...valid, revision: 3, settings: { ...valid.settings, mode: 'projection' as const } }]) expect(h.control.update({ control: input })).toBe(false);
-  expect(h.raw).toHaveBeenCalledTimes(1); h.control.close();
+  for (const input of [valid, { ...valid, runId: 99, revision: 3 }, { ...valid, revision: 3, settings: { ...valid.settings, interval: 0 } }, { ...valid, revision: 3, settings: { ...valid.settings, mode: 'projection' as const } }]) {
+    expect(h.control.update({ control: input })).toBe(false);
+  }
+  expect(h.raw).toHaveBeenCalledTimes(1);
+  h.control.close();
   expect(h.control.update({ control: h.message({ revision: 3, enabled: false }) })).toBe(false);
-  expect(h.raw).toHaveBeenCalledTimes(1); expect(h.set).toHaveBeenCalledTimes(1);
+  expect(h.raw).toHaveBeenCalledTimes(1);
+  expect(h.set).toHaveBeenCalledTimes(1);
 });
 
 it('accepts configuration changes before startup and reconciles the await handoff', async () => {
@@ -40,20 +47,28 @@ it('accepts configuration changes before startup and reconciles the await handof
   const start = h.control.start();
   expect(h.set).toHaveBeenLastCalledWith(123n, 3, 1, 1, 0, 0n);
   h.control.update({ control: h.message({ revision: 2, enabled: false }) });
-  wait.resolve(); await start;
+  wait.resolve();
+  await start;
   expect(h.raw).toHaveBeenLastCalledWith(123n, 3, 1, 0, 0, 0n);
 });
 
 it('waits until the configured step threshold before enabling previews', async () => {
-  const h = fixture(); const c = createNativePreviewControl({ core: h.core, callback: 99n, runId: 1, initial: { ...defaultPreviewSettings, enabled: true, startStep: 4, interval: 7 } });
-  await c.start(); expect(h.set).toHaveBeenLastCalledWith(99n, 3, 7, 0, 0, 0n);
-  c.observeStep({ step: 2 }); expect(h.raw).not.toHaveBeenCalled();
-  c.observeStep({ step: 3 }); expect(h.raw).toHaveBeenLastCalledWith(99n, 3, 7, 1, 0, 0n);
-  c.observeStep({ step: 4 }); expect(h.raw).toHaveBeenCalledTimes(1);
+  const h = fixture();
+  const c = createNativePreviewControl({ core: h.core, callback: 99n, runId: 1, initial: { ...defaultPreviewSettings, enabled: true, startStep: 4, interval: 7 } });
+  await c.start();
+  expect(h.set).toHaveBeenLastCalledWith(99n, 3, 7, 0, 0, 0n);
+  c.observeStep({ step: 2 });
+  expect(h.raw).not.toHaveBeenCalled();
+  c.observeStep({ step: 3 });
+  expect(h.raw).toHaveBeenLastCalledWith(99n, 3, 7, 1, 0, 0n);
+  c.observeStep({ step: 4 });
+  expect(h.raw).toHaveBeenCalledTimes(1);
 });
 
 it('fails explicitly rather than re-entering the generic API if the reviewed scalar setter is absent', async () => {
-  const h = fixture(); delete h.core.module._sdc_sd_set_preview_callback; await h.control.start();
+  const h = fixture();
+  delete h.core.module._sdc_sd_set_preview_callback;
+  await h.control.start();
   expect(() => h.control.update({ control: h.message({ revision: 1, enabled: true }) })).toThrow('live preview control');
   expect(h.set).toHaveBeenCalledTimes(1);
 });

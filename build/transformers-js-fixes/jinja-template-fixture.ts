@@ -9,7 +9,9 @@ interface TemplateInstance {
 export function bundledJinjaTemplate({ code }: { code: string }) {
   const from = code.indexOf('var TOKEN_TYPES = Object.freeze({');
   const to = code.indexOf('// src/utils/hub/FileResponse.js', from);
-  if (from < 0 || to < from) throw new Error('Reviewed bundled Jinja section is missing');
+  if (from < 0 || to < from) {
+    throw new Error('Reviewed bundled Jinja section is missing');
+  }
   // Execute actual original/transformed browser code, not installed Jinja's
   // different version or a second test-specific implementation of the fix.
   return new Function(`${code.slice(from, to)}\nreturn Template;`)() as new (template: string) => TemplateInstance;

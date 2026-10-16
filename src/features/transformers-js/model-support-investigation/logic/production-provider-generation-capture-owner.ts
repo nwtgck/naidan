@@ -82,7 +82,10 @@ export function createProductionProviderGenerationCaptureOwner({
     switch (adoption) {
     case 'open': return true;
     case 'closed': return false;
-    default: { const exhaustive: never = adoption; throw new Error('Unhandled native adoption: ' + exhaustive); }
+    default: {
+      const exhaustive: never = adoption;
+      throw new Error('Unhandled native adoption: ' + exhaustive);
+    }
     }
   }
   const provider: ReturnType<typeof createProductionProviderCaptureOwner> = createProductionProviderCaptureOwner({
@@ -111,9 +114,13 @@ export function createProductionProviderGenerationCaptureOwner({
 
   function readLifetime({ epoch }: { epoch: typeof epochs[number] }): ProductionProviderNativeCollectionSnapshot['epochs'][number]['lifetime'] {
     try {
-      if (epoch.client === undefined) return { status: 'unavailable' };
+      if (epoch.client === undefined) {
+        return { status: 'unavailable' };
+      }
       const value = epoch.client.getCaptureLifetime();
-      if (value.runId !== runId || value.workerEpoch !== epoch.workerEpoch) return { status: 'unavailable' };
+      if (value.runId !== runId || value.workerEpoch !== epoch.workerEpoch) {
+        return { status: 'unavailable' };
+      }
       return { status: 'observed', value };
     } catch {
       // Do not export arbitrary thrown values, or lose the Provider trace just
@@ -139,8 +146,12 @@ export function createProductionProviderGenerationCaptureOwner({
   }
 
   function collectNative(): Promise<void> {
-    if (!canAdoptNative()) return Promise.reject(new Error('Native capture collection has been released'));
-    if (collectionPromise !== undefined) return collectionPromise;
+    if (!canAdoptNative()) {
+      return Promise.reject(new Error('Native capture collection has been released'));
+    }
+    if (collectionPromise !== undefined) {
+      return collectionPromise;
+    }
     const run = provider.snapshot().run;
     switch (run.status) {
     case 'not-started': case 'running':
@@ -154,9 +165,13 @@ export function createProductionProviderGenerationCaptureOwner({
     phase = 'collecting';
     collectionPromise = (async () => {
       for (const epoch of epochs) {
-        if (!canAdoptNative()) return;
+        if (!canAdoptNative()) {
+          return;
+        }
         const lifetime = readLifetime({ epoch });
-        if (!canAdoptNative()) return;
+        if (!canAdoptNative()) {
+          return;
+        }
         switch (lifetime.status) {
         case 'unavailable':
           epoch.collection = { status: 'unavailable', reason: 'host-state-unavailable' };
@@ -180,18 +195,26 @@ export function createProductionProviderGenerationCaptureOwner({
         }
         epoch.collection = { status: 'pending' };
         try {
-          if (epoch.client === undefined) return;
+          if (epoch.client === undefined) {
+            return;
+          }
           const result = await epoch.client.takeGenerationCapture();
-          if (!canAdoptNative()) return;
+          if (!canAdoptNative()) {
+            return;
+          }
           epoch.collection = { status: 'returned', result };
         } catch {
-          if (!canAdoptNative()) return;
+          if (!canAdoptNative()) {
+            return;
+          }
           // The Worker may have completed its one-shot take before the reply
           // was lost. Retrying is not recovery and would erase this distinction.
           epoch.collection = { status: 'failed', reason: 'take-failed' };
         }
       }
-      if (canAdoptNative()) phase = 'finished';
+      if (canAdoptNative()) {
+        phase = 'finished';
+      }
     })();
     return collectionPromise;
   }
@@ -210,13 +233,18 @@ export function createProductionProviderGenerationCaptureOwner({
         const loads = Object.getOwnPropertyDescriptor(lifetime.value, 'loadRequests');
         if (session === undefined || !('value' in session) || (session.value !== 'active' && session.value !== 'inactive')
           || issued === undefined || !('value' in issued) || !Array.isArray(issued.value)
-          || loads === undefined || !('value' in loads) || !Array.isArray(loads.value)) return Object.freeze({ status: 'unavailable' });
+          || loads === undefined || !('value' in loads) || !Array.isArray(loads.value)) {
+          return Object.freeze({ status: 'unavailable' });
+        }
         return Object.freeze({ status: 'observed', session: session.value, issuedCallCount: issued.value.length, loadRequestCount: loads.value.length });
       } catch {
         return Object.freeze({ status: 'unavailable' });
       }
     }
-    default: { const exhaustive: never = lifetime; throw new Error('Unhandled cutoff lifetime: ' + String(exhaustive)); }
+    default: {
+      const exhaustive: never = lifetime;
+      throw new Error('Unhandled cutoff lifetime: ' + String(exhaustive));
+    }
     }
   }
 
@@ -225,8 +253,12 @@ export function createProductionProviderGenerationCaptureOwner({
    * the pending RPC's own transport storage are not revocable by this owner.
    */
   function detachNativeCollection({ reason: requestedReason }: { reason: NativeCollectionDetachReason }): DetachedNativeCollection {
-    if (cutoff !== undefined) return Object.freeze({ status: 'already-detached', cutoff });
-    if (!canAdoptNative()) throw new Error('Native capture release is already in progress');
+    if (cutoff !== undefined) {
+      return Object.freeze({ status: 'already-detached', cutoff });
+    }
+    if (!canAdoptNative()) {
+      throw new Error('Native capture release is already in progress');
+    }
     const reason = detachReasonSchema.parse(requestedReason);
     const providerState = provider.snapshot();
     switch (reason) {
@@ -240,7 +272,10 @@ export function createProductionProviderGenerationCaptureOwner({
         throw new Error('Interrupted native capture release requires abort or disposal to be requested');
       }
       break;
-    default: { const exhaustive: never = reason; throw new Error('Unhandled native cutoff reason: ' + exhaustive); }
+    default: {
+      const exhaustive: never = reason;
+      throw new Error('Unhandled native cutoff reason: ' + exhaustive);
+    }
     }
     adoption = 'closed';
     const capture = nativeSnapshot();
@@ -283,12 +318,18 @@ export function createProductionProviderGenerationCaptureOwner({
     snapshot() {
       let native: NativeCollectionView;
       switch (adoption) {
-      case 'open': native = Object.freeze({ status: 'retained', capture: nativeSnapshot() }); break;
+      case 'open': native = Object.freeze({ status: 'retained', capture: nativeSnapshot() });
+        break;
       case 'closed':
-        if (cutoff === undefined) throw new Error('Native capture release is in progress');
+        if (cutoff === undefined) {
+          throw new Error('Native capture release is in progress');
+        }
         native = Object.freeze({ status: 'released', cutoff });
         break;
-      default: { const exhaustive: never = adoption; throw new Error('Unhandled native retention: ' + exhaustive); }
+      default: {
+        const exhaustive: never = adoption;
+        throw new Error('Unhandled native retention: ' + exhaustive);
+      }
       }
       return { provider: provider.snapshot(), native };
     },

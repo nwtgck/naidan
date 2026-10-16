@@ -146,11 +146,13 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic });
     expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
-    debug.mockClear(); listener.mockClear();
+    debug.mockClear();
+    listener.mockClear();
     const privateState = { ...diagnostic, pointer: '123', tokenIds: [1, 2], state: [3, 4] };
     logDiagnostic({ diagnostic: privateState });
     logDiagnostic({ diagnostic: { event: 'context-ready', slidingWindowTokens: -1 } });
-    expect(debug).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled();
+    expect(debug).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
@@ -170,7 +172,8 @@ describe('private browser diagnostics', () => {
     logFailure({ stage: 'partial-parse', error });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'partial-parse', failureKind: kind, code: 'runtime-error', message: expect.stringContaining('Failed while parsing partial generated output with the native chat parser.') }));
     const output = JSON.stringify(debug.mock.calls);
-    expect(output).not.toContain('private'); expect(output).not.toContain('123456');
+    expect(output).not.toContain('private');
+    expect(output).not.toContain('123456');
   });
 
   it('explains stream failures using fixed text instead of caller messages', () => {
@@ -229,7 +232,9 @@ describe('native operation diagnostics', () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        acknowledge(); unsubscribeCurrent(); await operation;
+        acknowledge();
+        unsubscribeCurrent();
+        await operation;
       },
     };
     await vi.waitFor(() => expect(entered).toBe(true), { timeout: 100 });
@@ -293,7 +298,8 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
         unsubscribe();
       },
     };
-    logNativeDiagnostic({ message }); expect(debug).not.toHaveBeenCalled();
+    logNativeDiagnostic({ message });
+    expect(debug).not.toHaveBeenCalled();
   });
 
   it('suppresses native technical information outside debug mode', () => {
@@ -310,10 +316,12 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
   });
 
   it('awaits the host checkpoint before entering a potentially non-returning operation', async () => {
-    let acknowledge: () => void = () => {}; const delivered = new Promise<void>(resolve => {
+    let acknowledge: () => void = () => {};
+    const delivered = new Promise<void>(resolve => {
       acknowledge = resolve;
     });
-    const listener = vi.fn(() => delivered); const unsubscribe = subscribeDiagnostics({ listener, debug: 'on' });
+    const listener = vi.fn(() => delivered);
+    const unsubscribe = subscribeDiagnostics({ listener, debug: 'on' });
     let entered = false;
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -323,8 +331,12 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     const operation = logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: 1, tokens: 101, positions: 101 } }).then(() => {
       entered = true;
     });
-    await Promise.resolve(); expect(listener).toHaveBeenCalledOnce(); expect(entered).toBe(false);
-    acknowledge(); await operation; expect(entered).toBe(true);
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(entered).toBe(false);
+    acknowledge();
+    await operation;
+    expect(entered).toBe(true);
   });
 
   it('does not let a failed diagnostic acknowledgement abort inference', async () => {
@@ -429,7 +441,9 @@ describe('bounded model read diagnostics', () => {
 
   it('publishes count-only snapshots for model and projector loads', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    for (const target of ['model', 'projector'] as const) logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });
+    for (const target of ['model', 'projector'] as const) {
+      logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });
+    }
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(['model', 'projector'].map(target => ({ event: 'file-read-performance', fileReads: { ...fileReads, target } })));
   });
 
@@ -459,7 +473,8 @@ describe('native Flash Attention observations', () => {
     ['resolve_fused_ops: Flash Attention enabled', { kind: 'resolved', mode: 'enabled' }],
     ['resolve_fused_ops: Flash Attention not supported, set to disabled\n', { kind: 'resolved', mode: 'disabled' }],
   ])('separates exact requested and resolved lines: %s', (message, expected) => {
-    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    const receive = vi.fn();
+    const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
     try {
       logNativeDiagnostic({ message });
     } finally {
@@ -481,7 +496,8 @@ private`, 'resolve_fused_ops: Flash Attention enabled\n\n',
     'resolve_fused_ops: Flash Attention not supported, set to disabled/private',
     `llama_context: flash_attn${' '.repeat(256)}= auto`, null, {}, 1,
   ])('rejects malformed or untrusted flash lines: %j', message => {
-    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    const receive = vi.fn();
+    const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
     try {
       logNativeDiagnostic({ message });
     } finally {

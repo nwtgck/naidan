@@ -39,8 +39,9 @@ export async function runShow({ context, args }: {
   let optionTerminated = false;
   const operands: string[] = [];
   for (const arg of args) {
-    if (optionTerminated)
+    if (optionTerminated) {
       throw new Error('show pathspecs are not supported yet');
+    }
     if (arg === '--') {
       optionTerminated = true;
       continue;
@@ -76,9 +77,9 @@ export async function runShow({ context, args }: {
       }
       continue;
     }
-    if (arg === '--no-patch')
+    if (arg === '--no-patch') {
       diffMode = 'no-patch';
-    else if (arg === '--stat') {
+    } else if (arg === '--stat') {
       diffMode = 'stat';
     } else if (arg === '--name-only') {
       diffMode = 'name-only';
@@ -88,13 +89,15 @@ export async function runShow({ context, args }: {
       format = parseShowFormat({ arg });
     } else if (arg === '--no-color') {
       // Output is uncolored by Wesh Git.
-    } else if (arg.startsWith('-'))
+    } else if (arg.startsWith('-')) {
       throw new Error(`unsupported show argument: ${arg}`);
-    else
+    } else {
       operands.push(arg);
+    }
   }
-  if (operands.length > 1)
+  if (operands.length > 1) {
     throw new Error('too many revisions specified');
+  }
   const expression = operands[0] ?? 'HEAD';
   if (expression.includes(':')) {
     const resolved = await resolveRevisionPath({ files: context.files, repository, expression });
@@ -138,7 +141,9 @@ export async function runShow({ context, args }: {
   const commit = await readCommit({ files: context.files, repository, objectId });
   if (format !== undefined) {
     const formatted = formatCommitTemplate({ objectId, commit, format });
-    if (formatted !== '') await context.text().print({ text: `${formatted}\n` });
+    if (formatted !== '') {
+      await context.text().print({ text: `${formatted}\n` });
+    }
   } else {
     const author = parseAuthorForLog({ author: commit.author });
     const message = commit.message.trimEnd().split('\n').map(line => `    ${line}\n`).join('');
@@ -146,8 +151,9 @@ export async function runShow({ context, args }: {
       text: `commit ${objectId}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n`,
     });
   }
-  if (format !== undefined && format !== '' && (diffMode === 'name-only' || diffMode === 'name-status'))
+  if (format !== undefined && format !== '' && (diffMode === 'name-only' || diffMode === 'name-status')) {
     await context.text().print({ text: '\n' });
+  }
   switch (diffMode) {
   case 'no-patch':
     break;

@@ -10,10 +10,18 @@ const maxVariants = 16;
 export type DispatchSplit = { axis: 'x' | 'y' | 'z', count: number, limit: number, chunks: number };
 
 function planDispatch({ grid, limit }: { grid: Grid, limit: number }): Chunk[] {
-  if (!Number.isSafeInteger(limit) || limit < 1) throw new RangeError('Invalid WebGPU dispatch limit');
-  if (grid.some(value => !Number.isInteger(value) || value < 0 || value > 0xffffffff)) throw new RangeError('Invalid WebGPU dispatch count');
-  if (grid.some(value => value === 0)) return [];
-  if (grid.reduce((product, value) => product * Math.ceil(value / limit), 1) > maxChunks) throw new RangeError('WebGPU dispatch requires too many chunks');
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError('Invalid WebGPU dispatch limit');
+  }
+  if (grid.some(value => !Number.isInteger(value) || value < 0 || value > 0xffffffff)) {
+    throw new RangeError('Invalid WebGPU dispatch count');
+  }
+  if (grid.some(value => value === 0)) {
+    return [];
+  }
+  if (grid.reduce((product, value) => product * Math.ceil(value / limit), 1) > maxChunks) {
+    throw new RangeError('WebGPU dispatch requires too many chunks');
+  }
   const chunks: Chunk[] = [];
   for (let z = 0; z < grid[2]; z += limit) {
     for (let y = 0; y < grid[1]; y += limit) {
@@ -31,12 +39,17 @@ function facade<T extends object>({ target, overrides }: { target: T, overrides:
   const methods = new Map<PropertyKey, { original: unknown, bound: unknown }>();
   return new Proxy(target, {
     get(_target, key) {
-      if (Object.prototype.hasOwnProperty.call(overrides, key)) return Reflect.get(overrides, key);
+      if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+        return Reflect.get(overrides, key);
+      }
       const value: unknown = Reflect.get(target, key, target);
-      if (typeof value !== 'function') return value;
+      if (typeof value !== 'function') {
+        return value;
+      }
       let entry = methods.get(key);
       if (!entry || entry.original !== value) {
-        entry = { original: value, bound: value.bind(target) }; methods.set(key, entry);
+        entry = { original: value, bound: value.bind(target) };
+        methods.set(key, entry);
       }
       return entry.bound;
     },
@@ -68,37 +81,51 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
     if (!state.shader) {
       const descriptor = shaders.get(state.descriptor.compute.module);
       const shader = descriptor && adaptDispatchShader({ source: descriptor.code, entryPoint: state.descriptor.compute.entryPoint });
-      if (!descriptor || !shader) throw new Error('Unsupported WebGPU shader for oversized dispatch; this dispatch was not encoded');
+      if (!descriptor || !shader) {
+        throw new Error('Unsupported WebGPU shader for oversized dispatch; this dispatch was not encoded');
+      }
       // No tensor buffers, bind-group entries, or numerical expressions change.
       const { code, ...interfaceInfo } = shader;
       state.shader = { module: device.createShaderModule({ ...descriptor, code }), ...interfaceInfo };
     }
-    if (!state.shader.gridDependent && offset.every(value => value === 0)) return { pipeline: original, groups: new WeakMap() };
+    if (!state.shader.gridDependent && offset.every(value => value === 0)) {
+      return { pipeline: original, groups: new WeakMap() };
+    }
     const key = `${state.shader.offsetDependent ? offset.join(',') : ''}/${state.shader.gridDependent ? grid.join(',') : ''}`;
     let cached = state.variants.get(key);
     if (cached) {
-      state.variants.delete(key); state.variants.set(key, cached);
+      state.variants.delete(key);
+      state.variants.set(key, cached);
       return cached;
     }
     const constants = { ...state.descriptor.compute.constants };
     for (const [index, axis] of axes.entries()) {
-      if (state.shader.offsetDependent) constants[`naidan_dispatch_offset_${axis}`] = offset[index]!;
-      if (state.shader.gridDependent) constants[`naidan_dispatch_grid_${axis}`] = grid[index]!;
+      if (state.shader.offsetDependent) {
+        constants[`naidan_dispatch_offset_${axis}`] = offset[index]!;
+      }
+      if (state.shader.gridDependent) {
+        constants[`naidan_dispatch_grid_${axis}`] = grid[index]!;
+      }
     }
     cached = {
       pipeline: device.createComputePipeline({ ...state.descriptor, compute: { ...state.descriptor.compute, module: state.shader.module, constants } }),
       groups: new WeakMap(),
     };
     state.variants.set(key, cached);
-    if (state.variants.size > maxVariants) state.variants.delete(state.variants.keys().next().value!);
+    if (state.variants.size > maxVariants) {
+      state.variants.delete(state.variants.keys().next().value!);
+    }
     return cached;
   }
   function compatibleGroup({ variant, index, original }: { variant: Variant, index: number, original: GPUBindGroup }): GPUBindGroup {
     const descriptor = groups.get(original);
-    if (!descriptor) throw new Error('Untracked WebGPU bind group for oversized dispatch');
+    if (!descriptor) {
+      throw new Error('Untracked WebGPU bind group for oversized dispatch');
+    }
     let byIndex = variant.groups.get(original);
     if (!byIndex) {
-      byIndex = new Map(); variant.groups.set(original, byIndex);
+      byIndex = new Map();
+      variant.groups.set(original, byIndex);
     }
     let group = byIndex.get(index);
     if (!group) {
@@ -116,7 +143,8 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
       target: pass,
       overrides: {
         setPipeline(pipeline) {
-          pass.setPipeline(pipeline); current = pipeline;
+          pass.setPipeline(pipeline);
+          current = pipeline;
         },
 
         setBindGroup(index: number, group: GPUBindGroup | null, data?: number[] | Uint32Array, start?: number, length?: number) {
@@ -134,14 +162,18 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
         dispatchWorkgroups(x: number, y?: number, z?: number) {
           const grid: Grid = [x, y ?? 1, z ?? 1];
           if (grid.every(value => value <= limit)) {
-            pass.dispatchWorkgroups(x, y, z); return;
+            pass.dispatchWorkgroups(x, y, z);
+            return;
           }
           const chunks = planDispatch({ grid, limit });
           if (chunks.length === 0) {
-            pass.dispatchWorkgroups(0, 0, 0); return;
+            pass.dispatchWorkgroups(0, 0, 0);
+            return;
           }
           const state = current && pipelines.get(current);
-          if (!state || !current) throw new Error('Untracked WebGPU pipeline for oversized dispatch');
+          if (!state || !current) {
+            throw new Error('Untracked WebGPU pipeline for oversized dispatch');
+          }
           const original = current;
           // Resolve every descriptor before encoding: an unsupported shader or
           // resource must not leave a partly encoded split operation.
@@ -157,21 +189,27 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
           try {
             for (const chunk of prepared) {
               pass.setPipeline(chunk.pipeline);
-              for (const binding of chunk.bindings) pass.setBindGroup(binding.index, binding.group, binding.offsets);
+              for (const binding of chunk.bindings) {
+                pass.setBindGroup(binding.index, binding.group, binding.offsets);
+              }
               pass.dispatchWorkgroups(...chunk.count);
             }
           } finally {
           // Native code can reuse a pipeline, use indirect dispatch, or omit a
           // redundant setBindGroup next time. Never leak the specialized state.
             pass.setPipeline(original);
-            for (const [index, binding] of bindings) pass.setBindGroup(index, binding.group, binding.offsets);
+            for (const [index, binding] of bindings) {
+              pass.setBindGroup(index, binding.group, binding.offsets);
+            }
           }
           if (!state.reported) {
             state.reported = true;
-            for (const [index, axis] of axes.entries()) if (grid[index]! > limit) {
-              try {
-                report({ axis, count: grid[index]!, limit, chunks: chunks.length });
-              } catch { /* Diagnostics are not inference. */ }
+            for (const [index, axis] of axes.entries()) {
+              if (grid[index]! > limit) {
+                try {
+                  report({ axis, count: grid[index]!, limit, chunks: chunks.length });
+                } catch { /* Diagnostics are not inference. */ }
+              }
             }
           }
         },
@@ -183,7 +221,8 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
     overrides: {
       createShaderModule(descriptor) {
         const module = device.createShaderModule(descriptor);
-        shaders.set(module, { ...descriptor }); return module;
+        shaders.set(module, { ...descriptor });
+        return module;
       },
       createComputePipeline(descriptor) {
         return rememberPipeline({ pipeline: device.createComputePipeline(descriptor), descriptor });
@@ -225,7 +264,9 @@ export function createCoreWebGpuNavigator({ navigator, report, observeDevice }: 
   navigator: Pick<Navigator, 'gpu'> | undefined, report: ({ axis, count, limit, chunks }: { axis: DispatchSplit['axis'], count: DispatchSplit['count'], limit: DispatchSplit['limit'], chunks: DispatchSplit['chunks'] }) => void,
   observeDevice?: ({ device, adapter }: { device: GPUDevice, adapter?: GPUAdapter }) => GPUDevice,
 }): Pick<Navigator, 'gpu'> | undefined {
-  if (!navigator?.gpu) return navigator;
+  if (!navigator?.gpu) {
+    return navigator;
+  }
   const gpu = navigator.gpu;
   // Snapshot the entry point before a caller installs this scoped facade into
   // its dedicated Worker. Looking it up again would recurse into that hook.
@@ -238,7 +279,9 @@ export function createCoreWebGpuNavigator({ navigator, report, observeDevice }: 
         overrides: {
           async requestAdapter(options) {
             const adapter = await requestAdapter(options);
-            if (!adapter) return adapter;
+            if (!adapter) {
+              return adapter;
+            }
             return facade({
               target: adapter,
               overrides: {

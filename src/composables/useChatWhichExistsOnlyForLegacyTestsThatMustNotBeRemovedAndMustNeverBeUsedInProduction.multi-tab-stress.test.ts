@@ -31,24 +31,32 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockImplementation(() => Promise.resolve([])),
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       return JSON.parse(JSON.stringify(chat));
     }),
     loadChatMeta: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       return JSON.parse(JSON.stringify(chat));
     }),
     loadChatContent: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       return JSON.parse(JSON.stringify({ root: chat.root, currentLeafId: chat.currentLeafId }));
     }),
     updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const updated = await updater({ current: current });
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
-      if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
+      if (mocks.mockNotify) {
+        mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
+      }
       return Promise.resolve();
     }),
     updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
@@ -59,7 +67,9 @@ vi.mock('../00-storage/service', () => ({
       const updatedFull = currentFull ? { ...currentFull, ...updatedContent } : { id, ...updatedContent };
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedFull)));
 
-      if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_content', id });
+      if (mocks.mockNotify) {
+        mocks.mockNotify({ type: 'chat_content', id });
+      }
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -175,9 +185,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       let lastSave = 0;
       let isSaving = false;
       const assistantNode = chat.root.items[0];
-      if (!assistantNode) throw new Error('Assistant node not found');
+      if (!assistantNode) {
+        throw new Error('Assistant node not found');
+      }
       const textPart = assistantNode.parts[0];
-      if (textPart?.type !== 'text') throw new Error('Assistant text part not found');
+      if (textPart?.type !== 'text') {
+        throw new Error('Assistant text part not found');
+      }
 
       for (let i = 0; i < 10; i++) {
         textPart.text += 'word ';

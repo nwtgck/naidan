@@ -111,7 +111,9 @@ async function buildLocaleFixture({ root }: { root: string }): Promise<string[]>
           planned.push(locale);
         }
         for (const output of Object.values(bundle)) {
-          if (output.type === 'chunk') expect(output.code).toContain('System.register(');
+          if (output.type === 'chunk') {
+            expect(output.code).toContain('System.register(');
+          }
         }
       },
     },
@@ -132,7 +134,9 @@ async function buildLocaleFixture({ root }: { root: string }): Promise<string[]>
 }
 
 afterEach(() => {
-  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 describe('message implementation locale isolation', () => {
@@ -140,7 +144,9 @@ describe('message implementation locale isolation', () => {
     const catalog = readBoundaryStringMessageCatalog({ root: projectRoot, paths: createBoundaryStringProjectPaths({ root: projectRoot }) });
     const localesByModule = new Map<string, string>();
     for (const message of catalog.messages) {
-      for (const locale of BOUNDARY_STRING_LOCALES) localesByModule.set(message.modulesByLocale[locale].filePath, locale);
+      for (const locale of BOUNDARY_STRING_LOCALES) {
+        localesByModule.set(message.modulesByLocale[locale].filePath, locale);
+      }
     }
     const violations: string[] = [];
     for (const [filePath, locale] of localesByModule) {
@@ -150,9 +156,13 @@ describe('message implementation locale isolation', () => {
       for (const { fileName } of references) {
         const resolved = fileName.startsWith('.') ? path.resolve(path.dirname(filePath), fileName)
           : fileName.startsWith('@/') ? path.join(projectRoot, 'src', fileName.slice(2)) : undefined;
-        if (!resolved) continue;
+        if (!resolved) {
+          continue;
+        }
         const targetLocale = localesByModule.get(resolved) ?? localesByModule.get(resolved + '.ts') ?? localesByModule.get(resolved.replace(/\.js$/u, '.ts'));
-        if (targetLocale && targetLocale !== locale) violations.push(`${path.relative(projectRoot, filePath)} -> ${fileName}`);
+        if (targetLocale && targetLocale !== locale) {
+          violations.push(`${path.relative(projectRoot, filePath)} -> ${fileName}`);
+        }
       }
     }
     expect(violations, 'Duplicate fallback text locally; do not import another locale implementation.').toEqual([]);

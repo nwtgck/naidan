@@ -9,9 +9,13 @@ function bytesEqualAscii({ bytes, start, end, value }: {
   end: number,
   value: string,
 }): boolean {
-  if (end - start !== value.length) return false;
+  if (end - start !== value.length) {
+    return false;
+  }
   for (let index = 0; index < value.length; index += 1) {
-    if (bytes[start + index] !== value.charCodeAt(index)) return false;
+    if (bytes[start + index] !== value.charCodeAt(index)) {
+      return false;
+    }
   }
   return true;
 }
@@ -25,7 +29,9 @@ export function assertSafeGitRepositoryPathBytes({ bytes, source }: {
   }
   let segmentStart = 0;
   for (let offset = 0; offset <= bytes.byteLength; offset += 1) {
-    if (offset < bytes.byteLength && bytes[offset] !== 0x2f) continue;
+    if (offset < bytes.byteLength && bytes[offset] !== 0x2f) {
+      continue;
+    }
     if (offset === segmentStart
       || bytesEqualAscii({ bytes, start: segmentStart, end: offset, value: '.' })
       || bytesEqualAscii({ bytes, start: segmentStart, end: offset, value: '..' })

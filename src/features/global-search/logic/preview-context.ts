@@ -10,8 +10,12 @@ const DEFAULT_SEARCH_PREVIEW_CONTEXT_SIZE = 2;
 export function resolveSearchPreviewContextSize({ size }: {
   size: SearchPreviewContextSize,
 }): SearchPreviewContextSize {
-  if (size === 'full') return 'full';
-  if (!Number.isFinite(size)) return DEFAULT_SEARCH_PREVIEW_CONTEXT_SIZE;
+  if (size === 'full') {
+    return 'full';
+  }
+  if (!Number.isFinite(size)) {
+    return DEFAULT_SEARCH_PREVIEW_CONTEXT_SIZE;
+  }
   return Math.max(1, Math.floor(size));
 }
 
@@ -24,7 +28,9 @@ export function resolveSearchPreviewMessageWindow({
   matchedIndex: number | undefined,
   contextSize: SearchPreviewContextSize,
 }): SearchPreviewMessageWindow {
-  if (messageCount <= 0) return { start: 0, end: 0 };
+  if (messageCount <= 0) {
+    return { start: 0, end: 0 };
+  }
 
   const resolvedContextSize = resolveSearchPreviewContextSize({ size: contextSize });
   if (resolvedContextSize === 'full') {

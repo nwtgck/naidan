@@ -78,7 +78,9 @@ export async function runProviderReplayTurn({ provider, request, tools, abortCon
 /** Preserve the exact locally embedded image bytes, without fetching or model logic. */
 export function createReplayImageAttachment({ dataUrl }: { dataUrl: string }): Attachment {
   const prefix = 'data:image/png;base64,';
-  if (!dataUrl.startsWith(prefix)) throw new Error('Expected an embedded PNG fixture');
+  if (!dataUrl.startsWith(prefix)) {
+    throw new Error('Expected an embedded PNG fixture');
+  }
   const bytes = Uint8Array.from(atob(dataUrl.slice(prefix.length)), character => character.charCodeAt(0));
   const blob = new Blob([bytes], { type: 'image/png' });
   return {

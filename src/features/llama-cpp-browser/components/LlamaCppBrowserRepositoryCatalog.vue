@@ -5,7 +5,9 @@ const props = defineProps<{ entries: readonly { name: string, input: string, url
 const emit = defineEmits<{ inspect: [input: string] }>();
 
 function inspect({ input }: { input: string }): void {
-  if (!props.disabled) emit('inspect', input);
+  if (!props.disabled) {
+    emit('inspect', input);
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

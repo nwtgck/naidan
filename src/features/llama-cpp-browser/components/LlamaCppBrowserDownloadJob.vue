@@ -16,7 +16,10 @@ const errorText = computed(() => {
   case 'different-download': return lazyStrings.LlamaCppBrowserHuggingFaceManager__another_download_already_exists();
   case 'failed': return lazyStrings.LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume();
   case undefined: return undefined;
-  default: { const exhaustive: never = props.job.error; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.job.error;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const position = computed(() => queue.position({ id: props.job.id }));

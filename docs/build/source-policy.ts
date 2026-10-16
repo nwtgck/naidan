@@ -49,14 +49,18 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
     const column = beforeScript.length - beforeScript.lastIndexOf('\n');
     throw new Error(`${filename}:${line}:${column}: Static Docs <script setup> must be inline so its authoring rules can be checked. Move browser behavior into a registered island.`);
   }
-  if (errors.length) throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
+  if (errors.length) {
+    throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
+  }
   if (descriptor.template?.src || descriptor.template?.lang) {
     throw new Error(`Docs templates must be inline HTML: ${filename}`);
   }
   const root = parseTemplate(descriptor.template?.content ?? '');
   const templateStart = descriptor.template?.loc.start.offset ?? 0;
   const visit = ({ node }: { node: TemplateChildNode }): void => {
-    if (node.type !== NodeTypes.ELEMENT) return;
+    if (node.type !== NodeTypes.ELEMENT) {
+      return;
+    }
     if (mode === 'static' && node.tag.toLowerCase() === 'teleport') {
       staticTemplateError({
         source,
@@ -104,8 +108,12 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
       if (prop.type === NodeTypes.ATTRIBUTE && prop.name.toLowerCase().startsWith('on')) {
         throw new Error(`Inline event attribute in ${filename}`);
       }
-      if (prop.type !== NodeTypes.DIRECTIVE) continue;
-      if (prop.name === 'html') throw new Error(`v-html is not supported in Docs: ${filename}`);
+      if (prop.type !== NodeTypes.DIRECTIVE) {
+        continue;
+      }
+      if (prop.name === 'html') {
+        throw new Error(`v-html is not supported in Docs: ${filename}`);
+      }
       if (mode === 'static' && (prop.name === 'on' || prop.name === 'model')) {
         throw new Error(`Interactive binding on static Docs component; use an island: ${filename}`);
       }

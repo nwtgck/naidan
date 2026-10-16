@@ -11,7 +11,9 @@ export function createDocsDevBridge(): Plugin {
   const retire = (): void => {
     const previous = pending;
     pending = undefined;
-    if (!previous) return;
+    if (!previous) {
+      return;
+    }
     retirement = retirement.then(async () => {
       await (await previous).close();
     }).catch(error => {
@@ -33,14 +35,18 @@ export function createDocsDevBridge(): Plugin {
         path.resolve(docsRoot, 'messages/entry/ja.ts'),
       ]);
       server.watcher.on('all', (event, file) => {
-        if (event !== 'change' && event !== 'add' && event !== 'unlink') return;
+        if (event !== 'change' && event !== 'add' && event !== 'unlink') {
+          return;
+        }
         const relative = path.relative(docsRoot, file);
         if (relative.startsWith(`build${path.sep}`) && relative.endsWith('.ts')
           || relative === path.join('navigation', 'routes.ts')
           || relative === path.join('navigation', 'external-link.ts')
           || relative === path.join('islands', 'registry.ts')
           || relative === path.join('messages', 'entry', 'en.ts')
-          || relative === path.join('messages', 'entry', 'ja.ts')) retire();
+          || relative === path.join('messages', 'entry', 'ja.ts')) {
+          retire();
+        }
       });
       server.middlewares.use(async (request, response, next) => {
         let url: URL;
@@ -49,9 +55,13 @@ export function createDocsDevBridge(): Plugin {
         } catch {
           return next();
         }
-        if (url.pathname !== '/docs' && !url.pathname.startsWith('/docs/')) return next();
+        if (url.pathname !== '/docs' && !url.pathname.startsWith('/docs/')) {
+          return next();
+        }
         if (closing) {
-          response.statusCode = 503; response.end(); return;
+          response.statusCode = 503;
+          response.end();
+          return;
         }
         try {
           let docs: ViteDevServer;
@@ -59,23 +69,33 @@ export function createDocsDevBridge(): Plugin {
             if (!pending) {
               const attempt: Promise<ViteDevServer> = retirement.then(async () => {
                 const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
-                if (typeof factory.createDocsDevServer !== 'function') throw new Error('Invalid Docs development module');
+                if (typeof factory.createDocsDevServer !== 'function') {
+                  throw new Error('Invalid Docs development module');
+                }
                 return factory.createDocsDevServer({ root: docsRoot, parentServer: server });
               }).catch(error => {
-                if (pending === attempt) pending = undefined;
+                if (pending === attempt) {
+                  pending = undefined;
+                }
                 throw error;
               });
               pending = attempt;
             }
             const current = pending;
             docs = await current;
-            if (current === pending) break;
+            if (current === pending) {
+              break;
+            }
           }
           if (closing) {
-            response.statusCode = 503; response.end(); return;
+            response.statusCode = 503;
+            response.end();
+            return;
           }
           docs.middlewares(request, response, (error: unknown) => {
-            if (error) return next(error);
+            if (error) {
+              return next(error);
+            }
             response.statusCode = 404;
             response.end(request.method === 'HEAD' ? undefined : 'Docs resource not found');
           });

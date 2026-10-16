@@ -15,7 +15,10 @@ const heightLimit = computed(() => {
   case 'compact': return 20;
   case 'monitor': return 38;
   case undefined: return 65;
-  default: { const exhaustive: never = props.size; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.size;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const visible = computed(() => props.supported && props.busy);
@@ -27,7 +30,9 @@ watch(() => [visible.value, props.startedAt] as const, ([value]) => {
   elapsedSeconds.value = 0;
 }, { immediate: true, flush: 'sync' });
 watch(running, (value, _previous, onCleanup) => {
-  if (!value) return;
+  if (!value) {
+    return;
+  }
   const tick = () => {
     elapsedSeconds.value = Math.floor((performance.now() - began) / 1000);
   };
@@ -47,22 +52,31 @@ const displayedStep = computed(() => units.value
   ? Math.min(units.value.current + (props.stopping ? 0 : 1), units.value.total)
   : undefined);
 const samplingStatus = computed(() => {
-  if (!sampling.value || !units.value || displayedStep.value === undefined) return undefined;
+  if (!sampling.value || !units.value || displayedStep.value === undefined) {
+    return undefined;
+  }
   if (props.stopping || units.value.current === units.value.total) {
     return lazyStrings.ImageGenerationProgress__steps_completed({ current: units.value.current, total: units.value.total });
   }
   return lazyStrings.ImageGenerationProgress__processing_step({ current: displayedStep.value, total: units.value.total });
 });
 const phaseLabel = computed(() => {
-  if (props.stopping) return lazyStrings.stableDiffusionCppBrowser__stopping_retained();
-  if (!props.progress) return lazyStrings.llamaCppBrowserDownloads__waiting();
+  if (props.stopping) {
+    return lazyStrings.stableDiffusionCppBrowser__stopping_retained();
+  }
+  if (!props.progress) {
+    return lazyStrings.llamaCppBrowserDownloads__waiting();
+  }
   switch (props.progress.phase) {
   case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
   case 'model': return lazyStrings.stableDiffusionCppBrowser__loading_model();
   case 'sampling': return units.value ? samplingStatus.value : lazyStrings.stableDiffusionCppBrowser__sampling();
   case 'decoding': return lazyStrings.stableDiffusionCppBrowser__decoding_image();
   case 'encoding': return lazyStrings.stableDiffusionCppBrowser__encoding();
-  default: { const exhaustive: never = props.progress.phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.progress.phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 // Copy the Ollama loader's visual language without coupling the generation paths.

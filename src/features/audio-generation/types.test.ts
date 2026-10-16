@@ -48,7 +48,8 @@ describe('audio request boundaries', () => {
   });
 
   it('bounds the output metadata and refuses foreign result objects', () => {
-    const result = audioResult(); expect(audioGenerationResultSchema.parse(result)).toEqual(result);
+    const result = audioResult();
+    expect(audioGenerationResultSchema.parse(result)).toEqual(result);
     expect(audioGenerationResultSchema.safeParse({ ...result, samples: Infinity }).success).toBe(false);
     expect(audioGenerationResultSchema.safeParse({ ...result, wav: [] }).success).toBe(false);
     expect(audioGenerationResultSchema.safeParse({ ...result, finishReason: 'length' }).success).toBe(false);

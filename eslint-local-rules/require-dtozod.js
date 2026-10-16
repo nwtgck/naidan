@@ -12,23 +12,33 @@ function isUnrestrictedSource({ value }) {
 }
 
 function literalValue({ node }) {
-  if (node?.type === 'Literal') return node.value;
-  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) return node.quasis[0]?.value.cooked;
+  if (node?.type === 'Literal') {
+    return node.value;
+  }
+  if (node?.type === 'TemplateLiteral' && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked;
+  }
   return undefined;
 }
 
 // Import spelling alone misses domain schemas re-exported as DTOs. Inspect the
 // public value types instead, without attempting whole-program dataflow analysis.
 function containsNativeSchema({ type, checker, location, seen, depth }) {
-  if (seen.has(type) || depth > 8 || seen.size >= 256) return false;
+  if (seen.has(type) || depth > 8 || seen.size >= 256) {
+    return false;
+  }
   seen.add(type);
   const nested = child => containsNativeSchema({ type: child, checker, location, seen, depth: depth + 1 });
-  if (type.isUnionOrIntersection()) return type.types.some(nested);
+  if (type.isUnionOrIntersection()) {
+    return type.types.some(nested);
+  }
   if (type.flags & ts.TypeFlags.TypeParameter) {
     const constraint = checker.getBaseConstraintOfType(type);
     return constraint !== undefined && nested(constraint);
   }
-  if (!(type.flags & ts.TypeFlags.Object)) return false;
+  if (!(type.flags & ts.TypeFlags.Object)) {
+    return false;
+  }
   const propertyType = ({ owner, name }) => {
     const symbol = checker.getPropertyOfType(owner, name);
     return symbol && checker.getTypeOfSymbolAtLocation(symbol, location);
@@ -40,8 +50,12 @@ function containsNativeSchema({ type, checker, location, seen, depth }) {
     const run = propertyType({ owner: internals, name: 'run' });
     return Boolean(checker.getPropertyOfType(internals, 'def') && run && checker.getSignaturesOfType(run, ts.SignatureKind.Call).length);
   }
-  if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).some(signature => nested(checker.getReturnTypeOfSignature(signature)))) return true;
-  if (checker.getIndexInfosOfType(type).some(info => nested(info.type))) return true;
+  if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).some(signature => nested(checker.getReturnTypeOfSignature(signature)))) {
+    return true;
+  }
+  if (checker.getIndexInfosOfType(type).some(info => nested(info.type))) {
+    return true;
+  }
   return checker.getPropertiesOfType(type).some(symbol => nested(checker.getTypeOfSymbolAtLocation(symbol, location)));
 }
 
@@ -59,7 +73,9 @@ export const rule = {
     },
   },
   create(context) {
-    if (!isDtoFile({ filename: context.filename ?? context.getFilename?.() ?? '' })) return {};
+    if (!isDtoFile({ filename: context.filename ?? context.getFilename?.() ?? '' })) {
+      return {};
+    }
     const reportSource = ({ node, source, typeOnly }) => {
       if (!typeOnly && isUnrestrictedSource({ value: literalValue({ node: source }) })) {
         context.report({ node, messageId: 'native' });
@@ -67,9 +83,13 @@ export const rule = {
     };
     const reportNativeExport = ({ node, value }) => {
       const services = context.sourceCode.parserServices;
-      if (!services?.program || !services.esTreeNodeToTSNodeMap || !value) return;
+      if (!services?.program || !services.esTreeNodeToTSNodeMap || !value) {
+        return;
+      }
       const location = services.esTreeNodeToTSNodeMap.get(value);
-      if (!location) return;
+      if (!location) {
+        return;
+      }
       const checker = services.program.getTypeChecker();
       const moduleSymbol = ts.isStringLiteral(location) ? checker.getSymbolAtLocation(location) : undefined;
       const type = moduleSymbol ? checker.getTypeOfSymbolAtLocation(moduleSymbol, location) : checker.getTypeAtLocation(location);
@@ -79,7 +99,9 @@ export const rule = {
     };
     const assertion = node => {
       // "as const" preserves a literal structure, not a claimed validation.
-      if (node.typeAnnotation.type === 'TSTypeReference' && node.typeAnnotation.typeName.type === 'Identifier' && node.typeAnnotation.typeName.name === 'const') return;
+      if (node.typeAnnotation.type === 'TSTypeReference' && node.typeAnnotation.typeName.type === 'Identifier' && node.typeAnnotation.typeName.name === 'const') {
+        return;
+      }
       context.report({ node, messageId: 'assertion' });
     };
     return {
@@ -92,22 +114,32 @@ export const rule = {
         const typeOnly = node.exportKind === 'type' ||
           (node.specifiers.length > 0 && node.specifiers.every(specifier => specifier.exportKind === 'type'));
         reportSource({ node, source: node.source, typeOnly });
-        if (typeOnly || isUnrestrictedSource({ value: literalValue({ node: node.source }) })) return;
+        if (typeOnly || isUnrestrictedSource({ value: literalValue({ node: node.source }) })) {
+          return;
+        }
         if (node.declaration?.type === 'VariableDeclaration') {
-          for (const declaration of node.declaration.declarations) reportNativeExport({ node: declaration, value: declaration.id });
+          for (const declaration of node.declaration.declarations) {
+            reportNativeExport({ node: declaration, value: declaration.id });
+          }
         } else if (node.declaration?.type === 'FunctionDeclaration') {
           reportNativeExport({ node: node.declaration, value: node.declaration });
         }
         for (const specifier of node.specifiers) {
-          if (specifier.exportKind !== 'type') reportNativeExport({ node: specifier, value: specifier.local });
+          if (specifier.exportKind !== 'type') {
+            reportNativeExport({ node: specifier, value: specifier.local });
+          }
         }
       },
       ExportDefaultDeclaration(node) {
-        if (node.declaration.type !== 'TSInterfaceDeclaration') reportNativeExport({ node, value: node.declaration });
+        if (node.declaration.type !== 'TSInterfaceDeclaration') {
+          reportNativeExport({ node, value: node.declaration });
+        }
       },
       ExportAllDeclaration(node) {
         reportSource({ node, source: node.source, typeOnly: node.exportKind === 'type' });
-        if (node.exportKind !== 'type' && !isUnrestrictedSource({ value: literalValue({ node: node.source }) })) reportNativeExport({ node, value: node.source });
+        if (node.exportKind !== 'type' && !isUnrestrictedSource({ value: literalValue({ node: node.source }) })) {
+          reportNativeExport({ node, value: node.source });
+        }
       },
       ImportExpression(node) {
         reportSource({ node, source: node.source, typeOnly: false });
@@ -126,12 +158,18 @@ export const rule = {
       TSTypeAssertion: assertion,
       MemberExpression(node) {
         const key = node.computed ? literalValue({ node: node.property }) : node.property.name;
-        if (key === '_zod') context.report({ node, messageId: 'internals' });
+        if (key === '_zod') {
+          context.report({ node, messageId: 'internals' });
+        }
       },
       Property(node) {
-        if (node.parent.type !== 'ObjectPattern') return;
+        if (node.parent.type !== 'ObjectPattern') {
+          return;
+        }
         const key = node.computed ? literalValue({ node: node.key }) : node.key.name ?? literalValue({ node: node.key });
-        if (key === '_zod') context.report({ node, messageId: 'internals' });
+        if (key === '_zod') {
+          context.report({ node, messageId: 'internals' });
+        }
       },
     };
   },

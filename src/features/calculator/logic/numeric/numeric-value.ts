@@ -134,7 +134,9 @@ export function propagateApproximateInputs({ value, inputs }: {
   value: CalculatorNumericValue,
   inputs: readonly CalculatorNumericValue[],
 }): CalculatorNumericValue {
-  if (!inputs.some(input => input.kind === 'approximate')) return value;
+  if (!inputs.some(input => input.kind === 'approximate')) {
+    return value;
+  }
   switch (value.kind) {
   case 'approximate':
     return value;
@@ -377,7 +379,9 @@ export function rootNumericValue({ value, degree, span, runtime }: {
   switch (value.kind) {
   case 'rational': {
     const exact = perfectRationalRoot({ rational: value.rational, degree, consumeOperation });
-    if (exact !== undefined) return createRationalValue({ rational: exact });
+    if (exact !== undefined) {
+      return createRationalValue({ rational: exact });
+    }
     break;
   }
   case 'approximate':
@@ -443,8 +447,10 @@ export function roundNumericValueToDecimalPlaces({ value, decimalPlaces }: {
 export function signNumericValue({ value }: { value: CalculatorNumericValue }): -1 | 0 | 1 {
   let raw: bigint;
   switch (value.kind) {
-  case 'rational': raw = value.rational.numerator; break;
-  case 'approximate': raw = value.decimal.coefficient; break;
+  case 'rational': raw = value.rational.numerator;
+    break;
+  case 'approximate': raw = value.decimal.coefficient;
+    break;
   default: {
     const _exhaustive: never = value;
     throw new Error(`Unhandled calculator numeric value: ${String(_exhaustive)}`);

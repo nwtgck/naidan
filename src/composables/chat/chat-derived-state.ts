@@ -74,7 +74,9 @@ export function createChatDerivedState({
   });
 
   const resolvedSettings = computed(() => {
-    if (!currentChatRef.value) return null;
+    if (!currentChatRef.value) {
+      return null;
+    }
     return resolveChatSettings({
       chat: toRaw(currentChatRef.value),
       groups: chatGroups.value,
@@ -83,7 +85,9 @@ export function createChatDerivedState({
   });
 
   const inheritedSettings = computed(() => {
-    if (!currentChatRef.value) return null;
+    if (!currentChatRef.value) {
+      return null;
+    }
     const chat = toRaw(currentChatRef.value);
     const virtualChat: Chat = {
       ...chat,
@@ -101,12 +105,16 @@ export function createChatDerivedState({
   });
 
   const activeMessages = computed(() => {
-    if (!currentChatRef.value) return [];
+    if (!currentChatRef.value) {
+      return [];
+    }
     return Array.from(getChatBranchIterator({ chat: currentChatRef.value }));
   });
 
   const allMessages = computed(() => {
-    if (!currentChatRef.value) return [];
+    if (!currentChatRef.value) {
+      return [];
+    }
     return getAllMessages({ chat: currentChatRef.value });
   });
 
@@ -116,11 +124,17 @@ export function createChatDerivedState({
     chat: Pick<Chat, 'mounts' | 'groupId'>,
   }) {
     const settings = getSettings();
-    if (settings.mounts && settings.mounts.length > 0) return true;
-    if (chat.mounts && chat.mounts.length > 0) return true;
+    if (settings.mounts && settings.mounts.length > 0) {
+      return true;
+    }
+    if (chat.mounts && chat.mounts.length > 0) {
+      return true;
+    }
     if (chat.groupId) {
       const group = chatGroups.value.find(item => item.id === chat.groupId);
-      if (group?.mounts && group.mounts.length > 0) return true;
+      if (group?.mounts && group.mounts.length > 0) {
+        return true;
+      }
     }
     return false;
   }

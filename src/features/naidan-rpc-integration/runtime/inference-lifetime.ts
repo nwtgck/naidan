@@ -14,12 +14,16 @@ export function createInferenceLifetime({ load, budgets }: { load(): Promise<Own
   let retirementFailure: { error: unknown } | undefined;
   const acquire = async ({ signal }: { signal: AbortSignal }) => {
     signal.throwIfAborted();
-    if (retirementFailure) throw retirementFailure.error;
+    if (retirementFailure) {
+      throw retirementFailure.error;
+    }
     if (!current) {
       const entry = { value: Promise.resolve().then(load) };
       current = entry;
       void entry.value.catch(() => {
-        if (current === entry) current = undefined;
+        if (current === entry) {
+          current = undefined;
+        }
       });
     }
     const entry = current;
@@ -27,8 +31,12 @@ export function createInferenceLifetime({ load, budgets }: { load(): Promise<Own
     signal.throwIfAborted();
     const active = () => {
       signal.throwIfAborted();
-      if (retirementFailure) throw retirementFailure.error;
-      if (current !== entry) throw new DOMException('Inference resources were retired', 'AbortError');
+      if (retirementFailure) {
+        throw retirementFailure.error;
+      }
+      if (current !== entry) {
+        throw new DOMException('Inference resources were retired', 'AbortError');
+      }
       return resources;
     };
     // Recheck immediately before dispatch too: retiring may run between this
@@ -51,7 +59,8 @@ export function createInferenceLifetime({ load, budgets }: { load(): Promise<Own
       },
     },
     retire() {
-      const previous = current; current = undefined;
+      const previous = current;
+      current = undefined;
       if (previous) {
         // A failed import has no owner to dispose; its original caller sees the
         // failure. A disposal failure still propagates to the shutdown owner.
@@ -59,7 +68,8 @@ export function createInferenceLifetime({ load, budgets }: { load(): Promise<Own
         retiring.add(task);
         const settled = () => retiring.delete(task);
         void task.then(settled, error => {
-          retirementFailure ??= { error }; settled();
+          retirementFailure ??= { error };
+          settled();
         });
       }
       // The manager closes admission and retires protocol calls first. Source
@@ -70,11 +80,16 @@ export function createInferenceLifetime({ load, budgets }: { load(): Promise<Own
           switch (result.status) {
           case 'fulfilled': break;
           case 'rejected': throw result.reason;
-          default: { const unreachable: never = result; throw new Error(String(unreachable)); }
+          default: {
+            const unreachable: never = result;
+            throw new Error(String(unreachable));
+          }
           }
         }
         // Repeated retirement cannot silently report a failed disposal as done.
-        if (retirementFailure) throw retirementFailure.error;
+        if (retirementFailure) {
+          throw retirementFailure.error;
+        }
       });
     },
   };

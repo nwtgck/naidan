@@ -9,15 +9,24 @@ function renderToolResult({ result }: { result: ToolExecutionResult }) {
     switch (result.content.type) {
     case 'text': return { ...result, content: { type: 'text' as const, text: truncateNaidanSysfsTextForJson({ text: result.content.text }) } };
     case 'binary_object': return { ...result, content: { ...result.content } };
-    default: { const _ex: never = result.content; throw new Error(`Unhandled tool content: ${_ex}`); }
+    default: {
+      const _ex: never = result.content;
+      throw new Error(`Unhandled tool content: ${_ex}`);
+    }
     }
   case 'error':
     switch (result.error.message.type) {
     case 'text': return { ...result, error: { ...result.error, message: { type: 'text' as const, text: truncateNaidanSysfsTextForJson({ text: result.error.message.text }) } } };
     case 'binary_object': return { ...result, error: { ...result.error, message: { ...result.error.message } } };
-    default: { const _ex: never = result.error.message; throw new Error(`Unhandled tool error content: ${_ex}`); }
+    default: {
+      const _ex: never = result.error.message;
+      throw new Error(`Unhandled tool error content: ${_ex}`);
     }
-  default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+    }
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled tool result: ${_ex}`);
+  }
   }
 }
 
@@ -29,7 +38,10 @@ function renderPart({ part }: { part: MessageNode['parts'][number] }) {
       switch (part.completeness) {
       case 'complete': return undefined;
       case 'partial': return 'partial' as const;
-      default: { const _ex: never = part.completeness; throw new Error(`Unhandled completeness: ${_ex}`); }
+      default: {
+        const _ex: never = part.completeness;
+        throw new Error(`Unhandled completeness: ${_ex}`);
+      }
       }
     })();
     return { type: part.type, text: part.text, completeness };
@@ -60,7 +72,10 @@ function renderPart({ part }: { part: MessageNode['parts'][number] }) {
     },
   };
   case 'tool_result': return { type: part.type, result: renderToolResult({ result: part.result }) };
-  default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+  default: {
+    const _ex: never = part;
+    throw new Error(`Unhandled message part: ${_ex}`);
+  }
   }
 }
 
@@ -71,7 +86,10 @@ export function renderMessageJson({ node }: { node: MessageNode }): string {
     case 'user':
     case 'system':
     case 'tool': return undefined;
-    default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
   })();
   return JSON.stringify({

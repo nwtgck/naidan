@@ -57,7 +57,9 @@ export function useFileExplorerLongPress({
     const current = activeLongPress;
     activeLongPress = undefined;
     removeWindowListeners();
-    if (current === undefined) return;
+    if (current === undefined) {
+      return;
+    }
     switch (current.status) {
     case 'waiting':
       clearTimeout(current.timeoutId);
@@ -94,7 +96,9 @@ export function useFileExplorerLongPress({
   // eslint-disable-next-line local-rules-named-args/require-named-args -- EventTarget callback contract.
   function onWindowPointerMove(event: PointerEvent): void {
     const current = activeLongPress;
-    if (current === undefined || current.pointerId !== event.pointerId) return;
+    if (current === undefined || current.pointerId !== event.pointerId) {
+      return;
+    }
     switch (current.status) {
     case 'waiting': {
       const deltaX = event.clientX - current.startX;
@@ -116,7 +120,9 @@ export function useFileExplorerLongPress({
   // eslint-disable-next-line local-rules-named-args/require-named-args -- EventTarget callback contract.
   function onWindowPointerUp(event: PointerEvent): void {
     const current = activeLongPress;
-    if (current === undefined || current.pointerId !== event.pointerId) return;
+    if (current === undefined || current.pointerId !== event.pointerId) {
+      return;
+    }
     switch (current.status) {
     case 'waiting':
       break;
@@ -137,7 +143,9 @@ export function useFileExplorerLongPress({
   // eslint-disable-next-line local-rules-named-args/require-named-args -- EventTarget callback contract.
   function onWindowPointerCancel(event: PointerEvent): void {
     const current = activeLongPress;
-    if (current === undefined || current.pointerId !== event.pointerId) return;
+    if (current === undefined || current.pointerId !== event.pointerId) {
+      return;
+    }
     clearActiveLongPress();
   }
 
@@ -156,7 +164,9 @@ export function useFileExplorerLongPress({
 
     const timeoutId = setTimeout(() => {
       const current = activeLongPress;
-      if (current === undefined || current.pointerId !== event.pointerId) return;
+      if (current === undefined || current.pointerId !== event.pointerId) {
+        return;
+      }
       switch (current.status) {
       case 'waiting':
         activeLongPress = {

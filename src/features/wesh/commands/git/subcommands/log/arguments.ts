@@ -43,14 +43,17 @@ export interface GitLogArguments {
 function parseLogDateBoundary({ value }: {
     value: string;
 }): number {
-  if (/^@-?[0-9]+$/u.test(value))
+  if (/^@-?[0-9]+$/u.test(value)) {
     return Number.parseInt(value.slice(1), 10);
+  }
   const rawTimestamp = /^([0-9]{9,})(?:[ \t]+[+-][0-9]{4})?$/u.exec(value);
-  if (rawTimestamp !== null)
+  if (rawTimestamp !== null) {
     return Number.parseInt(rawTimestamp[1]!, 10);
+  }
   const milliseconds = Date.parse(value);
-  if (!Number.isFinite(milliseconds))
+  if (!Number.isFinite(milliseconds)) {
     throw new Error(`invalid date format: ${value}`);
+  }
   return Math.floor(milliseconds / 1000);
 }
 
@@ -127,8 +130,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
             break;
           case 'following-required': {
             const value = args[index + 1];
-            if (value === undefined)
+            if (value === undefined) {
               throw new Error(`option '${analysis.option}' requires a numeric value`);
+            }
             maxCount = parseGitMaxCount({ value, option: analysis.option });
             index += 1;
             break;
@@ -145,14 +149,16 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
         case 'pickaxe-string':
           switch (analysis.value.kind) {
           case 'inline':
-            if (analysis.value.rawValue.length === 0)
+            if (analysis.value.rawValue.length === 0) {
               throw new Error("option '-S' requires a non-empty value");
+            }
             pickaxeString = analysis.value.rawValue;
             break;
           case 'following-required': {
             const value = args[index + 1];
-            if (value === undefined || value.length === 0)
+            if (value === undefined || value.length === 0) {
               throw new Error("option '-S' requires a non-empty value");
+            }
             pickaxeString = value;
             index += 1;
             break;
@@ -169,14 +175,16 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
         case 'pickaxe-regex':
           switch (analysis.value.kind) {
           case 'inline':
-            if (analysis.value.rawValue.length === 0)
+            if (analysis.value.rawValue.length === 0) {
               throw new Error("option '-G' requires a non-empty value");
+            }
             pickaxeRegex = compileGitExtendedRegex({ pattern: analysis.value.rawValue });
             break;
           case 'following-required': {
             const value = args[index + 1];
-            if (value === undefined || value.length === 0)
+            if (value === undefined || value.length === 0) {
               throw new Error("option '-G' requires a non-empty value");
+            }
             pickaxeRegex = compileGitExtendedRegex({ pattern: value });
             index += 1;
             break;
@@ -228,8 +236,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       // Output is uncolored by Wesh Git.
     } else if (parsingOptions && arg === '--max-count') {
       const value = args[index + 1];
-      if (value === undefined)
+      if (value === undefined) {
         throw new Error(`option '${arg}' requires a numeric value`);
+      }
       maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
     } else if (parsingOptions && arg.startsWith('--max-count=')) {
@@ -248,13 +257,15 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       oneline = false;
     } else if (parsingOptions && (arg === '--since' || arg === '--after' || arg === '--until' || arg === '--before')) {
       const value = args[index + 1];
-      if (value === undefined)
+      if (value === undefined) {
         throw new Error(`option '${arg}' requires a value`);
+      }
       const timestamp = parseLogDateBoundary({ value });
-      if (arg === '--since' || arg === '--after')
+      if (arg === '--since' || arg === '--after') {
         sinceTimestamp = timestamp;
-      else
+      } else {
         untilTimestamp = timestamp;
+      }
       index += 1;
     } else if (parsingOptions && (arg.startsWith('--since=') || arg.startsWith('--after='))) {
       sinceTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
@@ -262,8 +273,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       untilTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
     } else if (parsingOptions && (arg === '--grep')) {
       const value = args[index + 1];
-      if (value === undefined)
+      if (value === undefined) {
         throw new Error(`option '${arg}' requires a value`);
+      }
       grepPatterns.push(compileGitBasicRegex({ pattern: value }));
       index += 1;
     } else if (parsingOptions && arg.startsWith('--grep=')) {
@@ -274,12 +286,15 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       revisionTerms.push(arg);
     }
   }
-  if (pickaxeString !== undefined && pickaxeRegex !== undefined)
+  if (pickaxeString !== undefined && pickaxeRegex !== undefined) {
     throw new Error("options '-G' and '-S' cannot be used together");
-  if (nameOnly && nameStatus)
+  }
+  if (nameOnly && nameStatus) {
     throw new Error("options '--name-only' and '--name-status' cannot be used together");
-  if (follow && pathOperands.length !== 1)
+  }
+  if (follow && pathOperands.length !== 1) {
     throw new Error('--follow requires exactly one path');
+  }
   if (graph && (showStat || showPatch || pathOperands.length > 0 || sinceTimestamp !== undefined
         || untilTimestamp !== undefined || grepPatterns.length > 0 || pickaxeString !== undefined
         || pickaxeRegex !== undefined)) {

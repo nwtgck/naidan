@@ -425,7 +425,9 @@ export function parseBashArgv({ args }: {
       switch (analysis.kind) {
       case 'unknown':
       case 'ambiguous':
-        if (argument.startsWith('--')) return invalidOption({ argument });
+        if (argument.startsWith('--')) {
+          return invalidOption({ argument });
+        }
         break;
       case 'matched':
         switch (analysis.semantic) {
@@ -677,7 +679,9 @@ export function parseBashArgv({ args }: {
       };
     }
     const pendingShoptError = applyPendingShoptValueOptions();
-    if (pendingShoptError !== undefined) return pendingShoptError;
+    if (pendingShoptError !== undefined) {
+      return pendingShoptError;
+    }
     return createBashInvocationPlan({
       state,
       source: {
@@ -690,7 +694,9 @@ export function parseBashArgv({ args }: {
   }
 
   const pendingShoptError = applyPendingShoptValueOptions();
-  if (pendingShoptError !== undefined) return pendingShoptError;
+  if (pendingShoptError !== undefined) {
+    return pendingShoptError;
+  }
 
   switch (sourceMode) {
   case 'stdin':

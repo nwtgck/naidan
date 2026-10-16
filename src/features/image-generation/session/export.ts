@@ -27,14 +27,18 @@ export function createImageGenerationArchive({ snapshot, exportedAt }: { snapsho
           `Exported at: ${modifiedAt.toISOString()}\n`,
         ], { type: 'text/plain' }),
       });
-      for (const entry of snapshot.metadata) await add({ path: `metadata/${entry.path}`, blob: entry.blob });
+      for (const entry of snapshot.metadata) {
+        await add({ path: `metadata/${entry.path}`, blob: entry.blob });
+      }
       for (const { id, blob } of snapshot.binaries) {
         const extension = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'bin';
         await add({ path: `images/${idToRaw({ id })}.${extension}`, blob });
       }
-      await writer.finalize(); await output.close();
+      await writer.finalize();
+      await output.close();
     } catch (error) {
-      await output.abort({ reason: error }).catch(() => undefined); throw error;
+      await output.abort({ reason: error }).catch(() => undefined);
+      throw error;
     } finally {
       await directory.dispose();
     }

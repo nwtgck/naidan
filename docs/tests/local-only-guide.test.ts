@@ -30,7 +30,9 @@ describe('Local-only connection guide', () => {
       'https://naidan-curated.pages.dev/',
       'https://naidan.pages.dev/',
     ]);
-    for (const link of hostedLinks) expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
+    for (const link of hostedLinks) {
+      expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
+    }
     expect(article?.querySelector('.switching-note a')?.getAttribute('href')).toBe(`/docs/${locale}/data-backup/`);
     const diagram = article?.querySelector('[data-testid="connection-policy-diagram"]');
     expect(diagram?.querySelectorAll('.policy-row')).toHaveLength(3);

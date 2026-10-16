@@ -158,7 +158,9 @@ export function createHostedTransformersRuntimeAssetsPlugin({
       });
     },
     generateBundle(_options, bundle) {
-      if (expectedBundle === undefined) throw new Error('Hosted Transformers runtime asset bundle was not initialized');
+      if (expectedBundle === undefined) {
+        throw new Error('Hosted Transformers runtime asset bundle was not initialized');
+      }
       validateHostedTransformersRuntimeOutputBundle({ expectedBundle, bundle });
     },
   };

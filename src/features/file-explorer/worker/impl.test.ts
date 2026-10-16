@@ -29,7 +29,9 @@ describe('file-explorer.worker.impl', () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'download-root' });
     const handle = await root.getFileHandle('model.gguf', { create: true });
     handle.content = new Uint8Array([1]);
-    if (kind === 'opfs-root') vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
+    if (kind === 'opfs-root') {
+      vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
+    }
     const descriptor = kind === 'opfs-root' ? { kind, rootName: 'Files' }
       : kind === 'native-directory' ? { kind, rootName: 'Files', handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }
         : { kind, rootName: 'Files', mounts: [{ type: 'directory' as const, path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }] };
@@ -52,7 +54,9 @@ describe('file-explorer.worker.impl', () => {
     const buffer = vi.spyOn(file, 'arrayBuffer');
     const prepared = await worker.prepareFileDownload({ request: { sessionId, path } });
     expect(prepared.kind).toBe('file');
-    if (prepared.kind !== 'file') throw new Error('Expected a native File');
+    if (prepared.kind !== 'file') {
+      throw new Error('Expected a native File');
+    }
     expect(prepared.blob).toBe(file);
     expect(prepared.blob.size).toBe(3);
     expect(getFile).toHaveBeenCalledOnce();
@@ -286,7 +290,9 @@ describe('file-explorer.worker.impl', () => {
       },
     });
     expect(archive.status).toBe('completed');
-    if (archive.status !== 'completed') throw new Error('Expected a completed archive');
+    if (archive.status !== 'completed') {
+      throw new Error('Expected a completed archive');
+    }
 
     const zipBytes = Uint8Array.from(new Uint8Array(await bytesPromise));
     const zip = await JSZip.loadAsync(zipBytes);
@@ -521,7 +527,8 @@ describe('file-explorer.worker.impl', () => {
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        opened.mockRestore(); nativeHandle.mockRestore();
+        opened.mockRestore();
+        nativeHandle.mockRestore();
         await worker.disposeSession({ request: { sessionId } });
       },
     };

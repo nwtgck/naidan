@@ -51,7 +51,9 @@ export function snapshotImageGeneration({ request, sourceCommit, locateFile, cre
   const inputFiles: HistoryBinaryFile[] = [];
   function inputImage({ file }: { file: File }) {
     const binaryObjectId = identifyInput ? identifyInput({ file }) : generateId<BinaryObjectId>();
-    if (!inputFiles.some(input => input.binaryObjectId === binaryObjectId)) inputFiles.push({ binaryObjectId, blob: file, name: file.name });
+    if (!inputFiles.some(input => input.binaryObjectId === binaryObjectId)) {
+      inputFiles.push({ binaryObjectId, blob: file, name: file.name });
+    }
     return { binaryObjectId, name: file.name };
   }
   const { artifact, models, loras, imageInputs, parameters, preview, weightResidency, gpuBudgetMiB,

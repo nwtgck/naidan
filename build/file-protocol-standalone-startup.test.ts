@@ -86,7 +86,9 @@ function executeEntryBootstrap({
     globalObject,
     runSlowStartupNotice: () => {
       const callback = callbacks.shift();
-      if (callback === undefined) throw new Error('Expected a slow-startup notice callback.');
+      if (callback === undefined) {
+        throw new Error('Expected a slow-startup notice callback.');
+      }
       callback();
     },
     consoleError,
@@ -103,7 +105,9 @@ function readStartupState({ globalObject }: {
     }>,
   }> | undefined;
   const state = namespace?.internal?.debug?.startup;
-  if (state === undefined) throw new Error('Expected startup Debug state to be created.');
+  if (state === undefined) {
+    throw new Error('Expected startup Debug state to be created.');
+  }
   return state as StartupState;
 }
 

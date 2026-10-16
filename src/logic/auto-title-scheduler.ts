@@ -19,13 +19,17 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
   let quietUntil = 0;
 
   function clearTimer(): void {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     timer = undefined;
   }
 
   function arm(): void {
     clearTimer();
-    if (foreground === 'busy' || holds.size !== 0 || active !== undefined || pending.size === 0) return;
+    if (foreground === 'busy' || holds.size !== 0 || active !== undefined || pending.size === 0) {
+      return;
+    }
     timer = setTimeout(() => {
       timer = undefined;
       if (now() < quietUntil) {
@@ -34,7 +38,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
       }
       // The most recently completed conversation is the most relevant one.
       const job = Array.from(pending.values()).at(-1);
-      if (job === undefined) return;
+      if (job === undefined) {
+        return;
+      }
       pending.delete(job.chatId);
       const entry = { job, controller: new AbortController() };
       active = entry;
@@ -50,7 +56,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
         } finally {
           // Keep ownership until cleanup settles, even if abort is ignored.
           // Foreground callers never await this promise.
-          if (active === entry) active = undefined;
+          if (active === entry) {
+            active = undefined;
+          }
           quietUntil = Math.max(quietUntil, now() + quietMs);
           arm();
         }
@@ -62,7 +70,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
     quietUntil = now() + quietMs;
     if (active !== undefined && !active.controller.signal.aborted) {
       // A newer completion for this chat wins over an interrupted old job.
-      if (!pending.has(active.job.chatId)) pending.set(active.job.chatId, active.job);
+      if (!pending.has(active.job.chatId)) {
+        pending.set(active.job.chatId, active.job);
+      }
       active.controller.abort();
     }
     arm();
@@ -70,7 +80,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
 
   function cancel({ chatId }: { chatId: ChatId }): void {
     pending.delete(chatId);
-    if (active?.job.chatId === chatId) active.controller.abort();
+    if (active?.job.chatId === chatId) {
+      active.controller.abort();
+    }
     arm();
   }
 
@@ -83,7 +95,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
     },
     noteActivity,
     setForeground({ state }: { state: 'busy' | 'idle' }): void {
-      if (foreground === state) return;
+      if (foreground === state) {
+        return;
+      }
       foreground = state;
       noteActivity();
     },
@@ -93,7 +107,9 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
       holds.add(token);
       noteActivity();
       return () => {
-        if (holds.delete(token)) noteActivity();
+        if (holds.delete(token)) {
+          noteActivity();
+        }
       };
     },
     cancel,

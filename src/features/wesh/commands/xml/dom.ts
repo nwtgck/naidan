@@ -17,7 +17,9 @@ function unwrapXPathStringLiteral({
   expression: string;
 }): string | undefined {
   const quote = expression[0];
-  if ((quote !== '"' && quote !== "'") || expression.at(-1) !== quote) return undefined;
+  if ((quote !== '"' && quote !== "'") || expression.at(-1) !== quote) {
+    return undefined;
+  }
   return expression.indexOf(quote, 1) === expression.length - 1
     ? expression.slice(1, -1)
     : undefined;
@@ -31,7 +33,9 @@ function assertXPathWhitespaceIsValid({
   let quote: '"' | "'" | undefined;
   for (const character of expression) {
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -70,8 +74,12 @@ async function readTextStream({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (value === undefined) continue;
+      if (done) {
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
@@ -193,7 +201,9 @@ function tokenizeDtdDeclaration({ value }: { value: string }): readonly string[]
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -210,18 +220,26 @@ function tokenizeDtdDeclaration({ value }: { value: string }): readonly string[]
     }
     tokenStart ??= index;
   }
-  if (tokenStart !== undefined) tokens.push(value.slice(tokenStart));
+  if (tokenStart !== undefined) {
+    tokens.push(value.slice(tokenStart));
+  }
   return tokens;
 }
 
 function decodeDtdDefaultValue({ token }: { token: string }): string | undefined {
   const quote = token[0];
-  if ((quote !== '"' && quote !== "'") || token.at(-1) !== quote) return undefined;
+  if ((quote !== '"' && quote !== "'") || token.at(-1) !== quote) {
+    return undefined;
+  }
   return token.slice(1, -1).replace(
     /&(?:#x([0-9a-f]+)|#([0-9]+)|(amp|apos|gt|lt|quot));/giu,
     (_match, hexadecimal: string | undefined, decimal: string | undefined, named: string | undefined) => {
-      if (hexadecimal !== undefined) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
-      if (decimal !== undefined) return String.fromCodePoint(Number.parseInt(decimal, 10));
+      if (hexadecimal !== undefined) {
+        return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+      }
+      if (decimal !== undefined) {
+        return String.fromCodePoint(Number.parseInt(decimal, 10));
+      }
       switch (named) {
       case 'amp': return '&';
       case 'apos': return "'";
@@ -239,7 +257,9 @@ function parseDtdIdAttributeDefinitions({ xmlText }: { xmlText: string }): reado
   let searchIndex = 0;
   while (true) {
     const declarationStart = xmlText.indexOf('<!ATTLIST', searchIndex);
-    if (declarationStart < 0) break;
+    if (declarationStart < 0) {
+      break;
+    }
     const previousCommentStart = xmlText.lastIndexOf('<!--', declarationStart);
     const previousCommentEnd = xmlText.lastIndexOf('-->', declarationStart);
     if (previousCommentStart > previousCommentEnd) {
@@ -251,7 +271,9 @@ function parseDtdIdAttributeDefinitions({ xmlText }: { xmlText: string }): reado
     for (let index = declarationStart + '<!ATTLIST'.length; index < xmlText.length; index += 1) {
       const character = xmlText[index] ?? '';
       if (quote !== undefined) {
-        if (character === quote) quote = undefined;
+        if (character === quote) {
+          quote = undefined;
+        }
         continue;
       }
       if (character === '"' || character === "'") {
@@ -263,18 +285,24 @@ function parseDtdIdAttributeDefinitions({ xmlText }: { xmlText: string }): reado
         break;
       }
     }
-    if (declarationEnd === undefined) break;
+    if (declarationEnd === undefined) {
+      break;
+    }
     searchIndex = declarationEnd + 1;
     const tokens = tokenizeDtdDeclaration({
       value: xmlText.slice(declarationStart + '<!ATTLIST'.length, declarationEnd),
     });
     const elementName = tokens[0];
-    if (elementName === undefined) continue;
+    if (elementName === undefined) {
+      continue;
+    }
     let index = 1;
     while (index < tokens.length) {
       const attributeName = tokens[index];
       let attributeType = tokens[index + 1];
-      if (attributeName === undefined || attributeType === undefined) break;
+      if (attributeName === undefined || attributeType === undefined) {
+        break;
+      }
       index += 2;
       if (attributeType === 'NOTATION') {
         attributeType += tokens[index] ?? '';
@@ -286,14 +314,20 @@ function parseDtdIdAttributeDefinitions({ xmlText }: { xmlText: string }): reado
         }
       }
       let defaultToken = tokens[index];
-      if (defaultToken === undefined) break;
+      if (defaultToken === undefined) {
+        break;
+      }
       index += 1;
       if (defaultToken === '#FIXED') {
         defaultToken = tokens[index];
-        if (defaultToken === undefined) break;
+        if (defaultToken === undefined) {
+          break;
+        }
         index += 1;
       }
-      if (attributeType !== 'ID') continue;
+      if (attributeType !== 'ID') {
+        continue;
+      }
       definitions.push({
         elementName,
         attributeName,
@@ -339,7 +373,9 @@ function indexXmlDocumentIds({
         element.setAttribute(definition.attributeName, definition.defaultValue);
         value = definition.defaultValue;
       }
-      if (value === null) continue;
+      if (value === null) {
+        continue;
+      }
       if (value.length > 0 && !elementsById.has(value)) {
         elementsById.set(value, element);
       }
@@ -371,7 +407,9 @@ function cloneElementWithInScopeNamespaces({ element }: { element: Element }): E
   const namespaceDeclarations = new Map<string, { name: string; value: string }>();
   for (const ancestor of ancestors) {
     for (const attribute of Array.from(ancestor.attributes)) {
-      if (!isNamespaceDeclaration({ attribute })) continue;
+      if (!isNamespaceDeclaration({ attribute })) {
+        continue;
+      }
       const key = attribute.name === 'xmlns' ? '' : attribute.localName;
       namespaceDeclarations.set(key, { name: attribute.name, value: attribute.value });
     }
@@ -400,7 +438,9 @@ export function serializeXmlNode({
 }): string {
   if (node.nodeType === Node.CDATA_SECTION_NODE) {
     const ownerDocument = node.ownerDocument;
-    if (ownerDocument === null) return node.nodeValue ?? '';
+    if (ownerDocument === null) {
+      return node.nodeValue ?? '';
+    }
     return new XMLSerializer().serializeToString(
       ownerDocument.createTextNode(node.nodeValue ?? ''),
     );
@@ -416,13 +456,19 @@ function escapeXPathLiteral({
 }: {
   value: string,
 }): string {
-  if (!value.includes('\'')) return `'${value}'`;
-  if (!value.includes('"')) return `"${value}"`;
+  if (!value.includes('\'')) {
+    return `'${value}'`;
+  }
+  if (!value.includes('"')) {
+    return `"${value}"`;
+  }
 
   const parts = value.split('\'');
   const argumentsList: string[] = [];
   for (const [index, part] of parts.entries()) {
-    if (index > 0) argumentsList.push(`"'"`);
+    if (index > 0) {
+      argumentsList.push(`"'"`);
+    }
     argumentsList.push(`'${part}'`);
   }
   return `concat(${argumentsList.join(', ')})`;
@@ -532,11 +578,17 @@ function resolveNamespaceUri({
   prefix: string | undefined;
   document: Document;
 }): string | null | undefined {
-  if (prefix === undefined) return undefined;
-  if (prefix === 'xml') return XML_NAMESPACE_URI;
+  if (prefix === undefined) {
+    return undefined;
+  }
+  if (prefix === 'xml') {
+    return XML_NAMESPACE_URI;
+  }
 
   const overridden = namespaces.get(prefix);
-  if (overridden !== undefined) return overridden;
+  if (overridden !== undefined) {
+    return overridden;
+  }
   return document.documentElement?.lookupNamespaceURI(prefix) ?? null;
 }
 
@@ -572,7 +624,9 @@ function parseSimplePredicate({
   value: string;
 }): SimpleXPathPredicate | false {
   const trimmed = trimXPathWhitespace({ value });
-  if (trimmed.length === 0) return false;
+  if (trimmed.length === 0) {
+    return false;
+  }
   if (/^[1-9]\d*$/u.test(trimmed)) {
     return { kind: 'position', position: Number.parseInt(trimmed, 10) };
   }
@@ -603,7 +657,9 @@ function splitSimpleXPathStepPredicates({
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -622,13 +678,21 @@ function splitSimpleXPathStepPredicates({
   }
 
   const selector = trimXPathWhitespace({ value: value.slice(0, firstPredicateIndex) });
-  if (selector.length === 0) return undefined;
+  if (selector.length === 0) {
+    return undefined;
+  }
   const predicateValues: string[] = [];
   let cursor = firstPredicateIndex;
   while (cursor < value.length) {
-    while (/[\t\n\r ]/u.test(value[cursor] ?? '')) cursor += 1;
-    if (cursor >= value.length) break;
-    if (value[cursor] !== '[') return undefined;
+    while (/[\t\n\r ]/u.test(value[cursor] ?? '')) {
+      cursor += 1;
+    }
+    if (cursor >= value.length) {
+      break;
+    }
+    if (value[cursor] !== '[') {
+      return undefined;
+    }
 
     const openingIndex = cursor;
     let depth = 1;
@@ -637,20 +701,27 @@ function splitSimpleXPathStepPredicates({
     for (; cursor < value.length; cursor += 1) {
       const character = value[cursor] ?? '';
       if (quote !== undefined) {
-        if (character === quote) quote = undefined;
+        if (character === quote) {
+          quote = undefined;
+        }
         continue;
       }
       if (character === '"' || character === "'") {
         quote = character;
         continue;
       }
-      if (character === '[') depth += 1;
-      else if (character === ']') {
+      if (character === '[') {
+        depth += 1;
+      } else if (character === ']') {
         depth -= 1;
-        if (depth === 0) break;
+        if (depth === 0) {
+          break;
+        }
       }
     }
-    if (depth !== 0 || quote !== undefined) return undefined;
+    if (depth !== 0 || quote !== undefined) {
+      return undefined;
+    }
     predicateValues.push(value.slice(openingIndex + 1, cursor));
     cursor += 1;
   }
@@ -665,7 +736,9 @@ function parseSimplePredicates({
   const predicates: SimpleXPathPredicate[] = [];
   for (const value of values) {
     const predicate = parseSimplePredicate({ value });
-    if (predicate === false) return undefined;
+    if (predicate === false) {
+      return undefined;
+    }
     predicates.push(predicate);
   }
   return predicates;
@@ -682,7 +755,9 @@ function splitSimpleXPathSteps({
   expression: string;
 }): { absolute: boolean; steps: readonly RawSimpleXPathStep[] } | undefined {
   const value = trimXPathWhitespace({ value: expression });
-  if (value.length === 0) return undefined;
+  if (value.length === 0) {
+    return undefined;
+  }
 
   let absolute = false;
   let axis: RawSimpleXPathStep['axis'] = 'child';
@@ -704,7 +779,9 @@ function splitSimpleXPathSteps({
   for (let index = start; index < value.length; index += 1) {
     const character = value[index];
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -717,13 +794,19 @@ function splitSimpleXPathSteps({
     }
     if (character === ']') {
       bracketDepth -= 1;
-      if (bracketDepth < 0) return undefined;
+      if (bracketDepth < 0) {
+        return undefined;
+      }
       continue;
     }
-    if (character !== '/' || bracketDepth !== 0) continue;
+    if (character !== '/' || bracketDepth !== 0) {
+      continue;
+    }
 
     const stepValue = value.slice(segmentStart, index);
-    if (stepValue.length === 0) return undefined;
+    if (stepValue.length === 0) {
+      return undefined;
+    }
     steps.push({ axis, value: stepValue });
 
     if (value[index + 1] === '/') {
@@ -735,9 +818,13 @@ function splitSimpleXPathSteps({
     segmentStart = index + 1;
   }
 
-  if (quote !== undefined || bracketDepth !== 0) return undefined;
+  if (quote !== undefined || bracketDepth !== 0) {
+    return undefined;
+  }
   const finalValue = value.slice(segmentStart);
-  if (finalValue.length === 0) return undefined;
+  if (finalValue.length === 0) {
+    return undefined;
+  }
   steps.push({ axis, value: finalValue });
   return { absolute, steps };
 }
@@ -747,14 +834,22 @@ function parseSimpleXPathAxisNodeTest({
 }: {
   selector: string;
 }): SimpleXPathAxisNodeTest | undefined {
-  if (selector === '*') return { kind: 'wildcard', prefix: undefined };
+  if (selector === '*') {
+    return { kind: 'wildcard', prefix: undefined };
+  }
   const namespaceWildcard = selector.match(/^([A-Za-z_][A-Za-z0-9_.-]*):\*$/u);
   if (namespaceWildcard !== null) {
     return { kind: 'wildcard', prefix: namespaceWildcard[1] };
   }
-  if (selector === 'node()') return { kind: 'node' };
-  if (selector === 'comment()') return { kind: 'comment' };
-  if (selector === 'text()') return { kind: 'text' };
+  if (selector === 'node()') {
+    return { kind: 'node' };
+  }
+  if (selector === 'comment()') {
+    return { kind: 'comment' };
+  }
+  if (selector === 'text()') {
+    return { kind: 'text' };
+  }
 
   const processingInstructionInner = unwrapXPathFunction({
     expression: selector,
@@ -766,7 +861,9 @@ function parseSimpleXPathAxisNodeTest({
     }
     const first = processingInstructionInner[0];
     const last = processingInstructionInner.at(-1);
-    if ((first !== '"' && first !== "'") || last !== first) return undefined;
+    if ((first !== '"' && first !== "'") || last !== first) {
+      return undefined;
+    }
     return {
       kind: 'processing-instruction',
       target: processingInstructionInner.slice(1, -1),
@@ -783,7 +880,9 @@ function parseSimpleXPath({
   expression: string;
 }): ParsedSimpleXPath | undefined {
   const split = splitSimpleXPathSteps({ expression });
-  if (split === undefined) return undefined;
+  if (split === undefined) {
+    return undefined;
+  }
 
   const steps: SimpleXPathStep[] = [];
   for (const rawStep of split.steps) {
@@ -806,13 +905,19 @@ function parseSimpleXPath({
       const axis = explicitAxis[1] as SimpleXPathExplicitAxis;
       stepValue = explicitAxis[2] ?? '';
       const explicitSplitStep = splitSimpleXPathStepPredicates({ value: stepValue });
-      if (explicitSplitStep === undefined) return undefined;
+      if (explicitSplitStep === undefined) {
+        return undefined;
+      }
       const explicitPredicates = parseSimplePredicates({
         values: explicitSplitStep.predicateValues,
       });
-      if (explicitPredicates === undefined) return undefined;
+      if (explicitPredicates === undefined) {
+        return undefined;
+      }
       const nodeTest = parseSimpleXPathAxisNodeTest({ selector: explicitSplitStep.selector });
-      if (nodeTest === undefined) return undefined;
+      if (nodeTest === undefined) {
+        return undefined;
+      }
       steps.push({
         kind: 'explicit-axis',
         axis,
@@ -823,13 +928,19 @@ function parseSimpleXPath({
     }
 
     const splitStep = splitSimpleXPathStepPredicates({ value: stepValue });
-    if (splitStep === undefined) return undefined;
+    if (splitStep === undefined) {
+      return undefined;
+    }
     const predicates = parseSimplePredicates({ values: splitStep.predicateValues });
-    if (predicates === undefined) return undefined;
+    if (predicates === undefined) {
+      return undefined;
+    }
     const selector = splitStep.selector;
 
     if (selector === '.' || selector === '..') {
-      if (predicates.length > 0) return undefined;
+      if (predicates.length > 0) {
+        return undefined;
+      }
       switch (rawStep.axis) {
       case 'child':
         switch (selector) {
@@ -903,7 +1014,9 @@ function parseSimpleXPath({
             ? processingInstructionInner.slice(1, -1)
             : undefined;
         })();
-      if (processingInstructionInner.length > 0 && target === undefined) return undefined;
+      if (processingInstructionInner.length > 0 && target === undefined) {
+        return undefined;
+      }
       steps.push({
         kind: 'processing-instruction',
         axis: rawStep.axis,
@@ -931,15 +1044,21 @@ function parseSimpleXPath({
     }
 
     if (selector.startsWith('@')) {
-      if (predicates.length > 0) return undefined;
+      if (predicates.length > 0) {
+        return undefined;
+      }
       const name = parseSimpleQualifiedName({ value: selector.slice(1) });
-      if (name === undefined) return undefined;
+      if (name === undefined) {
+        return undefined;
+      }
       steps.push({ kind: 'attribute', ...name });
       continue;
     }
 
     const name = parseSimpleQualifiedName({ value: selector });
-    if (name === undefined) return undefined;
+    if (name === undefined) {
+      return undefined;
+    }
     steps.push({
       kind: 'element',
       ...name,
@@ -960,7 +1079,9 @@ function elementMatchesStep({
   step: Extract<SimpleXPathStep, { kind: 'element' }>;
   namespaces: Map<string, string>;
 }): boolean {
-  if (element.localName !== step.localName) return false;
+  if (element.localName !== step.localName) {
+    return false;
+  }
   const expectedNamespaceUri = resolveNamespaceUri({
     namespaces,
     prefix: step.prefix,
@@ -983,7 +1104,9 @@ function isElementNode(node: Node): node is Element {
 }
 
 function compareXPathDocumentOrder({ left, right }: { left: Node; right: Node }): number {
-  if (left === right) return 0;
+  if (left === right) {
+    return 0;
+  }
 
   const leftAttribute = left.nodeType === Node.ATTRIBUTE_NODE ? left as Attr : undefined;
   const rightAttribute = right.nodeType === Node.ATTRIBUTE_NODE ? right as Attr : undefined;
@@ -997,14 +1120,22 @@ function compareXPathDocumentOrder({ left, right }: { left: Node; right: Node })
         : Array.from(leftAttribute.ownerElement.attributes);
       return attributes.indexOf(leftAttribute) - attributes.indexOf(rightAttribute);
     }
-    if (leftAttribute !== undefined) return 1;
-    if (rightAttribute !== undefined) return -1;
+    if (leftAttribute !== undefined) {
+      return 1;
+    }
+    if (rightAttribute !== undefined) {
+      return -1;
+    }
     return 0;
   }
 
   const position = leftAnchor.compareDocumentPosition(rightAnchor);
-  if ((position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) return -1;
-  if ((position & Node.DOCUMENT_POSITION_PRECEDING) !== 0) return 1;
+  if ((position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0) {
+    return -1;
+  }
+  if ((position & Node.DOCUMENT_POSITION_PRECEDING) !== 0) {
+    return 1;
+  }
   return 0;
 }
 
@@ -1022,15 +1153,21 @@ function forEachDescendantNode({
   const pending: Node[] = [];
   for (let index = parent.childNodes.length - 1; index >= 0; index -= 1) {
     const child = parent.childNodes[index];
-    if (child !== undefined) pending.push(child);
+    if (child !== undefined) {
+      pending.push(child);
+    }
   }
   while (pending.length > 0) {
     const node = pending.pop();
-    if (node === undefined) continue;
+    if (node === undefined) {
+      continue;
+    }
     visit({ node });
     for (let index = node.childNodes.length - 1; index >= 0; index -= 1) {
       const child = node.childNodes[index];
-      if (child !== undefined) pending.push(child);
+      if (child !== undefined) {
+        pending.push(child);
+      }
     }
   }
 }
@@ -1044,7 +1181,9 @@ function nodeMatchesNamespaceWildcard({
   prefix: string | undefined;
   namespaces: Map<string, string>;
 }): boolean {
-  if (prefix === undefined) return true;
+  if (prefix === undefined) {
+    return true;
+  }
   const expectedNamespaceUri = resolveNamespaceUri({
     namespaces,
     prefix,
@@ -1071,8 +1210,12 @@ function attributeMatchesName({
   localName: string;
   namespaces: Map<string, string>;
 }): boolean {
-  if (!isXPathAttribute({ attribute })) return false;
-  if (attribute.localName !== localName) return false;
+  if (!isXPathAttribute({ attribute })) {
+    return false;
+  }
+  if (attribute.localName !== localName) {
+    return false;
+  }
   const expectedNamespaceUri = resolveNamespaceUri({
     namespaces,
     prefix,
@@ -1147,7 +1290,9 @@ function evaluateXPathPredicate({
     namespaces,
     contextNode,
   });
-  if (simpleBoolean !== undefined) return simpleBoolean;
+  if (simpleBoolean !== undefined) {
+    return simpleBoolean;
+  }
   if (unwrapXPathFunction({ expression: trimmed, name: 'not' }) !== undefined) {
     return evaluateXPathBoolean({ document, expression: trimmed, namespaces, contextNode });
   }
@@ -1158,7 +1303,9 @@ function evaluateXPathPredicate({
     namespaces,
     contextNode,
   });
-  if (nodes !== undefined) return nodes.length > 0;
+  if (nodes !== undefined) {
+    return nodes.length > 0;
+  }
 
   const scalar = evaluateSimpleXPathScalarValue({
     document,
@@ -1209,7 +1356,9 @@ function applyXPathPredicates<TNode extends Node>({
       const contextSize = selected.length;
       selected = selected.filter((node, index) => {
         const document = isDocumentNode(node) ? node : node.ownerDocument;
-        if (document === null) throw new Error('XPath predicate node has no owner document');
+        if (document === null) {
+          throw new Error('XPath predicate node has no owner document');
+        }
         return evaluateXPathPredicate({
           document,
           expression: predicate.expression,
@@ -1246,8 +1395,12 @@ function getXPathParentNode({ node }: { node: Node }): Node | null {
 }
 
 function getXPathDocument({ node }: { node: Node }): Document {
-  if (isDocumentNode(node)) return node;
-  if (node.ownerDocument === null) throw new Error('XPath node has no owner document');
+  if (isDocumentNode(node)) {
+    return node;
+  }
+  if (node.ownerDocument === null) {
+    throw new Error('XPath node has no owner document');
+  }
   return node.ownerDocument;
 }
 
@@ -1273,7 +1426,9 @@ function getXPathAncestors({ node, includeSelf }: { node: Node; includeSelf: boo
 function isDomDescendantOf({ node, ancestor }: { node: Node; ancestor: Node }): boolean {
   let current = node.parentNode;
   while (current !== null) {
-    if (current === ancestor) return true;
+    if (current === ancestor) {
+      return true;
+    }
     current = current.parentNode;
   }
   return false;
@@ -1317,7 +1472,9 @@ function getXPathExplicitAxisCandidates({
   }
   case 'following-sibling':
   case 'preceding-sibling': {
-    if (node.nodeType === Node.ATTRIBUTE_NODE || node.parentNode === null) return [];
+    if (node.nodeType === Node.ATTRIBUTE_NODE || node.parentNode === null) {
+      return [];
+    }
     const siblings = Array.from(node.parentNode.childNodes);
     const index = siblings.findIndex((sibling) => sibling === node);
     switch (axis) {
@@ -1337,12 +1494,18 @@ function getXPathExplicitAxisCandidates({
     const anchor = node.nodeType === Node.ATTRIBUTE_NODE
       ? (node as Attr).ownerElement
       : node;
-    if (anchor === null || isDocumentNode(anchor)) return [];
+    if (anchor === null || isDocumentNode(anchor)) {
+      return [];
+    }
     const cachedDocumentNodes = documentOrderCache.get(document);
     const documentNodes = cachedDocumentNodes ?? getXPathDocumentOrderNodes({ document });
-    if (cachedDocumentNodes === undefined) documentOrderCache.set(document, documentNodes);
+    if (cachedDocumentNodes === undefined) {
+      documentOrderCache.set(document, documentNodes);
+    }
     const anchorIndex = documentNodes.indexOf(anchor);
-    if (anchorIndex < 0) return [];
+    if (anchorIndex < 0) {
+      return [];
+    }
     switch (axis) {
     case 'following':
       return documentNodes.slice(anchorIndex + 1).filter((candidate) => (
@@ -1490,10 +1653,14 @@ function evaluateSimpleXPathNodes({
   contextNode?: Node;
 }): Node[] | undefined {
   const idNodes = evaluateXPathIdNodes({ document, expression, namespaces, contextNode });
-  if (idNodes !== undefined) return idNodes;
+  if (idNodes !== undefined) {
+    return idNodes;
+  }
 
   const parsed = parseSimpleXPath({ expression });
-  if (parsed === undefined) return undefined;
+  if (parsed === undefined) {
+    return undefined;
+  }
 
   let currentNodes: Node[] = [
     parsed.absolute ? document : (contextNode ?? document),
@@ -1506,7 +1673,9 @@ function evaluateSimpleXPathNodes({
       const nextNodes: Node[] = [];
       const seen = new Set<Node>();
       for (const currentNode of currentNodes) {
-        if (!isElementNode(currentNode) && !isDocumentNode(currentNode)) continue;
+        if (!isElementNode(currentNode) && !isDocumentNode(currentNode)) {
+          continue;
+        }
         const parents: Array<Document | Element> = [];
         const axis = step.axis;
         switch (axis) {
@@ -1514,8 +1683,12 @@ function evaluateSimpleXPathNodes({
           parents.push(currentNode);
           const root = isDocumentNode(currentNode) ? currentNode.documentElement : currentNode;
           if (root !== null) {
-            if (isDocumentNode(currentNode)) parents.push(root);
-            for (const descendant of root.getElementsByTagName('*')) parents.push(descendant);
+            if (isDocumentNode(currentNode)) {
+              parents.push(root);
+            }
+            for (const descendant of root.getElementsByTagName('*')) {
+              parents.push(descendant);
+            }
           }
           break;
         }
@@ -1524,7 +1697,9 @@ function evaluateSimpleXPathNodes({
           break;
         case 'following-sibling':
         case 'preceding-sibling': {
-          if (!isElementNode(currentNode) || currentNode.parentElement === null) break;
+          if (!isElementNode(currentNode) || currentNode.parentElement === null) {
+            break;
+          }
           const siblings = Array.from(currentNode.parentElement.children);
           const currentIndex = siblings.indexOf(currentNode);
           const axisCandidates = (() => {
@@ -1551,7 +1726,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1577,7 +1754,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1590,7 +1769,9 @@ function evaluateSimpleXPathNodes({
     case 'attribute': {
       const nextNodes: Node[] = [];
       for (const currentNode of currentNodes) {
-        if (!isElementNode(currentNode)) continue;
+        if (!isElementNode(currentNode)) {
+          continue;
+        }
         for (const attribute of Array.from(currentNode.attributes)) {
           if (attributeMatchesName({
             attribute,
@@ -1608,7 +1789,9 @@ function evaluateSimpleXPathNodes({
     case 'attribute-wildcard': {
       const nextNodes: Node[] = [];
       for (const currentNode of currentNodes) {
-        if (!isElementNode(currentNode)) continue;
+        if (!isElementNode(currentNode)) {
+          continue;
+        }
         const attributes = Array.from(currentNode.attributes).filter((attribute) => (
           isXPathAttribute({ attribute }) && nodeMatchesNamespaceWildcard({
             node: attribute,
@@ -1621,7 +1804,9 @@ function evaluateSimpleXPathNodes({
           predicates: step.predicates,
           namespaces,
         });
-        for (const attribute of selectedAttributes) nextNodes.push(attribute);
+        for (const attribute of selectedAttributes) {
+          nextNodes.push(attribute);
+        }
       }
       sortNodesInDocumentOrder({ nodes: nextNodes });
       currentNodes = nextNodes;
@@ -1631,7 +1816,9 @@ function evaluateSimpleXPathNodes({
       const nextNodes: Node[] = [];
       const seen = new Set<Node>();
       for (const currentNode of currentNodes) {
-        if (!isElementNode(currentNode) && !isDocumentNode(currentNode)) continue;
+        if (!isElementNode(currentNode) && !isDocumentNode(currentNode)) {
+          continue;
+        }
         const parents: Array<Document | Element> = [];
         const axis = step.axis;
         switch (axis) {
@@ -1639,8 +1826,12 @@ function evaluateSimpleXPathNodes({
           parents.push(currentNode);
           const root = isDocumentNode(currentNode) ? currentNode.documentElement : currentNode;
           if (root !== null) {
-            if (isDocumentNode(currentNode)) parents.push(root);
-            for (const descendant of root.getElementsByTagName('*')) parents.push(descendant);
+            if (isDocumentNode(currentNode)) {
+              parents.push(root);
+            }
+            for (const descendant of root.getElementsByTagName('*')) {
+              parents.push(descendant);
+            }
           }
           break;
         }
@@ -1649,7 +1840,9 @@ function evaluateSimpleXPathNodes({
           break;
         case 'following-sibling':
         case 'preceding-sibling': {
-          if (!isElementNode(currentNode) || currentNode.parentElement === null) break;
+          if (!isElementNode(currentNode) || currentNode.parentElement === null) {
+            break;
+          }
           const siblings = Array.from(currentNode.parentElement.children);
           const currentIndex = siblings.indexOf(currentNode);
           const axisCandidates = (() => {
@@ -1676,7 +1869,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1701,7 +1896,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1726,7 +1923,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1761,7 +1960,9 @@ function evaluateSimpleXPathNodes({
         });
         for (const parent of parents) {
           const candidates = Array.from(parent.childNodes).filter((node) => {
-            if (node.nodeType !== nodeType) return false;
+            if (node.nodeType !== nodeType) {
+              return false;
+            }
             return step.kind !== 'processing-instruction'
               || step.target === undefined
               || (node as ProcessingInstruction).target === step.target;
@@ -1771,7 +1972,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1798,7 +2001,9 @@ function evaluateSimpleXPathNodes({
             predicates: step.predicates,
             namespaces,
           })) {
-            if (seen.has(selected)) continue;
+            if (seen.has(selected)) {
+              continue;
+            }
             seen.add(selected);
             nextNodes.push(selected);
           }
@@ -1827,7 +2032,9 @@ function evaluateSimpleXPathNodes({
           predicates: step.predicates,
           namespaces,
         })) {
-          if (seen.has(selected)) continue;
+          if (seen.has(selected)) {
+            continue;
+          }
           seen.add(selected);
           nextNodes.push(selected);
         }
@@ -1843,7 +2050,9 @@ function evaluateSimpleXPathNodes({
       const seen = new Set<Node>();
       for (const currentNode of currentNodes) {
         const parent = getXPathParentNode({ node: currentNode });
-        if (parent === null || seen.has(parent)) continue;
+        if (parent === null || seen.has(parent)) {
+          continue;
+        }
         seen.add(parent);
         nextNodes.push(parent);
       }
@@ -1880,12 +2089,16 @@ function getXPathNodeLocalName({ node }: { node: Node }): string {
   if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
     return (node as ProcessingInstruction).target;
   }
-  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.ATTRIBUTE_NODE) return '';
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.ATTRIBUTE_NODE) {
+    return '';
+  }
   return (node as Element | Attr).localName;
 }
 
 function getXPathNodeNamespaceUri({ node }: { node: Node }): string {
-  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.ATTRIBUTE_NODE) return '';
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.ATTRIBUTE_NODE) {
+    return '';
+  }
   return (node as Element | Attr).namespaceURI ?? '';
 }
 
@@ -1897,26 +2110,35 @@ function unwrapXPathFunction({
   name: string;
 }): string | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (!trimmed.startsWith(name)) return undefined;
+  if (!trimmed.startsWith(name)) {
+    return undefined;
+  }
 
   let openingIndex = name.length;
-  while (/[\t\n\r ]/u.test(trimmed[openingIndex] ?? '')) openingIndex += 1;
-  if (trimmed[openingIndex] !== '(') return undefined;
+  while (/[\t\n\r ]/u.test(trimmed[openingIndex] ?? '')) {
+    openingIndex += 1;
+  }
+  if (trimmed[openingIndex] !== '(') {
+    return undefined;
+  }
 
   let depth = 1;
   let quote: '"' | "'" | undefined;
   for (let index = openingIndex + 1; index < trimmed.length; index += 1) {
     const character = trimmed[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
       quote = character;
       continue;
     }
-    if (character === '(') depth += 1;
-    else if (character === ')') {
+    if (character === '(') {
+      depth += 1;
+    } else if (character === ')') {
       depth -= 1;
       if (depth === 0) {
         return index === trimmed.length - 1
@@ -1944,7 +2166,9 @@ function rewriteXPathContextFunctions({
     const character = expression[index];
     if (quote !== undefined) {
       result += character;
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       index += 1;
       continue;
     }
@@ -1988,14 +2212,18 @@ function rewriteXPathContextFunctions({
 
 function unwrapXPathParentheses({ expression }: { expression: string }): string | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (!trimmed.startsWith('(')) return undefined;
+  if (!trimmed.startsWith('(')) {
+    return undefined;
+  }
 
   let depth = 0;
   let quote: '"' | "'" | undefined;
   for (let index = 0; index < trimmed.length; index += 1) {
     const character = trimmed[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -2006,9 +2234,13 @@ function unwrapXPathParentheses({ expression }: { expression: string }): string 
       depth += 1;
       continue;
     }
-    if (character !== ')') continue;
+    if (character !== ')') {
+      continue;
+    }
     depth -= 1;
-    if (depth < 0) return undefined;
+    if (depth < 0) {
+      return undefined;
+    }
     if (depth === 0) {
       return index === trimmed.length - 1
         ? trimmed.slice(1, index)
@@ -2027,8 +2259,12 @@ function trimXPathWhitespaceRange({
   start: number;
   end: number;
 }): { readonly start: number, readonly end: number } {
-  while (start < end && /[ \t\n\r]/u.test(expression[start]!)) start += 1;
-  while (end > start && /[ \t\n\r]/u.test(expression[end - 1]!)) end -= 1;
+  while (start < end && /[ \t\n\r]/u.test(expression[start]!)) {
+    start += 1;
+  }
+  while (end > start && /[ \t\n\r]/u.test(expression[end - 1]!)) {
+    end -= 1;
+  }
   return { start, end };
 }
 
@@ -2038,7 +2274,9 @@ function unwrapAllXPathParentheses({ expression }: { expression: string }): stri
     start: 0,
     end: expression.length,
   });
-  if (start >= end || expression[start] !== '(') return expression.slice(start, end);
+  if (start >= end || expression[start] !== '(') {
+    return expression.slice(start, end);
+  }
 
   const matchingClosingIndexes = new Map<number, number>();
   const openingIndexes: number[] = [];
@@ -2046,7 +2284,9 @@ function unwrapAllXPathParentheses({ expression }: { expression: string }): stri
   for (let index = start; index < end; index += 1) {
     const character = expression[index]!;
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -2057,9 +2297,13 @@ function unwrapAllXPathParentheses({ expression }: { expression: string }): stri
       openingIndexes.push(index);
       continue;
     }
-    if (character !== ')') continue;
+    if (character !== ')') {
+      continue;
+    }
     const openingIndex = openingIndexes.pop();
-    if (openingIndex === undefined) return expression.slice(start, end);
+    if (openingIndex === undefined) {
+      return expression.slice(start, end);
+    }
     matchingClosingIndexes.set(openingIndex, index);
   }
 
@@ -2084,10 +2328,14 @@ function xpathTokenBeforeCanEndOperand({
   index: number;
 }): boolean {
   const prefix = trimXPathWhitespace({ value: expression.slice(0, index) });
-  if (isXPathNumberLiteral({ value: prefix })) return true;
+  if (isXPathNumberLiteral({ value: prefix })) {
+    return true;
+  }
   for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
     const value = expression[cursor] ?? '';
-    if (/[\t\n\r ]/u.test(value)) continue;
+    if (/[\t\n\r ]/u.test(value)) {
+      continue;
+    }
     return !'([,|+-*/=<>!@:'.includes(value);
   }
   return false;
@@ -2124,13 +2372,19 @@ function xpathSignFollowsWordArithmeticOperator({
   }
   for (const operator of ['div', 'mod'] as const) {
     const operatorIndex = operatorEnd - operator.length;
-    if (operatorIndex < 0 || expression.slice(operatorIndex, operatorEnd) !== operator) continue;
-    if (!xpathTokenBeforeCanEndOperand({ expression, index: operatorIndex })) continue;
+    if (operatorIndex < 0 || expression.slice(operatorIndex, operatorEnd) !== operator) {
+      continue;
+    }
+    if (!xpathTokenBeforeCanEndOperand({ expression, index: operatorIndex })) {
+      continue;
+    }
     if (xpathOperatorNameIsEmbedded({
       expression,
       index: operatorIndex,
       operatorLength: operator.length,
-    })) continue;
+    })) {
+      continue;
+    }
     return true;
   }
   return false;
@@ -2143,12 +2397,16 @@ function xpathSignIsPartOfExponent({
   expression: string;
   index: number;
 }): boolean {
-  if (expression[index - 1] !== 'e' && expression[index - 1] !== 'E') return false;
+  if (expression[index - 1] !== 'e' && expression[index - 1] !== 'E') {
+    return false;
+  }
   let tokenStart = index - 2;
   while (tokenStart >= 0 && /[0-9.]/u.test(expression[tokenStart] ?? '')) {
     tokenStart -= 1;
   }
-  if (expression[tokenStart] === '-') tokenStart -= 1;
+  if (expression[tokenStart] === '-') {
+    tokenStart -= 1;
+  }
   const mantissa = expression.slice(tokenStart + 1, index - 1);
   return /-?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(mantissa);
 }
@@ -2168,7 +2426,9 @@ function splitTopLevelXPathLogicalOperator({
   for (let index = 0; index < expression.length; index += 1) {
     const character = expression[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -2181,7 +2441,9 @@ function splitTopLevelXPathLogicalOperator({
     }
     if (character === ')') {
       parenthesisDepth -= 1;
-      if (parenthesisDepth < 0) return undefined;
+      if (parenthesisDepth < 0) {
+        return undefined;
+      }
       continue;
     }
     if (character === '[') {
@@ -2190,30 +2452,48 @@ function splitTopLevelXPathLogicalOperator({
     }
     if (character === ']') {
       predicateDepth -= 1;
-      if (predicateDepth < 0) return undefined;
+      if (predicateDepth < 0) {
+        return undefined;
+      }
       continue;
     }
-    if (parenthesisDepth !== 0 || predicateDepth !== 0) continue;
-    if (!expression.startsWith(operator, index)) continue;
-    if (!xpathTokenBeforeCanEndOperand({ expression, index })) continue;
+    if (parenthesisDepth !== 0 || predicateDepth !== 0) {
+      continue;
+    }
+    if (!expression.startsWith(operator, index)) {
+      continue;
+    }
+    if (!xpathTokenBeforeCanEndOperand({ expression, index })) {
+      continue;
+    }
 
     if (xpathOperatorNameIsEmbedded({
       expression,
       index,
       operatorLength: operator.length,
-    })) continue;
+    })) {
+      continue;
+    }
 
     const part = trimXPathWhitespace({ value: expression.slice(start, index) });
-    if (part.length === 0) return undefined;
+    if (part.length === 0) {
+      return undefined;
+    }
     parts.push(part);
     index += operator.length - 1;
     start = index + 1;
   }
 
-  if (quote !== undefined || parenthesisDepth !== 0 || predicateDepth !== 0) return undefined;
-  if (parts.length === 0) return undefined;
+  if (quote !== undefined || parenthesisDepth !== 0 || predicateDepth !== 0) {
+    return undefined;
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
   const finalPart = trimXPathWhitespace({ value: expression.slice(start) });
-  if (finalPart.length === 0) return undefined;
+  if (finalPart.length === 0) {
+    return undefined;
+  }
   parts.push(finalPart);
   return parts;
 }
@@ -2227,7 +2507,9 @@ function splitTopLevelXPathUnion({ expression }: { expression: string }): readon
   for (let index = 0; index < expression.length; index += 1) {
     const character = expression[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -2240,7 +2522,9 @@ function splitTopLevelXPathUnion({ expression }: { expression: string }): readon
     }
     if (character === ')') {
       parenthesisDepth -= 1;
-      if (parenthesisDepth < 0) return undefined;
+      if (parenthesisDepth < 0) {
+        return undefined;
+      }
       continue;
     }
     if (character === '[') {
@@ -2249,12 +2533,18 @@ function splitTopLevelXPathUnion({ expression }: { expression: string }): readon
     }
     if (character === ']') {
       predicateDepth -= 1;
-      if (predicateDepth < 0) return undefined;
+      if (predicateDepth < 0) {
+        return undefined;
+      }
       continue;
     }
-    if (character !== '|' || parenthesisDepth !== 0 || predicateDepth !== 0) continue;
+    if (character !== '|' || parenthesisDepth !== 0 || predicateDepth !== 0) {
+      continue;
+    }
     const part = trimXPathWhitespace({ value: expression.slice(start, index) });
-    if (part.length === 0) return undefined;
+    if (part.length === 0) {
+      return undefined;
+    }
     parts.push(part);
     start = index + 1;
   }
@@ -2262,7 +2552,9 @@ function splitTopLevelXPathUnion({ expression }: { expression: string }): readon
     return undefined;
   }
   const finalPart = trimXPathWhitespace({ value: expression.slice(start) });
-  if (finalPart.length === 0) return undefined;
+  if (finalPart.length === 0) {
+    return undefined;
+  }
   parts.push(finalPart);
   return parts;
 }
@@ -2275,22 +2567,30 @@ function splitXPathArguments({ value }: { value: string }): string[] | undefined
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
       quote = character;
       continue;
     }
-    if (character === '(' || character === '[') depth += 1;
-    else if (character === ')' || character === ']') depth -= 1;
-    else if (character === ',' && depth === 0) {
+    if (character === '(' || character === '[') {
+      depth += 1;
+    } else if (character === ')' || character === ']') {
+      depth -= 1;
+    } else if (character === ',' && depth === 0) {
       argumentsList.push(trimXPathWhitespace({ value: value.slice(start, index) }));
       start = index + 1;
     }
-    if (depth < 0) return undefined;
+    if (depth < 0) {
+      return undefined;
+    }
   }
-  if (quote !== undefined || depth !== 0) return undefined;
+  if (quote !== undefined || depth !== 0) {
+    return undefined;
+  }
   argumentsList.push(trimXPathWhitespace({ value: value.slice(start) }));
   return argumentsList;
 }
@@ -2307,14 +2607,22 @@ function evaluateSimpleXPathString({
   contextNode?: Node;
 }): string | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (trimmed === '.') return getXPathNodeStringValue({ node: contextNode ?? document });
+  if (trimmed === '.') {
+    return getXPathNodeStringValue({ node: contextNode ?? document });
+  }
   const stringLiteral = unwrapXPathStringLiteral({ expression: trimmed });
-  if (stringLiteral !== undefined) return stringLiteral;
+  if (stringLiteral !== undefined) {
+    return stringLiteral;
+  }
   if (isXPathNumberLiteral({ value: trimmed })) {
     return formatXPathNumberValue({ value: xpathStringToNumber({ value: trimmed }) });
   }
-  if (trimmed === 'true()') return 'true';
-  if (trimmed === 'false()') return 'false';
+  if (trimmed === 'true()') {
+    return 'true';
+  }
+  if (trimmed === 'false()') {
+    return 'false';
+  }
 
   const evaluateString = ({ value }: { value: string }): string | undefined => evaluateSimpleXPathString({
     document,
@@ -2329,14 +2637,18 @@ function evaluateSimpleXPathString({
       namespaces,
       contextNode,
     });
-    if (simpleNodes !== undefined) return simpleNodes;
+    if (simpleNodes !== undefined) {
+      return simpleNodes;
+    }
     const groupedNodes = evaluateGroupedXPathNodes({
       document,
       expression: value,
       namespaces,
       contextNode,
     });
-    if (groupedNodes !== undefined) return groupedNodes;
+    if (groupedNodes !== undefined) {
+      return groupedNodes;
+    }
     return splitTopLevelXPathUnion({ expression: value }) === undefined
       ? undefined
       : evaluateXPathNodes({ document, expression: value, namespaces, contextNode });
@@ -2344,7 +2656,9 @@ function evaluateSimpleXPathString({
 
   for (const name of ['number', 'sum'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const value = evaluateSimpleXPathNumericFunction({
       document,
       expression: inner,
@@ -2357,9 +2671,13 @@ function evaluateSimpleXPathString({
 
   for (const name of ['string', 'normalize-space', 'string-length'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const value = evaluateString({ value: inner });
-    if (value === undefined) return undefined;
+    if (value === undefined) {
+      return undefined;
+    }
     switch (name) {
     case 'string':
       return value;
@@ -2376,9 +2694,13 @@ function evaluateSimpleXPathString({
 
   for (const name of ['count', 'boolean'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const nodes = evaluateNodes({ value: inner });
-    if (nodes === undefined) return undefined;
+    if (nodes === undefined) {
+      return undefined;
+    }
     switch (name) {
     case 'count':
       return String(nodes.length);
@@ -2393,11 +2715,15 @@ function evaluateSimpleXPathString({
 
   for (const name of ['name', 'local-name', 'namespace-uri'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const node = inner.length === 0
       ? (contextNode ?? document)
       : evaluateNodes({ value: inner })?.[0];
-    if (node === undefined) return '';
+    if (node === undefined) {
+      return '';
+    }
     switch (name) {
     case 'name':
       if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
@@ -2420,19 +2746,27 @@ function evaluateSimpleXPathString({
   const concatInner = unwrapXPathFunction({ expression: trimmed, name: 'concat' });
   if (concatInner !== undefined) {
     const argumentsList = splitXPathArguments({ value: concatInner });
-    if (argumentsList === undefined || argumentsList.length < 2) return undefined;
+    if (argumentsList === undefined || argumentsList.length < 2) {
+      return undefined;
+    }
     const values = argumentsList.map((argument) => evaluateString({ value: argument }));
     return values.some((value) => value === undefined) ? undefined : values.join('');
   }
 
   for (const name of ['starts-with', 'contains', 'substring-before', 'substring-after'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const argumentsList = splitXPathArguments({ value: inner });
-    if (argumentsList === undefined || argumentsList.length !== 2) return undefined;
+    if (argumentsList === undefined || argumentsList.length !== 2) {
+      return undefined;
+    }
     const left = evaluateString({ value: argumentsList[0] ?? '' });
     const right = evaluateString({ value: argumentsList[1] ?? '' });
-    if (left === undefined || right === undefined) return undefined;
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
     switch (name) {
     case 'starts-with':
       return left.startsWith(right) ? 'true' : 'false';
@@ -2481,7 +2815,9 @@ function evaluateSimpleXPathString({
     const roundedEnd = lengthValue === undefined
       ? Number.POSITIVE_INFINITY
       : roundedStart + Math.round(xpathScalarToNumber({ value: lengthValue }));
-    if (Number.isNaN(roundedStart) || Number.isNaN(roundedEnd)) return '';
+    if (Number.isNaN(roundedStart) || Number.isNaN(roundedEnd)) {
+      return '';
+    }
     return Array.from(source).filter((_, index) => {
       const xpathPosition = index + 1;
       return xpathPosition >= roundedStart && xpathPosition < roundedEnd;
@@ -2491,11 +2827,15 @@ function evaluateSimpleXPathString({
   const translateInner = unwrapXPathFunction({ expression: trimmed, name: 'translate' });
   if (translateInner !== undefined) {
     const argumentsList = splitXPathArguments({ value: translateInner });
-    if (argumentsList === undefined || argumentsList.length !== 3) return undefined;
+    if (argumentsList === undefined || argumentsList.length !== 3) {
+      return undefined;
+    }
     const source = evaluateString({ value: argumentsList[0] ?? '' });
     const from = evaluateString({ value: argumentsList[1] ?? '' });
     const to = evaluateString({ value: argumentsList[2] ?? '' });
-    if (source === undefined || from === undefined || to === undefined) return undefined;
+    if (source === undefined || from === undefined || to === undefined) {
+      return undefined;
+    }
     const fromCharacters = Array.from(from);
     const toCharacters = Array.from(to);
     return Array.from(source).map((character) => {
@@ -2505,7 +2845,9 @@ function evaluateSimpleXPathString({
   }
 
   const nodes = evaluateNodes({ value: trimmed });
-  if (nodes === undefined) return undefined;
+  if (nodes === undefined) {
+    return undefined;
+  }
   return nodes[0] === undefined ? '' : getXPathNodeStringValue({ node: nodes[0] });
 }
 
@@ -2523,7 +2865,9 @@ function parseTopLevelXPathComparison({ expression }: { expression: string }): X
   for (let index = 0; index < expression.length; index += 1) {
     const character = expression[index];
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -2536,10 +2880,14 @@ function parseTopLevelXPathComparison({ expression }: { expression: string }): X
     }
     if (character === ')' || character === ']') {
       depth -= 1;
-      if (depth < 0) return undefined;
+      if (depth < 0) {
+        return undefined;
+      }
       continue;
     }
-    if (depth !== 0) continue;
+    if (depth !== 0) {
+      continue;
+    }
 
     const twoCharacters = expression.slice(index, index + 2);
     const operator: XPathComparisonOperator | undefined = (
@@ -2547,7 +2895,9 @@ function parseTopLevelXPathComparison({ expression }: { expression: string }): X
     ) ? twoCharacters : (
         character === '=' || character === '<' || character === '>' ? character : undefined
       );
-    if (operator === undefined) continue;
+    if (operator === undefined) {
+      continue;
+    }
     const operatorLength = operator.length;
     const left = trimXPathWhitespace({ value: expression.slice(0, index) });
     const right = trimXPathWhitespace({ value: expression.slice(index + operatorLength) });
@@ -2563,11 +2913,17 @@ function evaluateXPathLanguage({
   contextNode: Node | undefined;
   language: string;
 }): boolean {
-  if (contextNode === undefined) return false;
+  if (contextNode === undefined) {
+    return false;
+  }
 
   let currentElement: Element | null = (() => {
-    if (contextNode.nodeType === Node.ELEMENT_NODE) return contextNode as Element;
-    if (contextNode.nodeType === Node.ATTRIBUTE_NODE) return (contextNode as Attr).ownerElement;
+    if (contextNode.nodeType === Node.ELEMENT_NODE) {
+      return contextNode as Element;
+    }
+    if (contextNode.nodeType === Node.ATTRIBUTE_NODE) {
+      return (contextNode as Attr).ownerElement;
+    }
     return contextNode.parentElement;
   })();
   const normalizedLanguage = language.toLowerCase();
@@ -2597,8 +2953,12 @@ function evaluateSimpleXPathBooleanValue({
   contextNode?: Node;
 }): boolean | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (trimmed === 'true()') return true;
-  if (trimmed === 'false()') return false;
+  if (trimmed === 'true()') {
+    return true;
+  }
+  if (trimmed === 'false()') {
+    return false;
+  }
   if (trimmed === 'self::text()') {
     return contextNode?.nodeType === Node.TEXT_NODE
       || contextNode?.nodeType === Node.CDATA_SECTION_NODE;
@@ -2612,7 +2972,9 @@ function evaluateSimpleXPathBooleanValue({
       namespaces,
       contextNode,
     });
-    if (nodes !== undefined) return nodes.length > 0;
+    if (nodes !== undefined) {
+      return nodes.length > 0;
+    }
     const scalar = evaluateSimpleXPathScalarValue({
       document,
       expression: booleanInner,
@@ -2625,7 +2987,9 @@ function evaluateSimpleXPathBooleanValue({
   const langInner = unwrapXPathFunction({ expression: trimmed, name: 'lang' });
   if (langInner !== undefined) {
     const argumentsList = splitXPathArguments({ value: langInner });
-    if (argumentsList === undefined || argumentsList.length !== 1) return undefined;
+    if (argumentsList === undefined || argumentsList.length !== 1) {
+      return undefined;
+    }
     const language = evaluateSimpleXPathString({
       document,
       expression: argumentsList[0] ?? '',
@@ -2639,9 +3003,13 @@ function evaluateSimpleXPathBooleanValue({
 
   for (const name of ['starts-with', 'contains'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const argumentsList = splitXPathArguments({ value: inner });
-    if (argumentsList === undefined || argumentsList.length !== 2) return undefined;
+    if (argumentsList === undefined || argumentsList.length !== 2) {
+      return undefined;
+    }
     const left = evaluateSimpleXPathString({
       document,
       expression: argumentsList[0] ?? '',
@@ -2654,7 +3022,9 @@ function evaluateSimpleXPathBooleanValue({
       namespaces,
       contextNode,
     });
-    if (left === undefined || right === undefined) return undefined;
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
     switch (name) {
     case 'starts-with':
       return left.startsWith(right);
@@ -2676,7 +3046,9 @@ function isXPathNumberLiteral({ value }: { value: string }): boolean {
 
 function isSimpleXPathNumberExpression({ expression }: { expression: string }): boolean {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (isXPathNumberLiteral({ value: trimmed })) return true;
+  if (isXPathNumberLiteral({ value: trimmed })) {
+    return true;
+  }
   return unwrapXPathFunction({ expression: trimmed, name: 'count' }) !== undefined
     || unwrapXPathFunction({ expression: trimmed, name: 'number' }) !== undefined
     || unwrapXPathFunction({ expression: trimmed, name: 'string-length' }) !== undefined
@@ -2690,8 +3062,12 @@ type SimpleXPathScalarValue =
 
 function xpathStringToNumber({ value }: { value: string }): number {
   const trimmed = trimXPathWhitespace({ value });
-  if (trimmed === '-') return -0;
-  if (!isXPathNumberLiteral({ value: trimmed })) return Number.NaN;
+  if (trimmed === '-') {
+    return -0;
+  }
+  if (!isXPathNumberLiteral({ value: trimmed })) {
+    return Number.NaN;
+  }
 
   let index = 0;
   let isNegative = false;
@@ -2727,7 +3103,9 @@ function xpathStringToNumber({ value }: { value: string }): number {
     fraction /= Number(`1e${fractionalDigits}`);
     number += fraction;
 
-    while (/\d/u.test(trimmed[index] ?? '')) index += 1;
+    while (/\d/u.test(trimmed[index] ?? '')) {
+      index += 1;
+    }
   }
 
   let exponent = 0;
@@ -2746,8 +3124,12 @@ function xpathStringToNumber({ value }: { value: string }): number {
     }
   }
 
-  if (isNegative) number = -number;
-  if (isExponentNegative) exponent = -exponent;
+  if (isNegative) {
+    number = -number;
+  }
+  if (isExponentNegative) {
+    exponent = -exponent;
+  }
   return number * Number(`1e${exponent}`);
 }
 
@@ -2758,7 +3140,9 @@ const XPATH_INT32_MIN = -2_147_483_648;
 const XPATH_INT32_MAX = 2_147_483_647;
 
 function trimXPathFormattedFraction({ value }: { value: string }): string {
-  if (!value.includes('.')) return value;
+  if (!value.includes('.')) {
+    return value;
+  }
   return value.replace(/0+$/u, '').replace(/\.$/u, '');
 }
 
@@ -2774,10 +3158,18 @@ function formatXPathScientificNumber({ value }: { value: number }): string {
 }
 
 function formatXPathNumberValue({ value }: { value: number }): string {
-  if (Number.isNaN(value)) return 'NaN';
-  if (value === Number.POSITIVE_INFINITY) return 'Infinity';
-  if (value === Number.NEGATIVE_INFINITY) return '-Infinity';
-  if (value === 0) return '0';
+  if (Number.isNaN(value)) {
+    return 'NaN';
+  }
+  if (value === Number.POSITIVE_INFINITY) {
+    return 'Infinity';
+  }
+  if (value === Number.NEGATIVE_INFINITY) {
+    return '-Infinity';
+  }
+  if (value === 0) {
+    return '0';
+  }
 
   if (
     value > XPATH_INT32_MIN
@@ -2805,7 +3197,9 @@ function formatXPathNumberValue({ value }: { value: number }): string {
 function expandXPathFiniteNumberLiteral({ value }: { value: number }): string {
   const stringValue = String(value);
   const match = stringValue.match(/^(-?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/u);
-  if (match === null) return stringValue;
+  if (match === null) {
+    return stringValue;
+  }
 
   const sign = match[1] ?? '';
   const integerDigits = match[2] ?? '';
@@ -2823,9 +3217,15 @@ function expandXPathFiniteNumberLiteral({ value }: { value: number }): string {
 }
 
 function formatXPathNumberLiteral({ value }: { value: number }): string {
-  if (Number.isNaN(value)) return '(0 div 0)';
-  if (value === Number.POSITIVE_INFINITY) return '(1 div 0)';
-  if (value === Number.NEGATIVE_INFINITY) return '(-1 div 0)';
+  if (Number.isNaN(value)) {
+    return '(0 div 0)';
+  }
+  if (value === Number.POSITIVE_INFINITY) {
+    return '(1 div 0)';
+  }
+  if (value === Number.NEGATIVE_INFINITY) {
+    return '(-1 div 0)';
+  }
   return Object.is(value, -0) ? '0' : expandXPathFiniteNumberLiteral({ value });
 }
 
@@ -2901,7 +3301,9 @@ function rewriteSimpleXPathNumericFunctions({
     const character = expression[index] ?? '';
     if (quote !== undefined) {
       result += character;
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       index += 1;
       continue;
     }
@@ -2914,12 +3316,16 @@ function rewriteSimpleXPathNumericFunctions({
 
     const previous = index === 0 ? '' : (expression[index - 1] ?? '');
     const functionName = (['number', 'sum'] as const).find((candidate) => {
-      if (!expression.startsWith(candidate, index)) return false;
+      if (!expression.startsWith(candidate, index)) {
+        return false;
+      }
       const next = expression[index + candidate.length] ?? '';
       return !/[A-Za-z0-9_.:-]/u.test(next) || /[\t\n\r (]/u.test(next);
     });
     let openingIndex = index + (functionName?.length ?? 0);
-    while (/[\t\n\r ]/u.test(expression[openingIndex] ?? '')) openingIndex += 1;
+    while (/[\t\n\r ]/u.test(expression[openingIndex] ?? '')) {
+      openingIndex += 1;
+    }
     if (
       functionName !== undefined
       && expression[openingIndex] === '('
@@ -2931,17 +3337,22 @@ function rewriteSimpleXPathNumericFunctions({
       for (; closingIndex < expression.length; closingIndex += 1) {
         const innerCharacter = expression[closingIndex] ?? '';
         if (innerQuote !== undefined) {
-          if (innerCharacter === innerQuote) innerQuote = undefined;
+          if (innerCharacter === innerQuote) {
+            innerQuote = undefined;
+          }
           continue;
         }
         if (innerCharacter === '"' || innerCharacter === "'") {
           innerQuote = innerCharacter;
           continue;
         }
-        if (innerCharacter === '(') depth += 1;
-        else if (innerCharacter === ')') {
+        if (innerCharacter === '(') {
+          depth += 1;
+        } else if (innerCharacter === ')') {
           depth -= 1;
-          if (depth === 0) break;
+          if (depth === 0) {
+            break;
+          }
         }
       }
 
@@ -3016,7 +3427,9 @@ function parseTopLevelXPathArithmeticChain({
     }
     if (character === ')') {
       parenthesisDepth -= 1;
-      if (parenthesisDepth < 0) return undefined;
+      if (parenthesisDepth < 0) {
+        return undefined;
+      }
       previousNonWhitespace = character;
       continue;
     }
@@ -3028,41 +3441,61 @@ function parseTopLevelXPathArithmeticChain({
     }
     if (character === ']') {
       predicateDepth -= 1;
-      if (predicateDepth < 0) return undefined;
+      if (predicateDepth < 0) {
+        return undefined;
+      }
       previousNonWhitespace = character;
       continue;
     }
     if (parenthesisDepth !== 0 || predicateDepth !== 0) {
-      if (!/[\t\n\r ]/u.test(character)) previousNonWhitespace = character;
+      if (!/[\t\n\r ]/u.test(character)) {
+        previousNonWhitespace = character;
+      }
       continue;
     }
 
     let matchedOperator: XPathArithmeticOperator | undefined;
     for (const operator of arithmeticOperators) {
-      if (!expression.startsWith(operator, index) || !operandHasContent) continue;
+      if (!expression.startsWith(operator, index) || !operandHasContent) {
+        continue;
+      }
       if (operator === 'div' || operator === 'mod') {
-        if ('([,|+-*/=<>!@:'.includes(previousNonWhitespace)) continue;
+        if ('([,|+-*/=<>!@:'.includes(previousNonWhitespace)) {
+          continue;
+        }
         if (xpathOperatorNameIsEmbedded({
           expression,
           index,
           operatorLength: operator.length,
-        })) continue;
+        })) {
+          continue;
+        }
       } else if (operator === '+' || operator === '-') {
         if (
           '([,+-*/=<>!'.includes(previousNonWhitespace)
           && !isXPathNumberLiteral({
             value: trimXPathWhitespace({ value: expression.slice(0, index) }),
           })
-        ) continue;
-        if (xpathSignFollowsWordArithmeticOperator({ expression, index })) continue;
+        ) {
+          continue;
+        }
+        if (xpathSignFollowsWordArithmeticOperator({ expression, index })) {
+          continue;
+        }
         if (operator === '-' && xpathOperatorNameIsEmbedded({
           expression,
           index,
           operatorLength: operator.length,
-        })) continue;
-        if (xpathSignIsPartOfExponent({ expression, index })) continue;
+        })) {
+          continue;
+        }
+        if (xpathSignIsPartOfExponent({ expression, index })) {
+          continue;
+        }
       } else if (operator === '*') {
-        if (previousNonWhitespace === '/' || previousNonWhitespace === ':') continue;
+        if (previousNonWhitespace === '/' || previousNonWhitespace === ':') {
+          continue;
+        }
       } else {
         const _exhaustive: never = operator;
         throw new Error(`Unhandled XPath arithmetic operator: ${String(_exhaustive)}`);
@@ -3089,7 +3522,9 @@ function parseTopLevelXPathArithmeticChain({
     || parenthesisDepth !== 0
     || predicateDepth !== 0
     || operations.length === 0
-  ) return undefined;
+  ) {
+    return undefined;
+  }
 
   const operands: string[] = [];
   const operators: XPathArithmeticOperator[] = [];
@@ -3098,13 +3533,17 @@ function parseTopLevelXPathArithmeticChain({
     const operand = trimXPathWhitespace({
       value: expression.slice(operandStart, operation.index),
     });
-    if (operand.length === 0) return undefined;
+    if (operand.length === 0) {
+      return undefined;
+    }
     operands.push(operand);
     operators.push(operation.operator);
     operandStart = operation.index + operation.operator.length;
   }
   const finalOperand = trimXPathWhitespace({ value: expression.slice(operandStart) });
-  if (finalOperand.length === 0) return undefined;
+  if (finalOperand.length === 0) {
+    return undefined;
+  }
   operands.push(finalOperand);
   return { operands, operators };
 }
@@ -3170,7 +3609,9 @@ function evaluateSimpleXPathArithmeticValue({
   const parsed = parseTopLevelXPathArithmeticChain({
     expression: trimXPathWhitespace({ value: expression }),
   });
-  if (parsed === undefined) return undefined;
+  if (parsed === undefined) {
+    return undefined;
+  }
 
   const values: number[] = [];
   const operators: XPathArithmeticOperator[] = [];
@@ -3178,37 +3619,49 @@ function evaluateSimpleXPathArithmeticValue({
     const operator = operators.pop();
     const right = values.pop();
     const left = values.pop();
-    if (operator === undefined || right === undefined || left === undefined) return false;
+    if (operator === undefined || right === undefined || left === undefined) {
+      return false;
+    }
     values.push(applyXPathArithmeticOperator({ left, operator, right }));
     return true;
   };
 
   for (let index = 0; index < parsed.operands.length; index += 1) {
     const operand = parsed.operands[index];
-    if (operand === undefined) return undefined;
+    if (operand === undefined) {
+      return undefined;
+    }
     const value = evaluateSimpleXPathScalarValue({
       document,
       expression: operand,
       namespaces,
       contextNode,
     });
-    if (value === undefined) return undefined;
+    if (value === undefined) {
+      return undefined;
+    }
     values.push(xpathScalarToNumber({ value }));
 
     const operator = parsed.operators[index];
-    if (operator === undefined) continue;
+    if (operator === undefined) {
+      continue;
+    }
     while (
       operators.length > 0
       && xpathArithmeticPrecedence({ operator: operators.at(-1)! })
         >= xpathArithmeticPrecedence({ operator })
     ) {
-      if (!reduceTopOperator()) return undefined;
+      if (!reduceTopOperator()) {
+        return undefined;
+      }
     }
     operators.push(operator);
   }
 
   while (operators.length > 0) {
-    if (!reduceTopOperator()) return undefined;
+    if (!reduceTopOperator()) {
+      return undefined;
+    }
   }
   return values.length === 1 ? values[0] : undefined;
 }
@@ -3225,8 +3678,12 @@ function evaluateSimpleXPathScalarValue({
   contextNode: Node | undefined;
 }): SimpleXPathScalarValue | undefined {
   const trimmed = unwrapAllXPathParentheses({ expression });
-  if (trimmed === 'true()') return { kind: 'boolean', value: true };
-  if (trimmed === 'false()') return { kind: 'boolean', value: false };
+  if (trimmed === 'true()') {
+    return { kind: 'boolean', value: true };
+  }
+  if (trimmed === 'false()') {
+    return { kind: 'boolean', value: false };
+  }
   if (isXPathNumberLiteral({ value: trimmed })) {
     return { kind: 'number', value: xpathStringToNumber({ value: trimmed }) };
   }
@@ -3236,7 +3693,9 @@ function evaluateSimpleXPathScalarValue({
     namespaces,
     contextNode,
   });
-  if (arithmeticValue !== undefined) return { kind: 'number', value: arithmeticValue };
+  if (arithmeticValue !== undefined) {
+    return { kind: 'number', value: arithmeticValue };
+  }
   if (trimmed.startsWith('-')) {
     const operand = evaluateSimpleXPathScalarValue({
       document,
@@ -3251,7 +3710,9 @@ function evaluateSimpleXPathScalarValue({
 
   for (const functionName of ['number', 'sum'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name: functionName });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const value = evaluateSimpleXPathNumericFunction({
       document,
       expression: inner,
@@ -3264,14 +3725,18 @@ function evaluateSimpleXPathScalarValue({
 
   for (const functionName of ['round', 'floor', 'ceiling'] as const) {
     const inner = unwrapXPathFunction({ expression: trimmed, name: functionName });
-    if (inner === undefined) continue;
+    if (inner === undefined) {
+      continue;
+    }
     const operand = evaluateSimpleXPathScalarValue({
       document,
       expression: inner,
       namespaces,
       contextNode,
     });
-    if (operand === undefined) return undefined;
+    if (operand === undefined) {
+      return undefined;
+    }
     const numeric = xpathScalarToNumber({ value: operand });
     switch (functionName) {
     case 'round':
@@ -3295,7 +3760,9 @@ function evaluateSimpleXPathScalarValue({
       namespaces,
       contextNode,
     });
-    if (nodes !== undefined) return { kind: 'boolean', value: nodes.length > 0 };
+    if (nodes !== undefined) {
+      return { kind: 'boolean', value: nodes.length > 0 };
+    }
     const scalar = evaluateSimpleXPathScalarValue({
       document,
       expression: booleanInner,
@@ -3308,7 +3775,9 @@ function evaluateSimpleXPathScalarValue({
   }
 
   for (const name of ['starts-with', 'contains', 'lang'] as const) {
-    if (unwrapXPathFunction({ expression: trimmed, name }) === undefined) continue;
+    if (unwrapXPathFunction({ expression: trimmed, name }) === undefined) {
+      continue;
+    }
     const value = evaluateSimpleXPathBooleanValue({
       document,
       expression: trimmed,
@@ -3476,7 +3945,9 @@ function compareXPathNodeSets({
       const right: SimpleXPathScalarValue = useNumbers
         ? { kind: 'number', value: xpathStringToNumber({ value: rightString }) }
         : { kind: 'string', value: rightString };
-      if (compareXPathValues({ left, operator, right })) return true;
+      if (compareXPathValues({ left, operator, right })) {
+        return true;
+      }
     }
   }
   return false;
@@ -3509,7 +3980,9 @@ function compareXPathNodeSetToScalar({
     const matches = nodesAreLeft
       ? compareXPathValues({ left: nodeValue, operator, right: scalar })
       : compareXPathValues({ left: scalar, operator, right: nodeValue });
-    if (matches) return true;
+    if (matches) {
+      return true;
+    }
   }
   return false;
 }
@@ -3554,8 +4027,12 @@ export function evaluateXPathBoolean({
 }): boolean {
   assertXPathWhitespaceIsValid({ expression });
   const trimmed = unwrapAllXPathParentheses({ expression });
-  if (trimmed === 'true()') return true;
-  if (trimmed === 'false()') return false;
+  if (trimmed === 'true()') {
+    return true;
+  }
+  if (trimmed === 'false()') {
+    return false;
+  }
   if (trimmed === 'self::text()') {
     return contextNode?.nodeType === Node.TEXT_NODE
       || contextNode?.nodeType === Node.CDATA_SECTION_NODE;
@@ -3663,14 +4140,20 @@ export function evaluateXPathBoolean({
     namespaces,
     contextNode,
   });
-  if (booleanValue !== undefined) return booleanValue;
+  if (booleanValue !== undefined) {
+    return booleanValue;
+  }
 
   const nodes = evaluateSimpleXPathNodes({ document, expression: trimmed, namespaces, contextNode });
-  if (nodes !== undefined) return nodes.length > 0;
+  if (nodes !== undefined) {
+    return nodes.length > 0;
+  }
 
   const simpleValue = evaluateSimpleXPathString({ document, expression: trimmed, namespaces, contextNode });
   if (simpleValue !== undefined) {
-    if (!isSimpleXPathNumberExpression({ expression: trimmed })) return simpleValue.length > 0;
+    if (!isSimpleXPathNumberExpression({ expression: trimmed })) {
+      return simpleValue.length > 0;
+    }
     const numeric = xpathStringToNumber({ value: simpleValue });
     return !Number.isNaN(numeric) && numeric !== 0;
   }
@@ -3709,7 +4192,9 @@ function createNamespaceResolver({
   return {
     lookupNamespaceURI(prefix) {
       const normalizedPrefix = prefix ?? '';
-      if (normalizedPrefix === 'xml') return XML_NAMESPACE_URI;
+      if (normalizedPrefix === 'xml') {
+        return XML_NAMESPACE_URI;
+      }
       const overridden = namespaces.get(normalizedPrefix);
       if (overridden !== undefined) {
         return overridden;
@@ -3727,25 +4212,34 @@ function parseLeadingXPathFunction({
   name: string;
 }): { readonly inner: string; readonly closingIndex: number } | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (!trimmed.startsWith(name)) return undefined;
+  if (!trimmed.startsWith(name)) {
+    return undefined;
+  }
   let openingIndex = name.length;
-  while (/[\t\n\r ]/u.test(trimmed[openingIndex] ?? '')) openingIndex += 1;
-  if (trimmed[openingIndex] !== '(') return undefined;
+  while (/[\t\n\r ]/u.test(trimmed[openingIndex] ?? '')) {
+    openingIndex += 1;
+  }
+  if (trimmed[openingIndex] !== '(') {
+    return undefined;
+  }
 
   let quote: '"' | "'" | undefined;
   let depth = 1;
   for (let index = openingIndex + 1; index < trimmed.length; index += 1) {
     const character = trimmed[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
       quote = character;
       continue;
     }
-    if (character === '(') depth += 1;
-    else if (character === ')') {
+    if (character === '(') {
+      depth += 1;
+    } else if (character === ')') {
       depth -= 1;
       if (depth === 0) {
         return {
@@ -3771,42 +4265,59 @@ function evaluateXPathIdNodes({
 }): Node[] | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
   const parsedFunction = parseLeadingXPathFunction({ expression: trimmed, name: 'id' });
-  if (parsedFunction === undefined) return undefined;
+  if (parsedFunction === undefined) {
+    return undefined;
+  }
 
   const predicateValues: string[] = [];
   let cursor = parsedFunction.closingIndex + 1;
   let quote: '"' | "'" | undefined;
   while (cursor < trimmed.length) {
-    while (/[\t\n\r ]/u.test(trimmed[cursor] ?? '')) cursor += 1;
-    if (trimmed[cursor] !== '[') break;
+    while (/[\t\n\r ]/u.test(trimmed[cursor] ?? '')) {
+      cursor += 1;
+    }
+    if (trimmed[cursor] !== '[') {
+      break;
+    }
     const openingIndex = cursor;
     let predicateDepth = 1;
     cursor += 1;
     for (; cursor < trimmed.length; cursor += 1) {
       const character = trimmed[cursor] ?? '';
       if (quote !== undefined) {
-        if (character === quote) quote = undefined;
+        if (character === quote) {
+          quote = undefined;
+        }
         continue;
       }
       if (character === '"' || character === "'") {
         quote = character;
         continue;
       }
-      if (character === '[') predicateDepth += 1;
-      else if (character === ']') {
+      if (character === '[') {
+        predicateDepth += 1;
+      } else if (character === ']') {
         predicateDepth -= 1;
-        if (predicateDepth === 0) break;
+        if (predicateDepth === 0) {
+          break;
+        }
       }
     }
-    if (predicateDepth !== 0 || quote !== undefined) return undefined;
+    if (predicateDepth !== 0 || quote !== undefined) {
+      return undefined;
+    }
     predicateValues.push(trimmed.slice(openingIndex + 1, cursor));
     cursor += 1;
   }
 
   const remainder = trimXPathWhitespace({ value: trimmed.slice(cursor) });
-  if (remainder.length > 0 && !remainder.startsWith('/')) return undefined;
+  if (remainder.length > 0 && !remainder.startsWith('/')) {
+    return undefined;
+  }
   const predicates = parseSimplePredicates({ values: predicateValues });
-  if (predicates === undefined) return undefined;
+  if (predicates === undefined) {
+    return undefined;
+  }
 
   const argumentNodes = evaluateSimpleXPathNodes({
     document,
@@ -3837,7 +4348,9 @@ function evaluateXPathIdNodes({
       return scalar === undefined ? undefined : [xpathScalarToString({ value: scalar })];
     })()
     : argumentNodes.map((node) => getXPathNodeStringValue({ node }));
-  if (argumentValues === undefined) return undefined;
+  if (argumentValues === undefined) {
+    return undefined;
+  }
 
   const metadata = xmlDocumentMetadata.get(document);
   const elementsById = metadata?.elementsById ?? new Map<string, Element>();
@@ -3845,16 +4358,22 @@ function evaluateXPathIdNodes({
   const seen = new Set<Node>();
   for (const value of argumentValues) {
     for (const token of value.split(/[ \t\n\r]+/u)) {
-      if (token.length === 0) continue;
+      if (token.length === 0) {
+        continue;
+      }
       const element = elementsById.get(token);
-      if (element === undefined || seen.has(element)) continue;
+      if (element === undefined || seen.has(element)) {
+        continue;
+      }
       seen.add(element);
       nodes.push(element);
     }
   }
 
   let selected = [...applyXPathPredicates({ nodes, predicates, namespaces })];
-  if (remainder.length === 0) return selected;
+  if (remainder.length === 0) {
+    return selected;
+  }
   const relativeExpression = remainder.startsWith('//') ? `.${remainder}` : remainder.slice(1);
   const result: Node[] = [];
   const selectedSeen = new Set<Node>();
@@ -3865,7 +4384,9 @@ function evaluateXPathIdNodes({
       namespaces,
       contextNode: node,
     })) {
-      if (selectedSeen.has(relativeNode)) continue;
+      if (selectedSeen.has(relativeNode)) {
+        continue;
+      }
       selectedSeen.add(relativeNode);
       result.push(relativeNode);
     }
@@ -3886,7 +4407,9 @@ function evaluateGroupedXPathNodes({
   contextNode: Node | undefined;
 }): Node[] | undefined {
   const trimmed = trimXPathWhitespace({ value: expression });
-  if (!trimmed.startsWith('(')) return undefined;
+  if (!trimmed.startsWith('(')) {
+    return undefined;
+  }
 
   let quote: '"' | "'" | undefined;
   let depth = 0;
@@ -3894,7 +4417,9 @@ function evaluateGroupedXPathNodes({
   for (let index = 0; index < trimmed.length; index += 1) {
     const character = trimmed[index] ?? '';
     if (quote !== undefined) {
-      if (character === quote) quote = undefined;
+      if (character === quote) {
+        quote = undefined;
+      }
       continue;
     }
     if (character === '"' || character === "'") {
@@ -3905,18 +4430,26 @@ function evaluateGroupedXPathNodes({
       depth += 1;
       continue;
     }
-    if (character !== ')') continue;
+    if (character !== ')') {
+      continue;
+    }
     depth -= 1;
-    if (depth < 0) return undefined;
+    if (depth < 0) {
+      return undefined;
+    }
     if (depth === 0) {
       closingIndex = index;
       break;
     }
   }
-  if (closingIndex === undefined || quote !== undefined) return undefined;
+  if (closingIndex === undefined || quote !== undefined) {
+    return undefined;
+  }
 
   const inner = trimXPathWhitespace({ value: trimmed.slice(1, closingIndex) });
-  if (inner.length === 0) return undefined;
+  if (inner.length === 0) {
+    return undefined;
+  }
   const innerUnionParts = splitTopLevelXPathUnion({ expression: inner });
   const innerSimpleNodes = innerUnionParts === undefined
     ? evaluateSimpleXPathNodes({ document, expression: inner, namespaces, contextNode })
@@ -3930,12 +4463,18 @@ function evaluateGroupedXPathNodes({
     innerUnionParts === undefined
     && innerSimpleNodes === undefined
     && innerGroupedNodes === undefined
-  ) return undefined;
+  ) {
+    return undefined;
+  }
   const predicateValues: string[] = [];
   let cursor = closingIndex + 1;
   while (cursor < trimmed.length) {
-    while (/[\t\n\r ]/u.test(trimmed[cursor] ?? '')) cursor += 1;
-    if (trimmed[cursor] !== '[') break;
+    while (/[\t\n\r ]/u.test(trimmed[cursor] ?? '')) {
+      cursor += 1;
+    }
+    if (trimmed[cursor] !== '[') {
+      break;
+    }
     const openingIndex = cursor;
     let predicateDepth = 1;
     quote = undefined;
@@ -3943,35 +4482,48 @@ function evaluateGroupedXPathNodes({
     for (; cursor < trimmed.length; cursor += 1) {
       const character = trimmed[cursor] ?? '';
       if (quote !== undefined) {
-        if (character === quote) quote = undefined;
+        if (character === quote) {
+          quote = undefined;
+        }
         continue;
       }
       if (character === '"' || character === "'") {
         quote = character;
         continue;
       }
-      if (character === '[') predicateDepth += 1;
-      else if (character === ']') {
+      if (character === '[') {
+        predicateDepth += 1;
+      } else if (character === ']') {
         predicateDepth -= 1;
-        if (predicateDepth === 0) break;
+        if (predicateDepth === 0) {
+          break;
+        }
       }
     }
-    if (predicateDepth !== 0 || quote !== undefined) return undefined;
+    if (predicateDepth !== 0 || quote !== undefined) {
+      return undefined;
+    }
     predicateValues.push(trimmed.slice(openingIndex + 1, cursor));
     cursor += 1;
   }
 
   const remainder = trimXPathWhitespace({ value: trimmed.slice(cursor) });
-  if (remainder.length > 0 && !remainder.startsWith('/')) return undefined;
+  if (remainder.length > 0 && !remainder.startsWith('/')) {
+    return undefined;
+  }
   const predicates = parseSimplePredicates({ values: predicateValues });
-  if (predicates === undefined) return undefined;
+  if (predicates === undefined) {
+    return undefined;
+  }
   let nodes = [...(
     innerSimpleNodes
     ?? innerGroupedNodes
     ?? evaluateXPathNodes({ document, expression: inner, namespaces, contextNode })
   )];
   nodes = [...applyXPathPredicates({ nodes, predicates, namespaces })];
-  if (remainder.length === 0) return nodes;
+  if (remainder.length === 0) {
+    return nodes;
+  }
 
   const relativeExpression = remainder.startsWith('//')
     ? `.${remainder}`
@@ -3985,7 +4537,9 @@ function evaluateGroupedXPathNodes({
       namespaces,
       contextNode: node,
     })) {
-      if (seen.has(selected)) continue;
+      if (seen.has(selected)) {
+        continue;
+      }
       seen.add(selected);
       result.push(selected);
     }
@@ -4013,14 +4567,18 @@ export function evaluateXPathNodes({
     namespaces,
     contextNode,
   });
-  if (groupedNodes !== undefined) return groupedNodes;
+  if (groupedNodes !== undefined) {
+    return groupedNodes;
+  }
   const unionParts = splitTopLevelXPathUnion({ expression: normalizedExpression });
   if (unionParts !== undefined) {
     const nodes: Node[] = [];
     const seen = new Set<Node>();
     for (const part of unionParts) {
       for (const node of evaluateXPathNodes({ document, expression: part, namespaces, contextNode })) {
-        if (seen.has(node)) continue;
+        if (seen.has(node)) {
+          continue;
+        }
         seen.add(node);
         nodes.push(node);
       }
@@ -4078,7 +4636,9 @@ export function evaluateXPathValueStrings({
     contextSize,
   });
   const trimmed = unwrapAllXPathParentheses({ expression: contextualExpression });
-  if (trimmed === '/') return [getXPathNodeStringValue({ node: document })];
+  if (trimmed === '/') {
+    return [getXPathNodeStringValue({ node: document })];
+  }
   const booleanExpression = trimmed;
   const hasLogicalOperator = splitTopLevelXPathLogicalOperator({
     expression: booleanExpression,
@@ -4124,7 +4684,9 @@ export function evaluateXPathValueStrings({
     namespaces,
     contextNode,
   });
-  if (simpleValue !== undefined) return [simpleValue];
+  if (simpleValue !== undefined) {
+    return [simpleValue];
+  }
 
   const scalarValue = evaluateSimpleXPathScalarValue({
     document,
@@ -4182,7 +4744,9 @@ export function evaluateXPathValueStrings({
     const values: string[] = [];
     for (let index = 0; index < result.snapshotLength; index += 1) {
       const node = result.snapshotItem(index);
-      if (node !== null) values.push(getXPathNodeStringValue({ node }));
+      if (node !== null) {
+        values.push(getXPathNodeStringValue({ node }));
+      }
     }
     return values;
   }

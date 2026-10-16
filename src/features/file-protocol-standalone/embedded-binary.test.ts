@@ -20,15 +20,20 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
-  if (nativeFromBase64) Object.defineProperty(Uint8Array, 'fromBase64', nativeFromBase64);
-  else Reflect.deleteProperty(Uint8Array, 'fromBase64');
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  if (nativeFromBase64) {
+    Object.defineProperty(Uint8Array, 'fromBase64', nativeFromBase64);
+  } else {
+    Reflect.deleteProperty(Uint8Array, 'fromBase64');
+  }
 });
 
 describe('standalone embedded Brotli decoding', () => {
   it.each([0, 1, 131073])('round-trips %i bytes without fetching a sidecar', async byteLength => {
     const bytes = Uint8Array.from({ length: byteLength }, (_value, index) => index % 251);
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     const digest = vi.spyOn(crypto.subtle, 'digest');
     const decoded = await decodeEmbeddedBrotli(payload({ bytes }));
     expect(decoded).toEqual(bytes);
@@ -82,10 +87,12 @@ describe('standalone embedded Brotli decoding', () => {
     const formats: string[] = [];
     vi.stubGlobal('DecompressionStream', class {
       constructor(format: string) {
-        formats.push(format); throw new TypeError('Unsupported format');
+        formats.push(format);
+        throw new TypeError('Unsupported format');
       }
     });
-    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     await expect(decodeEmbeddedBrotli(payload({ bytes: new Uint8Array([1]) }))).rejects.toThrow('Unsupported format');
     expect(formats).toEqual(['brotli']);
     expect(fetcher).not.toHaveBeenCalled();
@@ -110,7 +117,9 @@ describe('standalone embedded Brotli decoding', () => {
       expect(text.length).toBeLessThanOrEqual(64 * 1024);
       expect(text.length % 4).toBe(0);
     }
-    if (decoder === 'native') expect(fallback).not.toHaveBeenCalled();
+    if (decoder === 'native') {
+      expect(fallback).not.toHaveBeenCalled();
+    }
     expect(blob).not.toHaveBeenCalled();
   });
 
@@ -135,7 +144,8 @@ describe('standalone embedded Brotli decoding', () => {
             controller.enqueue(new Uint8Array(2));
           },
         });
-        this.readable = stream.readable; this.writable = stream.writable;
+        this.readable = stream.readable;
+        this.writable = stream.writable;
       }
     });
     const digest = vi.spyOn(crypto.subtle, 'digest');

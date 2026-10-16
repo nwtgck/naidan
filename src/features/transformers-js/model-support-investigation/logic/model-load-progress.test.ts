@@ -133,7 +133,9 @@ describe("createModelLoadProgressTracker", () => {
         at: new Date(index).toISOString(),
         nowMs: index / 10,
       });
-      if (sample !== undefined) published.push(sample);
+      if (sample !== undefined) {
+        published.push(sample);
+      }
     }
 
     // Ten seconds of 100k raw callbacks may produce roughly one sample per
@@ -172,7 +174,9 @@ describe("createModelLoadProgressTracker", () => {
         at: "2026-08-07T07:00:00.000Z",
         nowMs: index / 1000,
       });
-      if (sample !== undefined) publishedCount += 1;
+      if (sample !== undefined) {
+        publishedCount += 1;
+      }
     }
 
     // One million callbacks compressed into less than one second of synthetic

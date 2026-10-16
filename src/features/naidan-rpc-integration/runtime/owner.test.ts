@@ -12,7 +12,8 @@ it('uses a valid conditional Web Locks request and holds the lease until explici
   const lease = await acquisition;
   expect(native.request).toHaveBeenCalledWith('naidan-peer-rpc-owner/v1', { ifAvailable: true }, expect.any(Function));
   expect(native.held()).toBe(true);
-  lease.release(); lease.release();
+  lease.release();
+  lease.release();
   await vi.waitFor(() => expect(native.held()).toBe(false));
 });
 
@@ -35,7 +36,8 @@ it('abandons a conditional grant arriving after cancellation and does not publis
 
 it('does not release an acquired lock merely because its parent signal aborts', async () => {
   const native = locks(), stop = new AbortController();
-  const acquisition = acquireRpcOwner({ signal: stop.signal }); native.dispatch();
+  const acquisition = acquireRpcOwner({ signal: stop.signal });
+  native.dispatch();
   const lease = await acquisition;
   stop.abort();
   await Promise.resolve();
@@ -47,16 +49,21 @@ it('does not release an acquired lock merely because its parent signal aborts', 
 
 it('fails without queueing or stealing when another owner is active', async () => {
   const native = locks();
-  const first = acquireRpcOwner({ signal: new AbortController().signal }); native.dispatch();
+  const first = acquireRpcOwner({ signal: new AbortController().signal });
+  native.dispatch();
   const lease = await first;
   const second = acquireRpcOwner({ signal: new AbortController().signal });
-  const rejected = expect(second).rejects.toThrow('another tab'); native.dispatch();
+  const rejected = expect(second).rejects.toThrow('another tab');
+  native.dispatch();
   await rejected;
   expect(native.held()).toBe(true);
-  lease.release(); await vi.waitFor(() => expect(native.held()).toBe(false));
-  const next = acquireRpcOwner({ signal: new AbortController().signal }); native.dispatch();
+  lease.release();
+  await vi.waitFor(() => expect(native.held()).toBe(false));
+  const next = acquireRpcOwner({ signal: new AbortController().signal });
+  native.dispatch();
   const nextLease = await next;
-  expect(native.held()).toBe(true); nextLease.release();
+  expect(native.held()).toBe(true);
+  nextLease.release();
   await vi.waitFor(() => expect(native.held()).toBe(false));
 });
 
@@ -71,7 +78,9 @@ it('preserves browser request failures and allows the next explicit attempt', as
   await expect(acquireRpcOwner({ signal: new AbortController().signal })).rejects.toMatchObject({ name: 'SecurityError' });
   expect(request).toHaveBeenCalledOnce();
   const native = locks();
-  const next = acquireRpcOwner({ signal: new AbortController().signal }); native.dispatch();
-  const lease = await next; lease.release();
+  const next = acquireRpcOwner({ signal: new AbortController().signal });
+  native.dispatch();
+  const lease = await next;
+  lease.release();
   await vi.waitFor(() => expect(native.held()).toBe(false));
 });

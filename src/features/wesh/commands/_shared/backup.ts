@@ -12,7 +12,9 @@ export function parseBackupControlLongOption({
   token: string,
 }): ArgvSpecialParseResult | undefined {
   const prefix = '--backup=';
-  if (!token.startsWith(prefix)) return undefined;
+  if (!token.startsWith(prefix)) {
+    return undefined;
+  }
 
   const rawValue = token.slice(prefix.length);
   const effects = [

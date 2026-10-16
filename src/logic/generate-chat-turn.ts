@@ -38,7 +38,9 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
     description: tool.description,
     parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })),
   }));
-  if (abortController.signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+  if (abortController.signal.aborted) {
+    return { type: 'interrupted', reason: 'aborted' };
+  }
   const firstAssistant = await createAssistantMessage();
   const firstMessages = (await buildMessages({ excludedMessageId: firstAssistant.id })).map(message => copyChatMessage({ message }));
 
@@ -47,7 +49,9 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
     let assistant = firstAssistant;
     let messages = firstMessages;
     while (true) {
-      if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+      if (signal.aborted) {
+        return { type: 'interrupted', reason: 'aborted' };
+      }
       const result = await consumeChatGeneration({
         node: assistant,
         items: chat({ messages, debug, model, parameters: acceptedParameters, tools: definitions.length ? definitions : undefined, readBinaryObject, signal }),
@@ -71,19 +75,30 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
         switch (result.next) {
         case 'user': return result;
         case 'tool_results': break;
-        default: { const _ex: never = result.next; throw new Error(`Unhandled generation step: ${_ex}`); }
+        default: {
+          const _ex: never = result.next;
+          throw new Error(`Unhandled generation step: ${_ex}`);
+        }
         }
         break;
-      default: { const _ex: never = result; throw new Error(`Unhandled generation result: ${_ex}`); }
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled generation result: ${_ex}`);
+      }
       }
       // A stop after generation does not erase completed calls or execute them.
-      if (signal.aborted) return { type: 'interrupted', reason: 'aborted' };
+      if (signal.aborted) {
+        return { type: 'interrupted', reason: 'aborted' };
+      }
       const calls = assistant.parts.flatMap(part => {
         switch (part.type) {
         case 'tool_call': return [part.toolCall];
         case 'text':
         case 'reasoning': return [];
-        default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled assistant part: ${_ex}`);
+        }
         }
       });
       const node = await createToolMessage({ assistant });
@@ -96,7 +111,9 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
         onEvent: ({ toolCallId, event }) => {
           // A retired/canceled operation no longer publishes volatile output.
           // The observed execute() outcome is still recorded in its owned node.
-          if (signal.aborted) return;
+          if (signal.aborted) {
+            return;
+          }
           return onToolEvent({ toolCallId, event });
         },
         onChange,
@@ -107,7 +124,9 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
       messages = (await buildMessages({ excludedMessageId: assistant.id })).map(message => copyChatMessage({ message }));
     }
   }
-  if (provider.runChatOperation === undefined) return generate({ chat: provider.chat.bind(provider), controller: abortController });
+  if (provider.runChatOperation === undefined) {
+    return generate({ chat: provider.chat.bind(provider), controller: abortController });
+  }
 
   let result: ChatGenerationResult | undefined;
   let entered = false;
@@ -116,24 +135,32 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   await provider.runChatOperation({
     signal: abortController.signal,
     operation: async ({ chat, signal }) => {
-      if (entered) throw new Error('A chat operation must be entered exactly once.');
+      if (entered) {
+        throw new Error('A chat operation must be entered exactly once.');
+      }
       entered = true;
       const controller = new AbortController();
       const sources = [...new Set([signal, abortController.signal])];
       const removers = sources.map(source => {
         const abort = () => controller.abort(source.reason);
         source.addEventListener('abort', abort, { once: true });
-        if (source.aborted) abort();
+        if (source.aborted) {
+          abort();
+        }
         return () => source.removeEventListener('abort', abort);
       });
       try {
         result = await generate({ chat, controller });
       } finally {
-        for (const remove of removers) remove();
+        for (const remove of removers) {
+          remove();
+        }
       }
     },
   });
-  if (result === undefined) throw new Error('The Provider did not run the chat operation.');
+  if (result === undefined) {
+    throw new Error('The Provider did not run the chat operation.');
+  }
   return result;
 }
 

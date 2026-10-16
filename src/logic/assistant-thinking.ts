@@ -5,7 +5,9 @@ export function splitAssistantThinking({ content }: { content: string }): {
 } {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
   const matches = [...content.matchAll(thinkRegex)];
-  if (matches.length === 0) return { content, thinking: undefined };
+  if (matches.length === 0) {
+    return { content, thinking: undefined };
+  }
   return {
     content: content.replace(thinkRegex, '').trim(),
     thinking: matches.map(match => match[1]?.trim()).filter(Boolean).join('\n\n---\n\n'),

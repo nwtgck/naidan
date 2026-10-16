@@ -1,8 +1,12 @@
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 
 function requestUrl({ input }: { input: RequestInfo | URL }): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
   return input.url;
 }
 

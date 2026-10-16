@@ -61,7 +61,9 @@ For a \`kind\` discriminant, use \`((value satisfies never) as { readonly kind: 
       const isRightStringLiteral = (right.type === 'Literal' && typeof right.value === 'string') ||
                                     (right.type === 'TemplateLiteral' && right.quasis.length === 1 && right.expressions.length === 0);
 
-      if (isLeftStringLiteral === isRightStringLiteral) return;
+      if (isLeftStringLiteral === isRightStringLiteral) {
+        return;
+      }
 
       const targetNode = isLeftStringLiteral ? right : left;
 
@@ -79,7 +81,7 @@ For a \`kind\` discriminant, use \`((value satisfies never) as { readonly kind: 
         const hasStringLiteral = type.types.some(t => t.isStringLiteral() || (t.getFlags() & ts.TypeFlags.StringLiteral));
         const allAreCompatible = type.types.every((t) => {
           const flags = t.getFlags();
-          return t.isStringLiteral() || 
+          return t.isStringLiteral() ||
                  (flags & ts.TypeFlags.StringLiteral) ||
                  (flags & ts.TypeFlags.UniqueESSymbol) ||
                  (flags & ts.TypeFlags.ESSymbol) ||

@@ -60,14 +60,21 @@ function containsCapability({ plan }: { plan: Plan }): boolean {
   case 'array': return containsCapability({ plan: node.item });
   case 'optional': return containsCapability({ plan: node.inner });
   case 'finite': return false;
-  default: { const exhaustive: never = node; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = node;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 function describeValue({ plan }: { plan: Plan }): ValueDescriptor {
   const { schema, node } = plan;
-  if (schema instanceof z.ZodUndefined || schema instanceof z.ZodVoid) return { kind: 'undefined' };
-  if (!containsCapability({ plan })) return { kind: 'data', schema: dataSchema({ schema }) };
+  if (schema instanceof z.ZodUndefined || schema instanceof z.ZodVoid) {
+    return { kind: 'undefined' };
+  }
+  if (!containsCapability({ plan })) {
+    return { kind: 'data', schema: dataSchema({ schema }) };
+  }
   switch (node.kind) {
   case 'optional': return { kind: 'optional', value: describeValue({ plan: node.inner }) };
   case 'object': return {
@@ -84,15 +91,24 @@ function describeValue({ plan }: { plan: Plan }): ValueDescriptor {
       switch (mode) {
       case 'bytes': return { kind: 'byte-stream' };
       case 'items': return { kind: 'stream', item: dataSchema({ schema: capability.item }) };
-      default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = mode;
+        throw new Error(String(exhaustive));
+      }
       }
     }
     case 'callback': return { kind: 'callback', input: dataSchema({ schema: capability.input }), result: dataSchema({ schema: capability.result }) };
-    default: { const exhaustive: never = capability; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = capability;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   case 'finite': return { kind: 'data', schema: dataSchema({ schema }) };
-  default: { const exhaustive: never = node; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = node;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -103,7 +119,9 @@ export function describeMethods<C extends Contract>({ contract, names }: {
   return names.map(name => {
     const method = contract.methods[name];
     check({ condition: method !== undefined, code: 'INVALID_ARGUMENT' });
-    if (!method) throw new Error('Unknown method');
+    if (!method) {
+      throw new Error('Unknown method');
+    }
     const { input, result, notifications, ...rest } = method;
     rest satisfies Record<PropertyKey, never>;
     const description: MethodDescriptor = {

@@ -12,9 +12,13 @@ export function createDocsLocaleMessagesLoader<Messages extends object>({ loader
   return {
     load: ({ locale }) => {
       const loaded = ready.get(locale);
-      if (loaded !== undefined) return Promise.resolve(loaded);
+      if (loaded !== undefined) {
+        return Promise.resolve(loaded);
+      }
       const inFlight = pending.get(locale);
-      if (inFlight) return inFlight;
+      if (inFlight) {
+        return inFlight;
+      }
       const next = Promise.resolve().then(() => loaders[locale]()).then(messages => {
         ready.set(locale, messages);
         return messages;
@@ -26,7 +30,9 @@ export function createDocsLocaleMessagesLoader<Messages extends object>({ loader
     },
     read: ({ locale }) => {
       const messages = ready.get(locale);
-      if (messages === undefined) throw new Error(`Docs messages for ${locale} were read before loading`);
+      if (messages === undefined) {
+        throw new Error(`Docs messages for ${locale} were read before loading`);
+      }
       return messages;
     },
   };

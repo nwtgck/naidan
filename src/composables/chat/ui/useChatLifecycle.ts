@@ -84,10 +84,15 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       switch (activation) {
       case 'activate': return true;
       case 'preserve': return false;
-      default: { const exhaustive: never = activation; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = activation;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
-    if (activate) currentChatGroupRef.value = null;
+    if (activate) {
+      currentChatGroupRef.value = null;
+    }
     creatingChat.value = true;
     const chatId = generateId<ChatId>();
 
@@ -273,7 +278,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
   async function deleteAllChats(): Promise<void> {
     autoTitleScheduler.reset();
-    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) controller.abort();
+    for (const controller of chatRuntimeStore.activeTitleGenerations.values()) {
+      controller.abort();
+    }
     chatRuntimeStore.activeTitleGenerations.clear();
     for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
       item.controller.abort();

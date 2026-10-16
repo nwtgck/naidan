@@ -17,14 +17,20 @@ function image({ mimeType, status }: { mimeType: string, status: 'memory' | 'per
 }
 
 function getPromptMessages({ prompt }: { prompt: PromptApiPrompt }) {
-  if (typeof prompt === 'string') throw new Error('Expected message-array prompt.');
+  if (typeof prompt === 'string') {
+    throw new Error('Expected message-array prompt.');
+  }
   return prompt;
 }
 
 function getImageContent({ content }: { content: string | PromptApiMessageContent[] }) {
-  if (typeof content === 'string') throw new Error('Expected multimodal content.');
+  if (typeof content === 'string') {
+    throw new Error('Expected multimodal content.');
+  }
   const found = content.find(part => part.type === 'image');
-  if (found?.type !== 'image') throw new Error('Expected image.');
+  if (found?.type !== 'image') {
+    throw new Error('Expected image.');
+  }
   return found;
 }
 
@@ -60,11 +66,13 @@ Chat instruction`,
 
   it('maps a final user image attachment to a Blob prompt', async () => {
     const result = await map({ messages: [{ id, role: 'user', parts: [text({ value: 'Describe this image.' }), image({ mimeType: 'image/png', status: 'memory' })] }] });
-    expect(result.inputMode).toBe('image'); expect(result.initialPrompts).toEqual([]);
+    expect(result.inputMode).toBe('image');
+    expect(result.initialPrompts).toEqual([]);
     const messages = getPromptMessages({ prompt: result.prompt });
     expect(messages).toMatchObject([{ role: 'user', content: [{ type: 'text', value: 'Describe this image.' }, { type: 'image' }] }]);
     const content = getImageContent({ content: messages[0]!.content });
-    expect(content.value).toBeInstanceOf(Blob); expect(content.value.type).toBe('image/png');
+    expect(content.value).toBeInstanceOf(Blob);
+    expect(content.value.type).toBe('image/png');
     await expect(content.value.text()).resolves.toBe('hello');
   });
 
@@ -76,7 +84,8 @@ Chat instruction`,
         { id, role: 'user', parts: [text({ value: 'What was in it?' })] },
       ],
     });
-    expect(result.inputMode).toBe('image'); expect(result.prompt).toBe('What was in it?');
+    expect(result.inputMode).toBe('image');
+    expect(result.prompt).toBe('What was in it?');
     expect(result.initialPrompts[0]).toMatchObject({ role: 'user', content: [{ type: 'text', value: 'First image' }, { type: 'image' }] });
   });
 
@@ -101,7 +110,8 @@ Chat instruction`,
   it('preserves literal tags, repeated chunks and whitespace as text, not reasoning', async () => {
     const raw = '<think>literal</think>  ';
     const result = await map({ messages: [{ id, role: 'assistant', parts: [text({ value: raw }), text({ value: raw })] }, { id, role: 'user', parts: [text({ value: '' })] }] });
-    expect(result.initialPrompts).toEqual([{ role: 'assistant', content: raw + raw }]); expect(result.prompt).toBe('');
+    expect(result.initialPrompts).toEqual([{ role: 'assistant', content: raw + raw }]);
+    expect(result.prompt).toBe('');
   });
 
   it('rejects structured reasoning instead of silently omitting it', async () => {
@@ -109,7 +119,8 @@ Chat instruction`,
   });
 
   it('resolves persisted images in part order and forwards the request signal', async () => {
-    const controller = new AbortController(); const reader = vi.fn(async () => new Blob(['bytes']));
+    const controller = new AbortController();
+    const reader = vi.fn(async () => new Blob(['bytes']));
     const result = await mapChatMessagesToPromptApi({ messages: [{ id, role: 'user', parts: [text({ value: 'before' }), image({ mimeType: 'image/png', status: 'persisted' }), text({ value: 'after' })] }], readBinaryObject: reader, signal: controller.signal });
     expect(reader).toHaveBeenCalledExactlyOnceWith({ binaryObjectId: toBinaryObjectId({ raw: 'b' }), signal: controller.signal });
     expect(getPromptMessages({ prompt: result.prompt })[0]!.content).toMatchObject([{ type: 'text', value: 'before' }, { type: 'image' }, { type: 'text', value: 'after' }]);
@@ -123,7 +134,8 @@ Chat instruction`,
       messages: [{ id, role: 'user', parts: [image({ mimeType: 'image/png', status: 'persisted' })] }],
       signal: controller.signal,
       readBinaryObject: async () => {
-        controller.abort(); return new Blob();
+        controller.abort();
+        return new Blob();
       },
     })).rejects.toThrow();
   });

@@ -28,7 +28,10 @@ function queueStatus({ state }: { state: ImageDownloadQueueEntry['state'] }): st
   case 'paused': return lazyStrings.llamaCppBrowserDownloads__paused();
   case 'failed': return lazyStrings.stableDiffusionCppBrowser__download_failed();
   case 'incomplete': return lazyStrings.stableDiffusionCppBrowser__downloaded_but_incomplete();
-  default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = state;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -44,8 +47,12 @@ const layoutFile = computed(() => imageCatalogLoras.find(item => item.id === dow
 const opfsSupported = typeof navigator !== 'undefined' && typeof navigator.storage?.getDirectory === 'function' && typeof navigator.locks?.request === 'function';
 const downloadDestinationUnavailable = computed(() => {
   const directories = props.view.hostDirectories;
-  if (directories.busy.value) return true;
-  if (directories.destination.value === 'opfs') return !opfsSupported;
+  if (directories.busy.value) {
+    return true;
+  }
+  if (directories.destination.value === 'opfs') {
+    return !opfsSupported;
+  }
   const entry = directories.entries.value.find(item => item.id === directories.destination.value);
   // An explicit download can request read/write permission for a known handle.
   return !directories.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
@@ -57,7 +64,10 @@ function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefi
   case 'diffusion': return lazyStrings.stableDiffusionCppBrowser__diffusion_file();
   case 'vae': return lazyStrings.stableDiffusionCppBrowser__vae_file();
   case 'lm': return lazyStrings.stableDiffusionCppBrowser__lm_file();
-  default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = role;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -66,7 +76,9 @@ function optionLabel({ file }: { file: ImageRecipeFile }): string {
 }
 
 function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipeFile['role'], event: Event }): void {
-  if (props.downloadDisabled || !(event.target instanceof HTMLSelectElement)) return;
+  if (props.downloadDisabled || !(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const value = event.target.value;
   const component = imageModelRecipes.find(recipe => recipe.id === recipeId)?.components.find(item => item.role === role);
   if (component?.options.some(option => option.id === value)) {
@@ -76,23 +88,34 @@ function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipe
 }
 
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
-  if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+  if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) {
+    await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
+  }
 }
 
 async function downloadLora({ id }: { id: string }): Promise<void> {
-  if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadLora({ id });
+  if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) {
+    await props.view.downloadLora({ id });
+  }
 }
 
 function select({ recipeId }: { recipeId: string }): void {
-  if (props.disabled || importing.value || scanState.value === 'scanning') return;
+  if (props.disabled || importing.value || scanState.value === 'scanning') {
+    return;
+  }
   props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
-  if (props.view.ready.value) emit('selected');
+  if (props.view.ready.value) {
+    emit('selected');
+  }
 }
 
 function loraHelp({ usage }: { usage: ImageCatalogLora['usage'] }): string | undefined {
   switch (usage) {
   case 'style-reference': return lazyStrings.ImageModelCatalog__reference_style_lora_help();
-  default: { const exhaustive: never = usage; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = usage;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

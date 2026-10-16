@@ -53,7 +53,9 @@ export function validateGemma4ToolCallsForTemplate({ toolCalls }: { toolCalls: T
 }
 
 export function validateGemma4ToolName({ name }: { name: string }): void {
-  if (!/^[A-Za-z0-9_$.-]+$/.test(name)) throw new Error('Gemma native tool template cannot preserve this bare tool name');
+  if (!/^[A-Za-z0-9_$.-]+$/.test(name)) {
+    throw new Error('Gemma native tool template cannot preserve this bare tool name');
+  }
 }
 
 export function isGemma4Model({
@@ -95,7 +97,9 @@ export async function buildGemma4TemplateInput({
         .filter(part => part.type === 'text').map(part => part.text).join('');
       validateGemma4TemplateArgument({ value: responseText, depth: 0 });
     }
-    if (tool_calls !== undefined) validateGemma4ToolCallsForTemplate({ toolCalls: tool_calls });
+    if (tool_calls !== undefined) {
+      validateGemma4ToolCallsForTemplate({ toolCalls: tool_calls });
+    }
     const reasoning = reasoningTexts[index];
     const toolFields = {
       ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
@@ -182,21 +186,31 @@ function validateGemma4TemplateArgument({ value, depth }: { value: unknown; dept
   // The native template does not escape its quote delimiter or bare keys and
   // renders null as an empty slot. Reject known lossy input; do not invent an
   // escaping convention that the native model does not use.
-  if (depth > 64 || value === null) throw new Error('Gemma native tool template cannot preserve this argument value');
+  if (depth > 64 || value === null) {
+    throw new Error('Gemma native tool template cannot preserve this argument value');
+  }
   switch (typeof value) {
   case 'string':
-    if (value.includes('<|"|>')) throw new Error('Gemma native tool template cannot preserve a string containing its quote delimiter');
+    if (value.includes('<|"|>')) {
+      throw new Error('Gemma native tool template cannot preserve a string containing its quote delimiter');
+    }
     return;
   case 'boolean': return;
   case 'number':
-    if (!Number.isFinite(value)) throw new Error('Gemma native tool template requires finite numeric arguments');
+    if (!Number.isFinite(value)) {
+      throw new Error('Gemma native tool template requires finite numeric arguments');
+    }
     return;
   case 'object':
     if (Array.isArray(value)) {
-      for (const item of value) validateGemma4TemplateArgument({ value: item, depth: depth + 1 });
+      for (const item of value) {
+        validateGemma4TemplateArgument({ value: item, depth: depth + 1 });
+      }
     } else {
       for (const [key, item] of Object.entries(value)) {
-        if (!/^[A-Za-z0-9_$.-]+$/.test(key)) throw new Error('Gemma native tool template cannot preserve this bare argument key');
+        if (!/^[A-Za-z0-9_$.-]+$/.test(key)) {
+          throw new Error('Gemma native tool template cannot preserve this bare argument key');
+        }
         validateGemma4TemplateArgument({ value: item, depth: depth + 1 });
       }
     }

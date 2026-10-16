@@ -13,7 +13,9 @@ export type RecoveredImageEntry = {
 /** Recovery ownership outlives a mounted workspace. Reserve before inference so
  * an uncertain terminal result cannot force silent eviction of unsaved pixels. */
 export function createImageRecoveryStore({ capacity }: { capacity: number }) {
-  if (!Number.isSafeInteger(capacity) || capacity <= 0) throw new Error('Invalid image recovery budget');
+  if (!Number.isSafeInteger(capacity) || capacity <= 0) {
+    throw new Error('Invalid image recovery budget');
+  }
   let used = 0;
   const entries = new Map<ImageGenerationId, { entry: RecoveredImageEntry, bytes: number }>();
   const listeners = new Set<() => void>();
@@ -27,7 +29,9 @@ export function createImageRecoveryStore({ capacity }: { capacity: number }) {
   const remove = ({ id }: { id: ImageGenerationId }) => {
     const item = entries.get(id);
     if (item) {
-      entries.delete(id); used -= item.bytes; changed();
+      entries.delete(id);
+      used -= item.bytes;
+      changed();
     }
   };
   return {
@@ -35,28 +39,40 @@ export function createImageRecoveryStore({ capacity }: { capacity: number }) {
       return [...entries.values()].map(({ entry }) => entry);
     },
     subscribe({ listener }: { listener(): void }) {
-      listeners.add(listener); return () => {
+      listeners.add(listener);
+      return () => {
         listeners.delete(listener);
       };
     },
     remove,
     reserve({ bytes }: { bytes: number }) {
-      if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > capacity - used) throw new Error('Save or discard recovered images before generating again.');
+      if (!Number.isSafeInteger(bytes) || bytes <= 0 || bytes > capacity - used) {
+        throw new Error('Save or discard recovered images before generating again.');
+      }
       used += bytes;
       let active = true;
       return {
         release() {
           if (active) {
-            active = false; used -= bytes;
+            active = false;
+            used -= bytes;
           }
         },
         retain({ record, files, retry }: { record: ImageGenerationRecord, files: HistoryBinaryFile[], retry: (() => Promise<void>) | undefined }): ImageGenerationId {
-          if (!active || record.result.confirmation !== 'unconfirmed') throw new Error('A recovery reservation can retain only one unconfirmed image.');
+          if (!active || record.result.confirmation !== 'unconfirmed') {
+            throw new Error('A recovery reservation can retain only one unconfirmed image.');
+          }
           const size = files.reduce((total, file) => total + file.blob.size, 0);
-          if (size > bytes || !files.some(file => file.binaryObjectId === record.result.binaryObjectId)) throw new Error('Recovered image exceeds its reserved bytes.');
+          if (size > bytes || !files.some(file => file.binaryObjectId === record.result.binaryObjectId)) {
+            throw new Error('Recovered image exceeds its reserved bytes.');
+          }
           const id = generateId<ImageGenerationId>();
           const entry = { id, record: structuredClone(record), files: files.map(file => ({ ...file })), retry };
-          active = false; used -= bytes - size; entries.set(id, { entry, bytes: size }); changed(); return id;
+          active = false;
+          used -= bytes - size;
+          entries.set(id, { entry, bytes: size });
+          changed();
+          return id;
         },
       };
     },

@@ -52,7 +52,10 @@ export function createDownloadUrl({ base, token, version }: {
     url.hash = `?id=${validToken}`;
     return url;
   }
-  default: { const exhaustive: never = version; throw new Error(`Unknown download version: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = version;
+    throw new Error(`Unknown download version: ${exhaustive}`);
+  }
   }
 }
 
@@ -81,7 +84,9 @@ export function createDownloadHeaders({ metadata }: {
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Content-Security-Policy': "default-src 'none'; sandbox allow-downloads",
   });
-  if (metadata.size !== undefined) headers.set('Content-Length', String(metadata.size));
+  if (metadata.size !== undefined) {
+    headers.set('Content-Length', String(metadata.size));
+  }
   return headers;
 }
 

@@ -74,11 +74,15 @@ export abstract class IStorageProvider {
    */
   public async hasVolumeMountReference({ volumeId }: { volumeId: VolumeId }): Promise<boolean> {
     const settings = await this.loadSettings();
-    if (settings?.mounts.some(mount => mount.volumeId === volumeId)) return true;
+    if (settings?.mounts.some(mount => mount.volumeId === volumeId)) {
+      return true;
+    }
 
     const rawVolumeId = idToRaw({ id: volumeId });
     const chatGroups = await this.listChatGroupsRaw();
-    if (chatGroups.some(group => group.mounts?.some(mount => mount.volumeId === rawVolumeId))) return true;
+    if (chatGroups.some(group => group.mounts?.some(mount => mount.volumeId === rawVolumeId))) {
+      return true;
+    }
 
     const chatMetas = await this.listChatMetasRaw();
     return chatMetas.some(meta => meta.mounts?.some(mount => mount.volumeId === rawVolumeId));

@@ -10,23 +10,33 @@ export function createCheckpointPerformance({ now }: { now: () => number }) {
   let current: CheckpointPerformance['phases'][number] | undefined;
   let since = 0, captureAttempts = 0, restoreAttempts = 0, retainedRestoredCaptures = 0;
   const end = () => {
-    if (current) current.elapsedMs += Math.max(0, now() - since);
+    if (current) {
+      current.elapsedMs += Math.max(0, now() - since);
+    }
     current = undefined;
   };
   return {
     enter({ phase }: { phase: CheckpointPhase }): void {
-      end(); since = now();
+      end();
+      since = now();
       let entry = phases.get(phase);
       if (!entry) {
-        entry = { phase, visits: 0, elapsedMs: 0 }; phases.set(phase, entry);
+        entry = { phase, visits: 0, elapsedMs: 0 };
+        phases.set(phase, entry);
       }
-      entry.visits++; current = entry;
+      entry.visits++;
+      current = entry;
       switch (phase) {
-      case 'capture-position': captureAttempts++; break;
-      case 'restore-memory': restoreAttempts++; break;
+      case 'capture-position': captureAttempts++;
+        break;
+      case 'restore-memory': restoreAttempts++;
+        break;
       case 'boundary-tokenize': case 'capture-size': case 'capture-allocation': case 'capture-readback':
       case 'restore-write': case 'restore-trim': case 'restore-verify': break;
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
       }
     },
     end,

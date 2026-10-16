@@ -21,7 +21,9 @@ export class PromptApiError extends Error {
 }
 
 export function normalizePromptApiError({ error }: { error: unknown }): PromptApiError {
-  if (error instanceof PromptApiError) return error;
+  if (error instanceof PromptApiError) {
+    return error;
+  }
 
   if (error instanceof DOMException) {
     switch (error.name) {

@@ -60,11 +60,16 @@ function expectCapturedEventOrder({ snapshot }: { snapshot: ProviderChatSnapshot
     case 'tool-call':
     case 'result':
     case 'settled': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   const resultIndex = snapshot.events.findIndex(event => event.kind === 'result');
-  if (resultIndex >= 0) expect(snapshot.events.slice(resultIndex + 1).map(event => event.kind)).toEqual(['settled']);
+  if (resultIndex >= 0) {
+    expect(snapshot.events.slice(resultIndex + 1).map(event => event.kind)).toEqual(['settled']);
+  }
 }
 
 function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }): ChatMessage[] {
@@ -132,7 +137,10 @@ function recordedMessages({ messages }: { messages: readonly RecordedMessage[] }
         }],
       });
     }
-    default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = message;
+      throw new Error(String(exhaustive));
+    }
     }
   });
 }
@@ -322,7 +330,9 @@ async function createQwen4PublicInputControl({ inputMessages, expectedText, nati
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Actual Qwen4 processor/tokenizer unavailable');
+    if (!processor?.tokenizer) {
+      throw new Error('Actual Qwen4 processor/tokenizer unavailable');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     const tokenizer = processor.tokenizer;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
@@ -345,7 +355,9 @@ async function createQwen4PublicInputControl({ inputMessages, expectedText, nati
         expect(actual?.tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
         expect(actual?.input.isTensor).toBe(true);
         expect(actual?.mask.isTensor).toBe(true);
-        if (!actual?.input.isTensor || !actual.mask.isTensor) throw new Error('Expected actual Qwen4 processor input/mask');
+        if (!actual?.input.isTensor || !actual.mask.isTensor) {
+          throw new Error('Expected actual Qwen4 processor input/mask');
+        }
         const actualInput = Array.from(actual.input.data, Number);
         expect(actual.input.type).toBe('int64');
         expect(actual.input.location).toBe('cpu');
@@ -523,7 +535,9 @@ async function createQwen4ToolReplay() {
   expect(metadata.summary.revision).toBe(revision);
   const config = metadata.files.get('tokenizer_config.json');
   const template = metadata.files.get('chat_template.jinja');
-  if (!config || !template) throw new Error('Qwen4 exact metadata missing');
+  if (!config || !template) {
+    throw new Error('Qwen4 exact metadata missing');
+  }
   expect(createHash('sha256').update(config).digest('hex')).toBe('2de621ec071dd61438efdd6d0183bd3d612e98d05ac10d19ed75f1fef9299bc9');
   expect(createHash('sha256').update(template).digest('hex')).toBe('a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715');
   const nativeInputs: Array<ReturnType<typeof captureQwen4NativeInput> & { runtime: Parameters<ProviderReplayGenerate>[0]['runtime'] }> = [];
@@ -556,7 +570,9 @@ async function createQwen4ToolReplay() {
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Actual Qwen4 processor/tokenizer missing');
+    if (!processor?.tokenizer) {
+      throw new Error('Actual Qwen4 processor/tokenizer missing');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(processor.tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
     expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex')).toBe('a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715');
@@ -596,7 +612,9 @@ function verifyQwen4ToolInput({ replay, inputMessages, publicTool: _publicTool, 
   expect(replay.builderSpy).toHaveBeenCalledTimes(before + 1);
   expect(replay.processorSpy).toHaveBeenCalledTimes(before + 1);
   const builderCall = replay.builderSpy.mock.calls[before];
-  if (!builderCall) throw new Error('Expected actual Qwen4 serializer invocation');
+  if (!builderCall) {
+    throw new Error('Expected actual Qwen4 serializer invocation');
+  }
   const { tokenizer: actualTokenizer, ...builderInput } = builderCall[0];
   expect(actualTokenizer).toBe(replay.tokenizer);
   const observed = qwen4BuilderInputSchema.parse(builderInput);
@@ -615,7 +633,10 @@ function verifyQwen4ToolInput({ replay, inputMessages, publicTool: _publicTool, 
       tool_calls: message.tool_calls,
       tool_call_id: undefined,
     };
-    default: { const exhaustive: never = message; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = message;
+      throw new Error(String(exhaustive));
+    }
     }
   }));
   expect(tools).toStrictEqual([expectedDefinition]);
@@ -625,12 +646,16 @@ function verifyQwen4ToolInput({ replay, inputMessages, publicTool: _publicTool, 
   expect(replay.processorSpy.mock.calls[before]).toStrictEqual([expectedPrompt]);
   expect(replay.nativeInputs).toHaveLength(before + 1);
   const inference = replay.nativeInputs[before];
-  if (!inference) throw new Error('Expected actual Qwen4 inference boundary');
+  if (!inference) {
+    throw new Error('Expected actual Qwen4 inference boundary');
+  }
   expect(inference.tokenizer).toBe(replay.tokenizer);
   const { input, mask, runtime } = inference;
   expect(input.isTensor).toBe(true);
   expect(mask.isTensor).toBe(true);
-  if (!input.isTensor || !mask.isTensor) throw new Error('Expected actual Qwen4 tensors');
+  if (!input.isTensor || !mask.isTensor) {
+    throw new Error('Expected actual Qwen4 tensors');
+  }
   const currentNative = replay.tokenizer(expectedPrompt);
   expect(currentNative.input_ids).toBeInstanceOf(runtime.Tensor);
   const ids = Array.from(currentNative.input_ids.data, Number);
@@ -735,7 +760,9 @@ describe('Qwen3.5 4B Provider / basic', () => {
     expect(actual?.tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
     expect(actual?.input.isTensor).toBe(true);
     expect(actual?.mask.isTensor).toBe(true);
-    if (!actual?.input.isTensor || !actual.mask.isTensor) throw new Error('Expected actual Qwen4 processor tensors');
+    if (!actual?.input.isTensor || !actual.mask.isTensor) {
+      throw new Error('Expected actual Qwen4 processor tensors');
+    }
     const actualInput = Array.from(actual.input.data, BigInt);
     expect(actual.input.type).toBe('int64');
     expect(actual.mask.type).toBe('int64');
@@ -810,15 +837,21 @@ describe('Qwen3.5-4B source-derived history/cache control, not recorded KV', () 
       generate: async context => {
         const { options, tokenizer, runtime } = context;
         inputs.push(captureQwen4NativeInput(context));
-        if (inputs.length !== 1) throw new Error('Fresh Qwen history input observed; no continuation output supplied');
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
+        if (inputs.length !== 1) {
+          throw new Error('Fresh Qwen history input observed; no continuation output supplied');
+        }
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+          throw new Error('Expected actual Qwen tensors and TextStreamer');
+        }
         const generated = tokenizer.encode(`\
 Reason</think>
 
 Answer<|im_end|>`, { add_special_tokens: false });
         const prompt = Array.from(options.input_ids.data, BigInt);
         options.streamer.put([prompt]);
-        for (const token of generated) options.streamer.put([[BigInt(token)]]);
+        for (const token of generated) {
+          options.streamer.put([[BigInt(token)]]);
+        }
         options.streamer.end();
         ownedSequence = [...prompt, ...generated.map(BigInt)];
         // Explicit synthetic cache metadata: the last sampled token is not yet
@@ -886,7 +919,9 @@ Answer<|im_end|>`, { add_special_tokens: false });
     expect(cacheLengthReads, 'the next eligible conversation must inspect the retained state before rejecting its prefix').toBe(2);
     expect(inputs.map(input => input.pastIsNull)).toEqual([true, true]);
     const actual = inputs[1]!;
-    if (!actual.input.isTensor) throw new Error('Expected the detached actual next-input tensor');
+    if (!actual.input.isTensor) {
+      throw new Error('Expected the detached actual next-input tensor');
+    }
     const freshIds = actual.tokenizer.encode(`\
 <|im_start|>system
 Keep the system instruction.<|im_end|>
@@ -906,7 +941,9 @@ Continue.<|im_end|>
     expect(history[2]!.content, 'Naidan must not rewrite the delivered answer to manufacture cache compatibility').toBe(textualResponses({ snapshot: observed })[1]!.join(''));
     expect(textualResponses({ snapshot: next.snapshot() })).toEqual([]);
     expect(captures.flatMap(capture => capturedToolCalls({ snapshot: capture.snapshot() }))).toEqual([]);
-    for (const capture of captures) expectCapturedEventOrder({ snapshot: capture.snapshot() });
+    for (const capture of captures) {
+      expectCapturedEventOrder({ snapshot: capture.snapshot() });
+    }
   }, 30_000);
 });
 
@@ -926,7 +963,9 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
     const processor = harness.observations.processors[0]!;
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     const tokenizer = processor.tokenizer;
-    if (!tokenizer) throw new Error('Actual Qwen4 processor has no tokenizer');
+    if (!tokenizer) {
+      throw new Error('Actual Qwen4 processor has no tokenizer');
+    }
     expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
     expect(tokenizer.apply_chat_template(messages, { tokenize: false, add_generation_prompt: true })).toBe(defaultText);
     expect(tokenizer.apply_chat_template(messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(defaultIds);
@@ -1428,15 +1467,21 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
     const harness = await createQwen4Replay({
       generate: async ({ options, tokenizer, runtime }) => {
         nativeCalls++;
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
-        if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+          throw new Error('Expected actual Qwen tensors and TextStreamer');
+        }
+        if (nativeCalls > 2) {
+          throw new Error('Unexpected synthetic generation');
+        }
         const text = nativeCalls === 1
           ? `<tool_call><function=probe><parameter=value>${raw}</parameter></function></tool_call>`
           : 'Synthetic completion after rejected arguments.';
         const ids = tokenizer.encode(text, { add_special_tokens: false });
         const input = Array.from(options.input_ids.data, BigInt);
         options.streamer.put([input]);
-        for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
+        for (const id of [...ids, 248046]) {
+          options.streamer.put([[BigInt(id)]]);
+        }
         options.streamer.end();
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
       },
@@ -1453,7 +1498,8 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
       description: 'Must reject invalid numeric arguments.',
       parametersSchema: z.object({ value: schema }),
       execute: async ({ args }) => {
-        executions.push(structuredClone(args)); return { status: 'success', content: 'Must not execute.' };
+        executions.push(structuredClone(args));
+        return { status: 'success', content: 'Must not execute.' };
       },
     }];
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
@@ -1513,15 +1559,21 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
     const harness = await createQwen4Replay({
       generate: async ({ options, tokenizer, runtime }) => {
         nativeCalls++;
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual Qwen tensors and TextStreamer');
-        if (nativeCalls > 2) throw new Error('Unexpected synthetic generation');
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+          throw new Error('Expected actual Qwen tensors and TextStreamer');
+        }
+        if (nativeCalls > 2) {
+          throw new Error('Unexpected synthetic generation');
+        }
         const text = nativeCalls === 1
           ? '<tool_call><function=write_file><parameter=content>{"city":"Tokyo"}</parameter></function></tool_call>'
           : 'Synthetic completion.';
         const ids = tokenizer.encode(text, { add_special_tokens: false });
         const input = Array.from(options.input_ids.data, BigInt);
         options.streamer.put([input]);
-        for (const id of [...ids, 248046]) options.streamer.put([[BigInt(id)]]);
+        for (const id of [...ids, 248046]) {
+          options.streamer.put([[BigInt(id)]]);
+        }
         options.streamer.end();
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt), 248046n]), [1, input.length + ids.length + 1]), past_key_values: null };
       },
@@ -1647,7 +1699,9 @@ describe('Qwen3.5 4B Provider / images', () => {
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
-    if (!processor?.tokenizer) throw new Error('Expected actual Qwen4 processor/tokenizer');
+    if (!processor?.tokenizer) {
+      throw new Error('Expected actual Qwen4 processor/tokenizer');
+    }
     expect(processor.constructor.name).toBe('Qwen3VLProcessor');
     expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex'))
       .toBe('a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715');
@@ -1666,7 +1720,9 @@ describe('Qwen3.5 4B Provider / images', () => {
       .parse(JSON.parse(new TextDecoder().decode(metadata.files.get('preprocessor_config.json')!)));
     expect(selectedConfig.do_normalize).toBeUndefined();
     const actualImageProcessor = processor.image_processor;
-    if (typeof actualImageProcessor !== 'function') throw new Error('Expected actual callable image processor');
+    if (typeof actualImageProcessor !== 'function') {
+      throw new Error('Expected actual callable image processor');
+    }
     // Read fields without replacing the callable instance with a parsed object.
     const imageProcessor = z.object({ do_rescale: z.literal(true), do_normalize: z.undefined(), rescale_factor: z.number() }).parse({
       do_rescale: Reflect.get(actualImageProcessor, 'do_rescale'),
@@ -1739,7 +1795,9 @@ describe('Qwen3.5 4B Provider / images', () => {
     const observed = capture.snapshot();
     expect(nativeInputs).toHaveLength(1);
     const actual = nativeInputs[0];
-    if (!actual) throw new Error('Actual public image request never reached inference');
+    if (!actual) {
+      throw new Error('Actual public image request never reached inference');
+    }
     expect(actual.tokenizer).toBe(processor.tokenizer);
     expect(actual.pastIsNull).toBe(true);
     expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1758,7 +1816,9 @@ describe('Qwen3.5 4B Provider / images', () => {
     }).toEqual({ productionImageFetches: [imageUrl], hasPixels: true, hasGrid: true });
     expect(actual.input.isTensor).toBe(true);
     expect(actual.mask.isTensor).toBe(true);
-    if (!actual.input.isTensor || !actual.mask.isTensor || !actual.pixels.isTensor || !actual.grid.isTensor) throw new Error('Expected actual Qwen4 image tensors');
+    if (!actual.input.isTensor || !actual.mask.isTensor || !actual.pixels.isTensor || !actual.grid.isTensor) {
+      throw new Error('Expected actual Qwen4 image tensors');
+    }
     const actualTensors = { input_ids: actual.input, attention_mask: actual.mask, pixel_values: actual.pixels, image_grid_thw: actual.grid };
     for (const { tensor, type } of [
       { tensor: actualTensors.input_ids, type: 'int64' },
@@ -1927,7 +1987,9 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
   it('rejects actual partial reasoning before native continuation while preserving the historical native input boundary proof', async () => {
     const { context, evidence } = readProviderRequestEvidence({ catalog: providerReplayCatalog, caseId: 'first-turn' });
     const firstInvocation = evidence.invocations[0];
-    if (firstInvocation === undefined) throw new Error('Missing first-request native evidence');
+    if (firstInvocation === undefined) {
+      throw new Error('Missing first-request native evidence');
+    }
     const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const historicalBoundary = new Error('Historical Qwen4 native input observed without releasing output');
     let nativeCalls = 0;
@@ -1954,7 +2016,9 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
         const { options, runtime, model } = context;
         ++nativeCalls;
         if (nativeCalls === 1) {
-          if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor)) throw new Error('Expected native Qwen4 text tensors');
+          if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor)) {
+            throw new Error('Expected native Qwen4 text tensors');
+          }
           observedNativeIds.push(Array.from(options.input_ids.data, Number));
           const { localOrdinal, ...facts } = firstInvocation;
           const result = replayCapturedFullInvocation({ invocation: { ...facts, callOrdinal: localOrdinal, scenario: 'first-turn' }, options, runtime, modelConfig: model.config, parameters });
@@ -1963,7 +2027,9 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
         }
         const input = captureQwen4NativeInput(context);
         historicalNativeInputs.push(input);
-        if (input.input.isTensor) observedNativeIds.push(Array.from(input.input.data, Number));
+        if (input.input.isTensor) {
+          observedNativeIds.push(Array.from(input.input.data, Number));
+        }
         throw historicalBoundary;
       },
     });
@@ -1991,13 +2057,17 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       expect(textualResponses({ snapshot: firstObserved }).map(chunks => chunks.join(''))).toEqual(['Okay, the user just said "Template probe user message." Hmm, that\'s']);
       expect(firstObserved.parts).toMatchObject([{ type: 'reasoning', completeness: 'partial' }]);
       const tokenizer = replay.observations.processors[0]?.tokenizer;
-      if (tokenizer === undefined) throw new Error('Missing actual frozen Qwen4 tokenizer');
+      if (tokenizer === undefined) {
+        throw new Error('Missing actual frozen Qwen4 tokenizer');
+      }
       const historicalMessages = correctedContinuity.request.input.messages;
       const historicalRendered = tokenizer.apply_chat_template(historicalMessages, { tokenize: false, add_generation_prompt: true });
       expect(tokenizer.encode(historicalRendered, { add_special_tokens: false })).toEqual(expectedNextIds);
       expect(historicalRendered).toContain('<think>Okay, the user just said "Template probe user message." Hmm, that\'s');
       const reasoning = firstObserved.parts[0];
-      if (reasoning?.type !== 'reasoning') throw new Error('Expected actual partial reasoning part');
+      if (reasoning?.type !== 'reasoning') {
+        throw new Error('Expected actual partial reasoning part');
+      }
       const currentMessages: ChatMessage[] = [
         textMessage({ id: 'current_user_0', role: 'user', text: 'Template probe user message.' }),
         {
@@ -2050,7 +2120,9 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       const historicalInput = historicalNativeInputs[0];
       expect(historicalInput?.input.isTensor).toBe(true);
       expect(historicalInput?.mask.isTensor).toBe(true);
-      if (!historicalInput?.input.isTensor || !historicalInput.mask.isTensor) throw new Error('Expected historical native Qwen4 text tensors');
+      if (!historicalInput?.input.isTensor || !historicalInput.mask.isTensor) {
+        throw new Error('Expected historical native Qwen4 text tensors');
+      }
       expect(Array.from(historicalInput.input.data, Number)).toEqual(expectedNextIds);
       expect(historicalInput.input.dims).toEqual([1, 51]);
       expect(historicalInput.mask.dims).toEqual([1, 51]);

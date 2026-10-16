@@ -12,7 +12,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 function openMenu({ onDownload }: { onDownload: InstanceType<typeof ImageDownloadMenu>['$props']['onDownload'] }): VueWrapper {
@@ -36,17 +37,20 @@ it('defaults to plain PNG and explicitly selects a format and metadata per image
   const onDownload = vi.fn(async () => ({ status: 'downloaded' as const }));
   const ui = openMenu({ onDownload });
   expect(ui.find('[data-testid="image-download-metadata"]').exists()).toBe(false);
-  await ui.get('[data-testid="image-download-default"]').trigger('click'); await flushPromises();
+  await ui.get('[data-testid="image-download-default"]').trigger('click');
+  await flushPromises();
   expect(onDownload).toHaveBeenLastCalledWith({ format: 'png', includeMetadata: false });
   await ui.get('[data-testid="image-download-options"]').trigger('click');
   await ui.get('[data-testid="image-download-format"]').setValue('webp');
   await ui.get('[data-testid="image-download-metadata"]').setValue(true);
-  await ui.get('[data-testid="image-download-confirm"]').trigger('click'); await flushPromises();
+  await ui.get('[data-testid="image-download-confirm"]').trigger('click');
+  await flushPromises();
   expect(onDownload).toHaveBeenLastCalledWith({ format: 'webp', includeMetadata: true });
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(false);
   await ui.get('[data-testid="image-download-options"]').trigger('click');
   await ui.get('[data-testid="image-download-format"]').setValue('jpeg');
-  await ui.get('[data-testid="image-download-confirm"]').trigger('click'); await flushPromises();
+  await ui.get('[data-testid="image-download-confirm"]').trigger('click');
+  await flushPromises();
   expect(onDownload).toHaveBeenLastCalledWith({ format: 'jpeg', includeMetadata: true });
 });
 
@@ -93,14 +97,16 @@ it('closes on Escape, pane changes, and outside pointer events without downloadi
   await ui.get('[data-testid="image-download-options"]').trigger('click');
   await ui.get('[data-testid="image-download-panel"]').trigger('scroll');
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(true);
-  window.dispatchEvent(new Event('resize')); await flushPromises();
+  window.dispatchEvent(new Event('resize'));
+  await flushPromises();
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(false);
   await ui.get('[data-testid="image-download-options"]').trigger('click');
   await ui.setProps({ active: false });
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(false);
   await ui.setProps({ active: true });
   await ui.get('[data-testid="image-download-options"]').trigger('click');
-  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })); await flushPromises();
+  document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  await flushPromises();
   expect(ui.find('[data-testid="image-download-panel"]').exists()).toBe(false);
   expect(onDownload).not.toHaveBeenCalled();
 });
@@ -111,10 +117,12 @@ it('handles rejected and cancelled operations without a false success or unhandl
       throw new Error('Encode failed');
     },
   });
-  await ui.get('[data-testid="image-download-default"]').trigger('click'); await flushPromises();
+  await ui.get('[data-testid="image-download-default"]').trigger('click');
+  await flushPromises();
   expect(ui.get('[data-testid="image-download-error"]').text()).toBe('Encode failed');
   await ui.setProps({ onDownload: async () => ({ status: 'cancelled' }) });
-  await ui.get('[data-testid="image-download-confirm"]').trigger('click'); await flushPromises();
+  await ui.get('[data-testid="image-download-confirm"]').trigger('click');
+  await flushPromises();
   expect(ui.find('[data-testid="image-download-error"]').exists()).toBe(false);
   await ui.setProps({ disabled: true });
   expect(ui.get('[data-testid="image-download-default"]').element.matches(':disabled')).toBe(true);
@@ -129,7 +137,8 @@ it('keeps Escape and Tab inside download options opened from the image viewer', 
     slots: { download: () => h(ImageDownloadMenu, { active: true, disabled: false, preferences: ref<ImageDownloadPreferences>({ format: 'png', metadata: 'omit' }), onPreferencesChange: () => {}, onDownload: async () => ({ status: 'downloaded' as const }) }) },
   });
   const options = document.querySelector<HTMLButtonElement>('[data-testid="image-download-options"]')!;
-  options.click(); await flushPromises();
+  options.click();
+  await flushPromises();
   const panel = document.querySelector<HTMLElement>('[data-testid="image-download-panel"]')!;
   expect(document.activeElement).toBe(panel);
   panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));

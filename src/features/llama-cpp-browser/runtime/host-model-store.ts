@@ -21,9 +21,11 @@ export function getHostModelInventoryIssues(): readonly HostModelInventoryIssue[
 export async function listHostStoredModels({ directories, signal }: {
   directories: readonly { id: HostModelDirectoryId, name: string }[], signal: AbortSignal | undefined,
 }): Promise<LocalModel[]> {
-  const result: LocalModel[] = []; const unavailable: HostModelInventoryIssue[] = [];
+  const result: LocalModel[] = [];
+  const unavailable: HostModelInventoryIssue[] = [];
   for (const directory of directories) {
-    signal?.throwIfAborted(); const directoryId = idToRaw({ id: directory.id });
+    signal?.throwIfAborted();
+    const directoryId = idToRaw({ id: directory.id });
     try {
       const models = await listHuggingFaceModels({
         destination: { kind: 'host', directoryId },
@@ -33,7 +35,9 @@ export async function listHostStoredModels({ directories, signal }: {
       });
       for (const model of models) {
         const { repository, modelPath } = parseHostModelReference({ name: model.id });
-        if (modelPath === undefined) continue;
+        if (modelPath === undefined) {
+          continue;
+        }
         result.push({ ...model, name: hostModelPublicName({ name: model.name, directories }), source: { kind: 'host', directoryId, directoryName: directory.name, repository, path: modelPath } });
       }
     } catch (error) {
@@ -41,14 +45,17 @@ export async function listHostStoredModels({ directories, signal }: {
       unavailable.push({ directoryId, directoryName: directory.name, message: error instanceof Error ? error.message : String(error) });
     }
   }
-  signal?.throwIfAborted(); issues = unavailable;
+  signal?.throwIfAborted();
+  issues = unavailable;
   return result;
 }
 
 /** Resolve a public selector once, before accepting it into the native lane. */
 export async function selectHostModel({ name }: { name: string }): Promise<ModelDirectory> {
   const { destination, repository, selector } = parseHostModelSelector({ name });
-  if (selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (selector === undefined) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   await hostModelRoot({ destination, mode: 'read' });
   const models = await repositoryDirectories({ repository, destination });
   return selectRepositoryModel({ models, repository, selectors: [selector] });
@@ -59,10 +66,14 @@ export async function selectHostModel({ name }: { name: string }): Promise<Model
  */
 export async function resolveHostModel({ name }: { name: string }): Promise<ModelDirectory> {
   const { destination, repository, modelPath } = parseHostModelReference({ name });
-  if (modelPath === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (modelPath === undefined) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   const models = await repositoryDirectories({ repository, destination });
   const selected = models.find(model => model.id === name);
-  if (!selected) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (!selected) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   return selected;
 }
 

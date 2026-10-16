@@ -21,7 +21,9 @@ function parseKillArguments({ args }: { args: string[] }): KillParseResult {
 
   while (index < args.length) {
     const argument = args[index];
-    if (argument === undefined) break;
+    if (argument === undefined) {
+      break;
+    }
     if (argument === '--') {
       index += 1;
       break;
@@ -84,7 +86,9 @@ function parseKillArguments({ args }: { args: string[] }): KillParseResult {
 
 function parseNumericTarget({ value }: { value: string }): number | undefined {
   const numericText = stripLeadingCLocaleAndTrailingBlankWhitespace({ value });
-  if (!/^[+-]?\d+$/u.test(numericText)) return undefined;
+  if (!/^[+-]?\d+$/u.test(numericText)) {
+    return undefined;
+  }
 
   const parsed = Number(numericText);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
@@ -94,13 +98,19 @@ function formatListedSignal({ value }: { value: string }): string | undefined {
   const numericText = stripLeadingCLocaleAndTrailingBlankWhitespace({ value });
   if (/^\+?\d+$/u.test(numericText)) {
     const rawNumber = Number.parseInt(numericText, 10);
-    if (rawNumber === 0) return 'EXIT';
+    if (rawNumber === 0) {
+      return 'EXIT';
+    }
     const number = rawNumber > 128 ? rawNumber - 128 : rawNumber;
-    if (number === 32 || number === 33) return '';
+    if (number === 32 || number === 33) {
+      return '';
+    }
     return linuxSignalByNumber({ number })?.name.slice(3);
   }
   const signalName = uppercaseAscii({ value });
-  if (signalName === 'EXIT') return '0';
+  if (signalName === 'EXIT') {
+    return '0';
+  }
   return linuxSignalByName({ name: signalName })?.number.toString();
 }
 

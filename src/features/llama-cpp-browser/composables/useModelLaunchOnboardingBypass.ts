@@ -15,9 +15,13 @@ export function useModelLaunchOnboardingBypass({ initialized, storageType }: { i
       cancelled = true;
     });
     restoredChatBypass.value = false;
-    if (!ready || current === undefined) return;
+    if (!ready || current === undefined) {
+      return;
+    }
     const match = /^\/chat\/([A-Za-z0-9_-]+)$/.exec(current.path);
-    if (match === null) return;
+    if (match === null) {
+      return;
+    }
     // Avoid briefly presenting a blocking modal while the saved chat is read.
     restoredChatBypass.value = true;
     try {
@@ -27,9 +31,13 @@ export function useModelLaunchOnboardingBypass({ initialized, storageType }: { i
       const chatGroup = meta?.groupId == null ? undefined : await storageService.loadChatGroup({ id: meta.groupId });
       const endpoint = meta?.endpoint ?? chatGroup?.endpoint;
       const modelId = meta?.modelId ?? chatGroup?.modelId;
-      if (!cancelled && isStorageCurrent()) restoredChatBypass.value = endpoint?.type === 'llama_cpp_browser' && typeof modelId === 'string' && modelId.length > 0;
+      if (!cancelled && isStorageCurrent()) {
+        restoredChatBypass.value = endpoint?.type === 'llama_cpp_browser' && typeof modelId === 'string' && modelId.length > 0;
+      }
     } catch {
-      if (!cancelled) restoredChatBypass.value = false;
+      if (!cancelled) {
+        restoredChatBypass.value = false;
+      }
     }
   }, { immediate: true });
   return computed(() => (route.value?.path === '/' && route.value.query[MODEL_LAUNCH_QUERY] !== undefined) || restoredChatBypass.value);

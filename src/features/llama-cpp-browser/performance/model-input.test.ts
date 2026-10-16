@@ -16,7 +16,8 @@ file.gguf`,
       models,
       selected: [],
     });
-    expect(result.selected).toEqual([]); expect(result.errors[0]).toContain('Line 2');
+    expect(result.selected).toEqual([]);
+    expect(result.errors[0]).toContain('Line 2');
   });
 
   it('requires exact identifiers for ambiguous names', () => {

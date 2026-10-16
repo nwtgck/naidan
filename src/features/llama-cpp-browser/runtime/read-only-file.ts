@@ -8,18 +8,28 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   core: Core, path: string, source: { size: number, read: ({ destination, offset }: { destination: Uint8Array, offset: number }) => number }, maxChunkBytes: number,
 }) {
   const { FS } = core.module;
-  if (!path.startsWith('/') || path.endsWith('/') || path.split('/').some(part => part === '..' || part === '.')) throw new TypeError('Invalid absolute file path');
-  if (!Number.isSafeInteger(source.size) || source.size < 0 || !Number.isSafeInteger(maxChunkBytes) || maxChunkBytes < 1) throw new RangeError('Invalid source size');
+  if (!path.startsWith('/') || path.endsWith('/') || path.split('/').some(part => part === '..' || part === '.')) {
+    throw new TypeError('Invalid absolute file path');
+  }
+  if (!Number.isSafeInteger(source.size) || source.size < 0 || !Number.isSafeInteger(maxChunkBytes) || maxChunkBytes < 1) {
+    throw new RangeError('Invalid source size');
+  }
   const fail = ({ code }: { code: string }): never => {
     throw new FS.ErrnoError(core.constant({ name: code }));
   };
-  const split = path.lastIndexOf('/'); const parentPath = path.slice(0, split) || '/';
+  const split = path.lastIndexOf('/');
+  const parentPath = path.slice(0, split) || '/';
   FS.mkdirTree(parentPath, 0o777);
-  if (FS.analyzePath(path, false).exists) throw new Error('File is already mounted');
+  if (FS.analyzePath(path, false).exists) {
+    throw new Error('File is already mounted');
+  }
   // The generated FS declarations leave node/stream operation tables untyped.
   const parent = FS.lookupPath(parentPath).node as Node;
   const node = FS.createNode(parent, path.slice(split + 1), 0o100444, 0) as Node;
-  const timestamp = Date.now(); const size = source.size; let opens = 0; let removed = false;
+  const timestamp = Date.now();
+  const size = source.size;
+  let opens = 0;
+  let removed = false;
   node.node_ops = {
     getattr() {
       return {
@@ -45,14 +55,20 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   node.stream_ops = {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten FS callback ABI.
     open(stream: Stream) {
-      if (removed) fail({ code: 'ENOENT' });
-      if ((stream.flags & 3) !== 0 || (stream.flags & 512) !== 0) fail({ code: 'EROFS' });
+      if (removed) {
+        fail({ code: 'ENOENT' });
+      }
+      if ((stream.flags & 3) !== 0 || (stream.flags & 512) !== 0) {
+        fail({ code: 'EROFS' });
+      }
       opens++;
     },
     // Emscripten dupStream calls dup, not open. The duplicated descriptor must
     // keep the source mounted after the loader closes its original descriptor.
     dup() {
-      if (removed) fail({ code: 'ENOENT' });
+      if (removed) {
+        fail({ code: 'ENOENT' });
+      }
       opens++;
     },
     close() {
@@ -61,13 +77,18 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten FS callback ABI.
     llseek(stream: Stream, offset: number, whence: number) {
       const position = offset + (whence === 0 ? 0 : whence === 1 ? stream.position : whence === 2 ? size : NaN);
-      if (!Number.isSafeInteger(position) || position < 0) fail({ code: 'EINVAL' });
+      if (!Number.isSafeInteger(position) || position < 0) {
+        fail({ code: 'EINVAL' });
+      }
       return position;
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Emscripten FS callback ABI.
     read(_stream: Stream, buffer: Uint8Array, offset: number, length: number, position: number) {
-      if (![offset, length, position].every(Number.isSafeInteger) || Math.min(offset, length, position) < 0 || offset > buffer.length || length > buffer.length - offset) fail({ code: 'EINVAL' });
-      let done = 0; const wanted = Math.min(length, Math.max(0, size - position));
+      if (![offset, length, position].every(Number.isSafeInteger) || Math.min(offset, length, position) < 0 || offset > buffer.length || length > buffer.length - offset) {
+        fail({ code: 'EINVAL' });
+      }
+      let done = 0;
+      const wanted = Math.min(length, Math.max(0, size - position));
       while (done < wanted) {
         const amount = Math.min(maxChunkBytes, wanted - done);
         let count: number;
@@ -76,8 +97,12 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
         } catch {
           return fail({ code: 'EIO' });
         }
-        if (!Number.isSafeInteger(count) || count < 0 || count > amount) fail({ code: 'EIO' });
-        if (count === 0) break;
+        if (!Number.isSafeInteger(count) || count < 0 || count > amount) {
+          fail({ code: 'EIO' });
+        }
+        if (count === 0) {
+          break;
+        }
         done += count;
       }
       return done;
@@ -90,15 +115,19 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     },
   };
   if (!parent.contents) {
-    FS.destroyNode(node); throw new Error('Expected MEMFS directory');
+    FS.destroyNode(node);
+    throw new Error('Expected MEMFS directory');
   }
   parent.contents[node.name] = node;
   return {
     path,
     remove() {
-      if (opens !== 0) throw new Error('Close native file handles before unmounting');
+      if (opens !== 0) {
+        throw new Error('Close native file handles before unmounting');
+      }
       if (!removed) {
-        FS.unlink(path); removed = true;
+        FS.unlink(path);
+        removed = true;
       }
     },
   };

@@ -22,9 +22,15 @@ function message({ decoder, channel, recipient, text, ending }: {
   decoder: ReturnType<typeof createGptOssGeneration>, channel: string,
   recipient: string | undefined, text: string, ending: '<|end|>' | '<|return|>' | '<|call|>' | undefined,
 }) {
-  decoder.control({ token: '<|start|>' }); decoder.text({ text: `assistant${recipient === undefined ? '' : ` to=${recipient}`}` });
-  decoder.control({ token: '<|channel|>' }); decoder.text({ text: channel }); decoder.control({ token: '<|message|>' });
-  decoder.text({ text }); if (ending !== undefined) decoder.control({ token: ending });
+  decoder.control({ token: '<|start|>' });
+  decoder.text({ text: `assistant${recipient === undefined ? '' : ` to=${recipient}`}` });
+  decoder.control({ token: '<|channel|>' });
+  decoder.text({ text: channel });
+  decoder.control({ token: '<|message|>' });
+  decoder.text({ text });
+  if (ending !== undefined) {
+    decoder.control({ token: ending });
+  }
 }
 
 describe('native Harmony generation parts', () => {
@@ -35,8 +41,12 @@ describe('native Harmony generation parts', () => {
   ])('cache identity matches the delivered parts projection for $kind', async ({ reasoning, text }) => {
     const { decoder, events } = setup();
     const args = ' { "x": 1.00, "escaped": "\\u0041" } ';
-    if (reasoning !== undefined) message({ decoder, channel: 'analysis', recipient: undefined, text: reasoning, ending: '<|end|>' });
-    if (text !== undefined) message({ decoder, channel: 'commentary', recipient: undefined, text, ending: '<|end|>' });
+    if (reasoning !== undefined) {
+      message({ decoder, channel: 'analysis', recipient: undefined, text: reasoning, ending: '<|end|>' });
+    }
+    if (text !== undefined) {
+      message({ decoder, channel: 'commentary', recipient: undefined, text, ending: '<|end|>' });
+    }
     message({ decoder, channel: 'commentary', recipient: 'functions.calculator', text: args, ending: '<|call|>' });
     decoder.finish({ reason: 'unknown' });
     const node: AssistantMessageNode = {
@@ -58,13 +68,17 @@ describe('native Harmony generation parts', () => {
       items: createInferenceGeneration({
         signal: controller.signal,
         generate: async ({ onEvent }) => {
-          for (const event of events) await onEvent({ event });
+          for (const event of events) {
+            await onEvent({ event });
+          }
         },
       }),
     });
     expect(result).toEqual({ type: 'finished', next: 'tool_results' });
     const call = node.parts.find(part => part.type === 'tool_call');
-    if (call?.type !== 'tool_call') throw new Error('Missing delivered call.');
+    if (call?.type !== 'tool_call') {
+      throw new Error('Missing delivered call.');
+    }
     const projected = await prepareInferenceRequest({
       messages: [createChatMessageSnapshot({ node })],
       parameters: undefined,
@@ -123,12 +137,16 @@ describe('native Harmony generation parts', () => {
   });
 
   it('does not publish an empty part before a body header exists', () => {
-    const { decoder, events } = setup(); decoder.control({ token: '<|channel|>' }); decoder.text({ text: 'analy' }); decoder.finish({ reason: 'unknown' });
+    const { decoder, events } = setup();
+    decoder.control({ token: '<|channel|>' });
+    decoder.text({ text: 'analy' });
+    decoder.finish({ reason: 'unknown' });
     expect(events).toEqual([{ type: 'result', result: { type: 'interrupted', reason: 'unknown' } }]);
   });
 
   it('publishes completed calls at the native handoff and preserves the argument spelling', () => {
-    const { decoder, events } = setup(); const args = ' { "x": 1e2, "escaped": "\\u0041" } ';
+    const { decoder, events } = setup();
+    const args = ' { "x": 1e2, "escaped": "\\u0041" } ';
     message({ decoder, channel: 'analysis', recipient: undefined, text: 'R', ending: '<|end|>' });
     message({ decoder, channel: 'commentary', recipient: 'functions.calculator', text: args, ending: '<|call|>' });
     decoder.finish({ reason: 'unknown' });
@@ -163,7 +181,8 @@ describe('native Harmony generation parts', () => {
     const { decoder } = setup();
     message({ decoder, channel: 'final', recipient: undefined, text: '', ending: '<|return|>' });
     expect(() => decoder.text({ text: 'later' })).toThrow('after completion');
-    decoder.finish({ reason: 'unknown' }); expect(() => decoder.finish({ reason: 'unknown' })).toThrow('twice');
+    decoder.finish({ reason: 'unknown' });
+    expect(() => decoder.finish({ reason: 'unknown' })).toThrow('twice');
   });
 
   it('does not flatten multiple native text bodies into a cache-history identity', () => {

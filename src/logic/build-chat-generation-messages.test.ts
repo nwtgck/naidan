@@ -61,7 +61,9 @@ describe('buildChatGenerationMessages', () => {
     const messages = buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: systems });
     systems[0] = 'after';
     const first = chat.root.items[0];
-    if (!first || first.role !== 'user' || first.parts[0]?.type !== 'text') throw new Error('Incomplete fixture');
+    if (!first || first.role !== 'user' || first.parts[0]?.type !== 'text') {
+      throw new Error('Incomplete fixture');
+    }
     first.parts[0].text = 'after';
     first.parts[0].completeness = 'partial';
     chat.root.items.length = 0;

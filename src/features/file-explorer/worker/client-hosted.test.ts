@@ -342,7 +342,9 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
     const prepared = await client.prepareFileDownload({ path: '/home/user/project/index.ts' });
     expect(prepared.kind).toBe('file');
-    if (prepared.kind !== 'file') throw new Error('Expected native File over the worker facade');
+    if (prepared.kind !== 'file') {
+      throw new Error('Expected native File over the worker facade');
+    }
     expect(prepared.blob.size).toBe(22);
     expect(await prepared.blob.text()).toBe('export const value = 1');
 

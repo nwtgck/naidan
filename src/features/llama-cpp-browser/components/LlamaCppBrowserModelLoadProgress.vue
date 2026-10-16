@@ -8,7 +8,9 @@ const props = defineProps<{ progress: Progress | undefined }>();
 // work must remain indeterminate; never invent a timer-derived percentage.
 const percentage = computed(() => {
   const progress = props.progress;
-  if (progress?.phase !== 'loading' || !Number.isFinite(progress.total) || progress.total <= 0 || !Number.isFinite(progress.completed)) return undefined;
+  if (progress?.phase !== 'loading' || !Number.isFinite(progress.total) || progress.total <= 0 || !Number.isFinite(progress.completed)) {
+    return undefined;
+  }
   return Math.floor(Math.min(1, Math.max(0, progress.completed / progress.total)) * 100);
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

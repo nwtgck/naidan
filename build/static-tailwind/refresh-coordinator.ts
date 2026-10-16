@@ -26,8 +26,11 @@ export function createRefreshCoordinator<TContext>({ refresh }: {
     const remainingWaiters = waiters.filter((waiter) => waiter.generation > generation);
     waiters.splice(0, waiters.length, ...remainingWaiters);
     for (const waiter of completedWaiters) {
-      if (error === undefined) waiter.resolve();
-      else waiter.reject(error);
+      if (error === undefined) {
+        waiter.resolve();
+      } else {
+        waiter.reject(error);
+      }
     }
   }
 
@@ -56,14 +59,18 @@ export function createRefreshCoordinator<TContext>({ refresh }: {
   }
 
   function ensureRunner(): void {
-    if (runner !== undefined) return;
+    if (runner !== undefined) {
+      return;
+    }
     // Vite may deliver several filesystem events in the same turn. Starting in a
     // microtask lets those requests share one refresh using the latest context.
     runner = Promise.resolve()
       .then(() => runRefreshLoop())
       .finally(() => {
         runner = undefined;
-        if (completedGeneration < requestedGeneration) ensureRunner();
+        if (completedGeneration < requestedGeneration) {
+          ensureRunner();
+        }
       });
   }
 

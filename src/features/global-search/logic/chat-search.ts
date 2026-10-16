@@ -40,10 +40,14 @@ function getExcerpt({ content, lowerContent, keywords }: {
   keywords: string[],
 }): string {
   const firstKeyword = keywords[0];
-  if (firstKeyword === undefined) return content.slice(0, 100);
+  if (firstKeyword === undefined) {
+    return content.slice(0, 100);
+  }
 
   const index = lowerContent.indexOf(firstKeyword);
-  if (index === -1) return content.slice(0, 100);
+  if (index === -1) {
+    return content.slice(0, 100);
+  }
 
   const start = Math.max(0, index - 30);
   const end = Math.min(content.length, index + firstKeyword.length + 50);
@@ -58,12 +62,16 @@ function flattenMessageTree({ root }: { root: MessageBranch }): MessageNode[] {
 
   while (stack.length > 0) {
     const node = stack.pop();
-    if (node === undefined) continue;
+    if (node === undefined) {
+      continue;
+    }
 
     flattened.push(node);
     for (let index = node.replies.items.length - 1; index >= 0; index--) {
       const child = node.replies.items[index];
-      if (child !== undefined) stack.push(child);
+      if (child !== undefined) {
+        stack.push(child);
+      }
     }
   }
 
@@ -75,7 +83,9 @@ function createDeepestLeafMap({ nodes }: { nodes: MessageNode[] }): Map<MessageN
 
   for (let index = nodes.length - 1; index >= 0; index--) {
     const node = nodes[index];
-    if (node === undefined) continue;
+    if (node === undefined) {
+      continue;
+    }
 
     const lastChild = node.replies.items[node.replies.items.length - 1];
     deepestLeafByNode.set(
@@ -110,7 +120,9 @@ function findMatchingBody({ node, keywords }: {
   });
   // Keywords may occur in different body parts, but a single keyword must not
   // be invented by concatenating unrelated part boundaries.
-  if (!keywords.every(keyword => textParts.some(part => part.lowerContent.includes(keyword)))) return undefined;
+  if (!keywords.every(keyword => textParts.some(part => part.lowerContent.includes(keyword)))) {
+    return undefined;
+  }
   const firstKeyword = keywords[0];
   return firstKeyword === undefined ? undefined : textParts.find(part => part.lowerContent.includes(firstKeyword));
 }
@@ -123,7 +135,9 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
   roleFilter?: SearchRoleFilter,
 }): ContentMatch[] {
   const keywords = getKeywords({ query });
-  if (keywords.length === 0) return [];
+  if (keywords.length === 0) {
+    return [];
+  }
 
   const effectiveRoleFilter = roleFilter ?? 'all';
   const nodes = flattenMessageTree({ root });
@@ -136,7 +150,9 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
     }
 
     const result = findMatchingBody({ node, keywords });
-    if (result === undefined) continue;
+    if (result === undefined) {
+      continue;
+    }
 
     const deepestLeaf = deepestLeafByNode.get(node) ?? node;
     matches.push({
@@ -161,7 +177,9 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFi
   roleFilter?: SearchRoleFilter,
 }): ContentMatch[] {
   const keywords = getKeywords({ query });
-  if (keywords.length === 0) return [];
+  if (keywords.length === 0) {
+    return [];
+  }
 
   const effectiveRoleFilter = roleFilter ?? 'all';
   const matches: ContentMatch[] = [];
@@ -172,7 +190,9 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFi
     }
 
     const result = findMatchingBody({ node, keywords });
-    if (result === undefined) continue;
+    if (result === undefined) {
+      continue;
+    }
 
     matches.push({
       chatId,

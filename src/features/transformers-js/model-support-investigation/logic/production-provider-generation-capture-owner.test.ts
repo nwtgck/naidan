@@ -27,7 +27,9 @@ function captureFixture({ runId, workerEpoch, getActiveRequest }: Parameters<Own
     generateText: vi.fn<TransformersJsWorkerClient['generateText']>().mockRejectedValue(new Error('Unexpected legacy callback capture')),
     generateMessage: vi.fn<TransformersJsWorkerClient['generateMessage']>(async ({ onEvent }) => {
       const request = getActiveRequest();
-      if (request === undefined) throw new Error('Expected active synthetic Provider request');
+      if (request === undefined) {
+        throw new Error('Expected active synthetic Provider request');
+      }
       issuedCalls.push({ runId, workerEpoch, requestId: request.requestId, generationCallId: issuedCalls.length + 1 });
       await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'Synthetic reply.' } });
@@ -80,7 +82,9 @@ function createOwner({ maximumWorkerEpochs, plan }: { maximumWorkerEpochs: numbe
 function retainedNative({ owner }: { owner: ReturnType<typeof createProductionProviderGenerationCaptureOwner> }) {
   const native = owner.snapshot().native;
   expect(native.status).toBe('retained');
-  if (native.status !== 'retained') throw new Error('Expected retained native collection');
+  if (native.status !== 'retained') {
+    throw new Error('Expected retained native collection');
+  }
   return native.capture;
 }
 
@@ -164,7 +168,8 @@ describe('Provider native generation collection ownership', () => {
       const capture = captureFixture(input);
       captures.push(capture);
       capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await pending.promise;
+        entered.resolve();
+        await pending.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
@@ -173,7 +178,9 @@ describe('Provider native generation collection ownership', () => {
     await entered.promise;
     owner.abort({ reason: 'deadline' });
     const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     pending.reject(new Error('Synthetic allocation failed'));
     await running;
     expect(createCaptureClient).toHaveBeenCalledOnce();
@@ -217,7 +224,9 @@ describe('Provider native generation collection ownership', () => {
     expect(createUnrecordedWorkerClient).not.toHaveBeenCalled();
     owner.abort({ reason: 'deadline' });
     const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     const cutoff = structuredClone(detached.cutoff);
     releaseDisposal.resolve();
     await running;
@@ -244,7 +253,9 @@ describe('Provider native generation collection ownership', () => {
     captures[0]!.getCaptureLifetime.mockReturnValue(lifetime);
     owner.abort({ reason: 'user-requested' });
     const detached = owner.detachNativeCollection({ reason: 'user-requested' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     expect(detached.cutoff.epochs[0]?.lifetime).toEqual({ status: 'unavailable' });
     expect(getter).not.toHaveBeenCalled();
     expect(JSON.stringify(detached.cutoff)).not.toContain('Private');
@@ -260,7 +271,9 @@ describe('Provider native generation collection ownership', () => {
     expect(captures[0]!.client.dispose).toHaveBeenCalledOnce();
     const detached = owner.detachNativeCollection({ reason: 'disposed' });
     expect(detached.status).toBe('detached');
-    if (detached.status !== 'detached') throw new Error('Expected first detach');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected first detach');
+    }
     expect(detached.capture.phase).toBe('collecting');
     expect(detached.capture.epochs[0]?.collection).toEqual({ status: 'pending' });
     pendingTake.resolve(nativeResult({ workerEpoch: 1 }));
@@ -281,7 +294,9 @@ describe('Provider native generation collection ownership', () => {
     await owner.collectNative();
     const externalBeforeDetach = retainedNative({ owner });
     const detached = owner.detachNativeCollection({ reason: 'normal-completion' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     expect(detached.capture.epochs[0]?.collection).toEqual({ status: 'returned', result: raw });
     expect(detached.cutoff).toEqual({
       format: 'production-provider-native-cutoff-v1',
@@ -324,7 +339,9 @@ describe('Provider native generation collection ownership', () => {
     const collecting = owner.collectNative();
     owner.abort({ reason: 'deadline' });
     const detached = owner.detachNativeCollection({ reason: 'collection-deadline' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     expect(detached.capture.epochs.map(epoch => epoch.collection.status)).toEqual(['pending', 'not-requested']);
     pending.reject(new Error('Private late take failure must not be captured'));
     await collecting;
@@ -349,13 +366,16 @@ describe('Provider native generation collection ownership', () => {
     const enteredSecond = deferred<void>();
     const second = deferred<GenerationCaptureReadResult>();
     captures[1]!.takeGenerationCapture.mockImplementation(() => {
-      enteredSecond.resolve(); return second.promise;
+      enteredSecond.resolve();
+      return second.promise;
     });
     const collecting = owner.collectNative();
     await enteredSecond.promise;
     owner.abort({ reason: 'deadline' });
     const detached = owner.detachNativeCollection({ reason: 'collection-deadline' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     expect(detached.capture.epochs.map(epoch => epoch.collection)).toEqual([{ status: 'returned', result: first }, { status: 'pending' }]);
     second.resolve(nativeResult({ workerEpoch: 2 }));
     await collecting;
@@ -389,7 +409,8 @@ describe('Provider native generation collection ownership', () => {
       const capture = captureFixture(input);
       captures.push(capture);
       capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await pending.promise;
+        entered.resolve();
+        await pending.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
@@ -399,7 +420,9 @@ describe('Provider native generation collection ownership', () => {
     expect(() => owner.detachNativeCollection({ reason: 'run-deadline' })).toThrow('requires abort or disposal');
     owner.abort({ reason: 'deadline' });
     const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
-    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected native ownership transfer');
+    }
     expect(detached.capture.phase).toBe('not-requested');
     expect(detached.capture.epochs[0]?.collection.status).toBe('not-requested');
     expect(owner.snapshot().provider.run.status).toBe('running');
@@ -434,7 +457,8 @@ describe('Provider native generation collection ownership', () => {
       const capture = captureFixture(input);
       captures.push(capture);
       capture.client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await release.promise;
+        entered.resolve();
+        await release.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;

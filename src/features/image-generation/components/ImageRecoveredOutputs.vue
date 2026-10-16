@@ -33,14 +33,21 @@ async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }):
 function download({ id }: { id: ImageGenerationId }): void {
   const entry = imageRecoveryStore.list().find(item => item.id === id);
   const image = entry?.files.find(file => file.binaryObjectId === entry.record.result.binaryObjectId);
-  if (image) downloadBlob({ blob: image.blob, filename: 'naidan-recovered-image.png' });
+  if (image) {
+    downloadBlob({ blob: image.blob, filename: 'naidan-recovered-image.png' });
+  }
 }
 
 async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
-  if (saving.value) return;
+  if (saving.value) {
+    return;
+  }
   const entry = imageRecoveryStore.list().find(item => item.id === id);
-  if (!entry?.retry) return;
-  saving.value = true; failure.value = '';
+  if (!entry?.retry) {
+    return;
+  }
+  saving.value = true;
+  failure.value = '';
   try {
     await entry.retry();
   } catch (error) {
@@ -51,15 +58,23 @@ async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
 }
 
 async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
-  if (!await showConfirm({ message: await ensureStrings.ImageRecoveredOutputs__discard_warning() })) return;
+  if (!await showConfirm({ message: await ensureStrings.ImageRecoveredOutputs__discard_warning() })) {
+    return;
+  }
   try {
     const image = imageRecoveryStore.list().find(entry => entry.id === id);
-    if (!image) return;
+    if (!image) {
+      return;
+    }
     const runs = imagePendingRuns.list().filter(entry => entry.state.pending.some(output => output.asset.result.binaryObjectId === image.record.result.binaryObjectId));
-    if (saving.value) throw new Error('Wait for the current save to finish.');
+    if (saving.value) {
+      throw new Error('Wait for the current save to finish.');
+    }
     // Ownership can change while the confirmation dialog is open. Never turn
     // one image's stale confirmation into permission to discard an entire run.
-    if (runs.length) throw new Error(await ensureStrings.ImageRecoveredOutputs__managed_by_pending_run());
+    if (runs.length) {
+      throw new Error(await ensureStrings.ImageRecoveredOutputs__managed_by_pending_run());
+    }
     imageRecoveryStore.remove({ id });
   } catch (error) {
     failure.value = error instanceof Error ? error.message : String(error);

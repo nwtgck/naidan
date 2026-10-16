@@ -20,7 +20,9 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
   const resources: ReadOnlyInferenceResources = {
     listChatModels: vi.fn(async () => [{ ref: 'models/test.gguf', label: 'Private test model' }]),
     generateChat: vi.fn<ReadOnlyInferenceResources['generateChat']>(async ({ onEvent }) => {
-      for (let at = 0; at < answer.length; at += 1024) await onEvent({ event: { type: 'text', text: answer.slice(at, at + 1024) } });
+      for (let at = 0; at < answer.length; at += 1024) {
+        await onEvent({ event: { type: 'text', text: answer.slice(at, at + 1024) } });
+      }
       return { content: answer, reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     }),
     listImageModels: vi.fn(async () => []),
@@ -32,10 +34,12 @@ function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint
     readIdentity: vi.fn(async () => undefined),
     list: vi.fn(async () => ({ access, registrations: [...saved.values()] })),
     remember: vi.fn(async ({ registration }: { registration: NaidanRpcRegistration }) => {
-      saved.set(registration.id, registration); return access;
+      saved.set(registration.id, registration);
+      return access;
     }),
     update: vi.fn(async ({ registration }: { registration: NaidanRpcRegistration }) => {
-      saved.set(registration.id, registration); return registration.revision;
+      saved.set(registration.id, registration);
+      return registration.revision;
     }),
     remove: vi.fn(async ({ id }: { id: NaidanRpcRegistration['id'] }) => {
       saved.delete(id);
@@ -72,7 +76,8 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
   const settings = { type: 'naidan_piping_duplex' as const, serverUrl: relay.origin, headers: [{ name: 'X-Relay-Test', value: 'authorized' }] };
   const compared: Uint8Array[] = [];
   const verifier: NaidanPipingPeerVerifier = async ({ comparison }) => {
-    compared.push(comparison.slice()); return true;
+    compared.push(comparison.slice());
+    return true;
   };
   try {
     await Promise.all([a.manager.setEnabled({ enabled: true }), b.manager.setEnabled({ enabled: true })]);
@@ -81,8 +86,11 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
       aId: a.manager.pair({ settings, code: '3907', verifyPeer: verifier, signal: lifetime.signal }),
       bId: b.manager.pair({ settings, code: '3907', verifyPeer: verifier, signal: lifetime.signal }),
     });
-    expect(compared).toHaveLength(2); expect(compared[0]).toHaveLength(32); expect(compared[0]).toEqual(compared[1]);
-    expect(a.store.remember).not.toHaveBeenCalled(); expect(b.store.remember).not.toHaveBeenCalled();
+    expect(compared).toHaveLength(2);
+    expect(compared[0]).toHaveLength(32);
+    expect(compared[0]).toEqual(compared[1]);
+    expect(a.store.remember).not.toHaveBeenCalled();
+    expect(b.store.remember).not.toHaveBeenCalled();
     const client = a.manager.client({ id: paired.aId });
     const denied = client.listChatModels({ input: {}, on: {}, signal: lifetime.signal, timeoutMs: undefined });
     await expect(denied.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
@@ -103,7 +111,9 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
     const output = await chat.result;
     const answer = await receiveEvents({ readable: output.events, onEvent: () => {}, signal: lifetime.signal });
     await chat.closed;
-    expect(answer.content).toBe(b.answer); expect(b.resources.generateChat).toHaveBeenCalledOnce(); expect(relay.stats().dropped).toBe(0);
+    expect(answer.content).toBe(b.answer);
+    expect(b.resources.generateChat).toHaveBeenCalledOnce();
+    expect(relay.stats().dropped).toBe(0);
     const job = startPeerImage({
       client,
       input: {
@@ -118,8 +128,11 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
     });
     const image = await job.result;
     expect(image.status).toBe('completed');
-    if (image.status !== 'completed') throw new Error('Expected a confirmed image');
-    expect(new Uint8Array(await image.output.png.arrayBuffer())).toEqual(png); expect(b.resources.generateImage).toHaveBeenCalledOnce();
+    if (image.status !== 'completed') {
+      throw new Error('Expected a confirmed image');
+    }
+    expect(new Uint8Array(await image.output.png.arrayBuffer())).toEqual(png);
+    expect(b.resources.generateImage).toHaveBeenCalledOnce();
     expect(relay.stats().rejected).toBe(0);
     for (const frame of relay.stats().frames) {
       expect(frame.includes(Buffer.from('Private question.'))).toBe(false);
@@ -128,20 +141,26 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
     }
     await Promise.all([a.manager.remember({ id: paired.aId, label: 'B' }), b.manager.remember({ id: paired.bId, label: 'A' })]);
     await Promise.all([a.manager.disconnect({ id: paired.aId }), b.manager.disconnect({ id: paired.bId })]);
-    expect(a.manager.list()[0]?.phase).toBe('disconnected'); expect(b.manager.list()[0]?.phase).toBe('disconnected');
+    expect(a.manager.list()[0]?.phase).toBe('disconnected');
+    expect(b.manager.list()[0]?.phase).toBe('disconnected');
     await Promise.all([a.manager.connect({ id: paired.aId }), b.manager.connect({ id: paired.bId })]);
     expect(compared).toHaveLength(2);
     const catalog = a.manager.client({ id: paired.aId }).listChatModels({ input: {}, on: {}, signal: lifetime.signal, timeoutMs: undefined });
     const reader = (await catalog.result).getReader();
-    expect((await reader.read()).value?.ref).toBe('models/test.gguf'); expect((await reader.read()).done).toBe(true); reader.releaseLock();
+    expect((await reader.read()).value?.ref).toBe('models/test.gguf');
+    expect((await reader.read()).done).toBe(true);
+    reader.releaseLock();
     await catalog.closed;
-    expect(b.resources.generateChat).toHaveBeenCalledOnce(); expect(b.resources.generateImage).toHaveBeenCalledOnce();
+    expect(b.resources.generateChat).toHaveBeenCalledOnce();
+    expect(b.resources.generateImage).toHaveBeenCalledOnce();
   } finally {
     lifetime.abort();
     await Promise.allSettled([a.manager.setEnabled({ enabled: false }), b.manager.setEnabled({ enabled: false })]);
-    await relay.close(); clearTimeout(watchdog);
+    await relay.close();
+    clearTimeout(watchdog);
   }
-  expect(a.release).toHaveBeenCalledOnce(); expect(b.release).toHaveBeenCalledOnce();
+  expect(a.release).toHaveBeenCalledOnce();
+  expect(b.release).toHaveBeenCalledOnce();
   expect(a.inputBudget.reserved + b.inputBudget.reserved + a.deliveryBudget.reserved + b.deliveryBudget.reserved).toBe(0);
 }, 30000);
 
@@ -161,20 +180,30 @@ it('rejecting the full comparison over real HTTP never publishes trust or an inf
     // explicitly once refusal has completed; no arbitrary inference deadline.
     other = b.manager.pair({ settings, code: '0921', verifyPeer: async () => true, signal: lifetime.signal });
     void other.catch(() => {});
-    await expect(denied).rejects.toBeDefined(); lifetime.abort();
+    await expect(denied).rejects.toBeDefined();
+    lifetime.abort();
     await expect(other).rejects.toBeDefined();
-    expect(rejectPeer).toHaveBeenCalledOnce(); expect(relay.stats().requests).toBeGreaterThan(0);
-    expect(a.manager.list()).toEqual([]); expect(b.manager.list()).toEqual([]);
-    expect(a.observed.connected).toBe(false); expect(b.observed.connected).toBe(false);
-    expect(a.store.remember).not.toHaveBeenCalled(); expect(b.store.remember).not.toHaveBeenCalled();
-    expect(a.resources.listChatModels).not.toHaveBeenCalled(); expect(b.resources.listChatModels).not.toHaveBeenCalled();
-    expect(a.resources.generateChat).not.toHaveBeenCalled(); expect(b.resources.generateChat).not.toHaveBeenCalled();
+    expect(rejectPeer).toHaveBeenCalledOnce();
+    expect(relay.stats().requests).toBeGreaterThan(0);
+    expect(a.manager.list()).toEqual([]);
+    expect(b.manager.list()).toEqual([]);
+    expect(a.observed.connected).toBe(false);
+    expect(b.observed.connected).toBe(false);
+    expect(a.store.remember).not.toHaveBeenCalled();
+    expect(b.store.remember).not.toHaveBeenCalled();
+    expect(a.resources.listChatModels).not.toHaveBeenCalled();
+    expect(b.resources.listChatModels).not.toHaveBeenCalled();
+    expect(a.resources.generateChat).not.toHaveBeenCalled();
+    expect(b.resources.generateChat).not.toHaveBeenCalled();
   } finally {
-    lifetime.abort(); await other?.catch(() => {});
+    lifetime.abort();
+    await other?.catch(() => {});
     await Promise.allSettled([a.manager.setEnabled({ enabled: false }), b.manager.setEnabled({ enabled: false })]);
-    await relay.close(); clearTimeout(watchdog);
+    await relay.close();
+    clearTimeout(watchdog);
   }
-  expect(a.release).toHaveBeenCalledOnce(); expect(b.release).toHaveBeenCalledOnce();
+  expect(a.release).toHaveBeenCalledOnce();
+  expect(b.release).toHaveBeenCalledOnce();
 });
 
 export const TEST_ONLY = {

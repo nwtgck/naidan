@@ -22,15 +22,27 @@ export function validateHuggingFacePrivacyFetchUrl({ url }: { url: URL }): Priva
   );
   const tree = parts[0] === 'api' && parts[1] === 'models' && parts[4] === 'tree' && parts.length >= 6;
   const resolve = parts[2] === 'resolve' && parts.length >= 5 && /\.(gguf|safetensors|sft)$/i.test(parts.at(-1) ?? '');
-  if (!metadata && !tree && !resolve) return reject();
+  if (!metadata && !tree && !resolve) {
+    return reject();
+  }
   const identifiers = resolve ? [parts[0], parts[1], parts[3]] : [parts[2], parts[3], ...(parts[5] === undefined ? [] : [parts[5]])];
-  if (identifiers.some(part => part === undefined || !segmentPattern.test(part))) return reject();
+  if (identifiers.some(part => part === undefined || !segmentPattern.test(part))) {
+    return reject();
+  }
   const allowedKeys = tree ? ['recursive', 'expand', 'limit', 'cursor'] : resolve ? ['download'] : [];
   for (const [key, value] of url.searchParams) {
-    if (!allowedKeys.includes(key) || url.searchParams.getAll(key).length !== 1) return reject();
-    if ((key === 'recursive' || key === 'expand' || key === 'download') && !['true', 'false', '1', '0'].includes(value)) return reject();
-    if (key === 'limit' && (!/^[1-9]\d{0,3}$/.test(value) || Number(value) > 1000)) return reject();
-    if (key === 'cursor' && (value.length === 0 || value.length > 8192 || /[\r\n]/.test(value))) return reject();
+    if (!allowedKeys.includes(key) || url.searchParams.getAll(key).length !== 1) {
+      return reject();
+    }
+    if ((key === 'recursive' || key === 'expand' || key === 'download') && !['true', 'false', '1', '0'].includes(value)) {
+      return reject();
+    }
+    if (key === 'limit' && (!/^[1-9]\d{0,3}$/.test(value) || Number(value) > 1000)) {
+      return reject();
+    }
+    if (key === 'cursor' && (value.length === 0 || value.length > 8192 || /[\r\n]/.test(value))) {
+      return reject();
+    }
   }
   return { ok: true, policyName: 'huggingface_models', normalizedUrl: url.href };
 }
@@ -44,9 +56,15 @@ export function isAllowedHuggingFaceResponseUrl({ requestUrl, responseUrl }: { r
   } catch {
     return false;
   }
-  if (final.protocol !== 'https:' || final.username || final.password || final.port || final.hash) return false;
-  if (final.hostname === 'huggingface.co') return true;
-  if (new URL(requestUrl).pathname.split('/')[3] !== 'resolve') return false;
+  if (final.protocol !== 'https:' || final.username || final.password || final.port || final.hash) {
+    return false;
+  }
+  if (final.hostname === 'huggingface.co') {
+    return true;
+  }
+  if (new URL(requestUrl).pathname.split('/')[3] !== 'resolve') {
+    return false;
+  }
   return [
     'cdn-lfs.huggingface.co', 'cdn-lfs.hf.co', 'cdn-lfs-us-1.hf.co', 'cdn-lfs-eu-1.hf.co',
     // https://huggingface.co/docs/hub/models-downloading#downloading-behind-a-proxy-or-firewall

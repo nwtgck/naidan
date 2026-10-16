@@ -6,7 +6,10 @@ export function isInitiator({ role }: { role: NaidanPipingRole }): boolean {
   switch (role) {
   case 'initiator': return true;
   case 'responder': return false;
-  default: { const unreachable: never = role; throw new Error(`Invalid role: ${unreachable}`); }
+  default: {
+    const unreachable: never = role;
+    throw new Error(`Invalid role: ${unreachable}`);
+  }
   }
 }
 

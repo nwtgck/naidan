@@ -30,10 +30,14 @@ it('reads idle ABI records, preserves uint64 precision and copies borrowed strin
   const h = harness();
   const result = await h.inspect();
   expect(result.status).toBe('ready');
-  if (result.status !== 'ready') throw new Error('Expected snapshot');
+  if (result.status !== 'ready') {
+    throw new Error('Expected snapshot');
+  }
   expect(result.snapshot.memory.registeredTensorBytes).toBe('9007199254740993');
-  expect(result.snapshot.runtime.nThreads).toBe(1); expect(result.snapshot.requested.nThreads).toBe(-1);
-  expect(result.snapshot.wasmCapacityBytes).toBe(65536); expect(result.snapshot.fileReadCacheBytes).toBe(32);
+  expect(result.snapshot.runtime.nThreads).toBe(1);
+  expect(result.snapshot.requested.nThreads).toBe(-1);
+  expect(result.snapshot.wasmCapacityBytes).toBe(65536);
+  expect(result.snapshot.fileReadCacheBytes).toBe(32);
   expect(result.snapshot.requested.computeBackend).toBe('WebGPU');
   expect(h.core.readUtf8).toHaveBeenCalledWith(999n, 513);
   expect(vi.mocked(h.core.free).mock.calls).toEqual([[103n], [102n], [101n]]);
@@ -42,34 +46,44 @@ it('reads idle ABI records, preserves uint64 precision and copies borrowed strin
 });
 
 it('does no allocation or native call while busy or without the optional getters', async () => {
-  const h = harness(); Object.defineProperty(h.core, 'busy', { value: true, configurable: true });
+  const h = harness();
+  Object.defineProperty(h.core, 'busy', { value: true, configurable: true });
   expect(await h.inspect()).toEqual({ status: 'unavailable', reason: 'busy' });
-  Object.defineProperty(h.core, 'busy', { value: false }); h.core.api.sd_ctx_get_memory_info = undefined;
+  Object.defineProperty(h.core, 'busy', { value: false });
+  h.core.api.sd_ctx_get_memory_info = undefined;
   expect(await h.inspect()).toEqual({ status: 'unavailable', reason: 'unsupported' });
-  expect(h.core.allocRecord).not.toHaveBeenCalled(); expect(h.core.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled();
+  expect(h.core.allocRecord).not.toHaveBeenCalled();
+  expect(h.core.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled();
 });
 
 it('does not publish uninitialized/refused records and allows a subsequent successful observation', async () => {
-  const h = harness(); vi.mocked(h.core.api.sd_ctx_get_runtime_info!).mockResolvedValueOnce(0);
+  const h = harness();
+  vi.mocked(h.core.api.sd_ctx_get_runtime_info!).mockResolvedValueOnce(0);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable' });
-  expect(h.core.getField).not.toHaveBeenCalled(); expect(h.core.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
+  expect(h.core.getField).not.toHaveBeenCalled();
+  expect(h.core.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
   expect(await h.inspect()).toMatchObject({ status: 'ready' });
 });
 
 it('rejects unexpected layouts and inexact numbers without invalidating the native context', async () => {
-  const h = harness(); h.fields.set('sd_memory_info_t:version', 2);
+  const h = harness();
+  h.fields.set('sd_memory_info_t:version', 2);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable' });
-  h.fields.set('sd_memory_info_t:version', 1); h.fields.set('sd_memory_info_t:registered_tensor_bytes', Number.MAX_SAFE_INTEGER + 1);
+  h.fields.set('sd_memory_info_t:version', 1);
+  h.fields.set('sd_memory_info_t:registered_tensor_bytes', Number.MAX_SAFE_INTEGER + 1);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable', message: 'Inexact image engine memory value' });
 });
 
 it('does not reenter native free or remaining getters after a trap', async () => {
-  const h = harness(); vi.mocked(h.core.api.sd_ctx_get_memory_info!).mockRejectedValue(new WebAssembly.RuntimeError('memory access out of bounds'));
+  const h = harness();
+  vi.mocked(h.core.api.sd_ctx_get_memory_info!).mockRejectedValue(new WebAssembly.RuntimeError('memory access out of bounds'));
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retire-worker' });
-  expect(h.core.api.sd_ctx_get_params).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
+  expect(h.core.api.sd_ctx_get_params).not.toHaveBeenCalled();
+  expect(h.core.free).not.toHaveBeenCalled();
 });
 
 it.each(['bad', '-1', '18446744073709551616', '1'.repeat(500)])('rejects malformed uint64 wire values without throwing from safeParse: %s', value => {
-  const snapshot = engineSnapshotFixture(); snapshot.memory.registeredTensorBytes = value;
+  const snapshot = engineSnapshotFixture();
+  snapshot.memory.registeredTensorBytes = value;
   expect(imageEngineSnapshotSchema.safeParse(snapshot).success).toBe(false);
 });

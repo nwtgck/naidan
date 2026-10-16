@@ -13,7 +13,9 @@ import { hashWorktreeEntry, listWorktreeEntries, replaceTrackedWorktreePaths, wo
 function entryMap({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
   const result = new Map<string, GitIndexEntry>();
   for (const entry of entries) {
-    if (entry.stage !== 0) throw new Error(`cannot switch branches with unmerged index entry: ${entry.path}`);
+    if (entry.stage !== 0) {
+      throw new Error(`cannot switch branches with unmerged index entry: ${entry.path}`);
+    }
     result.set(entry.path, entry);
   }
   return result;
@@ -23,7 +25,9 @@ function entriesEqual({ left, right }: {
   left: GitIndexEntry | undefined,
   right: GitIndexEntry | undefined,
 }): boolean {
-  if (left === undefined || right === undefined) return left === right;
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
   return left.objectId === right.objectId && left.mode === right.mode;
 }
 
@@ -47,7 +51,9 @@ async function worktreeMatchesIndex({ files, repository, entry, attributes }: {
   attributes: GitAttributesMatcher,
 }): Promise<boolean> {
   const absolutePath = worktreeAbsolutePath({ repository, path: entry.path });
-  if (!await pathExists({ files, path: absolutePath })) return false;
+  if (!await pathExists({ files, path: absolutePath })) {
+    return false;
+  }
   if (entry.mode === 0o160000) {
     const stat = await files.lstat({ path: absolutePath });
     switch (stat.type) {
@@ -102,10 +108,14 @@ export async function planCheckoutTree({ files, repository, currentHeadEntries, 
   const indexByPath = entryMap({ entries: currentIndexEntries });
   const targetByPath = entryMap({ entries: targetEntries });
   const candidatePaths = new Set(headByPath.keys());
-  for (const path of targetByPath.keys()) candidatePaths.add(path);
+  for (const path of targetByPath.keys()) {
+    candidatePaths.add(path);
+  }
   const changedPaths = new Set<string>();
   for (const path of candidatePaths) {
-    if (!entriesEqual({ left: headByPath.get(path), right: targetByPath.get(path) })) changedPaths.add(path);
+    if (!entriesEqual({ left: headByPath.get(path), right: targetByPath.get(path) })) {
+      changedPaths.add(path);
+    }
   }
 
   const attributes = await loadIndexAttributes({ files, repository, entries: currentIndexEntries, contentConfig });
@@ -171,9 +181,14 @@ export async function planCheckoutTree({ files, repository, currentHeadEntries, 
       continue;
     }
 
-    if (!indexMatchesTarget) worktreePathsToReplace.add(path);
-    if (targetEntry === undefined) nextIndexByPath.delete(path);
-    else nextIndexByPath.set(path, targetEntry);
+    if (!indexMatchesTarget) {
+      worktreePathsToReplace.add(path);
+    }
+    if (targetEntry === undefined) {
+      nextIndexByPath.delete(path);
+    } else {
+      nextIndexByPath.set(path, targetEntry);
+    }
   }
 
   return {
@@ -190,7 +205,9 @@ export async function applyCheckoutTreePlan({ files, repository, currentIndexEnt
   plan: GitCheckoutTreePlan,
   contentConfig: GitWorktreeContentConfig,
 }): Promise<void> {
-  if (plan.conflicts.length > 0) throw new Error('cannot apply a checkout plan with conflicts');
+  if (plan.conflicts.length > 0) {
+    throw new Error('cannot apply a checkout plan with conflicts');
+  }
   await replaceTrackedWorktreePaths({
     files,
     repository,

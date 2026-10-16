@@ -19,14 +19,18 @@ const { width: windowWidth, height: windowHeight } = useWindowSize();
 const triggerBounding = useElementBounding(() => props.triggerEl);
 
 const isOpeningUp = computed(() => {
-  if (!props.triggerEl) return false;
+  if (!props.triggerEl) {
+    return false;
+  }
   const spaceAbove = triggerBounding.top.value;
   const spaceBelow = windowHeight.value - triggerBounding.bottom.value;
   return spaceAbove > spaceBelow && spaceAbove > 150;
 });
 
 const floatingStyle = computed((): CSSProperties => {
-  if (!props.isOpen || !props.triggerEl) return {};
+  if (!props.isOpen || !props.triggerEl) {
+    return {};
+  }
 
   const rect = triggerBounding;
   const margin = 4;
@@ -34,7 +38,9 @@ const floatingStyle = computed((): CSSProperties => {
 
   // Horizontal alignment: Align with the right edge, but adjust if it goes off-screen
   let left = rect.right.value - menuWidth;
-  if (left < 8) left = 8;
+  if (left < 8) {
+    left = 8;
+  }
   if (left + menuWidth > windowWidth.value - 8) {
     left = Math.max(0, windowWidth.value - menuWidth - 8);
   }
@@ -61,7 +67,9 @@ const floatingStyle = computed((): CSSProperties => {
 });
 
 onClickOutside(dropdownRef, (event) => {
-  if (props.triggerEl?.contains(event.target as Node)) return;
+  if (props.triggerEl?.contains(event.target as Node)) {
+    return;
+  }
   emit('close');
 });
 

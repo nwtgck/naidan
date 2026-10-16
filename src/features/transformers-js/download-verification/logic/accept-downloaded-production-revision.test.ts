@@ -53,10 +53,12 @@ describe('acceptDownloadedProductionRevision', () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn() });
     vi.mocked(worker.verifyDownloadedModelCandidate)
       .mockImplementationOnce(async () => {
-        now = 10_000; throw new Error('candidate A runtime rejection');
+        now = 10_000;
+        throw new Error('candidate A runtime rejection');
       })
       .mockImplementationOnce(async () => {
-        now = 30_000; return { device: 'wasm', dtype: 'q4' };
+        now = 30_000;
+        return { device: 'wasm', dtype: 'q4' };
       });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
     const observations: unknown[] = [];

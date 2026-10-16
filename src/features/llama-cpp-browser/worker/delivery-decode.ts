@@ -13,7 +13,10 @@ export function createDeliveryDecode({ mode, signal, now }: {
     switch (mode) {
     case 'serial': return false;
     case 'overlap': return now !== undefined;
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const counters = {
@@ -26,7 +29,9 @@ export function createDeliveryDecode({ mode, signal, now }: {
     jointWaitMs: observeWaits ? 0 : undefined,
   };
   const checkCancelled = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
   };
   const clock = (): number | undefined => {
     try {
@@ -48,14 +53,18 @@ export function createDeliveryDecode({ mode, signal, now }: {
       onFailure?.();
       throw error;
     } finally {
-      if (counters[kind] !== undefined) counters[kind] += elapsed({ start });
+      if (counters[kind] !== undefined) {
+        counters[kind] += elapsed({ start });
+      }
     }
   }
   return {
     mode,
     counters,
     async run({ deliver, decode }: { deliver: () => void | Promise<void>, decode: () => Promise<void> }): Promise<void> {
-      if (active) throw new LlamaCppBrowserError({ code: 'busy' });
+      if (active) {
+        throw new LlamaCppBrowserError({ code: 'busy' });
+      }
       active = true;
       try {
         checkCancelled();
@@ -68,7 +77,10 @@ export function createDeliveryDecode({ mode, signal, now }: {
           checkCancelled();
           return;
         case 'overlap': break;
-        default: { const exhaustive: never = mode; throw new Error(`Unknown delivery mode: ${exhaustive}`); }
+        default: {
+          const exhaustive: never = mode;
+          throw new Error(`Unknown delivery mode: ${exhaustive}`);
+        }
         }
         counters.pairedSteps++;
         const start = clock();
@@ -89,19 +101,25 @@ export function createDeliveryDecode({ mode, signal, now }: {
           onFailure: undefined,
           operation: async () => {
             checkCancelled();
-            if (!deliveryRejected) await decode();
+            if (!deliveryRejected) {
+              await decode();
+            }
           },
         });
         // Fail-fast aggregation would release the caller while native code or a
         // remote callback still owns its resources. Never race this with abort.
         const [delivered, decoded] = await Promise.allSettled([delivery, decoding]);
         counters.settledPairs++;
-        if (counters.jointWaitMs !== undefined) counters.jointWaitMs += elapsed({ start });
+        if (counters.jointWaitMs !== undefined) {
+          counters.jointWaitMs += elapsed({ start });
+        }
         // Real failures take precedence over cooperative cancellation, just as
         // in serial mode. A simultaneous delivery failure wins, but retain a
         // separate, sanitized diagnostic for any native failure it masks.
         if (decoded.status === 'rejected' && errorCode({ error: decoded.reason }) !== 'aborted') {
-          if (delivered.status !== 'rejected' || errorCode({ error: delivered.reason }) === 'aborted') throw decoded.reason;
+          if (delivered.status !== 'rejected' || errorCode({ error: delivered.reason }) === 'aborted') {
+            throw decoded.reason;
+          }
           try {
             logFailure({ stage: 'generation-decode', error: decoded.reason });
           } catch { /* Diagnostics must not replace the owning failure. */ }
@@ -110,12 +128,19 @@ export function createDeliveryDecode({ mode, signal, now }: {
         switch (delivered.status) {
         case 'rejected': throw delivered.reason;
         case 'fulfilled': break;
-        default: { const exhaustive: never = delivered; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = delivered;
+          throw new Error(String(exhaustive));
+        }
         }
         switch (decoded.status) {
         case 'rejected': throw decoded.reason;
-        case 'fulfilled': checkCancelled(); return;
-        default: { const exhaustive: never = decoded; throw new Error(String(exhaustive)); }
+        case 'fulfilled': checkCancelled();
+          return;
+        default: {
+          const exhaustive: never = decoded;
+          throw new Error(String(exhaustive));
+        }
         }
       } finally {
         active = false;

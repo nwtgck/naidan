@@ -84,11 +84,23 @@ vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/
       async openEvidenceStream({ input }: { input: EvidenceStreamInput }) {
         const archive = await (async () => {
           switch (input.kind) {
-          case 'partial': { const { kind: _kind, ...request } = input; return await evidenceMocks.createPartialEvidence(request); }
-          case 'batch': { const { kind: _kind, ...request } = input; return await evidenceMocks.createBatchEvidence(request); }
-          case 'retained-timing': { const { kind: _kind, ...request } = input; return await evidenceMocks.createRetainedDownloadTimingEvidence(request); }
+          case 'partial': {
+            const { kind: _kind, ...request } = input;
+            return await evidenceMocks.createPartialEvidence(request);
+          }
+          case 'batch': {
+            const { kind: _kind, ...request } = input;
+            return await evidenceMocks.createBatchEvidence(request);
+          }
+          case 'retained-timing': {
+            const { kind: _kind, ...request } = input;
+            return await evidenceMocks.createRetainedDownloadTimingEvidence(request);
+          }
           case 'download-verification': throw new Error('Unexpected download-verification fixture');
-          default: { const exhaustive: never = input; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = input;
+            throw new Error(String(exhaustive));
+          }
           }
         })();
         // The UI owns a stream now. These presentation fixtures do not encode ZIPs;
@@ -1275,7 +1287,9 @@ org/second
           recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
         },
       });
-      if (interrupted) throw new Error(collecting ? 'Worker lost during collection' : 'Full cache acceptance timed out after metadata collection');
+      if (interrupted) {
+        throw new Error(collecting ? 'Worker lost during collection' : 'Full cache acceptance timed out after metadata collection');
+      }
       return result;
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
@@ -1588,7 +1602,8 @@ org/second`);
     const checkpoint = await nativeCheckpoint();
     const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar');
     workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
-      onCheckpoint?.({ checkpoint }); onCheckpoint?.({ checkpoint });
+      onCheckpoint?.({ checkpoint });
+      onCheckpoint?.({ checkpoint });
       return checkpoint.run;
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
@@ -1610,7 +1625,8 @@ org/second`);
     const pending = Promise.withResolvers<typeof checkpoint.nativeEvidence>();
     const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
     workerMocks.runPartialInvestigation.mockImplementationOnce(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
-      onCheckpoint?.({ checkpoint }); return checkpoint.run;
+      onCheckpoint?.({ checkpoint });
+      return checkpoint.run;
     });
     const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
     await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
@@ -1641,7 +1657,8 @@ org/second`);
     const verify = vi.spyOn(nativeEvidenceModule, 'verifyProductionProviderNativeEvidenceSidecar').mockReturnValueOnce(pending.promise);
     workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
       if (modelId === 'org/model') {
-        onCheckpoint?.({ checkpoint }); throw new Error('Model request failed');
+        onCheckpoint?.({ checkpoint });
+        throw new Error('Model request failed');
       }
       return { ...structuredClone(completedRun), modelId };
     });
@@ -2174,9 +2191,13 @@ org/second
     const runningRun = structuredClone(completedRun);
     runningRun.currentOperation = 'production-webgpu-q4f16: model-load';
     const completedProductionObservation = runningRun.productionLane.observation;
-    if (completedProductionObservation === undefined) throw new Error('Production fixture is unavailable');
+    if (completedProductionObservation === undefined) {
+      throw new Error('Production fixture is unavailable');
+    }
     const completedLoadAttempt = completedProductionObservation.loadAttempts?.[0];
-    if (completedLoadAttempt === undefined) throw new Error('Production load-attempt fixture is unavailable');
+    if (completedLoadAttempt === undefined) {
+      throw new Error('Production load-attempt fixture is unavailable');
+    }
     runningRun.productionLane = {
       status: 'running',
       observation: undefined,
@@ -2695,7 +2716,9 @@ org/second
   it('shows nested feature failures before details even when investigation collection passed', async () => {
     const result = structuredClone(completedRun);
     const observation = result.productionLane.observation;
-    if (!observation) throw new Error('Missing Production fixture');
+    if (!observation) {
+      throw new Error('Missing Production fixture');
+    }
     observation.firstTurn = { status: 'failed', error: { name: 'GenerationError', message: 'first turn failed' } };
     observation.continuity = { status: 'not-run', reason: 'First turn did not generate' };
     workerMocks.runPartialInvestigation.mockResolvedValue(result);

@@ -14,22 +14,28 @@ it('does not report a finite POST complete just because its 200 headers arrived'
   let status!: ReadableStreamDefaultController<Uint8Array>;
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
     start(controller) {
-      status = controller; controller.enqueue(new Uint8Array([1]));
+      status = controller;
+      controller.enqueue(new Uint8Array([1]));
     },
   })));
   let complete = false;
   const sent = endpoint().send({ route: 'post', bytes: new Uint8Array([7]), signal: new AbortController().signal }).then(() => {
     complete = true;
   });
-  await Promise.resolve(); await Promise.resolve(); expect(complete).toBe(false);
-  status.close(); await sent; expect(complete).toBe(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(complete).toBe(false);
+  status.close();
+  await sent;
+  expect(complete).toBe(true);
 });
 
 it('bounds a split GET and rejects trailing bytes instead of accepting a valid prefix', async () => {
   const cancel = vi.fn();
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(new Uint8Array([1])); controller.enqueue(new Uint8Array([2, 3]));
+      controller.enqueue(new Uint8Array([1]));
+      controller.enqueue(new Uint8Array([2, 3]));
     },
     cancel,
   })));
@@ -94,15 +100,21 @@ it('joins pending cancellation before completing an aborted receive', async () =
     },
     cancel: () => retired.promise,
   })));
-  const controller = new AbortController(), reason = new Error('stop'); let settled = false;
+  const controller = new AbortController(), reason = new Error('stop');
+  let settled = false;
   const reading = endpoint().receive({ route: 'cancel', maximum: 8, signal: controller.signal });
   void reading.then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
-  await started.promise; controller.abort(reason); await Promise.resolve(); await Promise.resolve();
-  expect(settled).toBe(false); retired.resolve(); await expect(reading).rejects.toBe(reason);
+  await started.promise;
+  controller.abort(reason);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  retired.resolve();
+  await expect(reading).rejects.toBe(reason);
 });
 
 it('owns and cancels a non-200 response body before allowing the next request', async () => {

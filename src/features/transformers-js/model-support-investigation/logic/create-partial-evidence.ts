@@ -100,7 +100,9 @@ function inputStrategyErrorRecords({ run }: { run: ModelSupportInvestigationRun 
 function naturalGenerationErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
   return attemptEvidenceRecords({ run }).flatMap((attempt) => {
     const observation = attempt.naturalGeneration;
-    if (observation === undefined) return [];
+    if (observation === undefined) {
+      return [];
+    }
     switch (observation.status) {
     case "observed":
       return [];
@@ -120,7 +122,9 @@ function naturalGenerationErrorRecords({ run }: { run: ModelSupportInvestigation
 
 function toolResultContinuationError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const observation = productionObservation({ run })?.toolResultContinuation;
-  if (observation === undefined) return undefined;
+  if (observation === undefined) {
+    return undefined;
+  }
   switch (observation.status) {
   case "passed":
   case "not-run":
@@ -136,7 +140,9 @@ function toolResultContinuationError({ run }: { run: ModelSupportInvestigationRu
 
 function reasoningEffortErrorRecords({ run }: { run: ModelSupportInvestigationRun }): Array<{ effort: 'none' | 'high', error: ModelSupportInvestigationLoadAttemptError }> {
   const reasoning = productionObservation({ run })?.reasoning;
-  if (reasoning === undefined || reasoning.status !== 'failed') return [];
+  if (reasoning === undefined || reasoning.status !== 'failed') {
+    return [];
+  }
   return reasoning.effortAttempts.flatMap((attempt) => {
     switch (attempt.status) {
     case 'passed':
@@ -153,7 +159,9 @@ function reasoningEffortErrorRecords({ run }: { run: ModelSupportInvestigationRu
 
 function reasoningError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const reasoning = productionObservation({ run })?.reasoning;
-  if (reasoning === undefined) return undefined;
+  if (reasoning === undefined) {
+    return undefined;
+  }
   switch (reasoning.status) {
   case "observed":
   case "unavailable":
@@ -169,7 +177,9 @@ function reasoningError({ run }: { run: ModelSupportInvestigationRun }): ModelSu
 
 function multimodalError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const multimodal = productionObservation({ run })?.multimodal;
-  if (multimodal === undefined) return undefined;
+  if (multimodal === undefined) {
+    return undefined;
+  }
   switch (multimodal.status) {
   case 'observed':
   case 'unavailable':
@@ -185,7 +195,9 @@ function multimodalError({ run }: { run: ModelSupportInvestigationRun }): ModelS
 
 function firstTurnError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const firstTurn = productionObservation({ run })?.firstTurn;
-  if (firstTurn === undefined) return undefined;
+  if (firstTurn === undefined) {
+    return undefined;
+  }
   switch (firstTurn.status) {
   case "passed":
     return undefined;
@@ -200,7 +212,9 @@ function firstTurnError({ run }: { run: ModelSupportInvestigationRun }): ModelSu
 
 function persistenceRoundTripError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const persistence = run.persistenceRoundTrip;
-  if (persistence === undefined) return undefined;
+  if (persistence === undefined) {
+    return undefined;
+  }
   switch (persistence.status) {
   case 'observed':
     return undefined;
@@ -215,7 +229,9 @@ function persistenceRoundTripError({ run }: { run: ModelSupportInvestigationRun 
 
 function continuityError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
   const continuity = productionObservation({ run })?.continuity;
-  if (continuity === undefined) return undefined;
+  if (continuity === undefined) {
+    return undefined;
+  }
   switch (continuity.status) {
   case "passed":
   case "not-run":
@@ -232,7 +248,9 @@ function continuityError({ run }: { run: ModelSupportInvestigationRun }): ModelS
 function postAttemptCacheErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
   return run.loadAttempts.flatMap((attempt) => {
     const observation = attempt.postAttemptCache;
-    if (observation === undefined) return [];
+    if (observation === undefined) {
+      return [];
+    }
     switch (observation.status) {
     case "observed":
       return [];
@@ -253,7 +271,9 @@ function postAttemptCacheErrorRecords({ run }: { run: ModelSupportInvestigationR
 function toolProtocolProbeErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
   return attemptEvidenceRecords({ run }).flatMap((attempt) => {
     const probe = attempt.toolProtocolProbe;
-    if (probe === undefined) return [];
+    if (probe === undefined) {
+      return [];
+    }
     switch (probe.status) {
     case "observed": {
       const records: Array<{ attemptId: string, candidateId: string, error: unknown }> = [];
@@ -328,7 +348,9 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
     runId: run.runId,
     modelId: run.modelId,
   });
-  if (providerCapture !== undefined) setEvidenceFile({ files, path: PRODUCTION_PROVIDER_CAPTURE_EVIDENCE_PATH, content: providerCapture.json });
+  if (providerCapture !== undefined) {
+    setEvidenceFile({ files, path: PRODUCTION_PROVIDER_CAPTURE_EVIDENCE_PATH, content: providerCapture.json });
+  }
   // Keep the bounded collection summary even when the Provider encoder refused
   // its larger snapshot. Its dedicated codec preserves known own-undefined fields.
   const providerSummary = run.productionProviderInvestigation === undefined ? undefined : createProductionProviderInvestigationSummaryEvidence({
@@ -340,9 +362,13 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
     format: 'production-provider-investigation-summary-reference-v1',
     path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH,
   });
-  if (providerSummary !== undefined) setEvidenceFile({ files, path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH, content: providerSummary.json });
+  if (providerSummary !== undefined) {
+    setEvidenceFile({ files, path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH, content: providerSummary.json });
+  }
   const native = nativeEvidence === undefined ? undefined : await (async () => {
-    if (run.productionProviderCapture === undefined) throw new Error('Native capture Evidence requires its Provider snapshot');
+    if (run.productionProviderCapture === undefined) {
+      throw new Error('Native capture Evidence requires its Provider snapshot');
+    }
     // Recheck the current per-model input after earlier model awaits. Admission
     // of the original item array does not give later replacements more capacity.
     if (measureProductionProviderNativeEvidenceSidecar({ evidence: nativeEvidence }).jsonCharacters > maximumNativeJsonCharacters) {
@@ -352,7 +378,9 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
   })();
   if (native !== undefined) {
     setEvidenceFile({ files, path: native.path, content: native.json });
-    for (const binary of native.binaries) setEvidenceFile({ files, path: binary.path, content: binary.blob });
+    for (const binary of native.binaries) {
+      setEvidenceFile({ files, path: binary.path, content: binary.blob });
+    }
   }
   switch (run.downloadEvidence?.runtimeCompletion?.source) {
   case 'ordinary-provider-load': {
@@ -369,7 +397,10 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
     break;
   }
   case 'reused-production-cache': case 'production-download-preparation': case 'cache-only-unavailable': case 'cache-reuse-failed': case undefined: break;
-  default: { const exhaustive: never = run.downloadEvidence!.runtimeCompletion!.source; throw new Error('Unknown runtime completion source: ' + exhaustive); }
+  default: {
+    const exhaustive: never = run.downloadEvidence!.runtimeCompletion!.source;
+    throw new Error('Unknown runtime completion source: ' + exhaustive);
+  }
   }
   await addReplayMetadataToEvidenceFiles({ files, summary: run.replayMetadata, sidecars: replayMetadata });
   const freshMetadata = run.freshMetadata === undefined ? undefined : freshMetadataSummarySchema.parse(run.freshMetadata);
@@ -388,11 +419,15 @@ async function createPartialModelSupportEvidenceFiles({ run, recovery, replayMet
         ? "No real-model load attempts were recorded. Consult the selected scope and step results to distinguish unselected stages from interrupted or failed stages."
         : `${run.loadAttempts.length} real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded.`;
   const productionSummary = (() => {
-    if (hasProviderInvestigation) return 'Public Provider requests are recorded in the dedicated Provider evidence or its bounded summary. Request fulfillment, collection completion, and native recording coverage are separate observations; none alone certifies model correctness. The legacy direct Production comparison was not executed.';
+    if (hasProviderInvestigation) {
+      return 'Public Provider requests are recorded in the dedicated Provider evidence or its bounded summary. Request fulfillment, collection completion, and native recording coverage are separate observations; none alone certifies model correctness. The legacy direct Production comparison was not executed.';
+    }
     switch (run.productionLane.status) {
     case "passed": {
       const observation = run.productionLane.observation;
-      if (observation === undefined) return "Production Lane completed without a serializable observation.";
+      if (observation === undefined) {
+        return "Production Lane completed without a serializable observation.";
+      }
       switch (observation.firstTurn.status) {
       case "passed":
         return `Production Lane generated successfully with ${observation.route.strategy} strategy.`;
@@ -841,7 +876,9 @@ async function createManifestFiles({ files }: { files: ReadonlyMap<string, Blob>
   const entries: Array<{ path: string, byteLength: number, sha256: string }> = [];
   // Own only one file body for hashing at a time, including native tensors.
   for (const [path, file] of [...files.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-    if (path === 'manifest.json') continue;
+    if (path === 'manifest.json') {
+      continue;
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     entries.push({ path, byteLength: bytes.byteLength, sha256: await sha256Hex({ bytes }) });
   }
@@ -895,18 +932,28 @@ export async function prepareBatchModelSupportEvidence({
   items: readonly ModelSupportInvestigationBatchEvidenceItem[],
   ordinaryDownloadTiming?: DownloadTimingSnapshot,
 }): Promise<PreparedEvidenceArchive> {
-  if (batchId.length === 0) throw new Error("Model Support Investigation batch Evidence requires a batch ID");
-  if (items.length === 0) throw new Error("Model Support Investigation batch Evidence requires at least one target");
+  if (batchId.length === 0) {
+    throw new Error("Model Support Investigation batch Evidence requires a batch ID");
+  }
+  if (items.length === 0) {
+    throw new Error("Model Support Investigation batch Evidence requires at least one target");
+  }
   const replayBytes = items.reduce((total, item) => total + (item.replayMetadata ?? []).reduce((sum, sidecar) => sum + sidecar.blob.size, 0), 0);
-  if (replayBytes > REPLAY_METADATA_BATCH_BYTES) throw new Error('Replay metadata batch export exceeds its byte budget');
+  if (replayBytes > REPLAY_METADATA_BATCH_BYTES) {
+    throw new Error('Replay metadata batch export exceeds its byte budget');
+  }
 
   let nativeBinaryBytes = 0;
   let nativeJsonCharacters = 0;
   // Admit every retained sidecar before any model ZIP read or digest. Repeated
   // references count repeatedly because each model dossier has its own entries.
   for (const item of items) {
-    if (item.nativeEvidence === undefined) continue;
-    if (item.run === undefined) throw new Error('Native capture Evidence requires its investigation run');
+    if (item.nativeEvidence === undefined) {
+      continue;
+    }
+    if (item.run === undefined) {
+      throw new Error('Native capture Evidence requires its investigation run');
+    }
     const measured = measureProductionProviderNativeEvidenceSidecar({ evidence: item.nativeEvidence });
     nativeBinaryBytes += measured.binaryBytes;
     nativeJsonCharacters += measured.jsonCharacters;
@@ -933,7 +980,9 @@ export async function prepareBatchModelSupportEvidence({
 
   for (const [index, item] of items.entries()) {
     const directory = `models/${String(index + 1).padStart(3, "0")}-${safeFilePart({ value: item.target })}/`;
-    if (item.nativeEvidence !== undefined && item.run === undefined) throw new Error('Native capture Evidence requires its investigation run');
+    if (item.nativeEvidence !== undefined && item.run === undefined) {
+      throw new Error('Native capture Evidence requires its investigation run');
+    }
     if (item.run !== undefined) {
       const { files: modelFiles, nativeBinaryBytes, nativeJsonCharacters } = await createPartialModelSupportEvidenceFiles({
         run: item.run,
@@ -998,7 +1047,9 @@ async function verifyBatchEvidenceContents({ archive, batchId, items }: {
 }): Promise<void> {
   await verifyOrdinaryDownloadTimingEvidence({ archive: archive, association: { kind: 'investigation-batch', batchId } });
   const batchFile = await archive.read({ path: "batch.json" });
-  if (batchFile === undefined) throw new Error("Batch Evidence archive is missing batch.json");
+  if (batchFile === undefined) {
+    throw new Error("Batch Evidence archive is missing batch.json");
+  }
   const parsedBatch = batchEvidenceIndexSchema.parse(JSON.parse(await batchFile.text()) as unknown);
   const expectedPackagedModelCount = items.filter(item => item.run !== undefined).length;
   if (
@@ -1024,7 +1075,9 @@ async function verifyBatchEvidenceContents({ archive, batchId, items }: {
         throw new Error(`Batch Evidence is missing a dossier path for target: ${item.target}`);
       }
       const runFile = await archive.read({ path: `${indexed.evidencePath}run.json` });
-      if (runFile === undefined) throw new Error(`Batch Evidence is missing run.json for target: ${item.target}`);
+      if (runFile === undefined) {
+        throw new Error(`Batch Evidence is missing run.json for target: ${item.target}`);
+      }
       const packagedRun = packagedRunIdentitySchema.parse(JSON.parse(await runFile.text()) as unknown);
       if (packagedRun.modelId !== item.run.modelId || packagedRun.runId !== item.run.runId) {
         throw new Error(`Batch Evidence run identity mismatch for target: ${item.target}`);
@@ -1035,9 +1088,13 @@ async function verifyBatchEvidenceContents({ archive, batchId, items }: {
   }
 
   const verificationManifestFile = await archive.read({ path: "manifest.json" });
-  if (verificationManifestFile === undefined) throw new Error("Batch Evidence archive is missing manifest.json");
+  if (verificationManifestFile === undefined) {
+    throw new Error("Batch Evidence archive is missing manifest.json");
+  }
   const verificationManifest = batchEvidenceManifestSchema.parse(JSON.parse(await verificationManifestFile.text()) as unknown);
-  if (verificationManifest.batchId !== batchId) throw new Error("Batch Evidence archive manifest batch ID does not match");
+  if (verificationManifest.batchId !== batchId) {
+    throw new Error("Batch Evidence archive manifest batch ID does not match");
+  }
   const archivePaths = archive.paths
     .filter(path => path !== "manifest.json")
     .sort((left, right) => left.localeCompare(right));
@@ -1047,7 +1104,9 @@ async function verifyBatchEvidenceContents({ archive, batchId, items }: {
   }
   for (const entry of verificationManifest.files) {
     const file = await archive.read({ path: entry.path });
-    if (file === undefined) throw new Error(`Batch Evidence archive is missing manifest path: ${entry.path}`);
+    if (file === undefined) {
+      throw new Error(`Batch Evidence archive is missing manifest path: ${entry.path}`);
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.byteLength !== entry.byteLength || await sha256Hex({ bytes }) !== entry.sha256) {
       throw new Error(`Batch Evidence archive integrity mismatch: ${entry.path}`);

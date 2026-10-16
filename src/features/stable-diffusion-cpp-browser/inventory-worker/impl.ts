@@ -11,13 +11,18 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Top-level Comlink callback.
     async inspect(input, report, hostDirectories, repositoryIds) {
-      if (used) throw new Error('Inventory workers are single-use');
+      if (used) {
+        throw new Error('Inventory workers are single-use');
+      }
       used = true;
       let previous = 0, lastPhase: InspectionProgress['phase'] | undefined;
       function publish({ progress }: { progress: InspectionProgress }): void {
         const now = performance.now();
-        if (progress.phase === lastPhase && now - previous < 200 && (!progress.total || progress.completed < progress.total)) return;
-        lastPhase = progress.phase; previous = now;
+        if (progress.phase === lastPhase && now - previous < 200 && (!progress.total || progress.completed < progress.total)) {
+          return;
+        }
+        lastPhase = progress.phase;
+        previous = now;
         try {
           Promise.resolve(report({ progress })).catch(() => undefined);
         } catch { /* caller gone */ }
@@ -28,7 +33,9 @@ export function createInventoryWorker(): WorkerServerApi<InventoryWorker> {
         // API; failures from an available OPFS must still reach the caller.
         const repositories = input ?? (typeof navigator.storage?.getDirectory === 'function'
           ? await listImageRepositories({ signal: undefined, onProgress: publish, repositoryIds: selectedRepositories }) : []);
-        if (hostDirectories?.length && selectedRepositories === undefined) repositories.push(...await listHostImageRepositories({ directories: hostDirectories, signal: undefined, onProgress: publish }));
+        if (hostDirectories?.length && selectedRepositories === undefined) {
+          repositories.push(...await listHostImageRepositories({ directories: hostDirectories, signal: undefined, onProgress: publish }));
+        }
         return await scanImageRepositories({ repositories: selectedRepositories ? repositories.filter(repository => selectedRepositories.includes(repository.id)) : repositories, signal: undefined, onProgress: publish });
       } finally {
         try {

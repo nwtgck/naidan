@@ -29,15 +29,21 @@ function observedMainCacheRoot(): FileSystemDirectoryHandle {
     kind: "directory",
     name: depth === 0 ? "root" : leafPath[depth - 1]!,
     async getDirectoryHandle(name: string) {
-      if (name !== leafPath[depth]) throw new DOMException("Not found", "NotFoundError");
+      if (name !== leafPath[depth]) {
+        throw new DOMException("Not found", "NotFoundError");
+      }
       return directoryAt({ depth: depth + 1 });
     },
     async getFileHandle(name: string) {
-      if (depth !== leafPath.length) throw new DOMException("Not found", "NotFoundError");
+      if (depth !== leafPath.length) {
+        throw new DOMException("Not found", "NotFoundError");
+      }
       if (name === `.${fileName}.complete`) {
         return { kind: "file", name } as FileSystemFileHandle;
       }
-      if (name !== fileName) throw new DOMException("Not found", "NotFoundError");
+      if (name !== fileName) {
+        throw new DOMException("Not found", "NotFoundError");
+      }
       return {
         kind: "file",
         name,

@@ -22,7 +22,9 @@ const emit = defineEmits<{
 }>();
 
 function formatPromptApiError({ error }: { error: PromptApiError | undefined }): string | undefined {
-  if (error === undefined) return undefined;
+  if (error === undefined) {
+    return undefined;
+  }
 
   const cause = error.cause;
   if (cause instanceof Error) {
@@ -35,16 +37,24 @@ function formatPromptApiError({ error }: { error: PromptApiError | undefined }):
 }
 
 function readUserAgentBrands(): readonly string[] {
-  if (typeof navigator === 'undefined') return [];
+  if (typeof navigator === 'undefined') {
+    return [];
+  }
 
   const userAgentData: unknown = Reflect.get(navigator, 'userAgentData');
-  if (typeof userAgentData !== 'object' || userAgentData === null) return [];
+  if (typeof userAgentData !== 'object' || userAgentData === null) {
+    return [];
+  }
 
   const brands: unknown = Reflect.get(userAgentData, 'brands');
-  if (!Array.isArray(brands)) return [];
+  if (!Array.isArray(brands)) {
+    return [];
+  }
 
   return brands.flatMap((entry: unknown) => {
-    if (typeof entry !== 'object' || entry === null) return [];
+    if (typeof entry !== 'object' || entry === null) {
+      return [];
+    }
     const brand: unknown = Reflect.get(entry, 'brand');
     return typeof brand === 'string' ? [brand] : [];
   });
@@ -52,17 +62,33 @@ function readUserAgentBrands(): readonly string[] {
 
 function detectPromptApiBrowserFamily(): PromptApiBrowserFamily {
   const brands = readUserAgentBrands();
-  if (brands.includes('Microsoft Edge')) return 'edge';
-  if (brands.includes('Google Chrome')) return 'chrome';
-  if (brands.length > 0) return 'other';
+  if (brands.includes('Microsoft Edge')) {
+    return 'edge';
+  }
+  if (brands.includes('Google Chrome')) {
+    return 'chrome';
+  }
+  if (brands.length > 0) {
+    return 'other';
+  }
 
-  if (typeof navigator === 'undefined') return 'other';
+  if (typeof navigator === 'undefined') {
+    return 'other';
+  }
   const userAgent = navigator.userAgent;
 
-  if (/\bEdg(?:A|iOS)?\//u.test(userAgent)) return 'edge';
-  if (!/\bChrome\//u.test(userAgent)) return 'other';
-  if (/\b(?:OPR|Vivaldi|YaBrowser)\//u.test(userAgent)) return 'other';
-  if ('brave' in navigator) return 'other';
+  if (/\bEdg(?:A|iOS)?\//u.test(userAgent)) {
+    return 'edge';
+  }
+  if (!/\bChrome\//u.test(userAgent)) {
+    return 'other';
+  }
+  if (/\b(?:OPR|Vivaldi|YaBrowser)\//u.test(userAgent)) {
+    return 'other';
+  }
+  if ('brave' in navigator) {
+    return 'other';
+  }
   return 'chrome';
 }
 

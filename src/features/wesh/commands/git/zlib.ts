@@ -6,7 +6,9 @@ async function collectStream({ stream }: { stream: ReadableStream<Uint8Array> })
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       chunks.push(value);
     }
   } finally {

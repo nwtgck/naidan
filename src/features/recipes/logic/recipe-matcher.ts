@@ -80,7 +80,9 @@ function getAllMatchingModels(
  * Returns an array of patterns from most specific to most general.
  */
 export function generateDefaultModelPatterns({ modelId }: { modelId: string }): string[] {
-  if (!modelId) return [];
+  if (!modelId) {
+    return [];
+  }
 
   const patterns: string[] = [];
 

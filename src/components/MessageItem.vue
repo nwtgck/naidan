@@ -98,7 +98,10 @@ const attachments = computed<Attachment[]>(() => props.message.parts.flatMap(par
   case 'reasoning':
   case 'tool_call':
   case 'tool_result': return [];
-  default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+  default: {
+    const _ex: never = part;
+    throw new Error(`Unhandled message part: ${_ex}`);
+  }
   }
 }));
 const messageError = useChatMessageError({ chatId: computed(() => props.chatId), message: computed(() => props.message) });
@@ -189,15 +192,25 @@ async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
     }));
   const ids = new Set<BinaryObjectId>([id]);
   for (const element of messageRef.value?.querySelectorAll<HTMLElement>('.naidan-generated-image') ?? []) {
-    if (element.dataset.id) ids.add(toBinaryObjectId({ raw: element.dataset.id }));
+    if (element.dataset.id) {
+      ids.add(toBinaryObjectId({ raw: element.dataset.id }));
+    }
   }
   for (const binaryObjectId of ids) {
-    if (allImages.some(image => image.id === binaryObjectId)) continue;
+    if (allImages.some(image => image.id === binaryObjectId)) {
+      continue;
+    }
     const object = await storageService.getBinaryObject({ binaryObjectId });
-    if (request !== previewRequest) return;
-    if (object?.mimeType.startsWith('image/')) allImages.push({ ...object, memoryBlob: undefined });
+    if (request !== previewRequest) {
+      return;
+    }
+    if (object?.mimeType.startsWith('image/')) {
+      allImages.push({ ...object, memoryBlob: undefined });
+    }
   }
-  if (request !== previewRequest || !allImages.some(image => image.id === id)) return;
+  if (request !== previewRequest || !allImages.some(image => image.id === id)) {
+    return;
+  }
   openPreview({ objects: allImages, initialId: id });
 }
 
@@ -295,7 +308,9 @@ watch(isEditing, (editing) => {
 });
 
 const versionInfo = computed(() => {
-  if (!props.siblings || props.siblings.length <= 1) return null;
+  if (!props.siblings || props.siblings.length <= 1) {
+    return null;
+  }
   const index = props.siblings.findIndex(m => m.id === props.message.id);
   return {
     current: index + 1,
@@ -358,7 +373,9 @@ onMounted(() => {
 onUnmounted(() => {
   attachmentUrls.value.forEach(url => URL.revokeObjectURL(url));
 
-  if (transformersUnsubscribe) transformersUnsubscribe();
+  if (transformersUnsubscribe) {
+    transformersUnsubscribe();
+  }
 });
 
 const messageRef = ref<HTMLElement | null>(null);
@@ -367,7 +384,9 @@ const displayContent = computed(() => {
   const mode = props.mode;
   switch (mode) {
   case 'content': {
-    if (props.partContent !== undefined) return props.partContent;
+    if (props.partContent !== undefined) {
+      return props.partContent;
+    }
     return getDisplayedMessageText({ message: props.message });
   }
   case 'thinking':
@@ -388,8 +407,12 @@ const speechText = computed(() => {
   switch (mode) {
   case 'content': {
     const text = props.partContent !== undefined ? props.partContent : displayContent.value;
-    if (!text) return '';
-    if (isImageResponse.value) return lazyStrings.MessageItem__image_generated();
+    if (!text) {
+      return '';
+    }
+    if (isImageResponse.value) {
+      return lazyStrings.MessageItem__image_generated();
+    }
     return text.replace(/<[^>]*>/g, '');
   }
   case 'thinking':
@@ -434,7 +457,9 @@ const reasoningEffortLabel = computed(() => {
     }
   })();
 
-  if (effort === undefined) return undefined;
+  if (effort === undefined) {
+    return undefined;
+  }
 
   switch (effort) {
   case 'none':
@@ -466,7 +491,9 @@ const reasoningEffortTooltip = computed(() => {
     }
   })();
 
-  if (effort === undefined) return undefined;
+  if (effort === undefined) {
+    return undefined;
+  }
 
   switch (effort) {
   case 'none':
@@ -488,7 +515,9 @@ const reasoningEffortTooltip = computed(() => {
       }
       }
     })();
-    if (effortLabel === undefined) return undefined;
+    if (effortLabel === undefined) {
+      return undefined;
+    }
     return lazyStrings.MessageItem__think_effort_note({ effortLabel });
   }
   default: {
@@ -503,7 +532,9 @@ const hasThinking = computed(() => props.message.role === 'assistant' && getAssi
 const thinkingIsActive = computed(() => props.isThinkingActive ?? (props.isGenerating && !messageError.value && props.message.role === 'assistant' && props.message.interruption === undefined && getAssistantDisplayParts({ message: props.message }).some(part => part.type === 'reasoning' && part.completeness === 'partial')));
 
 function formatSize({ bytes }: { bytes: number | undefined }): string {
-  if (bytes === undefined) return '0 B';
+  if (bytes === undefined) {
+    return '0 B';
+  }
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
   let unitIndex = 0;

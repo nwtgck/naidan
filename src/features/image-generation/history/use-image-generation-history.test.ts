@@ -18,7 +18,8 @@ function deferred<T>() {
     throw new Error('Pending promise not initialized');
   };
   const promise = new Promise<T>((yes, no) => {
-    resolve = yes; reject = no;
+    resolve = yes;
+    reject = no;
   });
   return { promise, resolve, reject };
 }
@@ -49,9 +50,12 @@ let storageType: StorageType;
 let listener: ChangeListener | undefined;
 
 beforeEach(() => {
-  vi.useFakeTimers(); vi.clearAllMocks(); storageType = 'opfs';
+  vi.useFakeTimers();
+  vi.clearAllMocks();
+  storageType = 'opfs';
   mocks.subscribe.mockImplementation(({ listener: next }: { listener: ChangeListener }) => {
-    listener = next; return () => {
+    listener = next;
+    return () => {
       listener = undefined;
     };
   });
@@ -83,13 +87,15 @@ describe('explicit final image deletion', () => {
   it('rejects changed targets and unavailable storage before deletion, and propagates failure without invalidation', async () => {
     const chosen = record({ label: 'chosen' });
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    mocks.load.mockResolvedValue(chosen); await view.select({ id: chosen.id });
+    mocks.load.mockResolvedValue(chosen);
+    await view.select({ id: chosen.id });
     await expect(view.removeImage({ id: toImageGenerationId({ raw: 'other' }), binaryObjectId: chosen.result.binaryObjectId })).rejects.toThrow('changed');
     await expect(view.removeImage({ id: chosen.id, binaryObjectId: toBinaryObjectId({ raw: 'input-image' }) })).rejects.toThrow('changed');
     storageType = 'memory';
     await expect(view.removeImage({ id: chosen.id, binaryObjectId: chosen.result.binaryObjectId })).rejects.toThrow('OPFS');
     expect(mocks.removeImage).not.toHaveBeenCalled();
-    storageType = 'opfs'; mocks.removeImage.mockRejectedValue(new Error('Cannot remove file'));
+    storageType = 'opfs';
+    mocks.removeImage.mockRejectedValue(new Error('Cannot remove file'));
     await expect(view.removeImage({ id: chosen.id, binaryObjectId: chosen.result.binaryObjectId })).rejects.toThrow('Cannot remove file');
     expect(view.imageInvalidation.value).toBeUndefined();
     expect(view.selected.value).toBe(chosen);
@@ -105,9 +111,12 @@ describe('explicit final image deletion', () => {
     await view.select({ id: chosen.id });
     const deleting = view.removeImage({ id: chosen.id, binaryObjectId: chosen.result.binaryObjectId });
     await view.select({ id: other.id });
-    storageType = 'memory'; await listener?.({ event: { type: 'migration', timestamp: 1 } });
-    storageType = 'opfs'; await listener?.({ event: { type: 'migration', timestamp: 2 } });
-    pending.resolve(); await deleting;
+    storageType = 'memory';
+    await listener?.({ event: { type: 'migration', timestamp: 1 } });
+    storageType = 'opfs';
+    await listener?.({ event: { type: 'migration', timestamp: 2 } });
+    pending.resolve();
+    await deleting;
     expect(mocks.removeImage).toHaveBeenCalledExactlyOnceWith({ binaryObjectId: chosen.result.binaryObjectId });
     expect(view.imageInvalidation.value).toBeUndefined();
     await view.dispose();
@@ -174,13 +183,18 @@ describe('image history selection ownership', () => {
     await view.select({ id: first.id });
     const selecting = view.select({ id: next.id });
     switch (action) {
-    case 'reselect': await view.select({ id: first.id }); break;
-    case 'close': view.clearSelection(); break;
+    case 'reselect': await view.select({ id: first.id });
+      break;
+    case 'close': view.clearSelection();
+      break;
     case 'storage':
       storageType = 'memory';
       await listener?.({ event: { type: 'migration', timestamp: 1 } });
       break;
-    default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = action;
+      throw new Error(String(exhaustive));
+    }
     }
     pending.resolve(next);
     await selecting;
@@ -216,7 +230,9 @@ describe('image history query ownership', () => {
       expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: (target - 1) * 40, limit: 40 } });
     }
     const calls = mocks.query.mock.calls.length;
-    for (const target of [0, -1, 252, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 1]) await view.goToPage({ page: target });
+    for (const target of [0, -1, 252, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 1]) {
+      await view.goToPage({ page: target });
+    }
     expect(mocks.query).toHaveBeenCalledTimes(calls);
     await view.dispose();
   });
@@ -251,7 +267,8 @@ describe('image history query ownership', () => {
     const pending = deferred<ImageGenerationHistoryPage>();
     mocks.query.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockReturnValueOnce(pending.promise).mockResolvedValueOnce(page({ label: 'found' }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    await view.reload(); await view.goToPage({ page: 2 });
+    await view.reload();
+    await view.goToPage({ page: 2 });
     const moving = view.goToPage({ page: 3 });
     view.setQuery({ text: 'garden' });
     pending.resolve({ ...page({ label: 'stale-third' }), total: 120 });
@@ -277,7 +294,9 @@ describe('image history query ownership', () => {
     const selected = record({ label: 'selected' });
     mocks.load.mockResolvedValueOnce(selected);
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    await view.reload(); await view.goToPage({ page: 2 }); await view.select({ id: selected.id });
+    await view.reload();
+    await view.goToPage({ page: 2 });
+    await view.select({ id: selected.id });
     records.unshift(page({ label: 'new-image' }).items[0]!);
     await view.reload();
     expect(view.currentPage.value).toBe(2);
@@ -294,14 +313,16 @@ describe('image history query ownership', () => {
     mocks.query.mockResolvedValueOnce(first).mockResolvedValueOnce(last).mockResolvedValueOnce({ items: [], total: 80, warnings: [], warningCount: 0 }).mockReturnValueOnce(pending.promise);
     mocks.remove.mockResolvedValueOnce(undefined);
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    await view.reload(); await view.goToPage({ page: 3 });
+    await view.reload();
+    await view.goToPage({ page: 3 });
     const removing = view.remove({ id: last.items[0]!.id });
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.query).toHaveBeenLastCalledWith({ query: { text: '', offset: 40, limit: 40 } });
     expect(view.currentPage.value).toBe(3);
     expect(view.items.value).toBe(last.items);
     expect(view.total.value).toBe(81);
-    pending.resolve(previous); await removing;
+    pending.resolve(previous);
+    await removing;
     expect(view.currentPage.value).toBe(2);
     expect(view.pageCount.value).toBe(2);
     expect(view.items.value).toBe(previous.items);
@@ -323,7 +344,8 @@ describe('image history query ownership', () => {
     view.setQuery({ text: 'new' });
     expect(view.items.value).toBe(initial.items);
     expect(view.loading.value).toBe(true);
-    old.resolve(page({ label: 'old' })); await loading;
+    old.resolve(page({ label: 'old' }));
+    await loading;
     expect(view.items.value).toBe(initial.items);
     expect(view.loading.value).toBe(true);
     await vi.advanceTimersByTimeAsync(250);
@@ -337,19 +359,27 @@ describe('image history query ownership', () => {
     mocks.query.mockReturnValue(pending.promise);
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     const loading = view.reload();
-    storageType = 'memory'; await listener?.({ event: { type: 'migration', timestamp: 1 } });
-    pending.resolve(page({ label: 'stale' })); await loading;
-    expect(view.available.value).toBe(false); expect(view.items.value).toEqual([]); expect(view.loading.value).toBe(false);
-    await view.reload(); expect(mocks.query).toHaveBeenCalledTimes(1);
+    storageType = 'memory';
+    await listener?.({ event: { type: 'migration', timestamp: 1 } });
+    pending.resolve(page({ label: 'stale' }));
+    await loading;
+    expect(view.available.value).toBe(false);
+    expect(view.items.value).toEqual([]);
+    expect(view.loading.value).toBe(false);
+    await view.reload();
+    expect(mocks.query).toHaveBeenCalledTimes(1);
     await view.dispose();
   });
 
   it('reports a query read failure instead of a successful empty result', async () => {
     mocks.query.mockRejectedValueOnce(new Error('Corrupt shard index'));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    await view.reload(); expect(view.error.value).toBe('Corrupt shard index');
+    await view.reload();
+    expect(view.error.value).toBe('Corrupt shard index');
     mocks.query.mockResolvedValueOnce(page({ label: 'retry' }));
-    await view.reload(); expect(view.error.value).toBe(''); expect(view.items.value[0]?.prompt).toBe('retry');
+    await view.reload();
+    expect(view.error.value).toBe('');
+    expect(view.items.value[0]?.prompt).toBe('retry');
     await view.dispose();
   });
 
@@ -357,15 +387,19 @@ describe('image history query ownership', () => {
     mocks.query.mockResolvedValueOnce({ ...page({ label: 'readable' }), warnings: [{ path: 'ab/incomplete-aB.json', message: 'Empty JSON' }], warningCount: 1 }).mockResolvedValueOnce(page({ label: 'new match' }));
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     await view.reload();
-    expect(view.items.value[0]?.prompt).toBe('readable'); expect(view.error.value).toBe('');
-    expect(view.warningCount.value).toBe(1); expect(view.warnings.value[0]?.path).toBe('ab/incomplete-aB.json');
+    expect(view.items.value[0]?.prompt).toBe('readable');
+    expect(view.error.value).toBe('');
+    expect(view.warningCount.value).toBe(1);
+    expect(view.warnings.value[0]?.path).toBe('ab/incomplete-aB.json');
     view.setQuery({ text: 'new query' });
     expect(view.items.value[0]?.prompt).toBe('readable');
-    expect(view.warningCount.value).toBe(1); expect(view.warnings.value[0]?.path).toBe('ab/incomplete-aB.json');
+    expect(view.warningCount.value).toBe(1);
+    expect(view.warnings.value[0]?.path).toBe('ab/incomplete-aB.json');
     expect(view.loading.value).toBe(true);
     await vi.advanceTimersByTimeAsync(250);
     expect(view.items.value[0]?.prompt).toBe('new match');
-    expect(view.warningCount.value).toBe(0); expect(view.warnings.value).toEqual([]);
+    expect(view.warningCount.value).toBe(0);
+    expect(view.warnings.value).toEqual([]);
     await view.dispose();
   });
 
@@ -387,22 +421,28 @@ describe('image history query ownership', () => {
     await view.select({ id: first.id });
     const deletion = view.remove({ id: first.id });
     const selection = view.select({ id: second.id });
-    deleting.resolve(); await deletion;
+    deleting.resolve();
+    await deletion;
     expect(mocks.remove).toHaveBeenCalledWith({ id: first.id });
     expect(view.selected.value).toBeUndefined();
     expect(view.detailLoading.value).toBe(true);
     switch (outcome) {
     case 'succeeds':
-      selecting.resolve(second); await selection;
+      selecting.resolve(second);
+      await selection;
       expect(view.selected.value).toEqual(second);
       expect(view.detailError.value).toBe('');
       break;
     case 'fails':
-      selecting.reject(new Error('Second record is unreadable')); await selection;
+      selecting.reject(new Error('Second record is unreadable'));
+      await selection;
       expect(view.selected.value).toBeUndefined();
       expect(view.detailError.value).toBe('Second record is unreadable');
       break;
-    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
     }
     expect(view.detailLoading.value).toBe(false);
     await view.dispose();
@@ -436,10 +476,12 @@ describe('image history query ownership', () => {
     const deletion = view.remove({ id: first.id });
     const rejection = expect(deletion).rejects.toThrow('Cannot delete first');
     const selection = view.select({ id: second.id });
-    deleting.reject(new Error('Cannot delete first')); await rejection;
+    deleting.reject(new Error('Cannot delete first'));
+    await rejection;
     expect(view.selected.value).toEqual(first);
     expect(view.detailLoading.value).toBe(true);
-    selecting.resolve(second); await selection;
+    selecting.resolve(second);
+    await selection;
     expect(view.selected.value).toEqual(second);
     expect(mocks.query).not.toHaveBeenCalled();
     await view.dispose();
@@ -456,8 +498,10 @@ describe('image history query ownership', () => {
     const deletion = view.remove({ id: first.id });
     await view.select({ id: second.id });
     const selection = view.select({ id: first.id });
-    deleting.resolve(); await deletion;
-    selecting.resolve(first); await selection;
+    deleting.resolve();
+    await deletion;
+    selecting.resolve(first);
+    await selection;
     expect(view.selected.value).toEqual(second);
     expect(view.detailLoading.value).toBe(false);
     await view.dispose();
@@ -465,7 +509,9 @@ describe('image history query ownership', () => {
 
   it('does not issue a delayed query after disposal', async () => {
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
-    view.setQuery({ text: 'cat' }); await view.dispose(); await vi.advanceTimersByTimeAsync(500);
+    view.setQuery({ text: 'cat' });
+    await view.dispose();
+    await vi.advanceTimersByTimeAsync(500);
     expect(mocks.query).not.toHaveBeenCalled();
   });
 
@@ -544,10 +590,12 @@ describe('image history query ownership', () => {
     const view = useImageGenerationHistory({ getStorageType: () => storageType });
     const loading = view.reload();
     for (const text of ['one', 'two', 'latest']) {
-      view.setQuery({ text }); await vi.advanceTimersByTimeAsync(250);
+      view.setQuery({ text });
+      await vi.advanceTimersByTimeAsync(250);
     }
     expect(mocks.query).toHaveBeenCalledTimes(1);
-    first.resolve(page({ label: 'old' })); await loading;
+    first.resolve(page({ label: 'old' }));
+    await loading;
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.query).toHaveBeenCalledTimes(2);
     expect(mocks.query.mock.calls[1]?.[0].query.text).toBe('latest');

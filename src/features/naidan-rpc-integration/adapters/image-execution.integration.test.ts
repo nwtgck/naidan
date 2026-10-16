@@ -18,8 +18,13 @@ const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registr
 function image(): Blob {
   // Structural wire fixture only: no real PNG decoding, CRC or GPU is tested.
   const bytes = new Uint8Array(57), view = new DataView(bytes.buffer);
-  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
-  view.setUint32(16, 256); view.setUint32(20, 256); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  view.setUint32(8, 13);
+  view.setUint32(12, 0x49484452);
+  view.setUint32(16, 256);
+  view.setUint32(20, 256);
+  view.setUint32(37, 0x49444154);
+  view.setUint32(49, 0x49454e44);
   return new Blob([bytes], { type: 'image/png' });
 }
 
@@ -47,7 +52,8 @@ async function setup() {
   const pair = transportPair({ capacity: 2, fragmentBytes: 79 }), lifetime = new AbortController();
   const closed = Promise.withResolvers<void>();
   const abort = () => {
-    pair.close(); closed.resolve();
+    pair.close();
+    closed.resolve();
   };
   const unexpected = vi.fn((): never => {
     throw new Error('No catalogue or other inference method was permitted');
@@ -83,7 +89,9 @@ async function setup() {
       inference,
     },
   });
-  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  await manager.setEnabled({ enabled: true });
+  await manager.reload();
+  await manager.connect({ id: record.id });
   const plan = preparePeerImageExecution({ binding: manager.bindClient({ id: record.id }), input: input() });
   const args = { seed: '42', signal: new AbortController().signal, onProgress: vi.fn(), onPreview: vi.fn() };
   return {
@@ -96,7 +104,10 @@ async function setup() {
     open,
     args,
     async close() {
-      await manager.setEnabled({ enabled: false }); lifetime.abort(); provider.dispose(); abort();
+      await manager.setEnabled({ enabled: false });
+      lifetime.abort();
+      provider.dispose();
+      abort();
     },
   };
 }
@@ -112,7 +123,8 @@ it('uses a real manager, typed caller and handler once per explicit image withou
   expect((await fixture.plan.start(fixture.args).result).status).toBe('completed');
   expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
   expect(fixture.generateImage.mock.calls.map(([args]) => args.input.parameters.seed)).toEqual(['42', '43']);
-  expect(fixture.unexpected).not.toHaveBeenCalled(); expect(fixture.open).toHaveBeenCalledOnce();
+  expect(fixture.unexpected).not.toHaveBeenCalled();
+  expect(fixture.open).toHaveBeenCalledOnce();
   expect(fixture.args.onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 2, steps: 4 } });
 });
 
@@ -127,9 +139,11 @@ it('does not retry a denied generation or retarget a disconnected accepted plan'
   expect((await fixture.plan.start(fixture.args).result).status).toBe('failed');
   expect(fixture.generateImage).not.toHaveBeenCalled();
   fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: ['generateImage'] });
-  await Promise.resolve(); expect(fixture.generateImage).not.toHaveBeenCalled();
+  await Promise.resolve();
+  expect(fixture.generateImage).not.toHaveBeenCalled();
   expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
   await fixture.manager.disconnect({ id: fixture.record.id });
   expect((await fixture.plan.start({ ...fixture.args, seed: '44' }).result).status).toBe('cancelled');
-  expect(fixture.generateImage).toHaveBeenCalledOnce(); expect(fixture.open).toHaveBeenCalledOnce();
+  expect(fixture.generateImage).toHaveBeenCalledOnce();
+  expect(fixture.open).toHaveBeenCalledOnce();
 });

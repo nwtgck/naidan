@@ -9,8 +9,10 @@ afterEach(() => vi.restoreAllMocks());
 describe('synchronous projector tensor tracing', () => {
   it.each([4, 8] as const)('reads only metadata with %i-byte pointers and does not confuse pooling modes with op names', pointerBytes => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const memory = new Uint8Array(64); const view = new DataView(memory.buffer);
-    view.setInt32(0, 2, true); view.setInt32(4, 1, true);
+    const memory = new Uint8Array(64);
+    const view = new DataView(memory.buffer);
+    view.setInt32(0, 2, true);
+    view.setInt32(4, 1, true);
     [768n, 240n, 3n, 1n].forEach((value, index) => view.setBigInt64(8 + index * 8, value, true));
     const tensorPointer = pointerBytes === 4 ? 0x80000000n : 0x100000000n;
     let callback: (tensor: number | bigint, ask: number, userData: number | bigint) => number = () => 0;
@@ -21,25 +23,30 @@ describe('synchronous projector tensor tracing', () => {
       bytes: ({ pointer, length }: { pointer: bigint, length: number }) => memory.subarray(Number(pointer - tensorPointer), Number(pointer - tensorPointer) + length),
       module: {
         addFunction: (fn: typeof callback) => {
-          callback = fn; return 9;
+          callback = fn;
+          return 9;
         },
         removeFunction: vi.fn(),
       },
     } as unknown as Core;
-    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} }); const trace = createProjectorTrace({ core });
+    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
+    const trace = createProjectorTrace({ core });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        trace.release(); unsubscribe();
+        trace.release();
+        unsubscribe();
       },
     };
     const pointer = pointerBytes === 4 ? -2147483648 : tensorPointer;
-    expect(callback(pointer, 1, 0)).toBe(1); expect(callback(pointer, 0, 0)).toBe(1);
+    expect(callback(pointer, 1, 0)).toBe(1);
+    expect(callback(pointer, 0, 0)).toBe(1);
     const diagnostics = readDiagnostics({ calls: debug.mock.calls });
     expect(diagnostics).toHaveLength(2);
     expect(diagnostics[0]).toEqual(expect.objectContaining({ event: 'native-node-start', nativeOpName: 'GGML_OP_ADD', nativeTensorType: 1, nativeTensorShape: [768, 240, 3, 1] }));
     expect(diagnostics[1]).toEqual(expect.objectContaining({ event: 'native-node-complete', nativeNode: 1 }));
     view.setBigInt64(8, 9007199254740992n, true);
-    expect(() => callback(pointer, 1, 0)).not.toThrow(); expect(callback(pointer, 0, 0)).toBe(1);
+    expect(() => callback(pointer, 1, 0)).not.toThrow();
+    expect(callback(pointer, 0, 0)).toBe(1);
     expect(readDiagnostics({ calls: debug.mock.calls }).filter(entry => entry.stage === 'projector-trace')).toHaveLength(1);
   });
 });
@@ -57,8 +64,11 @@ describe('projector input tensor metadata', () => {
     }
     for (const index of [0, 1]) {
       const value = base + BigInt(128 * (index + 1));
-      if (pointerBytes === 8) view.setBigUint64(40 + index * 8, value, true);
-      else view.setUint32(40 + index * 4, Number(value), true);
+      if (pointerBytes === 8) {
+        view.setBigUint64(40 + index * 8, value, true);
+      } else {
+        view.setUint32(40 + index * 4, Number(value), true);
+      }
     }
     let callback: (tensor: number | bigint, ask: number, userData: number | bigint) => number = () => 0;
     const reads: { pointer: bigint, length: number }[] = [];
@@ -76,12 +86,15 @@ describe('projector input tensor metadata', () => {
       bytes: ({ pointer, length }: { pointer: bigint, length: number }) => {
         reads.push({ pointer, length });
         const offset = Number(pointer - base);
-        if (offset < 0 || offset + length > memory.length) throw new RangeError('Invalid metadata pointer');
+        if (offset < 0 || offset + length > memory.length) {
+          throw new RangeError('Invalid metadata pointer');
+        }
         return memory.subarray(offset, offset + length);
       },
       module: {
         addFunction: (fn: typeof callback) => {
-          callback = fn; return 11;
+          callback = fn;
+          return 11;
         },
         removeFunction,
       },
@@ -112,8 +125,11 @@ describe('projector input tensor metadata', () => {
       expect(JSON.stringify(diagnostics)).not.toContain(String(base));
 
       // A missing input is not an invalid pointer, and later inputs keep their index.
-      if (pointerBytes === 8) view.setBigUint64(40, 0n, true);
-      else view.setUint32(40, 0, true);
+      if (pointerBytes === 8) {
+        view.setBigUint64(40, 0n, true);
+      } else {
+        view.setUint32(40, 0, true);
+      }
       expect(callback(pointer, 1, 0)).toBe(1);
       expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)?.nativeTensorInputs).toHaveLength(1);
       expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toMatchObject({ nativeTensorInputs: [{ index: 1 }] });
@@ -124,7 +140,9 @@ describe('projector input tensor metadata', () => {
       expect(callback(pointer, 0, 0)).toBe(1);
       expect(readDiagnostics({ calls: debug.mock.calls }).filter(entry => entry.stage === 'projector-trace')).toHaveLength(1);
     } finally {
-      trace.release(); trace.release(); unsubscribe();
+      trace.release();
+      trace.release();
+      unsubscribe();
     }
     expect(removeFunction).toHaveBeenCalledExactlyOnceWith(11);
   });

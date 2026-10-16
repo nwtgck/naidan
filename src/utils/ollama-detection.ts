@@ -6,13 +6,17 @@ export async function detectOllama({ url, headers }: {
   url: string,
   headers?: [string, string][],
 }): Promise<boolean> {
-  if (!url) return false;
+  if (!url) {
+    return false;
+  }
 
   try {
     const headerObj: Record<string, string> = {};
     if (headers) {
       for (const [k, v] of headers) {
-        if (k && v) headerObj[k] = v;
+        if (k && v) {
+          headerObj[k] = v;
+        }
       }
     }
 
@@ -21,7 +25,9 @@ export async function detectOllama({ url, headers }: {
       headers: headerObj,
     });
 
-    if (!response.ok) return false;
+    if (!response.ok) {
+      return false;
+    }
 
     const text = await response.text();
     return text.includes('Ollama is running');

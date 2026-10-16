@@ -15,6 +15,7 @@ export function retryModelLaunch(): void {
 
 export const TEST_ONLY = {
   reset: () => {
-    modelLaunchEntryState.value = { status: 'idle' }; modelLaunchRetry.value = 0;
+    modelLaunchEntryState.value = { status: 'idle' };
+    modelLaunchRetry.value = 0;
   },
 };

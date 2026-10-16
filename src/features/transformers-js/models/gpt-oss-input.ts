@@ -9,16 +9,24 @@ function jsonSchemaToTsType({ schema }: { schema: Record<string, unknown> }): st
   if (type === 'object') {
     const properties = schema['properties'] as Record<string, Record<string, unknown>> | undefined;
     const required = schema['required'] as string[] | undefined;
-    if (!properties || Object.keys(properties).length === 0) return '{}';
+    if (!properties || Object.keys(properties).length === 0) {
+      return '{}';
+    }
     const fields = Object.entries(properties).map(([key, prop]) => {
       const isRequired = required?.includes(key) ?? false;
       return `  ${key}${isRequired ? '' : '?'}: ${jsonSchemaToTsType({ schema: prop })},`;
     });
     return `{\n${fields.join('\n')}\n}`;
   }
-  if (type === 'string') return 'string';
-  if (type === 'number' || type === 'integer') return 'number';
-  if (type === 'boolean') return 'boolean';
+  if (type === 'string') {
+    return 'string';
+  }
+  if (type === 'number' || type === 'integer') {
+    return 'number';
+  }
+  if (type === 'boolean') {
+    return 'boolean';
+  }
   if (type === 'array') {
     const items = schema['items'] as Record<string, unknown> | undefined;
     return items ? `${jsonSchemaToTsType({ schema: items })}[]` : 'unknown[]';
@@ -84,7 +92,9 @@ export function buildGptOssPromptMessages({
 }
 
 export function readGptOssTextContent({ content }: { content: InferenceMessage['content'] }): string {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') {
+    return content;
+  }
   // Harmony messages have a text body. Join only at this native boundary,
   // without separators or trimming; never turn an unsupported image into silence.
   let body = '';

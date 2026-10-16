@@ -13,7 +13,9 @@ async function hashFile({ file, signal }: { file: File; signal: AbortSignal }): 
     const length = Math.min(chunkBytes, file.size - offset);
     const bytes = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
     signal.throwIfAborted();
-    if (bytes.length !== length) throw new Error('Model file changed during content verification');
+    if (bytes.length !== length) {
+      throw new Error('Model file changed during content verification');
+    }
     hash.update({ bytes });
     if (performance.now() - yieldedAt >= 40) {
       await new Promise<void>(resolve => setTimeout(resolve, 0));
@@ -40,21 +42,29 @@ export function createVerifiedImageModelFiles() {
         signal.throwIfAborted();
         const duplicate = next.get(key);
         if (duplicate) {
-          if (duplicate.file !== replacements.get(file)) throw new Error('Conflicting model file selection');
+          if (duplicate.file !== replacements.get(file)) {
+            throw new Error('Conflicting model file selection');
+          }
           continue;
         }
         // Even an unchanged File object may have an externally mutable backing file.
         const sha256 = await hashFile({ file, signal });
-        if (expectedSha256 !== undefined && sha256 !== expectedSha256) throw new Error('Published model content does not match its receipt');
+        if (expectedSha256 !== undefined && sha256 !== expectedSha256) {
+          throw new Error('Published model content does not match its receipt');
+        }
         const previous = retained.get(key);
         let selected = file;
         if (previous && previous.sha256 === sha256 && previous.file.size === file.size && previous.file.lastModified === file.lastModified) {
           try {
             // Retained mounts must remain readable, as well as matching the original digest.
-            if (previous.file === file || await hashFile({ file: previous.file, signal }) === previous.sha256) selected = previous.file;
+            if (previous.file === file || await hashFile({ file: previous.file, signal }) === previous.sha256) {
+              selected = previous.file;
+            }
           } catch (error) {
             signal.throwIfAborted();
-            if (error instanceof DOMException && error.name === 'AbortError') throw error;
+            if (error instanceof DOMException && error.name === 'AbortError') {
+              throw error;
+            }
             // A stale disk snapshot is replaced by the freshly verified File.
           }
         }

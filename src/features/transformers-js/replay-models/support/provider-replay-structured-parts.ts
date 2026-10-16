@@ -55,19 +55,36 @@ export function validateStructuredPartsContract({ contract, evidence }: {
   if (new Set(completionTokenIds).size !== completionTokenIds.length || new Set(endTokenIds).size !== endTokenIds.length) {
     throw new Error('Duplicate structured-parts completion token');
   }
-  if (endTokenIds.some(id => !completionTokenIds.includes(id))) throw new Error('Every structured-parts end token must be a completion token');
-  if (new Set(invocations.map(item => item.callOrdinal)).size !== invocations.length) throw new Error('Duplicate structured-parts invocation');
-  if (new Set(requests.map(item => item.scenario)).size !== requests.length) throw new Error('Duplicate structured-parts request');
-  if (new Set(legacyInputProjections.map(item => item.scenario)).size !== legacyInputProjections.length) throw new Error('Duplicate legacy input projection');
+  if (endTokenIds.some(id => !completionTokenIds.includes(id))) {
+    throw new Error('Every structured-parts end token must be a completion token');
+  }
+  if (new Set(invocations.map(item => item.callOrdinal)).size !== invocations.length) {
+    throw new Error('Duplicate structured-parts invocation');
+  }
+  if (new Set(requests.map(item => item.scenario)).size !== requests.length) {
+    throw new Error('Duplicate structured-parts request');
+  }
+  if (new Set(legacyInputProjections.map(item => item.scenario)).size !== legacyInputProjections.length) {
+    throw new Error('Duplicate legacy input projection');
+  }
   for (const item of invocations) {
-    if (!evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)) throw new Error('Unknown structured-parts invocation');
+    if (!evidence.invocations.some(invocation => invocation.callOrdinal === item.callOrdinal)) {
+      throw new Error('Unknown structured-parts invocation');
+    }
     switch (item.terminal.kind) {
     case 'stream-end': break;
     case 'control':
-      if (!completionTokenIds.includes(item.terminal.tokenId)) throw new Error('Undeclared structured-parts terminal control');
-      if (item.terminal.trailerTokenIds !== undefined) tokenId.array().max(16).parse(item.terminal.trailerTokenIds);
+      if (!completionTokenIds.includes(item.terminal.tokenId)) {
+        throw new Error('Undeclared structured-parts terminal control');
+      }
+      if (item.terminal.trailerTokenIds !== undefined) {
+        tokenId.array().max(16).parse(item.terminal.trailerTokenIds);
+      }
       break;
-    default: { const exhaustive: never = item.terminal; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = item.terminal;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   for (const item of requests) {
@@ -77,7 +94,9 @@ export function validateStructuredPartsContract({ contract, evidence }: {
     }
   }
   for (const projection of legacyInputProjections) {
-    if (!requests.some(request => request.scenario === projection.scenario)) throw new Error('Legacy input projection requires a structured-parts request');
+    if (!requests.some(request => request.scenario === projection.scenario)) {
+      throw new Error('Legacy input projection requires a structured-parts request');
+    }
   }
 }
 
@@ -119,7 +138,10 @@ export function verifyStructuredInvocationTermination({ invocation, expected, co
     expect(laterControls.every(control => contract.endTokenIds.includes(control.id)), 'no later non-end control follows the declared native protocol marker').toBe(true);
     break;
   }
-  default: { const exhaustive: never = expected.terminal; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = expected.terminal;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -130,7 +152,9 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
   let assistant: { messageId: string; parts: Map<string, { index: number; value: StructuredPartsExpectedPart }>; callIds: Set<string> } | undefined;
 
   function finishAssistant({ terminal }: { terminal: StructuredPartsExpectedTerminal }): void {
-    if (assistant === undefined) throw new Error('Structured terminal outside an assistant');
+    if (assistant === undefined) {
+      throw new Error('Structured terminal outside an assistant');
+    }
     const ordered = [...assistant.parts.values()].sort((left, right) => left.index - right.index);
     expect(ordered.map(item => item.index), 'contiguous structured part indices').toEqual(ordered.map((_item, index) => index));
     projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'assistant' }>>()({
@@ -142,16 +166,24 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
   }
   function callOrdinal({ rawId }: { rawId: string }): number {
     const ordinal = callIds.get(rawId);
-    if (ordinal === undefined) throw new Error('Tool event before its structured call');
+    if (ordinal === undefined) {
+      throw new Error('Tool event before its structured call');
+    }
     return ordinal;
   }
   function beginToolPhase({ rawId }: { rawId: string }): void {
     if (assistant === undefined) {
-      if (!toolPhaseCallIds.has(rawId)) throw new Error('Tool execution started without an open structured call boundary');
+      if (!toolPhaseCallIds.has(rawId)) {
+        throw new Error('Tool execution started without an open structured call boundary');
+      }
       return;
     }
-    if (!assistant.callIds.has(rawId)) throw new Error('Tool execution started without a structured call');
-    for (const callId of assistant.callIds) toolPhaseCallIds.add(callId);
+    if (!assistant.callIds.has(rawId)) {
+      throw new Error('Tool execution started without a structured call');
+    }
+    for (const callId of assistant.callIds) {
+      toolPhaseCallIds.add(callId);
+    }
     // generateChatTurn exposes one overall result after its caller-owned tool loop.
     // A tool event is the observed boundary here; no per-assistant terminal was delivered.
     finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'none' }>>()({ type: 'none' }) });
@@ -164,7 +196,9 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
     case 'assistant_message': {
       const { kind: _kind, messageId, sequence: _sequence, phase: _phase, ...unhandled } = event;
       unhandled satisfies Record<PropertyKey, never>;
-      if (assistant !== undefined) throw new Error('New structured assistant before prior terminal');
+      if (assistant !== undefined) {
+        throw new Error('New structured assistant before prior terminal');
+      }
       toolPhaseCallIds.clear();
       assistant = { messageId, parts: new Map(), callIds: new Set() };
       break;
@@ -172,7 +206,9 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
     case 'part_text': {
       const { kind: _kind, messageId, partId, index, partType, text, completeness, sequence: _sequence, phase: _phase, ...unhandled } = event;
       unhandled satisfies Record<PropertyKey, never>;
-      if (assistant?.messageId !== messageId) throw new Error('Structured text outside its assistant');
+      if (assistant?.messageId !== messageId) {
+        throw new Error('Structured text outside its assistant');
+      }
       const previous = assistant.parts.get(partId);
       if (previous !== undefined) {
         if (previous.index !== index || previous.value.type === 'tool_call' || previous.value.type !== partType
@@ -213,51 +249,72 @@ function projectStructuredEvents({ events }: { events: readonly ProductionProvid
       break;
     }
     case 'generation_finished': {
-      const { kind: _kind, next, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'finished' }>>()({ type: 'finished', next }) }); break;
+      const { kind: _kind, next, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'finished' }>>()({ type: 'finished', next }) });
+break;
     }
     case 'generation_interrupted': {
-      const { kind: _kind, reason, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'interrupted' }>>()({ type: 'interrupted', reason }) }); break;
+      const { kind: _kind, reason, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'interrupted' }>>()({ type: 'interrupted', reason }) });
+break;
     }
     case 'generation_error': {
-      const { kind: _kind, errorName, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'error' }>>()({ type: 'error', errorName }) }); break;
+      const { kind: _kind, errorName, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+finishAssistant({ terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'error' }>>()({ type: 'error', errorName }) });
+break;
     }
     case 'tool-started': {
-      const { kind, toolCallId, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      beginToolPhase({ rawId: toolCallId });
-      projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-started' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }) })); break;
+      const { kind, toolCallId, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+beginToolPhase({ rawId: toolCallId });
+projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-started' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }) }));
+break;
     }
     case 'tool-output': {
-      const { kind, toolCallId, stream, text, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      beginToolPhase({ rawId: toolCallId });
-      projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-output' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), stream, text })); break;
+      const { kind, toolCallId, stream, text, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+beginToolPhase({ rawId: toolCallId });
+projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-output' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), stream, text }));
+break;
     }
     case 'tool-exit': {
-      const { kind, toolCallId, exitCode, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      beginToolPhase({ rawId: toolCallId });
-      projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-exit' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), exitCode })); break;
+      const { kind, toolCallId, exitCode, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+beginToolPhase({ rawId: toolCallId });
+projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-exit' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), exitCode }));
+break;
     }
     case 'tool-success': {
-      const { kind, toolCallId, content, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      beginToolPhase({ rawId: toolCallId });
-      projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-success' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), content })); break;
+      const { kind, toolCallId, content, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+beginToolPhase({ rawId: toolCallId });
+projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-success' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), content }));
+break;
     }
     case 'tool-error': {
-      const { kind, toolCallId, code, messageCapture: _messageCapture, sequence: _sequence, phase: _phase, ...unhandled } = event; unhandled satisfies Record<PropertyKey, never>;
-      beginToolPhase({ rawId: toolCallId });
-      projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-error' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), code })); break;
+      const { kind, toolCallId, code, messageCapture: _messageCapture, sequence: _sequence, phase: _phase, ...unhandled } = event;
+unhandled satisfies Record<PropertyKey, never>;
+beginToolPhase({ rawId: toolCallId });
+projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'tool-error' }>>()({ kind, call: callOrdinal({ rawId: toolCallId }), code }));
+break;
     }
     case 'chunk': case 'assistant-start': case 'tool-call': throw new Error('Legacy callback event in structured-parts observation');
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   }
-  if (assistant !== undefined) projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'assistant' }>>()({
-    kind: 'assistant',
-    parts: [...assistant.parts.values()].sort((left, right) => left.index - right.index).map(item => item.value),
-    terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'none' }>>()({ type: 'none' }),
-  }));
+  if (assistant !== undefined) {
+    projected.push(exactObject<Extract<StructuredPartsExpectedEvent, { kind: 'assistant' }>>()({
+      kind: 'assistant',
+      parts: [...assistant.parts.values()].sort((left, right) => left.index - right.index).map(item => item.value),
+      terminal: exactObject<Extract<StructuredPartsExpectedTerminal, { type: 'none' }>>()({ type: 'none' }),
+    }));
+  }
   return projected;
 }
 
@@ -278,19 +335,27 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
   precedingEvents: readonly ProductionProviderTraceEvent[] | undefined;
   expectedLegacyAssistant: { role: 'assistant'; content: string } | undefined;
 }): void {
-  if (isDeepStrictEqual(input, recordedInput)) return;
+  if (isDeepStrictEqual(input, recordedInput)) {
+    return;
+  }
   if (expectedLegacyAssistant === undefined) {
     expect(input, 'structured Provider input without a reviewed legacy projection').toEqual(recordedInput);
     return;
   }
   const current = z.object({ messages: z.array(z.unknown()) }).passthrough().parse(input);
   const recorded = z.object({ messages: z.array(z.unknown()) }).passthrough().parse(recordedInput);
-  if (current.messages.length !== recorded.messages.length || precedingEvents === undefined) throw new Error('Legacy structured input projection has no matching history');
+  if (current.messages.length !== recorded.messages.length || precedingEvents === undefined) {
+    throw new Error('Legacy structured input projection has no matching history');
+  }
   const assistantIndices = current.messages.flatMap((message, index) => {
-    if (typeof message !== 'object' || message === null || Array.isArray(message)) return [];
+    if (typeof message !== 'object' || message === null || Array.isArray(message)) {
+      return [];
+    }
     return (message as { role?: unknown }).role === 'assistant' && 'parts' in message ? [index] : [];
   });
-  if (assistantIndices.length !== 1) throw new Error('Legacy structured input projection requires one parts assistant');
+  if (assistantIndices.length !== 1) {
+    throw new Error('Legacy structured input projection requires one parts assistant');
+  }
   const index = assistantIndices[0]!;
   expect(recorded.messages[index], 'recorded legacy assistant matches the model-owned expected projection')
     .toEqual(expectedLegacyAssistant);
@@ -300,9 +365,13 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
   let messageId: string | undefined;
   for (const event of precedingEvents) {
     switch (event.kind) {
-    case 'assistant_message': messageId = event.messageId; revisions.clear(); break;
+    case 'assistant_message': messageId = event.messageId;
+      revisions.clear();
+      break;
     case 'part_text':
-      if (event.messageId !== messageId) throw new Error('Legacy projection text outside its assistant');
+      if (event.messageId !== messageId) {
+        throw new Error('Legacy projection text outside its assistant');
+      }
       revisions.set(event.partId, {
         index: event.index,
         part: exactObject<{
@@ -311,7 +380,9 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
       });
       break;
     case 'part_call':
-      if (event.messageId !== messageId) throw new Error('Legacy projection call outside its assistant');
+      if (event.messageId !== messageId) {
+        throw new Error('Legacy projection call outside its assistant');
+      }
       revisions.set(event.partId, {
         index: event.index,
         part: exactObject<{
@@ -330,7 +401,10 @@ export function assertStructuredReplayInputCompatibility({ input, recordedInput,
     case 'generation_finished': case 'generation_interrupted': case 'generation_error':
     case 'tool-started': case 'tool-output': case 'tool-exit': case 'tool-success': case 'tool-error':
     case 'chunk': case 'assistant-start': case 'tool-call': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   const parts = [...revisions.values()].sort((left, right) => left.index - right.index);

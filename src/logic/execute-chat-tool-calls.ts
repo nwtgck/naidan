@@ -19,9 +19,15 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
   onChange: () => void | Promise<void>,
   persistContent: ({ toolCallId, type, text }: { toolCallId: ToolCallId, type: 'result' | 'error', text: string }) => Promise<TextOrBinaryObject>,
 }): Promise<void> {
-  if (node.parts.length !== 0) throw new Error('Tool execution requires a new tool message.');
-  if (new Set(tools.map(tool => tool.name)).size !== tools.length) throw new Error('Duplicate tool definitions.');
-  if (new Set(calls.map(call => call.id)).size !== calls.length) throw new Error('Duplicate completed tool-call IDs.');
+  if (node.parts.length !== 0) {
+    throw new Error('Tool execution requires a new tool message.');
+  }
+  if (new Set(tools.map(tool => tool.name)).size !== tools.length) {
+    throw new Error('Duplicate tool definitions.');
+  }
+  if (new Set(calls.map(call => call.id)).size !== calls.length) {
+    throw new Error('Duplicate completed tool-call IDs.');
+  }
   const pendingCalls = calls.map(call => {
     const { id, type, function: fn, ...unhandled } = call;
     unhandled satisfies Record<PropertyKey, never>;
@@ -41,7 +47,9 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
     // Capture the node's reactive view after insertion. Array positions can
     // change while execution or persistence is awaiting another operation.
     const part = node.parts.at(-1);
-    if (!part) throw new Error('The owned tool result was removed or replaced.');
+    if (!part) {
+      throw new Error('The owned tool result was removed or replaced.');
+    }
     // Notifications and persistence failures are not recoverable tool errors.
     try {
       await onChange();
@@ -62,7 +70,9 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         eventPhase = 'settled';
       }
 
-      if (!node.parts.includes(part) || part.result.toolCallId !== call.id) throw new Error('The owned tool result was removed or replaced.');
+      if (!node.parts.includes(part) || part.result.toolCallId !== call.id) {
+        throw new Error('The owned tool result was removed or replaced.');
+      }
       let content: { type: 'result' | 'error', text: string };
       switch (outcome.status) {
       case 'success': {
@@ -85,7 +95,9 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
       }
       }
       await Promise.all([...eventJobs]);
-      if (eventFailure !== undefined) throw eventFailure.error;
+      if (eventFailure !== undefined) {
+        throw eventFailure.error;
+      }
       const recorded = part.result;
       await onChange();
       // Retain the inline result first. A failed binary write must not erase the
@@ -113,8 +125,10 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         }
       })();
       switch (outcome.status) {
-      case 'success': part.result = { toolCallId: call.id, status: 'success', content: persisted }; break;
-      case 'error': part.result = { toolCallId: call.id, status: 'error', error: { code: outcome.code, message: persisted } }; break;
+      case 'success': part.result = { toolCallId: call.id, status: 'success', content: persisted };
+        break;
+      case 'error': part.result = { toolCallId: call.id, status: 'error', error: { code: outcome.code, message: persisted } };
+        break;
       default: {
         const _ex: never = outcome;
         throw new Error(`Unhandled tool outcome: ${_ex}`);
@@ -126,7 +140,9 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
       signal?.throwIfAborted();
 
       async function execute(): Promise<ToolExecutionOutcome> {
-        if (!tool) return { status: 'error', code: 'other', message: `Tool "${call.function.name}" not found.` };
+        if (!tool) {
+          return { status: 'error', code: 'other', message: `Tool "${call.function.name}" not found.` };
+        }
         let parsed: unknown;
         try {
           parsed = JSON.parse(call.function.arguments);
@@ -135,7 +151,9 @@ export async function executeChatToolCalls({ calls, tools, node, signal, approva
         }
         const validation = await tool.parametersSchema.strict().safeParseAsync(parsed);
         signal?.throwIfAborted();
-        if (!validation.success) return { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${validation.error.message}` };
+        if (!validation.success) {
+          return { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${validation.error.message}` };
+        }
         signal?.throwIfAborted();
         return await tool.execute({
           args: validation.data,

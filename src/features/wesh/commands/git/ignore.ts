@@ -22,8 +22,12 @@ function stripUnescapedTrailingSpaces({ value }: { value: string }): string {
   let end = value.length;
   while (end > 0 && value[end - 1] === ' ') {
     let backslashes = 0;
-    for (let index = end - 2; index >= 0 && value[index] === '\\'; index -= 1) backslashes += 1;
-    if (backslashes % 2 === 1) break;
+    for (let index = end - 2; index >= 0 && value[index] === '\\'; index -= 1) {
+      backslashes += 1;
+    }
+    if (backslashes % 2 === 1) {
+      break;
+    }
     end -= 1;
   }
   return value.slice(0, end);
@@ -31,9 +35,15 @@ function stripUnescapedTrailingSpaces({ value }: { value: string }): string {
 
 function parseRule({ line, basePath }: { line: string, basePath: string }): GitIgnoreRule | undefined {
   let value = stripUnescapedTrailingSpaces({ value: line.replace(/\r$/u, '') });
-  if (value.length === 0) return undefined;
-  if (value.startsWith('#')) return undefined;
-  if (value.startsWith('\\#')) value = value.slice(1);
+  if (value.length === 0) {
+    return undefined;
+  }
+  if (value.startsWith('#')) {
+    return undefined;
+  }
+  if (value.startsWith('\\#')) {
+    value = value.slice(1);
+  }
 
   let negated = false;
   if (value.startsWith('!')) {
@@ -42,12 +52,20 @@ function parseRule({ line, basePath }: { line: string, basePath: string }): GitI
   } else if (value.startsWith('\\!')) {
     value = value.slice(1);
   }
-  if (value.length === 0) return undefined;
+  if (value.length === 0) {
+    return undefined;
+  }
 
   const directoryOnly = value.endsWith('/') && !value.endsWith('\\/');
-  if (directoryOnly) value = value.slice(0, -1);
-  if (value.startsWith('/')) value = value.slice(1);
-  if (value.length === 0) return undefined;
+  if (directoryOnly) {
+    value = value.slice(0, -1);
+  }
+  if (value.startsWith('/')) {
+    value = value.slice(1);
+  }
+  if (value.length === 0) {
+    return undefined;
+  }
   const hasSlash = value.includes('/');
   return {
     basePath,
@@ -68,8 +86,12 @@ function isWithinBase({ path, basePath }: { path: string, basePath: string }): b
 }
 
 function relativeToBase({ path, basePath }: { path: string, basePath: string }): string {
-  if (basePath.length === 0) return path;
-  if (path === basePath) return '';
+  if (basePath.length === 0) {
+    return path;
+  }
+  if (path === basePath) {
+    return '';
+  }
   return path.slice(basePath.length + 1);
 }
 
@@ -78,10 +100,16 @@ function ruleMatches({ rule, path, isDirectory }: {
   path: string,
   isDirectory: boolean,
 }): boolean {
-  if (!isWithinBase({ path, basePath: rule.basePath })) return false;
-  if (rule.directoryOnly && !isDirectory) return false;
+  if (!isWithinBase({ path, basePath: rule.basePath })) {
+    return false;
+  }
+  if (rule.directoryOnly && !isDirectory) {
+    return false;
+  }
   const relative = relativeToBase({ path, basePath: rule.basePath });
-  if (relative.length === 0) return false;
+  if (relative.length === 0) {
+    return false;
+  }
   return rule.matcher.matches({ value: relative });
 }
 
@@ -92,7 +120,9 @@ function evaluateRules({ rules, path, isDirectory }: {
 }): boolean {
   let ignored = false;
   for (const rule of rules) {
-    if (ruleMatches({ rule, path, isDirectory })) ignored = !rule.negated;
+    if (ruleMatches({ rule, path, isDirectory })) {
+      ignored = !rule.negated;
+    }
   }
   return ignored;
 }
@@ -110,7 +140,9 @@ function matcherFromRules({ rules }: { rules: readonly GitIgnoreRule[] }): GitIg
   return {
     isIgnored: ({ path, isDirectory }) => {
       for (const parent of parentDirectories({ path })) {
-        if (evaluateRules({ rules, path: parent, isDirectory: true })) return true;
+        if (evaluateRules({ rules, path: parent, isDirectory: true })) {
+          return true;
+        }
       }
       return evaluateRules({ rules, path, isDirectory });
     },
@@ -121,7 +153,9 @@ function parseRules({ text, basePath }: { text: string, basePath: string }): Git
   const result: GitIgnoreRule[] = [];
   for (const line of text.split('\n')) {
     const rule = parseRule({ line, basePath });
-    if (rule !== undefined) result.push(rule);
+    if (rule !== undefined) {
+      result.push(rule);
+    }
   }
   return result;
 }
@@ -144,7 +178,9 @@ export async function loadIgnoreMatcher({ files, repository }: {
     }
     const currentMatcher = matcherFromRules({ rules });
     for await (const entry of files.readDir({ path: directoryPath })) {
-      if (entry.name === '.git' || entry.name === '.gitignore') continue;
+      if (entry.name === '.git' || entry.name === '.gitignore') {
+        continue;
+      }
       switch (entry.type) {
       case 'directory': {
         const relativePath = relativeToWorktree({ repository, absolutePath: entry.fullPath });

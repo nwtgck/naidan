@@ -41,12 +41,17 @@ function status({ choice }: { choice: ImageModelChoice }): string | undefined {
   case 'matching': return lazyStrings.stableDiffusionCppBrowser__structural_match();
   case 'unverified': return lazyStrings.stableDiffusionCppBrowser__unverified_candidate();
   case 'incompatible': return lazyStrings.stableDiffusionCppBrowser__incompatible_candidate();
-  default: { const exhaustive: never = choice.status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = choice.status;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 function place(): void {
-  if (!trigger.value) return;
+  if (!trigger.value) {
+    return;
+  }
   const rect = trigger.value.getBoundingClientRect();
   const width = Math.min(Math.max(rect.width, 340), 640, Math.max(0, window.innerWidth - 24));
   const below = Math.max(0, window.innerHeight - rect.bottom - 16);
@@ -64,35 +69,51 @@ function place(): void {
 
 function close({ restoreFocus }: { restoreFocus: boolean }): void {
   open.value = false;
-  if (restoreFocus && props.active && !props.disabled) trigger.value?.focus();
+  if (restoreFocus && props.active && !props.disabled) {
+    trigger.value?.focus();
+  }
 }
 
 async function show({ last }: { last: boolean }): Promise<void> {
-  if (props.disabled || !props.active) return;
+  if (props.disabled || !props.active) {
+    return;
+  }
   search.value = '';
   open.value = true;
   const selectedIndex = rows.value.findIndex(row => row.value === props.modelValue && !row.disabled);
   highlighted.value = selectedIndex >= 0 ? selectedIndex : 0;
-  if (last) highlighted.value = rows.value.findLastIndex(row => !row.disabled);
+  if (last) {
+    highlighted.value = rows.value.findLastIndex(row => !row.disabled);
+  }
   place();
   await nextTick();
-  if (!open.value || props.disabled || !props.active) return;
+  if (!open.value || props.disabled || !props.active) {
+    return;
+  }
   input.value?.focus();
   scrollHighlighted();
 }
 
 function toggle(): void {
-  if (open.value) close({ restoreFocus: false });
-  else void show({ last: false });
+  if (open.value) {
+    close({ restoreFocus: false });
+  } else {
+    void show({ last: false });
+  }
 }
 
 function scrollHighlighted(): void {
   const option = document.getElementById(`${id}-option-${highlighted.value}`);
-  if (!option || !list.value) return;
+  if (!option || !list.value) {
+    return;
+  }
   const bounds = list.value.getBoundingClientRect();
   const item = option.getBoundingClientRect();
-  if (item.top < bounds.top) list.value.scrollTop -= bounds.top - item.top;
-  else if (item.bottom > bounds.bottom) list.value.scrollTop += item.bottom - bounds.bottom;
+  if (item.top < bounds.top) {
+    list.value.scrollTop -= bounds.top - item.top;
+  } else if (item.bottom > bounds.bottom) {
+    list.value.scrollTop += item.bottom - bounds.bottom;
+  }
 }
 
 function move({ direction }: { direction: -1 | 1 }): void {
@@ -107,60 +128,102 @@ function move({ direction }: { direction: -1 | 1 }): void {
 }
 
 function choose({ value }: { value: string }): void {
-  if (props.disabled || !props.active || !open.value) return;
-  if (value && !props.choices.some(choice => choice.id === value && choice.status !== 'incompatible')) return;
+  if (props.disabled || !props.active || !open.value) {
+    return;
+  }
+  if (value && !props.choices.some(choice => choice.id === value && choice.status !== 'incompatible')) {
+    return;
+  }
   emit('update:modelValue', value);
   close({ restoreFocus: true });
 }
 
 function triggerKey({ event }: { event: KeyboardEvent }): void {
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
+    return;
+  }
   event.preventDefault();
   void show({ last: event.key === 'ArrowUp' });
 }
 
 function keydown({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing) return;
+  if (event.isComposing) {
+    return;
+  }
   switch (event.key) {
-  case 'ArrowDown': event.preventDefault(); move({ direction: 1 }); break;
-  case 'ArrowUp': event.preventDefault(); move({ direction: -1 }); break;
-  case 'Home': event.preventDefault(); highlighted.value = 0; void nextTick(scrollHighlighted); break;
-  case 'End': event.preventDefault(); highlighted.value = rows.value.findLastIndex(row => !row.disabled); void nextTick(scrollHighlighted); break;
+  case 'ArrowDown': event.preventDefault();
+    move({ direction: 1 });
+    break;
+  case 'ArrowUp': event.preventDefault();
+    move({ direction: -1 });
+    break;
+  case 'Home': event.preventDefault();
+    highlighted.value = 0;
+    void nextTick(scrollHighlighted);
+    break;
+  case 'End': event.preventDefault();
+    highlighted.value = rows.value.findLastIndex(row => !row.disabled);
+    void nextTick(scrollHighlighted);
+    break;
   case 'Enter':
     event.preventDefault();
-    if (highlightedRow.value) choose({ value: highlightedRow.value.value });
+    if (highlightedRow.value) {
+      choose({ value: highlightedRow.value.value });
+    }
     break;
-  case 'Escape': event.preventDefault(); event.stopPropagation(); close({ restoreFocus: true }); break;
-  case 'Tab': close({ restoreFocus: true }); break; // Continue natural tab order from the trigger.
+  case 'Escape': event.preventDefault();
+    event.stopPropagation();
+    close({ restoreFocus: true });
+    break;
+  case 'Tab': close({ restoreFocus: true });
+    break; // Continue natural tab order from the trigger.
   }
 }
 
 function outside({ event }: { event: Event }): void {
-  if (!open.value || !(event.target instanceof Node)) return;
-  if (!trigger.value?.contains(event.target) && !popup.value?.contains(event.target)) close({ restoreFocus: false });
+  if (!open.value || !(event.target instanceof Node)) {
+    return;
+  }
+  if (!trigger.value?.contains(event.target) && !popup.value?.contains(event.target)) {
+    close({ restoreFocus: false });
+  }
 }
 
 useEventTargetListener(document, 'pointerdown', event => outside({ event }), true);
 useEventTargetListener(document, 'focusin', event => outside({ event }));
 useEventTargetListener(document, 'toggle', event => {
-  if (open.value && event.target instanceof HTMLDetailsElement && !event.target.open && trigger.value && event.target.contains(trigger.value)) close({ restoreFocus: false });
+  if (open.value && event.target instanceof HTMLDetailsElement && !event.target.open && trigger.value && event.target.contains(trigger.value)) {
+    close({ restoreFocus: false });
+  }
 }, true);
 useEventTargetListener(window, 'resize', () => {
-  if (open.value) place();
+  if (open.value) {
+    place();
+  }
 });
 useEventTargetListener(document, 'scroll', event => {
-  if (open.value && (!(event.target instanceof Node) || !popup.value?.contains(event.target))) close({ restoreFocus: false });
+  if (open.value && (!(event.target instanceof Node) || !popup.value?.contains(event.target))) {
+    close({ restoreFocus: false });
+  }
 }, true);
 watch(() => [props.active, props.disabled], () => {
-  if (!props.active || props.disabled) close({ restoreFocus: false });
+  if (!props.active || props.disabled) {
+    close({ restoreFocus: false });
+  }
 });
 watch(search, () => {
   highlighted.value = rows.value.findIndex(row => row.choice && !row.disabled && matched.value.includes(row.choice));
-  if (highlighted.value < 0) highlighted.value = 0;
-  if (list.value) list.value.scrollTop = 0;
+  if (highlighted.value < 0) {
+    highlighted.value = 0;
+  }
+  if (list.value) {
+    list.value.scrollTop = 0;
+  }
 }, { flush: 'sync' });
 watch(rows, () => {
-  if (!rows.value[highlighted.value] || rows.value[highlighted.value]?.disabled) highlighted.value = 0;
+  if (!rows.value[highlighted.value] || rows.value[highlighted.value]?.disabled) {
+    highlighted.value = 0;
+  }
 });
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

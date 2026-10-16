@@ -23,7 +23,8 @@ const nativeBytes = await vi.hoisted(async () => {
   const Uint8Array = Object.getPrototypeOf(Buffer.prototype).constructor as Uint8ArrayConstructor;
   const ArrayBuffer = Buffer.alloc(0).buffer.constructor as ArrayBufferConstructor;
   // Install before schema and JSZip/pako modules capture byte constructors.
-  vi.stubGlobal('Uint8Array', Uint8Array); vi.stubGlobal('ArrayBuffer', ArrayBuffer);
+  vi.stubGlobal('Uint8Array', Uint8Array);
+  vi.stubGlobal('ArrayBuffer', ArrayBuffer);
   return { Uint8Array, ArrayBuffer };
 });
 
@@ -73,7 +74,8 @@ function artifactsForModel({ modelId, revision, extraShards }: typeof models[num
 afterEach(() => {
   vi.doUnmock('@/utils/worker-transport');
   vi.doUnmock('@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module');
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -103,7 +105,10 @@ describe('complete Full collection through Session and actual Worker transports'
       case 'different-revision': return { status: 'passed', nativeCalls: 13, recording: 'recorded', fulfilled: 13, rejected: 0, notStarted: 0 };
       case 'image-rejection': return { status: 'failed', nativeCalls: 13, recording: 'recorded', fulfilled: 12, rejected: 1, notStarted: 0 };
       case 'missing-cache': return { status: 'failed', nativeCalls: 0, recording: 'not-recorded', fulfilled: 0, rejected: 1, notStarted: 12 };
-      default: { const exhaustive: never = firstTarget; throw new Error('Unexpected Full control: ' + exhaustive); }
+      default: {
+        const exhaustive: never = firstTarget;
+        throw new Error('Unexpected Full control: ' + exhaustive);
+      }
       }
     })();
     // Missing-cache is a real offline Load failure: do not seed the first
@@ -142,7 +147,9 @@ describe('complete Full collection through Session and actual Worker transports'
       async [Symbol.asyncDispose]() {
         releaseFirstPlanning.resolve();
         wrapper?.unmount();
-        for (const worker of workers) worker.terminate();
+        for (const worker of workers) {
+          worker.terminate();
+        }
         await harness.close();
       },
     };
@@ -165,12 +172,15 @@ describe('complete Full collection through Session and actual Worker transports'
         let tokenizer: Awaited<ReturnType<typeof runtime.AutoTokenizer.from_pretrained>> | undefined;
         const loadTokenizer = runtime.AutoTokenizer.from_pretrained.bind(runtime.AutoTokenizer);
         vi.spyOn(runtime.AutoTokenizer, 'from_pretrained').mockImplementation(async (...args) => {
-          tokenizer = await loadTokenizer(...args); return tokenizer;
+          tokenizer = await loadTokenizer(...args);
+          return tokenizer;
         });
         const loadProcessor = runtime.AutoProcessor.from_pretrained.bind(runtime.AutoProcessor);
         vi.spyOn(runtime.AutoProcessor, 'from_pretrained').mockImplementation(async (...args) => {
           const processor = await loadProcessor(...args);
-          if (processor.tokenizer instanceof runtime.PreTrainedTokenizer) tokenizer = processor.tokenizer;
+          if (processor.tokenizer instanceof runtime.PreTrainedTokenizer) {
+            tokenizer = processor.tokenizer;
+          }
           return processor;
         });
         for (const autoClass of [runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
@@ -179,7 +189,9 @@ describe('complete Full collection through Session and actual Worker transports'
             const model = await loadModel(...args);
             model.generate = async options => {
               const input = options.input_ids;
-              if (!(input instanceof runtime.Tensor) || options.streamer === undefined || tokenizer === undefined) throw new Error('Expected actual native inputs, tokenizer and streamer');
+              if (!(input instanceof runtime.Tensor) || options.streamer === undefined || tokenizer === undefined) {
+                throw new Error('Expected actual native inputs, tokenizer and streamer');
+              }
               inferenceCalls++;
               runtimeObservation.inferenceCalls++;
               if (firstTarget === 'image-rejection' && productionOrdinal === 1 && options.pixel_values !== undefined) {
@@ -196,7 +208,9 @@ describe('complete Full collection through Session and actual Worker transports'
 <think>
 `) ? '</think>\n\n' : '';
               const output = tokenizer.encode(`${reasoningEnd}Synthetic collection reply.<|im_end|>`, { add_special_tokens: false }).map(BigInt);
-              options.streamer.put(input.tolist()); options.streamer.put([output]); options.streamer.end();
+              options.streamer.put(input.tolist());
+              options.streamer.put([output]);
+              options.streamer.end();
               const sequence = [...input.data].map(BigInt).concat(output);
               return { sequences: new runtime.Tensor('int64', sequence, [1, sequence.length]) };
             };
@@ -215,13 +229,16 @@ describe('complete Full collection through Session and actual Worker transports'
       for (const [path, bytes] of new Map([...fixture.files, ...artifactsForModel(model).map(item => [item.path, item.bytes] as const)])) {
         const key = `models/huggingface.co/${model.modelId}/resolve/${model.revision}/${path}`;
         let directory = fs.root;
-        for (const part of key.split('/').slice(0, -1)) directory = await directory.getDirectoryHandle(part, { create: true });
+        for (const part of key.split('/').slice(0, -1)) {
+          directory = await directory.getDirectoryHandle(part, { create: true });
+        }
         fs.files.set(key, Uint8Array.from(bytes));
         const slash = key.lastIndexOf('/');
         fs.files.set(`${key.slice(0, slash + 1)}.${key.slice(slash + 1)}.complete`, new Uint8Array());
       }
     }
-    fs.activity.length = 0; fs.enter({ nextPhase: 'full-investigation', mutationPolicy: 'read-only' });
+    fs.activity.length = 0;
+    fs.enter({ nextPhase: 'full-investigation', mutationPolicy: 'read-only' });
     const assets = resolveHostedTransformersRuntimeAssetUrls({ workerLocationUrl: 'http://localhost/assets/planning-worker.js', environment: import.meta.env.DEV ? 'development' : 'production', userAgent: 'Vitest', vendor: '' });
     const http = createInvestigationFullFlowTestHttp({
       models,
@@ -243,7 +260,9 @@ describe('complete Full collection through Session and actual Worker transports'
       InferenceSession: { create: (...args: unknown[]) => Promise<unknown> },
     };
     const createModelSession = vi.mocked(ort.InferenceSession.create).getMockImplementation();
-    if (createModelSession === undefined) throw new Error('Expected the owned native model-session substitute');
+    if (createModelSession === undefined) {
+      throw new Error('Expected the owned native model-session substitute');
+    }
     const controlBytes = createRuntimeControlModelBytes();
     const controlOptions: unknown[] = [];
     const controlInputs: number[][] = [];
@@ -254,7 +273,9 @@ describe('complete Full collection through Session and actual Worker transports'
     vi.mocked(ort.InferenceSession.create).mockImplementation(async (...args) => {
       const bytes = args[0];
       if (!(bytes instanceof Uint8Array) || bytes.byteLength !== controlBytes.byteLength
-        || !bytes.every((byte, index) => byte === controlBytes[index])) return createModelSession(...args);
+        || !bytes.every((byte, index) => byte === controlBytes[index])) {
+        return createModelSession(...args);
+      }
       controlOptions.push(args[1]);
       return {
         run: vi.fn(async (feeds: unknown) => {
@@ -269,7 +290,9 @@ describe('complete Full collection through Session and actual Worker transports'
     });
     vi.doMock('@/features/transformers-js/model-support-investigation/worker/import-planning-runtime-module', () => ({
       importPlanningRuntimeModule: async ({ url }: { url: string }) => {
-        if (url !== assets.mjsUrl) throw new Error('Unexpected native planning module evaluation');
+        if (url !== assets.mjsUrl) {
+          throw new Error('Unexpected native planning module evaluation');
+        }
         // Preflight has already fetched and SHA-256 verified the installed MJS.
         // Node cannot natively evaluate its browser-origin HTTP URL.
       },
@@ -280,7 +303,9 @@ describe('complete Full collection through Session and actual Worker transports'
         ...actual,
         exposeWorkerRemote: ({ api, endpoint }: Parameters<typeof actual.exposeWorkerRemote>[0]) => {
           startupStages.push('expose');
-          if (endpoint !== undefined || activeWorker === undefined) throw new Error('Unexpected Worker-global exposure');
+          if (endpoint !== undefined || activeWorker === undefined) {
+            throw new Error('Unexpected Worker-global exposure');
+          }
           actual.exposeWorkerRemote({ api, endpoint: activeWorker.endpoint });
         },
       };
@@ -295,7 +320,9 @@ describe('complete Full collection through Session and actual Worker transports'
             : pathname.endsWith('/model-support-investigation/evidence-worker/entry.ts') ? 'evidence'
               : pathname.endsWith('/model-support-investigation/fresh-metadata-worker/entry.ts') ? 'fresh-metadata'
                 : pathname.endsWith('/download-verification/model-artifact-request-worker/entry.ts') ? 'request-observer' : undefined;
-        if (kind === undefined) throw new Error(`Unexpected Full Worker entry: ${pathname}`);
+        if (kind === undefined) {
+          throw new Error(`Unexpected Full Worker entry: ${pathname}`);
+        }
         expect(options?.type).toBe('module');
         super({
           start: async ({ worker }) => {
@@ -309,7 +336,9 @@ describe('complete Full collection through Session and actual Worker transports'
             // This sequential in-process platform reuses its browser image
             // globals, but each entry must capture a fresh base fetch, never
             // the preceding Production Worker's OPFS interception wrapper.
-              if (kind === 'production') nativeSelf.fetch = originalFetch;
+              if (kind === 'production') {
+                nativeSelf.fetch = originalFetch;
+              }
               vi.stubGlobal('self', kind === 'production' ? nativeSelf : { fetch: planningFetch, location: new NodeUrl(`http://localhost/assets/${kind}-worker.js`) });
               // Independent runtime modules are essential: request observation
               // intentionally holds fetch promises until its Worker is killed.
@@ -326,7 +355,8 @@ describe('complete Full collection through Session and actual Worker transports'
               startupStages.push('planning-imported');
               break;
             case 'production': {
-              vi.stubGlobal('self', nativeSelf); vi.stubGlobal('fetch', originalFetch);
+              vi.stubGlobal('self', nativeSelf);
+              vi.stubGlobal('fetch', originalFetch);
               const { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } = await import('@/features/transformers-js/worker/production-worker-startup');
               await startProductionWorkerRuntime({
                 loadEntry: async () => {
@@ -338,7 +368,8 @@ describe('complete Full collection through Session and actual Worker transports'
               });
               break;
             }
-            case 'evidence': await import('@/features/transformers-js/model-support-investigation/evidence-worker/entry'); break;
+            case 'evidence': await import('@/features/transformers-js/model-support-investigation/evidence-worker/entry');
+              break;
             case 'fresh-metadata':
               vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/fresh-metadata-worker.js') });
               await import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/entry');
@@ -347,11 +378,15 @@ describe('complete Full collection through Session and actual Worker transports'
               vi.stubGlobal('self', { fetch: planningFetch, location: new NodeUrl('http://localhost/assets/request-observer-worker.js') });
               await import('@/features/transformers-js/download-verification/model-artifact-request-worker/entry');
               break;
-            default: { const exhaustive: never = kind; throw new Error('Unexpected Worker: ' + exhaustive); }
+            default: {
+              const exhaustive: never = kind;
+              throw new Error('Unexpected Worker: ' + exhaustive);
+            }
             }
           },
         });
-        this.kind = kind; workers.push(this);
+        this.kind = kind;
+        workers.push(this);
         this.addEventListener('error', event => {
           const error: unknown = (event as MessageEvent).data;
           startupErrors.push(error);
@@ -394,9 +429,13 @@ describe('complete Full collection through Session and actual Worker transports'
     expect(workers.map(worker => worker.kind)).toEqual(['planning']);
     releaseFirstPlanning.resolve();
     const results = () => {
-      if (startupErrors.length > 0) throw startupErrors[0];
+      if (startupErrors.length > 0) {
+        throw startupErrors[0];
+      }
       const snapshot = recallInvestigationSession({ seededTarget: first.modelId });
-      if (snapshot?.view !== 'results') throw new Error('Missing retained Full results: ' + JSON.stringify({ startupStages, operation: wrapper?.find('[data-testid="model-support-current-operation"]').text(), workers: workers.map(worker => ({ kind: worker.kind, terminated: worker.terminated, sent: worker.hostMessages.length, received: worker.workerMessages.length })) }));
+      if (snapshot?.view !== 'results') {
+        throw new Error('Missing retained Full results: ' + JSON.stringify({ startupStages, operation: wrapper?.find('[data-testid="model-support-current-operation"]').text(), workers: workers.map(worker => ({ kind: worker.kind, terminated: worker.terminated, sent: worker.hostMessages.length, received: worker.workerMessages.length })) }));
+      }
       return snapshot;
     };
     // Wait for actual lifecycle completion, under this test's existing overall
@@ -436,7 +475,9 @@ describe('complete Full collection through Session and actual Worker transports'
       for (const step of run.steps) {
         const row = wrapper.get(`[data-testid="model-support-step-${step.id}"]`);
         expect.soft(row.text(), `Terminal UI step ${run.modelId}/${step.id}`).not.toContain(lazyStrings.ModelSupportInvestigationModal__running());
-        if (step.detail !== undefined) expect(row.text()).toContain(step.detail);
+        if (step.detail !== undefined) {
+          expect(row.text()).toContain(step.detail);
+        }
       }
       expect(run.productionProviderCapture?.requests).toHaveLength(13);
       const expected = run.modelId === first.modelId ? expectedFirst : { fulfilled: 13, rejected: 0, notStarted: 0 };
@@ -460,7 +501,9 @@ describe('complete Full collection through Session and actual Worker transports'
         expect(observation.outcome).toEqual({ status: 'failed' });
       } else {
         expect(epoch.collection.result.status).toBe('captured');
-        if (observation.outcome.status !== 'accepted') throw new Error('Expected the actual successful offline Load receipt');
+        if (observation.outcome.status !== 'accepted') {
+          throw new Error('Expected the actual successful offline Load receipt');
+        }
         const model = models.find(model => model.modelId === run.modelId)!;
         const receipt = observation.outcome.receipt;
         expect(receipt).toMatchObject({

@@ -18,7 +18,9 @@ it.each(['value', 'bytes', 'item'] as const)('carries an already available large
   const piping = { baseUrl: 'https://relay.invalid', policy: 'https-only' as const, requestTimeoutMs: 3000, handshakeResponseTimeoutMs: 3000 };
   const sessions = await Promise.all([0, 1].map(index => NaidanPipingDuplexSession.connectPinned({ piping, identity: identities[index]!, expectedPeer: identities[1 - index]!.publicKey, signal: stop.signal })));
   const payload = new Uint8Array(mode === 'item' ? ITEM_FRAGMENT_BYTES + 33 : BYTE_PULL_BYTES);
-  for (let index = 0; index < payload.length; index++) payload[index] = index % 251;
+  for (let index = 0; index < payload.length; index++) {
+    payload[index] = index % 251;
+  }
   const definition = contract({
     name: 'finite.large',
     methods: {
@@ -29,7 +31,8 @@ it.each(['value', 'bytes', 'item'] as const)('carries an already available large
   });
   const source = () => new ReadableStream<Uint8Array<ArrayBuffer>>({
     start(controller) {
-      controller.enqueue(payload); controller.close();
+      controller.enqueue(payload);
+      controller.close();
     },
   }, { highWaterMark: 0 });
   const asTransport = ({ session }: { session: NaidanPipingDuplexSession }): NaidanRpcTransport => ({
@@ -49,13 +52,19 @@ it.each(['value', 'bytes', 'item'] as const)('carries an already available large
       const reader = value.getReader(), chunks: Uint8Array[] = [];
       try {
         for (;;) {
-          const next = await reader.read(); if (next.done) break; chunks.push(next.value);
+          const next = await reader.read();
+          if (next.done) {
+            break;
+          }
+          chunks.push(next.value);
         }
       } finally {
         reader.releaseLock();
       }
       received = Buffer.concat(chunks);
-    } else received = value;
+    } else {
+      received = value;
+    }
     expect(Buffer.from(received).equals(Buffer.from(payload))).toBe(true);
     await call.closed;
     const posted = relay.posts.slice(start);
@@ -66,7 +75,10 @@ it.each(['value', 'bytes', 'item'] as const)('carries an already available large
     expect(posted.filter(post => post.bytes.length > 16 * 1024)).toHaveLength(1);
     expect(WRITE_BATCH_BYTES).toBeGreaterThan(BYTE_PULL_BYTES);
   } finally {
-    stop.abort(); for (const session of sessions) session.abort({ reason: 'Test finished' });
+    stop.abort();
+    for (const session of sessions) {
+      session.abort({ reason: 'Test finished' });
+    }
     await Promise.all([a.retire(), b.retire(), ...sessions.map(session => session.closed)]);
     relay.interrupt();
   }

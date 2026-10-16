@@ -78,8 +78,12 @@ describe('runProductionDownloadPreparation', () => {
       },
       onDownloadProgress: ({ event }) => {
         events.push(event.kind);
-        if (event.kind === 'candidate') event.candidate.dtype = 'q4';
-        if (event.kind === 'plan') (event.paths as string[]).push('vision/not-requested.onnx');
+        if (event.kind === 'candidate') {
+          event.candidate.dtype = 'q4';
+        }
+        if (event.kind === 'plan') {
+          (event.paths as string[]).push('vision/not-requested.onnx');
+        }
         throw new Error('Broken work-progress sink');
       },
     });

@@ -107,7 +107,9 @@ describe('SmolLM2 135M Download replay', () => {
       h.network.mockImplementation(async (input, init) => {
         const request = new Request(input, init);
         const response = await originalTransport(input, init);
-        if (response.status !== 200) return response;
+        if (response.status !== 200) {
+          return response;
+        }
         if (request.headers.has('Range')) {
           expect(request.headers.get('Range')).toBe('bytes=0-0');
           const body = new Uint8Array(await response.arrayBuffer());
@@ -150,7 +152,9 @@ describe('SmolLM2 135M Download replay', () => {
         const request = new Request(input, init);
         const response = await originalTransport(input, init);
         const path = new URL(request.url).pathname.split(`/resolve/${revision}/`)[1]!;
-        if (path.startsWith('onnx/') || response.status !== 200) return response;
+        if (path.startsWith('onnx/') || response.status !== 200) {
+          return response;
+        }
         if (request.headers.has('Range')) {
           expect(request.headers.get('Range')).toBe('bytes=0-0');
           probes.push(path);
@@ -473,7 +477,9 @@ describe('SmolLM2 135M Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('An incomplete candidate must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('An incomplete candidate must not produce an accepted model');
+      }
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(failure.message).toContain(missingPath);
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
@@ -518,7 +524,9 @@ describe('SmolLM2 135M Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('Missing required metadata must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('Missing required metadata must not produce an accepted model');
+      }
       // tokenizer_config remains present, so the upstream registry lists tokenizer.json.
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
@@ -571,7 +579,9 @@ describe('SmolLM2 135M Download replay', () => {
 
       const outcome = await h.freshLoad({
         progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) {
+            return;
+          }
           // The real bundle's getModelFile dispatches initiate before getCache and
           // loadResourceFile. Production has already completed candidate planning;
           // no ONNX File snapshot/body has been consumed for this runtime load yet.
@@ -634,13 +644,19 @@ describe('SmolLM2 135M Download replay', () => {
       let configRequestsAfterPlanning = 0;
       const outcome = await h.freshLoad({
         progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== 'config.json') return;
+          if (info.status !== 'initiate' || info.file !== 'config.json') {
+            return;
+          }
           const activity = h.fs.activity.slice(activityBoundary);
           // The model-file stat proves that this is a later AutoModel config read,
           // not the initial AutoConfig preparation. Inject at an event, never a delay.
-          if (!activity.some(item => item.operation === 'stat' && item.path === fallbackBody)) return;
+          if (!activity.some(item => item.operation === 'stat' && item.path === fallbackBody)) {
+            return;
+          }
           configRequestsAfterPlanning += 1;
-          if (!removed) removed = h.fs.files.delete(configBody);
+          if (!removed) {
+            removed = h.fs.files.delete(configBody);
+          }
         },
       }).then(result => ({ status: 'accepted' as const, result }), (error: unknown) => ({ status: 'failed' as const, error }));
 
@@ -679,7 +695,9 @@ describe('SmolLM2 135M Download replay', () => {
       const coreBody = `${base}onnx/model_q4f16.onnx`;
       const configBody = `${base}config.json`;
       const originalConfigBytes = h.fs.files.get(configBody);
-      if (originalConfigBytes === undefined) throw new Error('Downloaded original config missing');
+      if (originalConfigBytes === undefined) {
+        throw new Error('Downloaded original config missing');
+      }
       const originalConfig = z.record(z.string(), z.unknown()).parse(JSON.parse(new TextDecoder().decode(originalConfigBytes)));
       const custom = z.record(z.string(), z.unknown()).nullish().parse(originalConfig['transformers.js_config']) ?? {};
       const changedConfigBytes = new TextEncoder().encode(JSON.stringify({
@@ -701,8 +719,12 @@ describe('SmolLM2 135M Download replay', () => {
       let changed = false;
       const outcome = await h.freshLoad({
         progressCallback: ({ info }) => {
-          if (changed || info.status !== 'initiate' || info.file !== 'config.json') return;
-          if (!h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === coreBody)) return;
+          if (changed || info.status !== 'initiate' || info.file !== 'config.json') {
+            return;
+          }
+          if (!h.fs.activity.slice(activityBoundary).some(item => item.operation === 'stat' && item.path === coreBody)) {
+            return;
+          }
           h.fs.files.set(configBody, changedConfigBytes);
           changed = true;
         },
@@ -724,7 +746,9 @@ describe('SmolLM2 135M Download replay', () => {
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
       expect(h.sessionErrors).toEqual([]);
       expect(outcome.status).toBe('failed');
-      if (outcome.status !== 'failed' || !(outcome.error instanceof Error)) throw new Error('Changed config must not authorize another model resource');
+      if (outcome.status !== 'failed' || !(outcome.error instanceof Error)) {
+        throw new Error('Changed config must not authorize another model resource');
+      }
       expect(classifyProductionAcceptanceError({ error: outcome.error })).toBe('terminal');
       expect(outcome.error.message).toContain(unexpectedPath);
     });
@@ -757,7 +781,9 @@ describe('SmolLM2 135M Download replay', () => {
       const removals: Array<{ removed: boolean, exactPresenceWasChecked: boolean, modelSessions: number }> = [];
       const failure = await h.freshLoad({
         progressCallback: ({ info }) => {
-          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) return;
+          if (info.status !== 'initiate' || info.file !== missingPath || removals.length > 0) {
+            return;
+          }
           // The revisionless ModelRegistry presence probe has already resolved to
           // exact OPFS metadata. Remove only the later required tokenizer input.
           removals.push({

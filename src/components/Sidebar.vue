@@ -290,9 +290,15 @@ function ensureChatVisibleInCompactGroup({
         index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId,
       );
 
-      if (hiddenItemIndex === -1) continue;
-      if (item.chatGroup.isCollapsed) return;
-      if (expandedGroupIds.value.has(item.chatGroup.id)) return;
+      if (hiddenItemIndex === -1) {
+        continue;
+      }
+      if (item.chatGroup.isCollapsed) {
+        return;
+      }
+      if (expandedGroupIds.value.has(item.chatGroup.id)) {
+        return;
+      }
 
       expandedGroupIds.value.add(item.chatGroup.id);
       return;
@@ -318,7 +324,9 @@ async function scheduleSidebarItemScroll({
   id: ChatGroupId | undefined,
   onlyWhenOutOfView: boolean,
 }) {
-  if (!id || typeof document === 'undefined' || !navContainer.value) return;
+  if (!id || typeof document === 'undefined' || !navContainer.value) {
+    return;
+  }
 
   switch (itemType) {
   case 'chat':
@@ -478,17 +486,23 @@ onMounted(() => {
 
 function captureSidebarItemRects() {
   const rects = new Map<string, DOMRect>();
-  if (!navContainer.value) return rects;
+  if (!navContainer.value) {
+    return rects;
+  }
 
   navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
     const id = element.dataset.sidebarChatId;
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     rects.set(`chat:${id}`, element.getBoundingClientRect());
   });
 
   navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
     const id = element.dataset.sidebarGroupId;
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     rects.set(`group:${id}`, element.getBoundingClientRect());
   });
 
@@ -496,20 +510,30 @@ function captureSidebarItemRects() {
 }
 
 function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string, DOMRect> }) {
-  if (previousRects.size === 0 || typeof window === 'undefined') return;
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  if (previousRects.size === 0 || typeof window === 'undefined') {
+    return;
+  }
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
 
   void nextTick(() => {
-    if (!navContainer.value || isDragging.value) return;
+    if (!navContainer.value || isDragging.value) {
+      return;
+    }
 
     const applyMove = ({ key, element }: { key: string, element: HTMLElement }) => {
       const previous = previousRects.get(key);
-      if (!previous) return;
+      if (!previous) {
+        return;
+      }
 
       const current = element.getBoundingClientRect();
       const deltaY = previous.top - current.top;
       const deltaX = previous.left - current.left;
-      if (Math.abs(deltaY) < 1 && Math.abs(deltaX) < 1) return;
+      if (Math.abs(deltaY) < 1 && Math.abs(deltaX) < 1) {
+        return;
+      }
 
       element.classList.add('sidebar-reorder-animating');
       element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
@@ -530,20 +554,26 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
 
     navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
       const id = element.dataset.sidebarChatId;
-      if (!id) return;
+      if (!id) {
+        return;
+      }
       applyMove({ key: `chat:${id}`, element });
     });
 
     navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
       const id = element.dataset.sidebarGroupId;
-      if (!id) return;
+      if (!id) {
+        return;
+      }
       applyMove({ key: `group:${id}`, element });
     });
   });
 }
 
 function syncLocalItems() {
-  if (isDragging.value || isInternalUpdate) return;
+  if (isDragging.value || isInternalUpdate) {
+    return;
+  }
   const previousRects = captureSidebarItemRects();
   // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(sidebarItems.value));
@@ -580,11 +610,17 @@ async function onDragEnd() {
 }
 
 function onDragOverGroup({ groupId }: { groupId: ChatGroupId }) {
-  if (!isDragging.value) return;
-  if (dragHoverGroup.value === groupId) return;
+  if (!isDragging.value) {
+    return;
+  }
+  if (dragHoverGroup.value === groupId) {
+    return;
+  }
 
   dragHoverGroup.value = groupId;
-  if (dragHoverTimeout) clearTimeout(dragHoverTimeout);
+  if (dragHoverTimeout) {
+    clearTimeout(dragHoverTimeout);
+  }
 
   dragHoverTimeout = setTimeout(() => {
     const group = chatGroups.value.find(g => g.id === groupId);
@@ -668,7 +704,9 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
       cancelButtonText: await ensureStrings.Sidebar__cancel(),
       confirmButtonVariant: 'danger',
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
   }
 
   await deleteChatGroup({ id: group.id });
@@ -711,7 +749,9 @@ async function handleDeleteChat({ id, groupId }: { id: ChatId, groupId: ChatGrou
     ? `/chat-group/${idToRaw({ id: groupId })}`
     : '/';
   await deleteChat({ id });
-  if (isCurrent) await router.push(redirectAfterDelete);
+  if (isCurrent) {
+    await router.push(redirectAfterDelete);
+  }
 }
 
 function startEditing({ id, title }: { id: ChatId, title: string | null }) {
@@ -739,13 +779,17 @@ async function saveChatGroupRename() {
 }
 
 async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
-  if (!newModelId) return;
+  if (!newModelId) {
+    return;
+  }
   await updateGlobalModel({ modelId: newModelId });
 }
 
 function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
   const group = sidebarItemsLocal.value.find(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
-  if (!group || group.type !== 'chat_group') return [];
+  if (!group || group.type !== 'chat_group') {
+    return [];
+  }
 
   const items = group.chatGroup.items;
   if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || items.length <= COMPACT_THRESHOLD) {
@@ -756,10 +800,14 @@ function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
 
 function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId, newItems: ChatSidebarItem[] }) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
-  if (groupIndex === -1) return;
+  if (groupIndex === -1) {
+    return;
+  }
 
   const group = sidebarItemsLocal.value[groupIndex];
-  if (!group || group.type !== 'chat_group') return;
+  if (!group || group.type !== 'chat_group') {
+    return;
+  }
 
   const fullList = group.chatGroup.items;
   if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || fullList.length <= COMPACT_THRESHOLD) {
@@ -821,7 +869,9 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     return;
   }
 
-  if (visibleItems.value.length === 0) return;
+  if (visibleItems.value.length === 0) {
+    return;
+  }
 
   // Prioritize the ID we just navigated to, then group, then chat.
   // This prevents jumping back if the store hasn't updated currentChat yet.
@@ -957,7 +1007,9 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
 function newChatInGroupTitle(): string | undefined {
   const groupName = currentChatGroup.value?.name || lazyStrings.Sidebar__current_group();
-  if (groupName === undefined) return undefined;
+  if (groupName === undefined) {
+    return undefined;
+  }
   return lazyStrings.Sidebar__new_chat_in_group({ groupName });
 }
 

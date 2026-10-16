@@ -72,7 +72,9 @@ describe('createModelSupportInvestigationNetworkFetch', () => {
 
   it('allows bounded model-artifact HEAD and Range observations', async () => {
     const runtimeFetch = vi.fn<typeof fetch>(async (_input, init) => {
-      if ((init?.method ?? 'GET').toUpperCase() === 'HEAD') return new Response(null, { status: 200 });
+      if ((init?.method ?? 'GET').toUpperCase() === 'HEAD') {
+        return new Response(null, { status: 200 });
+      }
       return partialContentResponse({ start: 0, end: 65_535 });
     });
     const { fetch } = guarded({ runtimeFetch });

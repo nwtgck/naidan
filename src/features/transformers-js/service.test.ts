@@ -33,7 +33,9 @@ class MockWorker extends EventTarget {
     workers.push(this);
     // Startup is asynchronous: let the real session install its listeners.
     queueMicrotask(() => {
-      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) {
+        this.startup.start();
+      }
     });
   }
 }
@@ -41,7 +43,9 @@ class MockWorker extends EventTarget {
 vi.stubGlobal('Worker', MockWorker);
 
 afterEach(() => {
-  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+  for (const worker of workers.splice(0)) {
+    worker.dispatchEvent(new Event('error'));
+  }
 });
 
 // Mock Comlink
@@ -65,7 +69,9 @@ function createMockDir(entries: Record<string, any> = {}) {
   const dir = {
     kind: 'directory',
     getDirectoryHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
-      if (entries[name] && entries[name].kind === 'directory') return entries[name];
+      if (entries[name] && entries[name].kind === 'directory') {
+        return entries[name];
+      }
       if (options?.create) {
         const newDir = createMockDir();
         entries[name] = newDir;
@@ -74,7 +80,9 @@ function createMockDir(entries: Record<string, any> = {}) {
       throw new Error('Not found');
     }),
     getFileHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
-      if (entries[name] && entries[name].kind === 'file') return entries[name];
+      if (entries[name] && entries[name].kind === 'file') {
+        return entries[name];
+      }
       if (options?.create) {
         const newFile = createMockFile(0, Date.now());
         entries[name] = newFile;
@@ -84,7 +92,9 @@ function createMockDir(entries: Record<string, any> = {}) {
     }),
     removeEntry: vi.fn(async (name: string, options?: FileSystemRemoveOptions) => {
       const entry = entries[name];
-      if (entry === undefined) throw new DOMException('Synthetic missing entry', 'NotFoundError');
+      if (entry === undefined) {
+        throw new DOMException('Synthetic missing entry', 'NotFoundError');
+      }
       if (entry.kind === 'directory' && !options?.recursive) {
         for await (const _ of entry.entries()) {
           throw new DOMException('Synthetic nonempty directory', 'InvalidModificationError');
@@ -251,7 +261,9 @@ describe('transformersJsService', () => {
     entries['.vision_encoder_q4f16.onnx.complete'] = createMockFile(0, 2);
     expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 300, fileCount: 2, lastModified: 2 }));
     expect(entries[orphanName]).toBeDefined();
-    for (const handle of Object.values(entries)) expect(handle.createWritable).not.toHaveBeenCalled();
+    for (const handle of Object.values(entries)) {
+      expect(handle.createWritable).not.toHaveBeenCalled();
+    }
     delete entries['.vision_encoder_q4f16.onnx.complete'];
     expect(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ isComplete: false }));
   });
@@ -456,7 +468,9 @@ describe('transformersJsService', () => {
     const release = Promise.withResolvers<void>();
     const mockRemote = {
       loadDownloadedModel: vi.fn().mockImplementation(async () => {
-        entered.resolve(); await release.promise; return { device: 'wasm' };
+        entered.resolve();
+        await release.promise;
+        return { device: 'wasm' };
       }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -483,7 +497,8 @@ describe('transformersJsService', () => {
     const mockRemote = {
       loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
       generateText: vi.fn().mockImplementation(async () => {
-        entered.resolve(); await release.promise;
+        entered.resolve();
+        await release.promise;
       }),
       interrupt: vi.fn().mockResolvedValue(undefined),
     };

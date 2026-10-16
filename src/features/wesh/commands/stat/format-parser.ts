@@ -119,7 +119,9 @@ function parsePrintfEscape({
     let digits = '';
     while (digits.length < 2) {
       const candidate = format[cursor];
-      if (candidate === undefined || !/[0-9a-fA-F]/u.test(candidate)) break;
+      if (candidate === undefined || !/[0-9a-fA-F]/u.test(candidate)) {
+        break;
+      }
       digits += candidate;
       cursor += 1;
     }
@@ -142,7 +144,9 @@ function parsePrintfEscape({
     let digits = '';
     while (digits.length < 3) {
       const candidate = format[cursor];
-      if (candidate === undefined || !/[0-7]/u.test(candidate)) break;
+      if (candidate === undefined || !/[0-7]/u.test(candidate)) {
+        break;
+      }
       digits += candidate;
       cursor += 1;
     }
@@ -221,12 +225,16 @@ export function compileStatFormat({
   let needsSymlinkTarget = false;
 
   const flushText = () => {
-    if (literalTextParts.length === 0) return;
+    if (literalTextParts.length === 0) {
+      return;
+    }
     tokens.push({ kind: 'literal-text', value: literalTextParts.join('') });
     literalTextParts = [];
   };
   const flushBytes = () => {
-    if (literalBytes.length === 0) return;
+    if (literalBytes.length === 0) {
+      return;
+    }
     tokens.push({ kind: 'literal-bytes', value: Uint8Array.from(literalBytes) });
     literalBytes = [];
   };
@@ -236,7 +244,9 @@ export function compileStatFormat({
     literalMode = undefined;
   };
   const appendText = ({ value }: { value: string }) => {
-    if (value.length === 0) return;
+    if (value.length === 0) {
+      return;
+    }
     switch (literalMode) {
     case 'bytes':
       flushBytes();
@@ -287,7 +297,9 @@ export function compileStatFormat({
         throw new Error(`Unhandled stat printf escape: ${String(_ex)}`);
       }
       }
-      if (parsedEscape.warning !== undefined) warnings.push(parsedEscape.warning);
+      if (parsedEscape.warning !== undefined) {
+        warnings.push(parsedEscape.warning);
+      }
       index = parsedEscape.nextIndex;
       continue;
     }
@@ -296,7 +308,9 @@ export function compileStatFormat({
       let runEnd = index + 1;
       while (runEnd < format.length) {
         const candidate = format[runEnd]!;
-        if (candidate === '%' || (escapeMode === 'printf' && candidate === '\\')) break;
+        if (candidate === '%' || (escapeMode === 'printf' && candidate === '\\')) {
+          break;
+        }
         runEnd += 1;
       }
       appendText({ value: format.slice(index, runEnd) });
@@ -392,7 +406,9 @@ export function compileStatFormat({
         value: precisionText,
         description: 'format precision',
       });
-      if (!parsedPrecision.ok) return parsedPrecision;
+      if (!parsedPrecision.ok) {
+        return parsedPrecision;
+      }
       precision = parsedPrecision.value;
     }
 
@@ -425,7 +441,9 @@ export function compileStatFormat({
         value: widthText,
         description: 'format width',
       });
-      if (!parsedWidth.ok) return parsedWidth;
+      if (!parsedWidth.ok) {
+        return parsedWidth;
+      }
       width = parsedWidth.value;
     }
 

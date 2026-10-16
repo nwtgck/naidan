@@ -38,10 +38,14 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       }),
       removeEntry: vi.fn().mockResolvedValue(undefined),
       keys: async function* () {
-        for (const k of entries.keys()) yield k;
+        for (const k of entries.keys()) {
+          yield k;
+        }
       },
       values: async function* () {
-        for (const v of entries.values()) yield v;
+        for (const v of entries.values()) {
+          yield v;
+        }
       },
     };
 
@@ -81,8 +85,9 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         }),
         getFileHandle: vi.fn().mockImplementation(async (n: string, _opts?: { create?: boolean }) => {
           if (!subEntries.has(n)) {
-            if (_opts?.create) subEntries.set(n, createMockFile(n));
-            else {
+            if (_opts?.create) {
+              subEntries.set(n, createMockFile(n));
+            } else {
               const error = new Error(`File not found: ${n}`);
               error.name = 'NotFoundError';
               throw error;
@@ -92,10 +97,14 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         }),
         removeEntry: vi.fn().mockResolvedValue(undefined),
         keys: async function* () {
-          for (const k of subEntries.keys()) yield k;
+          for (const k of subEntries.keys()) {
+            yield k;
+          }
         },
         values: async function* () {
-          for (const v of subEntries.values()) yield v;
+          for (const v of subEntries.values()) {
+            yield v;
+          }
         },
       };
     }

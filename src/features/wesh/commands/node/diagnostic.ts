@@ -133,7 +133,9 @@ function identifierAt({ source, offset }: { source: string, offset: number }): s
   let cursor = offset + first.length;
   while (cursor < source.length) {
     const nextCodePoint = source.codePointAt(cursor);
-    if (nextCodePoint === undefined) break;
+    if (nextCodePoint === undefined) {
+      break;
+    }
     const character = String.fromCodePoint(nextCodePoint);
     if (!isIdentifierContinueCharacter({ character })) {
       break;
@@ -187,7 +189,9 @@ function identifierBeforeOffset({
     cursor -= 1;
   }
   const start = cursor + 1;
-  if (start >= end) return undefined;
+  if (start >= end) {
+    return undefined;
+  }
   const text = source.slice(start, end);
   return isIdentifierStartCharacter({ character: text[0] ?? '' })
     ? { offset: start, text }
@@ -210,7 +214,9 @@ function regexLiteralStartBeforeOffset({
   while (cursor >= 0 && /[A-Za-z]/u.test(source[cursor] ?? '')) {
     cursor -= 1;
   }
-  if (source[cursor] !== '/') return undefined;
+  if (source[cursor] !== '/') {
+    return undefined;
+  }
 
   const closingSlash = cursor;
   cursor -= 1;
@@ -224,7 +230,9 @@ function regexLiteralStartBeforeOffset({
     for (let probe = cursor - 1; probe >= 0 && source[probe] === '\\'; probe -= 1) {
       backslashes += 1;
     }
-    if (backslashes % 2 === 0) return cursor;
+    if (backslashes % 2 === 0) {
+      return cursor;
+    }
     cursor -= 1;
   }
 
@@ -233,9 +241,13 @@ function regexLiteralStartBeforeOffset({
 
 function restElementSpan({ source, offset }: { source: string, offset: number }): DisplayLocation {
   const restStart = restStartBeforeOffset({ source, offset });
-  if (restStart === undefined) return { offset, span: 1 };
+  if (restStart === undefined) {
+    return { offset, span: 1 };
+  }
   const comma = source.indexOf(',', restStart + 3);
-  if (comma < 0) return { offset: restStart, span: 1 };
+  if (comma < 0) {
+    return { offset: restStart, span: 1 };
+  }
   let end = comma;
   while (end > restStart && /\s/u.test(source[end - 1] ?? '')) {
     end -= 1;
@@ -245,7 +257,9 @@ function restElementSpan({ source, offset }: { source: string, offset: number })
 
 function assignmentLeftSpan({ source, offset }: { source: string, offset: number }): number {
   const equals = source.indexOf('=', offset);
-  if (equals < 0) return 1;
+  if (equals < 0) {
+    return 1;
+  }
   let end = equals;
   while (end > offset && /\s/u.test(source[end - 1] ?? '')) {
     end -= 1;
@@ -352,9 +366,13 @@ function restParameterHasDefault({
   source: string,
   offset: number,
 }): boolean {
-  if (source[offset] !== '=') return false;
+  if (source[offset] !== '=') {
+    return false;
+  }
   const restStart = source.lastIndexOf('...', offset);
-  if (restStart < 0) return false;
+  if (restStart < 0) {
+    return false;
+  }
   const openParen = source.lastIndexOf('(', offset);
   const openBracket = source.lastIndexOf('[', offset);
   const openBrace = source.lastIndexOf('{', offset);
@@ -369,9 +387,13 @@ function invalidCodePointLocation({
   offset: number,
 }): DisplayLocation | undefined {
   const start = source.lastIndexOf('\\u{', offset);
-  if (start < 0) return undefined;
+  if (start < 0) {
+    return undefined;
+  }
   const close = source.indexOf('}', start + 3);
-  if (close < 0 || close >= offset) return undefined;
+  if (close < 0 || close >= offset) {
+    return undefined;
+  }
   return { offset: start, span: Math.max(1, close - start) };
 }
 

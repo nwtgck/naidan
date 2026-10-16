@@ -4,6 +4,9 @@ export const ImageEngineState__detail_label = ({ detail }: { detail: "model" | "
   case "profile": return "Runtime profile";
   case "source": return "Artifact source";
   case "threads": return "Resolved CPU threads";
-  default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = detail;
+    throw new Error(String(exhaustive));
+  }
   }
 };

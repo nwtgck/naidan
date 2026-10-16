@@ -5,7 +5,9 @@ export function readDiagnostics({ calls }: { calls: readonly (readonly unknown[]
   const prefix = '[llama-cpp-browser] ';
   return calls.map(args => {
     const line = args[0];
-    if (args.length !== 1 || typeof line !== 'string' || !line.startsWith(prefix) || line.includes('\n')) throw new Error('Expected one diagnostic JSON line.');
+    if (args.length !== 1 || typeof line !== 'string' || !line.startsWith(prefix) || line.includes('\n')) {
+      throw new Error('Expected one diagnostic JSON line.');
+    }
     return z.record(z.string(), z.unknown()).parse(JSON.parse(line.slice(prefix.length)));
   });
 }

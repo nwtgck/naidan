@@ -26,7 +26,9 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
     }
 
     // Don't intercept when renaming
-    if (ctx.renamingEntryName !== undefined) return;
+    if (ctx.renamingEntryName !== undefined) {
+      return;
+    }
 
     // Ctrl/Cmd+A: select all
     if (isCtrlOrCmd && event.key === 'a') {
@@ -150,7 +152,9 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
     }
 
     // Arrow navigation
-    if (ctx.sortedFilteredEntries.length === 0) return;
+    if (ctx.sortedFilteredEntries.length === 0) {
+      return;
+    }
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
       event.preventDefault();

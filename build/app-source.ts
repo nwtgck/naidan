@@ -9,7 +9,9 @@ export function readAppSource({ rootDir }: { rootDir: string }): {
 } {
   const gitDir = path.join(rootDir, '.git');
   // A source archive can be nested inside an unrelated repository.
-  if (!existsSync(gitDir)) return { sourceCommit: undefined, workingTree: 'unknown' };
+  if (!existsSync(gitDir)) {
+    return { sourceCommit: undefined, workingTree: 'unknown' };
+  }
   // Observe this checkout's own index, not an index supplied by a parent tool.
   const env = { ...process.env };
   delete env.GIT_INDEX_FILE;
@@ -19,7 +21,9 @@ export function readAppSource({ rootDir }: { rootDir: string }): {
   let sourceCommit: string;
   try {
     sourceCommit = git({ args: ['rev-parse', '--verify', 'HEAD'] });
-    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sourceCommit)) return { sourceCommit: undefined, workingTree: 'unknown' };
+    if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sourceCommit)) {
+      return { sourceCommit: undefined, workingTree: 'unknown' };
+    }
   } catch {
     return { sourceCommit: undefined, workingTree: 'unknown' };
   }

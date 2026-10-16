@@ -129,7 +129,9 @@ const endpointUrl = computed({
   get: () => isHttpEndpoint(form.value.endpoint) ? form.value.endpoint.url : '',
   set: (url: string) => {
     const endpoint = form.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     const previousEndpoint = cloneEndpoint({ endpoint });
     form.value.endpoint = {
       ...endpoint,
@@ -145,7 +147,9 @@ const endpointHttpHeaders = computed<[string, string][] | undefined>({
     : undefined,
   set: (httpHeaders) => {
     const endpoint = form.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     form.value.endpoint = {
       ...endpoint,
       httpHeaders,
@@ -191,8 +195,12 @@ function cloneTitleLmParameters({
 }: {
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters | undefined {
-  if (lmParameters === undefined) return undefined;
-  if (lmParameters === 'same_scope') return 'same_scope';
+  if (lmParameters === undefined) {
+    return undefined;
+  }
+  if (lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
 }
 
@@ -203,7 +211,9 @@ function titleLmParametersForEndpoint({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
 }
 
@@ -212,7 +222,9 @@ function titleGenerationWithLmParameters({
 }: {
   titleGeneration: SettingsTitleGenerationDraft,
 }): SettingsTitleGeneration {
-  if (titleGeneration === 'disabled') return 'disabled';
+  if (titleGeneration === 'disabled') {
+    return 'disabled';
+  }
 
   const current = currentSettingsTitleGeneration();
   const currentLmParameters = current === 'disabled' ? undefined : current.lmParameters;
@@ -232,7 +244,9 @@ function titleReasoningSelectValueFromLmParameters({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): TitleReasoningSelectValue {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
     ? lmParameters.reasoning.effort
     : undefined;
@@ -311,7 +325,9 @@ function currentSettingsTitleGeneration(): SettingsTitleGeneration {
 
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
-  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') {
+    return;
+  }
   setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
@@ -322,7 +338,9 @@ function resetModelsWhenEndpointNamespaceChanges({
   previousEndpoint: Endpoint,
   nextEndpoint: Endpoint,
 }): void {
-  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) {
+    return;
+  }
   form.value.defaultModelId = '';
   resetSameScopeTitleModel();
 }
@@ -333,7 +351,9 @@ function titleModelIdFromSettingsTitleGeneration({
 }: {
   titleGeneration: SettingsTitleGeneration,
 }): string | undefined {
-  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') {
+    return undefined;
+  }
   return titleGeneration.model.id;
 }
 
@@ -351,15 +371,23 @@ const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> =
 type TitleEndpointTypeSelectValue = 'same_scope' | Endpoint['type'];
 
 function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEndpointTypeSelectValue {
-  if (value === 'same_scope') return 'same_scope';
-  if (value === 'unsupported_experimental_endpoint') return 'unsupported_experimental_endpoint';
-  if (Object.hasOwn(titleEndpointTypeSelectValueRecord, value)) return value as EndpointType;
+  if (value === 'same_scope') {
+    return 'same_scope';
+  }
+  if (value === 'unsupported_experimental_endpoint') {
+    return 'unsupported_experimental_endpoint';
+  }
+  if (Object.hasOwn(titleEndpointTypeSelectValueRecord, value)) {
+    return value as EndpointType;
+  }
   throw new Error(`Unhandled title endpoint type value: ${value}`);
 }
 
 const globalTitleEndpoint = computed(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return 'same_scope';
+  if (titleGeneration === 'disabled') {
+    return 'same_scope';
+  }
   return titleGeneration.endpoint;
 });
 const globalTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() => {
@@ -378,7 +406,9 @@ const globalTitleEndpointUrl = computed({
   set: (url: string) => {
     const titleGeneration = currentSettingsTitleGeneration();
     const endpoint = globalTitleEndpoint.value;
-    if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+    if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) {
+      return;
+    }
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: {
@@ -405,7 +435,9 @@ function setGlobalTitleEndpointHttpHeaders({
 }): void {
   const titleGeneration = currentSettingsTitleGeneration();
   const endpoint = globalTitleEndpoint.value;
-  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) {
+    return;
+  }
   setFormTitleGeneration({
     titleGeneration: {
       endpoint: {
@@ -420,7 +452,9 @@ function setGlobalTitleEndpointHttpHeaders({
 
 function addGlobalTitleHeader(): void {
   const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   setGlobalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
 }
 
@@ -434,7 +468,9 @@ function updateGlobalTitleHeader({
   value: string,
 }): void {
   const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   setGlobalTitleEndpointHttpHeaders({
     httpHeaders: headers.map((header, headerIndex) => headerIndex === index
       ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
@@ -444,7 +480,9 @@ function updateGlobalTitleHeader({
 
 function removeGlobalTitleHeader({ index }: { index: number }): void {
   const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   setGlobalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
 }
 
@@ -458,13 +496,17 @@ const globalTitleModelLoading = computed(() => globalTitleEndpointUsesSameScope.
 
 const globalTitleModelId = computed(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') {
+    return undefined;
+  }
   return titleGeneration.model.id;
 });
 
 const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleReasoningSelectValueFromLmParameters({
     endpoint: titleGeneration.endpoint,
     lmParameters: titleGeneration.lmParameters,
@@ -473,8 +515,12 @@ const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() =
 
 function setGlobalTitleReasoningSelectValue({ value }: { value: TitleReasoningSelectValue }): void {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return;
-  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') return;
+  if (titleGeneration === 'disabled') {
+    return;
+  }
+  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') {
+    return;
+  }
   setFormTitleGeneration({
     titleGeneration: {
       ...titleGeneration,
@@ -630,13 +676,17 @@ async function fetchTitleEndpointModels(): Promise<void> {
   error.value = null;
   try {
     const models = await fetchModelsGlobal({ overrides: endpoint });
-    if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) return;
+    if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) {
+      return;
+    }
     if (models.length === 0 && endpoint.type !== 'transformers_js' && endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
     titleEndpointModels.value = models;
     const titleGeneration = currentSettingsTitleGeneration();
-    if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') return;
+    if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') {
+      return;
+    }
     if (!models.includes(titleGeneration.model.id) && models[0] !== undefined) {
       setFormTitleGeneration({
         titleGeneration: {
@@ -740,7 +790,9 @@ async function fetchModels() {
   try {
     // Trigger global fetch with current form values (may be unsaved)
     const models = await fetchModelsGlobal({ overrides: requestedEndpoint });
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+      return;
+    }
 
     if (models.length === 0 && form.value.endpoint.type !== 'transformers_js' && form.value.endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
@@ -792,7 +844,9 @@ async function fetchModels() {
       connectionSuccess.value = false;
     }, 3000);
   } catch (err) {
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+      return;
+    }
     console.error(err);
     error.value = err instanceof Error ? err.message : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
     connectionSuccess.value = false;
@@ -845,7 +899,9 @@ async function handleCreateProviderProfile() {
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
 
-  if (!name) return;
+  if (!name) {
+    return;
+  }
 
   const newProviderProfile: ProviderProfile = {
     id: generateId<ProviderProfileId>(),
@@ -857,7 +913,9 @@ async function handleCreateProviderProfile() {
     lmParameters: form.value.lmParameters ? JSON.parse(JSON.stringify(form.value.lmParameters)) : undefined,
   };
 
-  if (!form.value.providerProfiles) form.value.providerProfiles = [];
+  if (!form.value.providerProfiles) {
+    form.value.providerProfiles = [];
+  }
   form.value.providerProfiles.push(newProviderProfile);
   await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
 
@@ -887,7 +945,9 @@ function handleQuickProviderProfileChange() {
 
 function addHeader() {
   const endpoint = form.value.endpoint;
-  if (!isHttpEndpoint(endpoint)) return;
+  if (!isHttpEndpoint(endpoint)) {
+    return;
+  }
   endpointHttpHeaders.value = [
     ...(endpoint.httpHeaders ?? []),
     ['', ''],
@@ -896,7 +956,9 @@ function addHeader() {
 
 function removeHeader({ index }: { index: number }) {
   const headers = endpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   endpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
 }
 

@@ -20,7 +20,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  setUpdateState({ next: { kind: 'idle' } }); vi.restoreAllMocks();
+  setUpdateState({ next: { kind: 'idle' } });
+  vi.restoreAllMocks();
 });
 
 describe('PWAUpdateNotification', () => {
@@ -117,7 +118,8 @@ describe('PWAUpdateNotification', () => {
     await button.trigger('click');
     expect(status.value).toBe('applying');
     expect(button.attributes('disabled')).toBeDefined();
-    finish(); await flushPromises();
+    finish();
+    await flushPromises();
     expect(status.value).toBe('ready');
     expect(button.attributes('disabled')).toBeUndefined();
   });

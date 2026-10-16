@@ -66,7 +66,9 @@ function handleReload() {
 }
 
 function openModelSupportInvestigation() {
-  if (!canOpenModelSupportInvestigation.value) return;
+  if (!canOpenModelSupportInvestigation.value) {
+    return;
+  }
   emit('openModelSupportInvestigation', '');
 }
 

@@ -26,7 +26,9 @@ export function sanitizeFilename({ base, suffix, fallback }: {
     .trim();
 
   // If the resulting base is empty or just dashes, use fallback
-  if (!cleanBase || /^-+$/.test(cleanBase)) cleanBase = fallback;
+  if (!cleanBase || /^-+$/.test(cleanBase)) {
+    cleanBase = fallback;
+  }
 
   // 2. Handle truncation if necessary
   const ext = suffix;

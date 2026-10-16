@@ -591,7 +591,9 @@ export function lmToolNamesFromToolConfigs({
 }): LmToolName[] {
   const names: LmToolName[] = [];
   for (const key of BUILTIN_TOOL_KEYS) {
-    if (!isBuiltinToolEnabledInToolConfigs({ toolConfigs, key })) continue;
+    if (!isBuiltinToolEnabledInToolConfigs({ toolConfigs, key })) {
+      continue;
+    }
     names.push(...lmToolNamesForBuiltinToolKey({ key }));
   }
   return names;

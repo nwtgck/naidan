@@ -36,7 +36,9 @@ function settings({ vue = false, extra = {} }: {
 }
 
 function withoutPositions(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutPositions);
+  if (Array.isArray(value)) {
+    return value.map(withoutPositions);
+  }
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value)
       .filter(([key]) => !['loc', 'range', 'parent', 'tokens', 'comments'].includes(key))
@@ -367,7 +369,9 @@ describe('function-spacing accessor groups', () => {
     for (const modifier of ['', 'static ']) {
       for (const reverse of [false, true]) {
         const members = [`  ${modifier}get ${getter}() { return 1; }`, `  ${modifier}set ${setter}(value: number) {}`];
-        if (reverse) members.reverse();
+        if (reverse) {
+          members.reverse();
+        }
         const pair = members.join('\n');
         expectFixed({
           input: `class C {\n  before = 1;\n${pair}\n  after = 2;\n}`,
@@ -516,7 +520,9 @@ function vueScriptContents({ code }: { code: string }) {
   return fragment?.children
     .filter(node => node.type === 'VElement' && node.name === 'script' && node.endTag)
     .map(node => {
-      if (node.type !== 'VElement' || !node.endTag) throw new Error('Expected a script block');
+      if (node.type !== 'VElement' || !node.endTag) {
+        throw new Error('Expected a script block');
+      }
       return code.slice(node.startTag.range[1], node.endTag.range[0]);
     }) ?? [];
 }
@@ -666,7 +672,9 @@ describe('function-spacing registration and integration', () => {
     const messages = linter.verify(input, settings(), { filename: 'fixture.ts' });
     expect(messages).toHaveLength(399);
     const fixes = messages.map(message => message.fix!);
-    for (let index = 1; index < fixes.length; index += 1) expect(fixes[index].range[0]).toBeGreaterThan(fixes[index - 1].range[1]);
+    for (let index = 1; index < fixes.length; index += 1) {
+      expect(fixes[index].range[0]).toBeGreaterThan(fixes[index - 1].range[1]);
+    }
     expect(linter.verifyAndFix(input, settings(), { filename: 'fixture.ts' })).toEqual({ fixed: true, output, messages: [] });
     expect(linter.verifyAndFix(output, settings(), { filename: 'fixture.ts' })).toEqual({ fixed: false, output, messages: [] });
   });

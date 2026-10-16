@@ -15,7 +15,9 @@ async function roundtripPreferences({ preferences }: { preferences: BrowserImage
     },
   });
   const restored = (await provider.loadSettings())?.experimental?.browserImageGeneration;
-  if (!restored) throw new Error('Missing restored preferences');
+  if (!restored) {
+    throw new Error('Missing restored preferences');
+  }
   return restored;
 }
 

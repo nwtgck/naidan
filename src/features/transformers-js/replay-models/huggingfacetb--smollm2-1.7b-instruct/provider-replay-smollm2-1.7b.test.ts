@@ -163,7 +163,9 @@ describe('SmolLM2 1.7B Provider / basic', () => {
     expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
     expect(nativeInputs).toHaveLength(1);
     const native = nativeInputs[0];
-    if (!native) throw new Error('Input-only inference was not observed');
+    if (!native) {
+      throw new Error('Input-only inference was not observed');
+    }
     const tokenizer = native.tokenizer;
     expect(native.runtimeVersion).toBe(source.identity.transformersJsVersion);
     expect(native.tokenizerIsInstance).toBe(true);
@@ -384,7 +386,9 @@ describe('SmolLM2 1.7B Provider / history', () => {
   it("system-user-generation matches the original native input through public Provider", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'Smol1.7 native input verified; generation intentionally not replayed';
     const harness = await createProviderReplayTestRuntime({
       modelId: inputEvidence.modelId,
@@ -434,7 +438,9 @@ describe('SmolLM2 1.7B Provider / history', () => {
     expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
     expect(nativeInputs).toHaveLength(1);
     const native = nativeInputs[0];
-    if (!native) throw new Error('Input-only inference was not observed');
+    if (!native) {
+      throw new Error('Input-only inference was not observed');
+    }
     const tokenizer = native.tokenizer;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(inputEvidence.selectedTemplateSha256);
     expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: scenario.addGenerationPrompt })).toBe(scenario.renderedText);
@@ -473,7 +479,9 @@ describe('SmolLM2 1.7B Provider / history', () => {
   it("multi-turn-generation matches the original native input through public Provider", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'Smol1.7 native input verified; generation intentionally not replayed';
     const harness = await createProviderReplayTestRuntime({
       modelId: inputEvidence.modelId,
@@ -524,7 +532,9 @@ describe('SmolLM2 1.7B Provider / history', () => {
     expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
     expect(nativeInputs).toHaveLength(1);
     const native = nativeInputs[0];
-    if (!native) throw new Error('Input-only inference was not observed');
+    if (!native) {
+      throw new Error('Input-only inference was not observed');
+    }
     const tokenizer = native.tokenizer;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(inputEvidence.selectedTemplateSha256);
     expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: scenario.addGenerationPrompt })).toBe(scenario.renderedText);
@@ -739,7 +749,9 @@ A separate synthetic conversation.<|im_end|>
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent-input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent-input replay');
+        }
         return next(context);
       },
     });
@@ -802,12 +814,16 @@ A separate synthetic conversation.<|im_end|>
     expect(secondCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
     expect(nativeInputs).toHaveLength(1);
     const native = nativeInputs[0];
-    if (!native) throw new Error('Input-only inference was not observed');
+    if (!native) {
+      throw new Error('Input-only inference was not observed');
+    }
     const tokenizer = native.tokenizer;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(inputEvidence.selectedTemplateSha256);
     expect(tokenizer.apply_chat_template([{ role: 'user', content: 'A separate synthetic conversation.' }], { tokenize: false, add_generation_prompt: true })).toBe(nextPrompt);
     const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
-    if (!native.input.isTensor || !native.mask.isTensor) throw new Error('Expected actual next-input tensors');
+    if (!native.input.isTensor || !native.mask.isTensor) {
+      throw new Error('Expected actual next-input tensors');
+    }
     expect(native.input.type).toBe('int64');
     expect(native.input.location).toBe('cpu');
     expect(native.input.dims).toEqual([1, ids.length]);
@@ -1108,7 +1124,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
   it("tools-generation rejects before inference while retaining the historical template oracle", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'SmolLM2 1.7B tool input inspected; no inference output supplied';
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather',
@@ -1210,7 +1228,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       })),
       { add_generation_prompt: true, return_dict: true, tools: strictToolDefinitions },
     ]]);
-    if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
+    if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) {
+      throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
+    }
     expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
       .toBe(toolInputEvidence.selectedTemplateSha256);
     expect(actualTokenizer.apply_chat_template(scenario.messages, {
@@ -1249,7 +1269,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     })).toBe(scenario.renderedText);
     const changedRoleAndContent = onlyRoleAndContent.map(message => ({ ...message }));
     const lastMessage = changedRoleAndContent.at(-1);
-    if (!lastMessage) throw new Error('Selected tool input must contain a final message');
+    if (!lastMessage) {
+      throw new Error('Selected tool input must contain a final message');
+    }
     const originalFinalContent = lastMessage.content;
     expect(originalFinalContent).not.toBe('');
     expect(scenario.renderedText.split(originalFinalContent)).toHaveLength(2);
@@ -1275,7 +1297,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
   it("tool-result-continuation rejects before inference while retaining the historical template oracle", async () => {
     const nativeInputs: ReturnType<typeof captureSmol17NativeInput>[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'SmolLM2 1.7B tool input inspected; no inference output supplied';
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
       name: 'lookup_weather',
@@ -1386,7 +1410,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         }), options,
       ]);
     expect(productionTokenizations).toEqual([]);
-    if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
+    if (!(actualTokenizer instanceof harness.runtime.PreTrainedTokenizer)) {
+      throw new Error('Expected the real tokenizer to inspect the unsupported protocol');
+    }
     expect(createHash('sha256').update(actualTokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
       .toBe(toolInputEvidence.selectedTemplateSha256);
     expect(actualTokenizer.apply_chat_template(scenario.messages, {
@@ -1425,7 +1451,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     })).toBe(scenario.renderedText);
     const changedRoleAndContent = onlyRoleAndContent.map(message => ({ ...message }));
     const lastMessage = changedRoleAndContent.at(-1);
-    if (!lastMessage) throw new Error('Selected tool input must contain a final message');
+    if (!lastMessage) {
+      throw new Error('Selected tool input must contain a final message');
+    }
     const originalFinalContent = lastMessage.content;
     expect(originalFinalContent).not.toBe('');
     expect(scenario.renderedText.split(originalFinalContent)).toHaveLength(2);
@@ -1462,7 +1490,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
-        if (settled) lateExecutions.push('execute');
+        if (settled) {
+          lateExecutions.push('execute');
+        }
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
@@ -1502,7 +1532,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     expect(request).toEqual(originalInput);
     expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
     const assistant = turn.generated[0];
-    if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+    if (assistant?.role !== 'assistant') {
+      throw new Error('Expected the generated assistant');
+    }
     expect(assistant.parts).toEqual([]);
     expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool protocol has no structured generation adapter.' });
     expect(turn.toolEvents).toEqual([]);
@@ -1524,7 +1556,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
-        if (settled) lateExecutions.push('execute');
+        if (settled) {
+          lateExecutions.push('execute');
+        }
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
@@ -1564,7 +1598,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     expect(request).toEqual(originalInput);
     expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
     const assistant = turn.generated[0];
-    if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+    if (assistant?.role !== 'assistant') {
+      throw new Error('Expected the generated assistant');
+    }
     expect(assistant.parts).toEqual([]);
     expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool protocol has no structured generation adapter.' });
     expect(turn.toolEvents).toEqual([]);
@@ -1586,7 +1622,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute: async ({ args, signal }) => {
         executions.push({ args: structuredClone(args), signal });
-        if (settled) lateExecutions.push('execute');
+        if (settled) {
+          lateExecutions.push('execute');
+        }
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
@@ -1634,7 +1672,9 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     expect(request).toEqual(originalInput);
     expect(turn.generated.map(node => node.role)).toEqual(['assistant']);
     const assistant = turn.generated[0];
-    if (assistant?.role !== 'assistant') throw new Error('Expected the generated assistant');
+    if (assistant?.role !== 'assistant') {
+      throw new Error('Expected the generated assistant');
+    }
     expect(assistant.parts).toEqual([]);
     expect(assistant.interruption).toEqual({ type: 'error', message: 'This standard tool history has no reviewed structured input adapter.' });
     expect(turn.toolEvents).toEqual([]);
@@ -1871,7 +1911,9 @@ Sure, here's a sample message for a template:
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path: 'onnx/model_q4f16.onnx' }) }],
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in two-turn replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in two-turn replay');
+        }
         return next(context);
       },
     });

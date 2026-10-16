@@ -30,20 +30,30 @@ export function formatLfm2MessagesForToolHandling({ messages, handling }: {
   handling: StandardToolHandling,
 }): Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id']; reasoning?: string }> {
   const reasoningHistory = messages.flatMap((message, index) => message.reasoning === undefined ? [] : [{ index, role: message.role, reasoning: message.reasoning }]);
-  if (reasoningHistory.length === 0) return formatStandardMessagesForToolHandling({ messages, handling });
+  if (reasoningHistory.length === 0) {
+    return formatStandardMessagesForToolHandling({ messages, handling });
+  }
   switch (handling.historyEncoding) {
   case 'native-template': break;
   case 'verified-content': throw new Error('LFM2 reasoning history requires the native template adapter.');
-  default: { const exhaustive: never = handling.historyEncoding; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = handling.historyEncoding;
+    throw new Error(String(exhaustive));
+  }
   }
   for (const item of reasoningHistory) {
-    if (item.role !== 'assistant') throw new Error('LFM2 reasoning history must belong to an assistant message.');
+    if (item.role !== 'assistant') {
+      throw new Error('LFM2 reasoning history must belong to an assistant message.');
+    }
     const { text: _text, completeness, ...unhandled } = item.reasoning;
     unhandled satisfies Record<PropertyKey, never>;
     switch (completeness) {
     case 'complete': break;
     case 'partial': throw new Error('LFM2 cannot continue partial reasoning without inventing a native closing delimiter.');
-    default: { const exhaustive: never = completeness; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = completeness;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   const withoutReasoning = messages.map(message => {
@@ -58,16 +68,23 @@ export function formatLfm2MessagesForToolHandling({ messages, handling }: {
     });
   });
   const formatted = formatStandardMessagesForToolHandling({ messages: withoutReasoning, handling });
-  if (formatted.length !== messages.length) throw new Error('LFM2 native template formatting changed message correspondence.');
+  if (formatted.length !== messages.length) {
+    throw new Error('LFM2 native template formatting changed message correspondence.');
+  }
   return formatted.map((message, index) => {
     const reasoning = messages[index]?.reasoning;
-    if (reasoning === undefined) return message;
+    if (reasoning === undefined) {
+      return message;
+    }
     const { text, completeness, ...unhandled } = reasoning;
     unhandled satisfies Record<PropertyKey, never>;
     switch (completeness) {
     case 'complete': break;
     case 'partial': throw new Error('LFM2 partial reasoning passed validation.');
-    default: { const exhaustive: never = completeness; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = completeness;
+      throw new Error(String(exhaustive));
+    }
     }
     return { ...message, reasoning: text };
   });
@@ -89,8 +106,12 @@ export function createLfm2Generation({ emit, endTokens, handling, tools }: {
       case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call':
         emit({ event: { ...event, index: event.index + 1 } });
         break;
-      case 'result': emit({ event }); break;
-      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+      case 'result': emit({ event });
+        break;
+      default: {
+        const exhaustive: never = event;
+        throw new Error(String(exhaustive));
+      }
       }
     },
     endTokens,
@@ -102,7 +123,9 @@ export function createLfm2Generation({ emit, endTokens, handling, tools }: {
   let settled = false;
 
   function openReasoning(): void {
-    if (opened) return;
+    if (opened) {
+      return;
+    }
     opened = true;
     emit({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
   }
@@ -113,19 +136,29 @@ export function createLfm2Generation({ emit, endTokens, handling, tools }: {
 
   return {
     text({ text }: { text: string }): void {
-      if (!text.length) return;
-      if (settled || phase === 'incomplete') throw new Error('LFM2 content arrived after completion.');
+      if (!text.length) {
+        return;
+      }
+      if (settled || phase === 'incomplete') {
+        throw new Error('LFM2 content arrived after completion.');
+      }
       switch (phase) {
       case 'reasoning':
         openReasoning();
         emit({ event: { type: 'text_delta', index: 0, text } });
         return;
-      case 'body': standard.text({ text }); return;
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      case 'body': standard.text({ text });
+        return;
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
       }
     },
     control({ token }: { token: string }): void {
-      if (settled || phase === 'incomplete') throw new Error('LFM2 control arrived after completion.');
+      if (settled || phase === 'incomplete') {
+        throw new Error('LFM2 control arrived after completion.');
+      }
       switch (phase) {
       case 'reasoning':
         if (token === '</think>') {
@@ -145,11 +178,16 @@ export function createLfm2Generation({ emit, endTokens, handling, tools }: {
         }
         standard.control({ token });
         return;
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
       }
     },
     finish({ reason }: { reason: 'aborted' | 'limit' | 'unknown' }): void {
-      if (settled) throw new Error('LFM2 generation was settled twice.');
+      if (settled) {
+        throw new Error('LFM2 generation was settled twice.');
+      }
       settled = true;
       switch (phase) {
       case 'reasoning':
@@ -159,8 +197,12 @@ export function createLfm2Generation({ emit, endTokens, handling, tools }: {
       case 'incomplete':
         emit({ event: { type: 'result', result: { type: 'interrupted', reason } } });
         return;
-      case 'body': standard.finish({ reason }); return;
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      case 'body': standard.finish({ reason });
+        return;
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
       }
     },
   };

@@ -45,7 +45,9 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
   await core.api.llama_backend_init();
   if (usesWebGpu({ profile })) {
     const device = await core.api.ggml_backend_dev_by_type(core.constant({ name: 'GGML_BACKEND_DEVICE_TYPE_GPU' }));
-    if (device === 0n) throw new LlamaCppBrowserError({ code: 'unavailable' });
+    if (device === 0n) {
+      throw new LlamaCppBrowserError({ code: 'unavailable' });
+    }
   }
   logDiagnostic({ diagnostic: { event: 'runtime-ready', profile } });
   return core;
