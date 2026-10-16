@@ -54,9 +54,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.explorer-step { border-top:1px solid var(--line);margin-top:36px;padding-top:22px; }
-.explorer-step h2 { margin-top:0; }
-.explorer-step > p { margin-bottom:0; }
-.explorer-step .guide-figure { margin:18px 0 0; }
-.explorer-step figcaption { margin-inline:auto;max-width:680px; }
+.explorer-step {
+  border-top: 1px solid var(--line);
+  margin-top: 36px;
+  padding-top: 22px;
+}
+.explorer-step h2 {
+  margin-top: 0;
+}
+.explorer-step > p {
+  margin-bottom: 0;
+}
+.explorer-step .guide-figure {
+  margin: 18px 0 0;
+}
+.explorer-step figcaption {
+  margin-inline: auto;
+  max-width: 680px;
+}
 </style>

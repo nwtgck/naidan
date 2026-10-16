@@ -46,11 +46,32 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.launch-line { padding:14px 18px;border-left:3px solid var(--blue);border-radius:0 10px 10px 0;background:var(--surface); }
-.launch-line a { font-weight:750;overflow-wrap:anywhere; }
-.walkthrough-step,.guide-scope { border-top:1px solid var(--line);margin-top:36px;padding-top:22px; }
-.walkthrough-step h2,.guide-scope h2:first-child { margin-top:0; }
-.walkthrough-step > p { margin-bottom:0; }
-.walkthrough-step .guide-figure { margin:18px 0 0; }
-.walkthrough-step figcaption { margin-inline:auto;max-width:670px; }
+.launch-line {
+  padding: 14px 18px;
+  border-left: 3px solid var(--blue);
+  border-radius: 0 10px 10px 0;
+  background: var(--surface);
+}
+.launch-line a {
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.walkthrough-step,.guide-scope {
+  border-top: 1px solid var(--line);
+  margin-top: 36px;
+  padding-top: 22px;
+}
+.walkthrough-step h2,.guide-scope h2:first-child {
+  margin-top: 0;
+}
+.walkthrough-step > p {
+  margin-bottom: 0;
+}
+.walkthrough-step .guide-figure {
+  margin: 18px 0 0;
+}
+.walkthrough-step figcaption {
+  margin-inline: auto;
+  max-width: 670px;
+}
 </style>

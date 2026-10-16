@@ -504,8 +504,12 @@ defineExpose({
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes zoom-in {
   from {
@@ -518,8 +522,12 @@ defineExpose({
   }
 }
 @keyframes slide-in-from-bottom {
-  from { transform: translateY(15px); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(15px);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .fade-in {
   animation-name: fade-in;

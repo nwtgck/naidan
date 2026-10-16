@@ -39,5 +39,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-[data-docs-app-entry-path-text] { overflow-wrap:anywhere; }
+[data-docs-app-entry-path-text] {
+  overflow-wrap: anywhere;
+}
 </style>

@@ -1104,8 +1104,12 @@ defineExpose({
   animation: fade-in 0.2s ease-out;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Hide arrow buttons for number input */

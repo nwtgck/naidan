@@ -98,12 +98,42 @@ defineExpose({
 </template>
 
 <style scoped>
-.source-links { display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:12px;font-size:12px;line-height:1.8; }
-.access-example { margin-top:30px; }
-.access-example h3 { margin-bottom:5px; }
-.access-scope { margin:0 0 12px!important; color:var(--blue)!important; font-size:12px!important; font-weight:750; }
-.guide-figure { margin:18px 0 0; }
-.guide-figure figcaption { margin-top:10px; color:var(--muted); font-size:12px; line-height:1.8; }
-.comparison-note { margin-top:18px; font-size:12px; color:var(--muted); }
-.local-only-link { margin-top:16px;font-size:13px; }
+.source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.access-example {
+  margin-top: 30px;
+}
+.access-example h3 {
+  margin-bottom: 5px;
+}
+.access-scope {
+  margin: 0 0 12px!important;
+  color: var(--blue)!important;
+  font-size: 12px!important;
+  font-weight: 750;
+}
+.guide-figure {
+  margin: 18px 0 0;
+}
+.guide-figure figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.comparison-note {
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.local-only-link {
+  margin-top: 16px;
+  font-size: 13px;
+}
 </style>

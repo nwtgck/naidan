@@ -1844,21 +1844,41 @@ watch(
 <style scoped>
 /* Neural Sync Effect Animations */
 @keyframes neural-scan {
-  0% { transform: translateY(-100%); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateY(100vh); opacity: 0; }
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
 }
 
 @keyframes neural-flash {
-  0% { opacity: 0; }
-  20% { opacity: 0.15; background-color: #6366f1; } /* indigo-500 */
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.15;
+    background-color: #6366f1;
+  } /* indigo-500 */
+  100% {
+    opacity: 0;
+  }
 }
 
 .neural-scan-line {
   position: absolute;
-  top: 0; left: 0; right: 0; height: 120px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
   background: linear-gradient(to bottom, transparent, #6366f1, transparent);
   box-shadow: 0 0 50px rgba(99, 102, 241, 0.4);
   animation: neural-scan 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;

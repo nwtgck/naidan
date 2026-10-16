@@ -120,24 +120,38 @@ defineExpose({
 
 <style scoped>
 @keyframes subtle-pulse {
-  0%, 100% { opacity: 0.8; transform: scale(0.99); }
-  50% { opacity: 1; transform: scale(1); }
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(0.99);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .animate-subtle-pulse {
   animation: subtle-pulse 3s ease-in-out infinite;
 }
 
 @keyframes bar-reset {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 .animate-bar-reset {
   animation: bar-reset 0.4s ease-out;
 }
 
 @keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 .animate-shimmer {
   animation: shimmer 2s infinite linear;

@@ -66,10 +66,18 @@ details[open] .privacy-explanation {
   animation: privacy-reveal 180ms ease-out;
 }
 @keyframes privacy-reveal {
-  from { opacity: 0; transform: translateY(-0.25rem); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  details[open] .privacy-explanation { animation: none; }
+  details[open] .privacy-explanation {
+    animation: none;
+  }
 }
 </style>

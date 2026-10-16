@@ -29,7 +29,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </div>
 </template>
 <style scoped>
-.indeterminate { animation: model-load-indeterminate 1.5s ease-in-out infinite alternate; }
-@keyframes model-load-indeterminate { from { transform: translateX(0); } to { transform: translateX(250%); } }
-@media (prefers-reduced-motion: reduce) { .indeterminate { animation: none; } }
+.indeterminate {
+  animation: model-load-indeterminate 1.5s ease-in-out infinite alternate;
+}
+@keyframes model-load-indeterminate {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate {
+    animation: none;
+  }
+}
 </style>

@@ -639,12 +639,20 @@ textarea {
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes slide-in-from-top {
-  from { transform: translateY(-0.5rem); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(-0.5rem);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .fade-in {
   animation-name: fade-in;

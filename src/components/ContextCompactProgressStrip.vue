@@ -425,18 +425,34 @@ defineExpose({
 
 <style scoped>
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes pulse-glow {
-  0%, 100% { opacity: 0.5; transform: scale(1); filter: blur(0px); }
-  50% { opacity: 1; transform: scale(1.1); filter: blur(1px); }
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+    filter: blur(1px);
+  }
 }
 
 @keyframes text-scan {
-  0% { background-position: 100% 0; }
-  100% { background-position: -100% 0; }
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .animate-shimmer {

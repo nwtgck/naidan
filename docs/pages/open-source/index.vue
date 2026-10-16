@@ -74,27 +74,120 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.open-source-section { border-top: 1px solid var(--line); margin-top: 38px; padding-top: 22px; }
-.open-source-section h2 { margin-top: 0; }
-.open-source-note { margin-top: 15px; font-size: 14px; }
-.open-source-links { display: flex; flex-wrap: wrap; gap: 5px 22px; margin-top: 10px; font-size: 14px; }
-.open-source-figure { padding: 24px; border: 1px solid var(--line-strong); border-radius: 17px; background: var(--surface); }
-.open-source-figure figcaption { margin-bottom: 0; }
-.open-source-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin: 0; padding: 0; list-style: none; }
-.open-source-flow li { position: relative; display: flex; min-height: 74px; align-items: center; justify-content: center; padding: 15px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.5; text-align: center; animation: open-source-appear .55s ease-out both; }
-.open-source-flow li + li::before { content: '→'; position: absolute; right: calc(100% + 7px); color: var(--blue); font-size: 21px; font-weight: 400; }
-.open-source-flow li:nth-child(2) { animation-delay: .12s; }
-.open-source-flow li:nth-child(3) { animation-delay: .24s; }
-.panel p { margin-bottom: 12px; }
-.panel a { font-size: 14px; }
-.open-source-choice-card { display: flex; flex-direction: column; min-width: 0; }
-.open-source-choice-link { align-self: flex-start; margin-top: auto; }
-@keyframes open-source-appear { from { opacity: .45; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 700px) {
-  .open-source-flow { grid-template-columns: 1fr; gap: 26px; }
-  .open-source-flow li { min-height: 58px; }
-  .open-source-flow li + li::before { content: '↓'; left: 50%; right: auto; bottom: calc(100% + 1px); transform: translateX(-50%); }
+.open-source-section {
+  border-top: 1px solid var(--line);
+  margin-top: 38px;
+  padding-top: 22px;
 }
-@media (prefers-reduced-motion: reduce) { .open-source-flow li { animation: none; } }
-html:has(#docs-pause-motion:checked) .open-source-flow li { animation: none; }
+.open-source-section h2 {
+  margin-top: 0;
+}
+.open-source-note {
+  margin-top: 15px;
+  font-size: 14px;
+}
+.open-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 22px;
+  margin-top: 10px;
+  font-size: 14px;
+}
+.open-source-figure {
+  padding: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 17px;
+  background: var(--surface);
+}
+.open-source-figure figcaption {
+  margin-bottom: 0;
+}
+.open-source-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.open-source-flow li {
+  position: relative;
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  animation: open-source-appear .55s ease-out both;
+}
+.open-source-flow li + li::before {
+  content: '→';
+  position: absolute;
+  right: calc(100% + 7px);
+  color: var(--blue);
+  font-size: 21px;
+  font-weight: 400;
+}
+.open-source-flow li:nth-child(2) {
+  animation-delay: .12s;
+}
+.open-source-flow li:nth-child(3) {
+  animation-delay: .24s;
+}
+.panel p {
+  margin-bottom: 12px;
+}
+.panel a {
+  font-size: 14px;
+}
+.open-source-choice-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.open-source-choice-link {
+  align-self: flex-start;
+  margin-top: auto;
+}
+@keyframes open-source-appear {
+  from {
+    opacity: .45;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 700px) {
+  .open-source-flow {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+  .open-source-flow li {
+    min-height: 58px;
+  }
+  .open-source-flow li + li::before {
+    content: '↓';
+    left: 50%;
+    right: auto;
+    bottom: calc(100% + 1px);
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .open-source-flow li {
+    animation: none;
+  }
+}
+html:has(#docs-pause-motion:checked) .open-source-flow li {
+  animation: none;
+}
 </style>
