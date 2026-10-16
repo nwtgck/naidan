@@ -35,6 +35,7 @@ import enforceDependencyDirections from './eslint-local-rules/enforce-dependency
 import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
 import docsNoBrowserPersistence from './eslint-local-rules/docs-no-browser-persistence.js';
 import cssLayout from './eslint-local-rules/css-layout.js';
+import statementLayout from './eslint-local-rules/statement-layout.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -238,7 +239,9 @@ const plugins = Object.assign({}, ...mainConfig.map(config => config.plugins));
 
 export default [
   ...mainConfig.map(config => {
-    if (Object.keys(config).every(key => key === 'name' || key === 'ignores')) return config;
+    if (Object.keys(config).every(key => key === 'name' || key === 'ignores')) {
+      return config;
+    }
     // CSS uses the dedicated PostCSS adapter instead of JavaScript rules.
     return { ...config, ignores: [...(config.ignores ?? []), ...boundaryOnlyPaths, '**/*.css'] };
   }),
@@ -274,5 +277,6 @@ export default [
   },
   testResourceManagement,
   noTestSupportImports,
+  statementLayout,
   ...cssLayout,
 ];
