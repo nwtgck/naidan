@@ -747,95 +747,225 @@ defineExpose({
 
 /* Only visibility, paint and transforms change; all variants retain their grid size. */
 @keyframes shell-stage-one {
-  0%,15.9% { opacity: 1; visibility: visible; }
-  16%,100% { opacity: 0; visibility: hidden; }
+  0%,15.9% {
+    opacity: 1;
+    visibility: visible;
+  }
+  16%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 @keyframes shell-stage-two {
-  0%,15.9%,32%,100% { opacity: 0; visibility: hidden; }
-  16%,31.9% { opacity: 1; visibility: visible; }
+  0%,15.9%,32%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  16%,31.9% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-stage-three {
-  0%,31.9%,48%,100% { opacity: 0; visibility: hidden; }
-  32%,47.9% { opacity: 1; visibility: visible; }
+  0%,31.9%,48%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  32%,47.9% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-stage-four {
-  0%,47.9%,64%,100% { opacity: 0; visibility: hidden; }
-  48%,63.9% { opacity: 1; visibility: visible; }
+  0%,47.9%,64%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  48%,63.9% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-stage-five {
-  0%,63.9% { opacity: 0; visibility: hidden; }
-  64%,100% { opacity: 1; visibility: visible; }
+  0%,63.9% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  64%,100% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-draft {
-  0%,2% { opacity: 1; visibility: visible; }
-  3%,100% { opacity: 0; visibility: hidden; }
+  0%,2% {
+    opacity: 1;
+    visibility: visible;
+  }
+  3%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 @keyframes shell-script {
-  0% { clip-path: inset(0 100% 0 0); }
-  2%,100% { clip-path: inset(0); }
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  2%,100% {
+    clip-path: inset(0);
+  }
 }
 @keyframes shell-execution {
-  0%,2% { opacity: 0; visibility: hidden; }
-  3%,100% { opacity: 1; visibility: visible; }
+  0%,2% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  3%,100% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-first-execution {
-  0%,6% { opacity: 0; visibility: hidden; }
-  7%,100% { opacity: 1; visibility: visible; }
+  0%,6% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  7%,100% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-initial-summary {
-  0%,2%,7%,100% { opacity: 0; visibility: hidden; }
-  3%,6% { opacity: 1; visibility: visible; }
+  0%,2%,7%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  3%,6% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-running {
-  0%,2%,5%,100% { opacity: 0; visibility: hidden; }
-  3%,4.9% { opacity: 1; visibility: visible; }
+  0%,2%,5%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  3%,4.9% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-first-running {
-  0%,6%,8%,100% { opacity: 0; visibility: hidden; }
-  7%,7.9% { opacity: 1; visibility: visible; }
+  0%,6%,8%,100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+  7%,7.9% {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 @keyframes shell-result {
-  0%,4.9% { opacity: 0; }
-  5%,100% { opacity: 1; }
+  0%,4.9% {
+    opacity: 0;
+  }
+  5%,100% {
+    opacity: 1;
+  }
 }
 @keyframes shell-first-result {
-  0%,7.9% { opacity: 0; }
-  8%,100% { opacity: 1; }
+  0%,7.9% {
+    opacity: 0;
+  }
+  8%,100% {
+    opacity: 1;
+  }
 }
 @keyframes shell-pointer {
-  0%,3% { opacity: 0; transform: translate(25px,15px); }
-  4%,5% { opacity: 1; transform: translate(0,0); }
-  6% { opacity: 1; transform: translate(0,0) scale(.85); }
-  7%,100% { opacity: 0; transform: translate(0,0); }
+  0%,3% {
+    opacity: 0;
+    transform: translate(25px,15px);
+  }
+  4%,5% {
+    opacity: 1;
+    transform: translate(0,0);
+  }
+  6% {
+    opacity: 1;
+    transform: translate(0,0) scale(.85);
+  }
+  7%,100% {
+    opacity: 0;
+    transform: translate(0,0);
+  }
 }
 @keyframes shell-response {
-  0%,72% { opacity: 0; }
-  75%,96% { opacity: 1; }
-  99%,100% { opacity: 0; }
+  0%,72% {
+    opacity: 0;
+  }
+  75%,96% {
+    opacity: 1;
+  }
+  99%,100% {
+    opacity: 0;
+  }
 }
 @keyframes shell-scene-replay {
-  0%,99%,100% { opacity: 0; }
-  1%,96% { opacity: 1; }
+  0%,99%,100% {
+    opacity: 0;
+  }
+  1%,96% {
+    opacity: 1;
+  }
 }
 @keyframes shell-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 /* Pausing resolves the scene to the completed review call instead of freezing a replay frame. */
-:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] *) { animation: none !important; }
-:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] .demo-pointer) { display: none; }
+:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] *) {
+  animation: none !important;
+}
+:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] .demo-pointer) {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
-  .shell-chat * { animation: none !important; }
-  .demo-pointer { display: none; }
+  .shell-chat * {
+    animation: none !important;
+  }
+  .demo-pointer {
+    display: none;
+  }
 }
 @media(max-width:620px) {
-  .shell-user,.shell-assistant { padding: 12px; }
-  .shell-chat { font-size: 11px; }
-  .tool-group { padding: 8px; }
-  .tool-details { padding: 8px; }
-  .process-toggle { gap: 6px; padding-inline: 7px; }
-  .sequence-action { display: none; }
-  .shell-transcript summary { gap: 8px; padding: 11px; }
-  .transcript-body { padding: 12px; }
-  .transcript-panels { grid-template-columns: minmax(0,1fr); }
+  .shell-user,.shell-assistant {
+    padding: 12px;
+  }
+  .shell-chat {
+    font-size: 11px;
+  }
+  .tool-group {
+    padding: 8px;
+  }
+  .tool-details {
+    padding: 8px;
+  }
+  .process-toggle {
+    gap: 6px;
+    padding-inline: 7px;
+  }
+  .sequence-action {
+    display: none;
+  }
+  .shell-transcript summary {
+    gap: 8px;
+    padding: 11px;
+  }
+  .transcript-body {
+    padding: 12px;
+  }
+  .transcript-panels {
+    grid-template-columns: minmax(0,1fr);
+  }
 }
 </style>

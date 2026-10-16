@@ -82,8 +82,12 @@ defineExpose({
 }
 
 @keyframes pulse-subtle {
-  0%, 100% { opacity: 0.2; }
-  50% { opacity: 0.6; }
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .animate-pulse-subtle {

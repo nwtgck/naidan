@@ -82,15 +82,72 @@ defineExpose({
 </template>
 
 <style scoped>
-.browser-ai-availability{margin:32px 0;padding:21px 23px;border:1px solid var(--line-strong);border-radius:14px;background:var(--surface)}
-.browser-ai-availability h2{margin:0 0 8px;font-size:1.16em}
-.browser-ai-availability p{margin:0}
-.scope,.limits{color:var(--muted);font-size:.9em;line-height:1.7}
-.result{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:17px 0;padding:14px 16px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface-2)}
-.result[data-tone="available"]{border-color:color-mix(in srgb,var(--green) 52%,var(--line));color:var(--green)}
-.result[data-tone="preparation"]{border-color:color-mix(in srgb,var(--blue) 44%,var(--line));color:var(--blue)}
-.result p{font-weight:650;line-height:1.6}
-.result button{flex:none;padding:7px 11px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--text);font-size:.8em;font-weight:700}
-.result button:disabled{opacity:.55;cursor:default}
-@media(max-width:620px){.browser-ai-availability{padding:18px}.result{align-items:flex-start;flex-direction:column}.result button{align-self:flex-start}}
+.browser-ai-availability {
+  margin: 32px 0;
+  padding: 21px 23px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.browser-ai-availability h2 {
+  margin: 0 0 8px;
+  font-size: 1.16em;
+}
+.browser-ai-availability p {
+  margin: 0;
+}
+.scope,.limits {
+  color: var(--muted);
+  font-size: .9em;
+  line-height: 1.7;
+}
+.result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 17px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.result[data-tone="available"] {
+  border-color: color-mix(in srgb,var(--green) 52%,var(--line));
+  color: var(--green);
+}
+.result[data-tone="preparation"] {
+  border-color: color-mix(in srgb,var(--blue) 44%,var(--line));
+  color: var(--blue);
+}
+.result p {
+  font-weight: 650;
+  line-height: 1.6;
+}
+.result button {
+  flex: none;
+  padding: 7px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: .8em;
+  font-weight: 700;
+}
+.result button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+@media(max-width:620px) {
+  .browser-ai-availability {
+    padding: 18px;
+  }
+  .result {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .result button {
+    align-self: flex-start;
+  }
+}
 </style>

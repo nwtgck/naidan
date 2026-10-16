@@ -181,8 +181,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
   </section>
 </template>
 <style scoped>
-.catalog-disclosure { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms ease, opacity 180ms ease; }
-.catalog-disclosure-open { grid-template-rows: 1fr; opacity: 1; }
-.catalog-disclosure-inner { min-height: 0; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .catalog-disclosure { transition: none; } }
+.catalog-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.catalog-disclosure-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.catalog-disclosure-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-disclosure {
+    transition: none;
+  }
+}
 </style>

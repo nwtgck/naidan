@@ -72,8 +72,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </section>
 </template>
 <style scoped>
-.suggestions-disclosure { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms ease, opacity 180ms ease; }
-.suggestions-disclosure-open { grid-template-rows: 1fr; opacity: 1; }
-.suggestions-disclosure-inner { min-height: 0; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .suggestions-disclosure { transition: none; } }
+.suggestions-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.suggestions-disclosure-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.suggestions-disclosure-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestions-disclosure {
+    transition: none;
+  }
+}
 </style>

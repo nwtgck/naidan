@@ -62,10 +62,28 @@ defineExpose({
 </template>
 
 <style scoped>
-.before-step { padding:17px 20px;border-left:3px solid var(--blue);background:var(--surface);border-radius:0 10px 10px 0; }
-.walkthrough-step { border-top:1px solid var(--line);margin-top:38px;padding-top:22px; }
-.walkthrough-step h2 { margin-top:0; }
-.walkthrough-step > p { margin-bottom:0; }
-.walkthrough-step .guide-figure { margin:18px 0 0; }
-.walkthrough-step figcaption { margin-inline:auto;max-width:660px; }
+.before-step {
+  padding: 17px 20px;
+  border-left: 3px solid var(--blue);
+  background: var(--surface);
+  border-radius: 0 10px 10px 0;
+}
+.walkthrough-step {
+  border-top: 1px solid var(--line);
+  margin-top: 38px;
+  padding-top: 22px;
+}
+.walkthrough-step h2 {
+  margin-top: 0;
+}
+.walkthrough-step > p {
+  margin-bottom: 0;
+}
+.walkthrough-step .guide-figure {
+  margin: 18px 0 0;
+}
+.walkthrough-step figcaption {
+  margin-inline: auto;
+  max-width: 660px;
+}
 </style>

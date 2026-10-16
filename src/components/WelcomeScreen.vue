@@ -156,16 +156,32 @@ defineExpose({
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes zoom-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 @keyframes slide-in-from-bottom {
-  from { transform: translateY(1.5rem); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(1.5rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 .fade-in {
   animation-name: fade-in;
@@ -180,14 +196,28 @@ defineExpose({
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes slide-in-from-bottom {
-  from { transform: translateY(1.5rem); }
-  to { opacity: 0; transform: translateY(1.5rem); }
-  50% { opacity: 0.5; }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  50% {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .fade-in {
   animation-name: fade-in;

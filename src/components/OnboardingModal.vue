@@ -991,8 +991,12 @@ defineExpose({
 }
 
 @keyframes slide-in-from-bottom {
-  from { transform: translateY(0.5rem); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(0.5rem);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .slide-in-from-bottom-2 {

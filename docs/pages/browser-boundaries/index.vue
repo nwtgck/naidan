@@ -40,5 +40,8 @@ defineExpose({
 </template>
 
 <style scoped>
-.network-guide { margin-top: 12px; font-size: 13px; }
+.network-guide {
+  margin-top: 12px;
+  font-size: 13px;
+}
 </style>

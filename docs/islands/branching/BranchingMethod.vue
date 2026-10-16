@@ -723,8 +723,12 @@ defineExpose({
   animation: docs-branch-wait 1.5s ease-in-out infinite;
 }
 
-.waiting i:nth-child(2) { animation-delay: .2s; }
-.waiting i:nth-child(3) { animation-delay: .4s; }
+.waiting i:nth-child(2) {
+  animation-delay: .2s;
+}
+.waiting i:nth-child(3) {
+  animation-delay: .4s;
+}
 
 .sample-input {
   min-width: 0;
@@ -853,9 +857,15 @@ defineExpose({
   animation: docs-branch-tick 1.7s linear infinite;
 }
 
-[data-stage="1"] .walkthrough-clock.automatic { animation-duration: 2.1s; }
-[data-stage="2"] .walkthrough-clock.automatic { animation-duration: 3.8s; }
-[data-stage="3"] .walkthrough-clock.automatic { animation-duration: 2.4s; }
+[data-stage="1"] .walkthrough-clock.automatic {
+  animation-duration: 2.1s;
+}
+[data-stage="2"] .walkthrough-clock.automatic {
+  animation-duration: 3.8s;
+}
+[data-stage="3"] .walkthrough-clock.automatic {
+  animation-duration: 2.4s;
+}
 
 .spotlight {
   color: #93c5fd !important;
@@ -893,33 +903,74 @@ defineExpose({
 }
 
 @keyframes docs-branch-tick {
-  from { opacity: 0; }
-  to { opacity: .01; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: .01;
+  }
 }
 
 @keyframes docs-branch-focus {
-  0%,100% { outline-color: #60a5fa66; }
-  50% { outline-color: #93c5fd; }
+  0%,100% {
+    outline-color: #60a5fa66;
+  }
+  50% {
+    outline-color: #93c5fd;
+  }
 }
 
 @keyframes docs-branch-wait {
-  0%,80%,100% { opacity: .3; }
-  40% { opacity: 1; }
+  0%,80%,100% {
+    opacity: .3;
+  }
+  40% {
+    opacity: 1;
+  }
 }
 
 @media(max-width:600px) {
-  .branch-demo { padding: 12px; }
-  .message { padding: 10px 8px; }
-  .message-tools { margin-left: auto; gap: 1px; }
-  .message-tools button,.decoration { padding: 4px; }
-  .version-paging span { min-width: 28px; }
-  .editor-buttons { width: 100%; }
-  .editor-tools { padding-bottom: 3px; }
-  .editor-buttons kbd,.sample-send kbd { display: none; }
-  .sample-input { margin-inline: 8px; }
-  .input-footer { gap: 7px; }
-  .model-select { min-width: 0; font-size: 8px; }
-  .sample-chat { padding: 6px 3px; font-size: 8px; }
-  .branch-demo .message-text { font-size: 12px; }
+  .branch-demo {
+    padding: 12px;
+  }
+  .message {
+    padding: 10px 8px;
+  }
+  .message-tools {
+    margin-left: auto;
+    gap: 1px;
+  }
+  .message-tools button,.decoration {
+    padding: 4px;
+  }
+  .version-paging span {
+    min-width: 28px;
+  }
+  .editor-buttons {
+    width: 100%;
+  }
+  .editor-tools {
+    padding-bottom: 3px;
+  }
+  .editor-buttons kbd,.sample-send kbd {
+    display: none;
+  }
+  .sample-input {
+    margin-inline: 8px;
+  }
+  .input-footer {
+    gap: 7px;
+  }
+  .model-select {
+    min-width: 0;
+    font-size: 8px;
+  }
+  .sample-chat {
+    padding: 6px 3px;
+    font-size: 8px;
+  }
+  .branch-demo .message-text {
+    font-size: 12px;
+  }
 }
 </style>

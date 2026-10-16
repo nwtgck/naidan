@@ -197,7 +197,10 @@ defineExpose({
   }
 }
 
-html:has(#docs-pause-motion:checked) .folder-demo .copy-track i { animation:none!important;opacity:0; }
+html:has(#docs-pause-motion:checked) .folder-demo .copy-track i {
+  animation: none!important;
+  opacity: 0;
+}
 
 html:has(#docs-pause-motion:checked) .folder-demo .copied-file {
   animation: none !important;
@@ -206,8 +209,15 @@ html:has(#docs-pause-motion:checked) .folder-demo .copied-file {
 }
 
 @media(prefers-reduced-motion:reduce) {
-  .folder-demo .copy-track i { animation:none!important;opacity:0; }
-  .folder-demo .copied-file { animation:none!important;border-color:var(--blue);box-shadow:0 0 0 3px #3b82f60a; }
+  .folder-demo .copy-track i {
+    animation: none!important;
+    opacity: 0;
+  }
+  .folder-demo .copied-file {
+    animation: none!important;
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px #3b82f60a;
+  }
 }
 
 @media(max-width:640px) {

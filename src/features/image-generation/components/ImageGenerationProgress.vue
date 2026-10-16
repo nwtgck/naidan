@@ -122,23 +122,74 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .generation-particle {
-  position: absolute; top: 50%; left: 50%; width: var(--size); height: var(--size);
-  background: var(--color); border-radius: 50%; box-shadow: 0 0 calc(var(--size) * 3) var(--color);
-  opacity: 0; animation: particle-expansion var(--duration) ease-out infinite; animation-delay: var(--delay);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--size);
+  height: var(--size);
+  background: var(--color);
+  border-radius: 50%;
+  box-shadow: 0 0 calc(var(--size) * 3) var(--color);
+  opacity: 0;
+  animation: particle-expansion var(--duration) ease-out infinite;
+  animation-delay: var(--delay);
 }
-.generation-glow { animation: glow 3s ease-in-out infinite; }
-.generation-shimmer { animation: shimmer 2s linear infinite; }
-.generation-travelling { transform: translateX(100%); animation: travelling 1.6s ease-in-out infinite alternate; }
-.generation-progress[data-running="false"] * { animation: none; }
+.generation-glow {
+  animation: glow 3s ease-in-out infinite;
+}
+.generation-shimmer {
+  animation: shimmer 2s linear infinite;
+}
+.generation-travelling {
+  transform: translateX(100%);
+  animation: travelling 1.6s ease-in-out infinite alternate;
+}
+.generation-progress[data-running="false"] * {
+  animation: none;
+}
 @keyframes particle-expansion {
-  0% { transform: rotate(var(--direction)) translateX(0) scale(0); opacity: 0; }
-  15% { opacity: 0.8; transform: rotate(var(--direction)) translateX(30px) scale(1.2); }
-  100% { transform: rotate(var(--direction)) translateX(var(--distance)) scale(0.2); opacity: 0; }
+  0% {
+    transform: rotate(var(--direction)) translateX(0) scale(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+    transform: rotate(var(--direction)) translateX(30px) scale(1.2);
+  }
+  100% {
+    transform: rotate(var(--direction)) translateX(var(--distance)) scale(0.2);
+    opacity: 0;
+  }
 }
-@keyframes glow { 0%, 100% { opacity: 0.8; transform: scale(0.99); } 50% { opacity: 1; transform: scale(1); } }
-@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-@keyframes travelling { from { transform: translateX(0); } to { transform: translateX(200%); } }
+@keyframes glow {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(0.99);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes travelling {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .generation-progress * { animation: none; }
+  .generation-progress * {
+    animation: none;
+  }
 }
 </style>

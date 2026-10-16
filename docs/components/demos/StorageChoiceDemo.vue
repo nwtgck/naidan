@@ -142,17 +142,33 @@ defineExpose({
 }
 
 @keyframes storage-select-opfs {
-  0%, 49%, 100% { border-color: #3b82f6; background: var(--choice-blue-bg); }
-  50%, 99% { border-color: var(--line); background: var(--surface); }
+  0%, 49%, 100% {
+    border-color: #3b82f6;
+    background: var(--choice-blue-bg);
+  }
+  50%, 99% {
+    border-color: var(--line);
+    background: var(--surface);
+  }
 }
 
 @keyframes storage-select-memory {
-  0%, 49%, 100% { border-color: var(--line); background: var(--surface); }
-  50%, 99% { border-color: #a855f7; background: var(--choice-purple-bg); }
+  0%, 49%, 100% {
+    border-color: var(--line);
+    background: var(--surface);
+  }
+  50%, 99% {
+    border-color: #a855f7;
+    background: var(--choice-purple-bg);
+  }
 }
 
 @media (max-width: 620px) {
-  .storage-choice { padding: 14px; }
-  .storage-choice-card { padding: 10px; }
+  .storage-choice {
+    padding: 14px;
+  }
+  .storage-choice-card {
+    padding: 10px;
+  }
 }
 </style>

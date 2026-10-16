@@ -1235,8 +1235,14 @@ textarea::selection {
 }
 
 @keyframes slide-in-from-left {
-  from { transform: translateX(-10px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .slide-in-from-left-2 {

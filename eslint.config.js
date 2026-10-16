@@ -34,6 +34,7 @@ import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-impor
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
 import docsNoBrowserPersistence from './eslint-local-rules/docs-no-browser-persistence.js';
+import cssLayout from './eslint-local-rules/css-layout.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -238,7 +239,8 @@ const plugins = Object.assign({}, ...mainConfig.map(config => config.plugins));
 export default [
   ...mainConfig.map(config => {
     if (Object.keys(config).every(key => key === 'name' || key === 'ignores')) return config;
-    return { ...config, ignores: [...(config.ignores ?? []), ...boundaryOnlyPaths] };
+    // CSS uses the dedicated PostCSS adapter instead of JavaScript rules.
+    return { ...config, ignores: [...(config.ignores ?? []), ...boundaryOnlyPaths, '**/*.css'] };
   }),
   {
     name: 'naidan/owned-boundaries-without-typechecking',
@@ -272,4 +274,5 @@ export default [
   },
   testResourceManagement,
   noTestSupportImports,
+  ...cssLayout,
 ];

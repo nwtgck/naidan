@@ -76,6 +76,100 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.walkthrough-step{border-top:1px solid var(--line);margin-top:37px;padding-top:21px}.walkthrough-step h2{margin-top:0}.walkthrough-step>p{margin-bottom:0}.walkthrough-step .guide-figure{margin:18px 0 0}.result-section,.privacy-section{margin-top:42px}.result-section .guide-figure{margin:20px 0}.privacy-figure{margin:23px 0 25px}.privacy-figure figcaption{margin-top:12px}.privacy-flow{display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr);align-items:center;gap:8px;max-width:680px;margin-inline:auto;padding:20px;border:1px solid var(--line-strong);border-radius:13px;background:var(--surface);color:var(--text);font-size:12px}.flow-node{display:grid;place-items:center;min-height:70px;padding:9px;text-align:center;overflow-wrap:anywhere;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface-2);font-weight:750}.flow-node.broker{border-color:var(--blue);color:var(--blue)}.flow-arrow{text-align:center;color:var(--blue);font-size:22px}.flow-label{grid-row:2;padding-top:6px;text-align:center;font-size:11px;line-height:1.5;font-weight:700;overflow-wrap:anywhere}.sent{grid-column:3 / 6;color:var(--green)}.origin{grid-column:1 / 3;color:var(--muted)}
-@media(max-width:520px){.privacy-flow{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr);gap:3px;padding:11px;font-size:10px}.flow-node{min-height:74px;padding:5px}.flow-arrow{font-size:16px}.flow-label{font-size:10px}}
+.walkthrough-step {
+  border-top: 1px solid var(--line);
+  margin-top: 37px;
+  padding-top: 21px;
+}
+.walkthrough-step h2 {
+  margin-top: 0;
+}
+.walkthrough-step>p {
+  margin-bottom: 0;
+}
+.walkthrough-step .guide-figure {
+  margin: 18px 0 0;
+}
+.result-section,.privacy-section {
+  margin-top: 42px;
+}
+.result-section .guide-figure {
+  margin: 20px 0;
+}
+.privacy-figure {
+  margin: 23px 0 25px;
+}
+.privacy-figure figcaption {
+  margin-top: 12px;
+}
+.privacy-flow {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr) 28px minmax(0,1fr);
+  align-items: center;
+  gap: 8px;
+  max-width: 680px;
+  margin-inline: auto;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+.flow-node {
+  display: grid;
+  place-items: center;
+  min-height: 70px;
+  padding: 9px;
+  text-align: center;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-weight: 750;
+}
+.flow-node.broker {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.flow-arrow {
+  text-align: center;
+  color: var(--blue);
+  font-size: 22px;
+}
+.flow-label {
+  grid-row: 2;
+  padding-top: 6px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.sent {
+  grid-column: 3 / 6;
+  color: var(--green);
+}
+.origin {
+  grid-column: 1 / 3;
+  color: var(--muted);
+}
+@media(max-width:520px) {
+  .privacy-flow {
+    grid-template-columns: minmax(0,1fr) 18px minmax(0,1fr) 18px minmax(0,1fr);
+    gap: 3px;
+    padding: 11px;
+    font-size: 10px;
+  }
+  .flow-node {
+    min-height: 74px;
+    padding: 5px;
+  }
+  .flow-arrow {
+    font-size: 16px;
+  }
+  .flow-label {
+    font-size: 10px;
+  }
+}
 </style>

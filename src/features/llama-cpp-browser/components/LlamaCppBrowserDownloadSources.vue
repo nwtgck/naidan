@@ -85,9 +85,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </div>
 </template>
 <style scoped>
-.sources-enter-active, .sources-leave-active { transition: opacity 150ms ease, transform 150ms ease; }
-.sources-enter-from, .sources-leave-to { opacity: 0; transform: translateY(-0.2rem); }
+.sources-enter-active, .sources-leave-active {
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.sources-enter-from, .sources-leave-to {
+  opacity: 0;
+  transform: translateY(-0.2rem);
+}
 @media (prefers-reduced-motion: reduce) {
-  .sources-enter-active, .sources-leave-active { transition: none; }
+  .sources-enter-active, .sources-leave-active {
+    transition: none;
+  }
 }
 </style>

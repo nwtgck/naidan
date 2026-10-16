@@ -103,17 +103,72 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.scope-scroll { overflow-x: auto; margin-block: 18px; }
-.scope-table { width: 100%; min-width: 560px; border-collapse: collapse; line-height: 1.6; }
-.scope-table th, .scope-table td { padding: 11px 13px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
-.scope-table thead th { background: var(--surface-2); font-size: .84em; }
-.scope-table tbody th { width: 28%; min-width: 138px; font-weight: 750; }
-.scope-table tbody td { width: 36%; }
-.session-note { padding: 14px 18px; border-left: 3px solid var(--blue); border-radius: 0 10px 10px 0; background: var(--surface); }
-.path-list { display: grid; gap: 10px; margin-block: 20px; }
-.path-list > div { display: grid; grid-template-columns: minmax(180px, 32%) minmax(0, 1fr); gap: 12px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 10px; }
-.path-list dt { min-width: 0; font-weight: 750; overflow-wrap: anywhere; }
-.path-list dd { margin: 0; min-width: 0; }
-.path-example { padding: 10px 13px; border: 1px solid var(--line); border-radius: 9px; overflow-wrap: anywhere; }
-@media (max-width: 640px) { .path-list > div { grid-template-columns: 1fr; gap: 4px; } }
+.scope-scroll {
+  overflow-x: auto;
+  margin-block: 18px;
+}
+.scope-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  line-height: 1.6;
+}
+.scope-table th, .scope-table td {
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.scope-table thead th {
+  background: var(--surface-2);
+  font-size: .84em;
+}
+.scope-table tbody th {
+  width: 28%;
+  min-width: 138px;
+  font-weight: 750;
+}
+.scope-table tbody td {
+  width: 36%;
+}
+.session-note {
+  padding: 14px 18px;
+  border-left: 3px solid var(--blue);
+  border-radius: 0 10px 10px 0;
+  background: var(--surface);
+}
+.path-list {
+  display: grid;
+  gap: 10px;
+  margin-block: 20px;
+}
+.path-list > div {
+  display: grid;
+  grid-template-columns: minmax(180px, 32%) minmax(0, 1fr);
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.path-list dt {
+  min-width: 0;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+.path-list dd {
+  margin: 0;
+  min-width: 0;
+}
+.path-example {
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .path-list > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
 </style>
