@@ -24,6 +24,8 @@ jobs:
         uses: ./.github/actions/retry-npm-ci
 
       - name: Run lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run lint
 
   test:
@@ -195,9 +197,40 @@ jobs:
           name: naidan-server-binary
           path: naidan-server/naidan-server
 
+  build_docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: ./.github/actions/retry-npm-ci
+
+      - name: Check Docs types
+        run: npm run typecheck:docs
+
+      - name: Test Docs independently
+        run: npm run test:docs
+
+      - name: Build Docs independently
+        run: npm run build:docs
+
+      - name: Upload Docs-only artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-dist
+          path: docs/dist/
+          if-no-files-found: error
+
   publish_to_cloudflare:
-    needs: build
-    if: ${{ !cancelled() }}
+    needs: [build, build_docs]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build_docs.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -219,10 +252,31 @@ jobs:
           name: full-dist-build
           path: dist
 
+      - name: Download Docs-only artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docs-dist
+          path: docs-dist
+
+      - name: Add Docs to this deployment only
+        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        run: |
+          test -f dist/hosted/index.html
+          test -f docs-dist/index.html
+          test -f docs-dist/404.html
+          test -f docs-dist/en/index.html
+          test -f docs-dist/ja/index.html
+          test ! -e dist/hosted/docs
+          mkdir -p dist/hosted/docs
+          cp -a docs-dist/. dist/hosted/docs/
+
       - name: Create _headers
         run: |
           VERSION=$(node -p "require('./package.json').version")
           cat << EOF > dist/hosted/_headers
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
+
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
@@ -265,8 +319,8 @@ jobs:
             });
 
   publish_to_cloudflare_local_only:
-    needs: build
-    if: ${{ !cancelled() }}
+    needs: [build, build_docs]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build_docs.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -288,12 +342,33 @@ jobs:
           name: full-dist-build
           path: dist
 
+      - name: Download Docs-only artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docs-dist
+          path: docs-dist
+
+      - name: Add Docs to this deployment only
+        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        run: |
+          test -f dist/hosted/index.html
+          test -f docs-dist/index.html
+          test -f docs-dist/404.html
+          test -f docs-dist/en/index.html
+          test -f docs-dist/ja/index.html
+          test ! -e dist/hosted/docs
+          mkdir -p dist/hosted/docs
+          cp -a docs-dist/. dist/hosted/docs/
+
       - name: Create _headers for local-only
         run: |
           VERSION=$(node -p "require('./package.json').version")
           cat << EOF > dist/hosted/_headers
           /*
             Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; form-action 'none';
+
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
 
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
@@ -347,8 +422,8 @@ jobs:
             });
 
   publish_to_cloudflare_curated:
-    needs: build
-    if: ${{ !cancelled() }}
+    needs: [build, build_docs]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.build_docs.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -369,6 +444,24 @@ jobs:
         with:
           name: full-dist-build
           path: dist
+
+      - name: Download Docs-only artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docs-dist
+          path: docs-dist
+
+      - name: Add Docs to this deployment only
+        # Do not modify/repack the Hosted ZIP or upload a combined artifact.
+        run: |
+          test -f dist/hosted/index.html
+          test -f docs-dist/index.html
+          test -f docs-dist/404.html
+          test -f docs-dist/en/index.html
+          test -f docs-dist/ja/index.html
+          test ! -e dist/hosted/docs
+          mkdir -p dist/hosted/docs
+          cp -a docs-dist/. dist/hosted/docs/
 
       - name: Create _headers for curated access
         run: |
@@ -415,6 +508,9 @@ jobs:
           /assets/privacy-fetch-broker/*
             Cross-Origin-Resource-Policy: cross-origin
             Access-Control-Allow-Origin: *
+
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
 
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"

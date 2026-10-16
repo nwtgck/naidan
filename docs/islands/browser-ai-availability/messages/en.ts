@@ -1,0 +1,15 @@
+export const messages = {
+  check_this_browser_heading: 'Check this browser',
+  browser_scope: 'This result is for the browser displaying this page. To check another browser, open this URL in that browser.',
+  not_checked_yet: 'Not checked yet. If JavaScript is enabled, this page checks after loading.',
+  checking_browser_model: 'Checking this browser’s text language model…',
+  browser_model_available: 'This browser reports that its text language model is available.',
+  browser_model_downloadable: 'This browser reports that a text model can be downloaded. This page has not started a download.',
+  browser_model_downloading: 'This browser reports that a text model is downloading. This page does not track its progress.',
+  browser_model_unavailable: 'This browser reports that its text language model is unavailable.',
+  language_model_api_is_not_exposed: 'The LanguageModel API needed by Naidan is not exposed here. This alone does not identify a device limitation.',
+  unrecognized_browser_status: 'The browser returned an unrecognized status, so availability could not be confirmed.',
+  browser_check_failed: 'The browser could not complete the check. Try again.',
+  check_again: 'Check again',
+  availability_check_limits: 'This check does not prepare a model or guarantee chat with every language or setting.',
+};

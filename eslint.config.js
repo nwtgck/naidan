@@ -33,6 +33,7 @@ import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-api
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
+import docsNoBrowserPersistence from './eslint-local-rules/docs-no-browser-persistence.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -96,13 +97,13 @@ const mainConfig = tseslint.config(
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
     // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
     // Generated, vendored and deliberate negative fixtures are not owned lint targets.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
+    ignores: ['dist/**', 'docs/dist/**', 'docs/.cache/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],
   {
-    files: ['**/*.ts', '**/*.vue'],
+    files: ['**/*.ts', '**/*.tsx', '**/*.vue'],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
@@ -256,6 +257,18 @@ export default [
   {
     files: ['scripts/**/*.vue'],
     languageOptions: { parser: vueParser, parserOptions: { parser: tseslint.parser, project: false } },
+  },
+  {
+    name: 'naidan/docs-typechecking',
+    files: ['docs/**/*.{ts,tsx,vue}', 'build/docs-dev-bridge.ts'],
+    languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },
+  },
+  docsNoBrowserPersistence,
+  {
+    ...requireNamedArgs,
+    name: 'naidan/docs-named-arguments',
+    files: ['docs/**/*.ts', 'docs/**/*.tsx', 'docs/**/*.vue', 'build/docs-dev-bridge.ts'],
+    ignores: ['docs/**/*.test.ts', 'docs/**/*.spec.ts'],
   },
   testResourceManagement,
   noTestSupportImports,

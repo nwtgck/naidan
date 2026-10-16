@@ -6,6 +6,7 @@ import { installStreamDownloadWorker } from '../src/utils/download/service-worke
 
 import { createOfflineHandoff } from './offline-handoff';
 import { waitForActiveCleanup } from './precache-lifecycle';
+import { isDocsUrl } from './docs-routing';
 
 declare const __PWA_BUILD_ID__: string;
 declare const self: ServiceWorkerGlobalScope & {
@@ -68,6 +69,7 @@ self.addEventListener('fetch', event => {
   // Leave other origins, scopes and methods to the browser. In particular,
   // this worker does not wrap model/API requests or their response streams.
   if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
+  if (isDocsUrl({ url, scope })) return;
   const response = (async () => {
     // The deliberate tradeoff is SCOPE-wide: all tabs/workers still controlled
     // by this generation use the network. This avoids guessing worker ancestry,

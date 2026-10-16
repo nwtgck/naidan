@@ -18,7 +18,11 @@
     "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "build:docs": "npm run typecheck:docs && vite build --config docs/vite.config.ts",
+    "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
+    "test:docs": "vitest run --config docs/vitest.config.ts docs",
+    "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",
@@ -59,7 +63,9 @@
     "@typescript-eslint/eslint-plugin": "^8.61.0",
     "@typescript-eslint/parser": "^8.61.0",
     "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/babel-plugin-jsx": "^1.5.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "@vue/compiler-dom": "^3.5.39",
     "@vue/compiler-sfc": "^3.5.39",
     "@vue/language-core": "^3.3.6",
     "@vue/test-utils": "^2.4.11",
@@ -89,6 +95,7 @@
     "vitest": "^4.1.10",
     "vue-tsc": "^3.3.6",
     "workbox-precaching": "^7.4.1",
-    "workbox-routing": "^7.4.1"
+    "workbox-routing": "^7.4.1",
+    "yaml": "^2.9.0"
   }
 }
