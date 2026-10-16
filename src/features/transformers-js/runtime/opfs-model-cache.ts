@@ -119,7 +119,7 @@ async function matchOpfsPathUnderLease({
       return undefined;
     }
 
-    console.log(`[opfsCache] CACHE HIT: ${path} (${file.size} bytes)`);
+    if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] CACHE HIT: ${path} (${file.size} bytes)`);
     return new Response(file.stream(), {
       headers: {
         'Content-Type': urlString.endsWith('.json') ? 'application/json' : 'application/octet-stream',
@@ -132,7 +132,7 @@ async function matchOpfsPathUnderLease({
     // not authorize another revision lookup or suggest that Download can repair
     // the cache. Preserve the cause for the owning Load/Download operation.
     if (!(error instanceof DOMException || error instanceof Error) || error.name !== 'NotFoundError') throw error;
-    console.log(`[opfsCache] CACHE MISS: ${path}`);
+    if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] CACHE MISS: ${path}`);
     return undefined;
   }
 }
@@ -241,9 +241,9 @@ export function createOpfsModelCache({
       }
 
       try {
-        console.log(`[opfsCache] WRITING: ${path}...`);
+        if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] WRITING: ${path}...`);
         await writeToOpfs({ path, response });
-        console.log(`[opfsCache] COMPLETED: ${path}`);
+        if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] COMPLETED: ${path}`);
       } catch (err) {
         console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
         throw err;
