@@ -273,26 +273,26 @@ defineExpose({
   <Transition name="modal">
     <div v-if="isOpen" data-testid="settings-modal" tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6">
       <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 relative">
-        <!-- Persistent Close Button (Top Right) -->
-        <button
-          @click="handleCancel"
-          tw-class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-          data-testid="setting-close-x"
-        >
-          <XIcon tw-class="w-5 h-5" />
-        </button>
-
         <!-- Sidebar (Tabs) -->
         <aside tw-class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div tw-class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
-            <div tw-class="flex items-center gap-3">
-              <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div tw-class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div tw-class="flex min-w-0 items-center gap-3">
+              <div tw-class="shrink-0 p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                 <Settings2Icon tw-class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
               </div>
               <h2 tw-class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
             </div>
-            <LanguageSelector />
+            <div tw-class="ml-auto flex items-center gap-3 shrink-0">
+              <LanguageSelector />
+              <button
+                @click="handleCancel"
+                tw-class="md:absolute md:top-4 md:right-4 z-10 shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+                data-testid="setting-close-x"
+              >
+                <XIcon tw-class="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           <!-- Navigation -->

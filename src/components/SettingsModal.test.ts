@@ -327,7 +327,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   describe('UI / Design Regression', () => {
-    it('positions the close button correctly in the top-right corner', async () => {
+    it('keeps one close button beside the language selector on mobile and in the top-right corner on desktop', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
@@ -335,9 +335,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const closeBtn = wrapper.find('[data-testid="setting-close-x"]');
-      expect(closeBtn.classes()).toContain('absolute');
-      expect(closeBtn.classes()).toContain('top-4');
-      expect(closeBtn.classes()).toContain('right-4');
+      expect(wrapper.findAll('[data-testid="setting-close-x"]')).toHaveLength(1);
+      expect(closeBtn.element.parentElement).toBe(wrapper.get('[data-testid="language-selector"]').element.parentElement);
+      expect(closeBtn.classes()).not.toContain('absolute');
+      expect(closeBtn.classes()).toContain('md:absolute');
+      expect(closeBtn.classes()).toContain('md:top-4');
+      expect(closeBtn.classes()).toContain('md:right-4');
     });
 
     it('maintains UI stability during model fetching', async () => {
