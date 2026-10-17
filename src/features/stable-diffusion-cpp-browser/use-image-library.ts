@@ -127,6 +127,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   let hostPublication: AbortController | undefined;
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
+    added: undefined,
     async stopDownload({ id }) {
       if (downloadCompletion?.directoryId !== id) {
         return;

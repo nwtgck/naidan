@@ -34,9 +34,15 @@ export function useModelDownloadDestination({ blocked, changed }: {
   const { settings, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
   const registrationFailure = ref(false);
   const revision = ref(0);
+  let adding: { revision: number, isCurrent: () => boolean } | undefined;
   const host = useHostModelDirectories({
     blocked,
     stopDownload: async ({ id }) => getDownloadQueue().stopDirectory({ directoryId: id }),
+    added: async ({ id }) => {
+      if (adding?.revision === destinationRevision && adding.isCurrent()) {
+        await persistDestination({ id, kind: 'host' });
+      }
+    },
     changed: async () => {
       registrationFailure.value = false;
       revision.value++;
@@ -80,10 +86,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     }
   });
   const failure = computed(() => registrationFailure.value || pending.value?.status === 'failed');
-  async function selectDestination({ id, kind }: { id: string, kind?: 'opfs' | 'host' }): Promise<void> {
-    if (blocked() || host.view.busy.value) {
-      return;
-    }
+  async function persistDestination({ id, kind }: { id: string, kind: 'opfs' | 'host' | undefined }): Promise<void> {
     const requestedKind = kind ?? (id === 'opfs' ? 'opfs' : 'host');
     let requested: ModelDestination;
     let storedDestination: NonNullable<LlamaCppBrowserSettings['modelDownloadDestination']>;
@@ -143,6 +146,24 @@ export function useModelDownloadDestination({ blocked, changed }: {
       }
     }
   }
+  async function selectDestination({ id, kind }: { id: string, kind?: 'opfs' | 'host' }): Promise<void> {
+    if (!blocked() && !host.view.busy.value) {
+      await persistDestination({ id, kind });
+    }
+  }
+  async function add(): Promise<void> {
+    if (blocked() || host.view.busy.value || !host.view.supported.value) {
+      return;
+    }
+    try {
+      adding = { revision: ++destinationRevision, isCurrent: captureExperimentalStorage() };
+      await host.view.add();
+    } catch {
+      registrationFailure.value = true;
+    } finally {
+      adding = undefined;
+    }
+  }
   const unavailable = computed(() => {
     if (pending.value) {
       return true;
@@ -152,7 +173,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     case 'opfs': return false;
     case 'host': {
       const entry = host.view.entries.value.find(entry => entry.id === target.directoryId);
-      return !host.view.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
+      return !host.view.supported.value || !entry || !host.currentHandle({ id: target.directoryId }) || ['missing', 'error', 'unsupported'].includes(entry.access);
     }
     default: {
       const exhaustive: never = target;
@@ -217,7 +238,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
     window.removeEventListener(registrationChangeEvent, registrationsChanged);
   });
   return {
-    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination },
+    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add },
     destination,
     unavailable,
     authorize,

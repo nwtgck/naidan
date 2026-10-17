@@ -26,9 +26,10 @@ export type HostModelDirectoriesView = {
 
 const pickerSchema = z.custom<({ mode }: { mode: 'readwrite' }) => Promise<HostModelDirectoryHandle>>(value => typeof value === 'function');
 
-export function useHostModelDirectories({ blocked, stopDownload, changed, failed }: {
+export function useHostModelDirectories({ blocked, stopDownload, added, changed, failed }: {
   blocked: () => boolean,
   stopDownload: ({ id }: { id: string }) => Promise<void>,
+  added: (({ id }: { id: string }) => Promise<void>) | undefined,
   changed: () => Promise<void>,
   failed: ({ error }: { error: unknown }) => void,
 }): {
@@ -39,7 +40,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
   downloadDestination: ({ id }: { id: string }) => Promise<HostModelDownloadDestination>,
   hostDownloadDestination: ({ id }: { id: string }) => Promise<Extract<HostModelDownloadDestination, { kind: 'host' }>>,
 } {
-  const { settings, updateExperimental } = useSettings();
+  const { settings, updateExperimental, captureExperimentalStorage } = useSettings();
   const supported = computed(() => typeof window !== 'undefined' && pickerSchema.safeParse(Reflect.get(window, 'showDirectoryPicker')).success
     && typeof indexedDB !== 'undefined' && typeof navigator.locks?.request === 'function');
   const busy = ref(false), destination = ref('opfs');
@@ -86,7 +87,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     // A saved but currently unavailable root remains explicit. Refresh cannot
     // silently change where the next download will write.
   }
-  async function perform({ operation }: { operation: () => Promise<void> }): Promise<void> {
+  async function perform({ operation, refreshed }: { operation: () => Promise<void>, refreshed: (() => Promise<void>) | undefined }): Promise<void> {
     if (!supported.value || blocked() || busy.value) {
       return;
     }
@@ -94,6 +95,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
     try {
       await operation();
       await refresh();
+      await refreshed?.();
       await changed();
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
@@ -103,7 +105,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       busy.value = false;
     }
   }
-  async function pick({ existingId }: { existingId: string | undefined }): Promise<void> {
+  async function pick({ existingId }: { existingId: string | undefined }): Promise<string> {
     // Keep the picker in the click gesture, before asynchronous storage access.
     const picker = pickerSchema.parse(Reflect.get(window, 'showDirectoryPicker'));
     const handle = await picker.call(window, { mode: 'readwrite' });
@@ -148,6 +150,10 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
         throw error;
       }
     });
+    // The accepted handle is ready even if a newer refresh supersedes the one
+    // awaited by add(). Other mounted selectors refresh their own caches.
+    handles.set(idToRaw({ id }), handle);
+    return idToRaw({ id });
   }
   async function reconnect({ id }: { id: string }): Promise<void> {
     await perform({
@@ -161,6 +167,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
           await pick({ existingId: id });
         }
       },
+      refreshed: undefined,
     });
   }
   async function remove({ id: raw }: { id: string }): Promise<void> {
@@ -190,6 +197,7 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
           },
         });
       },
+      refreshed: undefined,
     });
   }
   async function downloadDestination({ id }: { id: string }): Promise<HostModelDownloadDestination> {
@@ -225,7 +233,20 @@ export function useHostModelDirectories({ blocked, stopDownload, changed, failed
       busy,
       destination,
       async add() {
-        await perform({ operation: () => pick({ existingId: undefined }) });
+        let id: string | undefined, isCurrent: (() => boolean) | undefined;
+        await perform({
+          operation: async () => {
+            isCurrent = captureExperimentalStorage();
+            id = await pick({ existingId: undefined });
+          },
+          refreshed: async () => {
+            if (id === undefined || !isCurrent?.() || !registrations().some(entry => entry.id === id)) {
+              return;
+            }
+            destination.value = id;
+            await added?.({ id });
+          },
+        });
       },
       reconnect,
       remove,
