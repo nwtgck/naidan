@@ -28,13 +28,13 @@ describe('bundled suggestions and exact download plans', () => {
     expect(matchesMemoryHint({ quantization, memory: 'all', multimodal: 'on' })).toBe(true);
   });
 
-  it('leads with complete quantization tokens while preserving stored variant names', () => {
+  it('keeps complete quantization metadata separate from variant display names', () => {
     expect(quantizationName({ path: main })).toBe('Q4_K_M');
     expect(quantizationName({ path: 'Muse-Glimmer-30B-KQuant-Dynamic-Q4_K_XL.gguf' })).toBe('Q4_K_XL');
     expect(quantizationName({ path: 'model-Q4_K_MISH.gguf' })).toBe('Q4_K_MISH');
     expect(quantizationName({ path: 'model-Q4_K_M-Q8_0.gguf' })).toBeUndefined();
     const data = catalog({ paths: [main, 'dflash-Muse-Glimmer-30B-Q4_K_M.gguf'] });
-    expect(quantizationChoices({ repository: data.repository, models: data.models })[0]?.label).toBe('Q4_K_M · KQuant-17GB');
+    expect(quantizationChoices({ repository: data.repository, models: data.models })[0]?.label).toBe('KQuant-17GB-Q4_K_M');
     expect(variantLabel({ repository: quantization.hfRepository, path: main })).toBe('KQuant-17GB-Q4_K_M');
   });
 

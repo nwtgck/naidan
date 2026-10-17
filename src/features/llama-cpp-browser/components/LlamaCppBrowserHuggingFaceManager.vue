@@ -8,13 +8,12 @@ import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
-import { quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { matchesQuantizationChoice, quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
@@ -178,9 +177,9 @@ async function inspect(): Promise<void> {
     const nextChoices = quantizationChoices({ repository: next.repository, models: next.models });
     requestedVariantUnresolved.value = false;
     if (requestedVariant !== undefined) {
-      // Keep legacy URL/storage variant names compatible with the new
-      // quantization-first presentation. Never select a drafter by its quant alone.
-      const exact = nextChoices.filter(choice => choice.label === requestedVariant || variantLabel({ repository: next.repository, path: choice.id }) === requestedVariant);
+      // Resolve complete variant names before falling back to quantization.
+      // Never select a drafter by its quant alone.
+      const exact = nextChoices.filter(choice => matchesQuantizationChoice({ choice, variant: requestedVariant }));
       const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.id }) === 'model');
       quantization.value = matches.length === 1 ? matches[0]!.id : '';
       candidate.value = '';

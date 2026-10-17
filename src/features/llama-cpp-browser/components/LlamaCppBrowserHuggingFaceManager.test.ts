@@ -6,7 +6,7 @@ import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { discoverRepository, searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { discoverRepository, groupModelFiles, searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository, cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
 import { defineComponent, ref } from 'vue';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
@@ -286,8 +286,8 @@ describe('Hugging Face download controls', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('model-Q4_K_M.gguf');
-    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('Q4_K_M · model · 0.1 KiB');
-    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('Q4_K_M · model');
+    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('model-Q4_K_M · 0.1 KiB');
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('model-Q4_K_M');
     expect(wrapper.get('[data-testid="llama-hf-multimodal"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.get('[data-testid="llama-hf-details"]').text()).toContain('mmproj-F16.gguf');
     expect(wrapper.get('[data-testid="llama-hf-projector"]').text()).toContain('F16 · 0.1 KiB');
@@ -312,7 +312,7 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
     await flushPromises();
     expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('model-Q8_0.gguf');
-    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('Q8_0 · model');
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('model-Q8_0');
     expect(wrapper.get('[data-testid="llama-hf-multimodal"]').attributes('aria-checked')).toBe('false');
     await wrapper.get('[data-testid="llama-hf-download"]').trigger('click');
     await flushPromises();
@@ -320,7 +320,7 @@ describe('Hugging Face download controls', () => {
   });
 
   it('prioritizes explicit variants over saved choices while keeping every model selectable', async () => {
-    const models = ['repo-Q4_K_M.gguf', 'repo-QAD-Q4_0.gguf', 'repo-UD-Q4_K_XL.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
+    const models = ['repo-Q4_K_M.gguf', 'repo-QAD-Q4_0.gguf', 'repo-AWQ-Q4_K_M.gguf', 'repo-UD-Q4_K_XL.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
     vi.mocked(discoverRepository).mockResolvedValue({ repository: 'owner/repo', revision: selection.revision, models, projectors: [] });
     const wrapper = render();
     await flushPromises();
@@ -330,16 +330,79 @@ describe('Hugging Face download controls', () => {
     await flushPromises();
     const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]');
     expect(select.element.value).toBe('repo-QAD-Q4_0.gguf');
-    expect(select.findAll('option')).toHaveLength(3);
+    expect(select.findAll('option')).toHaveLength(4);
     await select.setValue('repo-Q4_K_M.gguf');
-    await input.setValue('hf.co/owner/repo:UD-Q4_K_XL');
-    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
-    await flushPromises();
-    expect(select.element.value).toBe('repo-UD-Q4_K_XL.gguf');
+    for (const variant of ['AWQ-Q4_K_M', 'UD-Q4_K_XL']) {
+      await input.setValue(`hf.co/owner/repo:${variant}`);
+      await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+      await flushPromises();
+      expect(select.element.value).toBe(`repo-${variant}.gguf`);
+      expect(select.attributes('title')).toBe(variant);
+      expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe(variant);
+    }
     await input.setValue('hf.co/owner/repo');
     await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
     await flushPromises();
     expect(select.element.value).toBe('repo-UD-Q4_K_XL.gguf');
+  });
+
+  it('keeps ordinary and UD choices distinct and retains all selected UD shards after refreshing', async () => {
+    const paths = ['repo-IQ4_NL.gguf', 'UD-IQ4_NL/repo-UD-IQ4_NL-00001-of-00002.gguf', 'UD-IQ4_NL/repo-UD-IQ4_NL-00002-of-00002.gguf'];
+    const files = paths.map(path => ({ path, size: 128 }));
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: selection.repository, revision: selection.revision, ...groupModelFiles({ files }) });
+    const wrapper = render();
+    await flushPromises();
+    const input = wrapper.get('[data-testid="llama-hf-repository"]');
+    await input.setValue('hf.co/owner/repo');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+    await flushPromises();
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]');
+    expect(select.findAll('option').map(option => option.text())).toEqual(['IQ4_NL · 0.1 KiB', 'UD-IQ4_NL · 0.3 KiB']);
+    expect(select.element.value).toBe(paths[0]);
+    await select.setValue(paths[1]);
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe('UD-IQ4_NL');
+    expect(select.attributes('title')).toBe('UD-IQ4_NL');
+    for (const variant of ['UD-IQ4_NL', 'IQ4_NL · UD']) {
+      await input.setValue(`hf.co/owner/repo:${variant}`);
+      await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+      await flushPromises();
+      expect(select.element.value).toBe(paths[1]);
+      expect(select.attributes('title')).toBe('UD-IQ4_NL');
+      expect(vi.mocked(installedSelection).mock.lastCall?.[0].selection.files).toEqual(files.slice(1));
+    }
+    await input.setValue('hf.co/owner/repo');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+    await flushPromises();
+    expect(select.element.value).toBe(paths[1]);
+    expect(select.attributes('title')).toBe('UD-IQ4_NL');
+    const planFiles = wrapper.get('[data-testid="llama-hf-files"]').text();
+    for (const path of paths.slice(1)) {
+      expect(planFiles).toContain(path);
+    }
+    expect(planFiles).not.toContain(paths[0]);
+    await wrapper.get('[data-testid="llama-hf-download"]').trigger('click');
+    await flushPromises();
+    expect(downloadRepository).toHaveBeenCalledWith(expect.objectContaining({ selection: { ...selection, files: files.slice(1) } }));
+  });
+
+  it('disambiguates coincident variant labels with their paths in the options and selected title', async () => {
+    const repository = 'owner/repo-A3B-GGUF';
+    const paths = ['repo-Q4_K_M.gguf', 'repo-A3B-Q4_K_M.gguf'];
+    const files = paths.map(path => ({ path, size: 128 }));
+    vi.mocked(discoverRepository).mockResolvedValue({ repository, revision: selection.revision, ...groupModelFiles({ files }) });
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue(repository);
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+    await flushPromises();
+    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]');
+    expect(select.findAll('option').map(option => option.text()).sort()).toEqual(paths.map(path => `Q4_K_M (${path}) · 0.1 KiB`).sort());
+    await select.setValue(paths[1]);
+    expect(wrapper.get('[data-testid="llama-hf-selected-model"]').text()).toBe(`Q4_K_M (${paths[1]})`);
+    expect(select.attributes('title')).toBe(`Q4_K_M (${paths[1]})`);
+    await wrapper.get('[data-testid="llama-hf-download"]').trigger('click');
+    await flushPromises();
+    expect(downloadRepository).toHaveBeenCalledWith(expect.objectContaining({ selection: { repository, revision: selection.revision, files: [files[1]] } }));
   });
 
   it.each(['unknown', 'Q4_K_M'])('requires an explicit choice for an unavailable or ambiguous variant: %s', async requestedVariant => {
@@ -368,7 +431,7 @@ describe('Hugging Face download controls', () => {
     await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo');
     await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('Q4_K_M · base · 0.1 KiB');
+    expect(wrapper.get('[data-testid="llama-hf-model"]').text()).toContain('base-Q4_K_M · 0.1 KiB');
     expect(wrapper.find('[data-testid="llama-hf-selection-required"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="llama-hf-multimodal"]').exists()).toBe(false);

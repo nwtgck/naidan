@@ -2,7 +2,7 @@ import { huggingFaceModelId, modelLaunchTargetSchema, type ModelLaunchTarget } f
 import { parseRepository, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
-import { preferredProjector, quantizationChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { matchesQuantizationChoice, preferredProjector, quantizationChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { resolveModelFiles } from '@/features/llama-cpp-browser/runtime/model-directory';
 
 export type ModelLaunchProblem = 'invalid-input' | 'variant-unavailable' | 'companion-required';
@@ -45,8 +45,7 @@ export function resolveModelLaunchTarget({ input, catalog }: { input: string, ca
   }
   const { requestedVariant } = parseRepository({ input });
   const choices = modelLaunchChoices({ catalog });
-  const exact = requestedVariant === undefined ? [] : choices.filter(choice => choice.label === requestedVariant
-    || variantLabel({ repository: catalog.repository, path: choice.id }) === requestedVariant);
+  const exact = requestedVariant === undefined ? [] : choices.filter(choice => matchesQuantizationChoice({ choice, variant: requestedVariant }));
   const matching = requestedVariant === undefined ? choices.slice(0, 1) : exact.length > 0 ? exact
     : choices.filter(choice => choice.quantization === requestedVariant.toUpperCase());
   if (matching.length !== 1) {
