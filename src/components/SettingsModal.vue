@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
+import { localModelChatGroupName } from '@/features/llama-cpp-browser/chat-group-name';
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
+import { idToRaw, type ChatGroupId, type ChatId } from '@/01-models/ids';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
-import { ref, watch, computed, nextTick, defineAsyncComponent } from 'vue';
+import { ref, watch, computed, nextTick, defineAsyncComponent, onUnmounted } from 'vue';
 import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { storageService } from '@/00-storage/service';
 import type { Settings } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
@@ -64,6 +70,7 @@ const { settings, updateGlobalModelAndEndpoint, availableModels: rawAvailableMod
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
 const chatOrganization = useChatOrganization();
+const chatLifecycle = useChatLifecycle();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
@@ -129,6 +136,100 @@ const hasUnsavedConnectionChanges = computed(() => {
   const initial = JSON.parse(initialFormState.value || '{}');
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
+
+// Retain only confirmed successes so a failed next step can be retried without
+// creating another group or chat. The storage operations are not a transaction.
+const pendingLocalChatGroups = new Map<string, { chatGroupId: ChatGroupId, chatId: ChatId | undefined }>();
+let localChatGroupRequestVersion = 0;
+let creatingLocalChatGroup = false;
+watch([() => props.isOpen, () => props.suspended, () => route.fullPath], () => {
+  localChatGroupRequestVersion++;
+}, { flush: 'sync' });
+onUnmounted(() => {
+  localChatGroupRequestVersion++;
+});
+
+async function createLocalModelChatGroup({ model, signal }: { model: LocalModel, signal: AbortSignal }): Promise<void> {
+  if (creatingLocalChatGroup || !props.isOpen || props.suspended || signal.aborted) {
+    return;
+  }
+  creatingLocalChatGroup = true;
+  const version = localChatGroupRequestVersion;
+  const isCurrent = () => version === localChatGroupRequestVersion && props.isOpen && !props.suspended && !signal.aborted;
+  try {
+    if (!await confirmDiscardConnectionChanges({ isCurrent }) || !isCurrent()) {
+      return;
+    }
+    // Check after the discard dialog: the selected file may have disappeared
+    // while the user was deciding. Listing never initializes or downloads it.
+    const models = await llamaCppBrowserService.listModels({ signal });
+    if (!isCurrent()) {
+      return;
+    }
+    const available = models.find(entry => entry.id === model.id);
+    if (!available) {
+      throw new Error('Local model unavailable');
+    }
+    let pendingChatGroup = pendingLocalChatGroups.get(model.id);
+    if (pendingChatGroup) {
+      const chatGroupId = pendingChatGroup.chatGroupId;
+      const chatGroup = await storageService.loadChatGroup({ id: chatGroupId });
+      const hierarchy = await storageService.loadHierarchy();
+      if (!isCurrent()) {
+        return;
+      }
+      const hierarchyChatGroup = hierarchy.items.filter(item => item.type === 'chat_group').find(item => item.id === chatGroupId);
+      if (!chatGroup || chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== available.name || !hierarchyChatGroup || (pendingChatGroup.chatId !== undefined && !hierarchyChatGroup.chat_ids.includes(pendingChatGroup.chatId))) {
+        pendingLocalChatGroups.delete(model.id);
+        throw new Error('Previously created chat group changed');
+      }
+      if (pendingChatGroup.chatId) {
+        const chat = await storageService.loadChat({ id: pendingChatGroup.chatId });
+        if (!isCurrent()) {
+          return;
+        }
+        if (!chat || chat.groupId !== pendingChatGroup.chatGroupId || chat.endpoint !== undefined || chat.modelId !== undefined) {
+          pendingLocalChatGroups.delete(model.id);
+          throw new Error('Previously created chat changed');
+        }
+      }
+    }
+    if (!pendingChatGroup) {
+      const chatGroupId = await chatOrganization.createChatGroup({
+        name: localModelChatGroupName({ model: available }),
+        options: { endpoint: { type: 'llama_cpp_browser' }, modelId: available.name },
+      });
+      pendingChatGroup = { chatGroupId, chatId: undefined };
+      pendingLocalChatGroups.set(model.id, pendingChatGroup);
+    }
+    if (!isCurrent()) {
+      return;
+    }
+    if (!pendingChatGroup.chatId) {
+      const chat = await chatLifecycle.createChatWithoutSelecting({ groupId: pendingChatGroup.chatGroupId, modelId: undefined, systemPrompt: undefined });
+      if (!chat) {
+        throw new Error('Chat creation is already in progress');
+      }
+      pendingChatGroup.chatId = chat.id;
+    }
+    if (!isCurrent()) {
+      return;
+    }
+    // The chat route selects it and closes Settings. Do not also emit close,
+    // which would start a second navigation back to the previous screen.
+    const failure = await router.push(`/chat/${idToRaw({ id: pendingChatGroup.chatId })}`);
+    if (failure) {
+      throw new Error('Could not open the created chat');
+    }
+    pendingLocalChatGroups.delete(model.id);
+  } catch (error) {
+    if (isCurrent()) {
+      throw error;
+    }
+  } finally {
+    creatingLocalChatGroup = false;
+  }
+}
 
 async function handleImportRecipes({ recipes }: { recipes: { newName: string, matchedModelId?: string, recipe: ChatGroupRecipe }[] }) {
   try {
@@ -226,18 +327,23 @@ const activeTab = computed({
   },
 });
 
-async function handleCancel() {
+async function confirmDiscardConnectionChanges({ isCurrent }: { isCurrent: () => boolean }): Promise<boolean> {
   if (hasUnsavedConnectionChanges.value) {
-    const confirmed = await showConfirm({
+    const options = {
       title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
       message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
       confirmButtonText: await ensureStrings.SettingsModal__discard(),
       cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
-    });
-    if (confirmed) {
-      emit('close');
-    }
-  } else {
+    };
+    return isCurrent() ? showConfirm(options) : false;
+  }
+  return true;
+}
+
+async function handleCancel() {
+  const version = localChatGroupRequestVersion;
+  const isCurrent = () => props.isOpen && version === localChatGroupRequestVersion;
+  if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
     emit('close');
   }
 }
@@ -449,7 +555,7 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" />
+                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
                 <section tw-class="mt-8 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
                   <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
                   <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>

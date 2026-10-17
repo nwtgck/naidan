@@ -964,6 +964,16 @@ import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/Ll
 import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/ko';
 import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/ko';
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/ko';
+import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserManager__could_not_create_or_open_chat_group/ko';
+import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/ko';
+import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/ko';
+import { LlamaCppBrowserManager__folder } from '@/strings/messages/LlamaCppBrowserManager__folder/ko';
+import { LlamaCppBrowserManager__model_name } from '@/strings/messages/LlamaCppBrowserManager__model_name/ko';
+import { LlamaCppBrowserManager__repository } from '@/strings/messages/LlamaCppBrowserManager__repository/ko';
+import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/ko';
+import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/ko';
+import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/ko';
+import { LlamaCppBrowserModelAction__set_this_model_as_the_global_default } from '@/strings/messages/LlamaCppBrowserModelAction__set_this_model_as_the_global_default/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/ko';
@@ -3699,6 +3709,16 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
   LlamaCppBrowserHuggingFaceManager__total_download_size,
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserManager__could_not_create_or_open_chat_group,
+  LlamaCppBrowserManager__details,
+  LlamaCppBrowserManager__file,
+  LlamaCppBrowserManager__folder,
+  LlamaCppBrowserManager__model_name,
+  LlamaCppBrowserManager__repository,
+  LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
+  LlamaCppBrowserModelAction__create_chat_group,
+  LlamaCppBrowserModelAction__model_actions,
+  LlamaCppBrowserModelAction__set_this_model_as_the_global_default,
   LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
   LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
   LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,

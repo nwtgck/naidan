@@ -964,6 +964,16 @@ import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/Ll
 import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/zh-Hans';
+import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserManager__could_not_create_or_open_chat_group/zh-Hans';
+import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/zh-Hans';
+import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/zh-Hans';
+import { LlamaCppBrowserManager__folder } from '@/strings/messages/LlamaCppBrowserManager__folder/zh-Hans';
+import { LlamaCppBrowserManager__model_name } from '@/strings/messages/LlamaCppBrowserManager__model_name/zh-Hans';
+import { LlamaCppBrowserManager__repository } from '@/strings/messages/LlamaCppBrowserManager__repository/zh-Hans';
+import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/zh-Hans';
+import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/zh-Hans';
+import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/zh-Hans';
+import { LlamaCppBrowserModelAction__set_this_model_as_the_global_default } from '@/strings/messages/LlamaCppBrowserModelAction__set_this_model_as_the_global_default/zh-Hans';
 import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/zh-Hans';
 import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/zh-Hans';
 import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/zh-Hans';
@@ -3699,6 +3709,16 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
   LlamaCppBrowserHuggingFaceManager__total_download_size,
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserManager__could_not_create_or_open_chat_group,
+  LlamaCppBrowserManager__details,
+  LlamaCppBrowserManager__file,
+  LlamaCppBrowserManager__folder,
+  LlamaCppBrowserManager__model_name,
+  LlamaCppBrowserManager__repository,
+  LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
+  LlamaCppBrowserModelAction__create_chat_group,
+  LlamaCppBrowserModelAction__model_actions,
+  LlamaCppBrowserModelAction__set_this_model_as_the_global_default,
   LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
   LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
   LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,
