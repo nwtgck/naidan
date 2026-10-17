@@ -109,16 +109,24 @@ describe('ChatPaneHeader', () => {
     await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
     expect(wrapper.emitted('toggle-debug')).toEqual([[]]);
     expect(wrapper.emitted('open-chat-inspector')).toBeUndefined();
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
     await wrapper.setProps({ chat: makeChat({ debugEnabled: true }) });
     expect(wrapper.find('[data-testid="chat-debug-enabled"]').text()).toBe('Debug Mode');
     expect(wrapper.find('[data-testid="chat-header-title"]').text()).toBe('Header Chat');
-    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.find('[data-testid="debug-toggle-thumb"]').classes()).toContain('translate-x-[18px]');
+    await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
+    expect(wrapper.emitted('toggle-debug')).toEqual([[], []]);
+    await wrapper.setProps({ chat: makeChat({ debugEnabled: false }) });
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.find('[data-testid="debug-toggle-thumb"]').classes()).toContain('translate-x-[3px]');
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
     expect(wrapper.find('[data-testid="open-chat-inspector-button"]').text()).toBe('Chat Inspector');
     await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
     expect(wrapper.emitted('open-chat-inspector')).toEqual([[]]);
-    expect(wrapper.emitted('toggle-debug')).toHaveLength(1);
+    expect(wrapper.emitted('toggle-debug')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('false');
   });
 
   it('renders chat identity badges and emits settings updates', async () => {
@@ -266,6 +274,31 @@ describe('ChatPaneHeader', () => {
 });
 
 describe('floating header menus', () => {
+  it('keeps the menu mounted through debug switches and state updates until an outside click', async () => {
+    const wrapper = mountHeader({ renderMode: 'floating', chat: makeChat(), groups: [] });
+    const trigger = wrapper.get('[data-testid="more-actions-button"]');
+    await clickElement({ element: trigger.element });
+    const panel = getFloatingPanel({ kind: 'more' });
+
+    for (const debugEnabled of [true, false]) {
+      const toggle = panel.querySelector('[data-testid="toggle-debug-button"]');
+      if (!toggle) {
+        throw new Error('Missing debug toggle');
+      }
+      await clickElement({ element: toggle });
+      expect(getFloatingPanel({ kind: 'more' })).toBe(panel);
+      await wrapper.setProps({ chat: makeChat({ debugEnabled }) });
+      expect(getFloatingPanel({ kind: 'more' })).toBe(panel);
+      expect(toggle.getAttribute('aria-checked')).toBe(String(debugEnabled));
+      expect(trigger.attributes('aria-expanded')).toBe('true');
+    }
+
+    expect(wrapper.emitted('toggle-debug')).toEqual([[], []]);
+    await clickElement({ element: document.body });
+    expect(document.body.contains(panel)).toBe(false);
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+  });
+
   it('teleports above the pane and preserves inside actions and outside dismissal', async () => {
     const wrapper = mountHeader({ renderMode: 'floating', chat: makeChat(), groups: [makeGroup()] });
     const trigger = wrapper.get('[data-testid="more-actions-button"]');

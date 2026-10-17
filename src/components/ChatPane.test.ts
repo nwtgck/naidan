@@ -1761,7 +1761,7 @@ Question`,
     expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-access-scope')).toBe('current_chat_only');
   });
 
-  it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
+  it('should keep the menu open through debug updates and close the inspector on chat navigation', async () => {
     wrapper = mountChatPane({
       global: {
         plugins: [router],
@@ -1777,15 +1777,21 @@ Question`,
     expect(mockCurrentChat.value?.debugEnabled).toBe(true);
     expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
-    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('true');
     await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
     await flushPromises();
     expect(mockCurrentChat.value?.debugEnabled).toBe(false);
-    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('false');
+    expect(mockToggleChatDebug).toHaveBeenCalledTimes(2);
     await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(true);
     expect(mockCurrentChat.value?.debugEnabled).toBe(false);
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('false');
     await wrapper.setProps({ chatId: toChatId({ raw: 'other-chat' }) });
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);

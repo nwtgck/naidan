@@ -160,7 +160,8 @@ function emitMoreAction({ action }: {
     break;
   case 'toggle_debug':
     emit('toggle-debug');
-    break;
+    // Keep the menu open so the updated switch state stays visible.
+    return;
   default: {
     const _ex: never = action;
     throw new Error(`Unhandled header action: ${_ex}`);
