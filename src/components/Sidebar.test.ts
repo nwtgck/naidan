@@ -583,7 +583,7 @@ describe('Sidebar Logic Stability', () => {
     });
   });
 
-  it('should display the New Chat shortcut key when sidebar is open', async () => {
+  it('should keep the New Chat shortcut key in its tooltip when sidebar is open', async () => {
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
@@ -596,7 +596,8 @@ describe('Sidebar Logic Stability', () => {
 
     const text = newChatButton.text();
     expect(text).toContain('New Chat');
-    expect(text).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
+    expect(newChatButton.attributes('title')).toContain('New Chat');
+    expect(newChatButton.attributes('title')).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
   });
 
   it("should display 'New Chat' when a chat title is empty in the sidebar", async () => {

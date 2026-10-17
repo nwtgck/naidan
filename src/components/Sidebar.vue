@@ -456,6 +456,10 @@ const vFocus: ObjectDirective<HTMLElement> = {
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
+const newChatTitle = computed(() => {
+  const label = lazyStrings.SHARED__new_chat();
+  return label === undefined ? undefined : `${label} (${newChatShortcutText})`;
+});
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as HTMLElement;
@@ -1038,14 +1042,13 @@ defineExpose({
       <div :tw-class="['flex gap-2', { 'flex-col items-center': !isSidebarOpen }]">
         <button
           @click="handleNewChat({ groupId: undefined })"
-          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8']"
+          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 min-w-0 px-3 py-2 text-xs' : 'w-8 h-8']"
           data-testid="new-chat-button"
-          :title="!isSidebarOpen ? lazyStrings.SHARED__new_chat() : ''"
+          :title="newChatTitle"
         >
           <SquarePenIcon tw-class="w-4 h-4 shrink-0" />
           <template v-if="isSidebarOpen">
-            <span tw-class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
-            <span tw-class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
+            <span tw-class="truncate">{{ lazyStrings.SHARED__new_chat() }}</span>
           </template>
         </button>
         <button
@@ -1059,7 +1062,7 @@ defineExpose({
         </button>
         <button
           @click="useGlobalSearch().openSearch({})"
-          :tw-class="['bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
+          :tw-class="['shrink-0 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
           :title="lazyStrings.Sidebar__search_cmd_k()"
           data-testid="search-button"
         >
@@ -1068,7 +1071,7 @@ defineExpose({
         <button
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
-          tw-class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          tw-class="shrink-0 p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :title="lazyStrings.Sidebar__create_chat_group()"
           data-testid="create-chat-group-button"
         >
