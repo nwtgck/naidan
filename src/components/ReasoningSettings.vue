@@ -199,15 +199,12 @@ defineExpose({
     </div>
 
     <!-- Segmented Control Container -->
-    <div ref="containerRef" data-testid="reasoning-effort-options" class="reasoning-effort-options" :tw-class="['relative flex p-0.5 rounded-lg border', surface === 'plain' ? 'items-center bg-slate-100/80 dark:bg-[#131e2e] border-slate-200/80 dark:border-[#2c3b50]' : 'bg-gray-100 dark:bg-gray-800 border-gray-200/50 dark:border-gray-700/50']">
+    <div ref="containerRef" data-testid="reasoning-effort-options" class="reasoning-effort-options" :tw-class="['relative flex p-0.5 rounded-lg border bg-gray-100 dark:bg-gray-800 border-gray-200/50 dark:border-gray-700/50', surface === 'plain' ? 'items-center' : '']">
 
       <!-- Animated Slider Background -->
       <div
         data-testid="reasoning-effort-slider"
-        :tw-class="[
-          'absolute top-0.5 bottom-0.5 rounded-md transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-          surface === 'plain' ? 'bg-blue-400/10 inset-ring-1 inset-ring-blue-400/25' : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600'
-        ]"
+        tw-class="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600"
         :style="sliderStyle"
       ></div>
 
@@ -228,8 +225,9 @@ defineExpose({
                       ? 'min-h-7 min-w-8 rounded-md px-2 py-1.5 text-xs leading-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30'
                       : 'min-w-0 py-1 text-[10px] px-0.5',
                     selectedValue === opt.value
-                      ? surface === 'plain' ? 'text-blue-600 enabled:hover:bg-blue-400/5 dark:text-blue-400' : 'text-blue-600 dark:text-blue-400 font-bold'
-                      : surface === 'plain' ? 'text-slate-600 dark:text-slate-300 enabled:hover:bg-blue-100/60 dark:enabled:hover:bg-[#1c2b42] enabled:hover:text-blue-700 dark:enabled:hover:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-gray-500 dark:text-gray-400 enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700/40 enabled:hover:text-gray-700 dark:enabled:hover:text-gray-200',
+                    selectedValue === opt.value && surface !== 'plain' ? 'font-bold' : '',
                     surface === 'plain' ? '' : opt.width === 'wide'
                       ? 'flex-[2.2]'
                       : opt.width === 'default'
