@@ -174,7 +174,9 @@ import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_n
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/pt-BR';
 import { ChatInput__failed_to_copy } from '@/strings/messages/ChatInput__failed_to_copy/pt-BR';
 import { ChatInput__failed_to_link_folder } from '@/strings/messages/ChatInput__failed_to_link_folder/pt-BR';
+import { ChatInput__failed_to_save_reasoning } from '@/strings/messages/ChatInput__failed_to_save_reasoning/pt-BR';
 import { ChatInput__hide_input } from '@/strings/messages/ChatInput__hide_input/pt-BR';
+import { ChatInput__inherit_reasoning } from '@/strings/messages/ChatInput__inherit_reasoning/pt-BR';
 import { ChatInput__maximize_input } from '@/strings/messages/ChatInput__maximize_input/pt-BR';
 import { ChatInput__minimize_input } from '@/strings/messages/ChatInput__minimize_input/pt-BR';
 import { ChatInput__open_advanced_editor } from '@/strings/messages/ChatInput__open_advanced_editor/pt-BR';
@@ -1521,6 +1523,7 @@ import { Sidebar__delete_group } from '@/strings/messages/Sidebar__delete_group/
 import { Sidebar__delete_group_question } from '@/strings/messages/Sidebar__delete_group_question/pt-BR';
 import { Sidebar__delete_group_warning } from '@/strings/messages/Sidebar__delete_group_warning/pt-BR';
 import { Sidebar__ephemeral_session } from '@/strings/messages/Sidebar__ephemeral_session/pt-BR';
+import { Sidebar__failed_to_save_reasoning } from '@/strings/messages/Sidebar__failed_to_save_reasoning/pt-BR';
 import { Sidebar__group_name } from '@/strings/messages/Sidebar__group_name/pt-BR';
 import { Sidebar__new_chat_in_group } from '@/strings/messages/Sidebar__new_chat_in_group/pt-BR';
 import { Sidebar__none } from '@/strings/messages/Sidebar__none/pt-BR';
@@ -2960,7 +2963,9 @@ export const catalog = {
   ChatInput__edit_image,
   ChatInput__failed_to_copy,
   ChatInput__failed_to_link_folder,
+  ChatInput__failed_to_save_reasoning,
   ChatInput__hide_input,
+  ChatInput__inherit_reasoning,
   ChatInput__maximize_input,
   ChatInput__minimize_input,
   ChatInput__open_advanced_editor,
@@ -4307,6 +4312,7 @@ export const catalog = {
   Sidebar__delete_group_question,
   Sidebar__delete_group_warning,
   Sidebar__ephemeral_session,
+  Sidebar__failed_to_save_reasoning,
   Sidebar__group_name,
   Sidebar__new_chat_in_group,
   Sidebar__none,

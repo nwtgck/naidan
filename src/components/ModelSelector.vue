@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, type CSSProperties } from 'vue';
+import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, useSlots } from 'vue';
 import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { useElementBounding, useWindowSize } from '@vueuse/core';
+import { useWindowSize } from '@vueuse/core';
+import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
@@ -17,14 +18,19 @@ const props = defineProps<{
   modelLabels?: Readonly<Record<string, string>>,
   inputId?: string,
   invalid?: boolean,
+  surface?: 'default' | 'composer',
+  modelSelection?: 'available' | 'unavailable',
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string | undefined): void,
   (e: 'refresh'): void,
+  (e: 'update:open', open: boolean): void,
 }>();
 
 const attrs = useAttrs();
+const slots = useSlots();
+const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 const instance = getCurrentInstance();
 const { availableModels: settingsModels, isFetchingModels: isInternalFetching, fetchModels: internalFetch } = useSettings();
 
@@ -83,10 +89,10 @@ const searchInputRef = ref<HTMLInputElement | null>(null);
 const dropdownRef = ref<HTMLElement | null>(null);
 const listContainerRef = ref<HTMLElement | null>(null);
 
-const { width: windowWidth, height: windowHeight } = useWindowSize();
-const triggerBounding = useElementBounding(containerRef);
-
-const dropdownPosition = ref<'top' | 'bottom'>('bottom');
+const { width: windowWidth } = useWindowSize();
+const popup = useAnchoredPopup({ anchor: containerRef, preferredWidth: { unit: 'px', value: 480 }, maxWidthPx: 640 });
+const dropdownPosition = computed(() => popup.placement.value.direction);
+const floatingStyle = computed(() => popup.placement.value.style);
 
 const combinedOptions = computed(() => {
   const options: (string | undefined)[] = [];
@@ -97,68 +103,12 @@ const combinedOptions = computed(() => {
   return options;
 });
 
-const floatingStyle = computed((): CSSProperties => {
-  if (!isOpen.value || !containerRef.value) {
-    return {};
-  }
-
-  const rect = triggerBounding;
-  const margin = 8;
-  const dropdownHeight = 320; // Max expected height
-
-  // Decide vertical position
-  const spaceBelow = windowHeight.value - rect.bottom.value;
-  const preferredPosition = spaceBelow < dropdownHeight && rect.top.value > dropdownHeight ? 'top' : 'bottom';
-
-  // Set position ref for animation classes
-  // eslint-disable-next-line vue/no-side-effects-in-computed-properties
-  dropdownPosition.value = preferredPosition;
-
-  // Horizontal alignment: try to align left, but push left if it goes off-screen
-  const width = Math.max(rect.width.value, Math.min(480, windowWidth.value - 32));
-  const maxWidth = Math.min(640, windowWidth.value - 32);
-  let left = rect.left.value;
-
-  if (left + width > windowWidth.value - 16) {
-    left = windowWidth.value - width - 16;
-  }
-  if (left < 16) {
-    left = 16;
-  }
-
-  const verticalStyle = (() => {
-    switch (preferredPosition) {
-    case 'bottom':
-      return {
-        top: `${rect.bottom.value + margin}px`,
-        bottom: 'auto',
-      };
-    case 'top':
-      return {
-        top: 'auto',
-        bottom: `${windowHeight.value - rect.top.value + margin}px`,
-      };
-    default: {
-      const _ex: never = preferredPosition;
-      throw new Error(`Unhandled position: ${_ex}`);
-    }
-    }
-  })();
-
-  return {
-    position: 'fixed',
-    ...verticalStyle,
-    left: `${left}px`,
-    width: `${width}px`,
-    maxWidth: `${maxWidth}px`,
-    zIndex: 9999,
-  };
-});
 
 function toggleDropdown() {
-  if (props.disabled) {
+  if (props.disabled || (modelSelectionUnavailable.value && !slots.settings)) {
     return;
   }
+  popup.refresh();
   if (isOpen.value) {
     isOpen.value = false;
   } else {
@@ -169,18 +119,23 @@ function toggleDropdown() {
     highlightedIndex.value = currentIndex >= 0 ? currentIndex : 0;
 
     nextTick(() => {
-      searchInputRef.value?.focus();
+      popup.refresh();
+      if (modelSelectionUnavailable.value) {
+        dropdownRef.value?.querySelector<HTMLButtonElement>('[data-testid="model-selector-settings"] button:not(:disabled)')?.focus();
+      } else {
+        searchInputRef.value?.focus();
+      }
       scrollToHighlighted();
     });
   }
 }
 
 function selectModel({ model }: { model: string | undefined }) {
-  if (props.disabled || (model !== undefined && !availableModels.value.includes(model))) {
+  if (modelSelectionUnavailable.value || (model !== undefined && !availableModels.value.includes(model))) {
     return;
   }
   emit('update:modelValue', model);
-  isOpen.value = false;
+  closeDropdown({ restoreFocus: true });
 }
 
 function scrollToHighlighted() {
@@ -204,7 +159,7 @@ function scrollToHighlighted() {
 }
 
 function handleKeydown({ event }: { event: KeyboardEvent }) {
-  if (props.disabled) {
+  if (props.disabled || event.isComposing || event.keyCode === 229) {
     return;
   }
   if (!isOpen.value) {
@@ -212,6 +167,10 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
       event.preventDefault();
       toggleDropdown();
     }
+    return;
+  }
+
+  if (modelSelectionUnavailable.value && event.key !== 'Escape' && event.key !== 'Tab') {
     return;
   }
 
@@ -240,17 +199,19 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
     break;
   case 'Escape':
     event.preventDefault();
-    isOpen.value = false;
+    closeDropdown({ restoreFocus: true });
     break;
   case 'Tab':
-    isOpen.value = false;
+    if (!slots.settings) {
+      isOpen.value = false;
+    }
     break;
   }
 }
 
 async function handleRefresh({ event }: { event: Event }) {
   event.stopPropagation();
-  if (props.disabled || isFetchingModels.value) {
+  if (modelSelectionUnavailable.value || isFetchingModels.value) {
     return;
   }
   // Check if parent has a listener for 'refresh' (onRefresh)
@@ -274,6 +235,28 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
 }
 
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
+useEventTargetListener(document, 'focusin', event => {
+  const target = event.target as Node;
+  if (isOpen.value && !containerRef.value?.contains(target) && !dropdownRef.value?.contains(target)) {
+    closeDropdown({ restoreFocus: false });
+  }
+});
+
+function closeDropdown({ restoreFocus }: { restoreFocus: boolean }) {
+  isOpen.value = false;
+  if (restoreFocus) {
+    containerRef.value?.querySelector<HTMLButtonElement>('button')?.focus();
+  }
+}
+
+function handleSettingsKeydown({ event }: { event: KeyboardEvent }) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDropdown({ restoreFocus: true });
+  }
+}
+
+watch(isOpen, open => emit('update:open', open));
 
 // Reset highlighted index when filtering
 watch(searchQuery, () => {
@@ -315,8 +298,15 @@ defineExpose({
       :aria-invalid="invalid || undefined"
       :aria-expanded="isOpen"
       @click="toggleDropdown"
-      :disabled="disabled"
-      :tw-class="['w-full flex items-center justify-between gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed', { 'ring-4 ring-blue-500/10 border-blue-500/50': isOpen }]"
+      :disabled="disabled || (modelSelectionUnavailable && !$slots.settings)"
+      :title="displayModelName"
+      :tw-class="[
+        'w-full flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-200 outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
+        surface === 'composer'
+          ? 'h-9 px-2 rounded-xl font-medium bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 focus-visible:ring-2 focus-visible:ring-gray-400/50'
+          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 font-bold focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm',
+        isOpen ? surface === 'composer' ? 'bg-gray-100 dark:bg-gray-700/50' : 'ring-4 ring-blue-500/10 border-blue-500/50' : ''
+      ]"
       data-testid="model-selector-trigger"
     >
       <div tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
@@ -345,7 +335,8 @@ defineExpose({
         v-if="isOpen"
         ref="dropdownRef"
         :style="floatingStyle"
-        class="animate-in fade-in" tw-class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden duration-200"
+        data-testid="model-selector-dropdown"
+        class="animate-in fade-in" tw-class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-y-auto overscroll-contain duration-200"
         :class="dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
         @keydown="handleKeydown({ event: $event })"
       >
@@ -357,6 +348,7 @@ defineExpose({
               ref="searchInputRef"
               data-testid="model-selector-filter"
               v-model="searchQuery"
+              :disabled="modelSelectionUnavailable"
               type="text"
               tw-class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 placeholder:text-gray-400"
               :placeholder="lazyStrings.ModelSelector__filter_models()"
@@ -374,7 +366,7 @@ defineExpose({
                   data-testid="model-selector-refresh"
                   @click="handleRefresh({ event: $event })"
                   tw-class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
-                  :disabled="isFetchingModels"
+                  :disabled="modelSelectionUnavailable || isFetchingModels"
                   :title="lazyStrings.ModelSelector__refresh_model_list()"
           >
             <RefreshCwIcon :tw-class="['w-3.5 h-3.5', { 'animate-spin': isFetchingModels }]" />
@@ -395,6 +387,7 @@ defineExpose({
                                 ? 'bg-gray-100 dark:bg-gray-700/50'
                                 : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                   ]"
+                  :disabled="modelSelectionUnavailable"
                   data-testid="model-selector-clear"
                   data-index="0"
                   @mouseenter="highlightedIndex = 0"
@@ -413,6 +406,7 @@ defineExpose({
                   v-for="(model, index) in filteredModels"
                   :key="model"
                   data-testid="model-selector-option"
+                  :disabled="modelSelectionUnavailable"
                   @click="selectModel({ model })"
                   :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors',
                               model === modelValue
@@ -428,6 +422,9 @@ defineExpose({
             <span tw-class="break-all whitespace-normal pr-2">{{ modelLabel({ model }) }}</span>
             <CheckIcon v-if="model === modelValue" tw-class="w-3.5 h-3.5 shrink-0" />
           </button>
+        </div>
+        <div v-if="$slots.settings" data-testid="model-selector-settings" tw-class="border-t border-gray-100 dark:border-gray-700 p-3" @keydown.stop="handleSettingsKeydown({ event: $event })">
+          <slot name="settings"></slot>
         </div>
       </div>
     </Teleport>

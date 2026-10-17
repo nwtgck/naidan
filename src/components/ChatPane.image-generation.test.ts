@@ -5,7 +5,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
-import { ImageIcon, SendIcon } from 'lucide-vue-next';
+import { ImageIcon, ArrowUpIcon } from 'lucide-vue-next';
 
 
 import { setupScrollToMock } from '@/utils/utils.test-support';
@@ -361,21 +361,22 @@ describe('ChatPane Image Generation Integration', () => {
     expect(mockIsImageMode.value).toBe(true);
   });
 
-  it('switches send icon back to Send when image mode is disabled', async () => {
+  it('switches back to the text-send icon when image mode is disabled', async () => {
     // Start in image mode
     mockIsImageMode.value = true;
     const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
-    expect(wrapper.findComponent(ImageIcon).exists()).toBe(true);
+    const sendButton = wrapper.get('[data-testid="send-button"]');
+    expect(sendButton.findComponent(ImageIcon).exists()).toBe(true);
 
     // Toggle off
     mockIsImageMode.value = false;
     await nextTick();
 
-    expect(wrapper.findComponent(ImageIcon).exists()).toBe(false);
-    expect(wrapper.findComponent(SendIcon).exists()).toBe(true);
+    expect(sendButton.findComponent(ImageIcon).exists()).toBe(false);
+    expect(sendButton.findComponent(ArrowUpIcon).exists()).toBe(true);
   });
 
   it('passes the requested image count to sendImageRequest', async () => {

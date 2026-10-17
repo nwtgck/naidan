@@ -2,6 +2,7 @@
 import { lazyStrings } from '@/strings';
 import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
+import ReasoningSettingsHelp from './ReasoningSettingsHelp.vue';
 import type { Reasoning } from '@/01-models/types';
 
 defineOptions({
@@ -33,7 +34,8 @@ const props = defineProps<{
   leadingOptions?: readonly LeadingOption[],
   heading?: string | undefined,
   disabled?: boolean,
-  surface?: 'flat' | 'card',
+  surface?: 'flat' | 'card' | 'plain',
+  notice?: 'paragraph' | 'inline-help',
 }>();
 
 const emit = defineEmits<{
@@ -165,13 +167,14 @@ defineExpose({
     :tw-class="[
       surface === 'card'
         ? 'p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl'
-        : 'px-3 py-2 border-b dark:border-gray-700',
-      disabled ? 'opacity-50' : ''
+        : surface === 'plain' ? '' : 'px-3 py-2 border-b dark:border-gray-700',
+      disabled && surface !== 'plain' ? 'opacity-50' : ''
     ]"
   >
     <div tw-class="flex items-center gap-2 mb-2">
       <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
       <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ headingLabel }}</span>
+      <ReasoningSettingsHelp v-if="notice === 'inline-help'" />
     </div>
 
     <!-- Segmented Control Container -->
@@ -208,7 +211,7 @@ defineExpose({
       </button>
     </div>
 
-    <div tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
+    <div v-if="notice !== 'inline-help'" tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
       {{ lazyStrings.ReasoningSettings__effort_levels_may_be_ignored_by_some_models() }}
     </div>
   </div>

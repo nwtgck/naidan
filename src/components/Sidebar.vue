@@ -11,9 +11,11 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import SidebarHeader from './SidebarHeader.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
+import { useToast } from '@/composables/useToast';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
-import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/01-models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem, Reasoning } from '@/01-models/types';
 import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
@@ -160,7 +162,32 @@ function renameChat({
 const renameChatGroup = chatOrganization.renameChatGroup;
 const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
-const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
+const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
+const { addToast } = useToast();
+const reasoningSaveState = ref<'idle' | 'saving'>('idle');
+
+async function handleGlobalReasoningChange({ effort }: { effort: Reasoning['effort'] }) {
+  const saveState = reasoningSaveState.value;
+  switch (saveState) {
+  case 'saving':
+    return;
+  case 'idle':
+    break;
+  default: {
+    const _ex: never = saveState;
+    throw new Error(`Unhandled reasoning save state: ${_ex}`);
+  }
+  }
+  reasoningSaveState.value = 'saving';
+  try {
+    await updateGlobalReasoningEffort({ effort });
+  } catch {
+    addToast({ message: await ensureStrings.Sidebar__failed_to_save_reasoning() });
+  } finally {
+    reasoningSaveState.value = 'idle';
+  }
+}
+
 const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
 const layout = useLayout();
 const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
@@ -1334,10 +1361,20 @@ defineExpose({
           :model-value="settings.defaultModelId || ''"
           :models="sortedModels"
           :loading="isFetchingModels"
-          :disabled="settings.endpoint.type === 'browser_provided_lm'"
+          :model-selection="settings.endpoint.type === 'browser_provided_lm' ? 'unavailable' : 'available'"
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           :placeholder="lazyStrings.Sidebar__none()"
-        />
+        >
+          <template #settings>
+            <ReasoningSettings
+              :selected-effort="settings.lmParameters?.reasoning.effort"
+              :disabled="reasoningSaveState === 'saving'"
+              surface="plain"
+              notice="inline-help"
+              @update:effort="handleGlobalReasoningChange({ effort: $event })"
+            />
+          </template>
+        </ModelSelector>
       </div>
 
       <div :tw-class="['flex items-center gap-2', { 'flex-col items-center': !isSidebarOpen }]">

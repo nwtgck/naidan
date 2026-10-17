@@ -123,16 +123,19 @@ describe('ChatPane Design Specifications', () => {
     expect(header.classes()).toContain('bg-white/80');
   });
 
-  it('provides enough bottom padding to account for the floating input', () => {
+  it('reserves only the measured floating input height', async () => {
     const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
-    const paddingBottom = (scrollContainer.element as HTMLElement).style.paddingBottom;
-    expect(parseInt(paddingBottom)).toBeGreaterThanOrEqual(300);
+    const input = wrapper.getComponent(ChatInput);
+    scrollContainer.element.getBoundingClientRect = () => new DOMRect(0, 0, 800, 600);
+    input.element.getBoundingClientRect = () => new DOMRect(0, 500, 800, 100);
+    await input.trigger('transitionend');
+    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('108px');
   });
 
-  it('uses a large conditional spacer for the maximized state', async () => {
+  it('avoids an additional viewport spacer when maximizing the measured input', async () => {
     const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
@@ -145,7 +148,7 @@ describe('ChatPane Design Specifications', () => {
     (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(false);
   });
 
   it('preserves the case of the Model ID (no forced uppercase)', async () => {
@@ -294,14 +297,14 @@ describe('ChatPane Design Specifications', () => {
     expect(inputCard.classes()).not.toContain('backdrop-blur-md');
   });
 
-  it('contains a glass-zone-mask for the background blur effect', () => {
+  it('keeps the conversation fade close to the input', () => {
     const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    const glassZone = wrapper.find('.glass-zone-mask');
+    const glassZone = wrapper.find('.composer-edge-fade');
     expect(glassZone.exists()).toBe(true);
     expect(glassZone.classes()).toContain('absolute');
-    expect(glassZone.classes()).toContain('inset-0');
+    expect(glassZone.classes()).toContain('h-16');
   });
 
   it('positions the input area as absolute at the bottom to overlap messages', () => {

@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import { useSettings } from '@/composables/useSettings';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, h } from 'vue';
 
 // Mock useSettings
 vi.mock('../composables/useSettings', () => ({
@@ -661,6 +662,94 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     staleOption.click();
     await nextTick();
     expect(document.body.querySelector('[data-testid="model-selector-filter"]')).toBeNull();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+  });
+
+  it('keeps optional settings keyboard interactions independent from model selection', async () => {
+    const wrapper = mount(ModelSelector, {
+      props: { modelValue: 'model-a' },
+      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
+      attachTo: document.body,
+    });
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    await flushPromises();
+    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
+    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    const settings = document.body.querySelector<HTMLButtonElement>('[data-testid="reasoning-control"]')!;
+    settings.focus();
+    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
+    settings.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it('allows settings while explicitly disabling only model selection', async () => {
+    const wrapper = mount(ModelSelector, {
+      props: { modelValue: 'model-a', modelSelection: 'unavailable' },
+      slots: { settings: '<button data-testid="reasoning-control">Reasoning</button>' },
+      attachTo: document.body,
+    });
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
+    const refresh = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-refresh"]')!;
+    const option = document.body.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
+    expect(filter.disabled).toBe(true);
+    expect(refresh.disabled).toBe(true);
+    expect(option.disabled).toBe(true);
+    option.click();
+    refresh.click();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(internalFetch).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body.querySelector('[data-testid="reasoning-control"]'));
+  });
+
+  it('preserves the width ceiling for a wide trigger and ignores composing Enter', async () => {
+    mockBounding.width.value = 900;
+    const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const popup = document.body.querySelector<HTMLElement>('[data-testid="model-selector-dropdown"]')!;
+    expect(popup.style.width).toBe('640px');
+    const filter = document.body.querySelector<HTMLInputElement>('[data-testid="model-selector-filter"]')!;
+    filter.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
+  });
+
+  it('keeps teleported reasoning help inside the interaction boundary without closing model selection', async () => {
+    const wrapper = mount(ModelSelector, {
+      props: { modelValue: 'model-a' },
+      slots: { settings: () => h(ReasoningSettings, { selectedEffort: undefined, surface: 'plain', notice: 'inline-help' }) },
+      attachTo: document.body,
+    });
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const help = document.body.querySelector<HTMLButtonElement>('[data-testid="reasoning-help-button"]')!;
+    help.focus();
+    await nextTick();
+    const tooltip = document.body.querySelector<HTMLElement>('[data-testid="reasoning-help"]')!;
+    const pressingHelp = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    tooltip.dispatchEvent(pressingHelp);
+    expect(pressingHelp.defaultPrevented).toBe(true);
+    tooltip.click();
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
+    expect(document.body.querySelector('[data-testid="reasoning-help"]')).toBeTruthy();
+    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="reasoning-help"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
+    help.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();
   });
 });

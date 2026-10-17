@@ -3463,8 +3463,7 @@ Line 1
 Line 2
 Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
-    await nextTick();
-    await nextTick();
+    await flushPromises();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 7 lines: button appears
@@ -3703,19 +3702,23 @@ Line 7`;
       },
     });
 
+    const input = wrapper.getComponent(ChatInput);
+    container.getBoundingClientRect = () => new DOMRect(0, 0, 800, 500);
+    input.element.getBoundingClientRect = () => new DOMRect(0, 400, 800, 100);
+    await input.trigger('transitionend');
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     mockTextareaDimensions(textarea, 24);
     await nextTick();
     scrollTopSpy.mockClear();
 
-    // Simulate textarea expansion (1 line -> 3 lines)
+    // Simulate textarea expansion (1 line -> 3 lines).
+    input.element.getBoundingClientRect = () => new DOMRect(0, 352, 800, 148);
     (wrapper.findComponent(ChatInput).vm as any).input = `\
 Line 1
 Line 2
 Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     // It should trigger scrollToBottom to compensate for the smaller container
     expect(scrollTopSpy).toHaveBeenCalled();
@@ -4136,7 +4139,7 @@ describe('ChatPane Model Selection', () => {
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
-  it('should sync reasoning effort between tools menu and settings panel in real-time', async () => {
+  it('should sync reasoning effort between model selection and settings panel in real-time', async () => {
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
@@ -4157,10 +4160,12 @@ describe('ChatPane Model Selection', () => {
     } as Chat;
     await nextTick();
 
-    // 2. Open tools menu and change reasoning effort
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.exists()).toBe(true);
-    await toolsMenu.vm.$emit('update:reasoning-effort', 'high');
+    // 2. Open model selection and change its chat-owned reasoning override.
+    const modelSelector = wrapper.getComponent(ChatInput).getComponent({ name: 'ModelSelector' });
+    await modelSelector.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
+    const inputReasoning = modelSelector.getComponent({ name: 'ReasoningSettings' });
+    await inputReasoning.vm.$emit('update:effort', 'high');
     await nextTick();
 
     // Verify currentChat was updated via the updateChatSettings call from ChatInput
@@ -4191,8 +4196,8 @@ describe('ChatPane Model Selection', () => {
     // Verify currentChat was updated via the panel's save mechanism
     expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
 
-    // 5. Verify Tools Menu UI is also synced
-    expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
+    // 5. The model selector reflects the same saved override.
+    expect(inputReasoning.props('selectedEffort')).toBe('low');
   }, 20_000);
 });
 
@@ -4217,10 +4222,14 @@ describe('model-link composer visibility wiring', () => {
     const instance = input.element;
     const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Draft survives model setup');
+    const selector = input.getComponent({ name: 'ModelSelector' });
+    await selector.get('[data-testid="model-selector-trigger"]').trigger('click');
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
     launchComposerOverride.value = 'hidden';
     await nextTick();
     expect(wrapper.getComponent(ChatInput).element).toBe(instance);
     expect(input.isVisible()).toBe(false);
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
     launchComposerOverride.value = 'visible';
     await nextTick();
@@ -4228,6 +4237,8 @@ describe('model-link composer visibility wiring', () => {
     expect(input.isVisible()).toBe(true);
     expect(textarea.element.value).toBe('Draft survives model setup');
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    await selector.get('[data-testid="model-selector-trigger"]').trigger('click');
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
   });
 });
 

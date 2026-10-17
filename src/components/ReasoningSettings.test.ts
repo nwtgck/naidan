@@ -40,6 +40,35 @@ describe('ReasoningSettings Component', () => {
     expect(wrapper.emitted('update:effort')).toContainEqual(['none']);
   });
 
+  it('keeps the default notice paragraph and offers opt-in keyboard and touch help', async () => {
+    using testCase = {
+      wrapper: mount(ReasoningSettings, { props: { selectedEffort: undefined }, attachTo: document.body }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    const { wrapper } = testCase;
+    expect(wrapper.text()).toContain('Effort levels may be ignored by some models');
+    expect(wrapper.find('[data-testid="reasoning-help-button"]').exists()).toBe(false);
+    await wrapper.setProps({ notice: 'inline-help', surface: 'plain' });
+    expect(wrapper.text()).not.toContain('Effort levels may be ignored by some models');
+    const button = wrapper.get<HTMLButtonElement>('[data-testid="reasoning-help-button"]');
+    button.element.focus();
+    await nextTick();
+    expect(document.body.querySelector('[data-testid="reasoning-help"]')?.textContent).toContain('Effort levels may be ignored by some models');
+    await button.trigger('keydown', { key: 'Escape' });
+    expect(!!document.body.querySelector('[data-testid="reasoning-help"]')).toBe(false);
+    expect(document.activeElement).toBe(button.element);
+    await button.trigger('click');
+    expect(document.body.querySelector('[data-testid="reasoning-help"]')?.getAttribute('role')).toBe('tooltip');
+    const tooltip = document.body.querySelector<HTMLElement>('[data-testid="reasoning-help"]')!;
+    expect(wrapper.element.contains(tooltip)).toBe(false);
+    expect(tooltip.style.position).toBe('fixed');
+    expect(wrapper.emitted('update:effort')).toBeUndefined();
+    await button.trigger('click');
+    expect(!!document.body.querySelector('[data-testid="reasoning-help"]')).toBe(false);
+  });
+
   it('highlights the correctly selected effort button', async () => {
     const wrapper = await getWrapper('medium');
 

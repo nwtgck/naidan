@@ -16,6 +16,7 @@ import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { provideChatViewScope } from '@/composables/chat/ui/chat-view-scope';
 import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
+import { useChatComposerLayout } from '@/composables/chat/ui/useChatComposerLayout';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import {
@@ -311,6 +312,13 @@ const generatingIndicatorIndex = computed(() => {
 });
 
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+const composerLayout = useChatComposerLayout({
+  composer: computed(() => chatInputRef.value?.rootElement),
+  editor: computed(() => chatInputRef.value?.textareaElement),
+  viewport: container,
+  visibility: inputVisibility,
+  display: modelLaunch.composerVisibility,
+});
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
@@ -1714,9 +1722,9 @@ watch(
       <div
         ref="container"
         data-testid="scroll-container"
-        tw-class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
+        tw-class="absolute inset-0 overflow-y-auto overscroll-contain"
         style="overflow-anchor: none;"
-        :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
+        :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }"
       >
         <template v-if="chat">
           <div v-if="activeMessages.length > 0" tw-class="relative p-2">
@@ -1855,12 +1863,6 @@ watch(
           </WelcomeScreen>
         </template>
 
-        <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
-        <div
-          v-if="chatInputRef?.isMaximized || isAnimatingHeight"
-          tw-class="h-[75vh] shrink-0 pointer-events-none"
-          data-testid="maximized-spacer"
-        ></div>
       </div>
 
       <!-- Chat State Inspector -->
@@ -1904,6 +1906,13 @@ watch(
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"
+      :inherited-reasoning-effort="inheritedSettings?.lmParameters?.reasoning.effort"
+      :available-space="composerLayout.availableSpace.value"
+      :presentation="modelLaunch.composerVisibility.value"
+      @transitionrun="composerLayout.beginTransition({ event: $event })"
+      @transitionend="composerLayout.finishTransition({ event: $event })"
+      @transitioncancel="composerLayout.finishTransition({ event: $event })"
+      @layout-change="composerLayout.measure()"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
