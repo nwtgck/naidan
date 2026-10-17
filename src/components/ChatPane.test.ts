@@ -4140,64 +4140,66 @@ describe('ChatPane Model Selection', () => {
   });
 
   it('should sync reasoning effort between model selection and settings panel in real-time', async () => {
-    wrapper = mountChatPane( {
-      global: {
-        plugins: [router],
-        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true },
-      },
+    await mockFetchAvailableModels.withImplementation(async () => [...mockAvailableModels.value], async () => {
+      wrapper = mountChatPane( {
+        global: {
+          plugins: [router],
+          stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true },
+        },
+      });
+      await flushPromises();
+
+      // 1. Initial state
+      mockCurrentChat.value = {
+        id: toChatId({ raw: '1' }),
+        title: 'Test Chat',
+        root: { items: [] },
+        lmParameters: EMPTY_LM_PARAMETERS,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      } as Chat;
+      await nextTick();
+
+      // 2. Open model selection and change its chat-owned reasoning override.
+      const modelSelector = wrapper.getComponent(ChatInput).getComponent({ name: 'ModelSelector' });
+      await modelSelector.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
+      const inputReasoning = modelSelector.getComponent({ name: 'ReasoningSettings' });
+      await inputReasoning.vm.$emit('update:effort', 'high');
+      await nextTick();
+
+      // Verify currentChat was updated via the updateChatSettings call from ChatInput
+      expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('high');
+
+      // 3. Open Settings Panel
+      const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
+      await settingsBtn.trigger('click');
+      await vi.dynamicImportSettled();
+      await flushPromises();
+      await nextTick();
+
+      await vi.waitFor(() => {
+        expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
+      });
+      const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
+
+      // Verify Settings Panel UI is synced
+      const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
+      expect(reasoningSettings.exists()).toBe(true);
+      expect(reasoningSettings.props('selectedEffort')).toBe('high');
+
+      // 4. Change reasoning effort in Settings Panel
+      await reasoningSettings.vm.$emit('update:effort', 'low');
+      await flushPromises();
+      await nextTick();
+
+      // Verify currentChat was updated via the panel's save mechanism
+      expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
+
+      // 5. The model selector reflects the same saved override.
+      expect(inputReasoning.props('selectedEffort')).toBe('low');
     });
-    await flushPromises();
-
-    // 1. Initial state
-    mockCurrentChat.value = {
-      id: toChatId({ raw: '1' }),
-      title: 'Test Chat',
-      root: { items: [] },
-      lmParameters: EMPTY_LM_PARAMETERS,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    } as Chat;
-    await nextTick();
-
-    // 2. Open model selection and change its chat-owned reasoning override.
-    const modelSelector = wrapper.getComponent(ChatInput).getComponent({ name: 'ModelSelector' });
-    await modelSelector.get('[data-testid="model-selector-trigger"]').trigger('click');
-    await flushPromises();
-    const inputReasoning = modelSelector.getComponent({ name: 'ReasoningSettings' });
-    await inputReasoning.vm.$emit('update:effort', 'high');
-    await nextTick();
-
-    // Verify currentChat was updated via the updateChatSettings call from ChatInput
-    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('high');
-
-    // 3. Open Settings Panel
-    const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
-    await settingsBtn.trigger('click');
-    await vi.dynamicImportSettled();
-    await flushPromises();
-    await nextTick();
-
-    await vi.waitFor(() => {
-      expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
-    });
-    const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
-
-    // Verify Settings Panel UI is synced
-    const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
-    expect(reasoningSettings.exists()).toBe(true);
-    expect(reasoningSettings.props('selectedEffort')).toBe('high');
-
-    // 4. Change reasoning effort in Settings Panel
-    await reasoningSettings.vm.$emit('update:effort', 'low');
-    await flushPromises();
-    await nextTick();
-
-    // Verify currentChat was updated via the panel's save mechanism
-    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
-
-    // 5. The model selector reflects the same saved override.
-    expect(inputReasoning.props('selectedEffort')).toBe('low');
   }, 20_000);
 });
 

@@ -223,6 +223,7 @@ import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__fail
 import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/ja';
 import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/ja';
 import { ChatPaneHeader__chat_inspector } from '@/strings/messages/ChatPaneHeader__chat_inspector/ja';
+import { ChatPaneHeader__chat_settings } from '@/strings/messages/ChatPaneHeader__chat_settings/ja';
 import { ChatPaneHeader__chat_settings_and_model_override } from '@/strings/messages/ChatPaneHeader__chat_settings_and_model_override/ja';
 import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPaneHeader__conversation_outline/ja';
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/ja';
@@ -3078,6 +3079,7 @@ export const catalog = {
   ChatPage__loading_chat,
   ChatPage__retry,
   ChatPaneHeader__chat_inspector,
+  ChatPaneHeader__chat_settings,
   ChatPaneHeader__chat_settings_and_model_override,
   ChatPaneHeader__conversation_outline,
   ChatPaneHeader__copy_shareable_chat_url,

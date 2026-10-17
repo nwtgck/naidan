@@ -98,7 +98,7 @@ import { loadChatWorkerMountsModule, prefetchChatWorkerMountsModule } from '@/fe
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { formatSettingsSourceLabel, settingsSourcePresentation, type SettingsSource } from '@/logic/settings-labels';
 import { resolveChatTextSubmissionAction, type ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { tw } from 'virtual:naidan-tailwind';
@@ -1034,8 +1034,24 @@ const chatGroupBadge = computed(() => {
 
 const currentModelLabel = computed(() => formatSettingsSourceLabel({
   value: resolvedSettings.value?.modelId,
-  source: resolvedSettings.value?.sources.modelId,
+  source: undefined,
 }));
+
+const currentModelSource = computed(() => {
+  const source = resolvedSettings.value?.sources.modelId;
+  switch (source) {
+  case 'global':
+  case 'chat_group':
+    return settingsSourcePresentation({ source });
+  case 'chat':
+  case undefined:
+    return undefined;
+  default: {
+    const _ex: never = source;
+    return _ex;
+  }
+  }
+});
 
 const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleGeneration ?? 'global');
 
@@ -1611,6 +1627,7 @@ watch(
       :chat-group-badge="chatGroupBadge"
       :active-message-count="activeMessages.length"
       :model-label="currentModelLabel"
+      :model-source="currentModelSource"
       :has-overrides="!!(chat && hasChatOverrides({ chat }))"
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
