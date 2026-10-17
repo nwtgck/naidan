@@ -40,6 +40,42 @@ describe('ReasoningSettings Component', () => {
     expect(wrapper.emitted('update:effort')).toContainEqual(['none']);
   });
 
+  it('keeps plain inherited selection, pending controls, and button identity stable', async () => {
+    using testCase = {
+      wrapper: mount(ReasoningSettings, {
+        props: { selectedEffort: undefined, defaultLabel: 'Inherit (a long provider reasoning description)', surface: 'plain', notice: 'inline-help' },
+      }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    const { wrapper } = testCase;
+    await nextTick();
+    const inherited = wrapper.get<HTMLButtonElement>('[data-testid="reasoning-effort-default"]');
+    const high = wrapper.get<HTMLButtonElement>('[data-testid="reasoning-effort-high"]');
+    const highButton = high.element;
+    expect(inherited.attributes('title')).toBe('Inherit (a long provider reasoning description)');
+    expect(inherited.attributes('aria-pressed')).toBe('true');
+    expect(high.attributes('aria-pressed')).toBe('false');
+    const slider = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-slider"]');
+    expect(slider.element.style.opacity).toBe('1');
+    expect(wrapper.find('[data-testid="reasoning-help-button"]').exists()).toBe(true);
+    await high.trigger('click');
+    expect(wrapper.emitted('update:effort')).toEqual([['high']]);
+    expect(inherited.attributes('aria-pressed')).toBe('true');
+    await wrapper.setProps({ selectedEffort: 'high', disabled: true });
+    expect(high.element).toBe(highButton);
+    expect(high.attributes('aria-pressed')).toBe('true');
+    expect(high.element.disabled).toBe(true);
+    expect(slider.element.style.opacity).toBe('1');
+    await inherited.trigger('click');
+    expect(wrapper.emitted('update:effort')).toEqual([['high']]);
+    await wrapper.setProps({ disabled: false });
+    expect(high.element).toBe(highButton);
+    await inherited.trigger('click');
+    expect(wrapper.emitted('update:effort')).toEqual([['high'], [undefined]]);
+  });
+
   it('keeps the default notice paragraph and offers opt-in keyboard and touch help', async () => {
     using testCase = {
       wrapper: mount(ReasoningSettings, { props: { selectedEffort: undefined }, attachTo: document.body }),
@@ -161,14 +197,14 @@ describe('ReasoningSettings Component', () => {
       return { leftReads, widthReads };
     }
 
-    it('remeasures the selected button immediately on container resize and still animates selection changes', async () => {
+    it.each(['flat', 'card', 'plain'] as const)('remeasures the selected %s button immediately on resize and still animates selection changes', async surface => {
       const observers = mockSliderResize();
       const measurements = {
         high: { left: 300, width: 72 },
         medium: { left: 110, width: 40 },
       };
       mockButtonLayout({ measurements });
-      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: 'high' } });
+      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: 'high', surface } });
       using _cleanupResource = {
         [Symbol.dispose]() {
           wrapper.unmount();
@@ -178,6 +214,7 @@ describe('ReasoningSettings Component', () => {
       const slider = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-slider"]');
       expect(observers).toHaveLength(1);
       expect(observers[0]!.observe).toHaveBeenCalledWith(wrapper.get('[data-testid="reasoning-effort-options"]').element);
+      expect(observers[0]!.observe).toHaveBeenCalledWith(wrapper.get('[data-testid="reasoning-effort-high"]').element);
       expect(slider.element.style.left).toBe('300px');
       expect(slider.element.style.width).toBe('72px');
       expect(slider.element.style.transitionDuration).toBe('0ms');
@@ -200,6 +237,62 @@ describe('ReasoningSettings Component', () => {
       expect(slider.element.style.left).toBe('110px');
       expect(slider.element.style.width).toBe('40px');
       expect(slider.element.style.transitionDuration).toBe('300ms');
+    });
+
+    it('immediately aligns the slider when the plain inherited label or surface changes', async () => {
+      const observers = mockSliderResize();
+      const measurements = { default: { left: 0, width: 80 } };
+      mockButtonLayout({ measurements });
+      using testCase = {
+        wrapper: mount(ReasoningSettings, { props: { selectedEffort: undefined, defaultLabel: 'Inherit (Low)', surface: 'plain' } }),
+        [Symbol.dispose]() {
+          this.wrapper.unmount();
+        },
+      };
+      const { wrapper } = testCase;
+      await nextTick();
+      const slider = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-slider"]');
+      expect(observers).toHaveLength(1);
+      expect(slider.element.style.width).toBe('80px');
+      vi.advanceTimersByTime(50);
+      measurements.default = { left: 0, width: 120 };
+      await wrapper.setProps({ defaultLabel: 'Inherit (A much longer label)' });
+      await flushPromises();
+      expect(slider.element.style.width).toBe('120px');
+      expect(slider.element.style.transitionDuration).toBe('0ms');
+      await wrapper.setProps({ surface: 'card' });
+      await flushPromises();
+      expect(observers).toHaveLength(1);
+      expect(slider.element.style.transitionDuration).toBe('0ms');
+      await wrapper.setProps({ surface: 'plain' });
+      await flushPromises();
+      expect(slider.element.style.transitionDuration).toBe('0ms');
+      expect(observers[0]!.disconnect).not.toHaveBeenCalled();
+      expect(wrapper.emitted('update:effort')).toBeUndefined();
+    });
+
+    it.each([0, 180])('keeps plain selection within a measurable %spx track without scrolling the page', async clientWidth => {
+      mockSliderResize();
+      mockButtonLayout({ measurements: { high: { left: 300, width: 72 }, default: { left: 2, width: 80 } } });
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.dataset.testid === 'reasoning-effort-options' ? clientWidth : 0;
+      });
+      const scrollPage = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+      using testCase = {
+        wrapper: mount(ReasoningSettings, { props: { selectedEffort: 'high', surface: 'plain' } }),
+        [Symbol.dispose]() {
+          this.wrapper.unmount();
+        },
+      };
+      const { wrapper } = testCase;
+      const track = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-options"]');
+      await nextTick();
+      expect(track.element.scrollLeft).toBe(clientWidth ? 192 : 0);
+      await wrapper.setProps({ selectedEffort: undefined });
+      await flushPromises();
+      expect(track.element.scrollLeft).toBe(clientWidth ? 2 : 0);
+      expect(scrollPage).not.toHaveBeenCalled();
+      expect(wrapper.emitted('update:effort')).toBeUndefined();
     });
 
     it('recovers from zero-size hidden layout for a leading source option', async () => {
@@ -233,10 +326,10 @@ describe('ReasoningSettings Component', () => {
       expect(slider.element.style.transitionDuration).toBe('0ms');
     });
 
-    it('disconnects observation, clears initialization, and ignores queued measurements after unmount', async () => {
+    it.each(['flat', 'card', 'plain'] as const)('disconnects %s observation, clears initialization, and ignores queued measurements after unmount', async surface => {
       const observers = mockSliderResize();
       const { leftReads, widthReads } = mockButtonLayout({ measurements: { high: { left: 300, width: 72 } } });
-      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: 'high' } });
+      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: 'high', surface } });
       using _cleanupResource = {
         [Symbol.dispose]() {
           if (wrapper.exists()) {
@@ -262,10 +355,10 @@ describe('ReasoningSettings Component', () => {
       expect(widthReads).not.toHaveBeenCalled();
     });
 
-    it('keeps mount and animated selection changes working without ResizeObserver', async () => {
+    it.each(['flat', 'card', 'plain'] as const)('keeps %s mount and animated selection changes working without ResizeObserver', async surface => {
       vi.stubGlobal('ResizeObserver', undefined);
       mockButtonLayout({ measurements: { default: { left: 2, width: 100 }, high: { left: 300, width: 72 } } });
-      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: undefined } });
+      const wrapper = mount(ReasoningSettings, { props: { selectedEffort: undefined, surface } });
       using _cleanupResource = {
         [Symbol.dispose]() {
           wrapper.unmount();

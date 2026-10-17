@@ -1146,8 +1146,11 @@ import { MessageThinking__hide_thought_process } from '@/strings/messages/Messag
 import { MessageThinking__show_thought_process } from '@/strings/messages/MessageThinking__show_thought_process/zh-Hans';
 import { MessageThinking__thinking } from '@/strings/messages/MessageThinking__thinking/zh-Hans';
 import { MessageThinking__thought_process } from '@/strings/messages/MessageThinking__thought_process/zh-Hans';
+import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/zh-Hans';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/zh-Hans';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/zh-Hans';
+import { ModelSelector__loading_models } from '@/strings/messages/ModelSelector__loading_models/zh-Hans';
+import { ModelSelector__no_models_available } from '@/strings/messages/ModelSelector__no_models_available/zh-Hans';
 import { ModelSelector__no_models_found } from '@/strings/messages/ModelSelector__no_models_found/zh-Hans';
 import { ModelSelector__refresh_model_list } from '@/strings/messages/ModelSelector__refresh_model_list/zh-Hans';
 import { ModelSelector__select_a_model } from '@/strings/messages/ModelSelector__select_a_model/zh-Hans';
@@ -1525,6 +1528,7 @@ import { Sidebar__delete_group_warning } from '@/strings/messages/Sidebar__delet
 import { Sidebar__ephemeral_session } from '@/strings/messages/Sidebar__ephemeral_session/zh-Hans';
 import { Sidebar__failed_to_save_reasoning } from '@/strings/messages/Sidebar__failed_to_save_reasoning/zh-Hans';
 import { Sidebar__group_name } from '@/strings/messages/Sidebar__group_name/zh-Hans';
+import { Sidebar__model_selection_is_unavailable_for_this_connection } from '@/strings/messages/Sidebar__model_selection_is_unavailable_for_this_connection/zh-Hans';
 import { Sidebar__new_chat_in_group } from '@/strings/messages/Sidebar__new_chat_in_group/zh-Hans';
 import { Sidebar__none } from '@/strings/messages/Sidebar__none/zh-Hans';
 import { Sidebar__open_sidebar } from '@/strings/messages/Sidebar__open_sidebar/zh-Hans';
@@ -3935,8 +3939,11 @@ export const catalog = {
   MessageThinking__show_thought_process,
   MessageThinking__thinking,
   MessageThinking__thought_process,
+  ModelSelector__clear_filter,
   ModelSelector__filter_models,
   ModelSelector__inherit,
+  ModelSelector__loading_models,
+  ModelSelector__no_models_available,
   ModelSelector__no_models_found,
   ModelSelector__refresh_model_list,
   ModelSelector__select_a_model,
@@ -4314,6 +4321,7 @@ export const catalog = {
   Sidebar__ephemeral_session,
   Sidebar__failed_to_save_reasoning,
   Sidebar__group_name,
+  Sidebar__model_selection_is_unavailable_for_this_connection,
   Sidebar__new_chat_in_group,
   Sidebar__none,
   Sidebar__open_sidebar,

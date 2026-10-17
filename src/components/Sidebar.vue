@@ -20,7 +20,7 @@ import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
-  BotIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
+  SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
@@ -165,6 +165,25 @@ const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
 const { addToast } = useToast();
 const reasoningSaveState = ref<'idle' | 'saving'>('idle');
+const globalReasoningLabel = computed(() => {
+  const effort = settings.value.lmParameters?.reasoning.effort;
+  switch (effort) {
+  case undefined: return undefined;
+  case 'none': return lazyStrings.ReasoningSettings__off();
+  case 'low': return lazyStrings.ReasoningSettings__low();
+  case 'medium': return lazyStrings.ReasoningSettings__med();
+  case 'high': return lazyStrings.ReasoningSettings__high();
+  default: {
+    const _ex: never = effort;
+    throw new Error(`Unhandled reasoning effort: ${_ex}`);
+  }
+  }
+});
+const globalReasoningDescription = computed(() => {
+  const heading = lazyStrings.ReasoningSettings__think();
+  const label = globalReasoningLabel.value;
+  return heading === undefined || label === undefined ? undefined : `${heading} ${label}`;
+});
 
 async function handleGlobalReasoningChange({ effort }: { effort: Reasoning['effort'] }) {
   const saveState = reasoningSaveState.value;
@@ -1350,14 +1369,9 @@ defineExpose({
     <!-- Footer -->
     <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20', isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]']">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="px-1 space-y-2 duration-300">
-        <div tw-class="flex items-center justify-between px-1">
-          <label tw-class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
-            <BotIcon tw-class="w-3 h-3" />
-            {{ lazyStrings.Sidebar__default_model() }}
-          </label>
-        </div>
+      <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="px-1 duration-300">
         <ModelSelector
+          surface="sidebar"
           :model-value="settings.defaultModelId || ''"
           :models="sortedModels"
           :loading="isFetchingModels"
@@ -1365,6 +1379,11 @@ defineExpose({
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           :placeholder="lazyStrings.Sidebar__none()"
         >
+          <template #trigger-label>{{ lazyStrings.Sidebar__default_model() }}</template>
+          <template v-if="globalReasoningLabel !== undefined" #trigger-summary>
+            <span data-testid="sidebar-reasoning-summary" :title="globalReasoningDescription"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }} </span><span data-testid="sidebar-reasoning-value">{{ globalReasoningLabel }}</span></span>
+          </template>
+          <template #unavailable>{{ lazyStrings.Sidebar__model_selection_is_unavailable_for_this_connection() }}</template>
           <template #settings>
             <ReasoningSettings
               :selected-effort="settings.lmParameters?.reasoning.effort"

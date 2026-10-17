@@ -279,8 +279,9 @@ describe('Sidebar Logic Stability', () => {
     }),
     'ModelSelector': {
       name: 'ModelSelector',
-      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder">{{ modelValue || placeholder }}<slot name="settings" /><div v-if="loading" class="animate-spin-mock"></div></div>',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder"><slot name="trigger-label" /><slot name="trigger-summary" />{{ modelValue || placeholder }}<slot name="unavailable" v-if="modelSelection === \'unavailable\'" /><slot name="settings" /><div v-if="loading" class="animate-spin-mock"></div></div>',
       props: {
+        surface: String,
         modelValue: String,
         modelSelection: String,
         models: Array,
@@ -319,6 +320,7 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
+      expect(wrapper.getComponent({ name: 'ModelSelector' }).props('surface')).toBe('sidebar');
       await vi.waitFor(() => {
         expect(wrapper.text()).toContain('Default model');
       });
@@ -355,6 +357,35 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.get('[data-testid="model-selector-mock"]');
       expect(selector.attributes('model-value')).toBe('llama3');
+    });
+
+    it('summarizes global reasoning without materializing the provider default', async () => {
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      expect(wrapper.find('[data-testid="sidebar-reasoning-summary"]').exists()).toBe(false);
+      mockSettings.value.lmParameters = {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      };
+      await nextTick();
+      expect(wrapper.get('[data-testid="sidebar-reasoning-value"]').text()).toBe('Med');
+      expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').text()).toContain('Think');
+      expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').attributes('title')).toBe('Think Med');
+      for (const { effort, label } of [{ effort: 'none', label: 'Off' }, { effort: 'low', label: 'Low' }, { effort: 'high', label: 'High' }] as const) {
+        mockSettings.value.lmParameters.reasoning.effort = effort;
+        await nextTick();
+        expect(wrapper.get('[data-testid="sidebar-reasoning-value"]').text()).toBe(label);
+        expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').attributes('title')).toBe(`Think ${label}`);
+      }
+      mockSettings.value.lmParameters.reasoning.effort = undefined;
+      await nextTick();
+      expect(wrapper.find('[data-testid="sidebar-reasoning-summary"]').exists()).toBe(false);
+      expect(mockUpdateGlobalReasoningEffort).not.toHaveBeenCalled();
+      expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
     });
 
     it('does not enable allowClear for the global model selector', async () => {
@@ -406,6 +437,7 @@ describe('Sidebar Logic Stability', () => {
       mockSettings.value.endpoint = { type: 'browser_provided_lm' };
       const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
       expect(wrapper.getComponent({ name: 'ModelSelector' }).props('modelSelection')).toBe('unavailable');
+      expect(wrapper.text()).toContain('You cannot change the model for this connection.');
       const reasoning = wrapper.getComponent(ReasoningSettings);
       expect(reasoning.props('disabled')).toBe(false);
       await reasoning.vm.$emit('update:effort', 'none');
