@@ -2,8 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import * as ts from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +14,7 @@ import {
   readBoundaryStringMessageCatalog,
   type BoundaryStringLocale,
 } from './message-catalog';
+import { runStringCatalogCli } from './string-catalog-cli';
 
 const temporaryDirectories: string[] = [];
 const messageKey = 'Example__hello';
@@ -356,35 +356,50 @@ catalog.${messageKey}({ wrong: 'Ada' });
 describe('String catalog command', () => {
   it('runs write and non-writing checks against the script location rather than the working directory', () => {
     const root = createFixture({ keys: [messageKey] });
-    const cwd = createFixture({ keys: [] });
-    const script = path.join(root, 'scripts/generate-string-catalogs.ts');
-    fs.mkdirSync(path.dirname(script));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ type: 'module' }));
-    fs.copyFileSync(fileURLToPath(new URL('../../scripts/generate-string-catalogs.ts', import.meta.url)), script);
-    // Run the exact entry point with the real implementation graph. Only the
-    // script's repository root is a fixture; no runtime modules are stubbed.
-    fs.symlinkSync(fileURLToPath(new URL('..', import.meta.url)), path.join(root, 'build'), 'junction');
-    const run = ({ args }: { args: string[] }) => spawnSync(
-      process.execPath,
-      ['--import', import.meta.resolve('tsx'), script, ...args],
-      { cwd, encoding: 'utf8', timeout: 10_000 },
-    );
-    const generated = run({ args: [] });
-    expect(generated.error).toBeUndefined();
-    expect(generated.status, generated.stderr).toBe(0);
-    expect(fs.existsSync(path.join(cwd, 'src/strings/catalogs'))).toBe(false);
+    const otherRoot = createFixture({ keys: [] });
+    const scriptUrl = pathToFileURL(path.join(root, 'scripts/generate-string-catalogs.ts')).href;
+    using cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('Catalog commands must not read the working directory');
+    });
+    expect(runStringCatalogCli({ args: [], scriptUrl })).toEqual({
+      exitCode: 0,
+      stdout: `String catalogs: 1 messages, ${BOUNDARY_STRING_LOCALES.length} locales, ${BOUNDARY_STRING_LOCALES.length} files updated.\n`,
+      stderr: '',
+    });
+    expect(fs.existsSync(path.join(otherRoot, 'src/strings/catalogs'))).toBe(false);
     const before = snapshotCatalogs({ root });
-    expect(run({ args: ['--check'] }).status).toBe(0);
+    const current = {
+      exitCode: 0,
+      stdout: `String catalogs: 1 messages, ${BOUNDARY_STRING_LOCALES.length} locales, 0 files updated.\n`,
+      stderr: '',
+    };
+    expect(runStringCatalogCli({ args: ['--check'], scriptUrl })).toEqual(current);
     expect(snapshotCatalogs({ root })).toEqual(before);
     fs.writeFileSync(createBoundaryStringProjectPaths({ root }).catalogFilePathsByLocale.en, '// stale\n');
     const stale = snapshotCatalogs({ root });
-    const checked = run({ args: ['--check'] });
-    expect(checked.status).toBe(1);
-    expect(checked.stderr).toContain('src/strings/catalogs/en.ts');
+    expect(runStringCatalogCli({ args: ['--check'], scriptUrl })).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: `\
+String catalogs differ:
+  src/strings/catalogs/en.ts
+Run \`npm run strings:catalogs\` to regenerate them.
+`,
+    });
     expect(snapshotCatalogs({ root })).toEqual(stale);
-    expect(run({ args: [] }).status).toBe(0);
-    expect(run({ args: ['--check'] }).status).toBe(0);
-  }, 20_000);
+    expect(runStringCatalogCli({ args: [], scriptUrl })).toEqual({
+      exitCode: 0,
+      stdout: `String catalogs: 1 messages, ${BOUNDARY_STRING_LOCALES.length} locales, 1 files updated.\n`,
+      stderr: '',
+    });
+    const repaired = snapshotCatalogs({ root });
+    expect(repaired.map(({ content }) => content)).toEqual(before.map(({ content }) => content));
+    expect(repaired.filter(({ locale }) => locale !== 'en')).toEqual(before.filter(({ locale }) => locale !== 'en'));
+    expect(runStringCatalogCli({ args: ['--check'], scriptUrl })).toEqual(current);
+    expect(snapshotCatalogs({ root })).toEqual(repaired);
+    expect(fs.existsSync(path.join(otherRoot, 'src/strings/catalogs'))).toBe(false);
+    expect(cwd).not.toHaveBeenCalled();
+  });
 
   it.each([
     { args: ['--help'], status: 0 },
@@ -392,12 +407,43 @@ describe('String catalog command', () => {
     { args: ['--check', '--help'], status: 1 },
     { args: ['--write'], status: 1 },
   ])('handles $args without initializing the application', ({ args, status }) => {
-    const cwd = createFixture({ keys: [] });
-    const script = fileURLToPath(new URL('../../scripts/generate-string-catalogs.ts', import.meta.url));
-    const result = spawnSync(process.execPath, ['--import', import.meta.resolve('tsx'), script, ...args], { cwd, encoding: 'utf8', timeout: 10_000 });
-    expect(result.error).toBeUndefined();
-    expect(result.status).toBe(status);
+    const root = createFixture({ keys: [] });
+    const scriptUrl = pathToFileURL(path.join(root, 'missing/scripts/generate-string-catalogs.ts')).href;
+    using reads = vi.spyOn(fs, 'lstatSync');
+    using writes = vi.spyOn(fs, 'writeFileSync');
+    const result = runStringCatalogCli({ args, scriptUrl });
+    expect(result.exitCode).toBe(status);
     expect(`${result.stdout}${result.stderr}`).toContain('Usage: npm run strings:catalogs');
-    expect(fs.existsSync(path.join(cwd, 'src/strings/catalogs'))).toBe(false);
+    expect(reads).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(root, 'src/strings/catalogs'))).toBe(false);
+  });
+
+  it('decodes spaces, hash signs, and percent signs in the script file URL', () => {
+    const parent = createFixture({ keys: [] });
+    const root = path.join(parent, 'catalog root # 100%');
+    fs.mkdirSync(path.join(root, 'src/strings/messages'), { recursive: true });
+    addMessage({ root, key: messageKey });
+    const scriptUrl = pathToFileURL(path.join(root, 'scripts/generate-string-catalogs.ts')).href;
+    expect(scriptUrl).toContain('%20');
+    expect(scriptUrl).toContain('%23');
+    expect(scriptUrl).toContain('%25');
+    expect(runStringCatalogCli({ args: [], scriptUrl }).exitCode).toBe(0);
+    expect(readCatalog({ root, locale: 'en' })).toContain(messageKey);
+    expect(fs.existsSync(path.join(parent, 'src/strings/catalogs'))).toBe(false);
+  });
+
+  it('returns generation failures without altering existing catalogs', () => {
+    const root = createFixture({ keys: [messageKey] });
+    synchronizeStringCatalogs({ root, mode: 'write' });
+    const before = snapshotCatalogs({ root });
+    fs.unlinkSync(path.join(root, 'src/strings/messages', messageKey, 'ja.ts'));
+    const scriptUrl = pathToFileURL(path.join(root, 'scripts/generate-string-catalogs.ts')).href;
+    expect(runStringCatalogCli({ args: [], scriptUrl })).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: `Cannot generate string catalogs:\n  Missing or non-regular locale file: src/strings/messages/${messageKey}/ja.ts\n`,
+    });
+    expect(snapshotCatalogs({ root })).toEqual(before);
   });
 });

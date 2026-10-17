@@ -43,7 +43,7 @@ import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
 import { createPWABuild } from './build/pwa';
-import { readAppSource } from './build/app-source';
+import { readAppSourceForConfig } from './build/app-source';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -216,7 +216,12 @@ export default defineConfig(({ mode, command }) => {
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
       __APP_VERSION__: JSON.stringify(pkg.version),
-      __APP_SOURCE__: JSON.stringify(readAppSource({ rootDir: __dirname })),
+      __APP_SOURCE__: JSON.stringify(readAppSourceForConfig({
+        mode,
+        executionContext: process.env.VITEST === 'true' ? 'vitest' : 'vite',
+        rootDir: __dirname,
+        environment: process.env,
+      })),
     },
     resolve: {
       alias: [
