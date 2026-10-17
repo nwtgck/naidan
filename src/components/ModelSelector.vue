@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, useSlots } from 'vue';
+import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, useSlots, inject, type Ref } from 'vue';
 import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { useWindowSize } from '@vueuse/core';
 import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
+import SettingsSourceBadge from './SettingsSourceBadge.vue';
+import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
 import { lazyStrings } from '@/strings';
 
+const disclosureOpen = inject<Readonly<Ref<boolean>> | undefined>('settings-disclosure-open', undefined);
+const disclosureFocusReturn = inject<(() => HTMLElement | undefined) | undefined>('settings-disclosure-focus-return', undefined);
 const props = defineProps<{
   modelValue: string | undefined,
   placeholder?: string,
@@ -18,7 +22,9 @@ const props = defineProps<{
   modelLabels?: Readonly<Record<string, string>>,
   inputId?: string,
   invalid?: boolean,
-  surface?: 'default' | 'composer' | 'sidebar',
+  surface?: 'default' | 'composer' | 'sidebar' | 'settings',
+  frame?: 'standalone' | 'embedded',
+  inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
 }>();
 
@@ -41,7 +47,11 @@ function modelLabel({ model }: { model: string }): string {
   return props.modelLabels?.[model] ?? model;
 }
 
-const displayModelName = computed(() => props.modelValue ? modelLabel({ model: props.modelValue }) : props.placeholder || lazyStrings.ModelSelector__select_a_model());
+const displayModelName = computed(() => {
+  const model = props.modelValue || props.inheritedModel?.id;
+  return model ? modelLabel({ model }) : props.placeholder || lazyStrings.ModelSelector__select_a_model();
+});
+const inheritedModelParts = computed(() => splitModelName({ name: props.inheritedModel?.id ? modelLabel({ model: props.inheritedModel.id }) : props.clearLabel }));
 
 function splitModelName({ name }: { name: string | undefined }) {
   if (name === undefined) {
@@ -58,6 +68,8 @@ function splitModelName({ name }: { name: string | undefined }) {
 }
 
 const modelNameParts = computed(() => splitModelName({ name: displayModelName.value }));
+const settingsHasMetadata = computed(() => Boolean(modelNameParts.value.prefix || (!props.modelValue && props.inheritedModel?.source)));
+const inheritedModelHasMetadata = computed(() => Boolean(inheritedModelParts.value.prefix || props.inheritedModel?.source));
 
 const searchableModels = computed(() => {
   return availableModels.value.map(m => ({
@@ -137,7 +149,7 @@ function toggleDropdown() {
 }
 
 function selectModel({ model }: { model: string | undefined }) {
-  if (modelSelectionUnavailable.value || (model !== undefined && !availableModels.value.includes(model))) {
+  if (!isOpen.value || modelSelectionUnavailable.value || (model !== undefined && !availableModels.value.includes(model))) {
     return;
   }
   emit('update:modelValue', model);
@@ -182,7 +194,7 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
   }
 
   // Native buttons act on their own value, rather than the search highlight.
-  if (props.surface === 'sidebar' && event.target instanceof HTMLButtonElement && dropdownRef.value?.contains(event.target) && event.key !== 'Escape' && event.key !== 'Tab') {
+  if ((props.surface === 'sidebar' || props.surface === 'settings') && event.target instanceof HTMLButtonElement && dropdownRef.value?.contains(event.target) && event.key !== 'Escape' && event.key !== 'Tab') {
     return;
   }
 
@@ -219,7 +231,7 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
     break;
   case 'Tab':
     if (!slots.settings) {
-      isOpen.value = false;
+      closeDropdown({ restoreFocus: props.surface === 'settings' });
     }
     break;
   }
@@ -280,6 +292,7 @@ function handleSidebarFocus({ event }: { event: FocusEvent }) {
   case undefined:
   case 'default':
   case 'composer':
+  case 'settings':
     return;
   default: {
     const _ex: never = surface;
@@ -319,6 +332,14 @@ watch(windowWidth, () => {
 });
 
 
+watch(() => disclosureOpen?.value, value => {
+  if (value === false) {
+    if (document.activeElement instanceof Node && dropdownRef.value?.contains(document.activeElement)) {
+      disclosureFocusReturn?.()?.focus();
+    }
+    closeDropdown({ restoreFocus: false });
+  }
+});
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
@@ -329,12 +350,13 @@ defineExpose({
 </script>
 
 <template>
-  <div :class="{ 'model-selector-sidebar': surface === 'sidebar' }" tw-class="relative w-full" ref="containerRef" @keydown="handleKeydown({ event: $event })">
+  <div :class="{ 'model-selector-sidebar': surface === 'sidebar' }" :tw-class="['relative w-full', surface === 'settings' && 'min-w-0 flex-1']" ref="containerRef" @keydown="handleKeydown({ event: $event })">
     <!-- Trigger -->
     <button
       type="button"
       :id="inputId"
       :aria-invalid="invalid || undefined"
+      :aria-label="surface === 'settings' ? [displayModelName, modelValue ? undefined : inheritedModel?.source?.description].filter(Boolean).join(' · ') : undefined"
       :aria-expanded="isOpen"
       :aria-busy="isFetchingModels || undefined"
       @click="toggleDropdown"
@@ -342,12 +364,14 @@ defineExpose({
       :title="displayModelName"
       :tw-class="[
         'w-full flex items-center justify-between gap-2 text-xs text-gray-700 dark:text-gray-200 outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-colors',
-        surface === 'composer'
-          ? 'h-9 px-2 rounded-xl font-medium bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 focus-visible:ring-2 focus-visible:ring-gray-400/50'
-          : surface === 'sidebar'
-            ? 'flex-col items-stretch gap-1 rounded-xl border border-transparent bg-transparent px-3 py-2.5 font-semibold hover:bg-gray-100/70 dark:hover:bg-gray-800/60 focus-visible:ring-2 focus-visible:ring-blue-500/25'
-            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 font-bold focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm',
-        isOpen ? surface === 'composer' ? 'bg-gray-100 dark:bg-gray-700/50' : surface === 'sidebar' ? 'bg-gray-100/80 dark:bg-gray-800/70' : 'ring-4 ring-blue-500/10 border-blue-500/50' : ''
+        surface === 'settings'
+          ? frame === 'embedded' ? 'min-h-[58px] rounded-none border-0 bg-transparent px-3.5 py-2.5 font-medium shadow-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:hover:bg-gray-800' : 'min-h-[60px] rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 font-medium hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800'
+          : surface === 'composer'
+            ? 'h-9 px-2 rounded-xl font-medium bg-transparent hover:bg-gray-100 dark:hover:bg-gray-700/50 focus-visible:ring-2 focus-visible:ring-gray-400/50'
+            : surface === 'sidebar'
+              ? 'flex-col items-stretch gap-1 rounded-xl border border-transparent bg-transparent px-3 py-2.5 font-semibold hover:bg-gray-100/70 dark:hover:bg-gray-800/60 focus-visible:ring-2 focus-visible:ring-blue-500/25'
+              : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 font-bold focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 shadow-sm',
+        isOpen ? surface === 'settings' ? 'ring-2 ring-inset ring-blue-500/25' : surface === 'composer' ? 'bg-gray-100 dark:bg-gray-700/50' : surface === 'sidebar' ? 'bg-gray-100/80 dark:bg-gray-800/70' : 'ring-4 ring-blue-500/10 border-blue-500/50' : ''
       ]"
       data-testid="model-selector-trigger"
     >
@@ -356,7 +380,11 @@ defineExpose({
         <span v-if="$slots['trigger-summary']" class="model-selector-trigger-summary" tw-class="min-w-0 shrink-0 text-right font-normal text-gray-400 dark:text-gray-500"><slot name="trigger-summary"></slot></span>
       </div>
       <div tw-class="flex w-full min-w-0 items-center justify-between gap-2">
-        <div tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
+        <span v-if="surface === 'settings'" tw-class="block min-w-0 flex-1 text-left">
+          <span tw-class="block truncate text-sm leading-5">{{ modelNameParts.suffix }}</span>
+          <span v-if="settingsHasMetadata" data-testid="model-selector-trigger-metadata" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="modelValue ? undefined : inheritedModel?.source" /><span tw-class="min-w-0 flex-1 truncate text-xs font-normal leading-4 text-gray-500 dark:text-gray-400">{{ modelNameParts.prefix.replace(/\/$/, '') }}</span></span>
+        </span>
+        <div v-else tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
           <span
             v-if="modelNameParts.prefix"
             tw-class="font-normal whitespace-nowrap overflow-hidden min-w-0"
@@ -461,12 +489,17 @@ defineExpose({
                   ]"
                   :disabled="modelSelectionUnavailable"
                   data-testid="model-selector-clear"
+                  :aria-label="surface === 'settings' && inheritedModel ? [inheritedModel.id || clearLabel, inheritedModel.source?.description].filter(Boolean).join(' · ') : undefined"
                   data-index="0"
                   @mouseenter="highlightedIndex = 0"
           >
-            <div tw-class="flex items-center gap-2">
+            <div tw-class="flex min-w-0 flex-1 items-center gap-2">
               <XIcon v-if="modelValue" tw-class="w-3.5 h-3.5" />
-              <span tw-class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span>
+              <span v-if="surface === 'settings' && inheritedModel" tw-class="block min-w-0 flex-1">
+                <span tw-class="block truncate text-sm font-medium leading-5">{{ inheritedModelParts.suffix || clearLabel || lazyStrings.ModelSelector__inherit() }}</span>
+                <span v-if="inheritedModelHasMetadata" data-testid="model-selector-clear-metadata" tw-class="mt-0.5 flex min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="inheritedModel.source" /><span tw-class="min-w-0 flex-1 truncate text-xs font-normal text-gray-500 dark:text-gray-400">{{ inheritedModelParts.prefix.replace(/\/$/, '') }}</span></span>
+              </span>
+              <template v-else><span tw-class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span></template>
             </div>
             <CheckIcon v-if="!modelValue" tw-class="w-3.5 h-3.5 shrink-0" />
           </button>

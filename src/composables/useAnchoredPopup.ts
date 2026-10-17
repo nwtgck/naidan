@@ -3,10 +3,11 @@ import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 /** Keep a body-teleported popup inside the currently visible viewport. */
-export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx }: {
+export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx, preferredPlacement }: {
   anchor: Ref<HTMLElement | null>,
   preferredWidth: { unit: 'px' | 'rem', value: number },
   maxWidthPx: number | undefined,
+  preferredPlacement?: { direction: 'top' | 'bottom', minHeightPx: number },
 }) {
   const bounds = useElementBounding(anchor);
   const windowSize = useWindowSize();
@@ -62,7 +63,21 @@ export function useAnchoredPopup({ anchor, preferredWidth, maxWidthPx }: {
     const bottom = visible.top + visible.height;
     const spaceAbove = Math.max(0, Math.min(bounds.top.value, bottom) - visible.top - gap - 8);
     const spaceBelow = Math.max(0, bottom - Math.max(bounds.bottom.value, visible.top) - gap - 8);
-    const opensAbove = spaceBelow < 320 && spaceAbove > spaceBelow;
+    let opensAbove: boolean;
+    if (!preferredPlacement) {
+      opensAbove = spaceBelow < 320 && spaceAbove > spaceBelow;
+    } else {
+      switch (preferredPlacement.direction) {
+      case 'top': opensAbove = spaceAbove >= Math.min(preferredPlacement.minHeightPx, spaceBelow);
+        break;
+      case 'bottom': opensAbove = spaceBelow < Math.min(preferredPlacement.minHeightPx, spaceAbove);
+        break;
+      default: {
+        const _ex: never = preferredPlacement.direction;
+        throw new Error(`Unhandled popup placement: ${_ex}`);
+      }
+      }
+    }
     const direction = opensAbove ? 'top' : 'bottom';
     const maxHeight = opensAbove ? spaceAbove : spaceBelow;
     const top = opensAbove ? Math.min(bottom - gap, bounds.top.value - 8) : Math.max(visible.top + gap, bounds.bottom.value + 8);

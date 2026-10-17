@@ -927,4 +927,60 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();
   });
+
+  it('shows inherited model presentation separately from the raw clear choice', async () => {
+    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: undefined, surface: 'settings', inheritedModel: { id: 'owner/repository/model-Q4', source: { label: 'Global', description: 'Follows global changes' } }, models: ['owner/repository/model-Q4'], allowClear: true } });
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('model-Q4');
+    expect(trigger.text()).toContain('owner/repository');
+    expect(trigger.attributes('aria-label')).toContain('Follows global changes');
+    await trigger.trigger('click');
+    const clear = document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!;
+    expect(clear.getAttribute('aria-label')).toContain('Follows global changes');
+    document.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!.click();
+    expect(wrapper.emitted('update:modelValue')).toEqual([['owner/repository/model-Q4']]);
+    await wrapper.setProps({ modelValue: 'owner/repository/model-Q4' });
+    expect(trigger.attributes('aria-label')).not.toContain('Follows global changes');
+    await trigger.trigger('click');
+    document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!.click();
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([undefined]);
+  });
+
+  it('returns from a settings popup to the anchor before a natural Tab move', async () => {
+    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: 'model-a', surface: 'settings', models: ['model-a'], allowClear: true } });
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const option = document.querySelector<HTMLButtonElement>('[data-testid="model-selector-option"]')!;
+    option.focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    option.dispatchEvent(tab);
+    await nextTick();
+    expect(document.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger.element);
+    expect(tab.defaultPrevented).toBe(false);
+  });
+
+  it('shows metadata only when the displayed model has a path or active source', async () => {
+    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: [], surface: 'settings', placeholder: 'None' } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('None');
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
+    await wrapper.setProps({ inheritedModel: { id: undefined, source: { label: undefined, description: undefined } } });
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(true);
+    await wrapper.setProps({ inheritedModel: { id: undefined, source: { label: 'Conversation', description: 'Uses each conversation' } } });
+    expect(wrapper.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Conversation');
+    await wrapper.setProps({ modelValue: 'owner/repository/model' });
+    expect(wrapper.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('owner/repository');
+    await wrapper.setProps({ modelValue: 'plain-model-name' });
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').text()).toBe('plain-model-name');
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
+    await wrapper.setProps({ modelValue: undefined, inheritedModel: { id: 'plain-model-name', source: undefined }, allowClear: true });
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    expect(document.querySelector('[data-testid="model-selector-clear-metadata"]')).toBeNull();
+  });
 });

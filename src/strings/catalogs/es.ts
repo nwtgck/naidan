@@ -100,10 +100,13 @@ import { ChatGroupSettingsPanel__clear } from '@/strings/messages/ChatGroupSetti
 import { ChatGroupSettingsPanel__cleared } from '@/strings/messages/ChatGroupSettingsPanel__cleared/es';
 import { ChatGroupSettingsPanel__completely_replaces_global_instructions } from '@/strings/messages/ChatGroupSettingsPanel__completely_replaces_global_instructions/es';
 import { ChatGroupSettingsPanel__configure_how_chats_in_this_group_are_automatically_named } from '@/strings/messages/ChatGroupSettingsPanel__configure_how_chats_in_this_group_are_automatically_named/es';
+import { ChatGroupSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls } from '@/strings/messages/ChatGroupSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls/es';
 import { ChatGroupSettingsPanel__create_recipe } from '@/strings/messages/ChatGroupSettingsPanel__create_recipe/es';
 import { ChatGroupSettingsPanel__custom_http_headers } from '@/strings/messages/ChatGroupSettingsPanel__custom_http_headers/es';
 import { ChatGroupSettingsPanel__disabled } from '@/strings/messages/ChatGroupSettingsPanel__disabled/es';
+import { ChatGroupSettingsPanel__editing_connection_creates_a_local_title_override } from '@/strings/messages/ChatGroupSettingsPanel__editing_connection_creates_a_local_title_override/es';
 import { ChatGroupSettingsPanel__enabled } from '@/strings/messages/ChatGroupSettingsPanel__enabled/es';
+import { ChatGroupSettingsPanel__enabled_tool_count } from '@/strings/messages/ChatGroupSettingsPanel__enabled_tool_count/es';
 import { ChatGroupSettingsPanel__endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__endpoint_type/es';
 import { ChatGroupSettingsPanel__endpoint_url } from '@/strings/messages/ChatGroupSettingsPanel__endpoint_url/es';
 import { ChatGroupSettingsPanel__enter_instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_for_this_chat_group/es';
@@ -111,12 +114,14 @@ import { ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_sett
 import { ChatGroupSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_to_append/es';
 import { ChatGroupSettingsPanel__failed_to_save_chat_group_settings } from '@/strings/messages/ChatGroupSettingsPanel__failed_to_save_chat_group_settings/es';
 import { ChatGroupSettingsPanel__files } from '@/strings/messages/ChatGroupSettingsPanel__files/es';
+import { ChatGroupSettingsPanel__folder_counts } from '@/strings/messages/ChatGroupSettingsPanel__folder_counts/es';
 import { ChatGroupSettingsPanel__folders } from '@/strings/messages/ChatGroupSettingsPanel__folders/es';
 import { ChatGroupSettingsPanel__global } from '@/strings/messages/ChatGroupSettingsPanel__global/es';
 import { ChatGroupSettingsPanel__global_default } from '@/strings/messages/ChatGroupSettingsPanel__global_default/es';
 import { ChatGroupSettingsPanel__global_endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__global_endpoint_type/es';
 import { ChatGroupSettingsPanel__global_model } from '@/strings/messages/ChatGroupSettingsPanel__global_model/es';
 import { ChatGroupSettingsPanel__global_prompt_cleared } from '@/strings/messages/ChatGroupSettingsPanel__global_prompt_cleared/es';
+import { ChatGroupSettingsPanel__group_actions } from '@/strings/messages/ChatGroupSettingsPanel__group_actions/es';
 import { ChatGroupSettingsPanel__group_level } from '@/strings/messages/ChatGroupSettingsPanel__group_level/es';
 import { ChatGroupSettingsPanel__group_overrides } from '@/strings/messages/ChatGroupSettingsPanel__group_overrides/es';
 import { ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats/es';
@@ -131,6 +136,7 @@ import { ChatGroupSettingsPanel__instructions_to_append } from '@/strings/messag
 import { ChatGroupSettingsPanel__load_from_saved_profiles } from '@/strings/messages/ChatGroupSettingsPanel__load_from_saved_profiles/es';
 import { ChatGroupSettingsPanel__local_overrides } from '@/strings/messages/ChatGroupSettingsPanel__local_overrides/es';
 import { ChatGroupSettingsPanel__model_id_override } from '@/strings/messages/ChatGroupSettingsPanel__model_id_override/es';
+import { ChatGroupSettingsPanel__model_management } from '@/strings/messages/ChatGroupSettingsPanel__model_management/es';
 import { ChatGroupSettingsPanel__name } from '@/strings/messages/ChatGroupSettingsPanel__name/es';
 import { ChatGroupSettingsPanel__no_custom_headers } from '@/strings/messages/ChatGroupSettingsPanel__no_custom_headers/es';
 import { ChatGroupSettingsPanel__no_global_instructions_defined } from '@/strings/messages/ChatGroupSettingsPanel__no_global_instructions_defined/es';
@@ -145,7 +151,9 @@ import { ChatGroupSettingsPanel__quick_endpoint_presets } from '@/strings/messag
 import { ChatGroupSettingsPanel__quick_profile_switcher } from '@/strings/messages/ChatGroupSettingsPanel__quick_profile_switcher/es';
 import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/es';
 import { ChatGroupSettingsPanel__restore_defaults } from '@/strings/messages/ChatGroupSettingsPanel__restore_defaults/es';
+import { ChatGroupSettingsPanel__runs_in_this_browser } from '@/strings/messages/ChatGroupSettingsPanel__runs_in_this_browser/es';
 import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/es';
+import { ChatGroupSettingsPanel__saving } from '@/strings/messages/ChatGroupSettingsPanel__saving/es';
 import { ChatGroupSettingsPanel__search_group } from '@/strings/messages/ChatGroupSettingsPanel__search_group/es';
 import { ChatGroupSettingsPanel__search_messages } from '@/strings/messages/ChatGroupSettingsPanel__search_messages/es';
 import { ChatGroupSettingsPanel__set_group_name } from '@/strings/messages/ChatGroupSettingsPanel__set_group_name/es';
@@ -169,6 +177,8 @@ import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/Chat
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/es';
 import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/es';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/es';
+import { ChatGroupSettingsPanel__working } from '@/strings/messages/ChatGroupSettingsPanel__working/es';
+import { ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings } from '@/strings/messages/ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings/es';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/es';
 import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/es';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/es';
@@ -271,18 +281,23 @@ import { ChatSettingsPanel__chat_specific_overrides } from '@/strings/messages/C
 import { ChatSettingsPanel__chat_system_prompt } from '@/strings/messages/ChatSettingsPanel__chat_system_prompt/es';
 import { ChatSettingsPanel__clear } from '@/strings/messages/ChatSettingsPanel__clear/es';
 import { ChatSettingsPanel__cleared } from '@/strings/messages/ChatSettingsPanel__cleared/es';
+import { ChatSettingsPanel__close } from '@/strings/messages/ChatSettingsPanel__close/es';
 import { ChatSettingsPanel__completely_replaces_global_instructions } from '@/strings/messages/ChatSettingsPanel__completely_replaces_global_instructions/es';
 import { ChatSettingsPanel__configure_how_this_chat_is_automatically_named } from '@/strings/messages/ChatSettingsPanel__configure_how_this_chat_is_automatically_named/es';
 import { ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls } from '@/strings/messages/ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls/es';
 import { ChatSettingsPanel__custom_http_headers } from '@/strings/messages/ChatSettingsPanel__custom_http_headers/es';
 import { ChatSettingsPanel__disabled } from '@/strings/messages/ChatSettingsPanel__disabled/es';
+import { ChatSettingsPanel__editing_connection_creates_a_local_title_override } from '@/strings/messages/ChatSettingsPanel__editing_connection_creates_a_local_title_override/es';
 import { ChatSettingsPanel__enabled } from '@/strings/messages/ChatSettingsPanel__enabled/es';
+import { ChatSettingsPanel__enabled_tool_count } from '@/strings/messages/ChatSettingsPanel__enabled_tool_count/es';
 import { ChatSettingsPanel__endpoint_type } from '@/strings/messages/ChatSettingsPanel__endpoint_type/es';
 import { ChatSettingsPanel__endpoint_url } from '@/strings/messages/ChatSettingsPanel__endpoint_url/es';
 import { ChatSettingsPanel__enter_instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__enter_instructions_for_this_chat/es';
 import { ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting/es';
 import { ChatSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatSettingsPanel__enter_instructions_to_append/es';
 import { ChatSettingsPanel__failed_to_save_chat_settings } from '@/strings/messages/ChatSettingsPanel__failed_to_save_chat_settings/es';
+import { ChatSettingsPanel__folder_counts } from '@/strings/messages/ChatSettingsPanel__folder_counts/es';
+import { ChatSettingsPanel__folders } from '@/strings/messages/ChatSettingsPanel__folders/es';
 import { ChatSettingsPanel__group_global_default } from '@/strings/messages/ChatSettingsPanel__group_global_default/es';
 import { ChatSettingsPanel__inherit } from '@/strings/messages/ChatSettingsPanel__inherit/es';
 import { ChatSettingsPanel__inherited } from '@/strings/messages/ChatSettingsPanel__inherited/es';
@@ -291,6 +306,7 @@ import { ChatSettingsPanel__instructions_for_this_chat } from '@/strings/message
 import { ChatSettingsPanel__instructions_to_append } from '@/strings/messages/ChatSettingsPanel__instructions_to_append/es';
 import { ChatSettingsPanel__load_from_saved_profiles } from '@/strings/messages/ChatSettingsPanel__load_from_saved_profiles/es';
 import { ChatSettingsPanel__local_overrides } from '@/strings/messages/ChatSettingsPanel__local_overrides/es';
+import { ChatSettingsPanel__model_management } from '@/strings/messages/ChatSettingsPanel__model_management/es';
 import { ChatSettingsPanel__model_override } from '@/strings/messages/ChatSettingsPanel__model_override/es';
 import { ChatSettingsPanel__name } from '@/strings/messages/ChatSettingsPanel__name/es';
 import { ChatSettingsPanel__no_custom_headers } from '@/strings/messages/ChatSettingsPanel__no_custom_headers/es';
@@ -306,7 +322,9 @@ import { ChatSettingsPanel__quick_endpoint_presets } from '@/strings/messages/Ch
 import { ChatSettingsPanel__quick_profile_switcher } from '@/strings/messages/ChatSettingsPanel__quick_profile_switcher/es';
 import { ChatSettingsPanel__replace } from '@/strings/messages/ChatSettingsPanel__replace/es';
 import { ChatSettingsPanel__restore_defaults } from '@/strings/messages/ChatSettingsPanel__restore_defaults/es';
+import { ChatSettingsPanel__runs_in_this_browser } from '@/strings/messages/ChatSettingsPanel__runs_in_this_browser/es';
 import { ChatSettingsPanel__same_as_chat_endpoint } from '@/strings/messages/ChatSettingsPanel__same_as_chat_endpoint/es';
+import { ChatSettingsPanel__saving } from '@/strings/messages/ChatSettingsPanel__saving/es';
 import { ChatSettingsPanel__settings_resolution } from '@/strings/messages/ChatSettingsPanel__settings_resolution/es';
 import { ChatSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatSettingsPanel__start_typing_to_override/es';
 import { ChatSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatSettingsPanel__start_typing_to_replace/es';
@@ -320,10 +338,12 @@ import { ChatSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatS
 import { ChatSettingsPanel__title_model_explanation } from '@/strings/messages/ChatSettingsPanel__title_model_explanation/es';
 import { ChatSettingsPanel__title_model_override } from '@/strings/messages/ChatSettingsPanel__title_model_override/es';
 import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/es';
+import { ChatSettingsPanel__tools } from '@/strings/messages/ChatSettingsPanel__tools/es';
 import { ChatSettingsPanel__transformers_js } from '@/strings/messages/ChatSettingsPanel__transformers_js/es';
 import { ChatSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatSettingsPanel__transformers_js_experimental/es';
 import { ChatSettingsPanel__use_chat_group_setting } from '@/strings/messages/ChatSettingsPanel__use_chat_group_setting/es';
 import { ChatSettingsPanel__value } from '@/strings/messages/ChatSettingsPanel__value/es';
+import { ChatSettingsPanel__working } from '@/strings/messages/ChatSettingsPanel__working/es';
 import { ChatTitleDialog__chat_override } from '@/strings/messages/ChatTitleDialog__chat_override/es';
 import { ChatTitleDialog__chat_title } from '@/strings/messages/ChatTitleDialog__chat_title/es';
 import { ChatTitleDialog__close } from '@/strings/messages/ChatTitleDialog__close/es';
@@ -349,32 +369,44 @@ import { ConnectionTab__add_header } from '@/strings/messages/ConnectionTab__add
 import { ConnectionTab__api_provider } from '@/strings/messages/ConnectionTab__api_provider/es';
 import { ConnectionTab__applied_to_all_new_chats } from '@/strings/messages/ConnectionTab__applied_to_all_new_chats/es';
 import { ConnectionTab__auto_title_generation } from '@/strings/messages/ConnectionTab__auto_title_generation/es';
+import { ConnectionTab__browser_api_not_available } from '@/strings/messages/ConnectionTab__browser_api_not_available/es';
 import { ConnectionTab__check_connection } from '@/strings/messages/ConnectionTab__check_connection/es';
 import { ConnectionTab__connected } from '@/strings/messages/ConnectionTab__connected/es';
+import { ConnectionTab__connection } from '@/strings/messages/ConnectionTab__connection/es';
 import { ConnectionTab__connection_check_for_localhost_only } from '@/strings/messages/ConnectionTab__connection_check_for_localhost_only/es';
+import { ConnectionTab__conversation_connection } from '@/strings/messages/ConnectionTab__conversation_connection/es';
+import { ConnectionTab__conversation_model } from '@/strings/messages/ConnectionTab__conversation_model/es';
 import { ConnectionTab__copy_setup_url } from '@/strings/messages/ConnectionTab__copy_setup_url/es';
 import { ConnectionTab__copy_url_with_current_settings } from '@/strings/messages/ConnectionTab__copy_url_with_current_settings/es';
 import { ConnectionTab__create } from '@/strings/messages/ConnectionTab__create/es';
 import { ConnectionTab__create_new_profile } from '@/strings/messages/ConnectionTab__create_new_profile/es';
 import { ConnectionTab__custom_http_headers } from '@/strings/messages/ConnectionTab__custom_http_headers/es';
+import { ConnectionTab__custom_parameters } from '@/strings/messages/ConnectionTab__custom_parameters/es';
 import { ConnectionTab__default } from '@/strings/messages/ConnectionTab__default/es';
 import { ConnectionTab__default_model } from '@/strings/messages/ConnectionTab__default_model/es';
 import { ConnectionTab__endpoint_configuration } from '@/strings/messages/ConnectionTab__endpoint_configuration/es';
 import { ConnectionTab__endpoint_url } from '@/strings/messages/ConnectionTab__endpoint_url/es';
 import { ConnectionTab__failed_to_save_settings } from '@/strings/messages/ConnectionTab__failed_to_save_settings/es';
+import { ConnectionTab__generation_parameters } from '@/strings/messages/ConnectionTab__generation_parameters/es';
 import { ConnectionTab__give_configuration_a_name } from '@/strings/messages/ConnectionTab__give_configuration_a_name/es';
 import { ConnectionTab__global_context_and_parameters } from '@/strings/messages/ConnectionTab__global_context_and_parameters/es';
 import { ConnectionTab__global_system_prompt } from '@/strings/messages/ConnectionTab__global_system_prompt/es';
 import { ConnectionTab__header_name_example } from '@/strings/messages/ConnectionTab__header_name_example/es';
 import { ConnectionTab__helpful_ai_assistant_placeholder } from '@/strings/messages/ConnectionTab__helpful_ai_assistant_placeholder/es';
 import { ConnectionTab__load_saved_profile } from '@/strings/messages/ConnectionTab__load_saved_profile/es';
+import { ConnectionTab__model_management } from '@/strings/messages/ConnectionTab__model_management/es';
 import { ConnectionTab__model_selection } from '@/strings/messages/ConnectionTab__model_selection/es';
 import { ConnectionTab__no_custom_headers } from '@/strings/messages/ConnectionTab__no_custom_headers/es';
 import { ConnectionTab__none } from '@/strings/messages/ConnectionTab__none/es';
+import { ConnectionTab__off } from '@/strings/messages/ConnectionTab__off/es';
 import { ConnectionTab__ollama } from '@/strings/messages/ConnectionTab__ollama/es';
 import { ConnectionTab__openai_compatible } from '@/strings/messages/ConnectionTab__openai_compatible/es';
 import { ConnectionTab__profile_created } from '@/strings/messages/ConnectionTab__profile_created/es';
+import { ConnectionTab__provider_defaults } from '@/strings/messages/ConnectionTab__provider_defaults/es';
 import { ConnectionTab__quick_profile_switcher } from '@/strings/messages/ConnectionTab__quick_profile_switcher/es';
+import { ConnectionTab__regular_conversation } from '@/strings/messages/ConnectionTab__regular_conversation/es';
+import { ConnectionTab__runs_in_this_browser } from '@/strings/messages/ConnectionTab__runs_in_this_browser/es';
+import { ConnectionTab__same_as_conversation } from '@/strings/messages/ConnectionTab__same_as_conversation/es';
 import { ConnectionTab__save_as_new_profile } from '@/strings/messages/ConnectionTab__save_as_new_profile/es';
 import { ConnectionTab__save_changes } from '@/strings/messages/ConnectionTab__save_changes/es';
 import { ConnectionTab__save_failed } from '@/strings/messages/ConnectionTab__save_failed/es';
@@ -391,6 +423,7 @@ import { ConnectionTab__use_current_chat_endpoint } from '@/strings/messages/Con
 import { ConnectionTab__use_current_chat_model } from '@/strings/messages/ConnectionTab__use_current_chat_model/es';
 import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/es';
 import { ConnectionTab__used_for_new_conversations } from '@/strings/messages/ConnectionTab__used_for_new_conversations/es';
+import { ConnectionTab__uses_each_conversations_settings } from '@/strings/messages/ConnectionTab__uses_each_conversations_settings/es';
 import { ConnectionTab__value } from '@/strings/messages/ConnectionTab__value/es';
 import { ConnectionTab__view_profiles } from '@/strings/messages/ConnectionTab__view_profiles/es';
 import { ContextCompactProgressStrip__abort_compact } from '@/strings/messages/ContextCompactProgressStrip__abort_compact/es';
@@ -463,6 +496,7 @@ import { DeveloperTab__reset_data_provider_warning } from '@/strings/messages/De
 import { DeveloperTab__sample_conversations_description } from '@/strings/messages/DeveloperTab__sample_conversations_description/es';
 import { DeveloperTab__simulate_pwa_update } from '@/strings/messages/DeveloperTab__simulate_pwa_update/es';
 import { DeveloperTab__toggle_update_notification } from '@/strings/messages/DeveloperTab__toggle_update_notification/es';
+import { EndpointPresetButtons__connection_presets } from '@/strings/messages/EndpointPresetButtons__connection_presets/es';
 import { ExperimentalFeatureRow__details } from '@/strings/messages/ExperimentalFeatureRow__details/es';
 import { ExperimentalFeatureRow__details_for } from '@/strings/messages/ExperimentalFeatureRow__details_for/es';
 import { ExperimentalFeatureRow__disabled } from '@/strings/messages/ExperimentalFeatureRow__disabled/es';
@@ -559,6 +593,11 @@ import { HistoryManipulationModal__system_prompt_resolution } from '@/strings/me
 import { HistoryManipulationModal__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/HistoryManipulationModal__this_chat_will_not_use_any_system_instructions/es';
 import { HistoryManipulationModal__thoughts } from '@/strings/messages/HistoryManipulationModal__thoughts/es';
 import { HistoryManipulationModal__type_message_content } from '@/strings/messages/HistoryManipulationModal__type_message_content/es';
+import { HttpHeadersEditor__add_header } from '@/strings/messages/HttpHeadersEditor__add_header/es';
+import { HttpHeadersEditor__http_headers } from '@/strings/messages/HttpHeadersEditor__http_headers/es';
+import { HttpHeadersEditor__name } from '@/strings/messages/HttpHeadersEditor__name/es';
+import { HttpHeadersEditor__remove_header } from '@/strings/messages/HttpHeadersEditor__remove_header/es';
+import { HttpHeadersEditor__value } from '@/strings/messages/HttpHeadersEditor__value/es';
 import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/es';
 import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/es';
 import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/es';
@@ -1075,6 +1114,7 @@ import { LlamaCppMemoryPanel__no_samples } from '@/strings/messages/LlamaCppMemo
 import { LlamaCppMemoryPanel__observation_note } from '@/strings/messages/LlamaCppMemoryPanel__observation_note/es';
 import { LlamaCppMemoryPanel__observed_maximum } from '@/strings/messages/LlamaCppMemoryPanel__observed_maximum/es';
 import { LmParametersEditor__default } from '@/strings/messages/LmParametersEditor__default/es';
+import { LmParametersEditor__empty_fields_use_parent_settings } from '@/strings/messages/LmParametersEditor__empty_fields_use_parent_settings/es';
 import { LmParametersEditor__empty_fields_use_provider_defaults } from '@/strings/messages/LmParametersEditor__empty_fields_use_provider_defaults/es';
 import { LmParametersEditor__invalid_json } from '@/strings/messages/LmParametersEditor__invalid_json/es';
 import { LmParametersEditor__lm_parameters } from '@/strings/messages/LmParametersEditor__lm_parameters/es';
@@ -1300,6 +1340,7 @@ import { OllamaPsView__family } from '@/strings/messages/OllamaPsView__family/es
 import { OllamaPsView__format } from '@/strings/messages/OllamaPsView__format/es';
 import { OllamaPsView__kept_indefinitely } from '@/strings/messages/OllamaPsView__kept_indefinitely/es';
 import { OllamaPsView__loaded_count } from '@/strings/messages/OllamaPsView__loaded_count/es';
+import { OllamaPsView__loaded_models } from '@/strings/messages/OllamaPsView__loaded_models/es';
 import { OllamaPsView__loaded_models_remain_available_until_their_keep_alive_period_expires } from '@/strings/messages/OllamaPsView__loaded_models_remain_available_until_their_keep_alive_period_expires/es';
 import { OllamaPsView__loading_models } from '@/strings/messages/OllamaPsView__loading_models/es';
 import { OllamaPsView__memory_size } from '@/strings/messages/OllamaPsView__memory_size/es';
@@ -1476,6 +1517,17 @@ import { RpcPeerProvision__image_generation } from '@/strings/messages/RpcPeerPr
 import { RpcPeerProvision__not_provided } from '@/strings/messages/RpcPeerProvision__not_provided/es';
 import { RpcPeerProvision__partially_provided } from '@/strings/messages/RpcPeerProvision__partially_provided/es';
 import { RpcPeerProvision__provided } from '@/strings/messages/RpcPeerProvision__provided/es';
+import { ScopedMountSettings__files } from '@/strings/messages/ScopedMountSettings__files/es';
+import { ScopedMountSettings__folder_operation_failed } from '@/strings/messages/ScopedMountSettings__folder_operation_failed/es';
+import { ScopedMountSettings__folder_permissions } from '@/strings/messages/ScopedMountSettings__folder_permissions/es';
+import { ScopedMountSettings__folder_unavailable } from '@/strings/messages/ScopedMountSettings__folder_unavailable/es';
+import { ScopedMountSettings__folders } from '@/strings/messages/ScopedMountSettings__folders/es';
+import { ScopedMountSettings__inherited_folders } from '@/strings/messages/ScopedMountSettings__inherited_folders/es';
+import { ScopedMountSettings__overridden_here } from '@/strings/messages/ScopedMountSettings__overridden_here/es';
+import { ScopedMountSettings__read_and_write } from '@/strings/messages/ScopedMountSettings__read_and_write/es';
+import { ScopedMountSettings__read_only } from '@/strings/messages/ScopedMountSettings__read_only/es';
+import { ScopedMountSettings__remove_folder } from '@/strings/messages/ScopedMountSettings__remove_folder/es';
+import { ScopedMountSettings__removing_a_folder_does_not_delete_files } from '@/strings/messages/ScopedMountSettings__removing_a_folder_does_not_delete_files/es';
 import { SearchPreview__alt_branch } from '@/strings/messages/SearchPreview__alt_branch/es';
 import { SearchPreview__conversation_match } from '@/strings/messages/SearchPreview__conversation_match/es';
 import { SearchPreview__following_messages } from '@/strings/messages/SearchPreview__following_messages/es';
@@ -1510,6 +1562,10 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/es';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/es';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/es';
+import { SettingsSourceBadge__chat_group } from '@/strings/messages/SettingsSourceBadge__chat_group/es';
+import { SettingsSourceBadge__follows_changes_to_source } from '@/strings/messages/SettingsSourceBadge__follows_changes_to_source/es';
+import { SettingsSourceBadge__global } from '@/strings/messages/SettingsSourceBadge__global/es';
+import { SettingsSourceBadge__same_chat } from '@/strings/messages/SettingsSourceBadge__same_chat/es';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/es';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/es';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/es';
@@ -2003,6 +2059,12 @@ import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/
 import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/es';
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/es';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/es';
+import { endpointTypeDescription__connect_to_an_ollama_server } from '@/strings/messages/endpointTypeDescription__connect_to_an_ollama_server/es';
+import { endpointTypeDescription__connect_to_an_openai_compatible_api } from '@/strings/messages/endpointTypeDescription__connect_to_an_openai_compatible_api/es';
+import { endpointTypeDescription__run_gguf_models_in_this_browser } from '@/strings/messages/endpointTypeDescription__run_gguf_models_in_this_browser/es';
+import { endpointTypeDescription__run_onnx_models_in_this_browser } from '@/strings/messages/endpointTypeDescription__run_onnx_models_in_this_browser/es';
+import { endpointTypeDescription__use_models_built_into_your_browser } from '@/strings/messages/endpointTypeDescription__use_models_built_into_your_browser/es';
+import { endpointTypeDescription__use_models_from_a_registered_connection } from '@/strings/messages/endpointTypeDescription__use_models_from_a_registered_connection/es';
 import { fileExplorer__add } from '@/strings/messages/fileExplorer__add/es';
 import { fileExplorer__addition_count } from '@/strings/messages/fileExplorer__addition_count/es';
 import { fileExplorer__analyzing_zip } from '@/strings/messages/fileExplorer__analyzing_zip/es';
@@ -2893,10 +2955,13 @@ export const catalog = {
   ChatGroupSettingsPanel__cleared,
   ChatGroupSettingsPanel__completely_replaces_global_instructions,
   ChatGroupSettingsPanel__configure_how_chats_in_this_group_are_automatically_named,
+  ChatGroupSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls,
   ChatGroupSettingsPanel__create_recipe,
   ChatGroupSettingsPanel__custom_http_headers,
   ChatGroupSettingsPanel__disabled,
+  ChatGroupSettingsPanel__editing_connection_creates_a_local_title_override,
   ChatGroupSettingsPanel__enabled,
+  ChatGroupSettingsPanel__enabled_tool_count,
   ChatGroupSettingsPanel__endpoint_type,
   ChatGroupSettingsPanel__endpoint_url,
   ChatGroupSettingsPanel__enter_instructions_for_this_chat_group,
@@ -2904,12 +2969,14 @@ export const catalog = {
   ChatGroupSettingsPanel__enter_instructions_to_append,
   ChatGroupSettingsPanel__failed_to_save_chat_group_settings,
   ChatGroupSettingsPanel__files,
+  ChatGroupSettingsPanel__folder_counts,
   ChatGroupSettingsPanel__folders,
   ChatGroupSettingsPanel__global,
   ChatGroupSettingsPanel__global_default,
   ChatGroupSettingsPanel__global_endpoint_type,
   ChatGroupSettingsPanel__global_model,
   ChatGroupSettingsPanel__global_prompt_cleared,
+  ChatGroupSettingsPanel__group_actions,
   ChatGroupSettingsPanel__group_level,
   ChatGroupSettingsPanel__group_overrides,
   ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats,
@@ -2924,6 +2991,7 @@ export const catalog = {
   ChatGroupSettingsPanel__load_from_saved_profiles,
   ChatGroupSettingsPanel__local_overrides,
   ChatGroupSettingsPanel__model_id_override,
+  ChatGroupSettingsPanel__model_management,
   ChatGroupSettingsPanel__name,
   ChatGroupSettingsPanel__no_custom_headers,
   ChatGroupSettingsPanel__no_global_instructions_defined,
@@ -2938,7 +3006,9 @@ export const catalog = {
   ChatGroupSettingsPanel__quick_profile_switcher,
   ChatGroupSettingsPanel__replace,
   ChatGroupSettingsPanel__restore_defaults,
+  ChatGroupSettingsPanel__runs_in_this_browser,
   ChatGroupSettingsPanel__same_as_group_chat_endpoint,
+  ChatGroupSettingsPanel__saving,
   ChatGroupSettingsPanel__search_group,
   ChatGroupSettingsPanel__search_messages,
   ChatGroupSettingsPanel__set_group_name,
@@ -2962,6 +3032,8 @@ export const catalog = {
   ChatGroupSettingsPanel__transformers_js_experimental,
   ChatGroupSettingsPanel__use_global_setting,
   ChatGroupSettingsPanel__value,
+  ChatGroupSettingsPanel__working,
+  ChatGroupToolsSettings__failed_to_save_chat_group_tool_settings,
   ChatInput__cancel,
   ChatInput__copying_name,
   ChatInput__edit_image,
@@ -3064,18 +3136,23 @@ export const catalog = {
   ChatSettingsPanel__chat_system_prompt,
   ChatSettingsPanel__clear,
   ChatSettingsPanel__cleared,
+  ChatSettingsPanel__close,
   ChatSettingsPanel__completely_replaces_global_instructions,
   ChatSettingsPanel__configure_how_this_chat_is_automatically_named,
   ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls,
   ChatSettingsPanel__custom_http_headers,
   ChatSettingsPanel__disabled,
+  ChatSettingsPanel__editing_connection_creates_a_local_title_override,
   ChatSettingsPanel__enabled,
+  ChatSettingsPanel__enabled_tool_count,
   ChatSettingsPanel__endpoint_type,
   ChatSettingsPanel__endpoint_url,
   ChatSettingsPanel__enter_instructions_for_this_chat,
   ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting,
   ChatSettingsPanel__enter_instructions_to_append,
   ChatSettingsPanel__failed_to_save_chat_settings,
+  ChatSettingsPanel__folder_counts,
+  ChatSettingsPanel__folders,
   ChatSettingsPanel__group_global_default,
   ChatSettingsPanel__inherit,
   ChatSettingsPanel__inherited,
@@ -3084,6 +3161,7 @@ export const catalog = {
   ChatSettingsPanel__instructions_to_append,
   ChatSettingsPanel__load_from_saved_profiles,
   ChatSettingsPanel__local_overrides,
+  ChatSettingsPanel__model_management,
   ChatSettingsPanel__model_override,
   ChatSettingsPanel__name,
   ChatSettingsPanel__no_custom_headers,
@@ -3099,7 +3177,9 @@ export const catalog = {
   ChatSettingsPanel__quick_profile_switcher,
   ChatSettingsPanel__replace,
   ChatSettingsPanel__restore_defaults,
+  ChatSettingsPanel__runs_in_this_browser,
   ChatSettingsPanel__same_as_chat_endpoint,
+  ChatSettingsPanel__saving,
   ChatSettingsPanel__settings_resolution,
   ChatSettingsPanel__start_typing_to_override,
   ChatSettingsPanel__start_typing_to_replace,
@@ -3113,10 +3193,12 @@ export const catalog = {
   ChatSettingsPanel__title_model_explanation,
   ChatSettingsPanel__title_model_override,
   ChatSettingsPanel__title_reasoning,
+  ChatSettingsPanel__tools,
   ChatSettingsPanel__transformers_js,
   ChatSettingsPanel__transformers_js_experimental,
   ChatSettingsPanel__use_chat_group_setting,
   ChatSettingsPanel__value,
+  ChatSettingsPanel__working,
   ChatTitleDialog__chat_override,
   ChatTitleDialog__chat_title,
   ChatTitleDialog__close,
@@ -3142,32 +3224,44 @@ export const catalog = {
   ConnectionTab__api_provider,
   ConnectionTab__applied_to_all_new_chats,
   ConnectionTab__auto_title_generation,
+  ConnectionTab__browser_api_not_available,
   ConnectionTab__check_connection,
   ConnectionTab__connected,
+  ConnectionTab__connection,
   ConnectionTab__connection_check_for_localhost_only,
+  ConnectionTab__conversation_connection,
+  ConnectionTab__conversation_model,
   ConnectionTab__copy_setup_url,
   ConnectionTab__copy_url_with_current_settings,
   ConnectionTab__create,
   ConnectionTab__create_new_profile,
   ConnectionTab__custom_http_headers,
+  ConnectionTab__custom_parameters,
   ConnectionTab__default,
   ConnectionTab__default_model,
   ConnectionTab__endpoint_configuration,
   ConnectionTab__endpoint_url,
   ConnectionTab__failed_to_save_settings,
+  ConnectionTab__generation_parameters,
   ConnectionTab__give_configuration_a_name,
   ConnectionTab__global_context_and_parameters,
   ConnectionTab__global_system_prompt,
   ConnectionTab__header_name_example,
   ConnectionTab__helpful_ai_assistant_placeholder,
   ConnectionTab__load_saved_profile,
+  ConnectionTab__model_management,
   ConnectionTab__model_selection,
   ConnectionTab__no_custom_headers,
   ConnectionTab__none,
+  ConnectionTab__off,
   ConnectionTab__ollama,
   ConnectionTab__openai_compatible,
   ConnectionTab__profile_created,
+  ConnectionTab__provider_defaults,
   ConnectionTab__quick_profile_switcher,
+  ConnectionTab__regular_conversation,
+  ConnectionTab__runs_in_this_browser,
+  ConnectionTab__same_as_conversation,
   ConnectionTab__save_as_new_profile,
   ConnectionTab__save_changes,
   ConnectionTab__save_failed,
@@ -3184,6 +3278,7 @@ export const catalog = {
   ConnectionTab__use_current_chat_model,
   ConnectionTab__use_current_chat_reasoning,
   ConnectionTab__used_for_new_conversations,
+  ConnectionTab__uses_each_conversations_settings,
   ConnectionTab__value,
   ConnectionTab__view_profiles,
   ContextCompactProgressStrip__abort_compact,
@@ -3256,6 +3351,7 @@ export const catalog = {
   DeveloperTab__sample_conversations_description,
   DeveloperTab__simulate_pwa_update,
   DeveloperTab__toggle_update_notification,
+  EndpointPresetButtons__connection_presets,
   ExperimentalFeatureRow__details,
   ExperimentalFeatureRow__details_for,
   ExperimentalFeatureRow__disabled,
@@ -3352,6 +3448,11 @@ export const catalog = {
   HistoryManipulationModal__this_chat_will_not_use_any_system_instructions,
   HistoryManipulationModal__thoughts,
   HistoryManipulationModal__type_message_content,
+  HttpHeadersEditor__add_header,
+  HttpHeadersEditor__http_headers,
+  HttpHeadersEditor__name,
+  HttpHeadersEditor__remove_header,
+  HttpHeadersEditor__value,
   ImageBenchmarkResult__generated_image,
   ImageBenchmarkResult__image_memory_limit_reached,
   ImageBenchmarkResult__image_not_retained,
@@ -3868,6 +3969,7 @@ export const catalog = {
   LlamaCppMemoryPanel__observation_note,
   LlamaCppMemoryPanel__observed_maximum,
   LmParametersEditor__default,
+  LmParametersEditor__empty_fields_use_parent_settings,
   LmParametersEditor__empty_fields_use_provider_defaults,
   LmParametersEditor__invalid_json,
   LmParametersEditor__lm_parameters,
@@ -4093,6 +4195,7 @@ export const catalog = {
   OllamaPsView__format,
   OllamaPsView__kept_indefinitely,
   OllamaPsView__loaded_count,
+  OllamaPsView__loaded_models,
   OllamaPsView__loaded_models_remain_available_until_their_keep_alive_period_expires,
   OllamaPsView__loading_models,
   OllamaPsView__memory_size,
@@ -4269,6 +4372,17 @@ export const catalog = {
   RpcPeerProvision__not_provided,
   RpcPeerProvision__partially_provided,
   RpcPeerProvision__provided,
+  ScopedMountSettings__files,
+  ScopedMountSettings__folder_operation_failed,
+  ScopedMountSettings__folder_permissions,
+  ScopedMountSettings__folder_unavailable,
+  ScopedMountSettings__folders,
+  ScopedMountSettings__inherited_folders,
+  ScopedMountSettings__overridden_here,
+  ScopedMountSettings__read_and_write,
+  ScopedMountSettings__read_only,
+  ScopedMountSettings__remove_folder,
+  ScopedMountSettings__removing_a_folder_does_not_delete_files,
   SearchPreview__alt_branch,
   SearchPreview__conversation_match,
   SearchPreview__following_messages,
@@ -4303,6 +4417,10 @@ export const catalog = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
+  SettingsSourceBadge__chat_group,
+  SettingsSourceBadge__follows_changes_to_source,
+  SettingsSourceBadge__global,
+  SettingsSourceBadge__same_chat,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -4796,6 +4914,12 @@ export const catalog = {
   dataDeletion__preview_entries,
   dataDeletion__scanning_storage,
   dataDeletion__select_at_least_one_deletion_selector,
+  endpointTypeDescription__connect_to_an_ollama_server,
+  endpointTypeDescription__connect_to_an_openai_compatible_api,
+  endpointTypeDescription__run_gguf_models_in_this_browser,
+  endpointTypeDescription__run_onnx_models_in_this_browser,
+  endpointTypeDescription__use_models_built_into_your_browser,
+  endpointTypeDescription__use_models_from_a_registered_connection,
   fileExplorer__add,
   fileExplorer__addition_count,
   fileExplorer__analyzing_zip,

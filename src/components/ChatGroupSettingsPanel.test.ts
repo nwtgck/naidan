@@ -1,8 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { endpointTypeDescription } from './endpoint-type-label';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import { ensureStrings } from '@/strings';
+import SettingsSelect from './SettingsSelect.vue';
+vi.mock('../composables/chat/useChatMounts', () => ({ useChatMounts: vi.fn() }));
+import { SettingsSelectStub } from './settings-select.test-support';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mount, flushPromises, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
-import { EMPTY_LM_PARAMETERS, type ChatGroup, type Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type ChatGroup, type Endpoint, type Settings } from '@/01-models/types';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -12,6 +18,15 @@ import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-mo
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+// Unmount before the next fixture replaces shared refs; settle the owner's
+// existing asynchronous unmount save before the next test installs its mocks.
+enableAutoUnmount(cleanup => {
+  afterEach(async () => {
+    cleanup();
+    await flushPromises();
+  });
+});
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -78,6 +93,11 @@ function expectLatestGroupUpdate({
 vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    async *listVolumes() {
+      for (const mount of mockCurrentGroup.value.mounts ?? []) {
+        yield { id: mount.volumeId, name: mount.mountPath.split('/').at(-1), type: 'opfs', createdAt: 0 };
+      }
+    },
     updateChatGroup: mocks.updateChatGroup,
   },
 }));
@@ -109,6 +129,11 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 const globalStubs = {
+  RouterLink: RouterLinkStub,
+  VolumeCreator: true,
+  SettingsSelect: SettingsSelectStub,
+  ScopedMountSettings: true,
+  LmToolsSettings: true,
   RpcRegistrationSelect: true,
   'lucide-vue-next': true,
   'LmParametersEditor': {
@@ -124,7 +149,7 @@ const globalStubs = {
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled'],
+    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled', 'inheritedModel'],
   },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
@@ -206,6 +231,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
       }),
       removeMount: vi.fn().mockImplementation(async ({ chatGroupId, volumeId }) => {
         await mocks.removeMountFromChatGroup({ groupId: chatGroupId, volumeId });
+      }),
+      setMountReadOnly: vi.fn().mockImplementation(async ({ chatGroupId, volumeId, readOnly }) => {
+        await mocks.updateChatGroupMount({ groupId: chatGroupId, volumeId, readOnly });
       }),
       updateMount: vi.fn().mockImplementation(async ({ chatGroupId, volumeId, mountPath, readOnly }) => {
         await mocks.updateChatGroupMount({ groupId: chatGroupId, volumeId, mountPath, readOnly });
@@ -328,13 +356,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
   it('shows detailed error message when refresh fails', async () => {
     const errorMessage = 'CORS error: OLLAMA_ORIGINS="*"';
-    mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
-
     // Customize group to have an endpoint so URL input/error exists
     mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
+    await flushPromises();
+    mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
     await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -344,12 +372,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
   it('renders the group name in the header', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-    expect(wrapper.find('h2').text()).toContain('Test Group Settings');
+    expect(wrapper.find('h2').text()).toBe('Test Group');
+    expect(wrapper.find('h2').attributes('title')).toBe('Test Group');
   });
 
   it('shows title-generation inheritance as using the global setting', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-    expect(wrapper.text()).toContain('Use Global Setting');
+    expect(wrapper.get('[data-testid="group-setting-title-endpoint-type-select"]').element).toHaveProperty('value', 'inherit');
   });
 
   it('keeps the inherited title model selector editable and materializes a group override on change', async () => {
@@ -362,7 +391,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
     expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
     expect(titleModelSelector!.props('allowClear')).toBe(true);
     expect(titleModelSelector!.props('disabled')).toBe(false);
 
@@ -492,21 +521,21 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
     expect(titleModelSelector).toBeDefined();
-    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
     expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
-  it('shows the "Active Overrides" badge only when overrides are present', async () => {
+  it('shows the selected model without adding a separate override header', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper.text()).not.toContain('Active Overrides');
 
     mockGroup.modelId = 'some-model';
     await nextTick();
-    expect(wrapper.text()).toContain('Active Overrides');
+    expect(wrapper.getComponent({ name: 'ModelSelector' }).props('modelValue')).toBe('some-model');
   });
 
-  it('hides the "Active Overrides" badge when endpoint URL is cleared', async () => {
+  it('returns the connection summary to inheritance when its override is cleared', async () => {
     // Explicitly set title overrides to undefined
     mockGroup.titleGeneration = undefined;
 
@@ -516,14 +545,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
     // Set an endpoint with URL
     mockGroup.endpoint = { type: 'openai', url: 'http://example.com' };
     await flushPromises();
-    expect(wrapper.text()).toContain('Active Overrides');
+    expect(wrapper.get('[data-testid="group-setting-url-input"]').element).toHaveProperty('value', 'http://example.com');
 
     // Clear the endpoint entirely to ensure no overrides
     mockGroup.endpoint = undefined;
     await flushPromises();
 
-    // The badge should disappear because there are no longer any overrides
-    expect(wrapper.text()).not.toContain('Active Overrides');
+    expect(wrapper.get('[data-testid="group-setting-endpoint-type-select"]').element).toHaveProperty('value', 'global');
   });
 
   it('uses localized display names in the inherited endpoint option', async () => {
@@ -535,7 +563,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global: OpenAI');
+    expect(inheritedOption().text()).toBe('Global: OpenAI Compatible');
 
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-url' };
     await nextTick();
@@ -543,7 +571,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global: Transformers.js');
+    expect(inheritedOption().text()).toBe(`Global: ${await ensureStrings.ChatGroupSettingsPanel__transformers_js_experimental()}`);
   });
 
   it('toggles endpoint customization via select', async () => {
@@ -551,7 +579,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     // Initially showing global default (Inherit)
     // URL input should NOT exist because local endpoint is undefined and global is openai (but local still undefined)
-    expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="group-setting-url-input"]').element).toHaveProperty('value', 'http://global-url');
 
     // Change select to 'ollama'
     const select = wrapper.find('select');
@@ -661,7 +689,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    const profileSelect = wrapper.find('select');
+    const profileSelect = wrapper.get('[data-testid="group-setting-profile-select"]');
     await profileSelect.setValue('p-browser');
     await profileSelect.trigger('change');
     await flushPromises();
@@ -688,7 +716,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    const profileSelect = wrapper.find('select');
+    const profileSelect = wrapper.get('[data-testid="group-setting-profile-select"]');
     await profileSelect.setValue('p-transformers');
     await profileSelect.trigger('change');
     await flushPromises();
@@ -747,8 +775,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    const upsell = wrapper.findComponent({ name: 'TransformersJsUpsell' });
-    expect(upsell.props('show')).toBe(true);
+    expect(wrapper.findComponent(RouterLinkStub).props('to')).toMatchObject({ query: { settings: 'transformers-js' } });
   });
 
   it('shows system prompt modes and keeps the editor mounted', async () => {
@@ -1159,17 +1186,17 @@ describe('ChatGroupSettingsPanel.vue', () => {
   it('displays correct resolution status for system prompt', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
-    const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
+    const status = wrapper.find('[data-testid="group-setting-system-prompt-caption"]');
 
     expect(status.text()).toBe('Global: Not set');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'append' };
     await nextTick();
-    expect(status.text()).toBe('Append');
+    expect(wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').attributes('aria-pressed')).toBe('true');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'override' };
     await nextTick();
-    expect(status.text()).toBe('Replace');
+    expect(wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').attributes('aria-pressed')).toBe('true');
   });
 
   it('calls updateChatGroupMetadata when settings change', async () => {
@@ -1279,7 +1306,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search Group'));
+    const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search messages'));
     await searchBtn?.trigger('click');
 
     expect(mocks.openSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
@@ -1304,10 +1331,18 @@ describe('ChatGroupSettingsPanel.vue', () => {
   });
 
   describe('Folders (chat group mounts)', () => {
+    beforeEach(() => {
+      globalStubs.ScopedMountSettings = false;
+    });
+
+    afterEach(() => {
+      globalStubs.ScopedMountSettings = true;
+    });
+
     it('shows no mount badges when group has no mounts', () => {
       mockGroup.mounts = [];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-      expect(wrapper.find('[data-testid="chat-group-mounts"]').exists()).toBe(false);
+      expect(wrapper.findAll('[data-testid="own-mount-row"]')).toHaveLength(0);
     });
 
     it('renders mount badges for each active mount', async () => {
@@ -1320,10 +1355,10 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
       const badgeContainer = wrapper.find('[data-testid="chat-group-mounts"]');
       expect(badgeContainer.exists()).toBe(true);
-      expect(badgeContainer.findAll('[data-testid="mount-badge"]')).toHaveLength(2);
+      expect(badgeContainer.findAll('[data-testid="own-mount-row"]')).toHaveLength(2);
     });
 
-    it('trims /home/user/ prefix from displayed mount path', async () => {
+    it('shows the folder name alongside its full mount path', async () => {
       mockGroup.mounts = [
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/my-project', readOnly: false },
       ];
@@ -1331,7 +1366,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await nextTick();
 
       expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).toContain('my-project');
-      expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).not.toContain('/home/user/');
+      expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).toContain('/home/user/my-project');
     });
 
     it('calls removeMountFromChatGroup when remove button is clicked', async () => {
@@ -1341,7 +1376,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
 
-      await wrapper.find('[data-testid="mount-remove-btn"]').trigger('click');
+      await wrapper.find('[data-testid="mount-remove"]').trigger('click');
       await flushPromises();
 
       expect(mocks.removeMountFromChatGroup).toHaveBeenCalledWith({ groupId: 'g1', volumeId: 'vol-1' });
@@ -1354,13 +1389,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
 
-      await wrapper.find('[data-testid="mount-toggle-readonly"]').trigger('click');
+      await wrapper.find('[data-testid="mount-read-only"]').trigger('click');
       await flushPromises();
 
       expect(mocks.updateChatGroupMount).toHaveBeenCalledWith({
         groupId: 'g1',
         volumeId: 'vol-1',
-        mountPath: '/home/user/work',
         readOnly: true,
       });
     });
@@ -1371,7 +1405,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await nextTick();
 
       const volumeCreator = wrapper.findComponent({ name: 'VolumeCreator' });
-      await volumeCreator.vm.$emit('created', { volumeId: 'new-vol', mountPath: '/home/user/new', readOnly: false });
+      await volumeCreator.props('completeCreation')({
+        operationContext: volumeCreator.props('operationContext'),
+        volumeId: 'new-vol',
+        mountPath: '/home/user/new',
+        readOnly: false,
+      });
       await flushPromises();
 
       expect(mocks.addMountToChatGroup).toHaveBeenCalledWith({
@@ -1389,7 +1428,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
 
-      await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+      await wrapper.find('[data-testid="mount-open"]').trigger('click');
       await flushPromises();
 
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
@@ -1414,7 +1453,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await nextTick();
 
       // Click the second badge's explorer button
-      const explorerBtns = wrapper.findAll('[data-testid="mount-open-explorer"]');
+      const explorerBtns = wrapper.findAll('[data-testid="mount-open"]');
       await explorerBtns[1]!.trigger('click');
       await flushPromises();
 
@@ -1484,5 +1523,87 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(option.attributes('disabled')).toBeUndefined();
       expect(option.text()).toContain('llama.cpp');
     }
+  });
+
+  it.each(['inherit', 'same_scope'] as const)('materializes only this chat group title connection when editing an effective %s URL', async mode => {
+    const params = { ...EMPTY_LM_PARAMETERS, temperature: 0.6, reasoning: { effort: 'high' as const } };
+    mockSettings.titleGeneration = { endpoint: { type: 'openai', url: 'https://parent-title.example/v1' }, model: { id: 'parent-title' }, lmParameters: params };
+    mockGroup.endpoint = { type: 'openai', url: 'https://main.example/v1' };
+    mockGroup.modelId = 'main-model';
+    mockGroup.titleGeneration = mode === 'inherit' ? undefined : { endpoint: 'same_scope', model: { id: 'local-title' }, lmParameters: params };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    const previous = mockGroup.titleGeneration;
+    const input = wrapper.get('[data-testid="group-setting-title-endpoint-url-input"]');
+    await input.trigger('focus');
+    expect(mockGroup.titleGeneration).toEqual(previous);
+    await input.setValue('https://changed-title.example/v1');
+    await input.trigger('blur');
+    await flushPromises();
+    expect(mockGroup.titleGeneration).toMatchObject({ endpoint: { type: 'openai', url: 'https://changed-title.example/v1' }, model: { id: mode === 'inherit' ? 'parent-title' : 'local-title' }, lmParameters: { temperature: 0.6, reasoning: { effort: 'high' } } });
+    expect(mockGroup.endpoint?.type).toBe('openai');
+    expect(mockSettings.titleGeneration).toMatchObject({ endpoint: { url: 'https://parent-title.example/v1' } });
+  });
+
+  it('keeps accessible relationships distinct when two settings panels share an app', async () => {
+    const wrapper = mount({ components: { ChatGroupSettingsPanel }, template: '<div><ChatGroupSettingsPanel /><ChatGroupSettingsPanel /></div>' }, { global: { stubs: globalStubs } });
+    await flushPromises();
+    const controls = wrapper.findAll('[data-testid="group-setting-connection-trigger"]');
+    const detailsIds = controls.map(control => control.attributes('aria-controls'));
+    expect(new Set(detailsIds).size).toBe(2);
+    for (const detailsId of detailsIds) {
+      expect(wrapper.find(`[id="${detailsId}"]`).exists()).toBe(true);
+    }
+    wrapper.unmount();
+  });
+
+  it('keeps compatibility, experimental and disabled meanings in candidates, closed controls and summary', async () => {
+    const cases: { endpoint: Endpoint, expected: string }[] = [
+      { endpoint: { type: 'openai', url: 'https://main.example/v1' }, expected: await ensureStrings.ChatGroupSettingsPanel__openai_compatible() },
+      { endpoint: { type: 'llama_cpp_browser' }, expected: await ensureStrings.llamaCppBrowser__endpoint_label() },
+      { endpoint: { type: 'transformers_js' }, expected: await ensureStrings.ChatGroupSettingsPanel__transformers_js_experimental() },
+      { endpoint: { type: 'naidan_rpc', registrationId: undefined }, expected: await ensureStrings.naidanRpc__disabled() },
+    ];
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: { ...globalStubs, SettingsSelect: false } } });
+    for (const entry of cases) {
+      mockGroup.endpoint = entry.endpoint;
+      mockGroup.titleGeneration = { endpoint: entry.endpoint, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } } };
+      await flushPromises();
+      expect(wrapper.get('[data-testid="group-setting-connection-trigger"]').text()).toContain(entry.expected);
+      const description = endpointTypeDescription({ endpointType: entry.endpoint.type });
+      expect(wrapper.get('[data-testid="group-setting-connection-trigger"]').text()).toContain(isHttpEndpoint(entry.endpoint) ? entry.endpoint.url : description);
+      if (isHttpEndpoint(entry.endpoint)) {
+        for (const testId of ['group-setting-url-input', 'group-setting-title-endpoint-url-input']) {
+          const input = wrapper.get(`[data-testid="${testId}"]`);
+          expect(input.attributes('placeholder')).toBe('http://localhost:1234/v1');
+          expect(input.element).toHaveProperty('value', entry.endpoint.url);
+        }
+      }
+      for (const testId of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        const control = wrapper.findAllComponents(SettingsSelect).find(select => select.find(`[data-testid="${testId}"]`).exists());
+        expect(control).toBeDefined();
+        expect(control!.get('button').text()).toContain(entry.expected);
+        expect(control!.props('options').find(option => option.value === entry.endpoint.type)?.label).toBe(entry.expected);
+        expect(control!.props('options').find(option => option.value === entry.endpoint.type)?.detail).toBe(description);
+        expect(control!.get('button').text()).toContain(description);
+        expect(control!.props('options').filter(option => !['global', 'inherit', 'same_scope'].includes(option.value)).map(option => option.value)).toEqual(entry.endpoint.type === 'naidan_rpc' ? ['openai', 'ollama', 'naidan_rpc', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm'] : ['openai', 'ollama', 'llama_cpp_browser', 'transformers_js', 'browser_provided_lm']);
+      }
+    }
+  });
+
+  it('distinguishes inherited and same-scope title reasoning when their effective efforts are equal', async () => {
+    mockSettings.lmParameters = undefined;
+    mockGroup.lmParameters = undefined;
+    mockGroup.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    const titleReasoning = wrapper.get('[data-testid="group-setting-title-reasoning-select"]');
+    const inherited = titleReasoning.get('[data-testid="reasoning-effort-inherit"]');
+    const sameScope = titleReasoning.get('[data-testid="reasoning-effort-same-scope"]');
+    expect(inherited.text()).not.toBe(sameScope.text());
+    expect(sameScope.attributes('aria-pressed')).toBe('true');
+    await inherited.trigger('click');
+    await flushPromises();
+    expect(mockGroup.titleGeneration).toBe('inherit');
   });
 });

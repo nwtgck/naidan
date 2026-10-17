@@ -143,13 +143,17 @@ describe('SettingsModal Design Specifications', () => {
     expect(badge.classes()).toContain('uppercase');
   });
 
-  it('uses blue-600 shadow for the save button to indicate primary action', async () => {
+  it('keeps global apply and profile snapshot as separate actions', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
     const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
-    expect(saveBtn.classes()).toContain('bg-blue-600');
-    expect(saveBtn.classes()).toContain('shadow-blue-500/30');
+    const profileBtn = wrapper.get('[data-testid="setting-save-provider-profile-button"]');
+    expect(saveBtn.attributes('disabled')).toBeDefined();
+    expect(profileBtn.attributes('disabled')).toBeUndefined();
+    expect(saveBtn.element).not.toBe(profileBtn.element);
+    expect(saveBtn.text()).toContain('Save Changes');
+    expect(profileBtn.text()).toBe('Save as New Profile');
   });
 
   it('displays the critical "only for localhost" notice in the Connection tab', async () => {

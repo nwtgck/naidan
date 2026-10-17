@@ -117,23 +117,6 @@ const editorText = computed<string>({
   set: content => updateEditorContent({ content }),
 });
 
-const editorCaption = computed(() => {
-  switch (mode.value) {
-  case 'parent':
-    return props.parentPromptText ? props.parentPromptSetCaption : props.parentPromptNotSetCaption;
-  case 'no_prompt':
-    return props.noPromptCaption;
-  case 'replace':
-    return props.replaceCaption;
-  case 'append':
-    return props.appendCaption;
-  default: {
-    const _ex: never = mode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-});
-
 const editorPlaceholder = computed(() => {
   switch (mode.value) {
   case 'parent':
@@ -193,38 +176,42 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="space-y-4">
-    <div tw-class="flex items-center justify-between gap-3">
-      <label tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-        <MessageSquareQuoteIcon tw-class="w-3 h-3" />
+  <div tw-class="space-y-3">
+    <div tw-class="flex flex-wrap items-center justify-between gap-3">
+      <label tw-class="text-sm font-normal text-gray-700 dark:text-gray-200 flex items-center gap-2">
+        <MessageSquareQuoteIcon tw-class="w-4 h-4" />
         {{ title }}
       </label>
 
-      <div tw-class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+      <div tw-class="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-slate-100/80 p-0.5 dark:bg-[#131e2e]">
         <button
           @click="updateMode({ nextMode: 'parent' })"
-          :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', mode === 'parent' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+          :aria-pressed="mode === 'parent'"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'parent' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
           :data-testid="`${testIdPrefix}-parent-button`"
         >
           {{ parentModeLabel }}
         </button>
         <button
           @click="updateMode({ nextMode: 'no_prompt' })"
-          :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', mode === 'no_prompt' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+          :aria-pressed="mode === 'no_prompt'"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'no_prompt' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
           :data-testid="`${testIdPrefix}-no-prompt-button`"
         >
           {{ noPromptModeLabel }}
         </button>
         <button
           @click="updateMode({ nextMode: 'replace' })"
-          :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', mode === 'replace' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+          :aria-pressed="mode === 'replace'"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'replace' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
           :data-testid="`${testIdPrefix}-replace-button`"
         >
           {{ replaceModeLabel }}
         </button>
         <button
           @click="updateMode({ nextMode: 'append' })"
-          :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', mode === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+          :aria-pressed="mode === 'append'"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'append' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
           :data-testid="`${testIdPrefix}-append-button`"
         >
           {{ appendModeLabel }}
@@ -232,17 +219,29 @@ defineExpose({
       </div>
     </div>
 
-    <p tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1" :data-testid="`${testIdPrefix}-caption`">
-      {{ editorCaption }}
-    </p>
+    <div class="prompt-caption-stack" tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">
+      <p v-for="captionMode in ['parent', 'no_prompt', 'replace', 'append'] as const" :key="captionMode" :aria-hidden="captionMode !== mode" :class="{ 'prompt-caption-inactive': captionMode !== mode }" :data-testid="captionMode === mode ? `${testIdPrefix}-caption` : undefined">{{ captionMode === 'parent' ? (parentPromptText ? parentPromptSetCaption : parentPromptNotSetCaption) : captionMode === 'no_prompt' ? noPromptCaption : captionMode === 'replace' ? replaceCaption : appendCaption }}</p>
+    </div>
     <!-- Keep the same textarea mounted in every mode so changing state does not move the settings below it. -->
     <textarea
       v-model="editorText"
       @blur="emit('save')"
       :rows="rows"
-      tw-class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
+      tw-class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 rounded-xl px-4 py-3 text-sm font-normal text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-colors dark:text-white resize-y"
       :placeholder="editorPlaceholder"
       :data-testid="`${testIdPrefix}-textarea`"
     ></textarea>
   </div>
 </template>
+
+<style scoped>
+.prompt-caption-stack {
+  display: grid;
+}
+.prompt-caption-stack > p {
+  grid-area: 1 / 1;
+}
+.prompt-caption-inactive {
+  visibility: hidden;
+}
+</style>

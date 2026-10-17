@@ -44,6 +44,7 @@ describe('ReasoningSettings Component', () => {
     using testCase = {
       wrapper: mount(ReasoningSettings, {
         props: { selectedEffort: undefined, defaultLabel: 'Inherit (a long provider reasoning description)', surface: 'plain', notice: 'inline-help' },
+        slots: { 'heading-extra': '<span data-testid="reasoning-source">Global</span>' },
       }),
       [Symbol.dispose]() {
         this.wrapper.unmount();
@@ -60,6 +61,9 @@ describe('ReasoningSettings Component', () => {
     const slider = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-slider"]');
     expect(slider.element.style.opacity).toBe('1');
     expect(wrapper.find('[data-testid="reasoning-help-button"]').exists()).toBe(true);
+    const source = wrapper.get('[data-testid="reasoning-source"]').element;
+    expect(source.parentElement?.contains(wrapper.get('[data-testid="reasoning-help-button"]').element)).toBe(true);
+    expect(source.compareDocumentPosition(wrapper.get('[data-testid="reasoning-effort-options"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await high.trigger('click');
     expect(wrapper.emitted('update:effort')).toEqual([['high']]);
     expect(inherited.attributes('aria-pressed')).toBe('true');

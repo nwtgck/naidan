@@ -33,6 +33,25 @@ export function formatSettingsSourceLabel({
   }
 }
 
+/** Presentation only: owners still choose which raw reference/source is active. */
+export function settingsSourcePresentation({ source }: { source: SettingsSource | undefined }): { label: string | undefined, description: string | undefined } | undefined {
+  let label: string | undefined;
+  switch (source) {
+  case 'global': label = lazyStrings.SettingsSourceBadge__global();
+    break;
+  case 'chat_group': label = lazyStrings.SettingsSourceBadge__chat_group();
+    break;
+  case 'chat': label = lazyStrings.SettingsSourceBadge__same_chat();
+    break;
+  case undefined: return undefined;
+  default: {
+    const _ex: never = source;
+    return _ex;
+  }
+  }
+  return { label, description: lazyStrings.SettingsSourceBadge__follows_changes_to_source({ source: label }) };
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
