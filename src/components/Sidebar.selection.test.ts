@@ -35,8 +35,11 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
       return items;
     }),
     openChatGroup: vi.fn(({ id }) => {
-      if (id === null) mockCurrentChatGroup.value = null;
-      else mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === id);
+      if (id === null) {
+        mockCurrentChatGroup.value = null;
+      } else {
+        mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === id);
+      }
     }),
     openChat: vi.fn(({ id }) => {
       mockCurrentChatGroup.value = null;

@@ -82,7 +82,9 @@ function domain({
 function runtimeTargetReadinessSummary({ runtimeTarget }: {
   runtimeTarget: ModelSupportInvestigationRuntimeTarget | undefined,
 }): string {
-  if (runtimeTarget === undefined) return "No runtime execution target was resolved.";
+  if (runtimeTarget === undefined) {
+    return "No runtime execution target was resolved.";
+  }
   switch (runtimeTarget.revisionIdentity) {
   case "legacy-main-unverified":
     return "Execution uses the legacy main cache namespace; the exact immutable model revision is not proven.";
@@ -167,7 +169,9 @@ function toolParserReadinessAnswer({ observation }: {
 function toolResultRoundTripSummary({ observation }: {
   observation: ModelSupportInvestigationToolResultTemplateRoundTrip | undefined,
 }): string {
-  if (observation === undefined) return "Parser-to-template tool-result roundtrip was not run.";
+  if (observation === undefined) {
+    return "Parser-to-template tool-result roundtrip was not run.";
+  }
   switch (observation.status) {
   case "observed":
     return `The recognized tool call and fixed tool result were re-rendered into ${observation.inputTokenIds.length} continuation token(s).`;
@@ -185,7 +189,9 @@ function toolResultRoundTripSummary({ observation }: {
 function toolResultRoundTripAnswer({ observation }: {
   observation: ModelSupportInvestigationToolResultTemplateRoundTrip | undefined,
 }): string {
-  if (observation === undefined) return "not run";
+  if (observation === undefined) {
+    return "not run";
+  }
   switch (observation.status) {
   case "observed":
     return `rendered ${observation.inputTokenIds.length} continuation tokens from ${observation.parserStrategy} parser output`;
@@ -203,7 +209,9 @@ function toolResultRoundTripAnswer({ observation }: {
 function productionToolResultContinuationSummary({ observation }: {
   observation: TransformersJsProductionInvestigationToolResultContinuationObservation | undefined,
 }): string {
-  if (observation === undefined) return "Production tool-result continuation was not observed.";
+  if (observation === undefined) {
+    return "Production tool-result continuation was not observed.";
+  }
   switch (observation.status) {
   case "passed": {
     const cacheDecision = observation.turn.cacheDecision ?? {
@@ -233,7 +241,9 @@ function productionToolResultContinuationSummary({ observation }: {
 function productionToolResultContinuationAnswer({ observation }: {
   observation: TransformersJsProductionInvestigationToolResultContinuationObservation | undefined,
 }): string {
-  if (observation === undefined) return "not observed";
+  if (observation === undefined) {
+    return "not observed";
+  }
   switch (observation.status) {
   case "passed": {
     const cacheDecision = observation.turn.cacheDecision ?? {
@@ -303,7 +313,9 @@ export function evaluateEvidenceReadiness({ run }: {
     && run.runtimeAssets.control.inputValue === run.runtimeAssets.control.outputValue;
   const runtimeThreadingSummary = (() => {
     const threading = (run.runtimeAssets ?? run.runtimeAssetsPartial)?.threading;
-    if (threading === undefined) return "Wasm thread configuration was not observed";
+    if (threading === undefined) {
+      return "Wasm thread configuration was not observed";
+    }
     return `Wasm threads requested=${threading.requestedThreads ?? "unknown"}, effective=${threading.effectiveThreads ?? "unknown"} (${threading.effectiveThreadsBasis}); proxy=${threading.proxy ?? "unknown"}; pthread lifecycle=${threading.childWorkerLifecycle}`;
   })();
   const stepErrorCount = ({ stepId }: { stepId: keyof NonNullable<ModelSupportInvestigationRun["stepErrors"]> }): number => (
@@ -319,7 +331,9 @@ export function evaluateEvidenceReadiness({ run }: {
   const revisionReady = run.repository !== undefined && /^[0-9a-f]{40}$/i.test(run.repository.resolvedRevision);
   const runtimeTarget = run.runtimeTarget;
   const runtimeTargetStatus = (() => {
-    if (runtimeTarget === undefined) return "not-observed" as const;
+    if (runtimeTarget === undefined) {
+      return "not-observed" as const;
+    }
     switch (runtimeTarget.revisionIdentity) {
     case "exact-resolved-revision":
     case "local-immutable-revision":
@@ -347,12 +361,24 @@ export function evaluateEvidenceReadiness({ run }: {
   const downloadRuntimeRevisionUnverified = downloadRuntimeAccepted && downloadRuntimeRevisionIdentity !== 'exact-resolved-revision';
   const runtimeRevisionUnverified = downloadRuntimeRevisionUnverified || runtimeTargetRevisionUnverified;
   const downloadReadinessStatus = (() => {
-    if (downloadEvidence === undefined) return downloadStepErrorCount > 0 ? 'insufficient' as const : 'not-observed' as const;
-    if (!downloadRevisionMatches || downloadStepErrorCount > 0) return 'insufficient' as const;
-    if (downloadRuntimeCompletion !== undefined && !downloadRuntimeAccepted) return 'insufficient' as const;
-    if (observedDownloadCandidateCount === 0) return 'partial' as const;
-    if (failedDownloadCandidateCount > 0 || successfulDownloadTransportCount !== downloadTransportCount) return 'partial' as const;
-    if (downloadRuntimeRevisionUnverified) return 'partial' as const;
+    if (downloadEvidence === undefined) {
+      return downloadStepErrorCount > 0 ? 'insufficient' as const : 'not-observed' as const;
+    }
+    if (!downloadRevisionMatches || downloadStepErrorCount > 0) {
+      return 'insufficient' as const;
+    }
+    if (downloadRuntimeCompletion !== undefined && !downloadRuntimeAccepted) {
+      return 'insufficient' as const;
+    }
+    if (observedDownloadCandidateCount === 0) {
+      return 'partial' as const;
+    }
+    if (failedDownloadCandidateCount > 0 || successfulDownloadTransportCount !== downloadTransportCount) {
+      return 'partial' as const;
+    }
+    if (downloadRuntimeRevisionUnverified) {
+      return 'partial' as const;
+    }
     return 'implementation-ready' as const;
   })();
   const supportedClassCount = run.declarations?.classCapabilities.filter(item => item.supports === true).length ?? 0;
@@ -372,7 +398,9 @@ export function evaluateEvidenceReadiness({ run }: {
     .find(attempt => attempt.postAttemptCache !== undefined)
     ?.postAttemptCache;
   const postAttemptInventory = (() => {
-    if (postAttemptCache === undefined) return undefined;
+    if (postAttemptCache === undefined) {
+      return undefined;
+    }
     switch (postAttemptCache.status) {
     case "observed":
       return postAttemptCache.inventory;
@@ -387,7 +415,9 @@ export function evaluateEvidenceReadiness({ run }: {
   const cacheObserved = run.cache !== undefined || postAttemptInventory !== undefined;
   const cacheProvenance = run.cache?.provenance;
   const cacheProvenanceSummary = (() => {
-    if (cacheProvenance === undefined) return "bounded cache sampling was not run";
+    if (cacheProvenance === undefined) {
+      return "bounded cache sampling was not run";
+    }
     const transportObserved = cacheProvenance.files.filter(file => file.transport?.status === "observed").length;
     const transportFallback = cacheProvenance.files.filter(file => file.transport?.status === "fallback-metadata").length;
     const transportUnobserved = cacheProvenance.files.filter(file => file.transport === undefined).length;
@@ -408,9 +438,15 @@ export function evaluateEvidenceReadiness({ run }: {
     }
   })();
   const cacheReadinessStatus = (() => {
-    if (!cacheObserved) return cacheStepErrorCount > 0 ? "insufficient" as const : "not-observed" as const;
-    if (cacheStepErrorCount > 0) return "insufficient" as const;
-    if (cacheProvenance === undefined) return "partial" as const;
+    if (!cacheObserved) {
+      return cacheStepErrorCount > 0 ? "insufficient" as const : "not-observed" as const;
+    }
+    if (cacheStepErrorCount > 0) {
+      return "insufficient" as const;
+    }
+    if (cacheProvenance === undefined) {
+      return "partial" as const;
+    }
     switch (cacheProvenance.status) {
     case "mismatched":
       return "insufficient" as const;
@@ -459,7 +495,9 @@ export function evaluateEvidenceReadiness({ run }: {
   const naturalReady = runtimeGenerationReady && passedAttempt.naturalGeneration?.status === "observed";
   const productionFirstTurn = productionObservation?.firstTurn;
   const productionPlainTextTokenCount = (() => {
-    if (productionFirstTurn === undefined) return 0;
+    if (productionFirstTurn === undefined) {
+      return 0;
+    }
     switch (productionFirstTurn.status) {
     case "passed":
       return productionFirstTurn.turn.generatedTokenIds.length;
@@ -598,12 +636,14 @@ export function evaluateEvidenceReadiness({ run }: {
   const continuityReadiness = (() => {
     const providerContinuity = run.productionProviderInvestigation?.requests.find(request => request.scenario === 'continuity')
       ?? run.productionProviderCapture?.requests.find(request => request.scenario === 'continuity');
-    if (providerContinuity !== undefined) return {
-      status: 'partial' as const,
-      summary: 'A bounded public Provider continuity request record is available. Its request status is separate from native KV contents, which this projection does not certify.',
-      answer: `Provider continuity: ${providerContinuity.status}${providerContinuity.notStartedReason === undefined ? '' : ` (${providerContinuity.notStartedReason})`}; native KV contents not certified`,
-      evidencePaths: run.productionProviderInvestigation === undefined ? ['production-provider/capture.json'] : ['production-provider/summary.json'],
-    };
+    if (providerContinuity !== undefined) {
+      return {
+        status: 'partial' as const,
+        summary: 'A bounded public Provider continuity request record is available. Its request status is separate from native KV contents, which this projection does not certify.',
+        answer: `Provider continuity: ${providerContinuity.status}${providerContinuity.notStartedReason === undefined ? '' : ` (${providerContinuity.notStartedReason})`}; native KV contents not certified`,
+        evidencePaths: run.productionProviderInvestigation === undefined ? ['production-provider/capture.json'] : ['production-provider/summary.json'],
+      };
+    }
     if (productionObservation === undefined) {
       return {
         status: "not-observed" as const,
@@ -659,7 +699,9 @@ export function evaluateEvidenceReadiness({ run }: {
             }
             }
           })();
-          if (prefix.exactPrefixMatch) return `${source} preserved the exact prior model-token prefix`;
+          if (prefix.exactPrefixMatch) {
+            return `${source} preserved the exact prior model-token prefix`;
+          }
           const context = prefix.firstMismatchContext;
           return context === undefined
             ? `${source} first differed at ${prefix.firstMismatchIndex ?? "the shorter-prefix boundary"}`
@@ -769,7 +811,9 @@ export function evaluateEvidenceReadiness({ run }: {
         }
       })();
       const status = (() => {
-        if (!cacheDecisionConsistent) return "insufficient" as const;
+        if (!cacheDecisionConsistent) {
+          return "insufficient" as const;
+        }
         switch (persistenceAssessment.status) {
         case 'failed':
         case 'mismatched':
@@ -1106,8 +1150,12 @@ export function evaluateEvidenceReadiness({ run }: {
     domain({
       domainId: 'tools',
       status: (() => {
-        if (toolTemplateObserved) return 'partial';
-        if (toolProtocolProbe === undefined) return 'not-observed';
+        if (toolTemplateObserved) {
+          return 'partial';
+        }
+        if (toolProtocolProbe === undefined) {
+          return 'not-observed';
+        }
         switch (toolProtocolProbe.status) {
         case 'observed':
         case 'failed':
@@ -1144,7 +1192,9 @@ export function evaluateEvidenceReadiness({ run }: {
       questionId: 'tool-protocol-forced-generation',
       answer: (() => {
         if (toolProtocolProbe === undefined) {
-          if (!toolTemplateObserved) return 'Unobserved';
+          if (!toolTemplateObserved) {
+            return 'Unobserved';
+          }
           return toolTemplateProvenance.generationPromptPrefixMatch
             ? `${toolTemplateProvenance.assistantToolCallSuffixTokenIds?.length ?? 0} template-derived assistant tool-call suffix tokens; real generation not run`
             : `template token sequences first differ at ${toolTemplateProvenance.firstMismatchIndex ?? 'the length boundary'}`;
@@ -1173,7 +1223,9 @@ export function evaluateEvidenceReadiness({ run }: {
     domain({
       domainId: 'reasoning',
       status: (() => {
-        if (productionReasoning === undefined) return 'not-observed';
+        if (productionReasoning === undefined) {
+          return 'not-observed';
+        }
         switch (productionReasoning.status) {
         case 'observed':
         case 'failed':
@@ -1187,7 +1239,9 @@ export function evaluateEvidenceReadiness({ run }: {
         }
       })(),
       summary: (() => {
-        if (productionReasoning === undefined) return 'A Production reasoning effort differential was not observed.';
+        if (productionReasoning === undefined) {
+          return 'A Production reasoning effort differential was not observed.';
+        }
         switch (productionReasoning.status) {
         case 'observed':
           return productionReasoning.inputTokenExactMatch
@@ -1209,7 +1263,9 @@ export function evaluateEvidenceReadiness({ run }: {
       })(),
       questionId: 'production-reasoning-effort-differential',
       answer: (() => {
-        if (productionReasoning === undefined) return 'Unobserved';
+        if (productionReasoning === undefined) {
+          return 'Unobserved';
+        }
         switch (productionReasoning.status) {
         case 'observed':
           return `qwen3_5; none tokens=${productionReasoning.disabledTurn.inputTokenIds.length}; high tokens=${productionReasoning.enabledTurn.inputTokenIds.length}; inputExact=${String(productionReasoning.inputTokenExactMatch)}; firstMismatch=${productionReasoning.firstInputMismatchIndex ?? 'none'}`;
@@ -1231,7 +1287,9 @@ export function evaluateEvidenceReadiness({ run }: {
       domainId: 'multimodal',
       status: (() => {
         const multimodal = productionObservation?.multimodal;
-        if (multimodal === undefined) return 'not-observed';
+        if (multimodal === undefined) {
+          return 'not-observed';
+        }
         switch (multimodal.status) {
         case 'observed':
         case 'failed':
@@ -1246,7 +1304,9 @@ export function evaluateEvidenceReadiness({ run }: {
       })(),
       summary: (() => {
         const multimodal = productionObservation?.multimodal;
-        if (multimodal === undefined) return 'A fixed synthetic multimodal Production probe was not observed.';
+        if (multimodal === undefined) {
+          return 'A fixed synthetic multimodal Production probe was not observed.';
+        }
         switch (multimodal.status) {
         case 'observed':
           return `The existing Gemma 4 Production strategy processed fixed ${multimodal.fixture.width}x${multimodal.fixture.height} ${multimodal.fixture.mimeType} fixture ${multimodal.fixture.fixtureId} and generated ${multimodal.turn.generatedTokenIds.length} token(s). Output quality was not evaluated.`;
@@ -1263,7 +1323,9 @@ export function evaluateEvidenceReadiness({ run }: {
       questionId: 'multimodal-behavior',
       answer: (() => {
         const multimodal = productionObservation?.multimodal;
-        if (multimodal === undefined) return 'Unobserved';
+        if (multimodal === undefined) {
+          return 'Unobserved';
+        }
         switch (multimodal.status) {
         case 'observed':
           return `${multimodal.strategy}; fixture=${multimodal.fixture.fixtureId}; sha256=${multimodal.fixture.sha256}; inputKeys=${multimodal.turn.inputKeys.join(',')}; inputTensors=${multimodal.turn.inputTensors.map(tensor => `${tensor.name}:${tensor.dtype ?? 'unknown'}[${tensor.dims.join('x')}]`).join(',')}; generatedTokens=${multimodal.turn.generatedTokenIds.length}`;
@@ -1298,7 +1360,9 @@ export function evaluateEvidenceReadiness({ run }: {
   };
   const scopedDomains = domains.map(item => {
     const requirement = scopeRequirementByDomain[item.domainId];
-    if (requirement === undefined || run.executionPlan === undefined || run.executionPlan[requirement]) return item;
+    if (requirement === undefined || run.executionPlan === undefined || run.executionPlan[requirement]) {
+      return item;
+    }
     return {
       ...item,
       status: "not-applicable" as const,
@@ -1341,7 +1405,9 @@ export function renderEvidenceReadinessMarkdown({
     lines.push(`## ${domainReadiness.domainId}`, "", `- Status: ${domainReadiness.status}`, `- Summary: ${domainReadiness.summary}`, "");
     for (const question of domainReadiness.questions) {
       lines.push(`- ${question.questionId}: ${question.status} — ${question.answer}`);
-      if (question.evidencePaths.length > 0) lines.push(`  - Evidence: ${question.evidencePaths.join(", ")}`);
+      if (question.evidencePaths.length > 0) {
+        lines.push(`  - Evidence: ${question.evidencePaths.join(", ")}`);
+      }
     }
     lines.push("");
   }

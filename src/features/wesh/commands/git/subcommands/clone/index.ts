@@ -19,8 +19,9 @@ function localCloneDestinationName({ sourcePath }: {
 }): string {
   const trimmed = sourcePath.replace(/\/+$/u, '');
   const basename = trimmed.slice(trimmed.lastIndexOf('/') + 1).replace(/\.git$/u, '');
-  if (basename.length === 0)
+  if (basename.length === 0) {
     throw new Error(`cannot derive destination directory from '${sourcePath}'`);
+  }
   return basename;
 }
 
@@ -29,8 +30,9 @@ async function assertCloneDestinationAvailable({ context, destinationPath, displ
     destinationPath: string;
     displayName: string;
 }): Promise<boolean> {
-  if (!await pathExists({ files: context.files, path: destinationPath }))
+  if (!await pathExists({ files: context.files, path: destinationPath })) {
     return false;
+  }
   const stat = await context.files.stat({ path: destinationPath });
   switch (stat.type) {
   case 'directory': {
@@ -60,8 +62,9 @@ async function cleanupCloneDestination({ context, destinationPath, removeRoot }:
   const removeRecursively = async ({ path }: {
         path: string;
     }): Promise<void> => {
-    if (!await pathExists({ files: context.files, path }))
+    if (!await pathExists({ files: context.files, path })) {
       return;
+    }
     const stat = await context.files.lstat({ path });
     switch (stat.type) {
     case 'directory':
@@ -86,8 +89,9 @@ async function cleanupCloneDestination({ context, destinationPath, removeRoot }:
     await removeRecursively({ path: destinationPath });
     return;
   }
-  if (!await pathExists({ files: context.files, path: destinationPath }))
+  if (!await pathExists({ files: context.files, path: destinationPath })) {
     return;
+  }
   for await (const entry of context.files.readDir({ path: destinationPath })) {
     await removeRecursively({ path: entry.fullPath });
   }
@@ -125,8 +129,9 @@ export async function runClone({ context, args }: {
       checkoutObjectId = branchRef.objectId;
     } else {
       const tagRef = sourceTags.find(ref => ref.refName === `refs/tags/${branchOption}`);
-      if (tagRef === undefined)
+      if (tagRef === undefined) {
         throw new Error(`Remote branch ${branchOption} not found in upstream origin`);
+      }
       checkoutBranch = undefined;
       checkoutObjectId = await peelToCommitObjectId({
         files: context.files,
@@ -138,8 +143,9 @@ export async function runClone({ context, args }: {
   const destinationOperand = operands[1] ?? localCloneDestinationName({ sourcePath });
   const destinationPath = normalizePath({ cwd: context.cwd, path: destinationOperand });
   const destinationExisted = await assertCloneDestinationAvailable({ context, destinationPath, displayName: destinationOperand });
-  if (!quiet)
+  if (!quiet) {
     await context.text().error({ text: `Cloning into '${destinationOperand}'...\n` });
+  }
   if (depthOption !== undefined) {
     await context.text().error({ text: 'warning: --depth is ignored in local clones; use file:// instead.\n' });
   }
@@ -149,8 +155,9 @@ export async function runClone({ context, args }: {
       targetPath: destinationPath,
     });
     const rootObjectIds = [...sourceHeads, ...sourceTags].map(ref => ref.objectId);
-    if (sourceHead.objectId !== undefined)
+    if (sourceHead.objectId !== undefined) {
       rootObjectIds.push(sourceHead.objectId);
+    }
     await transferReachableObjects({
       files: context.files,
       sourceRepository,
@@ -239,8 +246,9 @@ export async function runClone({ context, args }: {
     await cleanupCloneDestination({ context, destinationPath, removeRoot: !destinationExisted });
     throw error;
   }
-  if (!quiet)
+  if (!quiet) {
     await context.text().error({ text: 'done.\n' });
+  }
   return { exitCode: 0 };
 }
 

@@ -22,17 +22,23 @@ function makeWriter({ file, name }: { file: StoredFile, name: string }) {
   const parts: Uint8Array[] = [];
   return {
     async write(data: string | Uint8Array) {
-      if (failWrite || (failModelWrite && name.endsWith('.gguf'))) throw new DOMException('private quota details', 'QuotaExceededError');
+      if (failWrite || (failModelWrite && name.endsWith('.gguf'))) {
+        throw new DOMException('private quota details', 'QuotaExceededError');
+      }
       parts.push(typeof data === 'string' ? new TextEncoder().encode(data) : data.slice());
     },
     async close() {
       const merged = new Uint8Array(parts.reduce((size, value) => size + value.length, 0));
       let position = 0;
       for (const part of parts) {
-        merged.set(part, position); position += part.length;
+        merged.set(part, position);
+        position += part.length;
       }
-      if (failClose) throw new DOMException('private close details', 'QuotaExceededError');
-      file.content = truncateOnClose ? merged.subarray(0, 8) : merged; committed.push(name);
+      if (failClose) {
+        throw new DOMException('private close details', 'QuotaExceededError');
+      }
+      file.content = truncateOnClose ? merged.subarray(0, 8) : merged;
+      committed.push(name);
     },
     async abort() {
       parts.length = 0;
@@ -48,14 +54,21 @@ function makeDirectory(): StoredDirectory {
     async getDirectoryHandle(name, options) {
       let entry = children.get(name);
       if (!entry && options?.create) {
-        entry = makeDirectory(); children.set(name, entry);
+        entry = makeDirectory();
+        children.set(name, entry);
       }
-      if (!entry) throw new DOMException('not found', 'NotFoundError');
-      if (entry.kind !== 'directory') throw new DOMException('wrong type', 'TypeMismatchError');
+      if (!entry) {
+        throw new DOMException('not found', 'NotFoundError');
+      }
+      if (entry.kind !== 'directory') {
+        throw new DOMException('wrong type', 'TypeMismatchError');
+      }
       return entry;
     },
     async getFileHandle(name, options) {
-      if (failMarker && name === '.llama-cpp-import-pending') throw new DOMException('private marker details', 'QuotaExceededError');
+      if (failMarker && name === '.llama-cpp-import-pending') {
+        throw new DOMException('private marker details', 'QuotaExceededError');
+      }
       let entry = children.get(name);
       if (!entry && options?.create) {
         const file: StoredFile = {
@@ -64,16 +77,25 @@ function makeDirectory(): StoredDirectory {
           getFile: async () => new NodeFile([file.content], name, { lastModified: 123 }),
           createWritable: async () => makeWriter({ file, name }),
         };
-        entry = file; children.set(name, entry);
+        entry = file;
+        children.set(name, entry);
       }
-      if (!entry) throw new DOMException('not found', 'NotFoundError');
-      if (entry.kind !== 'file') throw new DOMException('wrong type', 'TypeMismatchError');
+      if (!entry) {
+        throw new DOMException('not found', 'NotFoundError');
+      }
+      if (entry.kind !== 'file') {
+        throw new DOMException('wrong type', 'TypeMismatchError');
+      }
       return entry;
     },
     async removeEntry(name, options) {
       const entry = children.get(name);
-      if (!entry) throw new DOMException('not found', 'NotFoundError');
-      if (entry.kind === 'directory' && entry.children.size > 0 && !options?.recursive) throw new DOMException('not empty', 'InvalidModificationError');
+      if (!entry) {
+        throw new DOMException('not found', 'NotFoundError');
+      }
+      if (entry.kind === 'directory' && entry.children.size > 0 && !options?.recursive) {
+        throw new DOMException('not empty', 'InvalidModificationError');
+      }
       children.delete(name);
     },
     async *entries() {
@@ -83,20 +105,28 @@ function makeDirectory(): StoredDirectory {
 }
 
 function fixture({ name }: { name: string }): File {
-  const bytes = new Uint8Array(256); bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const bytes = new Uint8Array(256);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
   return new NodeFile([bytes], name) as unknown as File;
 }
 
 let root: StoredDirectory;
 
 beforeEach(() => {
-  root = makeDirectory(); failWrite = false; failModelWrite = false; committed = []; truncateOnClose = false; failMarker = false; failClose = false;
+  root = makeDirectory();
+  failWrite = false;
+  failModelWrite = false;
+  committed = [];
+  truncateOnClose = false;
+  failMarker = false;
+  failClose = false;
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, operation: () => Promise<unknown>) => operation() } });
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function userFolder(): Promise<StoredDirectory> {
@@ -116,7 +146,9 @@ async function putModelFile({ name }: { name: string }): Promise<StoredDirectory
 async function selectedFile({ name }: { name: string }): Promise<FileSystemFileHandle> {
   const directory = await storedModelDirectory({ name });
   const file = directory.files.find(file => file.path === directory.modelPath);
-  if (!file) throw new Error('Missing selected file');
+  if (!file) {
+    throw new Error('Missing selected file');
+  }
   return file.handle;
 }
 
@@ -129,7 +161,8 @@ describe("local GGUF model store", () => {
     expect(wholeFile).not.toHaveBeenCalled();
     expect(committed).toEqual(["local.gguf"]);
     expect(model.id).toBe("user/local-GGUF");
-    expect(model.name).toBe("local-GGUF"); expect(model.size).toBe(256);
+    expect(model.name).toBe("local-GGUF");
+    expect(model.size).toBe(256);
     expect(model.importedAt).toBe(123);
     const folder = await modelFolder({ name: file.name });
     expect([...folder.children.keys()]).toEqual(["local.gguf"]);
@@ -156,7 +189,8 @@ describe("local GGUF model store", () => {
 
   it("rejects completed duplicate names without replacing the file", async () => {
     await importStoredModel({ signal: undefined, file: fixture({ name: "same.gguf" }), onProgress: () => {} });
-    const folder = await modelFolder({ name: "same.gguf" }); const before = folder.children.get("same.gguf");
+    const folder = await modelFolder({ name: "same.gguf" });
+    const before = folder.children.get("same.gguf");
     await expect(importStoredModel({ signal: undefined, file: fixture({ name: "same.gguf" }), onProgress: () => {} })).rejects.toThrow("duplicate-model");
     expect(folder.children.get("same.gguf")).toBe(before);
     expect(await listStoredModels()).toHaveLength(1);
@@ -217,9 +251,11 @@ describe("local GGUF model store", () => {
 
   it("rediscovers plain files after module reload without touching other files in the shared models root", async () => {
     const sibling = await root.getDirectoryHandle("models", { create: true });
-    const other = await sibling.getFileHandle("other-runtime.bin", { create: true }); other.content = new Uint8Array([1, 2, 3]);
+    const other = await sibling.getFileHandle("other-runtime.bin", { create: true });
+    other.content = new Uint8Array([1, 2, 3]);
     const model = await importStoredModel({ signal: undefined, file: fixture({ name: "persistent.gguf" }), onProgress: () => {} });
-    vi.resetModules(); const reloaded = await import("./model-store");
+    vi.resetModules();
+    const reloaded = await import("./model-store");
     expect(await reloaded.listStoredModels()).toEqual([{ ...model, name: `user/${model.name}` }]);
     expect((await (await selectedFile({ name: model.id })).getFile()).size).toBe(256);
     expect(root.children.has("llama-cpp-browser-models-v1")).toBe(false);
@@ -244,16 +280,23 @@ describe("local GGUF model store", () => {
     oldFile.content = new Uint8Array(await fixture({ name: "old.gguf" }).arrayBuffer());
     const metadata = await oldFolder.getFileHandle("metadata.json", { create: true });
     metadata.content = new TextEncoder().encode(state === "corrupt-destination" ? "{broken" : JSON.stringify({ id, name: "old.gguf", size: 256, importedAt: 123 }));
-    const metadataBefore = metadata.content.slice(); const bytesBefore = oldFile.content.slice();
-    if (state === "extra-files") await oldFolder.getFileHandle("notes.txt", { create: true });
-    const move = vi.fn(); Object.defineProperty(oldFile, "move", { value: move });
+    const metadataBefore = metadata.content.slice();
+    const bytesBefore = oldFile.content.slice();
+    if (state === "extra-files") {
+      await oldFolder.getFileHandle("notes.txt", { create: true });
+    }
+    const move = vi.fn();
+    Object.defineProperty(oldFile, "move", { value: move });
     const sibling = await root.getDirectoryHandle("models", { create: true });
-    const sharedFile = await sibling.getFileHandle("existing-model.bin", { create: true }); sharedFile.content = new Uint8Array([11, 22, 33]);
+    const sharedFile = await sibling.getFileHandle("existing-model.bin", { create: true });
+    sharedFile.content = new Uint8Array([11, 22, 33]);
     expect(await listStoredModels()).toEqual([]);
     await importStoredModel({ signal: undefined, file: fixture({ name: "new.gguf" }), onProgress: () => {} });
     expect((await listStoredModels()).map(model => model.name)).toEqual(["user/new-GGUF"]);
-    expect(move).not.toHaveBeenCalled(); expect(root.children.get("llama-cpp-browser-models-v1")).toBe(legacy);
-    expect(oldFile.content).toEqual(bytesBefore); expect(metadata.content).toEqual(metadataBefore);
+    expect(move).not.toHaveBeenCalled();
+    expect(root.children.get("llama-cpp-browser-models-v1")).toBe(legacy);
+    expect(oldFile.content).toEqual(bytesBefore);
+    expect(metadata.content).toEqual(metadataBefore);
     expect(sharedFile.content).toEqual(new Uint8Array([11, 22, 33]));
   });
 
@@ -264,7 +307,10 @@ describe("local GGUF model store", () => {
   });
 
   it.each(["write", "close", "size", "marker"])("never publishes a failed %s", async step => {
-    failModelWrite = step === "write"; failClose = step === "close"; truncateOnClose = step === "size"; failMarker = step === "marker";
+    failModelWrite = step === "write";
+    failClose = step === "close";
+    truncateOnClose = step === "size";
+    failMarker = step === "marker";
     await expect(importStoredModel({ signal: undefined, file: fixture({ name: "failed.gguf" }), onProgress: () => {} })).rejects.toThrow();
     failMarker = false;
     expect(await listStoredModels()).toEqual([]);
@@ -304,7 +350,8 @@ describe("local GGUF model store", () => {
   });
 
   it("cancels the source stream after a write error instead of leaving a reader running", async () => {
-    const file = fixture({ name: "local.gguf" }); const cancel = vi.fn();
+    const file = fixture({ name: "local.gguf" });
+    const cancel = vi.fn();
     const data = new Uint8Array(await file.arrayBuffer());
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       start(controller) {
@@ -331,7 +378,9 @@ describe('directory model imports', () => {
 
   it('lists HF models in their own namespace and scans Explorer changes without a journal', async () => {
     let folder = root;
-    for (const name of ['models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create: true });
+    for (const name of ['models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) {
+      folder = await folder.getDirectoryHandle(name, { create: true });
+    }
     (await folder.getFileHandle('model.gguf', { create: true })).content = new Uint8Array(await fixture({ name: 'model.gguf' }).arrayBuffer());
     expect((await listStoredModels()).map(model => model.name)).toEqual(['hf.co/owner/repo:model']);
     expect((await storedModelDirectory({ name: 'hf.co/owner/repo' })).projectorPath).toBeUndefined();
@@ -350,7 +399,8 @@ describe('directory model imports', () => {
       },
       onProgress: () => {},
     });
-    expect(model.id).toBe('user/LiquidAI_LFM2.5-VL_GGUF'); expect(model.name).toBe('LiquidAI_LFM2.5-VL_GGUF');
+    expect(model.id).toBe('user/LiquidAI_LFM2.5-VL_GGUF');
+    expect(model.name).toBe('LiquidAI_LFM2.5-VL_GGUF');
     expect(root.children.has('LiquidAI:LFM2.5-VL:GGUF')).toBe(false);
     expect((await storedModelDirectory({ name: model.id })).modelPath).toBe('weights:original/model.gguf');
     expect((await listStoredModels()).map(entry => entry.name)).toEqual([`user/${model.name}`]);
@@ -402,20 +452,26 @@ describe('directory model imports', () => {
       },
       onProgress: () => {},
     });
-    expect(model.id).toBe('user/my-Qwen-VL-GGUF'); expect(model.name).toBe('my-Qwen-VL-GGUF'); expect(model.size).toBe(512);
-    const user = await userFolder(); const folder = await user.getDirectoryHandle(model.name);
+    expect(model.id).toBe('user/my-Qwen-VL-GGUF');
+    expect(model.name).toBe('my-Qwen-VL-GGUF');
+    expect(model.size).toBe(512);
+    const user = await userFolder();
+    const folder = await user.getDirectoryHandle(model.name);
     expect(root.children.has(model.name)).toBe(false);
     expect([...folder.children.keys()]).toEqual(['weights', 'vision', 'README.md']);
     const directory = await storedModelDirectory({ name: model.id });
-    expect(directory.modelPath).toBe('weights/Qwen.gguf'); expect(directory.projectorPath).toBe('vision/mmproj-BF16.gguf');
+    expect(directory.modelPath).toBe('weights/Qwen.gguf');
+    expect(directory.projectorPath).toBe('vision/mmproj-BF16.gguf');
     expect(await listStoredModels()).toContainEqual({ ...model, name: `user/${model.name}` });
     const plan = await planStoredModelRemoval({ id: model.id });
-    await removeStoredModel({ plan }); expect([...folder.children.keys()]).toEqual(['README.md']);
+    await removeStoredModel({ plan });
+    expect([...folder.children.keys()]).toEqual(['README.md']);
   });
 
   it('imports and rediscovers a model with a suffix-named projector', async () => {
     const name = 'gemma-4-26B_q4_0-it-multi';
-    const modelPath = 'gemma-4-26B_q4_0-it.gguf'; const projectorPath = 'gemma-4-26B-it-mmproj.gguf';
+    const modelPath = 'gemma-4-26B_q4_0-it.gguf';
+    const projectorPath = 'gemma-4-26B-it-mmproj.gguf';
     const model = await importModelDirectory({
       signal: undefined,
       directory: {
@@ -427,7 +483,8 @@ describe('directory model imports', () => {
       },
       onProgress: () => {},
     });
-    expect(model.name).toBe(name); expect(model.size).toBe(512);
+    expect(model.name).toBe(name);
+    expect(model.size).toBe(512);
     expect((await storedModelDirectory({ name: `user/${name}` })).modelPath).toBe(modelPath);
     expect((await storedModelDirectory({ name: `user/${name}` })).projectorPath).toBe(projectorPath);
     expect(await listStoredModels()).toEqual([{ ...model, name: `user/${model.name}` }]);
@@ -444,7 +501,8 @@ describe('directory model imports', () => {
   it('rejects mixed base model candidates before writing OPFS and logs only a fixed layout reason', async () => {
     const name = 'private-model-folder';
     await expect(importModelDirectory({ signal: undefined, directory: { name, files: ['private-model.gguf', 'another-private-model.gguf', 'mmproj-first.gguf'].map(path => ({ path, file: fixture({ name: path }) })) }, onProgress: () => {} })).rejects.toThrow('unsupported-input');
-    expect(root.children.has(name)).toBe(false); expect(committed).toEqual([]);
+    expect(root.children.has(name)).toBe(false);
+    expect(committed).toEqual([]);
     expect(readDiagnostics({ calls: vi.mocked(console.log).mock.calls })).toContainEqual(expect.objectContaining({ stage: 'model-resolve', reason: 'model-directory-layout', code: 'unsupported-input' }));
     expect(JSON.stringify(vi.mocked(console.log).mock.calls)).not.toContain('private');
   });
@@ -496,13 +554,15 @@ describe('directory model imports', () => {
   });
 
   it('rejects a user-namespace file with the target directory name without replacing it', async () => {
-    const user = await userFolder(); const existing = await user.getFileHandle('Existing', { create: true });
+    const user = await userFolder();
+    const existing = await user.getFileHandle('Existing', { create: true });
     await expect(importModelDirectory({ signal: undefined, directory: { name: 'Existing', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] }, onProgress: () => {} })).rejects.toThrow('duplicate-model');
     expect(user.children.get('Existing')).toBe(existing);
   });
 
   it('never publishes partial imports and cleans normal write failures', async () => {
-    let observedPending = false; const user = await userFolder();
+    let observedPending = false;
+    const user = await userFolder();
     await importModelDirectory({
       signal: undefined,
       directory: { name: 'Imported', files: [{ path: 'model.gguf', file: fixture({ name: 'model.gguf' }) }] },
@@ -544,7 +604,8 @@ describe('directory model imports', () => {
 
 describe('cancelled local imports and explicit retries', () => {
   it('rolls back a single-file import before accepting the same file again', async () => {
-    const file = fixture({ name: 'cancel-and-retry.gguf' }); const controller = new AbortController();
+    const file = fixture({ name: 'cancel-and-retry.gguf' });
+    const controller = new AbortController();
     await expect(importStoredModel({ file, signal: controller.signal, onProgress: () => controller.abort() })).rejects.toThrow('aborted');
     expect((await userFolder()).children.size).toBe(0);
     expect(await listStoredModels()).toEqual([]);
@@ -555,8 +616,10 @@ describe('cancelled local imports and explicit retries', () => {
   });
 
   it('wakes a pending source read on cancel and releases the reader before retry', async () => {
-    const file = fixture({ name: 'blocked.gguf' }); const controller = new AbortController();
-    const entered = Promise.withResolvers<void>(); const cancel = vi.fn();
+    const file = fixture({ name: 'blocked.gguf' });
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull() {
         entered.resolve();
@@ -566,8 +629,11 @@ describe('cancelled local imports and explicit retries', () => {
     const source = vi.spyOn(file, 'stream').mockReturnValue(stream);
     const pending = importStoredModel({ file, signal: controller.signal, onProgress: () => {} });
     const rejected = expect(pending).rejects.toThrow('aborted');
-    await entered.promise; controller.abort(); await rejected;
-    expect(cancel).toHaveBeenCalledOnce(); expect(stream.locked).toBe(false);
+    await entered.promise;
+    controller.abort();
+    await rejected;
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
     expect((await userFolder()).children.size).toBe(0);
     source.mockRestore();
     await expect(importStoredModel({ file, signal: undefined, onProgress: () => {} })).resolves.toMatchObject({ id: 'user/blocked-GGUF' });
@@ -586,7 +652,9 @@ describe('cancelled local imports and explicit retries', () => {
       directory,
       signal: controller.signal,
       onProgress: ({ progress }) => {
-        if (progress.completed > 256) controller.abort();
+        if (progress.completed > 256) {
+          controller.abort();
+        }
       },
     })).rejects.toThrow('aborted');
     expect(committed).toEqual(['model.gguf']);
@@ -598,22 +666,29 @@ describe('cancelled local imports and explicit retries', () => {
   it('does not create or recover a directory for an already cancelled request', async () => {
     const folder = await modelFolder({ name: 'cancelled.gguf' });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
-    const controller = new AbortController(); controller.abort();
+    const controller = new AbortController();
+    controller.abort();
     await expect(importStoredModel({ file: fixture({ name: 'cancelled.gguf' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
     expect([...folder.children.keys()]).toEqual(['.llama-cpp-import-pending']);
     expect((await userFolder()).children.get('cancelled-GGUF')).toBe(folder);
   });
 
   it.each(['marker-only', 'empty-destination'] as const)('reclaims a legacy %s leftover only when the same model is explicitly imported', async residue => {
-    const file = fixture({ name: 'old-cancel.gguf' }); const folder = await modelFolder({ name: file.name });
+    const file = fixture({ name: 'old-cancel.gguf' });
+    const folder = await modelFolder({ name: file.name });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
     switch (residue) {
     case 'marker-only': break;
-    case 'empty-destination': await folder.getFileHandle(file.name, { create: true }); break;
-    default: { const exhaustive: never = residue; throw new Error(String(exhaustive)); }
+    case 'empty-destination': await folder.getFileHandle(file.name, { create: true });
+      break;
+    default: {
+      const exhaustive: never = residue;
+      throw new Error(String(exhaustive));
+    }
     }
     const before = [...folder.children.keys()];
-    expect(await listStoredModels()).toEqual([]); expect([...folder.children.keys()]).toEqual(before);
+    expect(await listStoredModels()).toEqual([]);
+    expect([...folder.children.keys()]).toEqual(before);
     const model = await importStoredModel({ file, signal: undefined, onProgress: () => {} });
     const current = await modelFolder({ name: file.name });
     expect([...current.children.keys()]).toEqual([file.name]);
@@ -622,7 +697,8 @@ describe('cancelled local imports and explicit retries', () => {
   });
 
   it('reclaims empty interrupted nested destinations belonging to the explicit folder input', async () => {
-    const user = await userFolder(); const folder = await user.getDirectoryHandle('Nested', { create: true });
+    const user = await userFolder();
+    const folder = await user.getDirectoryHandle('Nested', { create: true });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
     const nested = await folder.getDirectoryHandle('weights', { create: true });
     await nested.getFileHandle('model.gguf', { create: true });
@@ -631,31 +707,47 @@ describe('cancelled local imports and explicit retries', () => {
   });
 
   it.each(['missing-marker', 'nonempty-marker', 'partial-file', 'complete-file', 'unrelated-file', 'unrelated-directory', 'marker-directory'] as const)('never treats %s as disposable cancellation residue', async residue => {
-    const file = fixture({ name: 'protected.gguf' }); const folder = await modelFolder({ name: file.name });
+    const file = fixture({ name: 'protected.gguf' });
+    const folder = await modelFolder({ name: file.name });
     const marker = await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
     const target = await folder.getFileHandle(file.name, { create: true });
     switch (residue) {
-    case 'missing-marker': folder.children.delete('.llama-cpp-import-pending'); break;
-    case 'nonempty-marker': marker.content = new Uint8Array([1]); break;
-    case 'partial-file': target.content = new Uint8Array([1]); break;
-    case 'complete-file': target.content = new Uint8Array(await file.arrayBuffer()); break;
-    case 'unrelated-file': await folder.getFileHandle('notes.txt', { create: true }); break;
-    case 'unrelated-directory': await folder.getDirectoryHandle('unrelated', { create: true }); break;
-    case 'marker-directory': folder.children.delete('.llama-cpp-import-pending'); await folder.getDirectoryHandle('.llama-cpp-import-pending', { create: true }); break;
-    default: { const exhaustive: never = residue; throw new Error(String(exhaustive)); }
+    case 'missing-marker': folder.children.delete('.llama-cpp-import-pending');
+      break;
+    case 'nonempty-marker': marker.content = new Uint8Array([1]);
+      break;
+    case 'partial-file': target.content = new Uint8Array([1]);
+      break;
+    case 'complete-file': target.content = new Uint8Array(await file.arrayBuffer());
+      break;
+    case 'unrelated-file': await folder.getFileHandle('notes.txt', { create: true });
+      break;
+    case 'unrelated-directory': await folder.getDirectoryHandle('unrelated', { create: true });
+      break;
+    case 'marker-directory': folder.children.delete('.llama-cpp-import-pending');
+      await folder.getDirectoryHandle('.llama-cpp-import-pending', { create: true });
+      break;
+    default: {
+      const exhaustive: never = residue;
+      throw new Error(String(exhaustive));
     }
-    const entries = [...folder.children.entries()]; const bytes = target.content.slice();
+    }
+    const entries = [...folder.children.entries()];
+    const bytes = target.content.slice();
     const remove = vi.spyOn(folder, 'removeEntry');
     await expect(importStoredModel({ file, signal: undefined, onProgress: () => {} })).rejects.toThrow('duplicate-model');
-    expect(remove).not.toHaveBeenCalled(); expect([...folder.children.entries()]).toEqual(entries);
+    expect(remove).not.toHaveBeenCalled();
+    expect([...folder.children.entries()]).toEqual(entries);
     expect(target.content).toEqual(bytes);
   });
 
   it('does not recursively sweep files added while reclaiming empty cancellation residue', async () => {
-    const file = fixture({ name: 'race.gguf' }); const folder = await modelFolder({ name: file.name });
+    const file = fixture({ name: 'race.gguf' });
+    const folder = await modelFolder({ name: file.name });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
     await folder.getFileHandle(file.name, { create: true });
-    const user = await userFolder(); const remove = user.removeEntry.bind(user);
+    const user = await userFolder();
+    const remove = user.removeEntry.bind(user);
     const removal = vi.spyOn(user, 'removeEntry').mockImplementationOnce(async (name, options) => {
       (await folder.getFileHandle('external.txt', { create: true })).content = new Uint8Array([1, 2, 3]);
       return remove(name, options);

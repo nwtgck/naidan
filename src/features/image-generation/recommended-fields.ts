@@ -6,12 +6,17 @@ export type ImageRecommendedHint = { value: Parameters[ImageRecommendedField], o
 
 /** Passive presentation of the same values used by the existing preset action. */
 export function imageRecommendedHint({ recommendation, field }: { recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): ImageRecommendedHint | undefined {
-  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) return undefined;
+  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
+    return undefined;
+  }
   const range = (() => {
     switch (field) {
     case 'steps': return recommendation.stepRange;
     case 'width': case 'height': case 'guidance': case 'sampler': case 'scheduler': case 'distilledGuidance': case 'vaeTiling': case 'vaeTileSize': case 'flashAttention': case 'bf16WeightType': case 'qwenVaePolicy': case 'conditioningCacheSize': case 'modelArguments': return undefined;
-    default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = field;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return {
@@ -22,13 +27,17 @@ export function imageRecommendedHint({ recommendation, field }: { recommendation
 }
 
 export function differsFromImageRecommendation({ current, hint }: { current: unknown, hint: ImageRecommendedHint }): boolean {
-  if (hint.range && typeof current === 'number' && Number.isFinite(current)) return current < hint.range.minimum || current > hint.range.maximum;
+  if (hint.range && typeof current === 'number' && Number.isFinite(current)) {
+    return current < hint.range.minimum || current > hint.range.maximum;
+  }
   return current !== hint.value;
 }
 
 export function applyImageRecommendedField({ parameters, recommendation, field }: { parameters: Parameters, recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): Parameters {
   // Explicitly update one field; a tile size action never enables tiling, etc.
-  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) return parameters;
+  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) {
+    return parameters;
+  }
   return { ...parameters, [field]: recommendation.parameters[field] };
 }
 

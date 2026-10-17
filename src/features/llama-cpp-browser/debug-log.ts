@@ -379,7 +379,9 @@ export function logDiagnostic({ diagnostic }: { diagnostic: Diagnostic }): void 
 
 function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnostic, writeToConsole: boolean }): void {
   const safe = diagnosticSchema.safeParse(diagnostic);
-  if (!safe.success) return;
+  if (!safe.success) {
+    return;
+  }
   for (const subscription of listeners) {
     try {
       const pending = Promise.resolve(subscription.listener({ diagnostic: { ...safe.data } })).catch(() => {});
@@ -387,7 +389,9 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
       void pending.then(() => subscription.pending.delete(pending));
     } catch { /* Diagnostics must not interrupt inference. */ }
   }
-  if (!writeToConsole) return;
+  if (!writeToConsole) {
+    return;
+  }
   // Use console.log intentionally so browser diagnostics remain visible at the
   // default console level and can be copied for debugging.
   switch (safe.data.event) {
@@ -409,8 +413,12 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   case 'prefill-start': case 'prefill-complete': case 'generation-start': case 'sampler-ready':
   case 'context-retry': case 'cache-reuse': case 'checkpoint-created': case 'checkpoint-restored': case 'checkpoint-skipped':
   case 'generation-progress': case 'generation-performance': case 'first-token-sampled': case 'generation-complete': case 'cancelled': case 'released':
-    console.log(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`); return;
-  default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }
+    console.log(`[llama-cpp-browser] ${JSON.stringify(safe.data)}`);
+    return;
+  default: {
+    const exhaustive: never = safe.data.event;
+    throw new Error(`Unknown diagnostic event: ${exhaustive}`);
+  }
   }
 }
 
@@ -427,37 +435,74 @@ export async function logOperation({ diagnostic }: { diagnostic: Diagnostic }): 
 
 /** Extract numbers only from the fixed WebGPU dispatch-limit diagnostic format. */
 export function dispatchLimitDetails({ message }: { message: unknown }): { dispatchAxis: 'x' | 'y' | 'z', dispatchCount: number, dispatchLimit: number } | undefined {
-  if (typeof message !== 'string') return undefined;
+  if (typeof message !== 'string') {
+    return undefined;
+  }
   const match = /\bDispatch workgroup count ([XYZ]) \((\d+)\) exceeds max compute workgroups per dimension \((\d+)\)\./i.exec(message);
-  if (!match) return undefined;
-  const dispatchCount = Number(match[2]); const dispatchLimit = Number(match[3]);
+  if (!match) {
+    return undefined;
+  }
+  const dispatchCount = Number(match[2]);
+  const dispatchLimit = Number(match[3]);
   const dispatchAxis = z.enum(['x', 'y', 'z']).parse(match[1]!.toLowerCase());
-  if (!Number.isSafeInteger(dispatchCount) || !Number.isSafeInteger(dispatchLimit) || dispatchLimit < 1 || dispatchCount <= dispatchLimit) return undefined;
+  if (!Number.isSafeInteger(dispatchCount) || !Number.isSafeInteger(dispatchLimit) || dispatchLimit < 1 || dispatchCount <= dispatchLimit) {
+    return undefined;
+  }
   return { dispatchAxis, dispatchCount, dispatchLimit };
 }
 
 /** Match known technical failures without forwarding the native message itself. */
 export function knownNativeFailure({ message }: { message: unknown }): z.infer<typeof failureKindSchema> | undefined {
-  if (typeof message !== 'string') return undefined;
-  if (/maxComputeWorkgroupsPerDimension|max compute workgroups per dimension/i.test(message) && /exceed|limit|greater/i.test(message)) return 'webgpu-dispatch-limit';
-  if (/\bggml_webgpu:\s*Device lost!/i.test(message)) return 'webgpu-device-lost';
-  if (/\bggml_webgpu:\s*Device error!/i.test(message)) return 'webgpu-device-error';
-  if (/\b(?:WebGPU|GPUDevice)\b.*\b(?:device\s+)?lost\b|\bdevice\s+lost\b.*\bWebGPU\b/i.test(message)) return 'webgpu-device-lost';
-  if (/\b(?:WebGPU|GPUValidationError)\b.*(?:validation|invalid)|\bvalidation\b.*\b(?:WebGPU|GPUCommandEncoder|GPUComputePassEncoder)\b/i.test(message)) return 'webgpu-validation';
+  if (typeof message !== 'string') {
+    return undefined;
+  }
+  if (/maxComputeWorkgroupsPerDimension|max compute workgroups per dimension/i.test(message) && /exceed|limit|greater/i.test(message)) {
+    return 'webgpu-dispatch-limit';
+  }
+  if (/\bggml_webgpu:\s*Device lost!/i.test(message)) {
+    return 'webgpu-device-lost';
+  }
+  if (/\bggml_webgpu:\s*Device error!/i.test(message)) {
+    return 'webgpu-device-error';
+  }
+  if (/\b(?:WebGPU|GPUDevice)\b.*\b(?:device\s+)?lost\b|\bdevice\s+lost\b.*\bWebGPU\b/i.test(message)) {
+    return 'webgpu-device-lost';
+  }
+  if (/\b(?:WebGPU|GPUValidationError)\b.*(?:validation|invalid)|\bvalidation\b.*\b(?:WebGPU|GPUCommandEncoder|GPUComputePassEncoder)\b/i.test(message)) {
+    return 'webgpu-validation';
+  }
   return undefined;
 }
 
 export function classifyFailure({ error }: { error: unknown }): z.infer<typeof failureKindSchema> {
   const known = knownNativeFailure({ message: error instanceof Error ? error.message : error });
-  if (known) return known;
-  if (error instanceof WebAssembly.RuntimeError) return 'wasm-trap';
-  if (typeof error === 'number' || typeof error === 'bigint') return 'native-exception';
-  if (error instanceof z.ZodError) return 'validation-error';
-  if (error instanceof TypeError) return 'type-error';
-  if (error instanceof RangeError) return 'range-error';
-  if (error instanceof DOMException && error.name === 'AbortError') return 'abort-error';
-  if (error instanceof Error && (error.name === 'BindingError' || error.name === 'UnboundTypeError')) return 'binding-error';
-  if (error instanceof Error) return 'javascript-error';
+  if (known) {
+    return known;
+  }
+  if (error instanceof WebAssembly.RuntimeError) {
+    return 'wasm-trap';
+  }
+  if (typeof error === 'number' || typeof error === 'bigint') {
+    return 'native-exception';
+  }
+  if (error instanceof z.ZodError) {
+    return 'validation-error';
+  }
+  if (error instanceof TypeError) {
+    return 'type-error';
+  }
+  if (error instanceof RangeError) {
+    return 'range-error';
+  }
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'abort-error';
+  }
+  if (error instanceof Error && (error.name === 'BindingError' || error.name === 'UnboundTypeError')) {
+    return 'binding-error';
+  }
+  if (error instanceof Error) {
+    return 'javascript-error';
+  }
   return 'unknown-exception';
 }
 
@@ -468,22 +513,34 @@ export function logFailure({ stage, error }: { stage: DiagnosticStage, error: un
 
 /** Upstream mtmd-helper emits these exact lines with a fixed image/audio label. */
 function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
   const encoding = /^encoding (image|audio) slice\.\.\.$/.exec(line);
-  if (encoding) return { event: 'operation-start', stage: 'media-encode', mediaType: z.enum(['image', 'audio']).parse(encoding[1]) };
+  if (encoding) {
+    return { event: 'operation-start', stage: 'media-encode', mediaType: z.enum(['image', 'audio']).parse(encoding[1]) };
+  }
   const encoded = /^(image|audio) slice encoded in (\d+) ms$/.exec(line);
   if (encoded) {
     const elapsedMs = Number(encoded[2]);
-    if (!Number.isSafeInteger(elapsedMs)) return undefined;
+    if (!Number.isSafeInteger(elapsedMs)) {
+      return undefined;
+    }
     return { event: 'operation-complete', stage: 'media-encode', mediaType: z.enum(['image', 'audio']).parse(encoded[1]), elapsedMs };
   }
   const decoding = /^decoding (image|audio) batch (\d+)\/(\d+), n_tokens_batch = (\d+)$/.exec(line);
   const decoded = /^(image|audio) decoded \(batch (\d+)\/(\d+)\) in (\d+) ms$/.exec(line);
   const batch = decoding ?? decoded;
-  if (!batch) return undefined;
-  const batchIndex = Number(batch[2]); const batchCount = Number(batch[3]); const number = Number(batch[4]);
-  if (![batchIndex, batchCount, number].every(Number.isSafeInteger) || batchIndex < 1 || batchCount < batchIndex || batchCount > 2147483647 || (decoding && (number < 1 || number > 2147483647))) return undefined;
+  if (!batch) {
+    return undefined;
+  }
+  const batchIndex = Number(batch[2]);
+  const batchCount = Number(batch[3]);
+  const number = Number(batch[4]);
+  if (![batchIndex, batchCount, number].every(Number.isSafeInteger) || batchIndex < 1 || batchCount < batchIndex || batchCount > 2147483647 || (decoding && (number < 1 || number > 2147483647))) {
+    return undefined;
+  }
   return {
     event: decoding ? 'operation-start' : 'operation-complete',
     stage: 'media-decode',
@@ -496,24 +553,38 @@ function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | 
 
 /** Exact pinned native formats only; never retain free text or device/model names. */
 function nativeFlashAttentionDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
-  if (/[\r\n\u2028\u2029]/.test(line)) return undefined;
+  if (/[\r\n\u2028\u2029]/.test(line)) {
+    return undefined;
+  }
   const requested = /^llama_context: flash_attn[ \t]+= (auto|enabled|disabled)$/.exec(line);
-  if (requested) return { event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: z.enum(['auto', 'enabled', 'disabled']).parse(requested[1]) } };
-  if (line === 'resolve_fused_ops: Flash Attention enabled') return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } };
-  if (line === 'resolve_fused_ops: Flash Attention not supported, set to disabled') return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'disabled' } };
+  if (requested) {
+    return { event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: z.enum(['auto', 'enabled', 'disabled']).parse(requested[1]) } };
+  }
+  if (line === 'resolve_fused_ops: Flash Attention enabled') {
+    return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } };
+  }
+  if (line === 'resolve_fused_ops: Flash Attention not supported, set to disabled') {
+    return { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'disabled' } };
+  }
   return undefined;
 }
 
 /** Fixed numeric context, graph and buffer formats from upstream llama.cpp. */
 function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
   const context = /^llama_context: (n_ctx|n_ctx_seq|n_batch|n_ubatch|n_seq_max)[ \t]+= (\d+)$/.exec(line);
   if (context) {
     const nativeValue = Number(context[2]);
-    if (!Number.isSafeInteger(nativeValue)) return undefined;
+    if (!Number.isSafeInteger(nativeValue)) {
+      return undefined;
+    }
     return { event: 'native-info', nativeMetric: nativeMetricSchema.parse(context[1]), nativeValue };
   }
   const graph = /^sched_reserve: graph (nodes|splits)[ \t]+= (\d+)(?: \(with bs=(\d+)\), (\d+) \(with bs=1\))?$/.exec(line);
@@ -521,13 +592,19 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
     const nativeValue = Number(graph[2]);
     const batchTokens = graph[3] === undefined ? undefined : Number(graph[3]);
     const nativeSingleTokenValue = graph[4] === undefined ? undefined : Number(graph[4]);
-    if (!Number.isSafeInteger(nativeValue) || (batchTokens !== undefined && (!Number.isSafeInteger(batchTokens) || batchTokens < 1 || batchTokens > 2147483647)) || (nativeSingleTokenValue !== undefined && !Number.isSafeInteger(nativeSingleTokenValue))) return undefined;
+    if (!Number.isSafeInteger(nativeValue) || (batchTokens !== undefined && (!Number.isSafeInteger(batchTokens) || batchTokens < 1 || batchTokens > 2147483647)) || (nativeSingleTokenValue !== undefined && !Number.isSafeInteger(nativeSingleTokenValue))) {
+      return undefined;
+    }
     return { event: 'native-info', nativeMetric: nativeMetricSchema.parse(`graph_${graph[1]}`), nativeValue, ...(batchTokens === undefined ? {} : { batchTokens, nativeSingleTokenValue }) };
   }
   const buffer = /^(?:sched_reserve:[ \t]+(CPU|CPU_Mapped|WebGPU) compute|load_tensors:[ \t]+(CPU|CPU_Mapped|WebGPU) model) buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
-  if (!buffer) return undefined;
+  if (!buffer) {
+    return undefined;
+  }
   const nativeValue = Number(buffer[3]);
-  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) {
+    return undefined;
+  }
   return { event: 'native-info', nativeMetric: buffer[1] ? 'compute_buffer_mib' : 'model_buffer_mib', nativeValue, nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]) };
 }
 
@@ -536,13 +613,21 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
  * interpreted as current residency. Never retain backend/device names from logs.
  */
 function nativeStateAllocationDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
-  if (/[\r\n\u2028\u2029]/.test(line)) return undefined;
+  if (/[\r\n\u2028\u2029]/.test(line)) {
+    return undefined;
+  }
   const buffer = /^(?:llama_kv_cache:[ \t]+(CPU|CPU_Mapped|WebGPU) KV|llama_memory_recurrent:[ \t]+(CPU|CPU_Mapped|WebGPU) RS) buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
-  if (!buffer) return undefined;
+  if (!buffer) {
+    return undefined;
+  }
   const nativeValue = Number(buffer[3]);
-  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) {
+    return undefined;
+  }
   return {
     event: 'native-info',
     nativeMetric: buffer[1] ? 'kv_buffer_mib' : 'recurrent_buffer_mib',
@@ -553,20 +638,31 @@ function nativeStateAllocationDiagnostic({ message }: { message: unknown }): Dia
 
 /** Image internals expose dimensions and counts, never tensors or input text. */
 function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
   const batch = /^mtmd_batch_encode_impl: encoding batch with (\d+) entries and total (\d+) tokens$/.exec(line);
-  if (batch) return { event: 'native-info', stage: 'media-encode', nativeOperation: 'encode-batch', nativeEntries: Number(batch[1]), tokens: Number(batch[2]) };
+  if (batch) {
+    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'encode-batch', nativeEntries: Number(batch[1]), tokens: Number(batch[2]) };
+  }
   const copy = /^clip_encode: copying image (\d+)\/(\d+) to input buffer \(nx=(\d+), ny=(\d+)\)$/.exec(line);
   if (copy) {
-    const batchIndex = Number(copy[1]); const batchCount = Number(copy[2]);
-    if (batchIndex > batchCount) return undefined;
+    const batchIndex = Number(copy[1]);
+    const batchCount = Number(copy[2]);
+    if (batchIndex > batchCount) {
+      return undefined;
+    }
     return { event: 'native-info', stage: 'media-encode', nativeOperation: 'copy-image', batchIndex, batchCount, imageWidth: Number(copy[3]), imageHeight: Number(copy[4]) };
   }
   const shape = /^clip_encode: output embedding shape \[(\d+), (\d+), (\d+)\]$/.exec(line);
-  if (shape) return { event: 'native-info', stage: 'media-encode', nativeOperation: 'output-embedding', nativeShape: [Number(shape[1]), Number(shape[2]), Number(shape[3])] };
+  if (shape) {
+    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'output-embedding', nativeShape: [Number(shape[1]), Number(shape[2]), Number(shape[3])] };
+  }
   const preproc = /^add_media: preproc_out has (\d+) entries, grid_x = (-?\d+), grid_y = (-?\d+), has_overview = ([01])$/.exec(line);
-  if (preproc) return { event: 'native-info', stage: 'image-tokenize', nativeOperation: 'preprocess-image', nativeEntries: Number(preproc[1]), nativeGridX: Number(preproc[2]), nativeGridY: Number(preproc[3]), nativeOverview: preproc[4] === '1' };
+  if (preproc) {
+    return { event: 'native-info', stage: 'image-tokenize', nativeOperation: 'preprocess-image', nativeEntries: Number(preproc[1]), nativeGridX: Number(preproc[2]), nativeGridY: Number(preproc[3]), nativeOverview: preproc[4] === '1' };
+  }
   return undefined;
 }
 
@@ -577,7 +673,9 @@ function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | 
  * whole-line matches so unrelated suffixes cannot sneak private content through.
  */
 function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
   const conversion = /^lcb_clip: bf16-f32 tensors=(\d+) source_bytes=(\d+) destination_bytes=(\d+)$/.exec(line);
   if (conversion) {
@@ -588,7 +686,9 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeSourceBytes = Number(conversion[2]);
     const nativeDestinationBytes = Number(conversion[3]);
     if (![nativeEntries, nativeSourceBytes, nativeDestinationBytes].every(Number.isSafeInteger)
-        || nativeDestinationBytes !== nativeSourceBytes * 2) return undefined;
+        || nativeDestinationBytes !== nativeSourceBytes * 2) {
+      return undefined;
+    }
     return {
       event: 'native-info',
       stage: 'projector-load',
@@ -608,7 +708,9 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeOtherNodes = Number(placement[3]);
     const nativeCpuBf16Nodes = Number(placement[4]);
     if (![nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes].every(Number.isSafeInteger)
-        || nativeCpuBf16Nodes > nativeCpuNodes) return undefined;
+        || nativeCpuBf16Nodes > nativeCpuNodes) {
+      return undefined;
+    }
     return {
       event: 'native-info',
       stage: 'media-encode',
@@ -629,13 +731,19 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
   if (graph) {
     const nativeGraphSplits = Number(graph[1]);
     const nativeGraphNodes = Number(graph[2]);
-    if (![nativeGraphSplits, nativeGraphNodes].every(Number.isSafeInteger)) return undefined;
+    if (![nativeGraphSplits, nativeGraphNodes].every(Number.isSafeInteger)) {
+      return undefined;
+    }
     return { event: 'native-info', stage: 'media-encode', nativeOperation: 'image-graph', nativeGraphSplits, nativeGraphNodes };
   }
   const buffer = /^reserve_compute_meta:[ \t]+(CPU|CPU_Mapped|WebGPU) compute buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
-  if (!buffer) return undefined;
+  if (!buffer) {
+    return undefined;
+  }
   const nativeValue = Number(buffer[2]);
-  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) {
+    return undefined;
+  }
   return {
     event: 'native-info',
     stage: 'media-encode',
@@ -648,17 +756,25 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
 /** Match entire fixed diagnostic lines. Never retain a raw error as a fallback,
  * or guess that every backend allocation happened during model loading. */
 function nativeModelLoadDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
-  if (typeof message !== 'string' || message.length > 256) return undefined;
+  if (typeof message !== 'string' || message.length > 256) {
+    return undefined;
+  }
   const line = message.replace(/\r?\n$/, '');
   const cpu = /^ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size ([0-9]{1,16})$/.exec(line);
   if (cpu) {
     const requestedBytes = Number(cpu[1]);
-    if (!Number.isSafeInteger(requestedBytes)) return undefined;
+    if (!Number.isSafeInteger(requestedBytes)) {
+      return undefined;
+    }
     return { event: 'native-error', failureKind: 'native-buffer-allocation', nativeBackend: 'CPU', requestedBytes };
   }
   const model = /^llama_model_load: error loading model: unable to allocate (CPU|WebGPU) buffer$/.exec(line);
-  if (model) return { event: 'native-error', stage: 'model-load', failureKind: 'native-buffer-allocation', nativeBackend: model[1] === 'CPU' ? 'CPU' : 'WebGPU' };
-  if (line === 'qwen4exp_file_rows: gather failed') return { event: 'native-error', failureKind: 'native-file-backed-read' };
+  if (model) {
+    return { event: 'native-error', stage: 'model-load', failureKind: 'native-buffer-allocation', nativeBackend: model[1] === 'CPU' ? 'CPU' : 'WebGPU' };
+  }
+  if (line === 'qwen4exp_file_rows: gather failed') {
+    return { event: 'native-error', failureKind: 'native-file-backed-read' };
+  }
   return undefined;
 }
 
@@ -666,31 +782,38 @@ function nativeModelLoadDiagnostic({ message }: { message: unknown }): Diagnosti
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
   const modelLoad = nativeModelLoadDiagnostic({ message });
   if (modelLoad) {
-    logDiagnostic({ diagnostic: modelLoad }); return;
+    logDiagnostic({ diagnostic: modelLoad });
+    return;
   }
   if (typeof message === 'string' && message.length <= 256) {
     const line = message.replace(/\r?\n$/, '');
     const graph = /^clip_encode: ggml_backend_sched_graph_compute failed with error (-?\d+)$/.exec(line);
     if (graph) {
-      logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-graph-error', statusCode: Number(graph[1]) } }); return;
+      logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-graph-error', statusCode: Number(graph[1]) } });
+      return;
     }
     const output = /^clip_encode: expected output (\d+) tokens, got (\d+)$/.exec(line);
     if (output) {
-      logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: Number(output[1]), tokens: Number(output[2]) } }); return;
+      logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: Number(output[1]), tokens: Number(output[2]) } });
+      return;
     }
   }
   const allocation = nativeStateAllocationDiagnostic({ message });
   if (allocation) {
     // Normal prepareModel has no diagnostic subscription. Keep this small,
     // sanitized allocation record visible even without a debug-enabled request.
-    logDiagnostic({ diagnostic: allocation }); return;
+    logDiagnostic({ diagnostic: allocation });
+    return;
   }
   const progress = nativeFlashAttentionDiagnostic({ message }) ?? nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
   if (progress) {
-    logNativeCheckpoint({ diagnostic: progress }); return;
+    logNativeCheckpoint({ diagnostic: progress });
+    return;
   }
   const failureKind = knownNativeFailure({ message });
-  if (failureKind) logDiagnostic({ diagnostic: { event: 'native-error', failureKind, ...dispatchLimitDetails({ message }) } });
+  if (failureKind) {
+    logDiagnostic({ diagnostic: { event: 'native-error', failureKind, ...dispatchLimitDetails({ message }) } });
+  }
 }
 
 export const TEST_ONLY = {

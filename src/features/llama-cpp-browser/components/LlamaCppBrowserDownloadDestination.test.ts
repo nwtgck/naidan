@@ -22,7 +22,8 @@ function render({ supported, entries, destination }: { supported: boolean, entri
     }),
   };
   const wrapper = mount(LlamaCppBrowserDownloadDestination, { props: { view, disabled: false } });
-  wrappers.push(wrapper); return { wrapper, view };
+  wrappers.push(wrapper);
+  return { wrapper, view };
 }
 
 beforeEach(async () => {
@@ -30,7 +31,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
 });
 
 describe('compact linked-folder download controls', () => {

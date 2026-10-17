@@ -14,7 +14,10 @@ export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
   case 'webgpu-wasm32-asyncify': return true;
   case 'cpu-wasm32':
   case 'cpu-wasm64': return false;
-  default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = profile;
+    throw new Error(`Unhandled profile: ${exhaustive}`);
+  }
   }
 }
 
@@ -32,7 +35,8 @@ export const modelSchema = z.object({
   id: z.string().min(1).max(1024).refine(value => {
     if (value.startsWith('host/')) {
       try {
-        parseHostModelReference({ name: value }); return true;
+        parseHostModelReference({ name: value });
+        return true;
       } catch {
         return false;
       }
@@ -45,7 +49,9 @@ export const modelSchema = z.object({
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
 }).strict().refine(({ id, name }) => {
-  if (!id.startsWith('host/')) return name.length <= 512;
+  if (!id.startsWith('host/')) {
+    return name.length <= 512;
+  }
   try {
     return parsePublicHostModelReference({ name }).selector !== undefined;
   } catch {
@@ -79,11 +85,17 @@ export class LlamaCppBrowserError extends Error {
 }
 
 export function errorCode({ error }: { error: unknown }): ErrorCode {
-  if (error instanceof DOMException && error.name === 'AbortError') return 'aborted';
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'aborted';
+  }
   if (error instanceof Error) {
     const parsed = errorCodeSchema.safeParse(error.message.startsWith('llama.cpp browser: ') ? error.message.slice('llama.cpp browser: '.length) : undefined);
-    if (parsed.success) return parsed.data;
-    if (error.name === 'AbortError') return 'aborted';
+    if (parsed.success) {
+      return parsed.data;
+    }
+    if (error.name === 'AbortError') {
+      return 'aborted';
+    }
   }
   return 'runtime-error';
 }
@@ -138,12 +150,18 @@ export const generateInputSchema = z.object({
     // Generation must admit every canonical linked name accepted by inventory,
     // without widening the existing limit for ordinary model names.
     if (!value.startsWith('host/')) {
-      if (value.length <= 512) return true;
+      if (value.length <= 512) {
+        return true;
+      }
       // A readable public selector can expand when captured as an encoded exact
       // HF identity. Admit that canonical internal form within the ID limit.
-      if (!value.startsWith('hf.co/')) return false;
+      if (!value.startsWith('hf.co/')) {
+        return false;
+      }
       const colon = value.indexOf(':');
-      if (colon < 0) return false;
+      if (colon < 0) {
+        return false;
+      }
       try {
         return huggingFaceModelId({ repository: value.slice('hf.co/'.length, colon), modelPath: decodeURIComponent(value.slice(colon + 1)) }) === value;
       } catch {
@@ -151,7 +169,8 @@ export const generateInputSchema = z.object({
       }
     }
     try {
-      parseHostModelReference({ name: value }); return true;
+      parseHostModelReference({ name: value });
+      return true;
     } catch {
       return false;
     }

@@ -13,12 +13,15 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function setup() {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
-  if (!catalog) throw new Error('Missing catalog');
+  if (!catalog) {
+    throw new Error('Missing catalog');
+  }
   const store = { storageType: 'opfs' as const, storeId: catalog.id };
   const a = await service.saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'session-aa' }), expectedRevision: undefined });
   const b = await service.saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'session-bb' }), expectedRevision: undefined });
@@ -179,7 +182,8 @@ describe('durable, wall-clock-independent image session activity', () => {
 
   it.each(['{broken', '{"version":2,"future":true}'])('does not replace an unreadable activity clock: %s', async text => {
     const { store, a } = await setup();
-    const file = await fs.file({ path: `${root}/session-activity.json` }); file.text = text;
+    const file = await fs.file({ path: `${root}/session-activity.json` });
+    file.text = text;
     const listing = await service.listImageGenerationSessions({ store });
     expect(listing.warningCount).toBe(1);
     expect(listing.items).toHaveLength(2);

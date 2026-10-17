@@ -453,7 +453,9 @@ async function* iterateDirectoryEntries({
       }
     }
   } finally {
-    for (const frame of frames) await frame.iterator.return?.();
+    for (const frame of frames) {
+      await frame.iterator.return?.();
+    }
   }
 }
 

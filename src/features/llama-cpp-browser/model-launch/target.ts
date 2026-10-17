@@ -22,10 +22,14 @@ export function modelLaunchChoices({ catalog }: { catalog: RepositoryCatalog }) 
 
 export function targetForChoice({ catalog, path }: { catalog: RepositoryCatalog, path: string }): ModelLaunchTarget {
   const model = catalog.models.find(candidate => candidate.files[0]?.path === path);
-  if (model === undefined || artifactRole({ path }) !== 'model') throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
+  if (model === undefined || artifactRole({ path }) !== 'model') {
+    throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
+  }
   const projector = preferredProjector({ files: catalog.projectors });
   // An ambiguous companion is not permission to guess or silently drop vision.
-  if (catalog.projectors.length > 0 && projector === undefined) throw new ModelLaunchTargetError({ problem: 'companion-required' });
+  if (catalog.projectors.length > 0 && projector === undefined) {
+    throw new ModelLaunchTargetError({ problem: 'companion-required' });
+  }
   const files = [...model.files, ...(projector === undefined ? [] : [projector])];
   const { modelPath } = resolveModelFiles({ files });
   return modelLaunchTargetSchema.parse({
@@ -36,14 +40,18 @@ export function targetForChoice({ catalog, path }: { catalog: RepositoryCatalog,
 }
 
 export function resolveModelLaunchTarget({ input, catalog }: { input: string, catalog: RepositoryCatalog }): { target: ModelLaunchTarget, requestedVariant: string | undefined } {
-  if (input.length > 4096) throw new ModelLaunchTargetError({ problem: 'invalid-input' });
+  if (input.length > 4096) {
+    throw new ModelLaunchTargetError({ problem: 'invalid-input' });
+  }
   const { requestedVariant } = parseRepository({ input });
   const choices = modelLaunchChoices({ catalog });
   const exact = requestedVariant === undefined ? [] : choices.filter(choice => choice.label === requestedVariant
     || variantLabel({ repository: catalog.repository, path: choice.id }) === requestedVariant);
   const matching = requestedVariant === undefined ? choices.slice(0, 1) : exact.length > 0 ? exact
     : choices.filter(choice => choice.quantization === requestedVariant.toUpperCase());
-  if (matching.length !== 1) throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
+  if (matching.length !== 1) {
+    throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
+  }
   return { target: targetForChoice({ catalog, path: matching[0]!.id }), requestedVariant };
 }
 
@@ -64,7 +72,9 @@ const catalogs = new Map<string, RepositoryCatalog>();
 export function rememberLaunchCatalog({ catalog }: { catalog: RepositoryCatalog }): void {
   catalogs.delete(catalog.repository);
   catalogs.set(catalog.repository, catalog);
-  if (catalogs.size > 16) catalogs.delete(catalogs.keys().next().value!);
+  if (catalogs.size > 16) {
+    catalogs.delete(catalogs.keys().next().value!);
+  }
 }
 
 export function readLaunchCatalog({ repository }: { repository: string }): RepositoryCatalog | undefined {

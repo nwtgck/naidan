@@ -48,7 +48,9 @@ function resolveOutputPolicy({ output }: {
 }
 
 function throwIfAborted({ signal }: { signal: AbortSignal | undefined }): void {
-  if (signal?.aborted !== true) return;
+  if (signal?.aborted !== true) {
+    return;
+  }
   const error = new Error('Generation aborted');
   error.name = 'AbortError';
   throw error;

@@ -12,16 +12,23 @@ export function createBenchmarkMeasurements() {
   function append({ diagnostic }: { diagnostic: ImageDiagnostic }): void {
     const parsed = imageDiagnosticSchema.safeParse(diagnostic);
     if (!parsed.success) {
-      values.invalidDiagnostics++; return;
+      values.invalidDiagnostics++;
+      return;
     }
-    values.diagnosticsReceived++; buffer.append({ diagnostic: parsed.data });
+    values.diagnosticsReceived++;
+    buffer.append({ diagnostic: parsed.data });
     const f = parsed.data.fields;
-    if (f.perfVersion !== 1) return;
+    if (f.perfVersion !== 1) {
+      return;
+    }
     switch (f.metric) {
     case 'worker-selection':
-      if (typeof f.reusedWorker === 'boolean' && typeof f.reason === 'string') values.reuse = { reusedWorker: f.reusedWorker, reason: f.reason };
+      if (typeof f.reusedWorker === 'boolean' && typeof f.reason === 'string') {
+        values.reuse = { reusedWorker: f.reusedWorker, reason: f.reason };
+      }
       break;
-    case 'run-wall': values.runWall = { ...f }; break;
+    case 'run-wall': values.runWall = { ...f };
+      break;
     case 'step-wall':
       if (typeof f.step === 'number' && typeof f.milliseconds === 'number' && f.step >= 1 && f.step <= 100 && f.milliseconds >= 0 && !values.steps.some(step => step.step === f.step)) {
         values.steps.push({ step: f.step, milliseconds: f.milliseconds });
@@ -40,14 +47,18 @@ export function createBenchmarkMeasurements() {
     const text = buffer.text();
     const truncated = /\{"event":"buffer-truncated","omitted":(\d+)\}/.exec(text);
     values.omittedDiagnostics = truncated ? Number(truncated[1]) : 0;
-    if (files.size) values.fileRead = [...files.values()].reduce((a, b) => ({ reads: a.reads + b.reads, bytes: a.bytes + b.bytes, blobReads: a.blobReads + b.blobReads, blobBytes: a.blobBytes + b.blobBytes }), { reads: 0, bytes: 0, blobReads: 0, blobBytes: 0 });
+    if (files.size) {
+      values.fileRead = [...files.values()].reduce((a, b) => ({ reads: a.reads + b.reads, bytes: a.bytes + b.bytes, blobReads: a.blobReads + b.blobReads, blobBytes: a.blobBytes + b.blobBytes }), { reads: 0, bytes: 0, blobReads: 0, blobBytes: 0 });
+    }
     return { metrics: measurementSchema.parse(values), text };
   }
   return { append, snapshot };
 }
 
 export function medianMilliseconds({ values }: { values: number[] }): number | undefined {
-  if (!values.length) return undefined;
+  if (!values.length) {
+    return undefined;
+  }
   const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }

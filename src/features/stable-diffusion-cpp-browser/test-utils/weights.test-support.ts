@@ -5,7 +5,11 @@ const ranges = new WeakMap<Blob, ArrayBuffer>();
 export const fixtureReader: SyncBlobReader = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- FileReaderSync test double signature.
   readAsArrayBuffer(blob) {
-    const result = ranges.get(blob); if (!result) throw new Error('Unknown fixture range'); return result;
+    const result = ranges.get(blob);
+    if (!result) {
+      throw new Error('Unknown fixture range');
+    }
+    return result;
   },
 };
 
@@ -16,10 +20,16 @@ export function sparseFile({ name, header, size }: { name: string, header: Uint8
   Object.defineProperty(file, 'slice', {
     value: (start: number | undefined, end: number | undefined): Blob => {
       const offset = start ?? 0, length = Math.min(end ?? size, size) - offset;
-      if (length < 0 || length > 16 * 1024 * 1024) throw new Error('Fixture forbids whole-model reads');
-      reads.push({ offset, length }); const bytes = new Uint8Array(length);
-      if (offset < header.length) bytes.set(header.subarray(offset, Math.min(offset + length, header.length)));
-      const blob = new Blob([bytes]); ranges.set(blob, bytes.buffer);
+      if (length < 0 || length > 16 * 1024 * 1024) {
+        throw new Error('Fixture forbids whole-model reads');
+      }
+      reads.push({ offset, length });
+      const bytes = new Uint8Array(length);
+      if (offset < header.length) {
+        bytes.set(header.subarray(offset, Math.min(offset + length, header.length)));
+      }
+      const blob = new Blob([bytes]);
+      ranges.set(blob, bytes.buffer);
       Object.defineProperty(blob, 'arrayBuffer', { value: async () => bytes.buffer });
       return blob;
     },
@@ -35,38 +45,62 @@ export function sparseFile({ name, header, size }: { name: string, header: Uint8
 export function ggufFixture({ name, tensors, metadata, extraBytes }: { name: string, tensors: TensorInfo[], metadata: Record<string, string | number>, extraBytes: number }): { file: File, reads: { offset: number, length: number }[] } {
   const bytes: number[] = [];
   function u32({ value }: { value: number }): void {
-    for (let i = 0; i < 4; i++) bytes.push(value >>> (8 * i) & 255);
+    for (let i = 0; i < 4; i++) {
+      bytes.push(value >>> (8 * i) & 255);
+    }
   }
   function u64({ value }: { value: number }): void {
-    const n = BigInt(value); for (let i = 0; i < 8; i++) bytes.push(Number(n >> BigInt(8 * i) & 255n));
+    const n = BigInt(value);
+    for (let i = 0; i < 8; i++) {
+      bytes.push(Number(n >> BigInt(8 * i) & 255n));
+    }
   }
   function str({ value }: { value: string }): void {
-    const encoded = new TextEncoder().encode(value); u64({ value: encoded.length }); bytes.push(...encoded);
+    const encoded = new TextEncoder().encode(value);
+    u64({ value: encoded.length });
+    bytes.push(...encoded);
   }
-  u32({ value: 0x46554747 }); u32({ value: 3 }); u64({ value: tensors.length }); u64({ value: Object.keys(metadata).length });
+  u32({ value: 0x46554747 });
+  u32({ value: 3 });
+  u64({ value: tensors.length });
+  u64({ value: Object.keys(metadata).length });
   for (const [key, value] of Object.entries(metadata)) {
-    str({ value: key }); u32({ value: typeof value === 'string' ? 8 : 4 });
-    if (typeof value === 'string') str({ value }); else u32({ value });
+    str({ value: key });
+    u32({ value: typeof value === 'string' ? 8 : 4 });
+    if (typeof value === 'string') {
+      str({ value });
+    } else {
+      u32({ value });
+    }
   }
   let dataBytes = 0;
   for (const tensor of tensors) {
-    str({ value: tensor.name }); u32({ value: tensor.shape.length });
-    for (const dimension of [...tensor.shape].reverse()) u64({ value: dimension });
-    u32({ value: 0 }); u64({ value: dataBytes });
+    str({ value: tensor.name });
+    u32({ value: tensor.shape.length });
+    for (const dimension of [...tensor.shape].reverse()) {
+      u64({ value: dimension });
+    }
+    u32({ value: 0 });
+    u64({ value: dataBytes });
     dataBytes += Math.ceil(tensor.shape.reduce((n, d) => n * d, 4) / 32) * 32;
   }
-  const header = new Uint8Array(Math.ceil(bytes.length / 32) * 32); header.set(bytes);
+  const header = new Uint8Array(Math.ceil(bytes.length / 32) * 32);
+  header.set(bytes);
   return sparseFile({ name, header, size: header.length + dataBytes + extraBytes });
 }
 
 export function safetensorsFixture({ name, tensors }: { name: string, tensors: TensorInfo[] }): { file: File, reads: { offset: number, length: number }[] } {
-  let offset = 0; const data: Record<string, { dtype: string, shape: number[], data_offsets: number[] }> = {};
+  let offset = 0;
+  const data: Record<string, { dtype: string, shape: number[], data_offsets: number[] }> = {};
   for (const tensor of tensors) {
     const end = offset + tensor.shape.reduce((n, d) => n * d, tensor.dtype === 'U8' ? 1 : tensor.dtype === 'F16' || tensor.dtype === 'BF16' ? 2 : 4);
-    data[tensor.name] = { dtype: tensor.dtype, shape: tensor.shape, data_offsets: [offset, end] }; offset = end;
+    data[tensor.name] = { dtype: tensor.dtype, shape: tensor.shape, data_offsets: [offset, end] };
+    offset = end;
   }
-  const text = new TextEncoder().encode(JSON.stringify(data)); const header = new Uint8Array(8 + text.length);
-  new DataView(header.buffer).setBigUint64(0, BigInt(text.length), true); header.set(text, 8);
+  const text = new TextEncoder().encode(JSON.stringify(data));
+  const header = new Uint8Array(8 + text.length);
+  new DataView(header.buffer).setBigUint64(0, BigInt(text.length), true);
+  header.set(text, 8);
   return sparseFile({ name, header, size: header.length + offset });
 }
 

@@ -55,9 +55,13 @@ const LS_FILES_ARGV_POLICY: StandardArgvPolicy = {
 const textEncoder = new TextEncoder();
 
 function startsWithBytes({ bytes, prefix }: { bytes: Uint8Array, prefix: Uint8Array }): boolean {
-  if (prefix.byteLength > bytes.byteLength) return false;
+  if (prefix.byteLength > bytes.byteLength) {
+    return false;
+  }
   for (let index = 0; index < prefix.byteLength; index += 1) {
-    if (bytes[index] !== prefix[index]) return false;
+    if (bytes[index] !== prefix[index]) {
+      return false;
+    }
   }
   return true;
 }
@@ -134,7 +138,9 @@ export async function runLsFiles({ context, args }: {
     entries = entries.filter(entry => entry.path.startsWith(`${cwdRelative}/`));
   }
   const displayPath = ({ path }: { path: string }): string => {
-    if (fullName || cwdRelative.length === 0) return path;
+    if (fullName || cwdRelative.length === 0) {
+      return path;
+    }
     const cwdSegments = cwdRelative.split('/');
     const pathSegments = path.split('/');
     let shared = 0;

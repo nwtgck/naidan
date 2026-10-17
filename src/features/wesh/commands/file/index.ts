@@ -125,7 +125,9 @@ function parseFileArgv({
   args: string[],
 }): ParsedFileArgv {
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '--help') continue;
+    if (args[index] !== '--help') {
+      continue;
+    }
 
     const parsedPrefix = parseStandardArgv({
       args: args.slice(0, index + 1),
@@ -189,7 +191,9 @@ function getFileOperandDisplayWidth({
   let width = 0;
   for (const character of path) {
     const codePoint = character.codePointAt(0);
-    if (codePoint === undefined) continue;
+    if (codePoint === undefined) {
+      continue;
+    }
     const displayWidth = getWeshCodePointDisplayWidth({ codePoint });
     // libmagic counts printable combining and default-ignorable code points as
     // one filename column even though terminal text rendering gives them zero.
@@ -356,7 +360,9 @@ export const fileCommandImplementation: WeshCommandImplementation = {
         outputSeparator,
         errorStatus: parsed.optionValues.errorStatus === true,
       });
-      if (!result.ok) hadFailure = true;
+      if (!result.ok) {
+        hadFailure = true;
+      }
     }
 
     return { exitCode: hadFailure ? 1 : 0 };

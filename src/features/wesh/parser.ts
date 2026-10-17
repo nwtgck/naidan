@@ -338,7 +338,9 @@ class Parser {
     switch (kind) {
     case 'list': {
       const lastPart = node.parts[node.parts.length - 1];
-      if (lastPart) lastPart.operator = operator;
+      if (lastPart) {
+        lastPart.operator = operator;
+      }
       return node;
     }
     case 'command':
@@ -448,7 +450,9 @@ class Parser {
       switch (kind) {
       case 'list': {
         const lastPart = node.parts[node.parts.length - 1];
-        if (lastPart) lastPart.operator = operator;
+        if (lastPart) {
+          lastPart.operator = operator;
+        }
         node.parts.push({ node: nextNode, operator: ';' });
         break;
       }
@@ -795,13 +799,27 @@ class Parser {
       if (val === '[[') {
         return this.parseExtendedTestCommand();
       }
-      if (val === '{') return this.parseBraceGroup();
-      if (val === 'if') return this.parseIf();
-      if (val === 'for') return this.parseFor();
-      if (val === 'while') return this.parseWhile();
-      if (val === 'until') return this.parseUntil();
-      if (val === 'case') return this.parseCase();
-      if (val === 'function') return this.parseFunctionDefinition({ usedFunctionKeyword: true });
+      if (val === '{') {
+        return this.parseBraceGroup();
+      }
+      if (val === 'if') {
+        return this.parseIf();
+      }
+      if (val === 'for') {
+        return this.parseFor();
+      }
+      if (val === 'while') {
+        return this.parseWhile();
+      }
+      if (val === 'until') {
+        return this.parseUntil();
+      }
+      if (val === 'case') {
+        return this.parseCase();
+      }
+      if (val === 'function') {
+        return this.parseFunctionDefinition({ usedFunctionKeyword: true });
+      }
       const peekType = this.lexer.peek().type;
       switch (peekType) {
       case 'LPAREN':

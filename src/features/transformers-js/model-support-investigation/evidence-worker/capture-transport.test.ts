@@ -139,13 +139,17 @@ describe('Provider and native Evidence Worker transport', () => {
     const request = createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery });
     const restored = await readModelSupportInvestigationEvidenceWorkerRequest({ request: structuredClone(request) });
     const capture = restored.run.productionProviderCapture;
-    if (capture === undefined) throw new Error('Missing Provider capture');
+    if (capture === undefined) {
+      throw new Error('Missing Provider capture');
+    }
     expect(Object.hasOwn(capture, 'abortReason')).toBe(true);
     expect(Object.hasOwn(capture.requests[0]!.trace, 'failure')).toBe(true);
     expect(Object.hasOwn(capture.requests[0]!.input!.parameters, 'presencePenalty')).toBe(true);
     expect(createProductionProviderCaptureEvidence({ capture, runId: run.runId, modelId: run.modelId }).json).toBe(expected.json);
     const summary = restored.run.productionProviderInvestigation;
-    if (summary === undefined) throw new Error('Missing Provider summary');
+    if (summary === undefined) {
+      throw new Error('Missing Provider summary');
+    }
     expect(Object.hasOwn(summary, 'stopReason')).toBe(true);
     expect(Object.hasOwn(summary.requests[0]!, 'notStartedReason')).toBe(true);
   });

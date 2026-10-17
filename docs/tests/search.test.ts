@@ -66,7 +66,9 @@ describe('Docs search', () => {
       await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
       const dist = path.join(fixture.docs, 'dist');
       const workerAsset = (await readdir(path.join(dist, 'assets'))).find(file => /^worker-.+\.js$/u.test(file));
-      if (!workerAsset) throw new Error('Missing generated Docs search worker');
+      if (!workerAsset) {
+        throw new Error('Missing generated Docs search worker');
+      }
       // These checks read one real production build. Hydration tests retain
       // independent fixtures so their browser module instances stay isolated.
       published = {
@@ -90,19 +92,29 @@ describe('Docs search', () => {
         expect(production.entries.map(item => item.href)).toEqual(DOCS_PAGES.map(page => docsHref({ locale, page: page.id })));
         const homeMessages = locale === 'en' ? homeEn : homeJa;
         const homeEntry = production.entries.find(entry => entry.href === docsHref({ locale, page: 'index' }));
-        for (const heading of [homeMessages.gguf_answer_in_browser_heading, homeMessages.cat_image_in_browser_heading, homeMessages.speech_in_browser_heading]) expect(homeEntry?.headings).toContain(heading);
-        for (const paragraph of [homeMessages.gguf_answer_in_browser_description, homeMessages.cat_image_in_browser_description, homeMessages.speech_in_browser_description]) expect(homeEntry?.paragraphs).toContain(paragraph);
-        for (const diagramText of [homeMessages.chat_question, homeMessages.cat_image_prompt, homeMessages.speech_text]) expect(homeEntry?.paragraphs).not.toContain(diagramText);
+        for (const heading of [homeMessages.gguf_answer_in_browser_heading, homeMessages.cat_image_in_browser_heading, homeMessages.speech_in_browser_heading]) {
+          expect(homeEntry?.headings).toContain(heading);
+        }
+        for (const paragraph of [homeMessages.gguf_answer_in_browser_description, homeMessages.cat_image_in_browser_description, homeMessages.speech_in_browser_description]) {
+          expect(homeEntry?.paragraphs).toContain(paragraph);
+        }
+        for (const diagramText of [homeMessages.chat_question, homeMessages.cat_image_prompt, homeMessages.speech_text]) {
+          expect(homeEntry?.paragraphs).not.toContain(diagramText);
+        }
         const purposes = purposeDocs({ index: production });
         expect(purposes.map(item => item.href)).toEqual(PURPOSE_PAGES.map(page => docsHref({ locale, page })));
-        for (const hit of purposes) expect(hit.snippet).toBe(production.entries.find(entry => entry.href === hit.href)?.description);
+        for (const hit of purposes) {
+          expect(hit.snippet).toBe(production.entries.find(entry => entry.href === hit.href)?.description);
+        }
         expect(file).not.toContain('Project notes');
         const guide = await dev.request({ url: docsHref({ locale, page: 'file-access' }) });
         expect(guide.status).toBe(200);
         using page = parsePage({ html: await guide.text() });
         expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
         const searchHost = page.document.querySelector('[data-docs-island="search"]');
-        if (!searchHost) throw new Error('Missing Docs search island');
+        if (!searchHost) {
+          throw new Error('Missing Docs search island');
+        }
         const serialized = searchHost.getAttribute('data-docs-props') ?? '';
         expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
         const payload = parseSearchPayload({ serialized });
@@ -126,7 +138,9 @@ describe('Docs search', () => {
       using neutral = parsePage({ html: await home.text() });
       for (const template of neutral.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
         const root = template.content.querySelector('[data-docs-island="search"]');
-        if (!root) throw new Error('Missing neutral-home search island');
+        if (!root) {
+          throw new Error('Missing neutral-home search island');
+        }
         const templateLocale = template.getAttribute('data-docs-locale');
         const serialized = root.getAttribute('data-docs-props') ?? '';
         expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
@@ -174,7 +188,8 @@ describe('Docs search', () => {
       const channel = new MessageChannel();
       using _ports = {
         [Symbol.dispose]() {
-          channel.port1.close(); channel.port2.close();
+          channel.port1.close();
+          channel.port2.close();
         },
       };
       let englishFailures = 1;
@@ -206,11 +221,15 @@ describe('Docs search', () => {
       expect(fetchIndex).toHaveBeenCalledTimes(1);
       const purposeMessage = workerMessages.find(message => message.requestId === 1);
       expect(purposeMessage?.kind).toBe('results');
-      if (purposeMessage?.kind !== 'results') throw new Error('Missing Docs worker purpose guides');
+      if (purposeMessage?.kind !== 'results') {
+        throw new Error('Missing Docs worker purpose guides');
+      }
       expect(purposeMessage.results).toEqual(purposeDocs({ index: japanese }));
       const firstMessage = workerMessages.find(message => message.requestId === 2);
       expect(firstMessage?.kind).toBe('results');
-      if (firstMessage?.kind !== 'results') throw new Error('Missing Docs worker search results');
+      if (firstMessage?.kind !== 'results') {
+        throw new Error('Missing Docs worker search results');
+      }
       expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data-backup/')).toBe(true);
       expect(await remote.search({ request: { requestId: 4, locale: 'en', query: 'backup' } })).toEqual({ kind: 'error', requestId: 4 });
       expect((await remote.search({ request: { requestId: 5, locale: 'en', query: 'backup' } })).kind).toBe('results');
@@ -219,7 +238,9 @@ describe('Docs search', () => {
       expect(fetchIndex).toHaveBeenCalledTimes(3);
       const natural = await remote.search({ request: { requestId: 7, locale: 'ja', query: '保存先を変えたい' } });
       expect(natural.kind).toBe('results');
-      if (natural.kind !== 'results') throw new Error('Missing Docs natural-language search results');
+      if (natural.kind !== 'results') {
+        throw new Error('Missing Docs natural-language search results');
+      }
       expect(natural.results[0]?.href).toBe('/docs/ja/data-storage/');
       expect(fetchIndex).toHaveBeenCalledTimes(3);
     });
@@ -232,10 +253,14 @@ describe('Docs search', () => {
     using page = parsePage({ html: await readFile(path.join(dist, 'ja/file-access/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-search"]')?.getAttribute('src');
     const root = page.document.querySelector<HTMLElement>('[data-docs-island="search"]');
-    if (!source || !root) throw new Error('Missing production Docs search island');
+    if (!source || !root) {
+      throw new Error('Missing production Docs search island');
+    }
     const index = parseSearchIndex({ value: JSON.parse(await readFile(path.join(dist, 'search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
     const dom = page.document.defaultView;
-    if (!dom) throw new Error('Missing page window');
+    if (!dom) {
+      throw new Error('Missing page window');
+    }
     for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLDialogElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
       vi.stubGlobal(name, name === 'window' ? dom : name === 'document' ? page.document : dom[name]);
     }
@@ -254,7 +279,8 @@ describe('Docs search', () => {
     const channel = new MessageChannel();
     using _ports = {
       [Symbol.dispose]() {
-        channel.port1.close(); channel.port2.close();
+        channel.port1.close();
+        channel.port2.close();
       },
     };
     const requests: SearchWorkerRequest[] = [];
@@ -276,7 +302,8 @@ describe('Docs search', () => {
       removeEventListener: channel.port1.removeEventListener.bind(channel.port1),
       postMessage: channel.port1.postMessage.bind(channel.port1),
       terminate: vi.fn(() => {
-        channel.port1.close(); channel.port2.close();
+        channel.port1.close();
+        channel.port2.close();
       }),
       start: channel.port1.start.bind(channel.port1),
       emit({ response }: { response: SearchWorkerResponse }) {
@@ -314,7 +341,9 @@ describe('Docs search', () => {
     page.document.dispatchEvent(new dom.Event('DOMContentLoaded'));
     await vi.waitFor(() => expect(root.dataset.docsHydrated).toBe('ready'));
     const input = root.querySelector<HTMLInputElement>('[data-testid="docs-search-input"]');
-    if (!input) throw new Error('Missing search input');
+    if (!input) {
+      throw new Error('Missing search input');
+    }
     const trigger = root.querySelector<HTMLButtonElement>('[data-testid="docs-search-trigger"]');
     expect(trigger?.disabled).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -352,7 +381,9 @@ describe('Docs search', () => {
     input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(page.document.activeElement).toBe(first);
     const content = root.querySelector<HTMLElement>('.docs-search-content');
-    if (!content) throw new Error('Missing Docs search result scroller');
+    if (!content) {
+      throw new Error('Missing Docs search result scroller');
+    }
     content.scrollTop = 50;
     input.value = '保存先';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
@@ -428,7 +459,9 @@ describe('Docs search', () => {
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).toHaveBeenCalledOnce();
     const app = (root as HTMLElement & { __vue_app__?: { unmount: () => void } }).__vue_app__;
-    if (!app) throw new Error('Missing hydrated Docs search app');
+    if (!app) {
+      throw new Error('Missing hydrated Docs search app');
+    }
     app.unmount();
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
@@ -445,14 +478,18 @@ describe('Docs search', () => {
     Object.defineProperty(dom.window.navigator, 'languages', { configurable: true, value: ['ja'] });
     for (const template of document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
       const searchRoot = template.content.querySelector('[data-docs-island="search"]');
-      if (!searchRoot) throw new Error('Missing neutral-home search template');
+      if (!searchRoot) {
+        throw new Error('Missing neutral-home search template');
+      }
       const payload = parseSearchPayload({ serialized: searchRoot.getAttribute('data-docs-props') ?? '' });
       expect(payload.locale).toBe(template.getAttribute('data-docs-locale'));
       expect(searchRoot.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(PURPOSE_PAGES.length);
     }
     const bootstrap = document.querySelector<HTMLScriptElement>('script:not([type])[src]')?.getAttribute('src');
     const search = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.getAttribute('src');
-    if (!bootstrap || !search) throw new Error('Missing neutral-home scripts');
+    if (!bootstrap || !search) {
+      throw new Error('Missing neutral-home scripts');
+    }
     new Script(await readFile(path.join(dist, bootstrap.slice('/docs/'.length)), 'utf8')).runInContext(dom.getInternalVMContext());
     for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLDialogElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
       vi.stubGlobal(name, name === 'window' ? dom.window : name === 'document' ? document : dom.window[name]);
@@ -479,7 +516,9 @@ describe('Docs search', () => {
     expect(document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe('ドキュメントを検索');
     expect(document.querySelectorAll('template[data-docs-locale]')).toHaveLength(0);
     const root = document.querySelector<HTMLElement>('[data-docs-island="search"]');
-    if (!root) throw new Error('Missing chosen-locale search island');
+    if (!root) {
+      throw new Error('Missing chosen-locale search island');
+    }
     const payload = parseSearchPayload({ serialized: root.getAttribute('data-docs-props') ?? '' });
     expect(payload.locale).toBe('ja');
     root.querySelector<HTMLButtonElement>('[data-testid="docs-search-trigger"]')?.click();

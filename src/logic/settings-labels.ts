@@ -14,7 +14,9 @@ export function formatSettingsSourceLabel({
   source: SettingsSource | undefined,
 }): string | undefined {
   const resolvedValue = value || lazyStrings.formatSettingsSourceLabel__none();
-  if (resolvedValue === undefined) return undefined;
+  if (resolvedValue === undefined) {
+    return undefined;
+  }
   switch (source) {
   case 'chat':
     return lazyStrings.formatSettingsSourceLabel__value_from_chat({ value: resolvedValue });

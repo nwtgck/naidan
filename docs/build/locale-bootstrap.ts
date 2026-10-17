@@ -23,10 +23,16 @@ export async function compileLocaleBootstrap({ root }: { root: string }): Promis
     },
   });
   const output = Array.isArray(result) && result.length === 1 ? result[0] : result;
-  if (!output || !('output' in output)) throw new Error('Expected one Docs locale bootstrap bundle');
+  if (!output || !('output' in output)) {
+    throw new Error('Expected one Docs locale bootstrap bundle');
+  }
   const chunks = output.output.filter(item => item.type === 'chunk');
-  if (chunks.length !== 1 || output.output.length !== 1) throw new Error('Locale bootstrap must be self-contained');
+  if (chunks.length !== 1 || output.output.length !== 1) {
+    throw new Error('Locale bootstrap must be self-contained');
+  }
   const chunk = chunks[0];
-  if (!chunk || chunk.imports.length || chunk.dynamicImports.length) throw new Error('Unexpected locale bootstrap dependency');
+  if (!chunk || chunk.imports.length || chunk.dynamicImports.length) {
+    throw new Error('Unexpected locale bootstrap dependency');
+  }
   return chunk.code;
 }

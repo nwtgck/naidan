@@ -27,7 +27,9 @@ const configSchema = z.object({
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0) });
 
 function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], metadata: ReadonlyMap<string, string | number | boolean>, config: z.infer<typeof configSchema> | undefined }): Pick<ModelCandidate, 'family' | 'roles' | 'classes' | 'evidence' | 'turboHint' | 'variant'> {
-  if (hasLoraTensors({ tensors })) return { family: 'unknown', roles: [], classes: ['lora'], evidence: ['Native adapter tensor structure; base-model compatibility is unverified'], turboHint: false, variant: 'unknown' };
+  if (hasLoraTensors({ tensors })) {
+    return { family: 'unknown', roles: [], classes: ['lora'], evidence: ['Native adapter tensor structure; base-model compatibility is unverified'], turboHint: false, variant: 'unknown' };
+  }
   const find = ({ suffix }: { suffix: string }): TensorInfo | undefined => tensors.find(t => t.name === suffix || t.name.endsWith('.' + suffix));
   const has = ({ pattern }: { pattern: RegExp }): boolean => tensors.some(t => pattern.test(t.name));
   const classes: ComponentClass[] = [], roles: ModelSlot[] = [], evidence: string[] = [];
@@ -53,42 +55,70 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   const ernieNorm = find({ suffix: 'layers.0.adaLN_sa_ln.weight' });
   const ernieInput = find({ suffix: 'x_embedder.proj.weight' });
   if (cap?.shape[0] === 2560 && capProjection?.shape.at(-1) === 2560 && zInput?.shape.at(-1) === 64) {
-    family = 'z-image'; roles.push('diffusion'); evidence.push('cap_embedder: 2560; image patch input: 64');
+    family = 'z-image';
+    roles.push('diffusion');
+    evidence.push('cap_embedder: 2560; image patch input: 64');
   } else if (qText?.shape[0] === 4096 && qInput?.shape.at(-1) === 64 && find({ suffix: 'txt_in.in_layer.weight' })?.shape.at(-1) === 4096) {
-    family = 'qwen-image-2.1'; roles.push('diffusion'); evidence.push('txt_in.text_norm: 4096; image latent: 64');
+    family = 'qwen-image-2.1';
+    roles.push('diffusion');
+    evidence.push('txt_in.text_norm: 4096; image latent: 64');
   } else if (unet && decoder && text) {
-    family = 'sd-checkpoint'; roles.push('model'); evidence.push('UNet + text encoder + image decoder in one checkpoint');
+    family = 'sd-checkpoint';
+    roles.push('model');
+    evidence.push('UNet + text encoder + image decoder in one checkpoint');
   } else if (flux2Modulation && qInput?.shape[0] === 3072 && qInput.shape[1] === 128 && fluxText?.shape[0] === 3072 && fluxText.shape[1] === 7680) {
     // Klein 9B and FLUX.2-dev use different widths/text encoders. Do not
     // classify every model with shared FLUX modulation as the 4B recipe.
-    family = 'flux2-klein-4b'; roles.push('diffusion'); evidence.push('FLUX.2 shared modulation; hidden 3072, image 128, text 7680');
+    family = 'flux2-klein-4b';
+    roles.push('diffusion');
+    evidence.push('FLUX.2 shared modulation; hidden 3072, image 128, text 7680');
   } else if (animaAdapter?.shape[0] === 1024 && animaAdapter.shape[1] === 1024 && animaInput?.shape[0] === 2048 && animaInput.shape[1] === 68) {
-    family = 'anima'; roles.push('diffusion'); evidence.push('Anima LM adapter: 1024; hidden 2048, image patch input 68');
+    family = 'anima';
+    roles.push('diffusion');
+    evidence.push('Anima LM adapter: 1024; hidden 2048, image patch input 68');
   } else if (kreaProjection && kreaInput?.shape.length === 2 && kreaInput.shape[0] === 6144 && kreaInput.shape[1] === 64) {
-    family = 'krea2'; roles.push('diffusion'); evidence.push('Krea2 text-layer fusion: 12; hidden 6144, image patch input 64');
+    family = 'krea2';
+    roles.push('diffusion');
+    evidence.push('Krea2 text-layer fusion: 12; hidden 6144, image patch input 64');
   } else if (ernieNorm?.shape[0] === 4096 && ernieInput?.shape.length === 4 && ernieInput.shape[0] === 4096 && ernieInput.shape[1] === 128 && find({ suffix: 'text_proj.weight' })?.shape[1] === 3072) {
-    family = 'ernie-image'; roles.push('diffusion'); evidence.push('ERNIE image adaLN; hidden 4096, latent 128, text 3072');
+    family = 'ernie-image';
+    roles.push('diffusion');
+    evidence.push('ERNIE image adaLN; hidden 4096, latent 128, text 3072');
   } else if (!flux2Modulation && has({ pattern: /(^|\.)double_blocks\.0\.img_attn\./ }) && has({ pattern: /(^|\.)single_blocks\.0\./ })) {
-    family = 'flux1'; roles.push('diffusion'); evidence.push('FLUX double/single transformer blocks');
+    family = 'flux1';
+    roles.push('diffusion');
+    evidence.push('FLUX double/single transformer blocks');
   }
   const vaeOutput = find({ suffix: 'decoder.conv_out.weight' });
   if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 16 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 32) {
-    classes.push('vae-flux16'); roles.push('vae'); evidence.push('2D VAE: latent 16, RGB output, encoder 32');
+    classes.push('vae-flux16');
+    roles.push('vae');
+    evidence.push('2D VAE: latent 16, RGB output, encoder 32');
   } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 32 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 64) {
-    classes.push('vae-flux32'); roles.push('vae'); evidence.push('2D VAE: latent 32, RGB output, encoder 64');
+    classes.push('vae-flux32');
+    roles.push('vae');
+    evidence.push('2D VAE: latent 32, RGB output, encoder 64');
   } else if (decoder && vaeOutput && decoder.shape.length === 4 && decoder.shape[1] === 4 && vaeOutput.shape[0] === 3 && find({ suffix: 'encoder.conv_out.weight' })?.shape[0] === 8) {
     // Shape evidence alone does not identify training weights or latent scaling.
     // Checkpoint VAE overrides are explicit, never an automatic substitution.
-    classes.push('vae-sd4'); roles.push('vae'); evidence.push('2D VAE: latent 4, RGB output, encoder 8');
+    classes.push('vae-sd4');
+    roles.push('vae');
+    evidence.push('2D VAE: latent 4, RGB output, encoder 8');
   } else {
     const conv2 = find({ suffix: 'conv2.weight' }), head = find({ suffix: 'decoder.head.2.weight' });
     const conv1 = find({ suffix: 'decoder.conv1.weight' });
     if (conv2?.shape[0] === 64 && conv2.shape[1] === 64 && head?.shape[0] === 4 && conv1?.shape[1] === 64) {
-      classes.push('vae-qwen21'); roles.push('vae'); evidence.push('Qwen Image 2.1 VAE: latent 64, RGBA output');
+      classes.push('vae-qwen21');
+      roles.push('vae');
+      evidence.push('Qwen Image 2.1 VAE: latent 64, RGBA output');
     } else if (conv2?.shape.length === 5 && conv2.shape[0] === 16 && conv2.shape[1] === 16 && head?.shape[0] === 3 && conv1?.shape[1] === 16) {
-      classes.push('vae-wan16'); roles.push('vae'); evidence.push('Wan-style VAE: latent 16, RGB output, 3D convolutions');
+      classes.push('vae-wan16');
+      roles.push('vae');
+      evidence.push('Wan-style VAE: latent 16, RGB output, 3D convolutions');
     } else if (decoder || has({ pattern: /(^|\.)decoder\.(conv1|head\.2)\.weight$/ })) {
-      classes.push('other-vae'); roles.push('vae'); evidence.push('Image decoder with a different or unknown latent format');
+      classes.push('other-vae');
+      roles.push('vae');
+      evidence.push('Image decoder with a different or unknown latent format');
     }
   }
   const architecture = metadata.get('general.architecture');
@@ -97,7 +127,9 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   let layers = 0;
   for (const tensor of tensors) {
     const match = /(?:^|\.)(?:blk|layers)\.([0-9]+)\./.exec(tensor.name);
-    if (match && !tensor.name.includes('visual')) layers = Math.max(layers, Number(match[1]) + 1);
+    if (match && !tensor.name.includes('visual')) {
+      layers = Math.max(layers, Number(match[1]) + 1);
+    }
   }
   const width = embedding?.shape.at(-1);
   const q3 = architecture === 'qwen3' || config?.model_type === 'qwen3';
@@ -108,14 +140,21 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     roles.push('lm');
     // Dimensions and architecture must agree. Qwen2.5-VL / Gemma / differently
     // sized Qwen models never become defaults merely from a filename hint.
-    if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 2560 && layers === 36) classes.push('lm-qwen3-4b');
-    else if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 1024 && layers === 28) classes.push('lm-qwen3-06b');
-    // Qwen3-VL-8B has 36 text layers, not 32 attention heads.
-    // https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/blob/main/config.json
-    else if (q3vl && width === 4096 && layers === 36) classes.push('lm-qwen3vl-8b');
-    else if (q3vl && width === 2560 && layers === 36) classes.push('lm-qwen3vl-4b');
-    else if (ministral3 && width === 3072 && layers === 26) classes.push('lm-ministral3-3b');
-    else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 1024 && layers === 28) || (width === 4096 && layers === 36) || (width === 3072 && layers === 26))) classes.push('other-lm');
+    if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 2560 && layers === 36) {
+      classes.push('lm-qwen3-4b');
+    } else if ((q3 || (!q3vl && !architecture && !config?.model_type && !config?.text_config?.model_type && qNorm?.shape[0] === 128)) && width === 1024 && layers === 28) {
+      classes.push('lm-qwen3-06b');
+    } else if (q3vl && width === 4096 && layers === 36) {
+      // Qwen3-VL-8B has 36 text layers, not 32 attention heads.
+      // https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/blob/main/config.json
+      classes.push('lm-qwen3vl-8b');
+    } else if (q3vl && width === 2560 && layers === 36) {
+      classes.push('lm-qwen3vl-4b');
+    } else if (ministral3 && width === 3072 && layers === 26) {
+      classes.push('lm-ministral3-3b');
+    } else if (architecture || config?.model_type || config?.text_config?.model_type || !((width === 2560 && layers === 36) || (width === 1024 && layers === 28) || (width === 4096 && layers === 36) || (width === 3072 && layers === 26))) {
+      classes.push('other-lm');
+    }
     // A stripped text-only export can lack evidence identifying its model
     // family. Matching dimensions alone are not sufficient for an automatic
     // choice, but absence of evidence is not a known incompatibility either.
@@ -124,13 +163,16 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
   if (text && !unet) {
     const clip = find({ suffix: 'token_embedding.weight' });
     if (clip?.shape.at(-1) === 768) {
-      roles.push('clipL'); classes.push('clip-l');
+      roles.push('clipL');
+      classes.push('clip-l');
     } else if (clip?.shape.at(-1) === 1280) {
-      roles.push('clipG'); classes.push('clip-g');
+      roles.push('clipG');
+      classes.push('clip-g');
     }
   }
   if (has({ pattern: /encoder\.block\.0\.layer\.0\.SelfAttention\.q\.weight$/ }) && tensors.some(t => t.name.endsWith('shared.weight') && t.shape.at(-1) === 4096)) {
-    roles.push('t5'); classes.push('t5-xxl');
+    roles.push('t5');
+    classes.push('t5-xxl');
   }
   const training = ['general.name', 'general.basename', 'general.finetune'].map(key => String(metadata.get(key) ?? '')).join(' ');
   // Base/Turbo share tensor shapes. A renamed filename must never select the
@@ -139,7 +181,10 @@ function fingerprint({ tensors, metadata, config }: { tensors: TensorInfo[], met
     switch (family) {
     case 'z-image': return /\bturbo\b/i.test(training) ? 'turbo' : /\bbase\b/i.test(training) ? 'base' : 'unknown';
     case 'sd-checkpoint': case 'qwen-image-2.1': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': return 'unknown';
-    default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = family;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return { family, roles: [...new Set(roles)], classes, evidence, turboHint: variant === 'turbo', variant };
@@ -151,7 +196,9 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   const total = repositories.reduce((n, repo) => n + repo.files.length, 0);
   let completed = 0;
   for (const repository of repositories) {
-    for (const issue of repository.issues ?? []) issues.push({ repositoryId: repository.id, ...issue });
+    for (const issue of repository.issues ?? []) {
+      issues.push({ repositoryId: repository.id, ...issue });
+    }
     const inspected = new Map<string, WeightMetadata>();
     const fileMap = new Map(repository.files.map(file => [file.path, file]));
     const configs = new Map<string, z.infer<typeof configSchema>>();
@@ -160,7 +207,8 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
     for (const entry of repository.files) {
       signal?.throwIfAborted();
       const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, path: `${repository.id}/${entry.path}`.slice(0, 2048) } });
-      progress(); completed++;
+      progress();
+      completed++;
       // Report real I/O progress without reading any additional bytes.
       const file = {
         size: entry.file.size,
@@ -168,31 +216,48 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
         slice(start?: number, end?: number) {
           return {
             async arrayBuffer() {
-              const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
+              const bytes = await entry.file.slice(start, end).arrayBuffer();
+              progress();
+              return bytes;
             },
           };
         },
       };
       if (/\.json$/i.test(entry.path)) {
-        if (!/(?:^|\/)(?:config|model_index)\.json$|\.index\.json$/i.test(entry.path)) continue;
+        if (!/(?:^|\/)(?:config|model_index)\.json$|\.index\.json$/i.test(entry.path)) {
+          continue;
+        }
         try {
           const data = await readModelJson({ file, signal });
-          if (/\.index\.json$/i.test(entry.path)) indices.push({ path: entry.path, map: indexSchema.parse(data).weight_map });
-          else configs.set(entry.path, configSchema.parse(data));
+          if (/\.index\.json$/i.test(entry.path)) {
+            indices.push({ path: entry.path, map: indexSchema.parse(data).weight_map });
+          } else {
+            configs.set(entry.path, configSchema.parse(data));
+          }
         } catch (error) {
-          signal?.throwIfAborted(); failures.set(entry.path, error instanceof Error ? error.message : String(error));
+          signal?.throwIfAborted();
+          failures.set(entry.path, error instanceof Error ? error.message : String(error));
         }
         continue;
       }
-      if (/\.(md|txt|png|jpg|jpeg|webp|gitattributes|gitignore)$/i.test(entry.path) || entry.path.startsWith('.')) continue;
+      if (/\.(md|txt|png|jpg|jpeg|webp|gitattributes|gitignore)$/i.test(entry.path) || entry.path.startsWith('.')) {
+        continue;
+      }
       const inspection = await inspectWeightFile({ file, signal });
       switch (inspection.status) {
-      case 'weights': inspected.set(entry.path, inspection.value); break;
-      case 'invalid': case 'lfs-pointer': failures.set(entry.path, inspection.reason); break;
-      case 'unknown':
-        if (/\.(gguf|safetensors|sft)$/i.test(entry.path)) failures.set(entry.path, inspection.reason);
+      case 'weights': inspected.set(entry.path, inspection.value);
         break;
-      default: { const exhaustive: never = inspection; throw new Error(String(exhaustive)); }
+      case 'invalid': case 'lfs-pointer': failures.set(entry.path, inspection.reason);
+        break;
+      case 'unknown':
+        if (/\.(gguf|safetensors|sft)$/i.test(entry.path)) {
+          failures.set(entry.path, inspection.reason);
+        }
+        break;
+      default: {
+        const exhaustive: never = inspection;
+        throw new Error(String(exhaustive));
+      }
       }
     }
     const tensorNamesByFile = new Map([...inspected].map(([path, data]) => [path, new Set(data.tensors.map(tensor => tensor.name))]));
@@ -203,14 +268,23 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       const names = new Set<string>();
       for (const name of members) {
         const item = inspected.get(name);
-        if (!item) continue;
+        if (!item) {
+          continue;
+        }
         for (const tensor of item.tensors) {
-          if (names.has(tensor.name)) issue = 'Duplicate tensor names across shards';
-          names.add(tensor.name); tensors.push(tensor);
+          if (names.has(tensor.name)) {
+            issue = 'Duplicate tensor names across shards';
+          }
+          names.add(tensor.name);
+          tensors.push(tensor);
         }
         for (const [key, value] of item.metadata) {
-          if (key === 'general.architecture' && metadata.has(key) && metadata.get(key) !== value) issue = 'Shard architecture metadata disagrees';
-          if (!metadata.has(key)) metadata.set(key, value);
+          if (key === 'general.architecture' && metadata.has(key) && metadata.get(key) !== value) {
+            issue = 'Shard architecture metadata disagrees';
+          }
+          if (!metadata.has(key)) {
+            metadata.set(key, value);
+          }
         }
         issue ??= item.unsupported;
       }
@@ -230,7 +304,10 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           case 'anima': return ['anima-turbo-1.1'];
           case 'krea2': return ['krea2-turbo'];
           case 'ernie-image': return ['ernie-image-turbo'];
-          default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = family;
+            throw new Error(String(exhaustive));
+          }
           }
         })();
         const recipe = imageModelRecipes.find(recipe => recipeIds.includes(recipe.id)
@@ -239,17 +316,33 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
         if (recipe) {
           switch (recipe.id) {
           case 'z-image-turbo':
-            facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
+            facts.variant = 'turbo';
+            facts.turboHint = true;
+            facts.evidence.push('Turbo variant: verified catalog download receipt');
+            break;
           case 'z-image-base': case 'qwen-image-2.1':
-            facts.variant = 'base'; facts.turboHint = false; facts.evidence.push('Base variant: verified catalog download receipt'); break;
+            facts.variant = 'base';
+            facts.turboHint = false;
+            facts.evidence.push('Base variant: verified catalog download receipt');
+            break;
           case 'qwen-image-2.1-turbo':
-            facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: catalog download receipt'); break;
+            facts.variant = 'turbo';
+            facts.turboHint = true;
+            facts.evidence.push('Turbo variant: catalog download receipt');
+            break;
           case 'flux2-klein-4b':
-            facts.variant = 'distilled'; facts.evidence.push('Distilled variant: verified catalog download receipt'); break;
+            facts.variant = 'distilled';
+            facts.evidence.push('Distilled variant: verified catalog download receipt');
+            break;
           case 'anima-turbo-1.1': case 'krea2-turbo': case 'ernie-image-turbo':
-            facts.variant = 'turbo'; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
+            facts.variant = 'turbo';
+            facts.evidence.push('Turbo variant: verified catalog download receipt');
+            break;
           case 'sdxl-base-1.0': break;
-          default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = recipe.id;
+            throw new Error(String(exhaustive));
+          }
           }
         }
       }
@@ -266,48 +359,74 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       });
     }
     for (const index of indices) {
-      const shards = new Set<string>(); let issue: string | undefined;
+      const shards = new Set<string>();
+      let issue: string | undefined;
       for (const [tensor, reference] of Object.entries(index.map)) {
         try {
           const path = relativeCompanionPath({ indexPath: index.path, reference });
           shards.add(path);
           const data = inspected.get(path);
-          if (data?.format !== 'safetensors' || !tensorNamesByFile.get(path)?.has(tensor)) issue = `Missing shard or declared tensor: ${path} / ${tensor}`;
+          if (data?.format !== 'safetensors' || !tensorNamesByFile.get(path)?.has(tensor)) {
+            issue = `Missing shard or declared tensor: ${path} / ${tensor}`;
+          }
         } catch {
           issue = 'Index contains an unsafe companion reference';
         }
       }
-      const members = [...shards]; members.forEach(path => consumed.add(path));
+      const members = [...shards];
+      members.forEach(path => consumed.add(path));
       add({ path: index.path, members, format: 'safetensors-index', issue });
     }
     const groups = new Map<string, string[]>();
     for (const [path, data] of inspected) {
-      if (consumed.has(path)) continue;
+      if (consumed.has(path)) {
+        continue;
+      }
       const match = /^(.*)-([0-9]{5})-of-([0-9]{5})(\.gguf)$/i.exec(path);
       if (data.format === 'gguf' && (data.split && data.split.count > 1 || match && Number(match[3]) > 1)) {
         const key = match ? `${match[1]}-of-${match[3]}${match[4]}` : path;
-        const group = groups.get(key) ?? []; group.push(path); groups.set(key, group);
-      } else add({ path, members: [path], format: data.format, issue: /-[0-9]{5}-of-[0-9]{5}\.(safetensors|sft)$/i.test(path) ? 'Select the complete safetensors index, not an individual shard' : undefined });
+        const group = groups.get(key) ?? [];
+        group.push(path);
+        groups.set(key, group);
+      } else {
+        add({ path, members: [path], format: data.format, issue: /-[0-9]{5}-of-[0-9]{5}\.(safetensors|sft)$/i.test(path) ? 'Select the complete safetensors index, not an individual shard' : undefined });
+      }
     }
     for (const group of groups.values()) {
-      group.sort(); const first = group[0]!; const data = inspected.get(first)!;
+      group.sort();
+      const first = group[0]!;
+      const data = inspected.get(first)!;
       const match = /^(.*)-([0-9]{5})-of-([0-9]{5})(\.gguf)$/i.exec(first);
       let issue: string | undefined;
       const count = data.split?.count;
-      if (!match || count === undefined || count !== Number(match[3]) || count !== group.length) issue = 'Incomplete GGUF shard group';
+      if (!match || count === undefined || count !== Number(match[3]) || count !== group.length) {
+        issue = 'Incomplete GGUF shard group';
+      }
       let total = 0;
       for (let i = 0; i < group.length; i++) {
         const value = inspected.get(group[i]!)!;
-        if (!match || group[i] !== `${match[1]}-${String(i + 1).padStart(5, '0')}-of-${match[3]}${match[4]}` || !value.split || value.split.index !== i || value.split.count !== count || value.split.tensors !== data.split?.tensors) issue = 'GGUF shard names or split metadata disagree';
+        if (!match || group[i] !== `${match[1]}-${String(i + 1).padStart(5, '0')}-of-${match[3]}${match[4]}` || !value.split || value.split.index !== i || value.split.count !== count || value.split.tensors !== data.split?.tensors) {
+          issue = 'GGUF shard names or split metadata disagree';
+        }
         total += value.tensors.length;
       }
-      if (total !== data.split?.tensors) issue ??= 'GGUF shard tensor total mismatch';
+      if (total !== data.split?.tensors) {
+        issue ??= 'GGUF shard tensor total mismatch';
+      }
       add({ path: first, members: group, format: 'gguf', issue });
     }
-    for (const [path, message] of failures) issues.push({ repositoryId: repository.id, path, message });
+    for (const [path, message] of failures) {
+      issues.push({ repositoryId: repository.id, path, message });
+    }
   }
-  for (const candidate of candidates) if (candidate.issue) issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
-  signal?.throwIfAborted(); onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } }); return { candidates, issues };
+  for (const candidate of candidates) {
+    if (candidate.issue) {
+      issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
+    }
+  }
+  signal?.throwIfAborted();
+  onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } });
+  return { candidates, issues };
 }
 
 export function defaultCompanion({ main, candidates, requirement }: { main: ModelCandidate, candidates: ModelCandidate[], requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): string | undefined {

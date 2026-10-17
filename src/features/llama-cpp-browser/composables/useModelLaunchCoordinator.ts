@@ -23,18 +23,24 @@ export function useModelLaunchCoordinator(): void {
       modelLaunchEntryState.value = { status: 'idle' };
       return;
     }
-    if (!initialized.value || !isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    if (!initialized.value || !isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      return;
+    }
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     const isCurrent = (): boolean => !controller.signal.aborted && isStorageCurrent() && router.currentRoute.value.fullPath === source.fullPath;
     const rawInput = source.query[MODEL_LAUNCH_QUERY];
     const input = typeof rawInput === 'string' ? rawInput.trim() : '';
-    if (active?.input !== input) active = undefined;
+    if (active?.input !== input) {
+      active = undefined;
+    }
     modelLaunchEntryState.value = { status: 'checking', input, phase: 'metadata' };
     try {
       // Reject duplicates/empty values instead of silently choosing a request.
-      if (typeof rawInput !== 'string' || input.length === 0 || input.length > 4096) throw new ModelLaunchTargetError({ problem: 'invalid-input' });
+      if (typeof rawInput !== 'string' || input.length === 0 || input.length > 4096) {
+        throw new ModelLaunchTargetError({ problem: 'invalid-input' });
+      }
       try {
         parseRepository({ input });
       } catch {
@@ -43,17 +49,23 @@ export function useModelLaunchCoordinator(): void {
       const reservation = reserveModelLaunchHistory({ history: router.options.history, location: `${MODEL_LAUNCH_QUERY}=${input}`, fallback: active?.reservation });
       active = { input, reservation };
       const previous = storageService.getModelLaunch({ chatId: reservation.chatId });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       let resolved;
       if (previous !== undefined) {
         resolved = { target: previous.target, requestedVariant: previous.requestedVariant };
       } else {
         const catalog = await getMetadataSession().inspect({ input, signal: controller.signal, freshness: 'reuse' });
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
         resolved = resolveModelLaunchTarget({ input, catalog });
         rememberLaunchCatalog({ catalog });
       }
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       modelLaunchEntryState.value = { status: 'checking', input, phase: 'opening-chat' };
       const chat = await storageService.prepareModelLaunchChat({
         signal: controller.signal,
@@ -67,21 +79,31 @@ export function useModelLaunchCoordinator(): void {
           expectedTarget: undefined,
         },
       });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       await loadData();
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       const query = { ...source.query };
       delete query[MODEL_LAUNCH_QUERY];
       // A model link never delegates submission or chat settings to the legacy
       // auto-send route. Keep unrelated navigation/settings query parameters.
-      for (const key of ['q', 'chat-group', 'model', 'system-prompt', 'sp']) delete query[key];
+      for (const key of ['q', 'chat-group', 'model', 'system-prompt', 'sp']) {
+        delete query[key];
+      }
       const path = `/chat/${idToRaw({ id: chat.id })}`;
       const failure = await router.replace({ path, query, hash: source.hash, state: { [modelLaunchHistoryKey]: false, [modelLaunchViewHistoryKey]: modelLaunchViewState({ chatId: chat.id, input, modelId: resolved.target.modelId, revision: resolved.target.selection.revision }) } });
       if (failure || router.currentRoute.value.path !== path) {
-        if (isCurrent()) modelLaunchEntryState.value = { status: 'failed', input, problem: 'failed' };
+        if (isCurrent()) {
+          modelLaunchEntryState.value = { status: 'failed', input, problem: 'failed' };
+        }
       }
     } catch (error) {
-      if (isCurrent()) modelLaunchEntryState.value = { status: 'failed', input, problem: error instanceof ModelLaunchTargetError ? error.problem : 'failed' };
+      if (isCurrent()) {
+        modelLaunchEntryState.value = { status: 'failed', input, problem: error instanceof ModelLaunchTargetError ? error.problem : 'failed' };
+      }
     }
   }, { immediate: true });
 }

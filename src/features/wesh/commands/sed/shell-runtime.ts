@@ -8,8 +8,12 @@ function concatenateSedShellOutput({
   chunks: readonly Uint8Array[];
   byteLength: number;
 }): Uint8Array {
-  if (chunks.length === 0) return new Uint8Array(0);
-  if (chunks.length === 1) return chunks[0]!;
+  if (chunks.length === 0) {
+    return new Uint8Array(0);
+  }
+  if (chunks.length === 1) {
+    return chunks[0]!;
+  }
   const output = new Uint8Array(byteLength);
   let offset = 0;
   for (const chunk of chunks) {

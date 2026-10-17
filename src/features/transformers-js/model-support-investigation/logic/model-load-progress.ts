@@ -121,8 +121,12 @@ export function createModelLoadProgressTracker({ candidateId }: {
       switch (info.status) {
       case "progress_total": {
         progressTotalEventCount += 1;
-        if (typeof info.loaded === "number" && info.loaded > (aggregateLoaded ?? -1)) forwarded = true;
-        if (typeof info.progress === "number" && info.progress > (aggregateProgress ?? -1)) forwarded = true;
+        if (typeof info.loaded === "number" && info.loaded > (aggregateLoaded ?? -1)) {
+          forwarded = true;
+        }
+        if (typeof info.progress === "number" && info.progress > (aggregateProgress ?? -1)) {
+          forwarded = true;
+        }
         aggregateLoaded = info.loaded;
         aggregateTotal = info.total;
         aggregateProgress = info.progress;
@@ -135,7 +139,9 @@ export function createModelLoadProgressTracker({ candidateId }: {
           if (typeof info.loaded === "number" && (previousLoaded === undefined || info.loaded > previousLoaded)) {
             forwarded = true;
           }
-          if (typeof info.loaded === "number") perFileLoaded.set(info.file, info.loaded);
+          if (typeof info.loaded === "number") {
+            perFileLoaded.set(info.file, info.loaded);
+          }
           currentFile = info.file;
         }
         fileLoaded = info.loaded;
@@ -152,10 +158,14 @@ export function createModelLoadProgressTracker({ candidateId }: {
       case 'cache-acceptance-ready':
         // These are actual loader boundary transitions, not timer heartbeats.
         forwarded = true;
-        if (info.file !== undefined) currentFile = info.file;
+        if (info.file !== undefined) {
+          currentFile = info.file;
+        }
         break;
       default:
-        if (info.file !== undefined) currentFile = info.file;
+        if (info.file !== undefined) {
+          currentFile = info.file;
+        }
         break;
       }
 
@@ -174,7 +184,9 @@ export function createModelLoadProgressTracker({ candidateId }: {
       // otherwise instrumentation can enqueue tens of thousands of Worker→main
       // callbacks and materially change the load being measured. Lifecycle events
       // remain immediate so stage transitions are never hidden.
-      if (eventCount !== 1 && !lifecycleEvent && !intervalElapsed) return undefined;
+      if (eventCount !== 1 && !lifecycleEvent && !intervalElapsed) {
+        return undefined;
+      }
 
       lastPublishedAtMs = nowMs;
       return publishCurrent();
@@ -185,7 +197,9 @@ export function createModelLoadProgressTracker({ candidateId }: {
     // bounded telemetry still records how much raw activity occurred without
     // publishing every raw callback.
     flush(): TransformersJsModelLoadProgressObservation | undefined {
-      if (activityCount() === lastPublishedActivityCount) return undefined;
+      if (activityCount() === lastPublishedActivityCount) {
+        return undefined;
+      }
       return publishCurrent();
     },
   };

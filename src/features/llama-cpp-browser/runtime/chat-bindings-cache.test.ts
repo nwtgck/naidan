@@ -169,7 +169,9 @@ describe('native thinking preference rejection', () => {
         throw new Error('Expected template failure');
       } catch (caught) {
         expect(errorCode({ error: caught })).not.toBe('reasoning-unsupported');
-        if (error instanceof WebAssembly.RuntimeError) expect(caught).toBe(error);
+        if (error instanceof WebAssembly.RuntimeError) {
+          expect(caught).toBe(error);
+        }
       }
       f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
     }

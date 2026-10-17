@@ -10,7 +10,9 @@ function tokenizerFixture() {
     all_special_ids: [7, 10, 11, 99],
     decode: vi.fn(function(this: unknown, tokens: (number | bigint)[]) {
       expect(this).toBe(tokenizer);
-      if (tokens.length === 0) throw new Error('Upstream decode rejects empty token arrays');
+      if (tokens.length === 0) {
+        throw new Error('Upstream decode rejects empty token arrays');
+      }
       return tokens.map(token => words.get(Number(token)) ?? '').join('');
     }),
   };
@@ -32,13 +34,17 @@ describe('selective tool stream decoding', () => {
       capture: {
         setNativeStreamAvailability: vi.fn(),
         recordNativeStream: ({ operation, phase, args }) => {
-          if (operation === 'put' && phase === 'entering') entered.push(structuredClone(args));
+          if (operation === 'put' && phase === 'entering') {
+            entered.push(structuredClone(args));
+          }
         },
       },
     });
     const puts = grouping === 'single' ? [[21n], [10n], [20n], [11n], [7n], [99n]] : [[21n], [10n, 20n, 11n, 7n, 99n]];
     try {
-      for (const tokens of puts) streamer.put([tokens]);
+      for (const tokens of puts) {
+        streamer.put([tokens]);
+      }
       streamer.end();
     } finally {
       hook.restore();

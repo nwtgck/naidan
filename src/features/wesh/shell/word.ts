@@ -64,7 +64,9 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
   let literalStart = 0;
 
   const appendLiteralRun = ({ endIndex }: { endIndex: number }): void => {
-    if (endIndex <= literalStart) return;
+    if (endIndex <= literalStart) {
+      return;
+    }
     current += raw.slice(literalStart, endIndex);
   };
 
@@ -75,7 +77,9 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
 
   for (let index = 0; index < raw.length; index += 1) {
     const character = raw[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     const currentMode: ShellWordQuoteMode = mode;
     const constructEnd = (() => {
@@ -148,7 +152,9 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
 
     if (character === '$' && raw[index + 1] === '"') {
       appendLiteralRun({ endIndex: index });
-      if (current.length > 0) flushCurrent();
+      if (current.length > 0) {
+        flushCurrent();
+      }
       mode = 'double';
       index += 1;
       literalStart = index + 1;
@@ -157,7 +163,9 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
 
     if (character === '$' && raw[index + 1] === "'") {
       appendLiteralRun({ endIndex: index });
-      if (current.length > 0) flushCurrent();
+      if (current.length > 0) {
+        flushCurrent();
+      }
       const endIndex = findShellAnsiCQuotedEnd({ text: raw, startIndex: index }) ?? raw.length;
       parts.push({
         text: decodeShellAnsiCQuote({ text: raw.slice(index + 2, endIndex) }),
@@ -171,14 +179,18 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
 
     if (character === "'") {
       appendLiteralRun({ endIndex: index });
-      if (current.length > 0) flushCurrent();
+      if (current.length > 0) {
+        flushCurrent();
+      }
       mode = 'single';
       literalStart = index + 1;
       continue;
     }
     if (character === '"') {
       appendLiteralRun({ endIndex: index });
-      if (current.length > 0) flushCurrent();
+      if (current.length > 0) {
+        flushCurrent();
+      }
       mode = 'double';
       literalStart = index + 1;
       continue;
@@ -193,7 +205,9 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
       }
       if (nextCharacter !== undefined) {
         appendLiteralRun({ endIndex: index });
-        if (current.length > 0) flushCurrent();
+        if (current.length > 0) {
+          flushCurrent();
+        }
         parts.push({
           text: nextCharacter,
           quoted: true,
@@ -223,7 +237,9 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
   let literalStart = 0;
 
   const flushCurrent = (): void => {
-    if (current.length === 0) return;
+    if (current.length === 0) {
+      return;
+    }
     parts.push({
       text: current,
       quoted: true,
@@ -236,7 +252,9 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
     text: string,
     expandVariables: boolean,
   }): void => {
-    if (text.length === 0) return;
+    if (text.length === 0) {
+      return;
+    }
     if (current.length > 0 && currentExpandVariables !== expandVariables) {
       flushCurrent();
     }
@@ -245,7 +263,9 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
   };
 
   const appendPendingLiteralRun = ({ endIndex }: { endIndex: number }): void => {
-    if (endIndex <= literalStart) return;
+    if (endIndex <= literalStart) {
+      return;
+    }
     appendText({
       text: raw.slice(literalStart, endIndex),
       expandVariables: true,
@@ -258,7 +278,9 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
 
   for (let index = 0; index < raw.length; index += 1) {
     const character = raw[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'outer-double':

@@ -17,9 +17,12 @@ const registration: NaidanRpcRegistration = {
 };
 
 it('projects nested Vue proxies to a cloneable persistence record without losing headers', () => {
-  const form = reactive(registration); expect(() => structuredClone(form.transport)).toThrow();
-  const dto = rpcRegistrationToDto({ registration: form }); expect(structuredClone(dto)).toEqual(dto);
-  const restored = rpcRegistrationFromDto({ value: dto }); expect(restored).toEqual(registration);
+  const form = reactive(registration);
+  expect(() => structuredClone(form.transport)).toThrow();
+  const dto = rpcRegistrationToDto({ registration: form });
+  expect(structuredClone(dto)).toEqual(dto);
+  const restored = rpcRegistrationFromDto({ value: dto });
+  expect(restored).toEqual(registration);
 });
 
 it('projects declared storage fields without adding RPC-only property retention', () => {
@@ -30,7 +33,8 @@ it('projects declared storage fields without adding RPC-only property retention'
 });
 
 it('has no redundant registration version and requires the new declared fields', () => {
-  const dto = rpcRegistrationToDto({ registration }); expect(dto).not.toHaveProperty('version');
+  const dto = rpcRegistrationToDto({ registration });
+  expect(dto).not.toHaveProperty('version');
   const { peerPublicKey, inboundAllowedMethods, connectOnStartup, ...rest } = dto;
   const old = { ...rest, peerId: peerPublicKey, allowedMethods: inboundAllowedMethods, autoConnect: connectOnStartup };
   expect(() => rpcRegistrationFromDto({ value: old })).toThrow();
@@ -38,8 +42,10 @@ it('has no redundant registration version and requires the new declared fields',
 
 it('RPC endpoints clone only a registration reference, never a live proxy transport', () => {
   const endpoint = reactive({ type: 'naidan_rpc' as const, registrationId: registration.id });
-  const cloned = cloneEndpoint({ endpoint }); expect(structuredClone(cloned)).toEqual({ type: 'naidan_rpc', registrationId: registration.id });
-  expect(isConfiguredEndpoint({ endpoint })).toBe(true); expect(isConfiguredEndpoint({ endpoint: { type: 'naidan_rpc', registrationId: undefined } })).toBe(false);
+  const cloned = cloneEndpoint({ endpoint });
+  expect(structuredClone(cloned)).toEqual({ type: 'naidan_rpc', registrationId: registration.id });
+  expect(isConfiguredEndpoint({ endpoint })).toBe(true);
+  expect(isConfiguredEndpoint({ endpoint: { type: 'naidan_rpc', registrationId: undefined } })).toBe(false);
   expect(areEndpointsEqual({ left: endpoint, right: { type: 'naidan_rpc', registrationId: toNaidanRpcRegistrationId({ raw: 'another-registration' }) } })).toBe(false);
 });
 
@@ -83,6 +89,9 @@ it('validates outgoing headers outside the DTO on both read and write', () => {
 
 it('copies headers and method arrays so mutating the form cannot widen the saved record', () => {
   const form = reactive({ ...registration, inboundAllowedMethods: ['generateChat'], transport: { ...registration.transport, headers: [{ name: 'Authorization', value: 'secret' }] } });
-  const dto = rpcRegistrationToDto({ registration: form }); form.inboundAllowedMethods.push('generateImage'); form.transport.headers[0]!.value = 'changed';
-  expect(dto.inboundAllowedMethods).toEqual(['generateChat']); expect(dto.transport.headers[0]!.value).toBe('secret');
+  const dto = rpcRegistrationToDto({ registration: form });
+  form.inboundAllowedMethods.push('generateImage');
+form.transport.headers[0]!.value = 'changed';
+expect(dto.inboundAllowedMethods).toEqual(['generateChat']);
+expect(dto.transport.headers[0]!.value).toBe('secret');
 });

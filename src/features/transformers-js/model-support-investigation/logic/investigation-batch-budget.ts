@@ -34,10 +34,14 @@ export function settledReplayMetadataBytes({ summary, freshMetadata, recovery }:
   freshMetadata: ModelSupportInvestigationRun['freshMetadata'];
   recovery: ModelSupportInvestigationRecovery | undefined;
 }): number | undefined {
-  if (summary === undefined || recovery === undefined) return undefined;
+  if (summary === undefined || recovery === undefined) {
+    return undefined;
+  }
   // A file-level timeout can finish the collector while its last read is still
   // in flight. Its late chunk is deliberately discarded, not counted as zero.
-  if (summary.files.some(file => file.status === 'timeout')) return undefined;
+  if (summary.files.some(file => file.status === 'timeout')) {
+    return undefined;
+  }
   let receivedBytes = summary.receivedBytes;
   if (freshMetadata !== undefined) {
     // Raw sidecars omit size probes, discarded responses and failed acquisition
@@ -71,7 +75,9 @@ export function settledReplayMetadataBytes({ summary, freshMetadata, recovery }:
         throw new Error(`Unhandled fresh metadata request status: ${_ex}`);
       }
       }
-    })) return undefined;
+    })) {
+      return undefined;
+    }
     // A memory replay reads the same downloaded bytes a second time. Its
     // counter and the HTTP counter overlap; summing them would double-charge.
     receivedBytes = Math.max(receivedBytes, freshMetadata.receivedBytes);
@@ -102,8 +108,12 @@ export async function withInvestigationTargetBudget<T>({ start, timeoutMs, stop 
   timeoutMs: number | undefined;
   stop: () => void;
 }): Promise<T> {
-  if (timeoutMs === undefined) return await start();
-  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) throw new Error('Invalid investigation target timeout');
+  if (timeoutMs === undefined) {
+    return await start();
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new Error('Invalid investigation target timeout');
+  }
   if (timeoutMs === 0) {
     try {
       stop();
@@ -113,7 +123,9 @@ export async function withInvestigationTargetBudget<T>({ start, timeoutMs, stop 
   return await new Promise<T>((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       const failure = new InvestigationTargetBudgetError({ timeoutMs });
       try {
@@ -124,12 +136,16 @@ export async function withInvestigationTargetBudget<T>({ start, timeoutMs, stop 
       reject(failure);
     }, timeoutMs);
     void Promise.resolve().then(start).then(value => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timer);
       resolve(value);
     }, error => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timer);
       reject(error);

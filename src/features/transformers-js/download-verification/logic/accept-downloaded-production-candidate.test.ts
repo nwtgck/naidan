@@ -24,11 +24,14 @@ describe('acceptDownloadedProductionCandidate', () => {
     const observations: unknown[] = [];
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
       verifyDownloadedModelCandidate: vi.fn(async () => {
-        now = 120_000; return { device: 'webgpu' };
+        now = 120_000;
+        return { device: 'webgpu' };
       }),
       verifyDownloadedModelRevision: vi.fn(),
       dispose: vi.fn(async () => {
-        entered.resolve(); await release.promise; now = 123_000;
+        entered.resolve();
+        await release.promise;
+        now = 123_000;
       }),
     });
     const running = acceptDownloadedProductionCandidate({
@@ -61,7 +64,8 @@ describe('acceptDownloadedProductionCandidate', () => {
       resolvedRevision: REVISION,
       candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
-        observations.push(observation); throw new Error('observer failure');
+        observations.push(observation);
+        throw new Error('observer failure');
       },
     });
     await expect(running).rejects.toBe(cleanupFailure);

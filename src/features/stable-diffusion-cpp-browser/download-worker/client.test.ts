@@ -8,26 +8,31 @@ let worker: EventTarget & { terminate: ReturnType<typeof vi.fn> };
 const construct = vi.fn();
 
 beforeEach(() => {
-  vi.clearAllMocks(); remote.wrap.mockReturnValue(remote); remote.cancel.mockResolvedValue(undefined);
+  vi.clearAllMocks();
+  remote.wrap.mockReturnValue(remote);
+  remote.cancel.mockResolvedValue(undefined);
   vi.stubGlobal('Worker', class extends EventTarget {
     terminate = vi.fn();
 
     constructor() {
       super();
       // eslint-disable-next-line @typescript-eslint/no-this-alias -- Retain the externally constructed Worker test instance.
-      worker = this; construct();
+      worker = this;
+      construct();
     }
   });
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const files = imageModelRecipes[1]!.files;
 
 it('does not create a Worker for an already cancelled action', async () => {
-  const controller = new AbortController(); controller.abort();
+  const controller = new AbortController();
+  controller.abort();
   await expect(downloadImageRecipeInWorker({ files, signal: controller.signal, onProgress() {} })).rejects.toThrow();
   expect(construct).not.toHaveBeenCalled();
 });
@@ -41,7 +46,9 @@ it('releases the transport and worker after completion, rejecting invalid progre
     report({ progress: { phase: 'complete', index: 0, count: 1, path: 'model.gguf', repository: 'org/repo', total: 32, completed: 32, fileTotal: 32, fileCompleted: 32, processed: 32 } });
   });
   await downloadImageRecipeInWorker({ files, signal: new AbortController().signal, onProgress });
-  expect(onProgress).toHaveBeenCalledOnce(); expect(worker.terminate).toHaveBeenCalledOnce(); expect(remote.release).toHaveBeenCalledOnce();
+  expect(onProgress).toHaveBeenCalledOnce();
+  expect(worker.terminate).toHaveBeenCalledOnce();
+  expect(remote.release).toHaveBeenCalledOnce();
 });
 
 it('catches worker startup failures instead of leaking it', async () => {
@@ -56,15 +63,21 @@ it('terminates a crashed worker without waiting indefinitely for its RPC', async
   remote.download.mockImplementation(() => new Promise(() => undefined));
   const running = downloadImageRecipeInWorker({ files, signal: new AbortController().signal, onProgress() {} });
   worker.dispatchEvent(new Event('error'));
-  await expect(running).rejects.toThrow('Worker failed'); expect(worker.terminate).toHaveBeenCalledOnce();
+  await expect(running).rejects.toThrow('Worker failed');
+  expect(worker.terminate).toHaveBeenCalledOnce();
 });
 
 it('allows graceful checkpointing on pause before applying the bounded termination fallback', async () => {
-  vi.useFakeTimers(); remote.download.mockImplementation(() => new Promise(() => undefined));
+  vi.useFakeTimers();
+  remote.download.mockImplementation(() => new Promise(() => undefined));
   const controller = new AbortController();
   const running = downloadImageRecipeInWorker({ files, signal: controller.signal, onProgress() {} });
-  const result = expect(running).rejects.toThrow('Download paused'); controller.abort();
-  expect(remote.cancel).toHaveBeenCalledOnce(); expect(worker.terminate).not.toHaveBeenCalled();
-  await vi.advanceTimersByTimeAsync(5000); await result;
-  expect(worker.terminate).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  const result = expect(running).rejects.toThrow('Download paused');
+  controller.abort();
+  expect(remote.cancel).toHaveBeenCalledOnce();
+  expect(worker.terminate).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(5000);
+  await result;
+  expect(worker.terminate).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
 });

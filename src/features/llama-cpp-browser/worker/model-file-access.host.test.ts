@@ -10,7 +10,9 @@ const opfs = vi.fn();
 beforeEach(() => {
   readAsArrayBuffer.mockReset().mockImplementation(blob => {
     const bytes = slices.get(blob);
-    if (!bytes) throw new Error('Unexpected full-file read');
+    if (!bytes) {
+      throw new Error('Unexpected full-file read');
+    }
     return new Uint8Array(bytes).buffer;
   });
   opfs.mockReset();

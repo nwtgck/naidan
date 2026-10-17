@@ -9,9 +9,15 @@ const MAX_NORMAL_INPUT_LINE_BYTES = 1024 * 1024;
 const ZERO_BLOCK = new Uint8Array(OUTPUT_BUFFER_SIZE);
 
 function decodeHexNibble({ byte }: { byte: number }): number | undefined {
-  if (byte >= 0x30 && byte <= 0x39) return byte - 0x30;
-  if (byte >= 0x41 && byte <= 0x46) return byte - 0x41 + 10;
-  if (byte >= 0x61 && byte <= 0x66) return byte - 0x61 + 10;
+  if (byte >= 0x30 && byte <= 0x39) {
+    return byte - 0x30;
+  }
+  if (byte >= 0x41 && byte <= 0x46) {
+    return byte - 0x41 + 10;
+  }
+  if (byte >= 0x61 && byte <= 0x66) {
+    return byte - 0x61 + 10;
+  }
   return undefined;
 }
 
@@ -45,9 +51,13 @@ class BufferedByteOutput {
   }
 
   async seek({ position }: { position: number }): Promise<void> {
-    if (!Number.isSafeInteger(position) || position < 0) throw new Error('invalid output position');
+    if (!Number.isSafeInteger(position) || position < 0) {
+      throw new Error('invalid output position');
+    }
     await this.flush();
-    if (!this.#seekable && position < this.#position) throw new Error('cannot seek backwards in output');
+    if (!this.#seekable && position < this.#position) {
+      throw new Error('cannot seek backwards in output');
+    }
     if (!this.#seekable && position > this.#position) {
       await this.writeZeros({ count: position - this.#position });
       await this.flush();
@@ -68,14 +78,18 @@ class BufferedByteOutput {
           position: this.#seekable ? this.#position + offset : undefined,
         }),
       });
-      if (result.bytesWritten <= 0) throw new Error('write returned no progress');
+      if (result.bytesWritten <= 0) {
+        throw new Error('write returned no progress');
+      }
       offset += result.bytesWritten;
     }
     this.#position += bytes.byteLength;
   }
 
   async writeByte({ byte }: { byte: number }): Promise<void> {
-    if (this.#length === this.#buffer.byteLength) await this.flush();
+    if (this.#length === this.#buffer.byteLength) {
+      await this.flush();
+    }
     this.#buffer[this.#length] = byte;
     this.#length += 1;
   }
@@ -94,7 +108,9 @@ class BufferedByteOutput {
       this.#buffer.set(bytes.subarray(offset, offset + copied), this.#length);
       this.#length += copied;
       offset += copied;
-      if (this.#length === this.#buffer.byteLength) await this.flush();
+      if (this.#length === this.#buffer.byteLength) {
+        await this.flush();
+      }
     }
   }
 
@@ -108,7 +124,9 @@ class BufferedByteOutput {
   }
 
   async flush(): Promise<void> {
-    if (this.#length === 0) return;
+    if (this.#length === 0) {
+      return;
+    }
     await this.#writeDirect({ bytes: this.#buffer.subarray(0, this.#length) });
     this.#length = 0;
   }
@@ -209,10 +227,14 @@ async function reversePlain({
         case 'ignore-line':
           continue;
         case 'scan-for-hex':
-          if (nibble !== undefined) state = { kind: 'low', highNibble: nibble };
+          if (nibble !== undefined) {
+            state = { kind: 'low', highNibble: nibble };
+          }
           continue;
         case 'low':
-          if (isPlainWhitespace({ byte })) continue;
+          if (isPlainWhitespace({ byte })) {
+            continue;
+          }
           if (nibble !== undefined) {
             await output.writeByte({ byte: (state.highNibble << 4) | nibble });
             state = { kind: 'high', invalidSeparatorSeen: false };
@@ -221,7 +243,9 @@ async function reversePlain({
           state = { kind: 'scan-for-hex' };
           continue;
         case 'high':
-          if (isPlainWhitespace({ byte })) continue;
+          if (isPlainWhitespace({ byte })) {
+            continue;
+          }
           if (nibble !== undefined) {
             state = { kind: 'low', highNibble: nibble };
             continue;
@@ -251,16 +275,24 @@ function decodeNormalLine({
   line: Uint8Array,
 }): { address: number, bytes: Uint8Array } | undefined {
   let start = 0;
-  while (start < line.byteLength && (line[start] === 0x20 || line[start] === 0x09)) start += 1;
-  if (start === line.byteLength) return undefined;
+  while (start < line.byteLength && (line[start] === 0x20 || line[start] === 0x09)) {
+    start += 1;
+  }
+  if (start === line.byteLength) {
+    return undefined;
+  }
   let colon = start;
-  while (colon < line.byteLength && line[colon] !== 0x3a) colon += 1;
+  while (colon < line.byteLength && line[colon] !== 0x3a) {
+    colon += 1;
+  }
   if (colon === line.byteLength) {
     throw new Error(`invalid number '${new TextDecoder().decode(line.subarray(start))}'`);
   }
 
   let address = 0n;
-  if (colon === start) throw new Error("invalid number ''");
+  if (colon === start) {
+    throw new Error("invalid number ''");
+  }
   for (let index = start; index < colon; index += 1) {
     if (line[index] === 0x20 || line[index] === 0x09) {
       return {
@@ -273,7 +305,9 @@ function decodeNormalLine({
       throw new Error(`invalid number '${new TextDecoder().decode(line.subarray(start, colon))}'`);
     }
     address = (address << 4n) | BigInt(nibble);
-    if (address > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('address is too large');
+    if (address > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error('address is too large');
+    }
   }
 
   const decoded: number[] = [];
@@ -299,7 +333,9 @@ function decodeNormalLine({
     }
 
     const nibble = decodeHexNibble({ byte });
-    if (nibble === undefined) break;
+    if (nibble === undefined) {
+      break;
+    }
     if (highNibble === undefined) {
       highNibble = nibble;
     } else {
@@ -332,13 +368,19 @@ async function reverseNormal({
   let pendingLength = 0;
 
   const processLine = async (): Promise<void> => {
-    if (pendingLength > 0 && pending[pendingLength - 1] === 0x0d) pendingLength -= 1;
+    if (pendingLength > 0 && pending[pendingLength - 1] === 0x0d) {
+      pendingLength -= 1;
+    }
     const decoded = decodeNormalLine({ line: pending.subarray(0, pendingLength) });
     pendingLength = 0;
-    if (decoded === undefined) return;
+    if (decoded === undefined) {
+      return;
+    }
 
     const targetPosition = decoded.address + outputOffset;
-    if (!Number.isSafeInteger(targetPosition)) throw new Error('address is too large');
+    if (!Number.isSafeInteger(targetPosition)) {
+      throw new Error('address is too large');
+    }
     await output.seek({ position: targetPosition });
     await output.writeBytes({ bytes: decoded.bytes });
   };
@@ -362,7 +404,9 @@ async function reverseNormal({
         pendingLength += 1;
       }
     }
-    if (pendingLength > 0) await processLine();
+    if (pendingLength > 0) {
+      await processLine();
+    }
   } finally {
     try {
       await output.flush();

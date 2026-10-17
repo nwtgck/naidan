@@ -24,7 +24,9 @@ export function promiseAllKeyed<const TPromises extends object>(
   try {
     for (const key of Reflect.ownKeys(promises)) {
       const descriptor = Reflect.getOwnPropertyDescriptor(promises, key);
-      if (descriptor?.enumerable !== true) continue;
+      if (descriptor?.enumerable !== true) {
+        continue;
+      }
 
       keys.push(key);
       pendingPromises.push(Promise.resolve(Reflect.get(promises, key)));

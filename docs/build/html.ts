@@ -47,7 +47,9 @@ function appendAssets({ document, assets }: { document: Document; assets: PageAs
 }
 
 function appendBootstrap({ document, bootstrap }: { document: Document; bootstrap: string | undefined }): void {
-  if (bootstrap === undefined) return;
+  if (bootstrap === undefined) {
+    return;
+  }
   const script = document.createElement('script');
   script.src = bootstrap;
   // The self-hosted classic script restores preferences before body paint.
@@ -63,16 +65,24 @@ export function findIslands({ body }: { body: string }): DocsIslandId[] {
   const ids = new Set<string>();
   for (const element of fragment.querySelectorAll('[id]')) {
     const id = element.id;
-    if (ids.has(id)) throw new Error(`Duplicate Docs HTML ID: ${id}`);
+    if (ids.has(id)) {
+      throw new Error(`Duplicate Docs HTML ID: ${id}`);
+    }
     ids.add(id);
   }
   const result = new Set<DocsIslandId>();
   for (const element of fragment.querySelectorAll('[data-docs-island]')) {
     const name = element.getAttribute('data-docs-island');
-    if (!name || !isIslandName(name)) throw new Error(`Unknown Docs island: ${String(name)}`);
-    if (element.parentElement?.closest('[data-docs-island]')) throw new Error('Nested Docs islands are not supported');
+    if (!name || !isIslandName(name)) {
+      throw new Error(`Unknown Docs island: ${String(name)}`);
+    }
+    if (element.parentElement?.closest('[data-docs-island]')) {
+      throw new Error('Nested Docs islands are not supported');
+    }
     const serialized = element.getAttribute('data-docs-props');
-    if (!serialized) throw new Error(`Missing props for Docs island ${name}`);
+    if (!serialized) {
+      throw new Error(`Missing props for Docs island ${name}`);
+    }
     islandSpecs[name].parse({ serialized });
     result.add(name);
   }
@@ -129,9 +139,13 @@ function renderDocumentInternal({ page, assets, bootstrap, guidePrefetch }: {
     appendAssets({ document, assets });
     appendBootstrap({ document, bootstrap });
     switch (guidePrefetch) {
-    case 'enabled': appendGuidePrefetchRules({ document }); break;
+    case 'enabled': appendGuidePrefetchRules({ document });
+      break;
     case 'disabled': break;
-    default: { const unreachable: never = guidePrefetch; throw new Error(`Unknown prefetch mode: ${unreachable}`); }
+    default: {
+      const unreachable: never = guidePrefetch;
+      throw new Error(`Unknown prefetch mode: ${unreachable}`);
+    }
     }
     return dom.serialize();
   } finally {
@@ -157,7 +171,9 @@ function markExternalLink({ document, anchor, locale }: { document: Document; an
     }
     return;
   }
-  if (anchor.closest('[data-docs-island]')) throw new Error('Use ExternalLink.vue for external links inside an island');
+  if (anchor.closest('[data-docs-island]')) {
+    throw new Error('Use ExternalLink.vue for external links inside an island');
+  }
   anchor.setAttribute('data-docs-external', '');
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
@@ -174,8 +190,12 @@ function markExternalLink({ document, anchor, locale }: { document: Document; an
 }
 
 function validateBody({ document, locale, page }: { document: Document; locale: DocsLocale; page: RenderedPage['page'] }): void {
-  if (document.querySelectorAll('h1').length !== 1) throw new Error('A Docs page must render exactly one h1');
-  if (document.body.querySelector('script, iframe, object, embed, base')) throw new Error('Active content in static Docs body');
+  if (document.querySelectorAll('h1').length !== 1) {
+    throw new Error('A Docs page must render exactly one h1');
+  }
+  if (document.body.querySelector('script, iframe, object, embed, base')) {
+    throw new Error('Active content in static Docs body');
+  }
   const origin = 'https://naidan-docs.invalid';
   const currentHref = docsHref({ locale, page });
   for (const marked of document.body.querySelectorAll(`[${DOCS_ARTICLE_PREFETCH_ATTRIBUTE}]`)) {
@@ -186,13 +206,17 @@ function validateBody({ document, locale, page }: { document: Document; locale: 
   }
   for (const element of document.body.querySelectorAll('*')) {
     for (const attribute of element.attributes) {
-      if (attribute.name.toLowerCase().startsWith('on')) throw new Error('Inline event attribute in Docs HTML');
+      if (attribute.name.toLowerCase().startsWith('on')) {
+        throw new Error('Inline event attribute in Docs HTML');
+      }
     }
   }
   for (const element of document.body.querySelectorAll('[href], [src], use')) {
     for (const attribute of ['href', 'src', 'xlink:href']) {
       const value = element.getAttribute(attribute);
-      if (value === null) continue;
+      if (value === null) {
+        continue;
+      }
       const url = new URL(value, origin);
       const appEntryPath = element.tagName === 'A' ? element.getAttribute('data-docs-app-entry-path') : null;
       if (attribute === 'href' && appEntryPath !== null) {
@@ -207,12 +231,18 @@ function validateBody({ document, locale, page }: { document: Document; locale: 
         // Media must use emitted local assets; no data-document exception.
         throw new Error(`Unsupported Docs URL protocol: ${url.protocol}`);
       }
-      if ((attribute === 'src' || attribute === 'xlink:href' || element.tagName.toLowerCase() === 'use') && url.origin !== origin) throw new Error('Docs media must be local build assets');
+      if ((attribute === 'src' || attribute === 'xlink:href' || element.tagName.toLowerCase() === 'use') && url.origin !== origin) {
+        throw new Error('Docs media must be local build assets');
+      }
       if (element.tagName === 'A' && url.origin !== origin) {
         element.setAttribute('rel', 'noopener noreferrer');
         element.setAttribute('referrerpolicy', 'no-referrer');
-        if (isGitHubUrl({ href: url.href })) element.setAttribute('target', '_blank');
-        if (appEntryPath === null) markExternalLink({ document, anchor: element, locale });
+        if (isGitHubUrl({ href: url.href })) {
+          element.setAttribute('target', '_blank');
+        }
+        if (appEntryPath === null) {
+          markExternalLink({ document, anchor: element, locale });
+        }
       }
     }
   }
@@ -225,9 +255,12 @@ function renderEntryDocument({ assets, bootstrap, kind }: { assets: PageAssets; 
   try {
     const document = dom.window.document;
     const nav = document.querySelector('nav');
-    if (!nav) throw new Error('Missing language navigation');
+    if (!nav) {
+      throw new Error('Missing language navigation');
+    }
     switch (kind) {
-    case 'language': document.title = 'Naidan Docs'; break;
+    case 'language': document.title = 'Naidan Docs';
+      break;
     case 'missing': {
       document.title = '404 | Naidan Docs';
       const robots = document.createElement('meta');
@@ -236,16 +269,24 @@ function renderEntryDocument({ assets, bootstrap, kind }: { assets: PageAssets; 
       document.head.append(robots);
       break;
     }
-    default: { const unreachable: never = kind; throw new Error(`Unknown entry: ${unreachable}`); }
+    default: {
+      const unreachable: never = kind;
+      throw new Error(`Unknown entry: ${unreachable}`);
+    }
     }
     for (const locale of DOCS_LOCALES) {
       const messages = entryMessages[locale];
       const paragraph = document.createElement('p');
       paragraph.lang = locale;
       switch (kind) {
-      case 'language': paragraph.textContent = messages.choose; break;
-      case 'missing': paragraph.textContent = `${messages.missing_title} — ${messages.missing_body}`; break;
-      default: { const unreachable: never = kind; throw new Error(`Unknown entry: ${unreachable}`); }
+      case 'language': paragraph.textContent = messages.choose;
+        break;
+      case 'missing': paragraph.textContent = `${messages.missing_title} — ${messages.missing_body}`;
+        break;
+      default: {
+        const unreachable: never = kind;
+        throw new Error(`Unknown entry: ${unreachable}`);
+      }
       }
       nav.before(paragraph);
       const anchor = document.createElement('a');
@@ -278,15 +319,21 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
     document.head.append(meta);
     for (const locale of DOCS_LOCALES) {
       const page = pages[locale];
-      if (page.page !== 'index' || page.locale !== locale) throw new Error('Invalid localized Docs home');
-      if (findIslands({ body: page.body }).some(name => name !== 'search')) throw new Error('The language-neutral home permits only the Docs search island');
+      if (page.page !== 'index' || page.locale !== locale) {
+        throw new Error('Invalid localized Docs home');
+      }
+      if (findIslands({ body: page.body }).some(name => name !== 'search')) {
+        throw new Error('The language-neutral home permits only the Docs search island');
+      }
       const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [], favicon: assets.favicon }, bootstrap: undefined }));
       try {
         const template = document.createElement('template');
         template.dataset.docsLocale = locale;
         template.dataset.title = localized.window.document.title;
         template.dataset.description = page.description;
-        for (const child of localized.window.document.body.childNodes) template.content.append(document.importNode(child, true));
+        for (const child of localized.window.document.body.childNodes) {
+          template.content.append(document.importNode(child, true));
+        }
         document.body.append(template);
       } finally {
         localized.window.close();
@@ -296,9 +343,13 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
     // External/self-hosted code works under the existing CSP without inline grants.
     appendBootstrap({ document, bootstrap });
     switch (guidePrefetch) {
-    case 'enabled': appendGuidePrefetchRules({ document }); break;
+    case 'enabled': appendGuidePrefetchRules({ document });
+      break;
     case 'disabled': break;
-    default: { const unreachable: never = guidePrefetch; throw new Error(`Unknown prefetch mode: ${unreachable}`); }
+    default: {
+      const unreachable: never = guidePrefetch;
+      throw new Error(`Unknown prefetch mode: ${unreachable}`);
+    }
     }
     return dom.serialize();
   } finally {

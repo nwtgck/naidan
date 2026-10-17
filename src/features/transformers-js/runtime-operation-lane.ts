@@ -19,9 +19,13 @@ export function createTransformersJsRuntimeLane() {
   let closed: Error | undefined;
 
   function startNext(): void {
-    if (closed !== undefined || active !== undefined) return;
+    if (closed !== undefined || active !== undefined) {
+      return;
+    }
     const entry = waiting.shift();
-    if (entry === undefined) return;
+    if (entry === undefined) {
+      return;
+    }
     active = entry;
     // Register both outcomes immediately, including callbacks which throw before
     // returning a promise. Closing may reject the public result before this work
@@ -36,7 +40,9 @@ export function createTransformersJsRuntimeLane() {
         entry.result.reject(closed ?? (entry.controller.signal.aborted ? entry.controller.signal.reason : error));
       } finally {
         entry.detach();
-        if (active === entry) active = undefined;
+        if (active === entry) {
+          active = undefined;
+        }
         startNext();
       }
     })();
@@ -47,7 +53,9 @@ export function createTransformersJsRuntimeLane() {
       signal: AbortSignal | undefined,
       operation: Entry['operation'],
     }): Promise<void> {
-      if (closed !== undefined) return Promise.reject(closed);
+      if (closed !== undefined) {
+        return Promise.reject(closed);
+      }
       const controller = new AbortController();
       const aborted = new DOMException('Generation aborted', 'AbortError');
       const result = Promise.withResolvers<void>();
@@ -61,9 +69,15 @@ export function createTransformersJsRuntimeLane() {
             return closed === undefined && active === entry && !controller.signal.aborted;
           },
           assertActive() {
-            if (closed !== undefined) throw closed;
-            if (controller.signal.aborted) throw aborted;
-            if (active !== entry) throw new Error('Transformers.js runtime operation is no longer active');
+            if (closed !== undefined) {
+              throw closed;
+            }
+            if (controller.signal.aborted) {
+              throw aborted;
+            }
+            if (active !== entry) {
+              throw new Error('Transformers.js runtime operation is no longer active');
+            }
           },
           abort() {
             controller.abort(aborted);
@@ -82,7 +96,9 @@ export function createTransformersJsRuntimeLane() {
           result.reject(aborted);
         }
       }
-      if (signal?.aborted === true) return Promise.reject(aborted);
+      if (signal?.aborted === true) {
+        return Promise.reject(aborted);
+      }
       waiting.push(entry);
       signal?.addEventListener('abort', onAbort, { once: true });
       startNext();
@@ -92,7 +108,9 @@ export function createTransformersJsRuntimeLane() {
       return active?.owner;
     },
     close({ error }: { error: Error }): void {
-      if (closed !== undefined) return;
+      if (closed !== undefined) {
+        return;
+      }
       closed = error;
       for (const entry of waiting.splice(0)) {
         entry.detach();

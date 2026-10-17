@@ -11,7 +11,9 @@ function splitAtSeparators({
   separatorCharacters: ReadonlySet<string>,
   columnsLimit: number | undefined,
 }): string[] {
-  if (columnsLimit === 1) return [line];
+  if (columnsLimit === 1) {
+    return [line];
+  }
 
   const fields: string[] = [];
   let fieldStart = 0;
@@ -19,8 +21,12 @@ function splitAtSeparators({
   for (const character of line) {
     const characterStart = offset;
     offset += character.length;
-    if (!separatorCharacters.has(character)) continue;
-    if (columnsLimit !== undefined && fields.length >= columnsLimit - 1) continue;
+    if (!separatorCharacters.has(character)) {
+      continue;
+    }
+    if (columnsLimit !== undefined && fields.length >= columnsLimit - 1) {
+      continue;
+    }
     fields.push(line.slice(fieldStart, characterStart));
     fieldStart = offset;
   }
@@ -145,7 +151,9 @@ function collectListItems({
       }
       continue;
     }
-    for (const field of fields) items.push(field);
+    for (const field of fields) {
+      items.push(field);
+    }
   }
   return items;
 }
@@ -329,7 +337,9 @@ function chooseListLayout({
   }
 
   let maximumWidth = 0;
-  for (const itemWidth of itemWidths) maximumWidth = Math.max(maximumWidth, itemWidth);
+  for (const itemWidth of itemWidths) {
+    maximumWidth = Math.max(maximumWidth, itemWidth);
+  }
   return { columns: 1, widths: [maximumWidth] };
 }
 
@@ -448,7 +458,9 @@ function buildTableModel({
 
 function tableColumnCount({ model }: { model: TableModel }): number {
   let columnCount = model.header?.length ?? 0;
-  for (const row of model.rows) columnCount = Math.max(columnCount, row.length);
+  for (const row of model.rows) {
+    columnCount = Math.max(columnCount, row.length);
+  }
   return columnCount;
 }
 
@@ -558,8 +570,12 @@ export function renderTable({
   }
 
   const widths: number[] = [];
-  if (showHeader) includeTableRowWidths({ widths, row: header });
-  for (const row of rows) includeTableRowWidths({ widths, row });
+  if (showHeader) {
+    includeTableRowWidths({ widths, row: header });
+  }
+  for (const row of rows) {
+    includeTableRowWidths({ widths, row });
+  }
   const rightAligned = rightAlignedColumns({
     selectors: options.tableRight,
     header,

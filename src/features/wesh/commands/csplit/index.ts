@@ -954,7 +954,9 @@ async function handleDirectoryInput({
   options: CsplitOptions,
   suffixConversion: SuffixConversion | undefined,
 }): Promise<WeshCommandResult | undefined> {
-  if (input === '-') return undefined;
+  if (input === '-') {
+    return undefined;
+  }
 
   try {
     const stat = await context.files.stat({ path: resolvePath({ cwd: context.cwd, path: input }) });
@@ -1151,7 +1153,9 @@ export const csplitCommandImplementation: WeshCommandImplementation = {
         options,
         suffixConversion,
       });
-      if (directoryResult !== undefined) return directoryResult;
+      if (directoryResult !== undefined) {
+        return directoryResult;
+      }
 
       const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
       const lines = splitIntoLineRecords({

@@ -179,7 +179,9 @@ describe('Production replay explicit image platform ownership', () => {
     expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
     const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
     const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
-    if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') throw new Error('Missing owned Worker scope constructors');
+    if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') {
+      throw new Error('Missing owned Worker scope constructors');
+    }
     expect(globalThis.self).toBeInstanceOf(workerScope);
     expect(globalThis.self).toBeInstanceOf(dedicatedScope);
     await expect(fetch(dataUrl)).rejects.toThrow('Unprovided replay transport');
@@ -232,7 +234,9 @@ describe('Production replay explicit image platform ownership', () => {
       expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
       const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
       const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
-      if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') throw new Error('Missing owned Worker scope constructors');
+      if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') {
+        throw new Error('Missing owned Worker scope constructors');
+      }
       expect(globalThis.self).toBeInstanceOf(workerScope);
       expect(globalThis.self).toBeInstanceOf(dedicatedScope);
       expect(globalThis.ImageData).toBe(platform.ImageData);
@@ -396,7 +400,9 @@ describe('Production replay construction ownership', () => {
     let restoreOwnedSpy: (() => void) | undefined;
     const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async () => {
       const ownedSpy = ort.InferenceSession.create;
-      if (!vi.isMockFunction(ownedSpy)) throw new Error('Fixture did not reach its ORT replacement boundary');
+      if (!vi.isMockFunction(ownedSpy)) {
+        throw new Error('Fixture did not reach its ORT replacement boundary');
+      }
       restoreOwnedSpy = ownedSpy.mockRestore.bind(ownedSpy);
       ownedSpy.mockRestore = throwingRestore;
       throw primary;
@@ -437,7 +443,9 @@ describe('Production replay construction ownership', () => {
       [Symbol.dispose]() {
         importer.mockRestore();
         // Also clean the pre-fix failure so it cannot contaminate another case.
-        if (vi.isMockFunction(ort.InferenceSession.create)) ort.InferenceSession.create.mockRestore();
+        if (vi.isMockFunction(ort.InferenceSession.create)) {
+          ort.InferenceSession.create.mockRestore();
+        }
         vi.unstubAllGlobals();
       },
     };
@@ -520,10 +528,14 @@ describe('Production replay native inference boundary', () => {
       parameters: undefined,
     });
     expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
-    if (!invocation) throw new Error('Actual inference was not reached');
+    if (!invocation) {
+      throw new Error('Actual inference was not reached');
+    }
     const captured = invocation;
     const tensor = captured.options.attention_mask;
-    if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer attention mask');
+    if (!(tensor instanceof harness.runtime.Tensor)) {
+      throw new Error('Expected actual tokenizer attention mask');
+    }
     generate.mockClear();
     await expect(async () => captured.model.generate({
       ...captured.options,
@@ -555,10 +567,14 @@ describe('Production replay native inference boundary', () => {
       parameters: undefined,
     });
     expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
-    if (!invocation) throw new Error('Actual inference was not reached');
+    if (!invocation) {
+      throw new Error('Actual inference was not reached');
+    }
     const captured = invocation;
     const tensor = captured.options.input_ids;
-    if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer tensor');
+    if (!(tensor instanceof harness.runtime.Tensor)) {
+      throw new Error('Expected actual tokenizer tensor');
+    }
     generate.mockClear();
     await expect(async () => captured.model.generate({
       ...captured.options,
@@ -754,10 +770,14 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     function createNativeBoundary(): ProviderReplayGenerate {
       return async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected actual strategy input and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected actual strategy input and streamer');
+        }
         const output = tokenizer.encode('Synthetic output.', { add_special_tokens: false }).map(BigInt);
         options.streamer.put(input.tolist());
-        for (const token of output) options.streamer.put([[token]]);
+        for (const token of output) {
+          options.streamer.put([[token]]);
+        }
         options.streamer.end();
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
       };
@@ -830,14 +850,18 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       const outputs: Uint8Array[] = [];
       const generate: ProviderReplayGenerate = async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected real input Tensor and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected real input Tensor and streamer');
+        }
         inputs.push({ ids: Array.from(input.data, String), maxNewTokens: options.max_new_tokens });
         const output = tokenizer.encode('Synthetic output.', { add_special_tokens: false }).map(BigInt);
         outputs.push(new Uint8Array(BigInt64Array.from(output).buffer));
         // A scheduling control, not captured model inference: no timer or drain.
         // Actual tokenizer, streamer, parser, service and Comlink remain in place.
         options.streamer.put(input.tolist());
-        for (const token of output) options.streamer.put([[token]]);
+        for (const token of output) {
+          options.streamer.put([[token]]);
+        }
         options.streamer.end();
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
       };
@@ -860,7 +884,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
           trace,
         });
         const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
-        if (scenario === 'first-turn') firstSettled = settled;
+        if (scenario === 'first-turn') {
+          firstSettled = settled;
+        }
         // Keep live trace access, not a post-hoc repaired settlement or history.
         requests.push({
           input,
@@ -917,7 +943,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     expect(capturedNative.inputs.map(input => input.maxNewTokens)).toEqual([16, 16, 1]);
     expect(captures).toHaveLength(1);
     const recorded = await captures[0]!.takeGenerationCapture();
-    if (recorded.status !== 'captured') throw new Error(`Expected captured generation, received ${recorded.status}`);
+    if (recorded.status !== 'captured') {
+      throw new Error(`Expected captured generation, received ${recorded.status}`);
+    }
     const identities = snapshot.requests.map((request, index) => ({
       runId: 'synthetic-owner-comlink',
       workerEpoch: 1,
@@ -1006,7 +1034,9 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
     expect(harness.observations.inferenceCalls).toHaveLength(1);
     expect(captures).toHaveLength(1);
     const recorded = await captures[0]!.takeGenerationCapture();
-    if (recorded.status !== 'captured') throw new Error(`Expected partial native capture, received ${recorded.status}`);
+    if (recorded.status !== 'captured') {
+      throw new Error(`Expected partial native capture, received ${recorded.status}`);
+    }
     const identity = {
       runId: 'synthetic-owner-rejected',
       workerEpoch: 1,
@@ -1044,12 +1074,16 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: new Uint8Array([1, 2, 3]) }],
       generate: async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected actual strategy input and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected actual strategy input and streamer');
+        }
         const output = tokenizer.encode('Synthetic output.', { add_special_tokens: false }).map(BigInt);
         // Synthetic transport probe, not captured inference. No timers, yields,
         // callback wrappers or returning a completed assistant response.
         options.streamer.put(input.tolist());
-        for (const token of output) options.streamer.put([[token]]);
+        for (const token of output) {
+          options.streamer.put([[token]]);
+        }
         options.streamer.end();
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
       },

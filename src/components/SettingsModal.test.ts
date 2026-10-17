@@ -266,7 +266,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const state = ref<Settings>({ ...mockSettings, systemPrompt: 'Saved prompt' });
     const previous = { endpoint: state.value.endpoint, modelId: state.value.defaultModelId };
     const update = vi.fn<ReturnType<typeof useSettings>['updateGlobalModelAndEndpoint']>(async ({ endpoint, modelId }) => {
-      state.value = { ...state.value, endpoint, defaultModelId: modelId }; return 'applied';
+      state.value = { ...state.value, endpoint, defaultModelId: modelId };
+      return 'applied';
     });
     vi.mocked(useSettings).mockReturnValue({ ...useSettings(), settings: state, updateGlobalModelAndEndpoint: update });
     const wrapper = mount(SettingsModal, {
@@ -275,14 +276,19 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
     await flushPromises();
     const connection = wrapper.getComponent(ConnectionTab);
-    if (dirty) connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
-    const route = useRoute(); route.query.settings = 'llama-cpp-browser'; await flushPromises();
+    if (dirty) {
+      connection.vm.$emit('update:modelValue', { ...connection.props('modelValue'), systemPrompt: 'Unsaved prompt' });
+    }
+    const route = useRoute();
+    route.query.settings = 'llama-cpp-browser';
+    await flushPromises();
     const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
     const apply = manager.props('applyDefaultModel') as ApplyDefaultModel;
     const model = { id: 'user/local', name: 'Local Q4_K_M', size: 128, importedAt: 1 };
     expect(await apply({ model, previous })).toBe('applied');
     expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
-    route.query.settings = 'connection'; await flushPromises();
+    route.query.settings = 'connection';
+    await flushPromises();
     const updated = wrapper.getComponent(ConnectionTab);
     expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.name, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
     expect(updated.props('hasUnsavedChanges')).toBe(dirty);
@@ -291,7 +297,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   it('suspends only the retained model manager while the performance screen is open', async () => {
-    const route = useRoute(); route.query.settings = 'llama-cpp-browser';
+    const route = useRoute();
+    route.query.settings = 'llama-cpp-browser';
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: {
@@ -309,9 +316,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
     expect(manager.props('suspended')).toBe(false);
-    await wrapper.setProps({ suspended: true }); await flushPromises();
+    await wrapper.setProps({ suspended: true });
+    await flushPromises();
     expect(manager.props('suspended')).toBe(true);
-    await wrapper.setProps({ suspended: false }); await flushPromises();
+    await wrapper.setProps({ suspended: false });
+    await flushPromises();
     expect(manager.props('suspended')).toBe(false);
     expect(wrapper.getComponent({ name: 'LlamaCppBrowserManager' }).vm).toBe(manager.vm);
     wrapper.unmount();
@@ -1004,14 +1013,18 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
       await modelSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
       const clearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
-      if (clearBtn) clearBtn.click();
+      if (clearBtn) {
+        clearBtn.click();
+      }
       await nextTick();
 
       // Select "Use Current Chat Model" for Title Model
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
       await titleSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
       const titleClearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
-      if (titleClearBtn) titleClearBtn.click();
+      if (titleClearBtn) {
+        titleClearBtn.click();
+      }
 
       await flushPromises();
 

@@ -48,11 +48,17 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     return available.value;
   }
   async function executeQuery({ page, generation }: { page: number, generation: number }): Promise<void> {
-    if (generation !== queryGeneration || disposed) return;
+    if (generation !== queryGeneration || disposed) {
+      return;
+    }
     if (!refreshAvailability()) {
-      items.value = []; total.value = 0; loading.value = false;
-      currentPage.value = 1; requestedPage = 1;
-      warnings.value = []; warningCount.value = 0;
+      items.value = [];
+      total.value = 0;
+      loading.value = false;
+      currentPage.value = 1;
+      requestedPage = 1;
+      warnings.value = [];
+      warningCount.value = 0;
       return;
     }
     loading.value = true;
@@ -62,7 +68,9 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       let targetPage = page;
       for (;;) {
         const result = await client.query({ query: { text: queryText, offset: (targetPage - 1) * pageSize, limit: pageSize } });
-        if (generation !== queryGeneration || !refreshAvailability()) return;
+        if (generation !== queryGeneration || !refreshAvailability()) {
+          return;
+        }
         const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
         if (targetPage > lastPage && result.total > 0) {
           // A deletion can remove the last page. Move only toward an existing
@@ -80,13 +88,19 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
         return;
       }
     } catch (cause) {
-      if (generation === queryGeneration && !disposed) error.value = cause instanceof Error ? cause.message : String(cause);
+      if (generation === queryGeneration && !disposed) {
+        error.value = cause instanceof Error ? cause.message : String(cause);
+      }
     } finally {
-      if (generation === queryGeneration) loading.value = false;
+      if (generation === queryGeneration) {
+        loading.value = false;
+      }
     }
   }
   function drainQueries(): void {
-    if (runningQuery) return;
+    if (runningQuery) {
+      return;
+    }
     runningQuery = (async () => {
       // Keep only one active read and the latest pending request. Finishing
       // recovery safely is preferable to terminating a Worker mid-write.
@@ -98,11 +112,15 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       }
     })().finally(() => {
       runningQuery = undefined;
-      if (queuedQuery) drainQueries();
+      if (queuedQuery) {
+        drainQueries();
+      }
     });
   }
   function runQuery({ page, generation }: { page: number, generation: number }): Promise<void> {
-    if (generation === queryGeneration) loading.value = refreshAvailability();
+    if (generation === queryGeneration) {
+      loading.value = refreshAvailability();
+    }
     return new Promise<void>(resolve => {
       queuedQuery?.resolve();
       queuedQuery = { page, generation, resolve };
@@ -119,9 +137,11 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     error.value = '';
     loading.value = refreshAvailability();
     if (!available.value) {
-      items.value = []; total.value = 0;
+      items.value = [];
+      total.value = 0;
       currentPage.value = 1;
-      warnings.value = []; warningCount.value = 0;
+      warnings.value = [];
+      warningCount.value = 0;
       return;
     }
     // Keep the last completed result visible throughout debounce and the Worker
@@ -134,7 +154,9 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
   async function goToPage({ page }: { page: number }): Promise<void> {
     // During a replacement or after failure, controls still describe the last
     // completed query. Reload retries the pending target without mixing pages.
-    if (loading.value || error.value || !refreshAvailability() || !Number.isInteger(page) || page < 1 || page > pageCount.value || page === currentPage.value) return;
+    if (loading.value || error.value || !refreshAvailability() || !Number.isInteger(page) || page < 1 || page > pageCount.value || page === currentPage.value) {
+      return;
+    }
     requestedPage = page;
     await runQuery({ page, generation: invalidateQuery() });
   }
@@ -158,7 +180,9 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       detailError.value = '';
       return Promise.resolve();
     }
-    if (pendingSelection?.id === id) return pendingSelection.operation;
+    if (pendingSelection?.id === id) {
+      return pendingSelection.operation;
+    }
     const generation = ++detailGeneration;
     detailLoading.value = true;
     detailError.value = '';
@@ -167,11 +191,17 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     const operation = (async () => {
       try {
         const record = await storageService.loadImageGeneration({ id });
-        if (generation !== detailGeneration || !refreshAvailability()) return;
-        if (!record) throw new Error('Image generation history record is missing');
+        if (generation !== detailGeneration || !refreshAvailability()) {
+          return;
+        }
+        if (!record) {
+          throw new Error('Image generation history record is missing');
+        }
         selected.value = record;
       } catch (cause) {
-        if (generation === detailGeneration && !disposed) detailError.value = cause instanceof Error ? cause.message : String(cause);
+        if (generation === detailGeneration && !disposed) {
+          detailError.value = cause instanceof Error ? cause.message : String(cause);
+        }
       } finally {
         if (generation === detailGeneration) {
           detailLoading.value = false;
@@ -183,13 +213,18 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     return operation;
   }
   async function remove({ id }: { id: ImageGenerationId }): Promise<void> {
-    if (!refreshAvailability()) throw new Error('Image generation history requires OPFS storage');
+    if (!refreshAvailability()) {
+      throw new Error('Image generation history requires OPFS storage');
+    }
     await storageService.deleteImageGeneration({ id });
     if (selected.value?.id === id) {
       // Deletion may finish while another detail is loading. Remove the deleted
       // snapshot without invalidating the user's newer selection.
-      if (pendingSelection && pendingSelection.id !== id) selected.value = undefined;
-      else clearSelection();
+      if (pendingSelection && pendingSelection.id !== id) {
+        selected.value = undefined;
+      } else {
+        clearSelection();
+      }
     } else if (pendingSelection?.id === id) {
       // A late read must not redisplay the deleted record over another detail.
       detailGeneration++;
@@ -200,12 +235,16 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
     await reload();
   }
   async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined> {
-    if (!refreshAvailability()) return undefined;
+    if (!refreshAvailability()) {
+      return undefined;
+    }
     const blob = await storageService.getFile({ binaryObjectId });
     return refreshAvailability() ? blob ?? undefined : undefined;
   }
   async function removeImage({ id, binaryObjectId }: { id: ImageGenerationId, binaryObjectId: BinaryObjectId }): Promise<void> {
-    if (!refreshAvailability()) throw new Error('Image generation history requires OPFS storage');
+    if (!refreshAvailability()) {
+      throw new Error('Image generation history requires OPFS storage');
+    }
     if (detailLoading.value || selected.value?.id !== id || selected.value.result.binaryObjectId !== binaryObjectId) {
       throw new Error('The selected image has changed');
     }
@@ -221,7 +260,10 @@ export function useImageGenerationHistory({ getStorageType }: { getStorageType: 
       switch (event.type) {
       case 'migration': break;
       case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': return;
-      default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = event;
+        throw new Error(String(exhaustive));
+      }
       }
       invalidateQuery();
       storageGeneration++;

@@ -18,7 +18,10 @@ function assertRunning({ worker }: { worker: Worker }): void {
   case 'installed':
   case 'activating':
   case 'activated': return;
-  default: { const exhaustive: never = worker.state; throw new Error(`Unexpected worker state: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = worker.state;
+    throw new Error(`Unexpected worker state: ${exhaustive}`);
+  }
   }
 }
 
@@ -40,7 +43,9 @@ export function createRegistrationPlatform({ scope, fetch }: { scope: string; fe
   }
 
   function handle({ worker, viewer }: { worker: Worker | undefined; viewer: string }): ServiceWorker | null {
-    if (!worker) return null;
+    if (!worker) {
+      return null;
+    }
     let value = worker.handles.get(viewer);
     if (!value) {
       value = Object.assign(new EventTarget(), {
@@ -75,21 +80,31 @@ export function createRegistrationPlatform({ scope, fetch }: { scope: string; fe
 
   function transition({ worker, state }: { worker: Worker; state: ServiceWorkerState }): void {
     worker.state = state;
-    for (const view of worker.handles.values()) view.dispatchEvent(new Event('statechange'));
+    for (const view of worker.handles.values()) {
+      view.dispatchEvent(new Event('statechange'));
+    }
   }
 
   async function tryActivate(): Promise<void> {
-    if (!waiting || installing === waiting || active?.state === 'activating') return;
-    if (active && !waiting.skipped && [...pages.values()].some(page => page.controlled)) return;
+    if (!waiting || installing === waiting || active?.state === 'activating') {
+      return;
+    }
+    if (active && !waiting.skipped && [...pages.values()].some(page => page.controlled)) {
+      return;
+    }
     const next = waiting;
     const previous = active;
     waiting = undefined;
     active = next;
     transition({ worker: next, state: 'activating' });
-    if (previous) transition({ worker: previous, state: 'redundant' });
+    if (previous) {
+      transition({ worker: previous, state: 'redundant' });
+    }
     for (const page of pages.values()) {
       // No implicit clients.claim(): initially uncontrolled documents stay so.
-      if (!page.controlled) continue;
+      if (!page.controlled) {
+        continue;
+      }
       page.controlled = next;
       page.container.dispatchEvent(new Event('controllerchange'));
     }
@@ -123,10 +138,14 @@ export function createRegistrationPlatform({ scope, fetch }: { scope: string; fe
     const worker = workers.get(key)!;
     installing = worker;
     transition({ worker, state: 'installing' });
-    for (const view of registrations.values()) view.dispatchEvent(new Event('updatefound'));
+    for (const view of registrations.values()) {
+      view.dispatchEvent(new Event('updatefound'));
+    }
     try {
       await worker.runtime.lifecycle('install');
-      if (waiting) transition({ worker: waiting, state: 'redundant' });
+      if (waiting) {
+        transition({ worker: waiting, state: 'redundant' });
+      }
       waiting = worker;
       installing = undefined;
       transition({ worker, state: 'installed' });
@@ -154,7 +173,9 @@ export function createRegistrationPlatform({ scope, fetch }: { scope: string; fe
   async function request({ pageKey, path = '', navigation = false }: { pageKey: string; path?: string; navigation?: boolean }): Promise<Response> {
     const controller = pages.get(pageKey)?.controlled;
     const url = new URL(path, scope).href;
-    if (!controller) return fetch(new Request(url));
+    if (!controller) {
+      return fetch(new Request(url));
+    }
     assertRunning({ worker: controller });
     return controller.runtime.request({ url, clientId: pageKey, navigation });
   }

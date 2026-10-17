@@ -41,7 +41,9 @@ export async function checkStorage(): Promise<void> {
       read(destination: Uint8Array, options: { at: number }): number,
       close(): void,
     }> };
-    if (typeof syncFile.createSyncAccessHandle !== 'function') throw new Error('OPFS sync access');
+    if (typeof syncFile.createSyncAccessHandle !== 'function') {
+      throw new Error('OPFS sync access');
+    }
     const handle = await syncFile.createSyncAccessHandle();
     try {
       const bytes = new Uint8Array(1);
@@ -53,7 +55,9 @@ export async function checkStorage(): Promise<void> {
     }
     await navigator.locks.request(name, async () => {});
   } finally {
-    if (created) await root.removeEntry(name);
+    if (created) {
+      await root.removeEntry(name);
+    }
   }
 }
 
@@ -66,10 +70,14 @@ export function supportsMemory64(): boolean {
 }
 
 export async function checkJspi(): Promise<void> {
-  if (typeof WebAssembly === 'undefined') throw new Error('WebAssembly');
+  if (typeof WebAssembly === 'undefined') {
+    throw new Error('WebAssembly');
+  }
   const wasm: object = WebAssembly;
   if (!('promising' in wasm) || typeof wasm.promising !== 'function'
-    || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function') throw new Error('JSPI');
+    || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function') {
+    throw new Error('JSPI');
+  }
   const integration = wasm as PromiseIntegration;
   const probe = await WebAssembly.instantiate(suspensionProbe, {
     e: {
@@ -80,14 +88,20 @@ export async function checkJspi(): Promise<void> {
     },
   });
   const run = probe.instance.exports.run;
-  if (typeof run !== 'function' || await integration.promising(run)() !== 7) throw new Error('JSPI suspension');
+  if (typeof run !== 'function' || await integration.promising(run)() !== 7) {
+    throw new Error('JSPI suspension');
+  }
 }
 
 export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'> | undefined> {
-  if (typeof navigator === 'undefined' || !navigator.gpu) return 'webgpu';
+  if (typeof navigator === 'undefined' || !navigator.gpu) {
+    return 'webgpu';
+  }
   try {
     const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return 'webgpu';
+    if (!adapter) {
+      return 'webgpu';
+    }
     return adapter.features.has('shader-f16') ? undefined : 'shader-f16';
   } catch {
     return 'webgpu';

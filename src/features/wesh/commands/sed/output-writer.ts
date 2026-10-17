@@ -29,7 +29,9 @@ export function createSedOutputWriter({
 }): SedOutputWriter {
   let previousOutputMissingNewline = false;
   const terminatePendingOutput = async (): Promise<void> => {
-    if (!previousOutputMissingNewline) return;
+    if (!previousOutputMissingNewline) {
+      return;
+    }
     await writer.write({
       text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
     });

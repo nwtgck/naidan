@@ -80,7 +80,9 @@ const stats = computed(() => {
     lineCount = 0;
   } else {
     for (let i = 0; i < text.length; i++) {
-      if (text[i] === '\n') lineCount++;
+      if (text[i] === '\n') {
+        lineCount++;
+      }
     }
   }
 
@@ -149,9 +151,13 @@ function calculateLineHeights() {
   // However, debouncing the whole operation is the key.
 
   const heights = lines.map(line => {
-    if (line === '') return lineHeight;
+    if (line === '') {
+      return lineHeight;
+    }
     ghost.textContent = line;
-    if (line.length === 0) ghost.textContent = '\u200b';
+    if (line.length === 0) {
+      ghost.textContent = '\u200b';
+    }
     return ghost.clientHeight || lineHeight;
   });
 
@@ -167,7 +173,9 @@ watch([content, wrapMode], () => {
     return;
   case 'wrap-on':
     // Debounce for wrap-on mode to prevent typing lag
-    if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+    if (lineHeightDebounceTimer) {
+      clearTimeout(lineHeightDebounceTimer);
+    }
     lineHeightDebounceTimer = setTimeout(() => {
       calculateLineHeights();
     }, 100); // 100ms delay to unblock the UI thread during rapid typing
@@ -181,7 +189,9 @@ watch([content, wrapMode], () => {
 
 // --- History Management ---
 function recordHistory({ newContent }: { newContent: string }) {
-  if (newContent === history.value[historyIndex.value]) return;
+  if (newContent === history.value[historyIndex.value]) {
+    return;
+  }
 
   if (historyIndex.value < history.value.length - 1) {
     history.value = history.value.slice(0, historyIndex.value + 1);
@@ -213,7 +223,9 @@ let historyTimeout: ReturnType<typeof setTimeout> | undefined;
 watch(content, (newVal) => {
   emit('update:content', { content: newVal });
 
-  if (historyTimeout) clearTimeout(historyTimeout);
+  if (historyTimeout) {
+    clearTimeout(historyTimeout);
+  }
   historyTimeout = setTimeout(() => {
     recordHistory({ newContent: newVal });
   }, 500);
@@ -250,7 +262,9 @@ function performSearch() {
       let match;
       while ((match = re.exec(text)) !== null) {
         matches.push({ start: match.index, end: match.index + match[0].length });
-        if (!re.global) break;
+        if (!re.global) {
+          break;
+        }
       }
     } catch (e) {
       console.error('Search error:', e);
@@ -287,8 +301,11 @@ function performSearch() {
 
   searchMatches.value = matches;
   if (matches.length > 0) {
-    if (searchIndex.value === -1) searchIndex.value = 0;
-    else if (searchIndex.value >= matches.length) searchIndex.value = matches.length - 1;
+    if (searchIndex.value === -1) {
+      searchIndex.value = 0;
+    } else if (searchIndex.value >= matches.length) {
+      searchIndex.value = matches.length - 1;
+    }
   } else {
     searchIndex.value = -1;
   }
@@ -296,7 +313,9 @@ function performSearch() {
 
 function highlightMatch({ index }: { index: number }) {
   const match = searchMatches.value[index];
-  if (!match || !textareaRef.value) return;
+  if (!match || !textareaRef.value) {
+    return;
+  }
 
   const el = textareaRef.value;
   el.focus();
@@ -308,19 +327,25 @@ function highlightMatch({ index }: { index: number }) {
 }
 
 function nextMatch() {
-  if (searchMatches.value.length === 0) return;
+  if (searchMatches.value.length === 0) {
+    return;
+  }
   searchIndex.value = (searchIndex.value + 1) % searchMatches.value.length;
   highlightMatch({ index: searchIndex.value });
 }
 
 function prevMatch() {
-  if (searchMatches.value.length === 0) return;
+  if (searchMatches.value.length === 0) {
+    return;
+  }
   searchIndex.value = (searchIndex.value - 1 + searchMatches.value.length) % searchMatches.value.length;
   highlightMatch({ index: searchIndex.value });
 }
 
 function handleReplace({ mode }: { mode: 'single' | 'all' }) {
-  if (!findText.value) return;
+  if (!findText.value) {
+    return;
+  }
 
   switch (mode) {
   case 'all': {
@@ -372,7 +397,9 @@ function handleReplace({ mode }: { mode: 'single' | 'all' }) {
   }
   case 'single': {
     const el = textareaRef.value;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     const start = el.selectionStart;
     const end = el.selectionEnd;
@@ -439,16 +466,22 @@ function handleReplace({ mode }: { mode: 'single' | 'all' }) {
 // --- Cmd+D "Multi-Edit Mode" Implementation ---
 function handleCmdD() {
   const el = textareaRef.value;
-  if (!el) return;
+  if (!el) {
+    return;
+  }
 
   let selection = content.value.substring(el.selectionStart, el.selectionEnd);
 
   if (!selection) {
     const text = content.value;
     let wordStart = el.selectionStart;
-    while (wordStart > 0 && /\w/.test(text[wordStart - 1] || '')) wordStart--;
+    while (wordStart > 0 && /\w/.test(text[wordStart - 1] || '')) {
+      wordStart--;
+    }
     let wordEnd = el.selectionEnd;
-    while (wordEnd < text.length && /\w/.test(text[wordEnd] || '')) wordEnd++;
+    while (wordEnd < text.length && /\w/.test(text[wordEnd] || '')) {
+      wordEnd++;
+    }
 
     if (wordStart !== wordEnd) {
       el.setSelectionRange(wordStart, wordEnd);
@@ -522,8 +555,10 @@ function handleScroll() {
 function toggleWrap() {
   const current = wrapMode.value;
   switch (current) {
-  case 'wrap-on': wrapMode.value = 'wrap-off'; break;
-  case 'wrap-off': wrapMode.value = 'wrap-on'; break;
+  case 'wrap-on': wrapMode.value = 'wrap-off';
+    break;
+  case 'wrap-off': wrapMode.value = 'wrap-on';
+    break;
   default: {
     const _ex: never = current;
     throw new Error(`Unhandled wrap mode: ${_ex}`);
@@ -546,7 +581,9 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
     nextTick(() => {
       const findInput = document.querySelector('[data-testid="find-input"]') as HTMLInputElement;
       findInput?.focus();
-      if (selection) findInput?.select();
+      if (selection) {
+        findInput?.select();
+      }
     });
   }
   if (isMod && event.key === 'd') {
@@ -555,8 +592,11 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
   }
   if (isMod && event.key === 'z') {
     event.preventDefault();
-    if (event.shiftKey) handleRedo();
-    else handleUndo();
+    if (event.shiftKey) {
+      handleRedo();
+    } else {
+      handleUndo();
+    }
   }
   if (event.key === 'Escape') {
     if (isMultiEditMode.value) {
@@ -594,8 +634,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (historyTimeout) clearTimeout(historyTimeout);
-  if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+  if (historyTimeout) {
+    clearTimeout(historyTimeout);
+  }
+  if (lineHeightDebounceTimer) {
+    clearTimeout(lineHeightDebounceTimer);
+  }
   if (ghostElement && ghostElement.parentNode) {
     ghostElement.parentNode.removeChild(ghostElement);
   }

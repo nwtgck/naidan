@@ -93,7 +93,9 @@ export function detectStandardToolCallProtocol({
 }): StandardToolCallProtocol {
   const cacheKey = tokenizer as object;
   const cached = detectedProtocolByTokenizer.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   let protocol: StandardToolCallProtocol = 'json-tagged';
   try {
@@ -126,25 +128,37 @@ export function detectStandardToolCallProtocol({
 
 function rendersDelimitedPythonicProbe({ rendered }: { rendered: string }): boolean {
   const startIndex = rendered.indexOf(DELIMITED_PYTHONIC_TOOL_CALL_OPEN);
-  if (startIndex === -1) return false;
+  if (startIndex === -1) {
+    return false;
+  }
   const contentStart = startIndex + DELIMITED_PYTHONIC_TOOL_CALL_OPEN.length;
   const endIndex = rendered.indexOf(DELIMITED_PYTHONIC_TOOL_CALL_CLOSE, contentStart);
-  if (endIndex === -1) return false;
-  if (rendered.indexOf(DELIMITED_PYTHONIC_TOOL_CALL_OPEN, contentStart) !== -1) return false;
+  if (endIndex === -1) {
+    return false;
+  }
+  if (rendered.indexOf(DELIMITED_PYTHONIC_TOOL_CALL_OPEN, contentStart) !== -1) {
+    return false;
+  }
 
   const parsed = parseDelimitedPythonicToolCallPayload({
     content: rendered.slice(contentStart, endIndex),
   });
-  if (parsed?.length !== 1) return false;
+  if (parsed?.length !== 1) {
+    return false;
+  }
 
   const [call] = parsed;
-  if (!call || call.name !== PROBE_TOOL_NAME) return false;
+  if (!call || call.name !== PROBE_TOOL_NAME) {
+    return false;
+  }
   const argumentKeys = Object.keys(call.arguments);
   if (
     argumentKeys.length !== 1
     || argumentKeys[0] !== PROBE_ARGUMENT_NAME
     || call.arguments[PROBE_ARGUMENT_NAME] !== PROBE_ARGUMENT_VALUE
-  ) return false;
+  ) {
+    return false;
+  }
 
   return rendered.indexOf(PROBE_RESULT_VALUE, endIndex + DELIMITED_PYTHONIC_TOOL_CALL_CLOSE.length) !== -1;
 }
@@ -157,14 +171,18 @@ export function resolveStandardToolHandling({ tokenizer, debugLog }: {
   debugLog: ({ event, details }: { event: string; details: Record<string, unknown> }) => void;
 }): StandardToolHandling {
   const cached = handlingByTokenizer.get(tokenizer);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const outputProtocol = detectStandardToolCallProtocol({ tokenizer, debugLog });
   let handling: StandardToolHandling = { outputProtocol, historyEncoding: 'native-template', preservedDelimiterIds: [] };
   switch (outputProtocol) {
   case 'delimited-pythonic': {
     try {
       const ids = readAtomicDelimiterIds({ tokenizer });
-      if (ids.some(id => tokenizer.all_special_ids.includes(id))) handling = { ...handling, preservedDelimiterIds: ids };
+      if (ids.some(id => tokenizer.all_special_ids.includes(id))) {
+        handling = { ...handling, preservedDelimiterIds: ids };
+      }
     } catch (error) {
       debugLog({ event: 'standard tool delimiter token observation unavailable', details: { error: error instanceof Error ? error.message : String(error) } });
     }
@@ -173,19 +191,27 @@ export function resolveStandardToolHandling({ tokenizer, debugLog }: {
   case 'json-tagged': {
     try {
       const ids = readAtomicDelimiterIds({ tokenizer });
-      if (!ids.every(id => tokenizer.all_special_ids.includes(id))) throw new Error('Unclassified content route lacks special delimiter tokens');
+      if (!ids.every(id => tokenizer.all_special_ids.includes(id))) {
+        throw new Error('Unclassified content route lacks special delimiter tokens');
+      }
       const render = ({ messages }: { messages: Parameters<PreTrainedTokenizer['apply_chat_template']>[0] }) => {
         const result = tokenizer.apply_chat_template(messages, { tools: [PROBE_TOOL], add_generation_prompt: true, tokenize: false, return_dict: false });
-        if (typeof result !== 'string') throw new Error('Non-text protocol probe');
+        if (typeof result !== 'string') {
+          throw new Error('Non-text protocol probe');
+        }
         return result;
       };
       const native = render({ messages: PROBE_MESSAGES });
       const plain = PROBE_MESSAGES.map(({ ...message }) => {
-        if (message.role !== 'assistant') return message;
+        if (message.role !== 'assistant') {
+          return message;
+        }
         return { role: 'assistant', content: '' };
       });
       // A positive JSON/native history render is not replaced by a vocabulary hint.
-      if (native !== render({ messages: plain })) throw new Error('Native structured tool history is not omitted');
+      if (native !== render({ messages: plain })) {
+        throw new Error('Native structured tool history is not omitted');
+      }
       const placeholder = '__naidan_assistant_content_probe__';
       const withContent = ({ content }: { content: string }) => plain.map(message => message.role === 'assistant' ? { ...message, content } : message);
       const probeFrame = `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}[${PROBE_TOOL_NAME}(${PROBE_ARGUMENT_NAME}="${PROBE_ARGUMENT_VALUE}")]${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
@@ -202,7 +228,10 @@ export function resolveStandardToolHandling({ tokenizer, debugLog }: {
     }
     break;
   }
-  default: { const exhaustive: never = outputProtocol; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = outputProtocol;
+    throw new Error(String(exhaustive));
+  }
   }
   handlingByTokenizer.set(tokenizer, handling);
   return handling;
@@ -212,10 +241,14 @@ function readAtomicDelimiterIds({ tokenizer }: { tokenizer: PreTrainedTokenizer 
   const ids = [DELIMITED_PYTHONIC_TOOL_CALL_OPEN, DELIMITED_PYTHONIC_TOOL_CALL_CLOSE].map(marker => {
     const encoded = tokenizer.encode(marker, { add_special_tokens: false });
     if (encoded.length !== 1 || !Number.isSafeInteger(encoded[0]) || encoded[0]! < 0 || encoded[0] === tokenizer.unk_token_id
-      || tokenizer.decode(encoded, { skip_special_tokens: false }) !== marker) throw new Error('Tool delimiter is not an atomic token');
+      || tokenizer.decode(encoded, { skip_special_tokens: false }) !== marker) {
+      throw new Error('Tool delimiter is not an atomic token');
+    }
     return encoded[0]!;
   });
-  if (new Set(ids).size !== 2) throw new Error('Tool delimiters share a token ID');
+  if (new Set(ids).size !== 2) {
+    throw new Error('Tool delimiters share a token ID');
+  }
   return ids;
 }
 
@@ -226,29 +259,45 @@ export function validateStandardToolCallsForHandling({ toolCalls, handling, assi
   switch (handling.historyEncoding) {
   case 'native-template': return;
   case 'verified-content':
-    if (toolCalls.length > 1) throw new Error('Content tool history does not support multiple calls');
-    if (toolCalls.length > 0) readContentToolAssistantText({ content: assistantContent });
-    for (const call of toolCalls) serializeContentToolCall({ call });
+    if (toolCalls.length > 1) {
+      throw new Error('Content tool history does not support multiple calls');
+    }
+    if (toolCalls.length > 0) {
+      readContentToolAssistantText({ content: assistantContent });
+    }
+    for (const call of toolCalls) {
+      serializeContentToolCall({ call });
+    }
     return;
-  default: { const exhaustive: never = handling.historyEncoding; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = handling.historyEncoding;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 export function formatStandardMessagesForToolHandling({ messages, handling }: {
   messages: InferenceMessage[]; handling: StandardToolHandling;
 }): Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }> {
-  if (messages.some(message => message.reasoning !== undefined)) throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
+  if (messages.some(message => message.reasoning !== undefined)) {
+    throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
+  }
   switch (handling.historyEncoding) {
   case 'native-template': return formatStandardMessagesForToolCallProtocol({ messages, protocol: handling.outputProtocol });
   case 'verified-content': break;
-  default: { const exhaustive: never = handling.historyEncoding; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = handling.historyEncoding;
+    throw new Error(String(exhaustive));
+  }
   }
   const consumedResults = new Set<number>();
   const usedIds = new Set<ToolCall['id']>();
   return messages.map((message, index) => {
     const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandledMessage } = message;
     unhandledMessage satisfies Record<PropertyKey, never>;
-    if (role === 'tool' && !consumedResults.has(index)) throw new Error('Unassociated tool result in content history');
+    if (role === 'tool' && !consumedResults.has(index)) {
+      throw new Error('Unassociated tool result in content history');
+    }
     if (tool_calls === undefined || tool_calls.length === 0) {
       return { role, content: readStandardTextContent({ content }), ...(tool_call_id === undefined ? {} : { tool_call_id }) };
     }
@@ -275,10 +324,14 @@ function readContentToolAssistantText({ content }: { content: unknown }): string
 function serializeContentToolCall({ call }: { call: ToolCall }): string {
   const identifier = /^[A-Za-z_$][A-Za-z0-9_$.-]*$/;
   const args = z.record(z.string(), z.json()).parse(parseToolArgumentsObject({ functionName: call.function.name, argumentsJson: call.function.arguments }));
-  if (!identifier.test(call.function.name) || Object.keys(args).some(key => !identifier.test(key))) throw new Error('Tool content frame requires identifier names');
+  if (!identifier.test(call.function.name) || Object.keys(args).some(key => !identifier.test(key))) {
+    throw new Error('Tool content frame requires identifier names');
+  }
   const payload = `[${call.function.name}(${Object.entries(args).map(([key, value]) => `${key}=${JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e')}`).join(', ')})]`;
   const parsed = parseDelimitedPythonicToolCallPayload({ content: payload });
-  if (JSON.stringify(parsed) !== JSON.stringify([{ name: call.function.name, arguments: args }])) throw new Error('Tool content arguments do not roundtrip');
+  if (JSON.stringify(parsed) !== JSON.stringify([{ name: call.function.name, arguments: args }])) {
+    throw new Error('Tool content arguments do not roundtrip');
+  }
   return `${DELIMITED_PYTHONIC_TOOL_CALL_OPEN}${payload}${DELIMITED_PYTHONIC_TOOL_CALL_CLOSE}`;
 }
 
@@ -289,7 +342,9 @@ export function formatStandardMessagesForToolCallProtocol({
   messages: InferenceMessage[],
   protocol: StandardToolCallProtocol,
 }): Array<{ role: string; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }> {
-  if (messages.some(message => message.reasoning !== undefined)) throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
+  if (messages.some(message => message.reasoning !== undefined)) {
+    throw new Error('Structured reasoning requires a reviewed model-specific template adapter.');
+  }
   return messages.map(message => {
     const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
@@ -304,7 +359,9 @@ export function formatStandardMessagesForToolCallProtocol({
 
 // Join text only at this model boundary, with no invented separators or trim.
 function readStandardTextContent({ content }: { content: InferenceMessage['content'] }): string {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') {
+    return content;
+  }
   return content.map(part => {
     switch (part.type) {
     case 'text': {
@@ -313,7 +370,10 @@ function readStandardTextContent({ content }: { content: InferenceMessage['conte
       return text;
     }
     case 'image_url': throw new Error('The standard text strategy cannot preserve an image input.');
-    default: { const exhaustive: never = part; throw new Error(`Unhandled standard content: ${String(exhaustive)}`); }
+    default: {
+      const exhaustive: never = part;
+      throw new Error(`Unhandled standard content: ${String(exhaustive)}`);
+    }
     }
   }).join('');
 }
@@ -325,7 +385,9 @@ function formatToolCallsForProtocol({
   toolCalls: ToolCall[] | undefined,
   protocol: StandardToolCallProtocol,
 }): unknown {
-  if (!toolCalls) return undefined;
+  if (!toolCalls) {
+    return undefined;
+  }
 
   switch (protocol) {
   case 'json-tagged':

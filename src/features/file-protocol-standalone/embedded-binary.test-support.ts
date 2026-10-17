@@ -16,7 +16,9 @@ export function installBrotliDecoderForTest(): 'native' | 'node-zlib-bridge' {
 
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Compression Streams constructor contract.
       constructor(format: string) {
-        if (format !== 'brotli') throw new TypeError('Test bridge only accepts Brotli');
+        if (format !== 'brotli') {
+          throw new TypeError('Test bridge only accepts Brotli');
+        }
         const stream = Duplex.toWeb(createBrotliDecompress());
         this.readable = stream.readable as ReadableStream<Uint8Array>;
         this.writable = stream.writable as WritableStream<BufferSource>;

@@ -71,8 +71,11 @@ async function walkFiles(root: string): Promise<string[]> {
   async function walk(directory: string): Promise<void> {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, entry.name);
-      if (entry.isDirectory()) await walk(absolute);
-      else files.push(path.relative(root, absolute).split(path.sep).join('/'));
+      if (entry.isDirectory()) {
+        await walk(absolute);
+      } else {
+        files.push(path.relative(root, absolute).split(path.sep).join('/'));
+      }
     }
   }
   await walk(root);
@@ -97,7 +100,9 @@ function sanitizeLicenseRecord(record: LicenseDependencyRecord): SanitizedLicens
 
 
 function assertNonEmptyArray(value: readonly unknown[], name: string): void {
-  if (!Array.isArray(value) || value.length === 0) throw new TypeError(`${name} must be non-empty`);
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError(`${name} must be non-empty`);
+  }
 }
 
 /**
@@ -122,21 +127,27 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
   sanitizeModuleId = moduleId => moduleId,
   bootstrapSourceBytes = 0,
 }: FileProtocolStandaloneReleaseValidationOptions): Plugin {
-  if (!outputDirectory) throw new TypeError('outputDirectory is required');
+  if (!outputDirectory) {
+    throw new TypeError('outputDirectory is required');
+  }
   assertNonEmptyArray(workers, 'workers');
   assertNonEmptyArray(runtimeFileNames, 'runtimeFileNames');
   switch (sourceAudit.mode) {
   case 'inline':
     break;
   case 'external':
-    if (sourceAudit.evidence.trim() === '') throw new TypeError('sourceAudit.evidence is required for external source audit');
+    if (sourceAudit.evidence.trim() === '') {
+      throw new TypeError('sourceAudit.evidence is required for external source audit');
+    }
     break;
   default: {
     const exhaustive: never = sourceAudit;
     throw new Error(`Unhandled source audit mode: ${String(exhaustive)}`);
   }
   }
-  if (!debugReportFile || !releaseReportFile) throw new TypeError('debugReportFile and releaseReportFile are required');
+  if (!debugReportFile || !releaseReportFile) {
+    throw new TypeError('debugReportFile and releaseReportFile are required');
+  }
   const resolvedOutput = path.resolve(outputDirectory);
   for (const [label, reportFile] of [
     ['debugReportFile', debugReportFile],
@@ -150,10 +161,16 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
   const workerSources = new Map<string, ReleaseWorkerDefinition>();
   const workerNames = new Set<string>();
   for (const worker of workers) {
-    if (!worker.name || !worker.sourceEntry) throw new TypeError('Each release Worker requires name and sourceEntry');
-    if (workerNames.has(worker.name)) throw new Error(`Duplicate release Worker name: ${worker.name}`);
+    if (!worker.name || !worker.sourceEntry) {
+      throw new TypeError('Each release Worker requires name and sourceEntry');
+    }
+    if (workerNames.has(worker.name)) {
+      throw new Error(`Duplicate release Worker name: ${worker.name}`);
+    }
     const sourceEntry = path.resolve(worker.sourceEntry);
-    if (workerSources.has(sourceEntry)) throw new Error(`Duplicate release Worker sourceEntry: ${sourceEntry}`);
+    if (workerSources.has(sourceEntry)) {
+      throw new Error(`Duplicate release Worker sourceEntry: ${sourceEntry}`);
+    }
     workerNames.add(worker.name);
     workerSources.set(sourceEntry, worker);
   }
@@ -181,12 +198,16 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
       const workerEntries: Array<{name: string; sourceEntry: string; entryFileName: string}> = [];
       for (const [sourceEntry, worker] of workerSources) {
         const chunk = chunks.find(candidate => candidate.isEntry && candidate.facadeModuleId != null && path.resolve(candidate.facadeModuleId) === sourceEntry);
-        if (!chunk) throw new Error(`Release validation could not find Worker entry for ${worker.name}: ${sourceEntry}`);
+        if (!chunk) {
+          throw new Error(`Release validation could not find Worker entry for ${worker.name}: ${sourceEntry}`);
+        }
         workerEntries.push({ name: worker.name, sourceEntry, entryFileName: chunk.fileName });
       }
       const workerEntryFiles = new Set(workerEntries.map(worker => worker.entryFileName));
       const uiEntries = chunks.filter(chunk => chunk.isEntry && !workerEntryFiles.has(chunk.fileName));
-      if (uiEntries.length !== 1) throw new Error(`Release validation expected one UI entry, found ${uiEntries.length}`);
+      if (uiEntries.length !== 1) {
+        throw new Error(`Release validation expected one UI entry, found ${uiEntries.length}`);
+      }
 
       // Vite copies publicDir before writeBundle. Omit standalone-only files in
       // this same release gate so archive creation cannot race a later

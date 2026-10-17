@@ -9,7 +9,9 @@ export interface RuntimeMetadataStorage {
 
 async function completedFile({ url }: { url: string }): Promise<File | undefined> {
   const path = urlToPath({ url });
-  if (!path) throw new Error('Invalid metadata storage identity');
+  if (!path) {
+    throw new Error('Invalid metadata storage identity');
+  }
   return await withOpfsFileLease({
     path,
     mode: 'shared',
@@ -25,7 +27,9 @@ export function createRuntimeMetadataStorage(): RuntimeMetadataStorage {
   return {
     async read({ url }) {
       const file = await completedFile({ url });
-      if (file === undefined) return undefined;
+      if (file === undefined) {
+        return undefined;
+      }
       return {
         byteLength: file.size,
         response: new Response(file.stream(), {
@@ -39,7 +43,9 @@ export function createRuntimeMetadataStorage(): RuntimeMetadataStorage {
     },
     async write({ url, response }) {
       const path = urlToPath({ url });
-      if (!path) throw new Error('Invalid metadata storage identity');
+      if (!path) {
+        throw new Error('Invalid metadata storage identity');
+      }
       await writeToOpfs({ path, response });
     },
   };

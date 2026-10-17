@@ -17,14 +17,19 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
     switch (content.type) {
     case 'text': return content.text;
     case 'binary_object': {
-      if (!readBinaryObject) return unsupported();
+      if (!readBinaryObject) {
+        return unsupported();
+      }
       const blob = await readBinaryObject({ binaryObjectId: content.id, signal });
       signal?.throwIfAborted();
       const bytes = await blob.arrayBuffer();
       signal?.throwIfAborted();
       return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     }
-    default: { const exhaustive: never = content; throw new Error(`Unknown tool content: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = content;
+      throw new Error(`Unknown tool content: ${exhaustive}`);
+    }
     }
   };
   for (const message of snapshot.messages) {
@@ -49,22 +54,33 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           const { type: _type, attachment, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           const { id: _attachmentId, binaryObjectId, mimeType, originalName: _name, size: _size, uploadedAt: _uploadedAt, ...state } = attachment;
-          if (!mimeType.startsWith('image/')) return unsupported();
+          if (!mimeType.startsWith('image/')) {
+            return unsupported();
+          }
           let blob: Blob;
           switch (state.status) {
-          case 'memory': blob = state.blob; break;
+          case 'memory': blob = state.blob;
+            break;
           case 'persisted':
-            if (!readBinaryObject) return unsupported();
+            if (!readBinaryObject) {
+              return unsupported();
+            }
             blob = await readBinaryObject({ binaryObjectId, signal });
             break;
           case 'missing': return unsupported();
-          default: { const exhaustive: never = state; throw new Error(`Unknown attachment state: ${exhaustive}`); }
+          default: {
+            const exhaustive: never = state;
+            throw new Error(`Unknown attachment state: ${exhaustive}`);
+          }
           }
           signal?.throwIfAborted();
           content.push({ type: 'image', blob });
           break;
         }
-        default: { const exhaustive: never = part; throw new Error(`Unknown user part: ${exhaustive}`); }
+        default: {
+          const exhaustive: never = part;
+          throw new Error(`Unknown user part: ${exhaustive}`);
+        }
         }
       }
       // Native chat has a single text value unless image positions are needed.
@@ -82,7 +98,9 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           const { type: _type, text, completeness, ...unhandled } = part;
           unhandled satisfies Record<PropertyKey, never>;
           // The native message has one leading reasoning field, not arbitrary channels.
-          if (phase !== 'reasoning' || reasoning !== undefined || completeness !== 'complete') return unsupported();
+          if (phase !== 'reasoning' || reasoning !== undefined || completeness !== 'complete') {
+            return unsupported();
+          }
           reasoning = text;
           break;
         }
@@ -92,9 +110,13 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           switch (phase) {
           case 'reasoning': case 'text': break;
           case 'tool_call': return unsupported();
-          default: { const exhaustive: never = phase; throw new Error(`Unknown input phase: ${exhaustive}`); }
+          default: {
+            const exhaustive: never = phase;
+            throw new Error(`Unknown input phase: ${exhaustive}`);
           }
-          phase = 'text'; content += text;
+          }
+          phase = 'text';
+          content += text;
           break;
         }
         case 'tool_call': {
@@ -110,7 +132,10 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
           calls.push({ id: raw, type, function: { name, arguments: argumentsText } });
           break;
         }
-        default: { const exhaustive: never = part; throw new Error(`Unknown assistant part: ${exhaustive}`); }
+        default: {
+          const exhaustive: never = part;
+          throw new Error(`Unknown assistant part: ${exhaustive}`);
+        }
         }
       }
       accepted.push({ role: 'assistant', content, ...(reasoning === undefined ? {} : { reasoning_content: reasoning }), ...(calls.length ? { tool_calls: calls } : {}) });
@@ -122,18 +147,28 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
         unhandled satisfies Record<PropertyKey, never>;
         const id = idToRaw({ id: result.toolCallId });
         const name = callNames.get(id);
-        if (name === undefined) return unsupported();
+        if (name === undefined) {
+          return unsupported();
+        }
         let content: string;
         switch (result.status) {
         case 'executing': return unsupported();
-        case 'success': content = await readText({ content: result.content }); break;
-        case 'error': content = formatToolExecutionOutcomeForLm({ outcome: { status: 'error', code: result.error.code, message: await readText({ content: result.error.message }) } }); break;
-        default: { const exhaustive: never = result; throw new Error(`Unknown tool result: ${exhaustive}`); }
+        case 'success': content = await readText({ content: result.content });
+          break;
+        case 'error': content = formatToolExecutionOutcomeForLm({ outcome: { status: 'error', code: result.error.code, message: await readText({ content: result.error.message }) } });
+          break;
+        default: {
+          const exhaustive: never = result;
+          throw new Error(`Unknown tool result: ${exhaustive}`);
+        }
         }
         accepted.push({ role: 'tool', content, tool_call_id: id, name });
       }
       break;
-    default: { const exhaustive: never = message; throw new Error(`Unknown chat message: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = message;
+      throw new Error(`Unknown chat message: ${exhaustive}`);
+    }
     }
   }
   signal?.throwIfAborted();

@@ -186,7 +186,10 @@ export function suggestedQuantizationLabel({ quantization }: { quantization: Sug
   switch (quantization.checkpoint) {
   case 'qat': return `${quantization.preferredQuantization} (QAT)`;
   case 'standard': return quantization.preferredQuantization;
-  default: { const exhaustive: never = quantization.checkpoint; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = quantization.checkpoint;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -199,9 +202,14 @@ export function suggestionDownloadKey({ suggestionId, quantization, multimodal }
 export function matchesMemoryHint({ quantization, memory, multimodal }: { quantization: SuggestedQuantization, memory: SuggestedMemoryFilter, multimodal: MultimodalDownload }): boolean {
   let required: number;
   switch (multimodal) {
-  case 'off': required = quantization.suggestedMemoryGiB; break;
-  case 'on': required = quantization.suggestedMultimodalMemoryGiB ?? quantization.suggestedMemoryGiB; break;
-  default: { const exhaustive: never = multimodal; throw new Error(String(exhaustive)); }
+  case 'off': required = quantization.suggestedMemoryGiB;
+    break;
+  case 'on': required = quantization.suggestedMultimodalMemoryGiB ?? quantization.suggestedMemoryGiB;
+    break;
+  default: {
+    const exhaustive: never = multimodal;
+    throw new Error(String(exhaustive));
+  }
   }
   return memory === 'all' || required <= memory;
 }

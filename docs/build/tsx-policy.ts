@@ -18,13 +18,17 @@ function tsxError({ ast, filename, node, reason }: {
 }
 
 function declares({ name, identifier }: { name: ts.BindingName; identifier: string }): boolean {
-  if (ts.isIdentifier(name)) return name.text === identifier;
+  if (ts.isIdentifier(name)) {
+    return name.text === identifier;
+  }
   return name.elements.some(element => ts.isBindingElement(element) && declares({ name: element.name, identifier }));
 }
 
 function unwrapped({ expression }: { expression: ts.Expression }): ts.Expression {
   if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)
-    || ts.isNonNullExpression(expression)) return unwrapped({ expression: expression.expression });
+    || ts.isNonNullExpression(expression)) {
+    return unwrapped({ expression: expression.expression });
+  }
   return expression;
 }
 
@@ -66,7 +70,9 @@ function hasCommonGroupImport({ ast, group, locale }: { ast: ts.SourceFile; grou
   const source = group === 'chrome' ? `../replica-chrome/${locale}` : `../search-ui/${locale}`;
   return ast.statements.some(statement => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== source || statement.importClause?.isTypeOnly) return false;
+      || statement.moduleSpecifier.text !== source || statement.importClause?.isTypeOnly) {
+      return false;
+    }
     const bindings = statement.importClause?.namedBindings;
     return Boolean(bindings && ts.isNamedImports(bindings) && bindings.elements.some(element =>
       !element.isTypeOnly && element.propertyName?.text === 'messages' && element.name.text === group));
@@ -78,9 +84,13 @@ export function validatePlainLocaleMessageKeys({ ast, filename }: { ast: ts.Sour
   const locale = filename.endsWith('/ja.ts') ? 'ja' : 'en';
   let found = false;
   for (const statement of ast.statements) {
-    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      continue;
+    }
     for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'messages') continue;
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'messages') {
+        continue;
+      }
       found = true;
       if (!(statement.declarationList.flags & ts.NodeFlags.Const)) {
         tsxError({ ast, filename, node: declaration, reason: 'Docs locale messages must be exported as a const object.' });
@@ -106,23 +116,33 @@ export function validatePlainLocaleMessageKeys({ ast, filename }: { ast: ts.Sour
           }
           continue;
         }
-        if (!ts.isPropertyAssignment(property)) continue;
+        if (!ts.isPropertyAssignment(property)) {
+          continue;
+        }
         const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : '';
         const value = unwrapped({ expression: property.initializer });
-        if (common && commonDomainMetadata.has(key) && ts.isObjectLiteralExpression(value)) continue;
+        if (common && commonDomainMetadata.has(key) && ts.isObjectLiteralExpression(value)) {
+          continue;
+        }
         if (!isLiteralText({ expression: property.initializer }) && !isInlineStringFunction({ expression: property.initializer })) {
           tsxError({ ast, filename, node: property.initializer, reason: 'Plain Docs locale messages require literal text values or inline functions with an explicit string return type.' });
         }
       }
     }
   }
-  if (!found) tsxError({ ast, filename, node: ast, reason: 'Docs locale modules must directly export const messages.' });
+  if (!found) {
+    tsxError({ ast, filename, node: ast, reason: 'Docs locale modules must directly export const messages.' });
+  }
 }
 
 function hasCanonicalJapaneseCheck({ initializer }: { initializer: ts.Expression | undefined }): boolean {
   let expression = initializer;
-  while (expression && ts.isParenthesizedExpression(expression)) expression = expression.expression;
-  if (!expression || !ts.isSatisfiesExpression(expression)) return false;
+  while (expression && ts.isParenthesizedExpression(expression)) {
+    expression = expression.expression;
+  }
+  if (!expression || !ts.isSatisfiesExpression(expression)) {
+    return false;
+  }
   const type = expression.type;
   return ts.isImportTypeNode(type) && type.isTypeOf
     && ts.isLiteralTypeNode(type.argument) && ts.isStringLiteral(type.argument.literal)
@@ -138,9 +158,13 @@ function validateMessagesValues({ ast, filename, role }: {
 }): void {
   let found = false;
   for (const statement of ast.statements) {
-    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    if (!ts.isVariableStatement(statement) || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) {
+      continue;
+    }
     for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'messages') continue;
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'messages') {
+        continue;
+      }
       found = true;
       if (!(statement.declarationList.flags & ts.NodeFlags.Const)) {
         tsxError({ ast, filename, node: declaration, reason: 'Docs locale messages must be exported as a const object.' });
@@ -162,7 +186,9 @@ function validateMessagesValues({ ast, filename, role }: {
       }
       validateFlatMessageKeys({ ast, filename, object: initializer, allowedSpreads: noSpreads });
       for (const property of initializer.properties) {
-        if (!ts.isPropertyAssignment(property)) continue;
+        if (!ts.isPropertyAssignment(property)) {
+          continue;
+        }
         const value = unwrapped({ expression: property.initializer });
         if (!isLiteralText({ expression: value }) && !ts.isArrowFunction(value) && !ts.isFunctionExpression(value)) {
           tsxError({ ast, filename, node: value, reason: 'Article locale messages use literal text or inline functions that create fresh rich content.' });
@@ -170,7 +196,9 @@ function validateMessagesValues({ ast, filename, role }: {
       }
     }
   }
-  if (!found) tsxError({ ast, filename, node: ast, reason: 'Docs locale modules must export const messages.' });
+  if (!found) {
+    tsxError({ ast, filename, node: ast, reason: 'Docs locale modules must export const messages.' });
+  }
 }
 
 export function validateDocsRichTsx({ ast, filename, componentImports, role }: {
@@ -183,7 +211,9 @@ export function validateDocsRichTsx({ ast, filename, componentImports, role }: {
   const visit = ({ node }: { node: ts.Node }): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
       let parent = node.parent;
-      while (parent && !ts.isFunctionLike(parent)) parent = parent.parent;
+      while (parent && !ts.isFunctionLike(parent)) {
+        parent = parent.parent;
+      }
       if (!parent) {
         tsxError({ ast, filename, node, reason: 'Article locale JSX cannot be initialized at module scope. Return fresh JSX from a message function.' });
       }

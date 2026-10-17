@@ -61,7 +61,9 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
           return undefined;
         }
         expect(localOrdinal).toBe(2);
-        if (cache === undefined) throw new Error('Missing the first invocation cache');
+        if (cache === undefined) {
+          throw new Error('Missing the first invocation cache');
+        }
         expect(past_key_values).toBe(cache.pastKeyValues);
         const prefix = Array.from(cache.previousSequence.data, BigInt);
         expect(nativeInputs[1]!.ids.slice(0, prefix.length)).toEqual(prefix);
@@ -71,7 +73,9 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
         return cache;
       },
       completeResult({ localOrdinal, result, runtime }) {
-        if (localOrdinal !== 1) return result;
+        if (localOrdinal !== 1) {
+          return result;
+        }
         // Only cache identity and observed length are synthetic. The sequence
         // and the tokenizer/template inputs are real pinned runtime tensors;
         // neither GPU KV bytes nor model inference performance are tested here.
@@ -184,7 +188,9 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
   expect(continuation.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
   const assistant = continuation[1];
   const call = assistant?.parts.at(-1);
-  if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') throw new Error('Missing captured tool call');
+  if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') {
+    throw new Error('Missing captured tool call');
+  }
   expect(assistant.parts).toEqual([
     { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
     {

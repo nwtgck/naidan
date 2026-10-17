@@ -15,7 +15,9 @@ function replaceSession({ viewId, snapshot }: {
   viewId: string;
   snapshot: Extract<InvestigationSessionSnapshot, { view: 'setup' }>;
 }): void {
-  if (sessionView.value.viewId !== viewId || sessionView.value.isActive()) return;
+  if (sessionView.value.viewId !== viewId || sessionView.value.isActive()) {
+    return;
+  }
   const replacement = createInvestigationSessionView({ initialSnapshot: snapshot });
   replacement.remember({ snapshot });
   sessionView.value = replacement;

@@ -19,19 +19,33 @@ export async function detectAudioModelFiles({ directory, signal }: {
   signal?.throwIfAborted();
   try {
     const backbone = directory.files.find(entry => entry.path === directory.modelPath);
-    if (!backbone) return { status: 'unverified', reason: 'metadata' };
+    if (!backbone) {
+      return { status: 'unverified', reason: 'metadata' };
+    }
     const metadata = await readAudioGgufMetadata({ file: backbone.file, keys: ['general.architecture'], signal });
     const architecture = metadata.get('general.architecture');
-    let pipeline: AudioGenerationResult['pipeline']; let projector: string; let reference: 'optional' | 'required';
+    let pipeline: AudioGenerationResult['pipeline'];
+    let projector: string;
+    let reference: 'optional' | 'required';
     switch (architecture) {
-    case 'qwen3tts': pipeline = 'qwen3-tts'; projector = 'qwen3tts_gen'; reference = 'optional'; break;
-    case 'pockettts': pipeline = 'pocket-tts'; projector = 'pockettts_gen'; reference = 'required'; break;
+    case 'qwen3tts': pipeline = 'qwen3-tts';
+      projector = 'qwen3tts_gen';
+      reference = 'optional';
+      break;
+    case 'pockettts': pipeline = 'pocket-tts';
+      projector = 'pockettts_gen';
+      reference = 'required';
+      break;
     default: return { status: 'unverified', reason: 'architecture' };
     }
     const companion = directory.files.find(entry => entry.path === directory.projectorPath);
-    if (!companion) return { status: 'unverified', reason: 'companion' };
+    if (!companion) {
+      return { status: 'unverified', reason: 'companion' };
+    }
     const details = await readAudioGgufMetadata({ file: companion.file, keys: ['clip.has_gen_audio_encoder', 'clip.gen.audio.projector_type'], signal });
-    if (!hasGenerator({ details, projector })) return { status: 'unverified', reason: 'companion' };
+    if (!hasGenerator({ details, projector })) {
+      return { status: 'unverified', reason: 'companion' };
+    }
     return { status: 'detected', pipeline, reference };
   } catch {
     signal?.throwIfAborted();

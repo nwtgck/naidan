@@ -111,7 +111,9 @@ export function createSedReadFileManager({
   return {
     async prepareLine({ path }) {
       const termination = await validate({ path });
-      if (termination !== undefined) return termination;
+      if (termination !== undefined) {
+        return termination;
+      }
       return { kind: "preparedReadFileLine", path };
     },
     async writeAll({ path, writer }) {
@@ -154,7 +156,9 @@ export function createSedReadFileManager({
         }
       }
       lineIterators.clear();
-      if (failures.length === 1) throw failures[0];
+      if (failures.length === 1) {
+        throw failures[0];
+      }
       if (failures.length > 1) {
         throw new AggregateError(failures, "sed: failed to close read files");
       }

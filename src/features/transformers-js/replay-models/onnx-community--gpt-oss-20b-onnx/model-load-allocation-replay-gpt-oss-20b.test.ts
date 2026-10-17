@@ -46,10 +46,13 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       modelId,
       paths: resources.map(item => item.path),
       response: ({ path }) => {
-        if (path !== target.path) return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        if (path !== target.path) {
+          return new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        }
         return new Response(new ReadableStream<Uint8Array>({
           pull() {
-            targetPulls++; throw new Error('Refused allocation must precede source reads');
+            targetPulls++;
+            throw new Error('Refused allocation must precede source reads');
           },
         }, { highWaterMark: 0 }),
         { headers: { 'Content-Length': String(target.bytes) } });
@@ -99,7 +102,8 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const download = vi.spyOn(h.service, 'downloadModel');
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        download.mockRestore(); await h.close();
+        download.mockRestore();
+        await h.close();
       },
     };
     await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
@@ -124,18 +128,24 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       response: ({ path }) => {
         const index = resources.findIndex(item => item.path === path);
         const parts = [new Uint8Array([index, 11, 22]), new Uint8Array([33, 44, index])];
-        chunks.push(parts); expected.set(path, parts.flatMap(part => [...part]));
+        chunks.push(parts);
+        expected.set(path, parts.flatMap(part => [...part]));
         let ordinal = 0;
         return new Response(new ReadableStream<Uint8Array>({
           async pull(controller) {
             if (ordinal === 0 && path === resources[0]?.path) {
-              entered.resolve(); await release.promise;
+              entered.resolve();
+              await release.promise;
             }
             pulls.push(path);
             const part = parts[ordinal++];
-            if (part === undefined) throw new Error('Unexpected extra source pull');
+            if (part === undefined) {
+              throw new Error('Unexpected extra source pull');
+            }
             controller.enqueue(part);
-            if (ordinal === parts.length) controller.close();
+            if (ordinal === parts.length) {
+              controller.close();
+            }
           },
         }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
       },
@@ -159,12 +169,18 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const model = await loading;
     expect(h.raw.sessions).toHaveBeenCalledTimes(1);
     const call = h.raw.sessions.mock.calls[0];
-    if (call === undefined) throw new Error('Missing ORT boundary');
+    if (call === undefined) {
+      throw new Error('Missing ORT boundary');
+    }
     const core = z.instanceof(Uint8Array).parse(call[0]);
     const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
     const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
     expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
-    for (const parts of chunks) for (const part of parts) part.fill(255);
+    for (const parts of chunks) {
+      for (const part of parts) {
+        part.fill(255);
+      }
+    }
     for (const item of resources) {
       expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
       expect(pulls.filter(path => path === item.path)).toHaveLength(2);
@@ -193,14 +209,17 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       modelId,
       paths: resources.map(item => item.path),
       response: ({ path }) => {
-        if (path !== 'onnx/model_q4f16.onnx') return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
+        if (path !== 'onnx/model_q4f16.onnx') {
+          return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
+        }
         let responsePulls = 0;
         let responseCancelled = false;
         return new Response(new ReadableStream<Uint8Array>({
           async pull(controller) {
             corePulls++;
             if (++responsePulls === 1) {
-              controller.enqueue(new Uint8Array([1, 2, 3])); return;
+              controller.enqueue(new Uint8Array([1, 2, 3]));
+              return;
             }
             secondPull.resolve();
             await release.promise;
@@ -209,10 +228,15 @@ describe('GPT-OSS model Load allocation boundaries', () => {
                 lateFinished.resolve();
               },
             };
-            if (!responseCancelled) controller.error(cause);
+            if (!responseCancelled) {
+              controller.error(cause);
+            }
           },
           cancel() {
-            responseCancelled = true; if (responsePulls > 0) cancelled++;
+            responseCancelled = true;
+            if (responsePulls > 0) {
+              cancelled++;
+            }
           },
         }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
       },
@@ -230,7 +254,9 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       await lateFinished.promise;
       const result = await settled;
       expect(result.kind).toBe('rejected');
-      if (result.kind === 'rejected') expect(result.error).toMatchObject({ name: 'RequiredDownloadedModelResourceError', cause });
+      if (result.kind === 'rejected') {
+        expect(result.error).toMatchObject({ name: 'RequiredDownloadedModelResourceError', cause });
+      }
       await h.owned.close();
       expect(cancelled).toBe(0);
       expect(corePulls).toBe(2);
@@ -239,7 +265,9 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       expect(h.raw.transport).not.toHaveBeenCalled();
       expect(h.raw.mutations).not.toHaveBeenCalled();
     } finally {
-      release.resolve(); await settled; await h.close();
+      release.resolve();
+      await settled;
+      await h.close();
     }
     const previous = h.diagnostics();
     vi.unstubAllGlobals();
@@ -268,14 +296,17 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       modelId,
       paths: resources.map(item => item.path),
       response: ({ path }) => {
-        if (path !== 'onnx/model_q4f16.onnx') return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
+        if (path !== 'onnx/model_q4f16.onnx') {
+          return new Response(new Uint8Array([9]), { headers: { 'Content-Length': '1' } });
+        }
         let responsePulls = 0;
         let responseCancelled = false;
         return new Response(new ReadableStream<Uint8Array>({
           async pull(controller) {
             corePulls++;
             if (++responsePulls === 1) {
-              controller.enqueue(new Uint8Array([1, 2, 3])); return;
+              controller.enqueue(new Uint8Array([1, 2, 3]));
+              return;
             }
             secondPull.resolve();
             await release.promise;
@@ -284,10 +315,15 @@ describe('GPT-OSS model Load allocation boundaries', () => {
                 lateFinished.resolve();
               },
             };
-            if (!responseCancelled) controller.error(cause);
+            if (!responseCancelled) {
+              controller.error(cause);
+            }
           },
           cancel() {
-            responseCancelled = true; if (responsePulls > 0) cancelled++;
+            responseCancelled = true;
+            if (responsePulls > 0) {
+              cancelled++;
+            }
           },
         }, { highWaterMark: 0 }), { headers: { 'Content-Length': '6' } });
       },
@@ -314,7 +350,9 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       expect(h.raw.transport).not.toHaveBeenCalled();
       expect(h.raw.mutations).not.toHaveBeenCalled();
     } finally {
-      release.resolve(); await settled; await h.close();
+      release.resolve();
+      await settled;
+      await h.close();
     }
     const previous = h.diagnostics();
     vi.unstubAllGlobals();

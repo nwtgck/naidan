@@ -106,11 +106,15 @@ describe('useChatGroupToolConfigs', () => {
     const tools = useChatGroupToolConfigs();
     await tools.setToolStatus({ key: 'builtin.calculator', status: 'disabled' });
     const firstCall = mocks.updateToolConfigs.mock.calls.at(-1)?.[0];
-    if (firstCall === undefined) throw new Error('Expected first Tool Config update');
+    if (firstCall === undefined) {
+      throw new Error('Expected first Tool Config update');
+    }
 
     await tools.setToolStatus({ key: 'builtin.choices', status: 'enabled' });
     const secondCall = mocks.updateToolConfigs.mock.calls.at(-1)?.[0];
-    if (secondCall === undefined) throw new Error('Expected second Tool Config update');
+    if (secondCall === undefined) {
+      throw new Error('Expected second Tool Config update');
+    }
 
     const afterFirst = firstCall.updater({ toolConfigs: undefined });
     expect(secondCall.updater({ toolConfigs: afterFirst })).toEqual([

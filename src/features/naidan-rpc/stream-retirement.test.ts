@@ -11,7 +11,8 @@ it('already-errored readable cancellation is a logical error, not failed cleanup
     cancel,
   }).getReader();
   await expect(cancelReader({ reader, reason: new Error('Local stop') })).resolves.toBeUndefined();
-  expect(cancel).not.toHaveBeenCalled(); reader.releaseLock();
+  expect(cancel).not.toHaveBeenCalled();
+  reader.releaseLock();
 });
 
 it('actual readable cancel failure is retained even when it throws the stop reason itself', async () => {
@@ -22,7 +23,8 @@ it('actual readable cancel failure is retained even when it throws the stop reas
     },
   }).getReader();
   await expect(cancelReader({ reader, reason: error })).rejects.toMatchObject({ name: 'RpcRetirementError', cause: error });
-  await expect(reader.closed).resolves.toBeUndefined(); reader.releaseLock();
+  await expect(reader.closed).resolves.toBeUndefined();
+  reader.releaseLock();
 });
 
 it('already-errored writable abort does not invoke the abort algorithm', async () => {
@@ -35,7 +37,8 @@ it('already-errored writable abort does not invoke the abort algorithm', async (
   }).getWriter();
   expect(writer.desiredSize).toBe(null);
   await expect(abortWriter({ writer, reason: new Error('Local stop') })).resolves.toBeUndefined();
-  expect(abort).not.toHaveBeenCalled(); writer.releaseLock();
+  expect(abort).not.toHaveBeenCalled();
+  writer.releaseLock();
 });
 
 it('an already-erroring writable joins its in-flight write and does not mistake stored error for failed abort', async () => {
@@ -47,21 +50,30 @@ it('an already-erroring writable joins its in-flight write and does not mistake 
       control = controller;
     },
     write() {
-      entered.resolve(); return finishWrite.promise;
+      entered.resolve();
+      return finishWrite.promise;
     },
     abort,
   }).getWriter();
-  const writing = writer.write(1); void writing.catch(() => {}); await entered.promise;
-  control!.error(logical); expect(writer.desiredSize).toBe(null);
-  let settled = false; const retirement = abortWriter({ writer, reason: new Error('Stop') });
+  const writing = writer.write(1);
+  void writing.catch(() => {});
+  await entered.promise;
+  control!.error(logical);
+  expect(writer.desiredSize).toBe(null);
+  let settled = false;
+  const retirement = abortWriter({ writer, reason: new Error('Stop') });
   void retirement.then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
-  await Promise.resolve(); expect(settled).toBe(false); finishWrite.resolve();
-  await expect(retirement).resolves.toBeUndefined(); await Promise.allSettled([writing]);
-  expect(abort).not.toHaveBeenCalled(); writer.releaseLock();
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  finishWrite.resolve();
+  await expect(retirement).resolves.toBeUndefined();
+  await Promise.allSettled([writing]);
+  expect(abort).not.toHaveBeenCalled();
+  writer.releaseLock();
 });
 
 it('initially writable abort failure is real even when it is identical to writer.closed rejection', async () => {
@@ -73,7 +85,8 @@ it('initially writable abort failure is real even when it is identical to writer
   expect(writer.desiredSize).not.toBe(null);
   const result = abortWriter({ writer, reason: error });
   await expect(result).rejects.toBeInstanceOf(RpcRetirementError);
-  await expect(result).rejects.toMatchObject({ cause: error }); await expect(writer.closed).rejects.toBe(error);
+  await expect(result).rejects.toMatchObject({ cause: error });
+  await expect(writer.closed).rejects.toBe(error);
   writer.releaseLock();
 });
 
@@ -84,7 +97,8 @@ it('both lock releases are attempted before failure is returned', () => {
   const reader = { closed: Promise.resolve(), cancel: async () => {}, releaseLock: readerRelease };
   const writer = { closed: Promise.resolve(), abort: async () => {}, releaseLock: writerRelease, desiredSize: 1 };
   expect(() => releaseLocks({ reader, writer })).toThrow(RpcRetirementError);
-  expect(readerRelease).toHaveBeenCalledOnce(); expect(writerRelease).toHaveBeenCalledOnce();
+  expect(readerRelease).toHaveBeenCalledOnce();
+  expect(writerRelease).toHaveBeenCalledOnce();
 });
 
 it('raw cleanup joins both algorithms and leaves no acquired locks after one fails', async () => {
@@ -96,26 +110,35 @@ it('raw cleanup joins both algorithms and leaves no acquired locks after one fai
   });
   const writable = new WritableStream<Uint8Array>({
     abort() {
-      entered.resolve(); return gate.promise;
+      entered.resolve();
+      return gate.promise;
     },
   });
-  const retirement = retireUnadoptedStreams({ readable, writable, reason: 'Stop' }); let settled = false;
+  const retirement = retireUnadoptedStreams({ readable, writable, reason: 'Stop' });
+  let settled = false;
   void retirement.then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
-  await entered.promise; expect(settled).toBe(false); gate.resolve();
+  await entered.promise;
+  expect(settled).toBe(false);
+  gate.resolve();
   await expect(retirement).rejects.toMatchObject({ cause: failure });
-  expect(readable.locked).toBe(false); expect(writable.locked).toBe(false);
+  expect(readable.locked).toBe(false);
+  expect(writable.locked).toBe(false);
 });
 
 it('raw cleanup never releases locks already held by another owner', async () => {
   const readable = new ReadableStream<Uint8Array>(), writable = new WritableStream<Uint8Array>();
   const reader = readable.getReader(), writer = writable.getWriter();
   await retireUnadoptedStreams({ readable, writable, reason: 'Stop' });
-  expect(readable.locked).toBe(true); expect(writable.locked).toBe(true);
-  await reader.cancel(); await writer.abort(); reader.releaseLock(); writer.releaseLock();
+  expect(readable.locked).toBe(true);
+  expect(writable.locked).toBe(true);
+  await reader.cancel();
+  await writer.abort();
+  reader.releaseLock();
+  writer.releaseLock();
 });
 
 it.each([false, true])('reentrant abort-signal erroring stays conservatively unconfirmed (same reason: %s)', async same => {
@@ -135,7 +158,9 @@ it.each([false, true])('reentrant abort-signal erroring stays conservatively unc
     // This verifies fail-closed handling, not normative browser conformance.
     expect(failure.cause).toMatchObject({ code: 'ERR_INTERNAL_ASSERTION' });
   }
-  expect(abort).not.toHaveBeenCalled(); await expect(writer.closed).rejects.toBe(logical); writer.releaseLock();
+  expect(abort).not.toHaveBeenCalled();
+  await expect(writer.closed).rejects.toBe(logical);
+  writer.releaseLock();
 });
 
 it('first cleanup failure notifies promptly even if notification throws and another owner is held', async () => {
@@ -155,12 +180,18 @@ it('first cleanup failure notifies promptly even if notification throws and anot
     writable,
     reason: 'Stop',
     onFailure({ error: cause }) {
-      notified.resolve(cause); throw new Error('Notification failure');
+      notified.resolve(cause);
+      throw new Error('Notification failure');
     },
   });
   const rejected = expect(retirement).rejects.toMatchObject({ cause: error });
-  expect(await notified.promise).toBe(error); expect(readable.locked).toBe(true); expect(writable.locked).toBe(true);
-  gate.resolve(); await rejected; expect(readable.locked).toBe(false); expect(writable.locked).toBe(false);
+  expect(await notified.promise).toBe(error);
+  expect(readable.locked).toBe(true);
+  expect(writable.locked).toBe(true);
+  gate.resolve();
+  await rejected;
+  expect(readable.locked).toBe(false);
+  expect(writable.locked).toBe(false);
 });
 
 it.each(['resolve', 'reject'] as const)('abort signals a held in-flight close before joining its %s outcome', async outcome => {
@@ -169,17 +200,25 @@ it.each(['resolve', 'reject'] as const)('abort signals a held in-flight close be
   const writer = new WritableStream({
     start(controller) {
       controller.signal.addEventListener('abort', () => {
-        if (outcome === 'resolve') end.resolve(); else end.reject(logical);
+        if (outcome === 'resolve') {
+          end.resolve();
+        } else {
+          end.reject(logical);
+        }
       });
     },
     close() {
-      entered.resolve(); return end.promise;
+      entered.resolve();
+      return end.promise;
     },
     abort,
   }).getWriter();
-  const closing = writer.close(); void closing.catch(() => {}); await entered.promise;
+  const closing = writer.close();
+  void closing.catch(() => {});
+  await entered.promise;
   await expect(abortWriter({ writer, reason: new Error('Stop'), ownedClose: closing })).resolves.toBeUndefined();
-  expect(abort).not.toHaveBeenCalled(); writer.releaseLock();
+  expect(abort).not.toHaveBeenCalled();
+  writer.releaseLock();
 });
 
 it('queued close cannot conceal a genuine abort failure throwing the same stop reason', async () => {
@@ -193,8 +232,11 @@ it('queued close cannot conceal a genuine abort failure throwing the same stop r
       throw reason;
     },
   }).getWriter();
-  const closing = writer.close(); void closing.catch(() => {});
+  const closing = writer.close();
+  void closing.catch(() => {});
   const retirement = abortWriter({ writer, reason, ownedClose: closing });
-  start.resolve(); await expect(retirement).rejects.toMatchObject({ cause: reason });
-  expect(close).not.toHaveBeenCalled(); writer.releaseLock();
+  start.resolve();
+  await expect(retirement).rejects.toMatchObject({ cause: reason });
+  expect(close).not.toHaveBeenCalled();
+  writer.releaseLock();
 });

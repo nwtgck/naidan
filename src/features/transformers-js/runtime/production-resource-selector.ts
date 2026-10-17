@@ -68,7 +68,9 @@ export function selectProductionModelResources({ autoClass, config: inputConfig,
   config: unknown,
   candidate: TransformersJsProductionInvestigationCandidate,
 }): { className: string; sessions: ProductionResourceSession[]; paths: string[] } {
-  if (runtime.env.version !== contract.version) throw new Error('Transformers.js resource selector requires a reviewed runtime version');
+  if (runtime.env.version !== contract.version) {
+    throw new Error('Transformers.js resource selector requires a reviewed runtime version');
+  }
   const candidate = candidateSchema.parse(inputCandidate);
   const config = configSchema.parse(inputConfig);
   const mapping: Record<string, string> = (() => {
@@ -85,7 +87,9 @@ export function selectProductionModelResources({ autoClass, config: inputConfig,
   // fallback expression. Do not invent an additional supported model alias.
   const className = (Object.hasOwn(mapping, config.model_type) ? mapping[config.model_type] : undefined)
     ?? Object.values(mapping).find(name => name[0] === config.model_type);
-  if (!className) throw new Error(`Unsupported model type: ${config.model_type}`);
+  if (!className) {
+    throw new Error(`Unsupported model type: ${config.model_type}`);
+  }
   const selectedClass: unknown = Reflect.get(runtime, className);
   if (typeof selectedClass !== 'function' || Reflect.get(selectedClass, 'from_pretrained') !== runtime.PreTrainedModel.from_pretrained) {
     throw new Error(`Unsupported non-generic or unavailable runtime loader: ${className}`);
@@ -104,7 +108,9 @@ export function selectProductionModelResources({ autoClass, config: inputConfig,
   const custom = config['transformers.js_config'] ?? {};
   const deviceConfigs = z.record(z.string(), z.unknown()).nullish().parse(custom.device_config);
   const selectedDeviceConfigResult = z.record(z.string(), z.unknown()).nullish().safeParse(deviceConfigs?.[candidate.device]);
-  if (!selectedDeviceConfigResult.success) throw new ProductionResourceCandidateError({ candidate, cause: selectedDeviceConfigResult.error });
+  if (!selectedDeviceConfigResult.success) {
+    throw new ProductionResourceCandidateError({ candidate, cause: selectedDeviceConfigResult.error });
+  }
   const selectedDeviceConfig = selectedDeviceConfigResult.data;
   const effective = { ...custom, ...selectedDeviceConfig };
   const external = effective.use_external_data_format;
@@ -116,7 +122,9 @@ export function selectProductionModelResources({ autoClass, config: inputConfig,
     // Validate only the declaration the real loader selects. An unrelated
     // dtype or device must not reject an otherwise usable explicit candidate.
     const declarationResult = externalCountSchema.nullish().safeParse(selectedDeclaration);
-    if (!declarationResult.success) throw new ProductionResourceCandidateError({ candidate, cause: declarationResult.error });
+    if (!declarationResult.success) {
+      throw new ProductionResourceCandidateError({ candidate, cause: declarationResult.error });
+    }
     const declaration = declarationResult.data;
     const count = declaration === true ? 1 : declaration === false || declaration == null ? 0 : declaration;
     const externalData = Array.from({ length: count }, (_, index) => {

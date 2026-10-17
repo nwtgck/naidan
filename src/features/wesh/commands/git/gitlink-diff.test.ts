@@ -27,9 +27,13 @@ async function writeMockFile({ rootHandle, path, bytes }: {
 }): Promise<void> {
   const parts = path.split("/").filter(part => part.length > 0);
   const fileName = parts.pop();
-  if (fileName === undefined) throw new Error(`missing fixture file name: ${path}`);
+  if (fileName === undefined) {
+    throw new Error(`missing fixture file name: ${path}`);
+  }
   let directory = rootHandle;
-  for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+  for (const part of parts) {
+    directory = await directory.getDirectoryHandle(part, { create: true });
+  }
   const fileHandle: MockFileSystemFileHandle = await directory.getFileHandle(fileName, { create: true });
   fileHandle.content = new Uint8Array(bytes);
 }

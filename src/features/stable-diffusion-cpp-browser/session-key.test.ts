@@ -5,11 +5,22 @@ import { requestFixture } from './test-fixtures';
 it('ignores per-image parameters and preview settings while keeping all context choices', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
   const initial = keys.key({ request });
-  request.parameters.prompt = 'new prompt'; request.parameters.negativePrompt = 'new negative';
-  request.parameters.width = 512; request.parameters.height = 768; request.parameters.seed = '123';
-  request.parameters.steps = 8; request.parameters.guidance = 6; request.parameters.sampler = 'heun';
-  request.parameters.scheduler = 'karras'; request.parameters.vaeTileSize = 16; request.parameters.vaeTiling = false;
-  request.parameters.qwenVaePolicy = 'native'; request.preview.enabled = true; request.preview.interval = 1; request.preview.mode = 'vae'; request.preview.maxEdge = 0;
+  request.parameters.prompt = 'new prompt';
+  request.parameters.negativePrompt = 'new negative';
+  request.parameters.width = 512;
+  request.parameters.height = 768;
+  request.parameters.seed = '123';
+  request.parameters.steps = 8;
+  request.parameters.guidance = 6;
+  request.parameters.sampler = 'heun';
+  request.parameters.scheduler = 'karras';
+  request.parameters.vaeTileSize = 16;
+  request.parameters.vaeTiling = false;
+  request.parameters.qwenVaePolicy = 'native';
+  request.preview.enabled = true;
+  request.preview.interval = 1;
+  request.preview.mode = 'vae';
+  request.preview.maxEdge = 0;
   expect(keys.key({ request })).toBe(initial);
   for (const modify of [
     () => {
@@ -40,7 +51,9 @@ it('ignores per-image parameters and preview settings while keeping all context 
       request.artifact.schemaSha256 = '9'.repeat(64);
     },
   ]) {
-    const before = keys.key({ request }); modify(); expect(keys.key({ request })).not.toBe(before);
+    const before = keys.key({ request });
+    modify();
+    expect(keys.key({ request })).not.toBe(before);
   }
 });
 
@@ -77,7 +90,8 @@ it('accepts a stable published identity across refresh and invalidates its compa
   const first = keys.key({ request }), file = request.models[0]!.file;
   request.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).toBe(first);
-  request.models[0]!.sourceId = 'changed-companion-receipt'; expect(keys.key({ request })).not.toBe(first);
+  request.models[0]!.sourceId = 'changed-companion-receipt';
+  expect(keys.key({ request })).not.toBe(first);
 });
 
 it('invalidates on manual companion identity or path but does not depend on model order', () => {
@@ -87,7 +101,9 @@ it('invalidates on manual companion identity or path but does not depend on mode
   request.models[0]!.companions![0]!.file = new File(['other content'], 'part.bin');
   expect(keys.key({ request })).not.toBe(first);
   request.models.push({ slot: 'vae', file: request.models[0]!.file });
-  const reordered = keys.key({ request }); request.models.reverse(); expect(keys.key({ request })).toBe(reordered);
+  const reordered = keys.key({ request });
+  request.models.reverse();
+  expect(keys.key({ request })).toBe(reordered);
 });
 
 it('retains the model context for new input images, changed strength and removal', () => {

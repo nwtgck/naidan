@@ -27,7 +27,9 @@ function missing({ reason }: { reason: z.infer<typeof missingReasonSchema> }): P
 }
 
 function ownValue({ value, key }: { value: unknown; key: string }): unknown {
-  if (value === null || typeof value !== 'object') return undefined;
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   return descriptor !== undefined && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
 }
@@ -42,7 +44,10 @@ export function freezeProductionLoadIdentity({ identity }: { identity: Productio
     Object.freeze(identity.resolvedRevision);
     Object.freeze(identity.sessionExecutionProvider);
     return Object.freeze(identity);
-  default: { const _ex: never = identity; throw new Error(String(_ex)); }
+  default: {
+    const _ex: never = identity;
+    throw new Error(String(_ex));
+  }
   }
 }
 
@@ -63,9 +68,14 @@ export function createProductionLoadIdentityTracker() {
         && (revision === undefined || (typeof revision === 'string' && revision.length > 0 && revision.length <= 128))
         && Number.isSafeInteger(ordinal);
       switch (source) {
-      case 'ordinary': identity = missing({ reason: uncontended ? 'load-in-progress' : 'overlapping-lifecycle' }); break;
-      case 'non-ordinary': identity = missing({ reason: uncontended ? 'untracked-load-path' : 'overlapping-lifecycle' }); break;
-      default: { const _ex: never = source; throw new Error(String(_ex)); }
+      case 'ordinary': identity = missing({ reason: uncontended ? 'load-in-progress' : 'overlapping-lifecycle' });
+        break;
+      case 'non-ordinary': identity = missing({ reason: uncontended ? 'untracked-load-path' : 'overlapping-lifecycle' });
+        break;
+      default: {
+        const _ex: never = source;
+        throw new Error(String(_ex));
+      }
       }
       let finished = false;
       return {
@@ -78,20 +88,30 @@ export function createProductionLoadIdentityTracker() {
           }
         },
         finish({ route }: { route: unknown }) {
-          if (finished) return;
+          if (finished) {
+            return;
+          }
           finished = true;
           activeCount -= 1;
-          if (ordinal !== ownOrdinal || clearEpoch !== ownClearEpoch || !uncontended || activeCount !== 0) return;
+          if (ordinal !== ownOrdinal || clearEpoch !== ownClearEpoch || !uncontended || activeCount !== 0) {
+            return;
+          }
           switch (source) {
           case 'ordinary': break;
-          case 'non-ordinary': identity = missing({ reason: 'untracked-load-path' }); return;
-          default: { const _ex: never = source; throw new Error(String(_ex)); }
+          case 'non-ordinary': identity = missing({ reason: 'untracked-load-path' });
+            return;
+          default: {
+            const _ex: never = source;
+            throw new Error(String(_ex));
+          }
           }
           if (route === undefined) {
-            identity = missing({ reason: 'no-completed-load' }); return;
+            identity = missing({ reason: 'no-completed-load' });
+            return;
           }
           if (!bounded) {
-            identity = missing({ reason: 'identity-limit' }); return;
+            identity = missing({ reason: 'identity-limit' });
+            return;
           }
           try {
             const candidate = ownValue({ value: route, key: 'candidate' });

@@ -22,9 +22,14 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
   let deferredModelSelection: BrowserImageModelSelection | undefined;
   let storageOwner: (() => boolean) | undefined;
   function invalidate({ owner }: { owner: (() => boolean) | undefined }): void {
-    if (storageOwner !== owner) return;
-    storageOwner = undefined; hydrated = false; pending = {};
-    deferredModelSelection = undefined; restoring.value = false;
+    if (storageOwner !== owner) {
+      return;
+    }
+    storageOwner = undefined;
+    hydrated = false;
+    pending = {};
+    deferredModelSelection = undefined;
+    restoring.value = false;
   }
   const defaults = DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS;
   function snapshot(): BrowserImageGenerationSettings {
@@ -71,13 +76,17 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
     };
   }
   async function save(): Promise<void> {
-    if (writing || !storageOwner || !Object.keys(pending).length) return;
+    if (writing || !storageOwner || !Object.keys(pending).length) {
+      return;
+    }
     const owner = storageOwner;
     if (!owner()) {
-      invalidate({ owner }); return;
+      invalidate({ owner });
+      return;
     }
     writing = true;
-    const patch = pending; pending = {};
+    const patch = pending;
+    pending = {};
     try {
       // The updater executes against the latest settings under the existing
       // storage lock, preserving concurrent locale/host-directory changes.
@@ -89,9 +98,16 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
         }),
       });
       switch (outcome) {
-      case 'saved': if (!owner()) invalidate({ owner }); break;
-      case 'changed': invalidate({ owner }); break;
-      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      case 'saved': if (!owner()) {
+        invalidate({ owner });
+      }
+        break;
+      case 'changed': invalidate({ owner });
+        break;
+      default: {
+        const exhaustive: never = outcome;
+        throw new Error(String(exhaustive));
+      }
       }
     } catch (error) {
       if (!owner()) {
@@ -105,28 +121,43 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
       writing = false;
     }
     // Accepted edits survive leaving the screen while an earlier write waits.
-    if (Object.keys(pending).length) void save();
+    if (Object.keys(pending).length) {
+      void save();
+    }
   }
   watch(snapshot, value => {
-    if (!hydrated || restoring.value || disposed || !storageOwner?.()) return;
+    if (!hydrated || restoring.value || disposed || !storageOwner?.()) {
+      return;
+    }
     const patch: BrowserImageGenerationSettings = {};
     // This is a partial patch: absent/invalid draft fields leave their last
     // valid stored values intact rather than resetting the entire group.
     for (const key of Object.keys(value) as (keyof BrowserImageGenerationSettings)[]) {
-      if (JSON.stringify(value[key]) !== JSON.stringify(previous[key])) Object.assign(patch, { [key]: value[key] });
+      if (JSON.stringify(value[key]) !== JSON.stringify(previous[key])) {
+        Object.assign(patch, { [key]: value[key] });
+      }
     }
     previous = value;
-    if (!Object.keys(patch).length) return;
-    pending = merge({ base: pending, patch }); void save();
+    if (!Object.keys(patch).length) {
+      return;
+    }
+    pending = merge({ base: pending, patch });
+    void save();
   }, { deep: true });
   watch([initialized, settings], async ([ready]) => {
-    if (disposed) return;
-    if (!ready) {
-      invalidate({ owner: storageOwner }); return;
+    if (disposed) {
+      return;
     }
-    if (storageOwner?.() && (hydrated || restoring.value)) return;
+    if (!ready) {
+      invalidate({ owner: storageOwner });
+      return;
+    }
+    if (storageOwner?.() && (hydrated || restoring.value)) {
+      return;
+    }
     invalidate({ owner: storageOwner });
-    const owner = captureStorage(); storageOwner = owner;
+    const owner = captureStorage();
+    storageOwner = owner;
     restoring.value = true;
     try {
       const saved = settings.value.experimental?.browserImageGeneration;
@@ -151,49 +182,76 @@ export function useImagePreferences({ settings, initialized, captureStorage, upd
         maxEdge: preview?.maxEdge ?? defaults.preview.maxEdge,
       };
       form.keepPreviews.value = (keepPreviews ?? defaults.keepPreviews) === 'enabled';
-      form.maxPreviews.value = maxPreviews ?? defaults.maxPreviews; form.maxResults.value = maxResults ?? defaults.maxResults;
+      form.maxPreviews.value = maxPreviews ?? defaults.maxPreviews;
+      form.maxResults.value = maxResults ?? defaults.maxResults;
       const destination = modelDownloadDestination ?? defaults.modelDownloadDestination;
       switch (destination.kind) {
-      case 'opfs': library.hostDirectories.destination.value = 'opfs'; break;
-      case 'host': library.hostDirectories.destination.value = idToRaw({ id: destination.directoryId }); break;
-      default: { const exhaustive: never = destination; throw new Error(String(exhaustive)); }
+      case 'opfs': library.hostDirectories.destination.value = 'opfs';
+        break;
+      case 'host': library.hostDirectories.destination.value = idToRaw({ id: destination.directoryId });
+        break;
+      default: {
+        const exhaustive: never = destination;
+        throw new Error(String(exhaustive));
+      }
       }
       deferredModelSelection = modelSelection;
       if (modelSelection && localModels.value) {
         // Suppress first-inventory auto-selection before scanning local files.
-        library.useManualFiles(); await library.prepareHistoryFiles({ requiredFiles: [] });
-        if (disposed || storageOwner !== owner || !owner()) return;
+        library.useManualFiles();
+        await library.prepareHistoryFiles({ requiredFiles: [] });
+        if (disposed || storageOwner !== owner || !owner()) {
+          return;
+        }
         const result = library.restoreModelSelection({ selection: modelSelection });
         form.loras.value = result.loras;
         restored({ missing: result.missing, missingInactive: result.missingInactive });
         deferredModelSelection = undefined;
       }
-      previous = snapshot(); hydrated = true;
+      previous = snapshot();
+      hydrated = true;
     } catch (error) {
-      if (storageOwner !== owner || !owner()) return;
-      if (!disposed) failed({ error });
+      if (storageOwner !== owner || !owner()) {
+        return;
+      }
+      if (!disposed) {
+        failed({ error });
+      }
       // Keep the editor usable and permit subsequent explicit preference edits.
-      previous = snapshot(); hydrated = true;
+      previous = snapshot();
+      hydrated = true;
     } finally {
-      if (storageOwner === owner) restoring.value = false;
+      if (storageOwner === owner) {
+        restoring.value = false;
+      }
     }
   }, { immediate: true, deep: true });
   watch(localModels, async local => {
-    if (!local || !hydrated || !deferredModelSelection || restoring.value || disposed || !storageOwner?.()) return;
+    if (!local || !hydrated || !deferredModelSelection || restoring.value || disposed || !storageOwner?.()) {
+      return;
+    }
     const selection = deferredModelSelection;
     const owner = storageOwner;
     restoring.value = true;
     try {
-      library.useManualFiles(); await library.prepareHistoryFiles({ requiredFiles: [] });
-      if (disposed || storageOwner !== owner || !owner()) return;
+      library.useManualFiles();
+      await library.prepareHistoryFiles({ requiredFiles: [] });
+      if (disposed || storageOwner !== owner || !owner()) {
+        return;
+      }
       const result = library.restoreModelSelection({ selection });
       form.loras.value = result.loras;
       restored({ missing: result.missing, missingInactive: result.missingInactive });
-      deferredModelSelection = undefined; previous = snapshot();
+      deferredModelSelection = undefined;
+      previous = snapshot();
     } catch (error) {
-      if (!disposed && storageOwner === owner && owner()) failed({ error });
+      if (!disposed && storageOwner === owner && owner()) {
+        failed({ error });
+      }
     } finally {
-      if (storageOwner === owner) restoring.value = false;
+      if (storageOwner === owner) {
+        restoring.value = false;
+      }
     }
   });
   onScopeDispose(() => {

@@ -23,16 +23,24 @@ export function observeNativeStreamer({ streamer, streamerPrototype, capture }: 
   streamer: object; streamerPrototype: object; capture: NativeStreamRecorder | undefined;
 }): { restore(): void } {
   const noop = { restore() {} };
-  if (capture === undefined) return noop;
+  if (capture === undefined) {
+    return noop;
+  }
   function unavailable({ reason }: { reason: Extract<NativeStreamAvailability, { status: 'unavailable' }>['reason'] }) {
     safely({ record: () => capture?.setNativeStreamAvailability({ availability: { status: 'unavailable', reason } }) });
     return noop;
   }
-  if (owners.has(streamer)) return unavailable({ reason: 'already-owned' });
+  if (owners.has(streamer)) {
+    return unavailable({ reason: 'already-owned' });
+  }
   const originals = new Map<NativeStreamOperation, PropertyDescriptor>();
   try {
-    if (Object.getPrototypeOf(streamer) !== streamerPrototype) return unavailable({ reason: 'unsupported-instance' });
-    if (!Object.isExtensible(streamer)) return unavailable({ reason: 'not-extensible' });
+    if (Object.getPrototypeOf(streamer) !== streamerPrototype) {
+      return unavailable({ reason: 'unsupported-instance' });
+    }
+    if (!Object.isExtensible(streamer)) {
+      return unavailable({ reason: 'not-extensible' });
+    }
     for (const operation of operations) {
       const descriptor = Object.getOwnPropertyDescriptor(streamerPrototype, operation);
       if (Object.getOwnPropertyDescriptor(streamer, operation) !== undefined || descriptor === undefined
@@ -56,9 +64,13 @@ export function observeNativeStreamer({ streamer, streamerPrototype, capture }: 
         const current = Object.getOwnPropertyDescriptor(streamer, operation);
         if (current?.value !== descriptor.value) {
           switch (result) {
-          case 'restored': case 'ownership-lost': result = 'ownership-lost'; break;
+          case 'restored': case 'ownership-lost': result = 'ownership-lost';
+            break;
           case 'failed': break;
-          default: { const _ex: never = result; throw new Error(String(_ex)); }
+          default: {
+            const _ex: never = result;
+            throw new Error(String(_ex));
+          }
           }
         } else if (!Reflect.deleteProperty(streamer, operation)) {
           result = 'failed';
@@ -67,13 +79,17 @@ export function observeNativeStreamer({ streamer, streamerPrototype, capture }: 
         result = 'failed';
       }
     }
-    if (owners.get(streamer) === owner) owners.delete(streamer);
+    if (owners.get(streamer) === owner) {
+      owners.delete(streamer);
+    }
     return result;
   }
   try {
     for (const operation of operations) {
       const original: unknown = originals.get(operation)!.value;
-      if (typeof original !== 'function') throw new Error('Unsupported native method');
+      if (typeof original !== 'function') {
+        throw new Error('Unsupported native method');
+      }
       const descriptor: PropertyDescriptor = {
         configurable: true,
         enumerable: false,
@@ -101,7 +117,9 @@ export function observeNativeStreamer({ streamer, streamerPrototype, capture }: 
   safely({ record: () => capture.setNativeStreamAvailability({ availability: { status: 'available', restoration: 'pending' } }) });
   return {
     restore() {
-      if (restored) return;
+      if (restored) {
+        return;
+      }
       restored = true;
       const restoration = restoreMethods();
       safely({ record: () => capture.setNativeStreamAvailability({ availability: { status: 'available', restoration } }) });

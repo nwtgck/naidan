@@ -14,7 +14,9 @@ const ossLicenses = ref<readonly NaidanLicense[]>([]);
 const isLoadingLicenses = ref(false);
 
 async function loadLicenses(): Promise<void> {
-  if (ossLicenses.value.length > 0) return;
+  if (ossLicenses.value.length > 0) {
+    return;
+  }
   isLoadingLicenses.value = true;
   try {
     // Dynamic import to keep initial bundle small

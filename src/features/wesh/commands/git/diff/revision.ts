@@ -61,7 +61,9 @@ export async function readDiffSnapshotEntryBytes({ context, repository, entry }:
   repository: GitRepository,
   entry: GitDiffSnapshotEntry | undefined,
 }): Promise<Uint8Array> {
-  if (entry === undefined) return new Uint8Array();
+  if (entry === undefined) {
+    return new Uint8Array();
+  }
   switch (entry.content.kind) {
   case 'loaded':
     return entry.content.bytes;
@@ -190,20 +192,23 @@ function renderWordDiffLine({ leftText, rightText }: { leftText: string, rightTe
   for (const operation of operations) {
     switch (operation.kind) {
     case 'equal':
-      for (let offset = 0; offset < operation.length; offset += 1)
+      for (let offset = 0; offset < operation.length; offset += 1) {
         output += rightTokens[operation.rightStart + offset]!.text;
+      }
       break;
     case 'delete': {
       let deleted = '';
-      for (let offset = 0; offset < operation.length; offset += 1)
+      for (let offset = 0; offset < operation.length; offset += 1) {
         deleted += leftTokens[operation.leftStart + offset]!.text;
+      }
       output += `[-${deleted}-]`;
       break;
     }
     case 'insert': {
       let inserted = '';
-      for (let offset = 0; offset < operation.length; offset += 1)
+      for (let offset = 0; offset < operation.length; offset += 1) {
         inserted += rightTokens[operation.rightStart + offset]!.text;
+      }
       output += `{+${inserted}+}`;
       break;
     }
@@ -217,7 +222,9 @@ function renderWordDiffLine({ leftText, rightText }: { leftText: string, rightTe
 }
 
 function formatUnifiedRange({ start, count }: { start: number, count: number }): string {
-  if (count === 0) return `${start},0`;
+  if (count === 0) {
+    return `${start},0`;
+  }
   const first = start + 1;
   return count === 1 ? `${first}` : `${first},${count}`;
 }
@@ -256,16 +263,22 @@ async function writeWordDiff({ writer, leftInput, rightInput, contextLines }: {
     let operationIndex = hunk.operationStart;
     while (operationIndex < hunk.operationEnd) {
       const operation = operations[operationIndex];
-      if (operation === undefined) break;
+      if (operation === undefined) {
+        break;
+      }
       switch (operation.kind) {
       case 'equal':
         for (let offset = 0; offset < operation.length; offset += 1) {
           const leftLine = operation.leftStart + offset;
           const rightLine = operation.rightStart + offset;
           if (!lineInsideRange({ lineIndex: leftLine, start: hunk.leftStart, count: hunk.leftCount })
-            || !lineInsideRange({ lineIndex: rightLine, start: hunk.rightStart, count: hunk.rightCount })) continue;
+            || !lineInsideRange({ lineIndex: rightLine, start: hunk.rightStart, count: hunk.rightCount })) {
+            continue;
+          }
           await writer.writeText({ text: lineText({ input: rightInput, lineIndex: rightLine }) });
-          if (rightInput.lines.hasLineFeed[rightLine] === 1) await writer.writeText({ text: '\n' });
+          if (rightInput.lines.hasLineFeed[rightLine] === 1) {
+            await writer.writeText({ text: '\n' });
+          }
         }
         operationIndex += 1;
         continue;
@@ -281,20 +294,26 @@ async function writeWordDiff({ writer, leftInput, rightInput, contextLines }: {
       const insertedLines: number[] = [];
       changeBlock: while (operationIndex < hunk.operationEnd) {
         const current = operations[operationIndex];
-        if (current === undefined) break;
+        if (current === undefined) {
+          break;
+        }
         switch (current.kind) {
         case 'equal':
           break changeBlock;
         case 'delete':
           for (let offset = 0; offset < current.length; offset += 1) {
             const lineIndex = current.leftStart + offset;
-            if (lineInsideRange({ lineIndex, start: hunk.leftStart, count: hunk.leftCount })) deletedLines.push(lineIndex);
+            if (lineInsideRange({ lineIndex, start: hunk.leftStart, count: hunk.leftCount })) {
+              deletedLines.push(lineIndex);
+            }
           }
           break;
         case 'insert':
           for (let offset = 0; offset < current.length; offset += 1) {
             const lineIndex = current.rightStart + offset;
-            if (lineInsideRange({ lineIndex, start: hunk.rightStart, count: hunk.rightCount })) insertedLines.push(lineIndex);
+            if (lineInsideRange({ lineIndex, start: hunk.rightStart, count: hunk.rightCount })) {
+              insertedLines.push(lineIndex);
+            }
           }
           break;
         default: {
@@ -325,7 +344,9 @@ async function writeWordDiff({ writer, leftInput, rightInput, contextLines }: {
         const hasLineFeed = rightLineIndex !== undefined
           ? rightInput.lines.hasLineFeed[rightLineIndex] === 1
           : leftInput.lines.hasLineFeed[leftLineIndex!] === 1;
-        if (hasLineFeed) await writer.writeText({ text: '\n' });
+        if (hasLineFeed) {
+          await writer.writeText({ text: '\n' });
+        }
       }
     }
   }
@@ -343,7 +364,9 @@ export async function writePatchEntry({ context, repository, path, left, right, 
   binaryPatch?: boolean,
 }): Promise<void> {
   if (left !== undefined && right !== undefined
-    && left.objectId === right.objectId && left.mode === right.mode) return;
+    && left.objectId === right.objectId && left.mode === right.mode) {
+    return;
+  }
 
   const writer = createDiffByteWriter({ handle: context.stdout });
   const leftDiffPath = formatGitPatchPath({ path, prefix: 'a', quoteNonAscii, headerLabel: false });
@@ -400,7 +423,9 @@ export function changedPaths({ left, right }: { left: GitDiffSnapshot, right: Gi
   for (const path of snapshotPathUnion({ left, right })) {
     const a = left.get(path);
     const b = right.get(path);
-    if (a?.objectId !== b?.objectId || a?.mode !== b?.mode) changed.push(path);
+    if (a?.objectId !== b?.objectId || a?.mode !== b?.mode) {
+      changed.push(path);
+    }
   }
   return sortGitPaths({ paths: changed });
 }
@@ -455,7 +480,9 @@ const GIT_BINARY_PROBE_BYTE_LIMIT = 8000;
 function isGitBinaryContent({ bytes }: { bytes: Uint8Array }): boolean {
   const limit = Math.min(bytes.byteLength, GIT_BINARY_PROBE_BYTE_LIMIT);
   for (let index = 0; index < limit; index += 1) {
-    if (bytes[index] === 0) return true;
+    if (bytes[index] === 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -495,12 +522,20 @@ function diffLineCounts({ leftBytes, rightBytes }: {
 
 function scaleStatGraph({ additions, deletions }: { additions: number, deletions: number }): string {
   const total = additions + deletions;
-  if (total === 0) return '';
+  if (total === 0) {
+    return '';
+  }
   const maximumWidth = 50;
-  if (total <= maximumWidth) return `${'+'.repeat(additions)}${'-'.repeat(deletions)}`;
+  if (total <= maximumWidth) {
+    return `${'+'.repeat(additions)}${'-'.repeat(deletions)}`;
+  }
   let additionWidth = Math.round((additions / total) * maximumWidth);
-  if (additions > 0) additionWidth = Math.max(1, additionWidth);
-  if (deletions > 0) additionWidth = Math.min(maximumWidth - 1, additionWidth);
+  if (additions > 0) {
+    additionWidth = Math.max(1, additionWidth);
+  }
+  if (deletions > 0) {
+    additionWidth = Math.min(maximumWidth - 1, additionWidth);
+  }
   return `${'+'.repeat(additionWidth)}${'-'.repeat(maximumWidth - additionWidth)}`;
 }
 
@@ -550,7 +585,9 @@ function renameStatPath({ sourcePath, destinationPath }: { sourcePath: string, d
     && source[source.length - 1 - suffixLength] === destination[destination.length - 1 - suffixLength]) {
     suffixLength += 1;
   }
-  if (prefixLength === 0 && suffixLength === 0) return `${sourcePath} => ${destinationPath}`;
+  if (prefixLength === 0 && suffixLength === 0) {
+    return `${sourcePath} => ${destinationPath}`;
+  }
   const prefix = source.slice(0, prefixLength);
   const sourceMiddle = source.slice(prefixLength, source.length - suffixLength).join('/');
   const destinationMiddle = destination.slice(prefixLength, destination.length - suffixLength).join('/');
@@ -568,7 +605,9 @@ export async function writeDiffStat({ context, repository, paths, left, right, q
   detectRenames: boolean,
   unmergedPaths?: readonly string[],
 }): Promise<void> {
-  if (paths.length === 0 && unmergedPaths.length === 0) return;
+  if (paths.length === 0 && unmergedPaths.length === 0) {
+    return;
+  }
   const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
   const renamePaths = new Set<string>();
   for (const rename of exactRenames) {
@@ -640,8 +679,12 @@ export async function writeDiffStat({ context, repository, paths, left, right, q
     }
     summary += ', 0 insertions(+), 0 deletions(-)';
   } else {
-    if (additions > 0) summary += `, ${additions} insertion${additions === 1 ? '' : 's'}(+)`;
-    if (deletions > 0) summary += `, ${deletions} deletion${deletions === 1 ? '' : 's'}(-)`;
+    if (additions > 0) {
+      summary += `, ${additions} insertion${additions === 1 ? '' : 's'}(+)`;
+    }
+    if (deletions > 0) {
+      summary += `, ${deletions} deletion${deletions === 1 ? '' : 's'}(-)`;
+    }
   }
   await context.text().print({ text: `${summary}\n` });
 }
@@ -651,7 +694,9 @@ export type GitDiffSearch =
   | { type: 'regex', pattern: GitExtendedRegex };
 
 function countByteSequence({ bytes, needle }: { bytes: Uint8Array, needle: Uint8Array }): number {
-  if (needle.byteLength === 0) return 0;
+  if (needle.byteLength === 0) {
+    return 0;
+  }
   let count = 0;
   for (let offset = 0; offset + needle.byteLength <= bytes.byteLength;) {
     let matches = true;
@@ -664,7 +709,9 @@ function countByteSequence({ bytes, needle }: { bytes: Uint8Array, needle: Uint8
     if (matches) {
       count += 1;
       offset += needle.byteLength;
-    } else offset += 1;
+    } else {
+      offset += 1;
+    }
   }
   return count;
 }
@@ -674,7 +721,9 @@ function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
   rightBytes: Uint8Array,
   pattern: GitExtendedRegex,
 }): boolean {
-  if (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes })) return false;
+  if (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes })) {
+    return false;
+  }
   const leftInput = createDiffInput({ displayName: 'left', resolvedPath: undefined, mtime: undefined, bytes: leftBytes });
   const rightInput = createDiffInput({ displayName: 'right', resolvedPath: undefined, mtime: undefined, bytes: rightBytes });
   const operations = createDiffOperations({
@@ -704,7 +753,9 @@ function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
     }
     for (let offset = 0; offset < operation.length; offset += 1) {
       const bytes = getLineBytes({ input, lineIndex: start + offset, stripTrailingCarriageReturn: false });
-      if (testGitExtendedRegexBytes({ regex: pattern, bytes })) return true;
+      if (testGitExtendedRegexBytes({ regex: pattern, bytes })) {
+        return true;
+      }
     }
   }
   return false;
@@ -765,7 +816,9 @@ function snapshotPathUnion({ left, right }: {
   right: GitDiffSnapshot,
 }): Set<string> {
   const paths = new Set(left.keys());
-  for (const path of right.keys()) paths.add(path);
+  for (const path of right.keys()) {
+    paths.add(path);
+  }
   return paths;
 }
 
@@ -789,10 +842,14 @@ function excludeExactCopyDestinationsForPickaxe({ paths, sourcePaths, left, righ
   const sourceIdentities = new Set<string>();
   for (const path of sourcePaths) {
     const entry = left.get(path);
-    if (entry !== undefined) sourceIdentities.add(exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode }));
+    if (entry !== undefined) {
+      sourceIdentities.add(exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode }));
+    }
   }
   return paths.filter(path => {
-    if (left.has(path)) return true;
+    if (left.has(path)) {
+      return true;
+    }
     const entry = right.get(path);
     return entry === undefined
       || !sourceIdentities.has(exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode }));
@@ -846,12 +903,16 @@ export async function revisionDiffMatchesSearch({ context, repository, leftRevis
       leftBytes: await readDiffSnapshotEntryBytes({ context, repository, entry: left.get(similarityRename.sourcePath) }),
       rightBytes: await readDiffSnapshotEntryBytes({ context, repository, entry: right.get(similarityRename.destinationPath) }),
       search,
-    })) return true;
+    })) {
+      return true;
+    }
   }
   for (const path of paths) {
     const leftBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: left.get(path) });
     const rightBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: right.get(path) });
-    if (diffSearchMatchesBytes({ leftBytes, rightBytes, search })) return true;
+    if (diffSearchMatchesBytes({ leftBytes, rightBytes, search })) {
+      return true;
+    }
   }
   return false;
 }
@@ -914,11 +975,15 @@ export async function writeRevisionNameOnly({ context, repository, leftRevision,
     renamePaths.add(rename.destinationPath);
   }
   const outputPaths = new Set(paths.filter(path => !renamePaths.has(path)));
-  for (const rename of exactRenames) outputPaths.add(rename.destinationPath);
+  for (const rename of exactRenames) {
+    outputPaths.add(rename.destinationPath);
+  }
   const text = sortGitPaths({ paths: outputPaths })
     .map(path => `${quoteGitPath({ path, quoteNonAscii, quoteSpaces: false })}\n`)
     .join('');
-  if (text !== '') await context.text().print({ text });
+  if (text !== '') {
+    await context.text().print({ text });
+  }
 }
 
 export async function writeRevisionNameStatus({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
@@ -975,7 +1040,9 @@ export async function writeRevisionNameStatus({ context, repository, leftRevisio
     }
     }
   }
-  if (text !== '') await context.text().print({ text });
+  if (text !== '') {
+    await context.text().print({ text });
+  }
 }
 
 export async function writeRevisionStat({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {

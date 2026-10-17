@@ -18,10 +18,12 @@ export const modelLaunchHistoryKey = '_internalNaidanLlamaCppBrowserModelLaunch'
 export function reserveModelLaunchHistory({ history, location, fallback }: { fallback: { chatId: ChatId, newChatGroupId: ChatGroupId } | undefined, history: Pick<RouterHistory, 'state' | 'replace' | 'location'>, location: string }): { chatId: ChatId, newChatGroupId: ChatGroupId } {
   const state = history.state;
   const previous = reservationSchema.safeParse(state[modelLaunchHistoryKey]);
-  if (previous.success && previous.data.location === location) return {
-    chatId: toChatId({ raw: previous.data.chatId }),
-    newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
-  };
+  if (previous.success && previous.data.location === location) {
+    return {
+      chatId: toChatId({ raw: previous.data.chatId }),
+      newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
+    };
+  }
   const chatId = fallback?.chatId ?? generateId<ChatId>();
   const newChatGroupId = fallback?.newChatGroupId ?? generateId<ChatGroupId>();
   const reservation = reservationSchema.parse({ version: 1, location, chatId: idToRaw({ id: chatId }), chatGroupId: idToRaw({ id: newChatGroupId }) });
@@ -46,12 +48,18 @@ export function modelLaunchViewState({ chatId, input, modelId, revision }: { cha
 
 export function readModelLaunchView({ state, chatId, modelId }: { state: unknown, chatId: ChatId, modelId: string | undefined }): ModelLaunchView | undefined {
   const parsed = viewSchema.safeParse(state);
-  if (!parsed.success || parsed.data.chatId !== idToRaw({ id: chatId }) || parsed.data.modelId !== modelId) return undefined;
+  if (!parsed.success || parsed.data.chatId !== idToRaw({ id: chatId }) || parsed.data.modelId !== modelId) {
+    return undefined;
+  }
   const reference = readModelLaunchReference({ modelId });
-  if (reference === undefined) return undefined;
+  if (reference === undefined) {
+    return undefined;
+  }
   try {
     // History state is untrusted input, not authority to replace saved settings.
-    if (parseRepository({ input: parsed.data.input }).repository !== reference.repository) return undefined;
+    if (parseRepository({ input: parsed.data.input }).repository !== reference.repository) {
+      return undefined;
+    }
     return parsed.data;
   } catch {
     return undefined;

@@ -29,7 +29,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (unsubscribe) unsubscribe();
+  if (unsubscribe) {
+    unsubscribe();
+  }
 });
 
 const statusText = computed(() => {
@@ -39,7 +41,9 @@ const statusText = computed(() => {
     return lazyStrings.TransformersJsLoadingIndicator__transformers_js_error();
   case 'loading': {
     const modelName = loadingModelId.value?.split('/').pop() ?? lazyStrings.TransformersJsLoadingIndicator__model();
-    if (modelName === undefined) return undefined;
+    if (modelName === undefined) {
+      return undefined;
+    }
     if (isLoadingFromCache.value) {
       return lazyStrings.TransformersJsLoadingIndicator__initializing_model({ modelName });
     }

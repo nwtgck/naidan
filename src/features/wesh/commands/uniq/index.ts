@@ -112,8 +112,12 @@ function skipFields({
   let index = 0;
 
   for (let field = 0; field < fieldCount && index < data.length; field++) {
-    while (index < data.length && isBlankByte({ byte: data[index] ?? 0, delimiter })) index++;
-    while (index < data.length && !isBlankByte({ byte: data[index] ?? 0, delimiter })) index++;
+    while (index < data.length && isBlankByte({ byte: data[index] ?? 0, delimiter })) {
+      index++;
+    }
+    while (index < data.length && !isBlankByte({ byte: data[index] ?? 0, delimiter })) {
+      index++;
+    }
   }
 
   return index;
@@ -135,7 +139,9 @@ function utf8CharacterByteLength({
   index: number,
 }): number {
   const first = data[index];
-  if (first === undefined || first <= 0x7f) return 1;
+  if (first === undefined || first <= 0x7f) {
+    return 1;
+  }
 
   const second = data[index + 1];
   const third = data[index + 2];
@@ -251,7 +257,9 @@ function foldAsciiCaseBytes({
   let folded: Uint8Array | undefined;
   for (let index = 0; index < data.length; index++) {
     const byte = data[index] ?? 0;
-    if (byte < 0x41 || byte > 0x5a) continue;
+    if (byte < 0x41 || byte > 0x5a) {
+      continue;
+    }
     folded ??= data.slice();
     folded[index] = byte + 0x20;
   }
@@ -347,7 +355,9 @@ function parseAllRepeatedLongOption({
   token: string,
 }) {
   const prefix = '--all-repeated=';
-  if (!token.startsWith(prefix)) return undefined;
+  if (!token.startsWith(prefix)) {
+    return undefined;
+  }
 
   const value = token.slice(prefix.length);
   const method = parseAllRepeatedMethod({ value });
@@ -384,7 +394,9 @@ function parseGroupLongOption({
   token: string,
 }) {
   const prefix = '--group=';
-  if (!token.startsWith(prefix)) return undefined;
+  if (!token.startsWith(prefix)) {
+    return undefined;
+  }
 
   const value = token.slice(prefix.length);
   const method = parseGroupMethod({ value });
@@ -480,9 +492,13 @@ function byteArraysEqual({
   left: Uint8Array,
   right: Uint8Array,
 }): boolean {
-  if (left.length !== right.length) return false;
+  if (left.length !== right.length) {
+    return false;
+  }
   for (let index = 0; index < left.length; index++) {
-    if (left[index] !== right[index]) return false;
+    if (left[index] !== right[index]) {
+      return false;
+    }
   }
   return true;
 }
@@ -553,12 +569,18 @@ async function *readUniqRecords({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (value === undefined) continue;
+      if (done) {
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
 
       let recordStart = 0;
       for (let index = 0; index < value.length; index++) {
-        if (value[index] !== delimiter) continue;
+        if (value[index] !== delimiter) {
+          continue;
+        }
         yield finishRecord({
           trailingPart: value.subarray(recordStart, index),
         });
@@ -724,7 +746,9 @@ async function inputAndOutputReferToSameFile({
 
   const resolvedInputPath = resolvePath({ cwd: context.cwd, path: inputPath });
   const resolvedOutputPath = resolvePath({ cwd: context.cwd, path: outputPath });
-  if (resolvedInputPath === resolvedOutputPath) return true;
+  if (resolvedInputPath === resolvedOutputPath) {
+    return true;
+  }
 
   try {
     const inputResolution = await context.files.resolve({ path: resolvedInputPath });
@@ -1010,7 +1034,9 @@ export const uniqCommandImplementation: WeshCommandImplementation = {
             case 'prepend':
               break;
             case 'separate':
-              if (!emittedDuplicateGroup) return;
+              if (!emittedDuplicateGroup) {
+                return;
+              }
               break;
             default: {
               const _ex: never = outputPolicy.allRepeatedMethod;
@@ -1024,12 +1050,16 @@ export const uniqCommandImplementation: WeshCommandImplementation = {
           };
 
           const flush = async () => {
-            if (groupRecord === undefined) return;
+            if (groupRecord === undefined) {
+              return;
+            }
 
             const shouldEmit = groupCount === 1
               ? outputPolicy.outputUnique
               : !outputPolicy.outputLaterRepeated && outputPolicy.outputFirstRepeated;
-            if (!shouldEmit) return;
+            if (!shouldEmit) {
+              return;
+            }
 
             await emitUniqRecord({
               target: outputTarget,

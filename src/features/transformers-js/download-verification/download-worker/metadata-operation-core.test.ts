@@ -88,7 +88,9 @@ it('waits for an unawaited put to close and for its fresh stat before readiness'
   const close = Promise.withResolvers<void>();
   h.storage.write.mockImplementation(async ({ url, response }) => {
     const bytes = new Uint8Array(await response.arrayBuffer());
-    entered.resolve(); await close.promise; h.files.set(url, bytes);
+    entered.resolve();
+    await close.promise;
+    h.files.set(url, bytes);
   });
   const put = h.operation.cache.put(`${base}tokenizer.json`, new Response('{}'));
   await entered.promise;
@@ -100,7 +102,8 @@ it('waits for an unawaited put to close and for its fresh stat before readiness'
   expect(ready).toBe(false);
   expect(h.storage.stat).not.toHaveBeenCalled();
   close.resolve();
-  await put; await finish;
+  await put;
+  await finish;
   expect(ready).toBe(true);
   expect(h.storage.stat).toHaveBeenCalledTimes(2);
 });
@@ -144,7 +147,8 @@ it('cancels a late remote response that arrives after failure cleanup has starte
   const response = Promise.withResolvers<Response>();
   const cancel = vi.fn();
   h.network.mockImplementation(async () => {
-    entered.resolve(); return response.promise;
+    entered.resolve();
+    return response.promise;
   });
   const read = h.operation.fetch(`${base}tokenizer.json`).catch(error => error);
   await entered.promise;
@@ -163,7 +167,8 @@ it('cancels a late cache response that arrives after failure cleanup has started
   const cancel = vi.fn();
   h.storage.stat.mockResolvedValue(2);
   h.storage.read.mockImplementation(async () => {
-    entered.resolve(); return response.promise;
+    entered.resolve();
+    return response.promise;
   });
   const read = h.operation.cache.match(`${base}tokenizer.json`).catch(error => error);
   await entered.promise;
@@ -182,7 +187,8 @@ it('still owns and cancels a remote response arriving after the cleanup deadline
   const response = Promise.withResolvers<Response>();
   const cancel = vi.fn();
   h.network.mockImplementation(async () => {
-    entered.resolve(); return response.promise;
+    entered.resolve();
+    return response.promise;
   });
   const read = h.operation.fetch(`${base}tokenizer.json`).catch(error => error);
   await entered.promise;
@@ -204,7 +210,8 @@ it('fails cleanup rather than becoming ready when an unread reader refuses to ca
   await h.operation.fetch(`${base}processor_config.json`);
   let ready = false;
   const outcome = h.operation.finish().then(() => {
-    ready = true; return undefined;
+    ready = true;
+    return undefined;
   }, error => error);
   await vi.advanceTimersByTimeAsync(RUNTIME_METADATA_CLEANUP_TIMEOUT_MS);
   expect(await outcome).toBeInstanceOf(Error);
@@ -310,7 +317,8 @@ it('rejects an HTML success response without turning it into durable metadata', 
 
 it('preserves method, headers and signal overrides on a Request without treating tokenizer.model as weights', async () => {
   const h = operationFixture();
-  const stale = new AbortController(); stale.abort();
+  const stale = new AbortController();
+  stale.abort();
   const active = new AbortController();
   const request = new Request(`${base}tokenizer.model`, { method: 'POST', headers: { 'X-Fixture': 'old' }, signal: stale.signal });
   const response = await h.operation.fetch(request, { method: 'GET', headers: { 'X-Fixture': 'new' }, signal: active.signal });
@@ -327,7 +335,8 @@ it('preserves method, headers and signal overrides on a Request without treating
 
 it('rejects an already-aborted Request before transport', async () => {
   const h = operationFixture();
-  const controller = new AbortController(); controller.abort();
+  const controller = new AbortController();
+  controller.abort();
   await h.operation.fetch(new Request(`${base}config.json`, { signal: controller.signal })).catch(() => undefined);
   await expect(h.operation.finish()).rejects.toMatchObject({ name: 'AbortError' });
   expect(h.network).not.toHaveBeenCalled();
@@ -356,7 +365,8 @@ it('waits for the final fresh stat instead of publishing readiness after writer 
   const release = Promise.withResolvers<number>();
   await h.operation.cache.put(`${base}tokenizer.json`, new Response('{}'));
   h.storage.stat.mockImplementation(async () => {
-    entered.resolve(); return release.promise;
+    entered.resolve();
+    return release.promise;
   });
   let ready = false;
   const finishing = h.operation.finish().then(() => {
@@ -364,7 +374,8 @@ it('waits for the final fresh stat instead of publishing readiness after writer 
   });
   await entered.promise;
   expect(ready).toBe(false);
-  release.resolve(2); await finishing;
+  release.resolve(2);
+  await finishing;
   expect(ready).toBe(true);
 });
 
@@ -377,17 +388,23 @@ it('keeps the first failure when a different already-started writer later succee
   const primary = new Error('fixture first writer failure');
   h.storage.write.mockImplementation(async ({ url, response }) => {
     const bytes = new Uint8Array(await response.arrayBuffer());
-    if (++started === 2) bothStarted.resolve();
-    if (url.endsWith('/tokenizer.json')) {
-      await failing.promise; throw primary;
+    if (++started === 2) {
+      bothStarted.resolve();
     }
-    await succeeding.promise; h.files.set(url, bytes);
+    if (url.endsWith('/tokenizer.json')) {
+      await failing.promise;
+      throw primary;
+    }
+    await succeeding.promise;
+    h.files.set(url, bytes);
   });
   const first = h.operation.cache.put(`${base}tokenizer.json`, new Response('{}')).catch(error => error);
   const second = h.operation.cache.put(`${base}tokenizer_config.json`, new Response('{}')).catch(error => error);
   await bothStarted.promise;
-  failing.resolve(); expect(await first).toBe(primary);
-  succeeding.resolve(); expect(await second).toBe(primary);
+  failing.resolve();
+  expect(await first).toBe(primary);
+  succeeding.resolve();
+  expect(await second).toBe(primary);
   expect(h.files.has(`${base}tokenizer_config.json`)).toBe(true);
   await expect(h.operation.finish()).rejects.toBe(primary);
 });

@@ -3,7 +3,9 @@ import { ByteAssembly } from '@/features/naidan-rpc/assembly';
 
 /** These helpers bound integration payloads; RPC frame limits are a separate transport budget. */
 export async function collectBytes({ readable, limit, signal }: { readable: ReadableStream<Uint8Array>; limit: number; signal: AbortSignal }): Promise<Uint8Array<ArrayBuffer>> {
-  if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid transfer limit');
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new Error('Invalid transfer limit');
+  }
   signal.throwIfAborted();
   const reader = readable.getReader(), bytes = new ByteAssembly({ limit });
   let cancellation: Promise<void> | undefined;
@@ -18,19 +20,32 @@ export async function collectBytes({ readable, limit, signal }: { readable: Read
   signal.addEventListener('abort', cancel, { once: true });
   try {
     for (;;) {
-      signal.throwIfAborted(); const item = await reader.read(); signal.throwIfAborted();
-      if (item.done) break;
-      if (!(item.value instanceof Uint8Array)) throw new Error('Remote inference returned a non-byte chunk');
-      if (item.value.byteLength === 0) continue;
-      if (bytes.byteLength + item.value.byteLength > limit) throw new Error('Remote inference transfer exceeds its limit');
+      signal.throwIfAborted();
+      const item = await reader.read();
+      signal.throwIfAborted();
+      if (item.done) {
+        break;
+      }
+      if (!(item.value instanceof Uint8Array)) {
+        throw new Error('Remote inference returned a non-byte chunk');
+      }
+      if (item.value.byteLength === 0) {
+        continue;
+      }
+      if (bytes.byteLength + item.value.byteLength > limit) {
+        throw new Error('Remote inference transfer exceeds its limit');
+      }
       bytes.append({ bytes: item.value });
     }
     return bytes.finish();
   } catch (error) {
-    await cancelReader({ reason: error }); throw error;
+    await cancelReader({ reason: error });
+    throw error;
   } finally {
     signal.removeEventListener('abort', cancel);
-    if (cancellation) await cancellation;
+    if (cancellation) {
+      await cancellation;
+    }
     reader.releaseLock();
   }
 }
@@ -40,9 +55,12 @@ export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Ui
   return new ReadableStream({
     pull(controller) {
       if (at === bytes.length) {
-        controller.close(); return;
+        controller.close();
+        return;
       }
-      const end = Math.min(at + 16384, bytes.length); controller.enqueue(bytes.slice(at, end)); at = end;
+      const end = Math.min(at + 16384, bytes.length);
+      controller.enqueue(bytes.slice(at, end));
+      at = end;
     },
   }, { highWaterMark: 0 });
 }
@@ -50,27 +68,40 @@ export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Ui
 /** Starts computation on demand, preserves backpressure, and joins native cleanup on cancel. */
 export function computationSource<T>({ signal, run }: { signal: AbortSignal; run: ({ emit, signal }: { emit: ({ value }: { value: T }) => Promise<void>; signal: AbortSignal }) => Promise<void> }): ReadableStream<T> {
   const controller = new AbortController();
-  const pipe = new TransformStream<T, T>(); const writer = pipe.writable.getWriter(); const reader = pipe.readable.getReader();
-  let job: Promise<void> | undefined; let stopped = false;
+  const pipe = new TransformStream<T, T>();
+  const writer = pipe.writable.getWriter();
+  const reader = pipe.readable.getReader();
+  let job: Promise<void> | undefined;
+  let stopped = false;
   const forward = () => {
-    controller.abort(signal.reason); void writer.abort(signal.reason).catch(() => {});
+    controller.abort(signal.reason);
+    void writer.abort(signal.reason).catch(() => {});
   };
-  signal.addEventListener('abort', forward, { once: true }); if (signal.aborted) forward();
+  signal.addEventListener('abort', forward, { once: true });
+  if (signal.aborted) {
+    forward();
+  }
   const cleanup = () => {
     signal.removeEventListener('abort', forward);
   };
   const start = () => {
-    if (job) return;
+    if (job) {
+      return;
+    }
     job = (async () => {
       try {
-        controller.signal.throwIfAborted(); await run({
+        controller.signal.throwIfAborted();
+        await run({
           signal: controller.signal,
           emit: async ({ value }) => {
-            controller.signal.throwIfAborted(); await writer.write(value);
+            controller.signal.throwIfAborted();
+            await writer.write(value);
           },
-        }); await writer.close();
+        });
+        await writer.close();
       } catch (error) {
-        controller.abort(error); await writer.abort(error).catch(() => {});
+        controller.abort(error);
+        await writer.abort(error).catch(() => {});
       } finally {
         cleanup();
       }
@@ -78,10 +109,26 @@ export function computationSource<T>({ signal, run }: { signal: AbortSignal; run
   };
   return new ReadableStream<T>({
     async pull(output) {
-      if (stopped) return; start(); const next = await reader.read(); if (stopped) return; if (next.done) output.close(); else output.enqueue(next.value);
+      if (stopped) {
+        return;
+      }
+      start();
+      const next = await reader.read();
+      if (stopped) {
+        return;
+      }
+      if (next.done) {
+        output.close();
+      } else {
+        output.enqueue(next.value);
+      }
     },
     async cancel(reason) {
-      stopped = true; controller.abort(reason); cleanup(); await reader.cancel(reason).catch(() => {}); await job;
+      stopped = true;
+      controller.abort(reason);
+      cleanup();
+      await reader.cancel(reason).catch(() => {});
+      await job;
     },
   }, { highWaterMark: 0 });
 }
@@ -95,26 +142,41 @@ export function assertDocumentBounds({ value }: { value: unknown }): void {
   let nodes = 1;
   while (pending.length > 0) {
     const current = pending.pop()!;
-    if (current.depth > peerDocumentLimits.depth) throw new Error('Inference document depth limit exceeded');
-    if (current.value === null || typeof current.value !== 'object') continue;
+    if (current.depth > peerDocumentLimits.depth) {
+      throw new Error('Inference document depth limit exceeded');
+    }
+    if (current.value === null || typeof current.value !== 'object') {
+      continue;
+    }
     for (const value of Object.values(current.value)) {
-      if (++nodes > peerDocumentLimits.nodes) throw new Error('Inference document node limit exceeded');
+      if (++nodes > peerDocumentLimits.nodes) {
+        throw new Error('Inference document node limit exceeded');
+      }
       pending.push({ value, depth: current.depth + 1 });
     }
   }
 }
 
 export function encodeDocument({ value, limit }: { value: unknown; limit: number }): Uint8Array<ArrayBuffer> {
-  if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid document limit');
+  if (!Number.isSafeInteger(limit) || limit < 0) {
+    throw new Error('Invalid document limit');
+  }
   assertDocumentBounds({ value });
   const text = JSON.stringify(value);
-  if (text === undefined) throw new Error('Inference document requires a JSON value');
-  const bytes = new TextEncoder().encode(text); if (bytes.length > limit) throw new Error('Inference document exceeds its limit'); return bytes;
+  if (text === undefined) {
+    throw new Error('Inference document requires a JSON value');
+  }
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length > limit) {
+    throw new Error('Inference document exceeds its limit');
+  }
+  return bytes;
 }
 
 export function decodeDocument({ bytes }: { bytes: Uint8Array }): unknown {
   const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  assertDocumentBounds({ value }); return value;
+  assertDocumentBounds({ value });
+  return value;
 }
 
 export const TEST_ONLY = {

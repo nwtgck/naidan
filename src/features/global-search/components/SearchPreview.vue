@@ -38,7 +38,9 @@ async function loadContext() {
   isLoading.value = true;
   try {
     const content = await storageService.loadChatContent({ id: toChatId({ raw: chatId }) });
-    if (requestId !== activeRequestId || content === null) return;
+    if (requestId !== activeRequestId || content === null) {
+      return;
+    }
 
     const targetLeafId = props.match?.targetLeafId === undefined
       ? content.currentLeafId
@@ -48,7 +50,9 @@ async function loadContext() {
       currentLeafId: targetLeafId,
     };
     const branch = Array.from(getChatBranchIterator({ chat: virtualContent }));
-    if (requestId !== activeRequestId) return;
+    if (requestId !== activeRequestId) {
+      return;
+    }
 
     branchMessages.value = branch;
     matchedIndex.value = props.match === undefined

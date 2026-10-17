@@ -22,7 +22,9 @@ function compileTemplate(template: string): string {
 
 function generatedPosition({ source, needle }: { source: string, needle: string }): { line: number, column: number } {
   const index = source.indexOf(needle);
-  if (index < 0) throw new Error(`Generated source does not contain ${JSON.stringify(needle)}.`);
+  if (index < 0) {
+    throw new Error(`Generated source does not contain ${JSON.stringify(needle)}.`);
+  }
   const prefix = source.slice(0, index);
   const lineStart = prefix.lastIndexOf('\n') + 1;
   return {

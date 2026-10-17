@@ -6,7 +6,9 @@ describe('bounded generation task yields', () => {
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => 0 });
     expect(pacing.shouldYield()).toBe(true);
     pacing.yielded();
-    for (let i = 0; i < 3; i++) expect(pacing.shouldYield()).toBe(false);
+    for (let i = 0; i < 3; i++) {
+      expect(pacing.shouldYield()).toBe(false);
+    }
     expect(pacing.shouldYield()).toBe(true);
     pacing.yielded();
     expect(pacing.counters).toEqual({
@@ -22,10 +24,16 @@ describe('bounded generation task yields', () => {
   it('checks elapsed time at each decode boundary, including parsing and delivery time', () => {
     let at = 0;
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => at });
-    expect(pacing.shouldYield()).toBe(true); pacing.yielded();
-    at = 7.99; expect(pacing.shouldYield()).toBe(false);
-    at = 8; expect(pacing.shouldYield()).toBe(true); pacing.yielded();
-    at = 100; expect(pacing.shouldYield()).toBe(true); pacing.yielded();
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
+    at = 7.99;
+    expect(pacing.shouldYield()).toBe(false);
+    at = 8;
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
+    at = 100;
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
     expect(pacing.counters.maximumDecodesBetweenYields).toBe(2);
   });
 
@@ -34,33 +42,45 @@ describe('bounded generation task yields', () => {
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => at });
     expect(pacing.shouldYield()).toBe(true);
     expect(pacing.counters.completedYields).toBe(0);
-    at = 500; pacing.yielded();
-    at = 507; expect(pacing.shouldYield()).toBe(false);
-    at = 508; expect(pacing.shouldYield()).toBe(true);
+    at = 500;
+    pacing.yielded();
+    at = 507;
+    expect(pacing.shouldYield()).toBe(false);
+    at = 508;
+    expect(pacing.shouldYield()).toBe(true);
   });
 
   it.each([NaN, Infinity, -Infinity, -1])('yields on unusable clock value %s and can recover', invalid => {
     let at = 0;
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => at });
-    expect(pacing.shouldYield()).toBe(true); pacing.yielded();
-    at = invalid; expect(pacing.shouldYield()).toBe(true);
-    at = 100; pacing.yielded();
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
+    at = invalid;
+    expect(pacing.shouldYield()).toBe(true);
+    at = 100;
+    pacing.yielded();
     expect(pacing.shouldYield()).toBe(false);
   });
 
   it('also detects a backwards clock that has not crossed the last yield time', () => {
     let at = 0;
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => at });
-    expect(pacing.shouldYield()).toBe(true); pacing.yielded();
-    at = 5; expect(pacing.shouldYield()).toBe(false);
-    at = 4; expect(pacing.shouldYield()).toBe(true);
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
+    at = 5;
+    expect(pacing.shouldYield()).toBe(false);
+    at = 4;
+    expect(pacing.shouldYield()).toBe(true);
   });
 
   it('recovers from an invalid clock at initialization or completion', () => {
     let at = NaN;
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => at });
-    expect(pacing.shouldYield()).toBe(true); pacing.yielded();
-    at = 0; expect(pacing.shouldYield()).toBe(true); pacing.yielded();
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
+    at = 0;
+    expect(pacing.shouldYield()).toBe(true);
+    pacing.yielded();
     expect(pacing.shouldYield()).toBe(false);
   });
 
@@ -68,7 +88,8 @@ describe('bounded generation task yields', () => {
     const now = vi.fn(() => 0);
     const pacing = createGenerationYieldPacing({ mode: 'per-token', now });
     for (let i = 0; i < 20; i++) {
-      expect(pacing.shouldYield()).toBe(true); pacing.yielded();
+      expect(pacing.shouldYield()).toBe(true);
+      pacing.yielded();
     }
     expect(now).not.toHaveBeenCalled();
     expect(pacing.counters).toEqual({
@@ -93,7 +114,11 @@ describe('bounded generation task yields', () => {
 
   it('bounds fast or coarse-clock runs without retaining per-token events', () => {
     const pacing = createGenerationYieldPacing({ mode: 'coalesced', now: () => 0 });
-    for (let i = 0; i < 10001; i++) if (pacing.shouldYield()) pacing.yielded();
+    for (let i = 0; i < 10001; i++) {
+      if (pacing.shouldYield()) {
+        pacing.yielded();
+      }
+    }
     expect(pacing.counters.requestedYields).toBe(2501);
     expect(pacing.counters.completedYields).toBe(2501);
     expect(pacing.counters.maximumDecodesBetweenYields).toBe(4);

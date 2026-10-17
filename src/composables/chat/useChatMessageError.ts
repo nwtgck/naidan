@@ -13,19 +13,29 @@ export function useChatMessageError({ chatId, message }: {
     switch (node.role) {
     case 'assistant': {
       const transient = chatVolatileState.getVolatileAssistantError({ chatId: chatId.value, messageId: node.id });
-      if (transient !== undefined) return transient;
+      if (transient !== undefined) {
+        return transient;
+      }
       const interruption = node.interruption;
-      if (interruption === undefined) return undefined;
+      if (interruption === undefined) {
+        return undefined;
+      }
       switch (interruption.type) {
       case 'cancelled': return undefined;
       case 'error': return interruption.message;
-      default: { const _ex: never = interruption; throw new Error(`Unhandled interruption: ${_ex}`); }
+      default: {
+        const _ex: never = interruption;
+        throw new Error(`Unhandled interruption: ${_ex}`);
+      }
       }
     }
     case 'user':
     case 'system':
     case 'tool': return undefined;
-    default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
   });
 }

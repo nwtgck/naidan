@@ -63,7 +63,9 @@ export function createTransformersJsService({ createWorkerClient }: {
   const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
   function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
-    if (__BUILD_MODE_IS_TEST__) return;
+    if (__BUILD_MODE_IS_TEST__) {
+      return;
+    }
     const timestamp = (() => {
       const dateCtor = globalThis.Date;
       if (typeof dateCtor === 'function') {
@@ -109,7 +111,9 @@ export function createTransformersJsService({ createWorkerClient }: {
     }
     const ownedChannel = channel;
     const publish = () => {
-      if (!isOpen() || !listeners.has(listener) || downloadListenerChannels.get(listener) !== ownedChannel || downloadProgress === undefined || epoch !== downloadObservationEpoch) return;
+      if (!isOpen() || !listeners.has(listener) || downloadListenerChannels.get(listener) !== ownedChannel || downloadProgress === undefined || epoch !== downloadObservationEpoch) {
+        return;
+      }
       ownedChannel.busy = true;
       let observation: unknown;
       try {
@@ -126,24 +130,34 @@ export function createTransformersJsService({ createWorkerClient }: {
     };
     // A held subscriber retains only one in-flight call and the latest scalar
     // snapshot. Completion is committed in getState even if it never responds.
-    if (channel.busy) channel.latest = publish;
-    else publish();
+    if (channel.busy) {
+      channel.latest = publish;
+    } else {
+      publish();
+    }
   }
 
   type ModelListListener = () => void;
   const modelListListeners: Set<ModelListListener> = new Set();
 
   function notify() {
-    if (!isOpen()) return;
+    if (!isOpen()) {
+      return;
+    }
     listeners.forEach(l => {
       const publish = () => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
-      if (downloadProgress !== undefined) publishDownloadListener({ listener: l });
-      else publish();
+      if (downloadProgress !== undefined) {
+        publishDownloadListener({ listener: l });
+      } else {
+        publish();
+      }
     });
   }
 
   function updateProgress({ info }: { info: ProgressInfo }) {
-    if (!isOpen()) return;
+    if (!isOpen()) {
+      return;
+    }
     const file = info.file || info.name;
 
     // 1. Handle generic (non-file) progress events
@@ -185,7 +199,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
       if (isHeavy) {
         hasHeavyFile = true;
-        if (heavyFileDetectedAt === 0) heavyFileDetectedAt = Date.now();
+        if (heavyFileDetectedAt === 0) {
+          heavyFileDetectedAt = Date.now();
+        }
       }
 
       if (item.loaded !== undefined) {
@@ -234,7 +250,9 @@ export function createTransformersJsService({ createWorkerClient }: {
   }
 
   function notifyModelListChange() {
-    if (!isOpen()) return;
+    if (!isOpen()) {
+      return;
+    }
     modelListListeners.forEach(l => l());
   }
 
@@ -253,17 +271,23 @@ export function createTransformersJsService({ createWorkerClient }: {
   }
 
   function ensureOpen(): void {
-    if (!isOpen()) throw disposedError;
+    if (!isOpen()) {
+      throw disposedError;
+    }
   }
 
   function captureRuntimeOperation() {
     const lane = runtimeLane;
     const epoch = runtimeEpoch;
     const owner = lane.getActive();
-    if (owner === undefined) throw new Error('Transformers.js runtime operation requires an owner');
+    if (owner === undefined) {
+      throw new Error('Transformers.js runtime operation requires an owner');
+    }
     function assertOwned(): void {
       ensureOpen();
-      if (runtimeEpoch !== epoch || runtimeLane !== lane || lane.getActive() !== owner) throw restartedError;
+      if (runtimeEpoch !== epoch || runtimeLane !== lane || lane.getActive() !== owner) {
+        throw restartedError;
+      }
     }
     return {
       owner,
@@ -278,7 +302,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   function disposeOwnedClient({ ownedClient }: { ownedClient: { dispose(): Promise<void> } }): Promise<void> {
     const existing = clientDisposals.get(ownedClient);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     let resolveDisposal!: () => void;
     let rejectDisposal!: ReturnType<typeof Promise.withResolvers<void>>['reject'];
     const disposal = new Promise<void>((resolve, reject) => {
@@ -317,7 +343,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   function createOwnedClient(): TransformersJsWorkerClient {
     ensureOpen();
-    if (retirementFailure !== undefined) throw retirementFailure.error;
+    if (retirementFailure !== undefined) {
+      throw retirementFailure.error;
+    }
     const created = createWorkerClient();
     ownedClients.add(created);
     return created;
@@ -328,7 +356,9 @@ export function createTransformersJsService({ createWorkerClient }: {
    * not cancellation of separately owned Download or already-started OPFS I/O.
    */
   function dispose(): Promise<void> {
-    if (disposePromise !== undefined) return disposePromise;
+    if (disposePromise !== undefined) {
+      return disposePromise;
+    }
     lifetime = 'closing';
     let resolveDisposal!: () => void;
     let rejectDisposal!: ReturnType<typeof Promise.withResolvers<void>>['reject'];
@@ -421,7 +451,9 @@ export function createTransformersJsService({ createWorkerClient }: {
     }
 
     ensureOpen();
-    if (runtimeEpoch !== epoch) throw restartedError;
+    if (runtimeEpoch !== epoch) {
+      throw restartedError;
+    }
     client = createOwnedClient();
     return client;
   }
@@ -443,7 +475,9 @@ export function createTransformersJsService({ createWorkerClient }: {
     } catch (recoveryError) {
       // Closing must prohibit replacement clients without replacing the failure
       // which initiated recovery. Ordinary open-owner recovery stays unchanged.
-      if (!isOpen()) throw error;
+      if (!isOpen()) {
+        throw error;
+      }
       throw recoveryError;
     }
   }
@@ -463,7 +497,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
   function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): DownloadedModelRevisionSelection {
     const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
-    if (normalizedModelId.startsWith('user/') || normalizedModelId.startsWith('local/')) return { kind: 'pinned', revision: undefined };
+    if (normalizedModelId.startsWith('user/') || normalizedModelId.startsWith('local/')) {
+      return { kind: 'pinned', revision: undefined };
+    }
 
     if (downloadedModelRevisionHints.has(normalizedModelId)) {
       const hintedRevision = downloadedModelRevisionHints.get(normalizedModelId);
@@ -502,7 +538,9 @@ export function createTransformersJsService({ createWorkerClient }: {
         }
         }
       })();
-      if (detail !== undefined) return new Error(`${detail.name}: ${detail.message}`);
+      if (detail !== undefined) {
+        return new Error(`${detail.name}: ${detail.message}`);
+      }
       return new Error(`Production download preparation failed at ${run.failureStage}`);
     }
     case 'exhausted':
@@ -574,10 +612,14 @@ export function createTransformersJsService({ createWorkerClient }: {
         await remote.generateText({
           messages: cloneChatMessages({ messages }),
           onChunk: ({ chunk }) => {
-            if (isCurrent() && !owner.signal.aborted) return delivery.onChunk({ chunk });
+            if (isCurrent() && !owner.signal.aborted) {
+              return delivery.onChunk({ chunk });
+            }
           },
           onToolCalls: ({ toolCalls }) => {
-            if (isCurrent() && !owner.signal.aborted) return delivery.onToolCalls({ toolCalls });
+            if (isCurrent() && !owner.signal.aborted) {
+              return delivery.onToolCalls({ toolCalls });
+            }
           },
           params: cloneLmParameters({ params }),
           tools: cloneWorkerTools({ tools }),
@@ -593,20 +635,29 @@ export function createTransformersJsService({ createWorkerClient }: {
           onEvent: ({ event }) => {
             // An ordinary stop does not discard already accepted native events.
             // A revoked owner or replaced runtime still cannot mutate this run.
-            if (isCurrent()) return delivery.onEvent({ event });
+            if (isCurrent()) {
+              return delivery.onEvent({ event });
+            }
           },
         });
         break;
-      default: { const exhaustive: never = delivery; throw new Error(`Unhandled generation delivery: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = delivery;
+        throw new Error(`Unhandled generation delivery: ${exhaustive}`);
+      }
       }
       assertCurrent();
     } catch (e) {
-      if (!isCurrent() || owner.signal.aborted) throw e;
+      if (!isCurrent() || owner.signal.aborted) {
+        throw e;
+      }
       const errorMsg = e instanceof Error ? e.message : String(e);
       if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
         await recoverAfterFailure({ error: e });
-        if (!isCurrent()) throw e;
+        if (!isCurrent()) {
+          throw e;
+        }
         // Recovery replaces the model-bearing client even if cancellation
         // arrived during retirement. Never advertise its empty replacement
         // as the previously loaded model to the next Provider operation.
@@ -628,11 +679,16 @@ export function createTransformersJsService({ createWorkerClient }: {
       ensureOpen();
       listeners.add(listener);
       const publish = () => listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
-      if (downloadProgress !== undefined) publishDownloadListener({ listener });
-      else publish();
+      if (downloadProgress !== undefined) {
+        publishDownloadListener({ listener });
+      } else {
+        publish();
+      }
       return () => {
         const channel = downloadListenerChannels.get(listener);
-        if (channel !== undefined) channel.latest = undefined;
+        if (channel !== undefined) {
+          channel.latest = undefined;
+        }
         downloadListenerChannels.delete(listener);
         return listeners.delete(listener);
       };
@@ -692,18 +748,26 @@ export function createTransformersJsService({ createWorkerClient }: {
               case 'file': {
                 // Interrupted writers may leave unique temporary files. They
                 // are not committed resources; listing is read-only, not cleanup.
-                if (isOpfsStagingFileName({ fileName: name }) || /\.gguf$/i.test(name)) break;
+                if (isOpfsStagingFileName({ fileName: name }) || /\.gguf$/i.test(name)) {
+                  break;
+                }
                 if (name.startsWith('.') && name.endsWith('.complete')) {
                   markers.add(fullPath);
                 } else {
                   // Shared model roots may contain another engine's transient metadata.
-                  if (name.startsWith('.')) break;
-                  if (/\.onnx$/i.test(name)) hasOnnx = true;
+                  if (name.startsWith('.')) {
+                    break;
+                  }
+                  if (/\.onnx$/i.test(name)) {
+                    hasOnnx = true;
+                  }
                   files.add(fullPath);
                   const file = await (h as FileSystemFileHandle).getFile();
                   size += file.size;
                   fileCount++;
-                  if (file.lastModified > lastModified) lastModified = file.lastModified;
+                  if (file.lastModified > lastModified) {
+                    lastModified = file.lastModified;
+                  }
                 }
                 break;
               }
@@ -761,7 +825,9 @@ export function createTransformersJsService({ createWorkerClient }: {
             case 'directory': {
               sawRevisionDirectory = true;
               const revisionStats = await getDirStats({ dir: handle as FileSystemDirectoryHandle });
-              if (revisionStats.isComplete) hasCommittedRevision = true;
+              if (revisionStats.isComplete) {
+                hasCommittedRevision = true;
+              }
               break;
             }
             case 'file':
@@ -792,7 +858,9 @@ export function createTransformersJsService({ createWorkerClient }: {
             switch (h.kind) {
             case 'directory': {
               const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
-              if (!stats.hasOnnx) break;
+              if (!stats.hasOnnx) {
+                break;
+              }
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
               break;
             }
@@ -815,7 +883,9 @@ export function createTransformersJsService({ createWorkerClient }: {
             case 'directory': {
               const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
               // We still label it as 'user/' to the rest of the app
-              if (!stats.hasOnnx) break;
+              if (!stats.hasOnnx) {
+                break;
+              }
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
               break;
             }
@@ -841,7 +911,9 @@ export function createTransformersJsService({ createWorkerClient }: {
                 switch (rh.kind) {
                 case 'directory': {
                   const stats = await getHuggingFaceRepoStats({ repoDir: rh as FileSystemDirectoryHandle });
-                  if (!stats.hasOnnx) break;
+                  if (!stats.hasOnnx) {
+                    break;
+                  }
                   results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
                   break;
                 }
@@ -900,7 +972,9 @@ export function createTransformersJsService({ createWorkerClient }: {
           try {
             await currentDir.removeEntry(`.${lastPart}.complete`);
           } catch (error) {
-            if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+            if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') {
+              throw error;
+            }
           }
 
           const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
@@ -944,17 +1018,19 @@ export function createTransformersJsService({ createWorkerClient }: {
             }
           },
         });
-        if (!removed) await withOpfsModelDeletion({
-          modelPath: `${OPFS_MODELS_DIR}/local/${name}`,
-          run: async () => {
-            const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-            try {
-              const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-              await removeTransformersModelFiles({ parent: localDir, name });
-            } catch { /* Preserve the legacy absent-local fallback. */ }
-          },
-        });
+        if (!removed) {
+          await withOpfsModelDeletion({
+            modelPath: `${OPFS_MODELS_DIR}/local/${name}`,
+            run: async () => {
+              const root = await navigator.storage.getDirectory();
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              try {
+                const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+                await removeTransformersModelFiles({ parent: localDir, name });
+              } catch { /* Preserve the legacy absent-local fallback. */ }
+            },
+          });
+        }
       } else if (modelId.startsWith('hf.co/')) {
         const [org, repo] = modelId.substring(6).split('/');
         if (org && repo) {
@@ -977,10 +1053,14 @@ export function createTransformersJsService({ createWorkerClient }: {
                 const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
                 const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
                 const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-                for await (const _ of orgDir.entries()) return;
+                for await (const _ of orgDir.entries()) {
+                  return;
+                }
                 await hfDir.removeEntry(org);
               } catch (error) {
-                if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+                if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') {
+                  throw error;
+                }
               }
             },
           });
@@ -1025,7 +1105,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       assertCurrent();
       downloadProgress = undefined;
       downloadObservationEpoch++;
-      if (activeModelId === modelId && loadingStatus === 'ready') return;
+      if (activeModelId === modelId && loadingStatus === 'ready') {
+        return;
+      }
 
       switch (loadingStatus) {
       case 'loading':
@@ -1062,7 +1144,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
         let lastProgressNotify = 0;
         const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-          if (!isCurrent() || owner.signal.aborted) return;
+          if (!isCurrent() || owner.signal.aborted) {
+            return;
+          }
           updateProgress({ info });
           if (info.status === 'cached') {
             isCached = true;
@@ -1127,7 +1211,9 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         notifyModelListChange();
       } catch (e) {
-        if (!isCurrent() || owner.signal.aborted) throw e;
+        if (!isCurrent() || owner.signal.aborted) {
+          throw e;
+        }
         console.error('[transformersJsService] Failed to load model:', modelId, e);
         const errorMsg = e instanceof Error ? e.message : String(e);
 
@@ -1137,7 +1223,9 @@ export function createTransformersJsService({ createWorkerClient }: {
           await recoverAfterFailure({ error: e });
         }
 
-        if (!isCurrent() || owner.signal.aborted) throw e;
+        if (!isCurrent() || owner.signal.aborted) {
+          throw e;
+        }
         loadingStatus = 'error';
         loadingError = errorMsg;
         activeModelId = undefined;
@@ -1177,13 +1265,17 @@ export function createTransformersJsService({ createWorkerClient }: {
       const onTiming: DownloadTimingCallback = ({ observation }) => {
         // Closing the lane on a physical retirement failure is not user cancel.
         // Keep its final cleanup sample, but never revive a retired operation.
-        if (isCurrent() && (!owner.signal.aborted || acceptanceRetirementFailed())) timing.observe({ observation });
+        if (isCurrent() && (!owner.signal.aborted || acceptanceRetirementFailed())) {
+          timing.observe({ observation });
+        }
       };
       const createAcceptanceClient = (): DownloadVerificationCandidateAcceptanceWorkerClient => {
         // Metadata or file I/O can settle after restart. Such an old Download
         // must not create an acceptance Worker outside the retirement snapshot.
         assertCurrent();
-        if (retirementFailure !== undefined) throw retirementFailure.error;
+        if (retirementFailure !== undefined) {
+          throw retirementFailure.error;
+        }
         const created = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: owner.signal });
         ownedClients.add(created);
         return {
@@ -1201,7 +1293,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       const tracker = createDownloadProgressTracker();
       downloadObservationEpoch++;
       const onDownloadProgress: DownloadProgressCallback = ({ event }) => {
-        if (!isCurrent() || owner.signal.aborted) return;
+        if (!isCurrent() || owner.signal.aborted) {
+          return;
+        }
         observeDownloadSafely({
           observe: () => {
             tracker.observe({ event });
@@ -1215,10 +1309,13 @@ export function createTransformersJsService({ createWorkerClient }: {
       };
       downloadProgress = tracker.snapshot();
       const refreshEstimate = setInterval(() => {
-        if (!isCurrent() || owner.signal.aborted) return;
+        if (!isCurrent() || owner.signal.aborted) {
+          return;
+        }
         observeDownloadSafely({
           observe: () => {
-            downloadProgress = tracker.snapshot(); notify();
+            downloadProgress = tracker.snapshot();
+            notify();
           },
         });
       }, 1_000);
@@ -1242,9 +1339,13 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
 
         const progress_callback: TransformersJsProgressCallback = ({ info }) => {
-          if (!isCurrent() || owner.signal.aborted) return;
+          if (!isCurrent() || owner.signal.aborted) {
+            return;
+          }
           // Metadata/acceptance reads are not network weight-transfer rows.
-          if (info.status.startsWith('download-metadata:')) onDownloadProgress({ event: { kind: 'metadata', stage: info.status.slice('download-metadata:'.length) } });
+          if (info.status.startsWith('download-metadata:')) {
+            onDownloadProgress({ event: { kind: 'metadata', stage: info.status.slice('download-metadata:'.length) } });
+          }
         };
 
         const { resolvedRevision, sizeHints } = await resolvePublicHuggingFaceRevision({ modelId });
@@ -1311,7 +1412,9 @@ export function createTransformersJsService({ createWorkerClient }: {
           }
           throw e;
         }
-        if (!isCurrent() || owner.signal.aborted) throw e;
+        if (!isCurrent() || owner.signal.aborted) {
+          throw e;
+        }
         console.error('[transformersJsService] Failed to download model:', modelId, e);
         const errorMsg = e instanceof Error ? e.message : String(e);
 
@@ -1320,7 +1423,9 @@ export function createTransformersJsService({ createWorkerClient }: {
           await recoverAfterFailure({ error: e });
         }
 
-        if (!isCurrent() || owner.signal.aborted) throw e;
+        if (!isCurrent() || owner.signal.aborted) {
+          throw e;
+        }
         onDownloadProgress({ event: { kind: 'phase', phase: 'failed' } });
         loadingStatus = 'error';
         loadingError = errorMsg;
@@ -1366,11 +1471,15 @@ export function createTransformersJsService({ createWorkerClient }: {
         notify();
         assertCurrent();
       } catch (e) {
-        if (!isCurrent() || owner.signal.aborted) throw e;
+        if (!isCurrent() || owner.signal.aborted) {
+          throw e;
+        }
         console.error('[transformersJsService] Failed to unload model:', e);
         // If unload fails, it's likely the worker is dead anyway
         await recoverAfterFailure({ error: e });
-        if (!isCurrent()) throw e;
+        if (!isCurrent()) {
+          throw e;
+        }
         activeModelId = undefined;
         loadingStatus = 'idle';
         notify();
@@ -1435,7 +1544,9 @@ export function createTransformersJsService({ createWorkerClient }: {
   }): Promise<void> {
     try {
       ensureOpen();
-      if (explicitRestart !== undefined) throw restartedError;
+      if (explicitRestart !== undefined) {
+        throw restartedError;
+      }
       return runtimeLane.run({ signal, operation });
     } catch (error) {
       return Promise.reject(error);
@@ -1451,7 +1562,9 @@ export function createTransformersJsService({ createWorkerClient }: {
     const onAbort = () => {
       // Model loading has no cooperative interrupt contract. Retire only this
       // captured client, never one created by a later hard reset.
-      if (client === remote) client = undefined;
+      if (client === remote) {
+        client = undefined;
+      }
       cancellation = disposeOwnedClient({ ownedClient: remote });
       void cancellation.catch(() => undefined);
     };
@@ -1480,7 +1593,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       }
     }
     owner.assertActive();
-    if (failure !== undefined) throw failure.error;
+    if (failure !== undefined) {
+      throw failure.error;
+    }
   }
 
   async function runInferenceScope({ owner, operation }: {
@@ -1492,22 +1607,30 @@ export function createTransformersJsService({ createWorkerClient }: {
     let childFailure: { error: unknown } | undefined;
     function assertActive(): void {
       owner.assertActive();
-      if (!open) throw new Error('Transformers.js inference scope is closed');
+      if (!open) {
+        throw new Error('Transformers.js inference scope is closed');
+      }
     }
     function runChild({ execute }: { execute: () => Promise<void> }): Promise<void> {
       try {
         assertActive();
-        if (child !== undefined) throw new Error('Transformers.js inference scope already has an active operation');
+        if (child !== undefined) {
+          throw new Error('Transformers.js inference scope already has an active operation');
+        }
         const pending = Promise.resolve().then(() => {
           owner.assertActive();
           return execute();
         });
         child = pending;
         void pending.then(() => {
-          if (child === pending) child = undefined;
+          if (child === pending) {
+            child = undefined;
+          }
         }, error => {
           childFailure ??= { error };
-          if (child === pending) child = undefined;
+          if (child === pending) {
+            child = undefined;
+          }
         });
         return pending;
       } catch (error) {
@@ -1520,7 +1643,8 @@ export function createTransformersJsService({ createWorkerClient }: {
       signal: owner.signal,
       assertActive,
       getState() {
-        assertActive(); return rawService.getState();
+        assertActive();
+        return rawService.getState();
       },
       loadDownloadedModel({ modelId }) {
         return runChild({ execute: () => loadForOwner({ owner, modelId }) });
@@ -1532,10 +1656,14 @@ export function createTransformersJsService({ createWorkerClient }: {
           params: cloneLmParameters({ params }),
           tools: cloneWorkerTools({ tools }),
           onChunk: ({ chunk }: { chunk: string }) => {
-            if (open && owner.isActive()) return onChunk({ chunk });
+            if (open && owner.isActive()) {
+              return onChunk({ chunk });
+            }
           },
           onToolCalls: ({ toolCalls }: { toolCalls: Parameters<TransformersJsToolCallsCallback>[0]['toolCalls'] }) => {
-            if (open && owner.isActive()) return onToolCalls({ toolCalls });
+            if (open && owner.isActive()) {
+              return onToolCalls({ toolCalls });
+            }
           },
         };
         return runChild({ execute: () => rawService.generateText({ ...snapshot, signal: owner.signal }) });
@@ -1554,7 +1682,9 @@ export function createTransformersJsService({ createWorkerClient }: {
             delivery: {
               type: 'structured',
               onEvent: ({ event }) => {
-                if (open) return onEvent({ event });
+                if (open) {
+                  return onEvent({ event });
+                }
               },
             },
           }),
@@ -1572,8 +1702,12 @@ export function createTransformersJsService({ createWorkerClient }: {
         await child;
       } catch { /* The owned child outcome is retained above. */ }
     }
-    if (callbackFailure !== undefined) throw callbackFailure.error;
-    if (childFailure !== undefined) throw childFailure.error;
+    if (callbackFailure !== undefined) {
+      throw callbackFailure.error;
+    }
+    if (childFailure !== undefined) {
+      throw childFailure.error;
+    }
     owner.assertActive();
   }
 
@@ -1615,12 +1749,18 @@ export function createTransformersJsService({ createWorkerClient }: {
     generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: { messages: Parameters<typeof rawService.generateText>[0]['messages'], onChunk: Parameters<typeof rawService.generateText>[0]['onChunk'], onToolCalls: Parameters<typeof rawService.generateText>[0]['onToolCalls'], params?: Parameters<typeof rawService.generateText>[0]['params'], tools?: Parameters<typeof rawService.generateText>[0]['tools'], signal?: Parameters<typeof rawService.generateText>[0]['signal'], continuationOwner?: Parameters<typeof rawService.generateText>[0]['continuationOwner'] }): Promise<void> {
       try {
         ensureOpen();
-        if (explicitRestart !== undefined) throw restartedError;
-        if (retirementFailure !== undefined) throw retirementFailure.error;
+        if (explicitRestart !== undefined) {
+          throw restartedError;
+        }
+        if (retirementFailure !== undefined) {
+          throw retirementFailure.error;
+        }
       } catch (error) {
         return Promise.reject(error);
       }
-      if (loadingStatus !== 'ready' || activeModelId === undefined) return Promise.reject(new Error('Model not loaded'));
+      if (loadingStatus !== 'ready' || activeModelId === undefined) {
+        return Promise.reject(new Error('Model not loaded'));
+      }
       const requestedModelId = activeModelId;
       const snapshot = {
         onChunk,
@@ -1652,7 +1792,9 @@ export function createTransformersJsService({ createWorkerClient }: {
       } catch (error) {
         return Promise.reject(error);
       }
-      if (explicitRestart !== undefined) return explicitRestart;
+      if (explicitRestart !== undefined) {
+        return explicitRestart;
+      }
       const result = Promise.withResolvers<void>();
       explicitRestart = result.promise;
       runtimeEpoch++;
@@ -1680,7 +1822,9 @@ export function createTransformersJsService({ createWorkerClient }: {
         } catch (error) {
           result.reject(error);
         } finally {
-          if (explicitRestart === result.promise) explicitRestart = undefined;
+          if (explicitRestart === result.promise) {
+            explicitRestart = undefined;
+          }
         }
       })();
       return result.promise;

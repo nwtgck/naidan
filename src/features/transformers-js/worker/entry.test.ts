@@ -58,7 +58,9 @@ async function initializeWorkerEntry() {
   // ledgers and disconnect behavior remain unchanged for every non-MJS input.
   self.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (url !== assets.mjsUrl) return modelTransport(input, init);
+    if (url !== assets.mjsUrl) {
+      return modelTransport(input, init);
+    }
     expect(init?.redirect).toBe('error');
     runtimeRequests.push(url);
     return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
@@ -126,11 +128,13 @@ vi.mock('@huggingface/transformers', () => ({
     interrupted = false;
 
     reset() {
-      this.interrupted = false; mockResetFn();
+      this.interrupted = false;
+      mockResetFn();
     }
 
     interrupt() {
-      this.interrupted = true; mockInterruptFn();
+      this.interrupted = true;
+      mockInterruptFn();
     }
   },
   StoppingCriteriaList: class extends Array { },
@@ -179,7 +183,9 @@ function createMockDir(entries: Record<string, any> = {}) {
   const dir = {
     kind: 'directory',
     getDirectoryHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
-      if (entries[name]) return entries[name];
+      if (entries[name]) {
+        return entries[name];
+      }
       if (options?.create) {
         entries[name] = createMockDir();
         return entries[name];
@@ -189,7 +195,9 @@ function createMockDir(entries: Record<string, any> = {}) {
       throw err;
     }),
     getFileHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
-      if (entries[name]) return entries[name];
+      if (entries[name]) {
+        return entries[name];
+      }
       if (options?.create) {
         entries[name] = createMockFile(0);
         return entries[name];
@@ -401,16 +409,18 @@ describe('transformers-js.worker', () => {
   it('opfsCache.match should return Response when file exists and is complete', async () => {
     // Setup existing complete file in mock OPFS
     mockRoot.getDirectoryHandle.mockImplementation(async (name: string) => {
-      if (name === 'models') return createMockDir({
-        'huggingface.co': createMockDir({
-          'org': createMockDir({
-            'repo': createMockDir({
-              'model.onnx': createMockFile(100),
-              '.model.onnx.complete': createMockFile(0),
+      if (name === 'models') {
+        return createMockDir({
+          'huggingface.co': createMockDir({
+            'org': createMockDir({
+              'repo': createMockDir({
+                'model.onnx': createMockFile(100),
+                '.model.onnx.complete': createMockFile(0),
+              }),
             }),
           }),
-        }),
-      });
+        });
+      }
       throw new Error('Not found');
     });
 
@@ -505,7 +515,9 @@ describe('transformers-js.worker', () => {
       await env.customCache!.match('https://huggingface.co/org/repo/resolve/main/config.json').catch(() => undefined);
       switch (behavior) {
       case 'cache-only-fetch':
-        if (env.fetch === undefined) throw new Error('Missing offline fetch fixture');
+        if (env.fetch === undefined) {
+          throw new Error('Missing offline fetch fixture');
+        }
         await env.fetch('https://huggingface.co/org/repo/resolve/main/config.json');
         return config;
       case 'synthetic-success': return config;
@@ -589,7 +601,9 @@ describe('transformers-js.worker', () => {
       .mockImplementationOnce(async () => {
         // Planning above classified all candidates complete. Exercise the real
         // cache-only fetch boundary when that premise no longer holds at load.
-        if (env.fetch === undefined) throw new Error('Missing cache-only fetch fixture');
+        if (env.fetch === undefined) {
+          throw new Error('Missing cache-only fetch fixture');
+        }
         await env.fetch(missingUrl);
         throw new Error('The cache-miss boundary unexpectedly returned');
       });
@@ -603,7 +617,9 @@ describe('transformers-js.worker', () => {
       .then(() => undefined, (error: unknown) => error);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
     expect(failure).toBeInstanceOf(Error);
-    if (!(failure instanceof Error)) throw new Error('The required resource loss must stop Load');
+    if (!(failure instanceof Error)) {
+      throw new Error('The required resource loss must stop Load');
+    }
     expect(failure.message).toContain('MUST NOT fetch model artifacts');
     expect(failure.message).toContain(missingUrl);
     expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
@@ -711,7 +727,9 @@ describe('transformers-js.worker', () => {
     const dispose = vi.fn().mockRejectedValue(new Error('Secondary disposal failure'));
     const apparentModel = { dispose } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>;
     vi.mocked(AutoModelForCausalLM.from_pretrained).mockImplementation(async () => {
-      if (!env.customCache) throw new Error('Missing cache fixture');
+      if (!env.customCache) {
+        throw new Error('Missing cache fixture');
+      }
       await env.customCache.match(requiredUrl).catch(() => undefined);
       return apparentModel;
     });
@@ -761,7 +779,9 @@ describe('transformers-js.worker', () => {
     const dispose = vi.fn().mockRejectedValue(new Error('Secondary model disposal failed'));
     const apparentModel = { dispose } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>;
     vi.mocked(AutoModelForCausalLM.from_pretrained).mockImplementation(async () => {
-      if (!env.customCache) throw new Error('Missing cache fixture');
+      if (!env.customCache) {
+        throw new Error('Missing cache fixture');
+      }
       await env.customCache.match(requiredUrl);
       return apparentModel;
     });
@@ -897,20 +917,22 @@ describe('transformers-js.worker', () => {
     const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
     const revision = '0123456789abcdef0123456789abcdef01234567';
     mockRoot.getDirectoryHandle.mockImplementation(async (name: string) => {
-      if (name === 'models') return createMockDir({
-        'huggingface.co': createMockDir({
-          org: createMockDir({
-            repo: createMockDir({
-              resolve: createMockDir({
-                [revision]: createMockDir({
-                  'tokenizer_config.json': createMockFile(100),
-                  '.tokenizer_config.json.complete': createMockFile(0),
+      if (name === 'models') {
+        return createMockDir({
+          'huggingface.co': createMockDir({
+            org: createMockDir({
+              repo: createMockDir({
+                resolve: createMockDir({
+                  [revision]: createMockDir({
+                    'tokenizer_config.json': createMockFile(100),
+                    '.tokenizer_config.json.complete': createMockFile(0),
+                  }),
                 }),
               }),
             }),
           }),
-        }),
-      });
+        });
+      }
       throw new DOMException('Missing', 'NotFoundError');
     });
     await initializeWorkerEntry();
@@ -920,7 +942,9 @@ describe('transformers-js.worker', () => {
       const metadata = await (env.customCache as Cache).match(
         'https://huggingface.co/org/repo/resolve/main/tokenizer_config.json',
       );
-      if (metadata === undefined) throw new Error('revisionless tokenizer metadata was not resolved from the exact revision');
+      if (metadata === undefined) {
+        throw new Error('revisionless tokenizer metadata was not resolved from the exact revision');
+      }
       return { dispose: vi.fn(), config: { model_type: 'example' } };
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
@@ -1207,7 +1231,9 @@ describe('transformers-js.worker', () => {
       },
     ];
     const applyChatTemplate = vi.fn((_messages, options: { tokenize?: boolean, return_dict?: boolean } | undefined) => {
-      if (options?.tokenize === false) return '<|im_start|>assistant\n';
+      if (options?.tokenize === false) {
+        return '<|im_start|>assistant\n';
+      }
       return templateInputs.shift();
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({
@@ -1451,7 +1477,9 @@ describe('transformers-js.worker', () => {
       dispose: vi.fn(),
     } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>);
     const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
-      if (options?.['tokenize'] === false) return '<|im_start|>assistant\n';
+      if (options?.['tokenize'] === false) {
+        return '<|im_start|>assistant\n';
+      }
       return { input_ids: { data: BigInt64Array.from([10n, 11n]) } };
     });
     vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({
@@ -1502,7 +1530,9 @@ describe('transformers-js.worker', () => {
       return {} as InstanceType<typeof TextStreamer>;
     });
     const generate = vi.fn(async () => {
-      for (const chunk of stream) emitChunk?.(chunk);
+      for (const chunk of stream) {
+        emitChunk?.(chunk);
+      }
       return { sequences: { data: BigInt64Array.from([10n, 11n, 20n]) }, past_key_values: undefined };
     });
     vi.mocked(AutoModelForCausalLM.from_pretrained).mockResolvedValue({
@@ -1511,7 +1541,9 @@ describe('transformers-js.worker', () => {
       dispose: vi.fn(),
     } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>);
     const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
-      if (options?.['tokenize'] === false) return '<|im_start|>assistant\n';
+      if (options?.['tokenize'] === false) {
+        return '<|im_start|>assistant\n';
+      }
       return { input_ids: { data: BigInt64Array.from([10n, 11n]) } };
     });
     const rawText = '<|channel|>analysis<|message|>Raw diagnostic output.';
@@ -1569,9 +1601,13 @@ describe('transformers-js.worker', () => {
       { input_ids: { data: BigInt64Array.from([10n, 99n, 30n]) } },
     ];
     const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
-      if (options?.['tokenize'] === false) return '';
+      if (options?.['tokenize'] === false) {
+        return '';
+      }
       const next = tokenizedInputs.shift();
-      if (next === undefined) throw new Error('Unexpected tokenized template call');
+      if (next === undefined) {
+        throw new Error('Unexpected tokenized template call');
+      }
       return next;
     });
     const decode = vi.fn((tokenIds: number[]) => `tokens:${tokenIds.join(',')}`);
@@ -1901,9 +1937,13 @@ describe('transformers-js.worker', () => {
       },
     ];
     const applyChatTemplate = vi.fn((_messages: unknown, options?: Record<string, unknown>) => {
-      if (options?.['tokenize'] === false) return '';
+      if (options?.['tokenize'] === false) {
+        return '';
+      }
       const next = tokenizedInputs.shift();
-      if (next === undefined) throw new Error('Unexpected tokenized template call');
+      if (next === undefined) {
+        throw new Error('Unexpected tokenized template call');
+      }
       return next;
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({
@@ -2341,7 +2381,9 @@ describe('transformers-js.worker', () => {
     const resumedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: resumedModelServer.baseUrl });
     const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (!rawUrl.includes('/onnx/model_q4f16.onnx')) return await runtimeFetch(input, init);
+      if (!rawUrl.includes('/onnx/model_q4f16.onnx')) {
+        return await runtimeFetch(input, init);
+      }
       return modelAttempt === 'failed'
         ? await failedModelFetch(input, init)
         : await resumedModelFetch(input, init);
@@ -2468,7 +2510,9 @@ describe('transformers-js.worker', () => {
     const failedShardFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedShardServer.baseUrl });
     const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (!rawUrl.includes('/onnx/')) return await runtimeFetch(input, init);
+      if (!rawUrl.includes('/onnx/')) {
+        return await runtimeFetch(input, init);
+      }
       if (rawUrl.includes('/onnx/model_q4f16.onnx_data_1') && shardAttempt === 'failed') {
         return await failedShardFetch(input, init);
       }
@@ -3106,7 +3150,9 @@ describe('transformers-js.worker', () => {
 
       mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
       mockGenerate = vi.fn().mockImplementation(async () => {
-        for (const token of tokensToEmit) capturedCallback?.(token);
+        for (const token of tokensToEmit) {
+          capturedCallback?.(token);
+        }
         return { past_key_values: {} };
       });
       const mockModel = {
@@ -3226,13 +3272,16 @@ describe('transformers-js.worker', () => {
       const callback = vi.fn(async () => {
         entered.resolve();
         await release.promise;
-        if (deliveryOutcome === 'rejected') throw new Error('Delivery also failed');
+        if (deliveryOutcome === 'rejected') {
+          throw new Error('Delivery also failed');
+        }
       });
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const pending = worker.generateText([], callback, vi.fn(), undefined, undefined);
       let settled = false;
       const observed = pending.catch(error => {
-        settled = true; return error;
+        settled = true;
+        return error;
       });
       await entered.promise;
       expect(settled).toBe(false);
@@ -3275,7 +3324,9 @@ describe('transformers-js.worker', () => {
       expect(mockGenerate).toHaveBeenCalledTimes(2);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
       expect(result.status).toBe('captured');
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls).toEqual([{
         context: captureRequest.context,
         loadIdentity: standardLoadIdentity,
@@ -3299,7 +3350,9 @@ describe('transformers-js.worker', () => {
       });
       await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toBe(failure);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.outcome).toBe('rejected');
       expect(result.capture.calls[0]?.loadIdentity).toEqual(standardLoadIdentity);
       expect(result.capture.events.filter(event => event.kind === 'native-call').map(event => event.phase)).toEqual(['entering', 'rejected']);
@@ -3315,7 +3368,9 @@ describe('transformers-js.worker', () => {
       await worker.unloadModel();
       await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, { ...captureRequest, context: { ...captureRequest.context, generationCallId: 3 } })).rejects.toThrow('Model not loaded');
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls.map(call => call.loadIdentity)).toEqual([standardLoadIdentity, standardLoadIdentity, { status: 'not-observed', reason: 'runtime-cleared' }]);
       expect(mockGenerate).toHaveBeenCalledTimes(2);
       const tfMock = await import('@huggingface/transformers');
@@ -3331,7 +3386,9 @@ describe('transformers-js.worker', () => {
       await expect(worker.loadDownloadedModel('standard-model', { kind: 'pinned', revision: 'synthetic-revision' }, vi.fn())).resolves.toEqual({ device: 'wasm', dtype: 'q4' });
       await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.loadIdentity).toEqual({ ...standardLoadIdentity, workerLoadOrdinal: 2, requestedRevision: { status: 'provided', value: 'synthetic-revision' }, selectedCandidate: { device: 'wasm', dtype: 'q4' } });
       expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(4);
       expect(tfMock.AutoTokenizer.from_pretrained).toHaveBeenCalledTimes(2);
@@ -3347,7 +3404,9 @@ describe('transformers-js.worker', () => {
       expect(await worker.takeGenerationCapture(captureRun)).toEqual({ status: 'not-started' });
       await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('Model not loaded');
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'no-completed-load' });
       expect(mockGenerate).not.toHaveBeenCalled();
       expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(2);
@@ -3358,7 +3417,9 @@ describe('transformers-js.worker', () => {
       await worker.verifyDownloadedModelCandidate('standard-model', undefined, { device: 'wasm', dtype: 'q4' }, vi.fn());
       await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'untracked-load-path' });
       expect(mockGenerate).toHaveBeenCalledOnce();
     });
@@ -3379,7 +3440,9 @@ describe('transformers-js.worker', () => {
         await rejectedUnload;
       }
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'runtime-cleared' });
       expect(mockGenerate).not.toHaveBeenCalled();
     });
@@ -3404,7 +3467,9 @@ describe('transformers-js.worker', () => {
       }
       await worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.loadIdentity).toEqual({ status: 'not-observed', reason: 'overlapping-lifecycle' });
       expect(tfMock.AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
       expect(mockGenerate).toHaveBeenCalledOnce();
@@ -3416,7 +3481,9 @@ describe('transformers-js.worker', () => {
       await expect(worker.generateText([], vi.fn(), vi.fn(), undefined, undefined, captureRequest)).rejects.toThrow('model context is full');
       expect(mockGenerate).not.toHaveBeenCalled();
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls[0]?.outcome).toBe('rejected');
       expect(result.capture.events.map(event => event.kind)).toEqual(['inputs']);
     });
@@ -3445,7 +3512,9 @@ describe('transformers-js.worker', () => {
       expect(mockGenerate).toHaveBeenCalledTimes(2);
       expect(await worker.takeGenerationCapture({ ...captureRun, workerEpoch: 2 })).toEqual({ status: 'wrong-run' });
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls).toHaveLength(1);
       expect(result.capture.incompleteReasons).toContain('wrong-run');
     });
@@ -3459,7 +3528,9 @@ describe('transformers-js.worker', () => {
       });
       expect(mockGenerate).toHaveBeenCalledTimes(2);
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.calls).toHaveLength(1);
       expect(result.capture.limits).toEqual(captureRequest.limits);
       expect(result.capture.incompleteReasons).toContain('limits-mismatch');
@@ -3467,7 +3538,9 @@ describe('transformers-js.worker', () => {
 
     it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
       mockApplyTemplate.mockImplementation((_messages, options) => {
-        if (options?.tokenize === false) return '<|im_start|>assistant\n';
+        if (options?.tokenize === false) {
+          return '<|im_start|>assistant\n';
+        }
         return { input_ids: { dims: [1, 2_048] } };
       });
 
@@ -3555,7 +3628,9 @@ describe('transformers-js.worker', () => {
 
     it('restores a prompt-owned <think> opening tag without model-specific routing', async () => {
       mockApplyTemplate.mockImplementation((_messages, options) => {
-        if (options?.tokenize !== false) return { input_ids: [1, 2, 3] };
+        if (options?.tokenize !== false) {
+          return { input_ids: [1, 2, 3] };
+        }
         if (options?.add_generation_prompt === false) {
           return `\
 <|im_start|>user
@@ -3586,7 +3661,9 @@ question<|im_end|>
 
     it('does not change standard output when the rendered generation prompt does not end in <think>', async () => {
       mockApplyTemplate.mockImplementation((_messages, options) => {
-        if (options?.tokenize !== false) return { input_ids: [1, 2, 3] };
+        if (options?.tokenize !== false) {
+          return { input_ids: [1, 2, 3] };
+        }
         if (options?.add_generation_prompt === false) {
           return `\
 <|im_start|>user
@@ -3610,7 +3687,9 @@ literal <think> text<|im_end|>
 
     it('falls back to the existing standard stream when prompt observation fails', async () => {
       mockApplyTemplate.mockImplementation((_messages, options) => {
-        if (options?.tokenize === false) throw new Error('render observation unavailable');
+        if (options?.tokenize === false) {
+          throw new Error('render observation unavailable');
+        }
         return { input_ids: [1, 2, 3] };
       });
       tokensToEmit = ['ordinary answer'];
@@ -3756,40 +3835,53 @@ Use shell tools.<|im_end|>
 
     it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('delivers %s structured generation in order and awaits the host before settling', async kind => {
       const module = await import('@/features/transformers-js/generation-strategies');
-      const started = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
       const received: import('@/features/transformers-js/generation-events').InferenceGenerationEvent[] = [];
       const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({
         kind,
         generate: async ({ onGenerationEvent }) => {
-          if (onGenerationEvent === undefined) throw new Error('Expected structured event sink');
+          if (onGenerationEvent === undefined) {
+            throw new Error('Expected structured event sink');
+          }
           onGenerationEvent({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
           onGenerationEvent({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
           onGenerationEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
           onGenerationEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
         },
       });
-      const chunk = vi.fn(); const calls = vi.fn(); let settled = false;
+      const chunk = vi.fn();
+      const calls = vi.fn();
+      let settled = false;
       using _cleanupResource = {
         [Symbol.dispose]() {
-          release.resolve(); select.mockRestore();
+          release.resolve();
+          select.mockRestore();
         },
       };
       const pending = workerObj.generateText([], chunk, calls, undefined, undefined, undefined, undefined,
         async ({ event }: { event: import('@/features/transformers-js/generation-events').InferenceGenerationEvent }) => {
-          received.push(event); if (received.length === 1) {
-            started.resolve(); await release.promise;
+          received.push(event);
+          if (received.length === 1) {
+            started.resolve();
+            await release.promise;
           }
         }).then(() => {
         settled = true;
       });
-      await started.promise; expect(received).toHaveLength(1); expect(settled).toBe(false);
-      release.resolve(); await pending;
+      await started.promise;
+      expect(received).toHaveLength(1);
+      expect(settled).toBe(false);
+      release.resolve();
+      await pending;
       expect(received.map(e => e.type)).toEqual(['part_start', 'text_delta', 'part_end', 'result']);
-      expect(chunk).not.toHaveBeenCalled(); expect(calls).not.toHaveBeenCalled();
+      expect(chunk).not.toHaveBeenCalled();
+      expect(calls).not.toHaveBeenCalled();
     });
 
     it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('propagates a failed %s structured acknowledgement instead of reporting generation success', async kind => {
-      const module = await import('@/features/transformers-js/generation-strategies'); const fault = new Error('host failed');
+      const module = await import('@/features/transformers-js/generation-strategies');
+      const fault = new Error('host failed');
       const select = vi.spyOn(module, 'selectGenerationStrategy').mockReturnValue({
         kind,
         generate: async ({ onGenerationEvent }) => {
@@ -3806,7 +3898,8 @@ Use shell tools.<|im_end|>
         },
       };
       await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toBe(fault);
-      expect(sink).toHaveBeenCalledOnce(); expect(mockInterruptFn).toHaveBeenCalled();
+      expect(sink).toHaveBeenCalledOnce();
+      expect(mockInterruptFn).toHaveBeenCalled();
     });
 
     it('retains the strategy-specific rejection for unsupported structured tool history before native inference', async () => {
@@ -3815,7 +3908,8 @@ Use shell tools.<|im_end|>
         { role: 'assistant', content: '', tool_calls: [{ id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'weather', arguments: '{}' } }] },
         { role: 'tool', content: 'Sunny', tool_call_id: toToolCallId({ raw: 'call' }) },
       ], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toThrow('This standard tool history has no reviewed structured input adapter.');
-      expect(sink).not.toHaveBeenCalled(); expect(mockGenerate).not.toHaveBeenCalled();
+      expect(sink).not.toHaveBeenCalled();
+      expect(mockGenerate).not.toHaveBeenCalled();
     });
 
     it('passes tools to apply_chat_template for standard models', async () => {
@@ -3849,7 +3943,9 @@ Use shell tools.<|im_end|>
       });
       return {
         getState() {
-          if (state === undefined) throw new Error('Expected actual strategy runtime state');
+          if (state === undefined) {
+            throw new Error('Expected actual strategy runtime state');
+          }
           return state;
         },
         restore() {
@@ -3900,7 +3996,9 @@ Use shell tools.<|im_end|>
 
       mockModel = {
         generate: vi.fn().mockImplementation(async () => {
-          for (const token of tokensToEmit) capturedCallback?.(token);
+          for (const token of tokensToEmit) {
+            capturedCallback?.(token);
+          }
           return { past_key_values: {} };
         }),
         dispose: vi.fn(),
@@ -3945,12 +4043,15 @@ Use shell tools.<|im_end|>
       const failure = new Error('Older callback rejected after a newer request');
       tokensToEmit = ['old output'];
       const older = worker.generateText([{ role: 'user', content: 'old' }], () => {
-        emitted.resolve(); return callback.promise;
+        emitted.resolve();
+        return callback.promise;
       }, vi.fn(), undefined, undefined);
       const olderOutcome = older.catch(error => error as unknown);
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          callback.resolve(); await olderOutcome; observation.restore();
+          callback.resolve();
+          await olderOutcome;
+          observation.restore();
         },
       };
       await emitted.promise;
@@ -3980,7 +4081,8 @@ Use shell tools.<|im_end|>
       const criterion = await entered.promise;
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          complete.resolve({ past_key_values: {} }); await pending;
+          complete.resolve({ past_key_values: {} });
+          await pending;
         },
       };
       expect(criterion.interrupted).toBe(false);
@@ -4002,15 +4104,19 @@ Use shell tools.<|im_end|>
       const native = Promise.withResolvers<{ past_key_values: object }>();
       const failure = new Error('Older running native callback failure');
       mockModel.generate.mockImplementationOnce(() => {
-        capturedCallback?.('old output'); return native.promise;
+        capturedCallback?.('old output');
+        return native.promise;
       });
       const older = worker.generateText([{ role: 'user', content: 'old' }], () => {
-        emitted.resolve(); return callback.promise;
+        emitted.resolve();
+        return callback.promise;
       }, vi.fn(), undefined, undefined);
       const outcome = older.catch(error => error as unknown);
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          callback.resolve(); native.resolve({ past_key_values: {} }); await outcome;
+          callback.resolve();
+          native.resolve({ past_key_values: {} });
+          await outcome;
         },
       };
       await emitted.promise;
@@ -4030,12 +4136,15 @@ Use shell tools.<|im_end|>
       const entered = Promise.withResolvers<void>();
       const complete = Promise.withResolvers<{ past_key_values: object }>();
       mockModel.generate.mockImplementationOnce(() => {
-        entered.resolve(); return complete.promise;
+        entered.resolve();
+        return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+          complete.resolve({ past_key_values: {} });
+          await pending;
+          observation.restore();
         },
       };
       await entered.promise;
@@ -4053,12 +4162,15 @@ Use shell tools.<|im_end|>
       const entered = Promise.withResolvers<void>();
       const complete = Promise.withResolvers<{ past_key_values: object }>();
       mockModel.generate.mockImplementationOnce(() => {
-        entered.resolve(); return complete.promise;
+        entered.resolve();
+        return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+          complete.resolve({ past_key_values: {} });
+          await pending;
+          observation.restore();
         },
       };
       await entered.promise;
@@ -4108,8 +4220,12 @@ Use shell tools.<|im_end|>
       const firstUrl = 'data:image/png;base64,first-synthetic-image';
       const secondUrl = 'data:image/png;base64,second-synthetic-image';
       vi.mocked(RawImage.read).mockImplementation(async input => {
-        if (input === firstUrl) return firstImage as never;
-        if (input === secondUrl) return secondImage as never;
+        if (input === firstUrl) {
+          return firstImage as never;
+        }
+        if (input === secondUrl) {
+          return secondImage as never;
+        }
         throw new Error('Unprovided synthetic image');
       });
       const firstPixels = { data: Float32Array.of(1, 2, 3), dims: [1, 3] };
@@ -4292,7 +4408,9 @@ Use shell tools.<|im_end|>
       });
       mockModel.generate.mockImplementation(async (inputs: { input_ids: { data: BigInt64Array } }) => {
         const inputIds = Array.from(inputs.input_ids.data);
-        if (inputIds.includes(0n)) throw new Error('reasoning none failed');
+        if (inputIds.includes(0n)) {
+          throw new Error('reasoning none failed');
+        }
         return {
           past_key_values: { kv: true },
           sequences: { data: BigInt64Array.from([...inputs.input_ids.data, 99n]) },
@@ -4358,7 +4476,9 @@ Use shell tools.<|im_end|>
       expect(mockModel.generate).toHaveBeenCalledTimes(4);
       expect(mockModel.generate.mock.lastCall?.[0].past_key_values).toBeNull();
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
     });
 
@@ -4674,7 +4794,9 @@ file-a
 
       mockModel = {
         generate: vi.fn().mockImplementation(async () => {
-          for (const token of tokensToEmit) capturedCallback?.(token);
+          for (const token of tokensToEmit) {
+            capturedCallback?.(token);
+          }
           return { past_key_values: {} };
         }),
         dispose: vi.fn(),
@@ -4874,7 +4996,9 @@ file-a
       );
 
       mockGenerate = vi.fn().mockImplementation(async () => {
-        for (const token of tokensToEmit) capturedCallback?.(token);
+        for (const token of tokensToEmit) {
+          capturedCallback?.(token);
+        }
         return { past_key_values: {} };
       });
       const mockModel = {
@@ -5051,7 +5175,9 @@ file-a
       expect(mockApplyTemplate.mock.calls[0]).toEqual(ordinaryCall);
       expect(mockGenerate.mock.calls.at(-1)?.[0]).toMatchObject({ past_key_values: null });
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
-      if (result.status !== 'captured') throw new Error('Expected capture');
+      if (result.status !== 'captured') {
+        throw new Error('Expected capture');
+      }
       expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
     });
 

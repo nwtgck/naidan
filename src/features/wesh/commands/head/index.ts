@@ -149,7 +149,9 @@ const headArgvSpec: StandardArgvParserSpec = {
   treatSingleDashAsPositional: true,
   specialTokenParsers: [
     ({ token }) => {
-      if (!/^-\d+$/.test(token)) return undefined;
+      if (!/^-\d+$/.test(token)) {
+        return undefined;
+      }
       const value = token.slice(1);
       return {
         kind: 'matched',

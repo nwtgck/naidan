@@ -31,7 +31,9 @@ export function resolveImagePromptTranslation({ session, workspace, global }: {
 }
 
 export function cloneImagePromptTranslationOverride({ value }: { value: ImageGenerationTranslationOverride | undefined }): ImageGenerationTranslationOverride | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
   return { endpoint: endpoint === undefined ? undefined : cloneEndpoint({ endpoint }), modelId, lmParameters: cloneLmParameters({ lmParameters }) };
@@ -62,7 +64,10 @@ export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: En
   case 'llama_cpp_browser': return 'llama.cpp (browser)';
   case 'browser_provided_lm': return 'Browser';
   case 'unsupported_experimental_endpoint': return 'Unsupported endpoint';
-  default: { const exhaustive: never = endpoint; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = endpoint;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

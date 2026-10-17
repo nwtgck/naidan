@@ -73,7 +73,9 @@ export function loadDiagnosticErrorDetails({ error }: { error: unknown }): Pick<
 function notify({ sink, packet, failed }: { sink: ({ packet }: { packet: LoadDiagnosticPacket }) => unknown; packet: LoadDiagnosticPacket; failed: () => void }): void {
   try {
     const result = sink({ packet });
-    if (result !== undefined) void Promise.resolve(result).catch(failed);
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(failed);
+    }
   } catch {
     failed();
   }
@@ -86,20 +88,27 @@ export function createLoadDiagnosticLedger({ owner }: { owner: ProductionLoadRec
   return {
     observe({ packet }: { packet: unknown }): void {
       if (events.length >= 512) {
-        reasons.add('event-limit'); return;
+        reasons.add('event-limit');
+        return;
       }
       try {
         const parsed = loadDiagnosticPacketSchema.safeParse(packet);
         if (!parsed.success || parsed.data.owner.runId !== owner.runId || parsed.data.owner.workerEpoch !== owner.workerEpoch) {
-          reasons.add('invalid-event'); return;
+          reasons.add('invalid-event');
+          return;
         }
         const previous = events.findLast(event => event.loadOrdinal === parsed.data.event.loadOrdinal);
         if (parsed.data.event.sequence <= (previous?.sequence ?? 0)) {
-          reasons.add('invalid-event'); return;
+          reasons.add('invalid-event');
+          return;
         }
-        if (parsed.data.event.sequence !== (previous?.sequence ?? 0) + 1) reasons.add('invalid-event');
+        if (parsed.data.event.sequence !== (previous?.sequence ?? 0) + 1) {
+          reasons.add('invalid-event');
+        }
         events.push(parsed.data.event);
-        for (const reason of parsed.data.incompleteReasons) reasons.add(reason);
+        for (const reason of parsed.data.incompleteReasons) {
+          reasons.add(reason);
+        }
       } catch {
         reasons.add('invalid-event');
       }
@@ -107,8 +116,11 @@ export function createLoadDiagnosticLedger({ owner }: { owner: ProductionLoadRec
     snapshot({ expectedLoadCount }: { expectedLoadCount: number }): LoadDiagnostics {
       const snapshotReasons = new Set(reasons);
       for (let ordinal = 1; ordinal <= Math.min(expectedLoadCount, 32); ordinal++) {
-        if (!events.some(event => event.loadOrdinal === ordinal)) snapshotReasons.add('unobserved-load');
-        else if (!events.some(event => event.loadOrdinal === ordinal && (event.kind === 'load-finished' || event.kind === 'load-failed'))) snapshotReasons.add('load-not-settled');
+        if (!events.some(event => event.loadOrdinal === ordinal)) {
+          snapshotReasons.add('unobserved-load');
+        } else if (!events.some(event => event.loadOrdinal === ordinal && (event.kind === 'load-finished' || event.kind === 'load-failed'))) {
+          snapshotReasons.add('load-not-settled');
+        }
       }
       return {
         format: 'production-load-diagnostics-v1',
@@ -134,9 +146,12 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
   const reasons = new Set<LoadDiagnostics['incompleteReasons'][number]>();
   const tokens = new WeakMap<object, { readOrdinal: number; resource: string | undefined; candidateOrdinal: number; reading: boolean }>();
   function emit({ kind, details }: { kind: LoadDiagnosticEvent['kind']; details: Details }): void {
-    if (sequence >= 512) return;
+    if (sequence >= 512) {
+      return;
+    }
     if (sequence === 511) {
-      reasons.add('event-limit'); kind = 'diagnostic-incomplete';
+      reasons.add('event-limit');
+      kind = 'diagnostic-incomplete';
     }
     try {
       const event = loadDiagnosticEventSchema.safeParse({
@@ -150,7 +165,9 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
         activeReadCount: activeReads,
         scope,
       });
-      if (!event.success) return;
+      if (!event.success) {
+        return;
+      }
       notify({
         sink,
         packet: { owner, event: event.data, incompleteReasons: [...reasons] },
@@ -163,14 +180,19 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
   const operation = {
     emit,
     beginCandidate({ device, dtype, revision }: { device: 'webgpu' | 'wasm'; dtype: string; revision: string | undefined }): UpstreamLoadDiagnosticObserver {
-      candidateOrdinal++; allocated = 0; returned = 0; activeReads = 0; scope = 'active';
+      candidateOrdinal++;
+      allocated = 0;
+      returned = 0;
+      activeReads = 0;
+      scope = 'active';
       emit({ kind: 'candidate-start', details: { device, dtype, ...(revision !== undefined && /^(?:[a-f0-9]{40}|main)$/u.test(revision) ? { revision } : {}) } });
       const capturedOrdinal = candidateOrdinal;
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Third-party bundle callback boundary.
       return (value: unknown) => {
         if (capturedOrdinal !== candidateOrdinal) {
           if (!reasons.has('invalid-event')) {
-            reasons.add('invalid-event'); emit({ kind: 'diagnostic-incomplete', details: {} });
+            reasons.add('invalid-event');
+            emit({ kind: 'diagnostic-incomplete', details: {} });
           }
           return;
         }
@@ -178,15 +200,20 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
       };
     },
     closeCandidate() {
-      scope = 'closed'; emit({ kind: 'candidate-finished', details: {} });
+      scope = 'closed';
+      emit({ kind: 'candidate-finished', details: {} });
     },
     // The reviewed upstream adapter sends only a token and scalar diagnostics.
     // It captures this callback before awaiting, so late events keep their owner.
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Third-party bundle callback boundary.
     observeUpstream(value: unknown): void {
-      if (sequence >= 512) return;
+      if (sequence >= 512) {
+        return;
+      }
       try {
-        if (typeof value !== 'object' || value === null) return;
+        if (typeof value !== 'object' || value === null) {
+          return;
+        }
         const raw = z.object({
           token: z.object({}).strict(),
           kind: z.enum(['read', 'session']),
@@ -199,49 +226,65 @@ export function createLoadDiagnosticOperation({ owner, loadOrdinal, sink, resour
           // category must not discard the otherwise valid native event.
           errorCategory: errorCategory.catch(undefined),
         }).strict().safeParse(value);
-        if (!raw.success) return;
+        if (!raw.success) {
+          return;
+        }
         // Keep the original token identity, not Zod's cloned empty object.
         const token = Reflect.get(value, 'token') as object;
         let read = tokens.get(token);
         if (read === undefined) {
           if (readOrdinal >= 128) {
             if (!reasons.has('resource-limit')) {
-              reasons.add('resource-limit'); emit({ kind: 'diagnostic-incomplete', details: {} });
+              reasons.add('resource-limit');
+              emit({ kind: 'diagnostic-incomplete', details: {} });
             }
             return;
           }
           const path = resource.safeParse(raw.data.resource);
-          if (raw.data.kind === 'read' && !path.success) return;
+          if (raw.data.kind === 'read' && !path.success) {
+            return;
+          }
           read = { readOrdinal: ++readOrdinal, resource: path.success && resourceNames === 'public-repository' ? path.data : undefined, candidateOrdinal, reading: false };
           tokens.set(token, read);
         }
-        if (read.candidateOrdinal !== candidateOrdinal) return;
+        if (read.candidateOrdinal !== candidateOrdinal) {
+          return;
+        }
         const { phase, bytes } = raw.data;
         let categoryDetails: Pick<Details, 'errorCategory'> = {};
         switch (phase) {
-        case 'allocation-succeeded': allocated = Math.min(Number.MAX_SAFE_INTEGER, allocated + bytes); break;
+        case 'allocation-succeeded': allocated = Math.min(Number.MAX_SAFE_INTEGER, allocated + bytes);
+          break;
         case 'read-start':
           if (!read.reading) {
-            read.reading = true; activeReads++;
+            read.reading = true;
+            activeReads++;
           }
           break;
         case 'read-returned':
           returned = Math.min(Number.MAX_SAFE_INTEGER, returned + bytes);
           if (read.reading) {
-            read.reading = false; activeReads--;
+            read.reading = false;
+            activeReads--;
           }
           break;
         case 'read-failed':
           if (read.reading) {
-            read.reading = false; activeReads--;
+            read.reading = false;
+            activeReads--;
           }
           break;
         case 'allocation-attempt': case 'allocation-failed':
         case 'session-preparing': case 'session-entering': case 'session-fulfilled': break;
         case 'session-rejected':
-          if (raw.data.errorCategory !== undefined) categoryDetails = { errorCategory: raw.data.errorCategory };
+          if (raw.data.errorCategory !== undefined) {
+            categoryDetails = { errorCategory: raw.data.errorCategory };
+          }
           break;
-        default: { const _ex: never = phase; throw new Error(`Unhandled diagnostic phase: ${_ex}`); }
+        default: {
+          const _ex: never = phase;
+          throw new Error(`Unhandled diagnostic phase: ${_ex}`);
+        }
         }
         const name = errorName.safeParse(raw.data.errorName);
         emit({

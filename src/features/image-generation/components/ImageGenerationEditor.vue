@@ -36,7 +36,8 @@ const slots = computed(() => {
     { slot: 't5' as const, label: lazyStrings.stableDiffusionCppBrowser__t5_file() },
     { slot: 'lm' as const, label: lazyStrings.stableDiffusionCppBrowser__lm_file() },
   ];
-  default: { const exhaustive: never = layout.value;
+  default: {
+    const exhaustive: never = layout.value;
     throw new Error(String(exhaustive));
   }
   }
@@ -50,7 +51,9 @@ const weightResidencyOptions = computed(() => [
 const resolutions = [{ width: 256, height: 256 }, { width: 512, height: 512 }, { width: 768, height: 768 }, { width: 1024, height: 1024 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }];
 
 function setResolution({ width, height }: { width: number, height: number }): void {
-  if (draftDisabled.value) return;
+  if (draftDisabled.value) {
+    return;
+  }
   parameters.value.width = width;
   parameters.value.height = height;
 }
@@ -58,14 +61,20 @@ function setResolution({ width, height }: { width: number, height: number }): vo
 const resolutionKey = computed(() => resolutions.some(size => size.width === parameters.value.width && size.height === parameters.value.height) ? `${parameters.value.width}x${parameters.value.height}` : 'custom');
 
 function chooseResolution({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const value = event.target.value;
   const size = resolutions.find(size => `${size.width}x${size.height}` === value);
-  if (size) setResolution(size);
+  if (size) {
+    setResolution(size);
+  }
 }
 
 function changeSeed({ event }: { event: Event }): void {
-  if (draftDisabled.value || !(event.target instanceof HTMLInputElement)) return;
+  if (draftDisabled.value || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   parameters.value.seed = event.target.value;
   seedMode.value = 'fixed';
 }
@@ -83,14 +92,21 @@ const componentSummary = computed(() => {
 });
 
 function changeRetention({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
-  if (props.view.setRetainModel) props.view.setRetainModel({ retain: event.target.checked });
-  else retainModel.value = event.target.checked;
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+  if (props.view.setRetainModel) {
+    props.view.setRetainModel({ retain: event.target.checked });
+  } else {
+    retainModel.value = event.target.checked;
+  }
 }
 
 function applyRecommendedField({ field, recommendationId, context }: { field: ImageRecommendedField, recommendationId: ImageGenerationRecommendation['id'], context: string | undefined }): void {
   const current = props.view.recommendation.value;
-  if (props.view.draftDisabled.value || !current || current.id !== recommendationId || context !== props.context) return;
+  if (props.view.draftDisabled.value || !current || current.id !== recommendationId || context !== props.context) {
+    return;
+  }
   parameters.value = applyImageRecommendedField({ parameters: parameters.value, recommendation: current, field });
 }
 

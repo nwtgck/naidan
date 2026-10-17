@@ -13,26 +13,39 @@ let epoch = 0, disposed = false;
 let pending: AbortController | undefined;
 
 function invalidate(): void {
-  epoch++; pending?.abort(); pending = undefined;
-  provided.value = undefined; status.value = 'idle';
+  epoch++;
+  pending?.abort();
+  pending = undefined;
+  provided.value = undefined;
+  status.value = 'idle';
 }
 
 async function refresh(): Promise<void> {
   const manager = props.manager, registration = props.registration;
-  if (!manager || registration?.phase !== 'connected') return;
-  pending?.abort(); const controller = new AbortController(); pending = controller;
+  if (!manager || registration?.phase !== 'connected') {
+    return;
+  }
+  pending?.abort();
+  const controller = new AbortController();
+  pending = controller;
   const token = ++epoch, id = registration.registration.id;
-  provided.value = undefined; status.value = 'loading';
+  provided.value = undefined;
+  status.value = 'loading';
   const current = () => !disposed && token === epoch && !controller.signal.aborted && props.registration?.registration.id === id && connected.value;
   try {
     const result = await manager.getPeerProvidedMethods({ id, signal: controller.signal });
     if (current()) {
-      provided.value = result; status.value = 'ready';
+      provided.value = result;
+      status.value = 'ready';
     }
   } catch {
-    if (current()) status.value = 'failed';
+    if (current()) {
+      status.value = 'failed';
+    }
   } finally {
-    if (pending === controller) pending = undefined;
+    if (pending === controller) {
+      pending = undefined;
+    }
   }
 }
 
@@ -41,22 +54,32 @@ async function refresh(): Promise<void> {
 // calls themselves perpetually invalidating idle connection observations.
 watch([() => props.manager, () => props.registration?.registration.id, () => props.registration?.phase, () => props.registration?.connectionToken], () => {
   invalidate();
-  if (connected.value) void refresh();
+  if (connected.value) {
+    void refresh();
+  }
 }, { immediate: true, flush: 'sync' });
 
 function focus(): void {
-  if (connected.value && status.value !== 'loading') void refresh();
+  if (connected.value && status.value !== 'loading') {
+    void refresh();
+  }
 }
 
 window.addEventListener('focus', focus);
 onScopeDispose(() => {
-  disposed = true; invalidate(); window.removeEventListener('focus', focus);
+  disposed = true;
+  invalidate();
+  window.removeEventListener('focus', focus);
 });
 
 function groupState({ names }: { names: readonly NaidanPeerControlledMethodName[] }): string | undefined {
   const count = names.filter(name => provided.value?.methods.some(method => method.name === name)).length;
-  if (count === 0) return lazyStrings.RpcPeerProvision__not_provided();
-  if (count === names.length) return lazyStrings.RpcPeerProvision__provided();
+  if (count === 0) {
+    return lazyStrings.RpcPeerProvision__not_provided();
+  }
+  if (count === names.length) {
+    return lazyStrings.RpcPeerProvision__provided();
+  }
   return lazyStrings.RpcPeerProvision__partially_provided();
 }
 

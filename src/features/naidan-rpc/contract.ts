@@ -23,7 +23,9 @@ export type Contract = { readonly name: string; readonly methods: Readonly<Recor
 
 export function contract<const M extends Readonly<Record<string, Procedure>>>({ name, methods }: { name: string; methods: M }) {
   check({ condition: validName({ name }) && Object.keys(methods).length <= 64, code: 'INVALID_ARGUMENT' });
-  for (const method of Object.keys(methods)) check({ condition: validName({ name: method }), code: 'INVALID_ARGUMENT' });
+  for (const method of Object.keys(methods)) {
+    check({ condition: validName({ name: method }), code: 'INVALID_ARGUMENT' });
+  }
   return Object.freeze({ name, methods: Object.freeze({ ...methods }) });
 }
 
@@ -75,14 +77,15 @@ export function checkAllowedMethods<C extends Contract>({ contract, allowedMetho
 }
 
 export function prepareMethod({ method, handler }: { method: Procedure; handler: Handler | undefined }): PreparedMethod {
-  const { input, result, notifications, ...rest } = method; rest satisfies Record<PropertyKey, never>;
-  return {
-    input: compile({ schema: input, capabilitiesAllowed: true, callbacksAllowed: true }),
-    result: compile({ schema: result, capabilitiesAllowed: true, callbacksAllowed: false }),
-    notifications: new Map(Object.entries(notifications).map(([name, schema]) =>
-      [name, compile({ schema, capabilitiesAllowed: false, callbacksAllowed: false })])),
-    handler,
-  };
+  const { input, result, notifications, ...rest } = method;
+rest satisfies Record<PropertyKey, never>;
+return {
+  input: compile({ schema: input, capabilitiesAllowed: true, callbacksAllowed: true }),
+  result: compile({ schema: result, capabilitiesAllowed: true, callbacksAllowed: false }),
+  notifications: new Map(Object.entries(notifications).map(([name, schema]) =>
+    [name, compile({ schema, capabilitiesAllowed: false, callbacksAllowed: false })])),
+  handler,
+};
 }
 
 export function expose<C extends Contract>({ contract, implementation, allowedMethods }: {

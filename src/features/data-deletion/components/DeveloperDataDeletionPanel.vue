@@ -118,7 +118,9 @@ function setOptionSelected({ id, selected }: { id: string, selected: boolean }):
 
 function handleOptionToggle({ id, event }: { id: string, event: Event }): void {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement)) return;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
   setOptionSelected({ id, selected: target.checked });
 }
 
@@ -136,11 +138,15 @@ async function refreshPreview(): Promise<void> {
     const nextPreview = await createDataDeletionPreview({
       selectedOptionIds: selectedOptionIds.value,
     });
-    if (previewRequestToken !== requestToken) return;
+    if (previewRequestToken !== requestToken) {
+      return;
+    }
     preview.value = nextPreview;
     previewStatus.value = 'ready';
   } catch (error) {
-    if (previewRequestToken !== requestToken) return;
+    if (previewRequestToken !== requestToken) {
+      return;
+    }
     previewStatus.value = 'failed';
     previewErrorMessage.value = error instanceof Error ? error.message : String(error);
   }
@@ -162,7 +168,9 @@ async function handleDeleteSelectedData(): Promise<void> {
     confirmButtonText: await ensureStrings.dataDeletion__delete_selected_data(),
     confirmButtonVariant: 'danger',
   });
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
 
   const result = await executeDataDeletion({
     selectedOptionIds: selectedOptionIds.value,

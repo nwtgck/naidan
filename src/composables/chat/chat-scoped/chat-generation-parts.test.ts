@@ -83,7 +83,9 @@ function createChat(): { chat: Chat, assistant: AssistantMessageNode } {
   const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, parts: [{ type: 'text', text: 'question', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [assistant] } };
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: null, root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   const node = chat.root.items[0]!.replies.items[0]!;
-  if (node.role !== 'assistant') throw new Error('Invalid fixture');
+  if (node.role !== 'assistant') {
+    throw new Error('Invalid fixture');
+  }
   state.current.value = chat;
   return { chat, assistant: node };
 }
@@ -93,8 +95,13 @@ const run = ({ chat, assistant }: { chat: Chat, assistant: AssistantMessageNode 
 describe('chat generation flow with message parts', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
-    vi.clearAllMocks(); state.active.clear(); state.autoTitle = false; state.tools = [];
-    state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+    state.active.clear();
+    state.autoTitle = false;
+    state.tools = [];
+    state.save.mockResolvedValue(undefined);
+    state.metadata.mockResolvedValue(undefined);
+    state.title.mockResolvedValue(undefined);
   });
 
   it('shows draft updates without history persistence and clears them after cancellation', async () => {
@@ -102,7 +109,9 @@ describe('chat generation flow with message parts', () => {
     const visible = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     state.drafts.mockImplementation(({ drafts }) => {
-      if (drafts.length !== 0) visible.resolve();
+      if (drafts.length !== 0) {
+        visible.resolve();
+      }
     });
     state.provider = {
       listModels: async () => ['m'],
@@ -123,7 +132,9 @@ describe('chat generation flow with message parts', () => {
     expect(fixture.assistant.parts).toEqual([]);
     expect(state.save).not.toHaveBeenCalled();
     const active = state.active.get(fixture.chat.id);
-    if (!active) throw new Error('Expected an active generation');
+    if (!active) {
+      throw new Error('Expected an active generation');
+    }
     active.controller.abort(new DOMException('Aborted', 'AbortError'));
     expect(state.drafts).toHaveBeenLastCalledWith({ chatId: fixture.chat.id, messageId: fixture.assistant.id, owner: active.controller.signal, drafts: [] });
     release.resolve();
@@ -134,7 +145,8 @@ describe('chat generation flow with message parts', () => {
   });
 
   it.each([true, false])('preserves the chat debug preference through tool rounds (%s)', async enabled => {
-    const fixture = createChat(); fixture.chat.debugEnabled = enabled;
+    const fixture = createChat();
+    fixture.chat.debugEnabled = enabled;
     const preferences: Array<'on' | 'off' | undefined> = [];
     state.tools = [{ name: 'f', description: '', parametersSchema: z.object({}), execute: async () => ({ status: 'success', content: 'done' }) }];
     const { toToolCallId } = await import('@/01-models/ids');
@@ -175,12 +187,16 @@ describe('chat generation flow with message parts', () => {
     };
     await run(fixture);
     expect(fixture.assistant.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>answer', completeness: 'complete' }]);
-    expect(state.save).toHaveBeenCalled(); expect(state.active.size).toBe(0); expect(fixture.assistant.interruption).toBeUndefined();
+    expect(state.save).toHaveBeenCalled();
+    expect(state.active.size).toBe(0);
+    expect(fixture.assistant.interruption).toBeUndefined();
     expect(toRaw(fixture.chat.root.items[0]!.replies.items[0]!)).toBe(toRaw(fixture.assistant));
   });
 
   it('executes calls through the shared runner and creates a new assistant after its tool node', async () => {
-    const fixture = createChat(); const observed: readonly string[][] = []; const inputs = [...observed];
+    const fixture = createChat();
+    const observed: readonly string[][] = [];
+    const inputs = [...observed];
     const execute = vi.fn(async ({ args }: { args: unknown }) => ({ status: 'success' as const, content: JSON.stringify(args) }));
     state.tools = [{ name: 'f', description: 'f', parametersSchema: z.object({ n: z.number().default(1) }), execute }];
     let rounds = 0;
@@ -196,17 +212,22 @@ describe('chat generation flow with message parts', () => {
               await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
               return { type: 'finished', next: 'tool_results' };
             }
-            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+            await writer.text({ type: 'text', text: 'answer' });
+            return { type: 'finished', next: 'user' };
           },
         });
       },
     };
     await run(fixture);
-    expect(inputs).toEqual([['user'], ['user', 'assistant', 'tool']]); expect(execute).toHaveBeenCalledOnce();
-    const tool = fixture.assistant.replies.items[0]!; expect(tool.role).toBe('tool');
+    expect(inputs).toEqual([['user'], ['user', 'assistant', 'tool']]);
+    expect(execute).toHaveBeenCalledOnce();
+    const tool = fixture.assistant.replies.items[0]!;
+    expect(tool.role).toBe('tool');
     expect(tool.parts[0]).toMatchObject({ type: 'tool_result', result: { status: 'success', content: { text: '{"n":1}' } } });
-    const answer = tool.replies.items[0]!; expect(getMessageText({ message: answer })).toBe('answer');
-    expect(answer.id).not.toBe(fixture.assistant.id); expect(fixture.chat.currentLeafId).toBe(answer.id);
+    const answer = tool.replies.items[0]!;
+    expect(getMessageText({ message: answer })).toBe('answer');
+    expect(answer.id).not.toBe(fixture.assistant.id);
+    expect(fixture.chat.currentLeafId).toBe(answer.id);
     expect(fixture.assistant.parts[0]).toMatchObject({ toolCall: { function: { arguments: ' {} ' } } });
   });
 
@@ -225,7 +246,8 @@ describe('chat generation flow with message parts', () => {
     };
     await run(fixture);
     expect(fixture.assistant.parts[0]).toMatchObject({ text: '<think>途中', completeness: 'partial' });
-    expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' }); expect(state.active.size).toBe(0);
+    expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' });
+    expect(state.active.size).toBe(0);
   });
 
   it('retains received content and records the model failure without changing the text', async () => {
@@ -235,29 +257,35 @@ describe('chat generation flow with message parts', () => {
       chat: ({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-          await writer.text({ type: 'text', text: 'prefix' }); throw new Error('通信失敗');
+          await writer.text({ type: 'text', text: 'prefix' });
+          throw new Error('通信失敗');
         },
       }),
     };
     await run(fixture);
-    expect(getMessageText({ message: fixture.assistant })).toBe('prefix'); expect(fixture.assistant.interruption).toEqual({ type: 'error', message: '通信失敗' });
+    expect(getMessageText({ message: fixture.assistant })).toBe('prefix');
+    expect(fixture.assistant.interruption).toEqual({ type: 'error', message: '通信失敗' });
     expect(state.setError).toHaveBeenCalledWith({ chatId: fixture.chat.id, messageId: fixture.assistant.id, error: '通信失敗' });
   });
 
   it('does not reclassify a successful answer as a model error when automatic title fails', async () => {
-    const fixture = createChat(); state.autoTitle = true; state.title.mockRejectedValue(new Error('title failed'));
+    const fixture = createChat();
+    state.autoTitle = true;
+    state.title.mockRejectedValue(new Error('title failed'));
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     state.provider = {
       listModels: async () => ['m'],
       chat: ({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-          await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
         },
       }),
     };
     await run(fixture);
-    expect(fixture.assistant.interruption).toBeUndefined(); expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
+    expect(fixture.assistant.interruption).toBeUndefined();
+    expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
     expect(state.active.size).toBe(0);
   });
 });
@@ -265,20 +293,28 @@ describe('chat generation flow with message parts', () => {
 describe('chat generation ownership and failure boundaries', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
-    vi.clearAllMocks(); state.active.clear(); state.tools = []; state.autoTitle = false;
-    state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+    state.active.clear();
+    state.tools = [];
+    state.autoTitle = false;
+    state.save.mockResolvedValue(undefined);
+    state.metadata.mockResolvedValue(undefined);
+    state.title.mockResolvedValue(undefined);
   });
 
   it('does not open an existing partial assistant as a new generation', async () => {
-    const fixture = createChat(); fixture.assistant.parts = [{ type: 'text', text: 'old', completeness: 'partial' }];
+    const fixture = createChat();
+    fixture.assistant.parts = [{ type: 'text', text: 'old', completeness: 'partial' }];
     fixture.assistant.interruption = { type: 'cancelled' };
     const before = JSON.stringify(fixture.assistant);
     await expect(run(fixture)).rejects.toThrow(/cannot be resumed/);
-    expect(JSON.stringify(fixture.assistant)).toBe(before); expect(state.active.size).toBe(0);
+    expect(JSON.stringify(fixture.assistant)).toBe(before);
+    expect(state.active.size).toBe(0);
   });
 
   it('keeps a successful answer in memory and skips reload metadata when persistence fails', async () => {
-    const fixture = createChat(); const failure = new Error('disk unavailable');
+    const fixture = createChat();
+    const failure = new Error('disk unavailable');
     state.save.mockResolvedValueOnce(undefined).mockRejectedValue(failure);
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     state.provider = {
@@ -286,13 +322,15 @@ describe('chat generation ownership and failure boundaries', () => {
       chat: ({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-          await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
         },
       }),
     };
     await run(fixture);
     expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
-    expect(fixture.assistant.interruption).toBeUndefined(); expect(state.metadata).not.toHaveBeenCalled();
+    expect(fixture.assistant.interruption).toBeUndefined();
+    expect(state.metadata).not.toHaveBeenCalled();
   });
 
   it('keeps an observed tool success when stop is requested inside tool execution', async () => {
@@ -303,7 +341,8 @@ describe('chat generation ownership and failure boundaries', () => {
       description: '',
       parametersSchema: z.object({}),
       execute: async () => {
-      state.active.get(fixture.chat.id)!.controller.abort(); return { status: 'success', content: 'observed success' };
+      state.active.get(fixture.chat.id)!.controller.abort();
+      return { status: 'success', content: 'observed success' };
       },
       dispose,
     }];
@@ -319,7 +358,9 @@ describe('chat generation ownership and failure boundaries', () => {
     await run(fixture);
     const tool = fixture.assistant.replies.items[0]!;
     expect(tool.parts[0]).toMatchObject({ result: { status: 'success', content: { text: 'observed success' } } });
-    expect(chat).toHaveBeenCalledOnce(); expect(tool.replies.items).toEqual([]); expect(dispose).toHaveBeenCalledOnce();
+    expect(chat).toHaveBeenCalledOnce();
+    expect(tool.replies.items).toEqual([]);
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });
 
@@ -353,9 +394,13 @@ function createToolRetryFixture({ results }: { results: ToolExecutionResult[] })
     replies: { items: [stopped] },
   });
   const tool = fixture.assistant.replies.items[0]!;
-  if (tool.role !== 'tool') throw new Error('Expected tool fixture');
+  if (tool.role !== 'tool') {
+    throw new Error('Expected tool fixture');
+  }
   const stoppedNode = tool.replies.items[0]!;
-  if (stoppedNode.role !== 'assistant') throw new Error('Expected stopped assistant fixture');
+  if (stoppedNode.role !== 'assistant') {
+    throw new Error('Expected stopped assistant fixture');
+  }
   fixture.chat.currentLeafId = stoppedNode.id;
   return { chat: fixture.chat, tool, stopped: stoppedNode };
 }
@@ -363,8 +408,12 @@ function createToolRetryFixture({ results }: { results: ToolExecutionResult[] })
 describe('regeneration after tool results', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
-    vi.clearAllMocks(); state.active.clear(); state.autoTitle = false; state.tools = [];
-    state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+    state.active.clear();
+    state.autoTitle = false;
+    state.tools = [];
+    state.save.mockResolvedValue(undefined);
+    state.metadata.mockResolvedValue(undefined);
     state.title.mockResolvedValue(undefined);
   });
 
@@ -400,9 +449,13 @@ describe('regeneration after tool results', () => {
     expect(chat).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledOnce();
     const tool = fixture.assistant.replies.items[0]!;
-    if (tool.role !== 'tool') throw new Error('Expected the completed tool message');
+    if (tool.role !== 'tool') {
+      throw new Error('Expected the completed tool message');
+    }
     const failed = tool.replies.items[0]!;
-    if (failed.role !== 'assistant') throw new Error('Expected the failed answer');
+    if (failed.role !== 'assistant') {
+      throw new Error('Expected the failed answer');
+    }
     expect(failed.interruption).toEqual({ type: 'error', message: 'Answer failed after the tool completed' });
     expect(failed.parts).toMatchObject([
       { type: 'reasoning', text: '  結果を確認する。\n', completeness: 'complete' },
@@ -422,7 +475,9 @@ describe('regeneration after tool results', () => {
     expect(retried.id).not.toBe(failed.id);
     expect(fixture.chat.currentLeafId).toBe(retried.id);
     expect(retried.parts).toMatchObject([{ type: 'text', text: '  Fresh answer\n', completeness: 'complete' }]);
-    if (retried.role !== 'assistant') throw new Error('Expected the retried answer');
+    if (retried.role !== 'assistant') {
+      throw new Error('Expected the retried answer');
+    }
     expect(retried.interruption).toBeUndefined();
     expect(retried.modelId).toBe(failed.modelId);
     expect(retried.lmParameters).toEqual(failed.lmParameters);
@@ -489,7 +544,9 @@ describe('regeneration after tool results', () => {
     await vi.waitUntil(() => !state.active.has(fixture.chat.id));
     expect(fixture.tool.replies.items).toHaveLength(2);
     const sibling = fixture.tool.replies.items[1]!;
-    if (sibling.role !== 'assistant') throw new Error('Expected retried assistant');
+    if (sibling.role !== 'assistant') {
+      throw new Error('Expected retried assistant');
+    }
     expect(sibling.interruption).toEqual({ type: 'error', message: 'Retry failed' });
     expect(sibling.parts).toMatchObject([{ type: 'text', text: 'Another incomplete answer', completeness: 'partial' }]);
     expect(fixture.chat.currentLeafId).toBe(sibling.id);

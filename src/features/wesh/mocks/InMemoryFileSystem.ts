@@ -40,7 +40,9 @@ function assertNonNegativeInteger({ value, label }: { value: number; label: stri
 }
 
 function isWriteParams(data: MockFileSystemWriteChunkType): data is WriteParams {
-  if (typeof data !== 'object' || data === null) return false;
+  if (typeof data !== 'object' || data === null) {
+    return false;
+  }
   const type = (data as { type?: unknown }).type;
   return type === 'write' || type === 'seek' || type === 'truncate';
 }
@@ -156,7 +158,9 @@ export class MockFileSystemWritableFileStream extends WritableStream<FileSystemW
   }
 
   private commit(): void {
-    if (this.isCommitted) return;
+    if (this.isCommitted) {
+      return;
+    }
     this.fileHandle.content = new Uint8Array(this.pendingContent);
     this.fileHandle.lastModified = Date.now();
     this.isCommitted = true;
@@ -178,7 +182,9 @@ export class MockFileSystemWritableFileStream extends WritableStream<FileSystemW
       newContent.set(this.pendingContent);
       this.pendingContent = newContent;
     }
-    if (this.cursor > size) this.cursor = size;
+    if (this.cursor > size) {
+      this.cursor = size;
+    }
   }
 
   async write(data: MockFileSystemWriteChunkType): Promise<void> {
@@ -380,14 +386,20 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
 
   async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
     this.assertEntryPresent();
-    if (possibleDescendant === this) return [];
+    if (possibleDescendant === this) {
+      return [];
+    }
 
     for (const [name, child] of this.children) {
-      if (child === possibleDescendant) return [name];
+      if (child === possibleDescendant) {
+        return [name];
+      }
       switch (child.kind) {
       case 'directory': {
         const path = await (child as MockFileSystemDirectoryHandle).resolve(possibleDescendant);
-        if (path) return [name, ...path];
+        if (path) {
+          return [name, ...path];
+        }
         break;
       }
       case 'file':

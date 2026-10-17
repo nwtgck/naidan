@@ -16,8 +16,12 @@ async function readStreamText({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (value === undefined) continue;
+      if (done) {
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
       parts.push(decoder.decode(value, { stream: true }));
     }
     parts.push(decoder.decode());

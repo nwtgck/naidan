@@ -67,7 +67,9 @@ function handleOpenMessage({ messageId }: { messageId: MessageId }) {
 
 // Resolve only the selected branch; a removed node must not silently select a sibling.
 const selectedPath = computed(() => {
-  if (!selectedNode.value || !props.chat) return [];
+  if (!selectedNode.value || !props.chat) {
+    return [];
+  }
   const path = [...getChatBranchIterator({ chat: { ...props.chat, currentLeafId: selectedNode.value.id } })];
   return path.at(-1)?.id === selectedNode.value.id ? path : [];
 });
@@ -78,7 +80,9 @@ const previewInitialId = ref<BinaryObjectId | null>(null);
 
 let previewRequest = 0;
 watch([() => props.show, mode, () => props.chat, () => selectedNode.value?.id], () => {
-  previewRequest += 1; previewObjects.value = []; previewInitialId.value = null;
+  previewRequest += 1;
+  previewObjects.value = [];
+  previewInitialId.value = null;
 });
 onUnmounted(() => {
   previewRequest += 1;
@@ -129,7 +133,9 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
       }
     }
     const inspection = inspectDebugImages({ message: node });
-    for (const { image } of inspection.images) allImageIds.add(toBinaryObjectId({ raw: image.binaryObjectId }));
+    for (const { image } of inspection.images) {
+      allImageIds.add(toBinaryObjectId({ raw: image.binaryObjectId }));
+    }
     for (const details of inspection.errors) {
       addErrorEvent({ source: 'ChatDebugInspector:handlePreviewAttachment', message: await ensureStrings.ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection(), details });
     }
@@ -152,8 +158,12 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
       continue;
     }
     const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-    if (request !== previewRequest) return;
-    if (obj && obj.mimeType.startsWith('image/')) objects.push({ ...obj, memoryBlob: undefined });
+    if (request !== previewRequest) {
+      return;
+    }
+    if (obj && obj.mimeType.startsWith('image/')) {
+      objects.push({ ...obj, memoryBlob: undefined });
+    }
   }
 
   // Sort by creation date if available, otherwise keep order

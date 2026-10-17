@@ -54,7 +54,9 @@ async function applyLocalRefMutationsWithRollback({ files, mutations, finalize }
   const previousStates: GitLocalRefState[] = [];
   for (const mutation of mutations) {
     const key = `${mutation.repository.commonDirPath}\0${mutation.refName}`;
-    if (seen.has(key)) throw new Error(`duplicate local ref transaction target: ${mutation.refName}`);
+    if (seen.has(key)) {
+      throw new Error(`duplicate local ref transaction target: ${mutation.refName}`);
+    }
     seen.add(key);
     previousStates.push({
       ...mutation,
@@ -72,7 +74,9 @@ async function applyLocalRefMutationsWithRollback({ files, mutations, finalize }
       }
       appliedCount += 1;
     }
-    if (finalize !== undefined) await finalize();
+    if (finalize !== undefined) {
+      await finalize();
+    }
   } catch (error) {
     const rollbackErrors: string[] = [];
     for (let index = appliedCount - 1; index >= 0; index -= 1) {
@@ -112,7 +116,9 @@ export async function resolveLocalRemote({ files, repository, remoteName, config
   config: GitConfig,
 }): Promise<{ remotePath: string, remoteRepository: GitRepository, bare: boolean }> {
   const location = getConfigValue({ config, key: `remote.${remoteName}.url` });
-  if (location === undefined) throw new Error(`'${remoteName}' does not appear to be a git repository`);
+  if (location === undefined) {
+    throw new Error(`'${remoteName}' does not appear to be a git repository`);
+  }
   assertLocalRepositoryLocation({ location });
   const remotePath = normalizePath({ cwd: repository.worktreePath, path: location });
   const { repository: remoteRepository, bare } = await discoverRepositoryAtPath({ files, path: remotePath });
@@ -162,9 +168,13 @@ export async function fetchLocalRemote({ files, repository, remoteName, prune = 
     const sourceBranchNames = new Set(sourceHeads.map(ref => ref.refName.slice('refs/heads/'.length)));
     const trackingPrefix = `refs/remotes/${remoteName}`;
     for (const ref of await listRefs({ files, repository, prefix: trackingPrefix })) {
-      if (ref.symbolicTargetRefName !== undefined) continue;
+      if (ref.symbolicTargetRefName !== undefined) {
+        continue;
+      }
       const branchName = ref.refName.slice(`${trackingPrefix}/`.length);
-      if (branchName === 'HEAD' || sourceBranchNames.has(branchName)) continue;
+      if (branchName === 'HEAD' || sourceBranchNames.has(branchName)) {
+        continue;
+      }
       mutations.push({ repository, refName: ref.refName, objectId: undefined });
       prunedBranches.push({ branchName, oldObjectId: ref.objectId });
     }
@@ -204,7 +214,9 @@ export async function pushLocalBranch({ files, repository, remoteName, sourceBra
   config: GitConfig,
 }): Promise<GitLocalPushResult> {
   const sourceObjectId = await readRef({ files, repository, refName: `refs/heads/${sourceBranch}` });
-  if (sourceObjectId === undefined) throw new Error(`src refspec ${sourceBranch} does not match any`);
+  if (sourceObjectId === undefined) {
+    throw new Error(`src refspec ${sourceBranch} does not match any`);
+  }
   const { remotePath, remoteRepository, bare } = await resolveLocalRemote({ files, repository, remoteName, config });
   const destinationRefName = `refs/heads/${destinationBranch}`;
   if (!bare) {
@@ -233,7 +245,9 @@ export async function pushLocalBranch({ files, repository, remoteName, sourceBra
       descendantObjectId: sourceObjectId,
     });
     if (!fastForward) {
-      if (!forceWithLease) throw new Error(`non-fast-forward update rejected for ${destinationRefName}`);
+      if (!forceWithLease) {
+        throw new Error(`non-fast-forward update rejected for ${destinationRefName}`);
+      }
       forced = true;
     }
   }
@@ -277,17 +291,23 @@ export async function deleteLocalRemoteBranch({ files, repository, remoteName, b
   const refName = `refs/heads/${branchName}`;
   if (!bare) {
     const remoteHead = await readHead({ files, repository: remoteRepository });
-    if (remoteHead.symbolicRef === refName) throw new Error(`refusing to delete the current branch: ${refName}`);
+    if (remoteHead.symbolicRef === refName) {
+      throw new Error(`refusing to delete the current branch: ${refName}`);
+    }
   }
   const oldObjectId = await readRef({ files, repository: remoteRepository, refName });
-  if (oldObjectId === undefined) throw new Error(`remote ref does not exist: ${branchName}`);
+  if (oldObjectId === undefined) {
+    throw new Error(`remote ref does not exist: ${branchName}`);
+  }
   if (forceWithLease) {
     const expectedLease = await readRef({
       files,
       repository,
       refName: `refs/remotes/${remoteName}/${branchName}`,
     });
-    if (oldObjectId !== expectedLease) throw new Error(`stale info: ${refName}`);
+    if (oldObjectId !== expectedLease) {
+      throw new Error(`stale info: ${refName}`);
+    }
   }
   await applyLocalRefMutationsWithRollback({
     files,

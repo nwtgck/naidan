@@ -96,7 +96,9 @@ const CONFIG_LONG_ARGV_CATALOG = defineArgvCatalog<ConfigLongOptionSemantic>({
 });
 
 function resolveConfigLongOption({ arg }: { arg: string }): ConfigLongOptionSemantic | undefined {
-  if (!arg.startsWith('--')) return undefined;
+  if (!arg.startsWith('--')) {
+    return undefined;
+  }
   if (!arg.includes('=')) {
     const optionName = arg.slice(2);
     if (optionName === 'g' || optionName === 'ge' || optionName === 'get-') {
@@ -195,8 +197,9 @@ export async function runConfig({ context, args }: {
         }
         }
       })();
-      if (scope !== 'effective' && scope !== nextScope)
+      if (scope !== 'effective' && scope !== nextScope) {
         throw new Error('only one config file at a time');
+      }
       scope = nextScope;
       continue;
     }
@@ -226,8 +229,9 @@ export async function runConfig({ context, args }: {
     }
     }
     commandArgs.push(arg);
-    if (!arg.startsWith('-'))
+    if (!arg.startsWith('-')) {
       parsingOptions = false;
+    }
   }
   const keyToValidate = (() => {
     switch (commandArgs[0]) {
@@ -365,7 +369,9 @@ export async function runConfig({ context, args }: {
 
   switch (commandArgs[0]) {
   case '--list': {
-    if (commandArgs.length !== 1) throw new GitUsageError({ message: 'wrong number of arguments' });
+    if (commandArgs.length !== 1) {
+      throw new GitUsageError({ message: 'wrong number of arguments' });
+    }
     const entries = await (async () => {
       switch (scope) {
       case 'global':
@@ -385,41 +391,58 @@ export async function runConfig({ context, args }: {
     return { exitCode: 0 };
   }
   case '--get': {
-    if (commandArgs.length < 2 || commandArgs.length > 3)
+    if (commandArgs.length < 2 || commandArgs.length > 3) {
       throw new GitUsageError({ message: 'wrong number of arguments, should be from 1 to 2' });
+    }
     const key = commandArgs[1]!;
     const entries = await access.readEntries();
     const compiled = commandArgs[2] === undefined
       ? undefined
       : await compileValuePatternOrReport({ context, pattern: commandArgs[2] });
-    if (compiled === 'invalid') return { exitCode: 6 };
+    if (compiled === 'invalid') {
+      return { exitCode: 6 };
+    }
     const values = rawConfigValuesMatching({ entries, key, valuePattern: compiled });
-    if (values.length === 0) return { exitCode: 1 };
+    if (values.length === 0) {
+      return { exitCode: 1 };
+    }
     await context.text().print({ text: `${values[values.length - 1]!}\n` });
     return { exitCode: 0 };
   }
   case '--get-all': {
-    if (commandArgs.length < 2 || commandArgs.length > 3)
+    if (commandArgs.length < 2 || commandArgs.length > 3) {
       throw new GitUsageError({ message: 'wrong number of arguments, should be from 1 to 2' });
+    }
     const key = commandArgs[1]!;
     const entries = await access.readEntries();
     const compiled = commandArgs[2] === undefined
       ? undefined
       : await compileValuePatternOrReport({ context, pattern: commandArgs[2] });
-    if (compiled === 'invalid') return { exitCode: 6 };
+    if (compiled === 'invalid') {
+      return { exitCode: 6 };
+    }
     const values = rawConfigValuesMatching({ entries, key, valuePattern: compiled });
-    if (values.length === 0) return { exitCode: 1 };
-    for (const value of values) await context.text().print({ text: `${value}\n` });
+    if (values.length === 0) {
+      return { exitCode: 1 };
+    }
+    for (const value of values) {
+      await context.text().print({ text: `${value}\n` });
+    }
     return { exitCode: 0 };
   }
   case '--unset': {
-    if (commandArgs.length < 2 || commandArgs.length > 3)
+    if (commandArgs.length < 2 || commandArgs.length > 3) {
       throw new GitUsageError({ message: 'wrong number of arguments' });
-    if (commandArgs[2] !== undefined) await access.readEntries();
+    }
+    if (commandArgs[2] !== undefined) {
+      await access.readEntries();
+    }
     const compiled = commandArgs[2] === undefined
       ? undefined
       : await compileValuePatternOrReport({ context, pattern: commandArgs[2] });
-    if (compiled === 'invalid') return { exitCode: 6 };
+    if (compiled === 'invalid') {
+      return { exitCode: 6 };
+    }
     const result = await access.unsetValue({ key: commandArgs[1]!, all: false, valuePattern: compiled });
     switch (result) {
     case 'missing':
@@ -436,13 +459,18 @@ export async function runConfig({ context, args }: {
     }
   }
   case '--unset-all': {
-    if (commandArgs.length < 2 || commandArgs.length > 3)
+    if (commandArgs.length < 2 || commandArgs.length > 3) {
       throw new GitUsageError({ message: 'wrong number of arguments' });
-    if (commandArgs[2] !== undefined) await access.readEntries();
+    }
+    if (commandArgs[2] !== undefined) {
+      await access.readEntries();
+    }
     const compiled = commandArgs[2] === undefined
       ? undefined
       : await compileValuePatternOrReport({ context, pattern: commandArgs[2] });
-    if (compiled === 'invalid') return { exitCode: 6 };
+    if (compiled === 'invalid') {
+      return { exitCode: 6 };
+    }
     const result = await access.unsetValue({ key: commandArgs[1]!, all: true, valuePattern: compiled });
     switch (result) {
     case 'missing':
@@ -458,7 +486,9 @@ export async function runConfig({ context, args }: {
     }
   }
   case '--add':
-    if (commandArgs.length !== 3) throw new GitUsageError({ message: 'wrong number of arguments' });
+    if (commandArgs.length !== 3) {
+      throw new GitUsageError({ message: 'wrong number of arguments' });
+    }
     await access.addValue({ key: commandArgs[1]!, value: commandArgs[2]! });
     return { exitCode: 0 };
   default:
@@ -469,17 +499,23 @@ export async function runConfig({ context, args }: {
     const entries = await access.readEntries();
     const key = commandArgs[0]!;
     const values = entries.filter(entry => configKeysEqual({ left: entry.key, right: key })).map(entry => getRawConfigValue({ value: entry.value }));
-    if (values.length === 0) return { exitCode: 1 };
+    if (values.length === 0) {
+      return { exitCode: 1 };
+    }
     await context.text().print({ text: `${values[values.length - 1]!}\n` });
     return { exitCode: 0 };
   }
   if (commandArgs.length === 2 || commandArgs.length === 3) {
     const key = commandArgs[0]!;
-    if (commandArgs[2] !== undefined) await access.readEntries();
+    if (commandArgs[2] !== undefined) {
+      await access.readEntries();
+    }
     const compiled = commandArgs[2] === undefined
       ? undefined
       : await compileValuePatternOrReport({ context, pattern: commandArgs[2] });
-    if (compiled === 'invalid') return { exitCode: 6 };
+    if (compiled === 'invalid') {
+      return { exitCode: 6 };
+    }
     const result = await access.setValue({ key, value: commandArgs[1]!, valuePattern: compiled });
     switch (result) {
     case 'set':

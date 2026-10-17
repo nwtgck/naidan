@@ -34,7 +34,10 @@ export const ordinaryProviderRuntimeCompletionSchema = z.object({
       context.addIssue({ code: 'custom', message: 'Unavailable Provider receipt must not retain accepted identity' });
     }
     break;
-  default: { const exhaustive: never = completion.status; throw new Error('Unknown Provider completion: ' + exhaustive); }
+  default: {
+    const exhaustive: never = completion.status;
+    throw new Error('Unknown Provider completion: ' + exhaustive);
+  }
   }
 });
 
@@ -43,7 +46,9 @@ export function providerLoadRuntimeCompletion({ repositoryResolvedRevision, prov
   repositoryResolvedRevision: string; provider: ModelSupportInvestigationRun['productionProviderCapture'];
   summary: ModelSupportInvestigationRun['productionProviderInvestigation']; nativeJson: string | undefined;
 }): DownloadVerificationRuntimeCompletionEvidence | undefined {
-  if (summary === undefined) return undefined;
+  if (summary === undefined) {
+    return undefined;
+  }
   const base = {
     schemaVersion: 1 as const,
     source: 'ordinary-provider-load' as const,
@@ -62,12 +67,17 @@ export function providerLoadRuntimeCompletion({ repositoryResolvedRevision, prov
     case 'ready': return { ready: true, failed: false };
     case 'error': return { ready: false, failed: true };
     case 'idle': case 'loading': return { ready: false, failed: false };
-    default: { const exhaustive: never = summary.providerProgress.loadStatus; throw new Error('Unknown Provider Load status: ' + exhaustive); }
+    default: {
+      const exhaustive: never = summary.providerProgress.loadStatus;
+      throw new Error('Unknown Provider Load status: ' + exhaustive);
+    }
     }
   })();
   switch (observation?.outcome.status) {
   case 'accepted': {
-    if (!loadState.ready) break;
+    if (!loadState.ready) {
+      break;
+    }
     const receipt = productionLoadReceiptSchema.parse(observation.outcome.receipt);
     return {
       ...base,
@@ -80,7 +90,10 @@ export function providerLoadRuntimeCompletion({ repositoryResolvedRevision, prov
     };
   }
   case 'loading': case 'failed': case 'cleared': case 'not-recorded': case undefined: break;
-  default: { const exhaustive: never = observation!.outcome; throw new Error('Unknown Load receipt outcome: ' + exhaustive); }
+  default: {
+    const exhaustive: never = observation!.outcome;
+    throw new Error('Unknown Load receipt outcome: ' + exhaustive);
+  }
   }
   return {
     ...base,

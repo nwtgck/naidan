@@ -83,7 +83,9 @@ function resolveDetailsAndToggleLabel({
   readonly details: string | undefined,
   readonly toggleLabel: string | undefined,
 }): Pick<FeatureRowCopy, 'details' | 'toggleLabel'> | undefined {
-  if (details === undefined || toggleLabel === undefined) return undefined;
+  if (details === undefined || toggleLabel === undefined) {
+    return undefined;
+  }
   return { details, toggleLabel };
 }
 

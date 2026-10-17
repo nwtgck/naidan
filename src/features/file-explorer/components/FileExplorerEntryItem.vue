@@ -36,7 +36,9 @@ const longPress = useFileExplorerLongPress({
 });
 
 function onClick({ event }: { event: MouseEvent }): void {
-  if (longPress.consumeClick({ event })) return;
+  if (longPress.consumeClick({ event })) {
+    return;
+  }
   emit('click', { event });
 }
 

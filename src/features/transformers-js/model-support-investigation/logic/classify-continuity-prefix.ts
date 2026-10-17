@@ -8,7 +8,9 @@ type PrefixComparison = Extract<
 function firstPrefixMismatch({ expected, actual }: { expected: number[], actual: number[] }): number | undefined {
   const commonLength = Math.min(expected.length, actual.length);
   for (let index = 0; index < commonLength; index += 1) {
-    if (expected[index] !== actual[index]) return index;
+    if (expected[index] !== actual[index]) {
+      return index;
+    }
   }
   return actual.length < expected.length ? actual.length : undefined;
 }

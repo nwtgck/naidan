@@ -9,7 +9,10 @@ export function getMessageText({ message }: { message: MessageNode }): string {
     case 'attachment':
     case 'tool_call':
     case 'tool_result': return [];
-    default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+    default: {
+      const _ex: never = part;
+      throw new Error(`Unhandled message part: ${_ex}`);
+    }
     }
   }).join('');
 }

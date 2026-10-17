@@ -22,7 +22,10 @@ const stopMessage = computed(() => {
   case 'applied': return lazyStrings.naidanRpc__new_calls_blocked_waiting_for_completion();
   case 'retired': return lazyStrings.naidanRpc__rpc_connections_stopped();
   case 'unconfirmed': return lazyStrings.naidanRpc__stop_not_confirmed_check_managing_tab();
-  default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const status = computed(() => settings.value.experimental?.naidanRpc ?? 'disabled');
@@ -31,7 +34,10 @@ const isEnabled = computed(() => {
   switch (value) {
   case 'enabled': return true;
   case 'disabled': return false;
-  default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const copy = computed(() => {
@@ -41,8 +47,11 @@ const copy = computed(() => {
 });
 
 async function toggle(): Promise<void> {
-  if (pending.value) return;
-  pending.value = true; failed.value = '';
+  if (pending.value) {
+    return;
+  }
+  pending.value = true;
+  failed.value = '';
   const next = isEnabled.value ? 'disabled' : 'enabled';
   try {
     // OFF closes current authority before persistence, never after a slow save.

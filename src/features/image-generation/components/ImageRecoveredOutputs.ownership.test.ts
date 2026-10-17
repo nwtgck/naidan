@@ -12,7 +12,9 @@ const mocks = vi.hoisted(() => ({ confirm: vi.fn(), url: vi.fn(), revoke: vi.fn(
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 
 beforeEach(async () => {
-  vi.clearAllMocks(); mocks.confirm.mockResolvedValue(true); mocks.url.mockReturnValue('blob:recovered-image');
+  vi.clearAllMocks();
+  mocks.confirm.mockResolvedValue(true);
+  mocks.url.mockReturnValue('blob:recovered-image');
   const OriginalURL = URL;
   vi.stubGlobal('URL', class extends OriginalURL {
     static override createObjectURL = mocks.url; static override revokeObjectURL = mocks.revoke;
@@ -21,8 +23,14 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const entry of imagePendingRuns.list()) if (entry.phase === 'retired') imagePendingRuns.discard({ id: entry.id });
-  for (const entry of imageRecoveryStore.list()) imageRecoveryStore.remove({ id: entry.id });
+  for (const entry of imagePendingRuns.list()) {
+    if (entry.phase === 'retired') {
+      imagePendingRuns.discard({ id: entry.id });
+    }
+  }
+  for (const entry of imageRecoveryStore.list()) {
+    imageRecoveryStore.remove({ id: entry.id });
+  }
   vi.unstubAllGlobals();
 });
 
@@ -47,20 +55,27 @@ async function recovered() {
     onPersisted: () => imageRecoveryStore.remove({ id }),
     onDiscarded: () => imageRecoveryStore.remove({ id }),
   }).catch(() => {});
-  await owner.submission.finished({ completion: { type: 'interrupted' } }); await owner.retire();
+  await owner.submission.finished({ completion: { type: 'interrupted' } });
+  await owner.retire();
   return { owner, commit };
 }
 
 it('shows run-owned recovery only in the pending-run panel and discards it through the run controls', async () => {
   const value = await recovered();
   const recoveredPanel = mount(ImageRecoveredOutputs), wrapper = mount(ImagePendingRuns);
-  await flushPromises(); expect(wrapper.find('img').exists()).toBe(true);
+  await flushPromises();
+  expect(wrapper.find('img').exists()).toBe(true);
   expect(recoveredPanel.find('[data-testid="image-recovered-outputs"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="pending-unconfirmed"]').text()).toContain('unconfirmed');
-  await wrapper.get('[data-testid="pending-discard"]').trigger('click'); await flushPromises();
-  expect(imagePendingRuns.list()).toEqual([]); expect(imageRecoveryStore.list()).toEqual([]);
-  await expect(value.owner.submission.retry!()).rejects.toThrow('discarded'); expect(value.commit).toHaveBeenCalledOnce();
-  wrapper.unmount(); recoveredPanel.unmount(); expect(mocks.revoke).toHaveBeenCalledWith('blob:recovered-image');
+  await wrapper.get('[data-testid="pending-discard"]').trigger('click');
+  await flushPromises();
+  expect(imagePendingRuns.list()).toEqual([]);
+  expect(imageRecoveryStore.list()).toEqual([]);
+  await expect(value.owner.submission.retry!()).rejects.toThrow('discarded');
+  expect(value.commit).toHaveBeenCalledOnce();
+  wrapper.unmount();
+  recoveredPanel.unmount();
+  expect(mocks.revoke).toHaveBeenCalledWith('blob:recovered-image');
 });
 
 async function looseImage() {
@@ -73,19 +88,24 @@ async function looseImage() {
 }
 
 it('discards an unowned image without discarding another pending run', async () => {
-  await recovered(); const loose = await looseImage();
-  const wrapper = mount(ImageRecoveredOutputs); await flushPromises();
+  await recovered();
+  const loose = await looseImage();
+  const wrapper = mount(ImageRecoveredOutputs);
+  await flushPromises();
   expect(wrapper.findAll('[data-testid="recovered-discard"]')).toHaveLength(1);
-  await wrapper.get('[data-testid="recovered-discard"]').trigger('click'); await flushPromises();
+  await wrapper.get('[data-testid="recovered-discard"]').trigger('click');
+  await flushPromises();
   expect(imageRecoveryStore.list().some(entry => entry.id === loose.id)).toBe(false);
-  expect(imageRecoveryStore.list()).toHaveLength(1); expect(imagePendingRuns.list()).toHaveLength(1);
+  expect(imageRecoveryStore.list()).toHaveLength(1);
+  expect(imagePendingRuns.list()).toHaveLength(1);
   wrapper.unmount();
 });
 
 it('does not reuse a single-image confirmation after a run claims that image', async () => {
   const loose = await looseImage(), confirmation = Promise.withResolvers<boolean>();
   mocks.confirm.mockReturnValueOnce(confirmation.promise);
-  const wrapper = mount(ImageRecoveredOutputs); await flushPromises();
+  const wrapper = mount(ImageRecoveredOutputs);
+  await flushPromises();
   await wrapper.get('[data-testid="recovered-discard"]').trigger('click');
   const owner = imagePendingRuns.create({
     store: { storageType: 'opfs', storeId: toImageGenerationStoreId({ raw: 'store-loose' }) },
@@ -102,14 +122,23 @@ it('does not reuse a single-image confirmation after a run claims that image', a
   });
   await owner.submission.accepted({ snapshot: loose.snapshot, seeds: loose.plan.seeds });
   await owner.submission.recovered!({ index: 0, ...loose.output, onPersisted: () => imageRecoveryStore.remove({ id: loose.id }), onDiscarded: () => imageRecoveryStore.remove({ id: loose.id }) }).catch(() => {});
-  await owner.submission.finished({ completion: { type: 'interrupted' } }); await owner.retire();
-  confirmation.resolve(true); await flushPromises();
+  await owner.submission.finished({ completion: { type: 'interrupted' } });
+  await owner.retire();
+  confirmation.resolve(true);
+  await flushPromises();
   expect(wrapper.get('[role="alert"]').text()).toContain('unsaved run');
-  expect(imageRecoveryStore.list()).toHaveLength(1); expect(imagePendingRuns.list()).toHaveLength(1);
+  expect(imageRecoveryStore.list()).toHaveLength(1);
+  expect(imagePendingRuns.list()).toHaveLength(1);
   wrapper.unmount();
 });
 
 it('closing a recovery preview releases its URL but neither the pixels nor their retry owner', async () => {
-  await recovered(); await looseImage(); const wrapper = mount(ImageRecoveredOutputs); await flushPromises(); wrapper.unmount();
-  expect(mocks.revoke).toHaveBeenCalledWith('blob:recovered-image'); expect(imageRecoveryStore.list()).toHaveLength(2); expect(imagePendingRuns.list()).toHaveLength(1);
+  await recovered();
+  await looseImage();
+  const wrapper = mount(ImageRecoveredOutputs);
+  await flushPromises();
+  wrapper.unmount();
+  expect(mocks.revoke).toHaveBeenCalledWith('blob:recovered-image');
+  expect(imageRecoveryStore.list()).toHaveLength(2);
+  expect(imagePendingRuns.list()).toHaveLength(1);
 });

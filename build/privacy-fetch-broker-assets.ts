@@ -18,9 +18,13 @@ export function isPrivacyFetchBrokerChunk({ chunkInfo }: { chunkInfo: {
   facadeModuleId?: string | null,
   moduleIds?: string[],
 } }): boolean {
-  if (chunkInfo.name.includes('privacy-fetch')) return true;
+  if (chunkInfo.name.includes('privacy-fetch')) {
+    return true;
+  }
   if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null
-      && isBrokerRuntimeModule({ moduleId: chunkInfo.facadeModuleId })) return true;
+      && isBrokerRuntimeModule({ moduleId: chunkInfo.facadeModuleId })) {
+    return true;
+  }
   return chunkInfo.moduleIds?.some(moduleId => isBrokerRuntimeModule({ moduleId })) ?? false;
 }
 

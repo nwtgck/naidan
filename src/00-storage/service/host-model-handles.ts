@@ -19,7 +19,9 @@ function open(): Promise<IDBDatabase> {
     const request = indexedDB.open(databaseName, 1);
     let rejected = false;
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(storeName)) request.result.createObjectStore(storeName);
+      if (!request.result.objectStoreNames.contains(storeName)) {
+        request.result.createObjectStore(storeName);
+      }
     };
     request.onerror = () => reject(request.error ?? new Error('Could not open linked model handles'));
     request.onblocked = () => {
@@ -29,8 +31,11 @@ function open(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const database = request.result;
       database.onversionchange = () => database.close();
-      if (rejected) database.close();
-      else resolve(database);
+      if (rejected) {
+        database.close();
+      } else {
+        resolve(database);
+      }
     };
   });
 }

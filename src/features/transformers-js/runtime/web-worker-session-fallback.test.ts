@@ -49,7 +49,9 @@ it('enters the WASM session after a WebGPU session rejects in a browser Worker r
     // Native Cache-compatible method called positionally by the actual runtime.
     async match(request: string) {
       const prefix = `https://huggingface.co/${modelId}/resolve/${archive.summary.revision}/`;
-      if (!request.startsWith(prefix)) return undefined;
+      if (!request.startsWith(prefix)) {
+        return undefined;
+      }
       const path = request.slice(prefix.length);
       if (path === 'onnx/model_q4.onnx') {
         bodyReads.push(path);
@@ -74,7 +76,10 @@ it('enters the WASM session after a WebGPU session rejects in a browser Worker r
   switch (next.status) {
   case 'rejected': throw next.error;
   case 'fulfilled': break;
-  default: { const exhaustive: never = next; throw new Error(`Unknown session outcome: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = next;
+    throw new Error(`Unknown session outcome: ${exhaustive}`);
+  }
   }
   expect(create.mock.calls.map(call => call[1]?.executionProviders)).toEqual([['webgpu'], ['wasm']]);
   expect(bodyReads).toEqual(['onnx/model_q4.onnx', 'onnx/model_q4.onnx']);

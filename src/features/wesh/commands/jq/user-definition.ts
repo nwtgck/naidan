@@ -20,7 +20,9 @@ export function substituteJqFilterParameters({
   filter: JqFilter,
   replacements: ReadonlyMap<string, JqFilter>,
 }): JqFilter {
-  if (replacements.size === 0) return filter;
+  if (replacements.size === 0) {
+    return filter;
+  }
 
   const markedReplacements = new Map<string, JqFilter>();
   for (const [name, replacement] of replacements) {

@@ -173,14 +173,18 @@ function createGemmaSyntheticProtocolRuntime({ generate }: { generate: ProviderR
 
 function emitSyntheticGemmaProtocol({ context, text }: { context: Parameters<ProviderReplayGenerate>[0]; text: string }) {
   const { options, runtime, tokenizer } = context;
-  if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) throw new Error('Expected actual native Gemma tensors and TextStreamer');
+  if (!(options.input_ids instanceof runtime.Tensor) || !(options.streamer instanceof runtime.TextStreamer)) {
+    throw new Error('Expected actual native Gemma tensors and TextStreamer');
+  }
   const ids = tokenizer.encode(text, { add_special_tokens: false });
   expect(tokenizer.decode(ids, { skip_special_tokens: false })).toBe(text);
   const input = Array.from(options.input_ids.data, BigInt);
   // Deliberate synthetic protocol injection, never a recorded model output.
   // Single-token puts exercise the real tokenizer, decoder and parser splits.
   options.streamer.put([input]);
-  for (const id of ids) options.streamer.put([[BigInt(id)]]);
+  for (const id of ids) {
+    options.streamer.put([[BigInt(id)]]);
+  }
   options.streamer.end();
   return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt)]), [1, input.length + ids.length]), past_key_values: null };
 }
@@ -236,7 +240,9 @@ async function createGemmaInputReplay() {
     generate: async context => {
       const input = captureGemmaNativeInput(context);
       nativeInputs.push(input);
-      if (input.tensors.input_ids.isTensor) inputs.push(Array.from(input.tensors.input_ids.data, Number));
+      if (input.tensors.input_ids.isTensor) {
+        inputs.push(Array.from(input.tensors.input_ids.data, Number));
+      }
       // End at the native inference boundary: never supply tokens captured for
       // another input and never invent a successful model/tool response.
       throw new Error(INPUT_BOUNDARY);
@@ -251,7 +257,9 @@ async function createGemmaInputReplay() {
       const native = nativeInputs[0];
       expect(native?.tensors.input_ids.isTensor).toBe(true);
       expect(native?.tensors.attention_mask.isTensor).toBe(true);
-      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
+      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) {
+        throw new Error('Expected actual Gemma input and mask Tensors');
+      }
       const { input_ids: input, attention_mask: mask } = native.tensors;
       expect(input.type).toBe('int64');
       expect(input.location).toBe('cpu');
@@ -309,7 +317,9 @@ const IMAGE_INPUT_BOUNDARY = 'Gemma real image processor input verified; no nati
 // Compare every value without materializing Object.entries for two million
 // tensor values. A failure retains its exact position and values, not a full-array diff.
 function findGemmaPixelMismatch({ actual, expected }: { actual: unknown, expected: Float32Array }) {
-  if (!(actual instanceof Float32Array)) return { kind: 'type' as const, expected: 'Float32Array' };
+  if (!(actual instanceof Float32Array)) {
+    return { kind: 'type' as const, expected: 'Float32Array' };
+  }
   if (actual.length !== expected.length) {
     return { kind: 'length' as const, actual: actual.length, expected: expected.length };
   }
@@ -349,10 +359,16 @@ async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPi
     verifyNativeInput() {
       expect(nativeInputs).toHaveLength(1);
       const native = nativeInputs[0];
-      if (!native) throw new Error('Expected actual Gemma image inference');
+      if (!native) {
+        throw new Error('Expected actual Gemma image inference');
+      }
       const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
-      for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
-      if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
+      for (const tensor of Object.values(native.tensors)) {
+        expect(tensor.isTensor).toBe(true);
+      }
+      if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) {
+        throw new Error('Expected actual Gemma image Tensors');
+      }
       const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
       expect(native.softTokens).toEqual([256]);
       expect(native.optionKeys.sort()).toEqual([
@@ -439,7 +455,9 @@ describe('Gemma4 E2B Provider / basic', () => {
     expect(chunks).toEqual([]);
     expect(replay.harness.observations.processors).toHaveLength(1);
     const processor = replay.harness.observations.processors[0];
-    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    if (!processor) {
+      throw new Error('Actual Gemma processor was not loaded');
+    }
     expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true }))
       .toBe(scenario.renderedText);
     expect(replay.harness.observations.forbiddenTransport).toEqual([]);
@@ -896,7 +914,9 @@ A separate synthetic Gemma conversation.<turn|>
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent-input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent-input replay');
+        }
         return next(context);
       },
     });
@@ -963,11 +983,15 @@ A separate synthetic Gemma conversation.<turn|>
     const native = stoppedInputs[0];
     expect(native?.tensors.input_ids.isTensor).toBe(true);
     expect(native?.tensors.attention_mask.isTensor).toBe(true);
-    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual next-input tensors');
+    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) {
+      throw new Error('Expected actual next-input tensors');
+    }
     const { input_ids: input, attention_mask: mask } = native.tensors;
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf');
     const processor = harness.observations.processors[0];
-    if (!processor) throw new Error('Expected actual loaded Gemma processor');
+    if (!processor) {
+      throw new Error('Expected actual loaded Gemma processor');
+    }
     expect(tokenizer).toBe(processor.tokenizer);
     expect(processor.apply_chat_template(nextTemplateMessages, { add_generation_prompt: true })).toBe(nextPrompt);
     const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
@@ -1157,7 +1181,9 @@ Template probe user message.<turn|>
     await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
     const processor = replay.harness.observations.processors[0]!;
     const tokenizer = processor.tokenizer;
-    if (tokenizer === undefined) throw new Error('Expected actual selected tokenizer');
+    if (tokenizer === undefined) {
+      throw new Error('Expected actual selected tokenizer');
+    }
     expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(toolInputEvidence.selectedTemplateSha256);
     const nativeOptions = { add_generation_prompt: true, enable_thinking: enableThinking };
     expect(processor.apply_chat_template(templateMessages, nativeOptions)).toBe(expectedPrompt);
@@ -1538,7 +1564,9 @@ Reason<channel|>Answer<turn|>`,
     expect(nativeInputs).toHaveLength(2);
     expect(expectedNextInputs).toHaveLength(1);
     const input = nativeInputs[1]!.tensors.input_ids;
-    if (!input.isTensor) throw new Error('Expected detached real next-input tensor');
+    if (!input.isTensor) {
+      throw new Error('Expected detached real next-input tensor');
+    }
     expect(Array.from(input.data, Number)).toEqual(expectedNextInputs[0]);
     expect(nativeInputs.map(input => input.pastIsNull), 'Gemma is stateless; this is input fidelity, not owned KV reuse').toEqual([true, true]);
     expect(harness.observations.inferenceCalls).toHaveLength(2);
@@ -1551,7 +1579,9 @@ describe('Gemma4 E2B Provider / tools', () => {
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
     const scenario = inputEvidence.cases.find(candidate => candidate.tools.length === 1);
-    if (!scenario) throw new Error('Missing selected original Gemma tools-generation observation');
+    if (!scenario) {
+      throw new Error('Missing selected original Gemma tools-generation observation');
+    }
     const execute = vi.fn<Tool['execute']>(async () => {
       throw new Error('Tool execution is outside this input-only test');
     });
@@ -1602,7 +1632,9 @@ describe('Gemma4 E2B Provider / tools', () => {
     expect(execute).not.toHaveBeenCalled();
     expect(replay.harness.observations.processors).toHaveLength(1);
     const processor = replay.harness.observations.processors[0];
-    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    if (!processor) {
+      throw new Error('Actual Gemma processor was not loaded');
+    }
     // The old native capture has an open JSON schema. Public Naidan Tools
     // use additionalProperties:false. Verify this exact public shape against
     // the captured rendering rather than assuming the two are equivalent.
@@ -1687,9 +1719,13 @@ describe('Gemma4 E2B Provider / tools', () => {
     await replay.harness.service.loadDownloadedModel({ modelId: scenario.modelId });
     expect(replay.harness.observations.processors).toHaveLength(1);
     const processor = replay.harness.observations.processors[0];
-    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    if (!processor) {
+      throw new Error('Actual Gemma processor was not loaded');
+    }
     const tokenizer = processor.tokenizer;
-    if (!tokenizer) throw new Error('Actual Gemma tokenizer was not loaded');
+    if (!tokenizer) {
+      throw new Error('Actual Gemma tokenizer was not loaded');
+    }
     expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
       .toBe(scenario.selectedTemplateSha256);
     const strictTools = scenario.tools.map(tool => ({
@@ -1817,7 +1853,9 @@ describe('Gemma4 E2B Provider / tools', () => {
       generate: async context => {
         const { tokenizer, options, runtime } = context;
         ++turns;
-        if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+        if (!(options.input_ids instanceof runtime.Tensor)) {
+          throw new Error('Expected actual input IDs');
+        }
         const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
         if (turns === 1) {
           const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
@@ -2031,7 +2069,9 @@ describe('Gemma4 E2B Provider / tools', () => {
         ++turns;
         if (turns === 2) {
           const { options, runtime, tokenizer } = context;
-          if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+          if (!(options.input_ids instanceof runtime.Tensor)) {
+            throw new Error('Expected actual input IDs');
+          }
           expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
             .toContain('Tool "unknown_tool" not found.');
         }
@@ -2234,9 +2274,13 @@ describe('Gemma4 E2B Provider / tools', () => {
         },
       }],
     });
-    if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
+    if (callAssistant?.role !== 'assistant') {
+      throw new Error('Expected the tool-calling assistant');
+    }
     const callPart = callAssistant.parts.find(part => part.type === 'tool_call');
-    if (callPart?.type !== 'tool_call') throw new Error('Expected the recorded structured tool call');
+    if (callPart?.type !== 'tool_call') {
+      throw new Error('Expected the recorded structured tool call');
+    }
     expect(toolResult).toMatchObject({
       role: 'tool',
       parts: [{
@@ -2442,7 +2486,9 @@ Use the synthetic tool.<turn|>
     expect(inputs).toHaveLength(2);
     expect(expectedInputs).toHaveLength(1);
     const input = inputs[1]!.tensors.input_ids;
-    if (!input.isTensor) throw new Error('Expected detached canonical continuation Tensor');
+    if (!input.isTensor) {
+      throw new Error('Expected detached canonical continuation Tensor');
+    }
     expect(Array.from(input.data, Number)).toEqual(expectedInputs[0]);
     expect(inputs.map(item => item.pastIsNull)).toEqual([true, true]);
     expect(harness.observations.inferenceCalls).toHaveLength(2);
@@ -2456,8 +2502,12 @@ Use the synthetic tool.<turn|>
       generate: async context => {
         nativeCalls++;
         nativeInputs.push(captureGemmaNativeInput(context));
-        if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
-        if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
+        if (nativeCalls === 3) {
+          throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
+        }
+        if (nativeCalls > 3) {
+          throw new Error('Unexpected synthetic generation');
+        }
         return emitSyntheticGemmaProtocol({
           context,
           text: nativeCalls === 1
@@ -2566,7 +2616,9 @@ Use the quoted value.
     expect(nativeInputs).toHaveLength(3);
     const live = nativeInputs[1]!.tensors.input_ids;
     const rebuilt = nativeInputs[2]!.tensors.input_ids;
-    if (!live.isTensor || !rebuilt.isTensor) throw new Error('Expected detached native history inputs');
+    if (!live.isTensor || !rebuilt.isTensor) {
+      throw new Error('Expected detached native history inputs');
+    }
     expect(rebuilt.data, 'shared history reconstruction must preserve the actual live tool-continuation tokenizer input').toEqual(live.data);
     expect(nativeInputs.map(input => input.pastIsNull)).toEqual([true, true, true]);
     expect(executions).toEqual([{ value: '<bos><pad>' }]);
@@ -2941,7 +2993,9 @@ describe('Gemma4 E2B Provider / sequences', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in two-turn replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in two-turn replay');
+        }
         return next(context);
       },
     });

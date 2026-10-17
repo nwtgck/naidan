@@ -358,7 +358,9 @@ export function parseRgArgv({ args }: { args: readonly string[] }): RgParsedArgv
     withFilename: typeof parsed.optionValues.withFilename === 'boolean' ? parsed.optionValues.withFilename : undefined,
     outputMode: (() => {
       const value = parsed.optionValues.outputMode;
-      if (value === 'files-with-matches' || value === 'files-without-match' || value === 'count-lines' || value === 'count-matches') return value;
+      if (value === 'files-with-matches' || value === 'files-without-match' || value === 'count-lines' || value === 'count-matches') {
+        return value;
+      }
       return 'normal';
     })(),
     onlyMatching: parsed.optionValues.onlyMatching === true,

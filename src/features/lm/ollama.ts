@@ -210,13 +210,19 @@ export class OllamaProvider implements LmProvider {
           unhandled satisfies Record<PropertyKey, never>;
           const images: string[] = [];
           let text = '';
-          if (typeof content === 'string') text = content;
-          else if (content) {
+          if (typeof content === 'string') {
+            text = content;
+          } else if (content) {
             for (const part of content) {
               switch (part.type) {
-              case 'text': text += part.text; break;
-              case 'image_url': images.push(part.image_url.url.split(',')[1]!); break;
-              default: { const _ex: never = part; throw new Error(`Unhandled API content: ${_ex}`); }
+              case 'text': text += part.text;
+                break;
+              case 'image_url': images.push(part.image_url.url.split(',')[1]!);
+                break;
+              default: {
+                const _ex: never = part;
+                throw new Error(`Unhandled API content: ${_ex}`);
+              }
               }
             }
           }
@@ -243,18 +249,25 @@ export class OllamaProvider implements LmProvider {
           };
           }),
         };
-        if (snapshot.tools?.length) body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+        if (snapshot.tools?.length) {
+          body.tools = snapshot.tools.map(tool => ({ type: 'function', function: tool }));
+        }
         if (snapshot.parameters) {
           const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = snapshot.parameters;
         unhandled satisfies Record<PropertyKey, never>;
         body.options = { temperature, top_p: topP, num_predict: maxCompletionTokens, presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty, stop };
         switch (reasoning.effort) {
         case undefined: break;
-        case 'none': body.think = false; break;
+        case 'none': body.think = false;
+          break;
         case 'low':
         case 'medium':
-        case 'high': body.think = reasoning.effort; break;
-        default: { const _ex: never = reasoning.effort; throw new Error(`Unhandled effort: ${_ex}`); }
+        case 'high': body.think = reasoning.effort;
+          break;
+        default: {
+          const _ex: never = reasoning.effort;
+          throw new Error(`Unhandled effort: ${_ex}`);
+        }
         }
         }
         async function request(): Promise<Response> {
@@ -262,7 +275,9 @@ export class OllamaProvider implements LmProvider {
           try {
             return await fetcher(url, { method: 'POST', headers: [['Content-Type', 'application/json'], ...(requestHeaders ?? [])], body: JSON.stringify(body), signal });
           } catch (error) {
-            if (signal.aborted) throw error;
+            if (signal.aborted) {
+              throw error;
+            }
             const message = createOllamaNetworkErrorMessage({ error });
             addErrorEvent({ source: 'OllamaProvider', message, details: { error, url, method: 'POST' } });
             throw new Error(message);
@@ -280,16 +295,22 @@ export class OllamaProvider implements LmProvider {
         if (!response.ok) {
           const unsupportedReasoning = body.think === false && await isReasoningRejection({ response, parameter: 'think' });
           const message = `Ollama API Error (${response.status}): ${await readApiErrorDetails({ response })}`;
-          if (unsupportedReasoning) throw new UnsupportedReasoningError({ message });
+          if (unsupportedReasoning) {
+            throw new UnsupportedReasoningError({ message });
+          }
           addErrorEvent({ source: 'OllamaProvider', message, details: { status: response.status, url } });
           throw new Error(message);
         }
-        if (!response.body) throw new Error('No response body');
+        if (!response.body) {
+          throw new Error('No response body');
+        }
         let calls = 0;
         const ids = new Set<string>();
         try {
           for await (const line of readStreamLines({ stream: response.body, signal, maxLineLength: 8 * 1024 * 1024 })) {
-            if (!line.trim()) continue;
+            if (!line.trim()) {
+              continue;
+            }
             const chunk = OllamaChatChunkSchema.parse(JSON.parse(line));
             if (chunk.message === undefined && chunk.done === undefined && chunk.error === undefined) {
               throw new Error('Ollama returned neither generation content nor a completion state.');
@@ -300,12 +321,20 @@ export class OllamaProvider implements LmProvider {
               }
               throw new Error(chunk.error);
             }
-            if (chunk.message?.thinking) await writer.text({ type: 'reasoning', text: chunk.message.thinking });
-            if (chunk.message?.content) await writer.text({ type: 'text', text: chunk.message.content });
+            if (chunk.message?.thinking) {
+              await writer.text({ type: 'reasoning', text: chunk.message.thinking });
+            }
+            if (chunk.message?.content) {
+              await writer.text({ type: 'text', text: chunk.message.content });
+            }
             for (const call of chunk.message?.tool_calls ?? []) {
-              if (!call.function.name) throw new Error('The tool call has no function name.');
+              if (!call.function.name) {
+                throw new Error('The tool call has no function name.');
+              }
               const id = call.id || nanoid();
-              if (ids.has(id)) throw new Error('Duplicate completed tool call ID.');
+              if (ids.has(id)) {
+                throw new Error('Duplicate completed tool call ID.');
+              }
               ids.add(id);
               // An Ollama tool_calls item carries the complete call, not token deltas.
               await writer.call({
@@ -331,7 +360,9 @@ export class OllamaProvider implements LmProvider {
           }
           return { type: 'interrupted', reason: 'unknown' };
         } catch (error) {
-          if (!signal.aborted && !isUnsupportedReasoningError({ error })) addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
+          if (!signal.aborted && !isUnsupportedReasoningError({ error })) {
+            addErrorEvent({ source: 'OllamaProvider', message: 'Failed to read or validate Ollama JSON', details: { error: error instanceof Error ? error : String(error) } });
+          }
           throw error;
         }
       },
@@ -552,7 +583,9 @@ export class OllamaProvider implements LmProvider {
       });
       throw new Error(errorMsg);
     }
-    if (!response.body) throw new Error('No response body');
+    if (!response.body) {
+      throw new Error('No response body');
+    }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -562,14 +595,18 @@ export class OllamaProvider implements LmProvider {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        if (!line.trim()) continue;
+        if (!line.trim()) {
+          continue;
+        }
         try {
           const rawJson = JSON.parse(line);
           const validated = OllamaImageStreamChunkSchema.parse(rawJson);

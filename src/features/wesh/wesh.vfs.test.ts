@@ -568,7 +568,9 @@ second
     });
 
     const entries = [];
-    for await (const entry of wesh.vfs.readDir({ path: '/real.link' })) entries.push(entry);
+    for await (const entry of wesh.vfs.readDir({ path: '/real.link' })) {
+      entries.push(entry);
+    }
     expect(entries).toEqual([{ name: 'child.txt', type: 'file', fullPath: '/real/child.txt' }]);
 
     const changed = await execute({ script: 'cd /real.link; pwd' });
@@ -595,7 +597,9 @@ second
 
     await expect(wesh.vfs.lstat({ path: '/dir.link' })).rejects.toThrow();
     const entries = [];
-    for await (const entry of wesh.vfs.readDir({ path: '/dir' })) entries.push(entry);
+    for await (const entry of wesh.vfs.readDir({ path: '/dir' })) {
+      entries.push(entry);
+    }
     expect(entries).toEqual([{ name: 'keep.txt', type: 'file', fullPath: '/dir/keep.txt' }]);
   });
 
@@ -655,7 +659,9 @@ second
 
     await expect(wesh.vfs.lstat({ path: '/tree.link' })).rejects.toThrow();
     const treeEntries = [];
-    for await (const entry of wesh.vfs.readDir({ path: '/tree' })) treeEntries.push(entry);
+    for await (const entry of wesh.vfs.readDir({ path: '/tree' })) {
+      treeEntries.push(entry);
+    }
     expect(treeEntries.map(entry => entry.name)).toEqual(['leaf.txt']);
   });
 });
@@ -721,11 +727,15 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
     await vfs.mount({ path: '/home/user/v2', handle: v2 as unknown as FileSystemDirectoryHandle, readOnly: true });
 
     const rootEntries: string[] = [];
-    for await (const e of vfs.readDir({ path: '/' })) rootEntries.push(e.name);
+    for await (const e of vfs.readDir({ path: '/' })) {
+      rootEntries.push(e.name);
+    }
     expect(rootEntries).toEqual(['home']);
 
     const userEntries: string[] = [];
-    for await (const e of vfs.readDir({ path: '/home/user' })) userEntries.push(e.name);
+    for await (const e of vfs.readDir({ path: '/home/user' })) {
+      userEntries.push(e.name);
+    }
     expect(userEntries.sort()).toEqual(['v1', 'v2']);
   });
 
@@ -735,7 +745,9 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
     const rootEntries: string[] = [];
-    for await (const e of vfs.readDir({ path: '/' })) rootEntries.push(e.name);
+    for await (const e of vfs.readDir({ path: '/' })) {
+      rootEntries.push(e.name);
+    }
     expect(rootEntries).toEqual(['data']);
     expect(rootEntries).not.toContain('dev');
   });
@@ -778,15 +790,21 @@ describe('WeshVFS virtual mounts', () => {
     });
 
     const rootEntries: string[] = [];
-    for await (const entry of vfs.readDir({ path: '/' })) rootEntries.push(entry.name);
+    for await (const entry of vfs.readDir({ path: '/' })) {
+      rootEntries.push(entry.name);
+    }
     expect(rootEntries).toEqual(['sys']);
 
     const sysEntries: string[] = [];
-    for await (const entry of vfs.readDir({ path: '/sys' })) sysEntries.push(entry.name);
+    for await (const entry of vfs.readDir({ path: '/sys' })) {
+      sysEntries.push(entry.name);
+    }
     expect(sysEntries).toEqual(['fs']);
 
     const fsEntries: string[] = [];
-    for await (const entry of vfs.readDir({ path: '/sys/fs' })) fsEntries.push(entry.name);
+    for await (const entry of vfs.readDir({ path: '/sys/fs' })) {
+      fsEntries.push(entry.name);
+    }
     expect(fsEntries).toEqual(['naidan']);
   });
 

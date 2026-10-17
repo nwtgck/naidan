@@ -146,7 +146,9 @@ describe('ChatPaneHeader', () => {
 
     await wrapper.find('[data-testid="move-to-group-button"]').trigger('click');
     const archiveButton = wrapper.findAll('button').find(button => button.text().includes('Archive'));
-    if (!archiveButton) throw new Error('Archive group button was not rendered');
+    if (!archiveButton) {
+      throw new Error('Archive group button was not rendered');
+    }
     await archiveButton.trigger('click');
 
     expect(wrapper.emitted('move-to-group')).toEqual([['group-2']]);
@@ -241,6 +243,7 @@ describe('compact attached-chat header', () => {
     expect(trigger.text()).toBe('チャットグループ: hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M');
     expect(trigger.attributes('aria-label')).toBeTruthy();
     expect(wrapper.get('[data-testid="chat-model-name"]').element.parentElement?.classList.contains('whitespace-nowrap')).toBe(true);
-    await trigger.trigger('click'); expect(wrapper.emitted('update:show-chat-settings')).toEqual([[true]]);
+    await trigger.trigger('click');
+    expect(wrapper.emitted('update:show-chat-settings')).toEqual([[true]]);
   });
 });

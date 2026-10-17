@@ -30,32 +30,42 @@ function createOptions() {
 
 function findPlugin(value: ReturnType<typeof createNaidanStandalonePlugin>, name: string): Plugin {
   const plugin = (value as Plugin[]).find(candidate => candidate.name === name);
-  if (plugin === undefined) throw new Error(`Expected plugin: ${name}`);
+  if (plugin === undefined) {
+    throw new Error(`Expected plugin: ${name}`);
+  }
   return plugin;
 }
 
 async function runBuildStart(plugin: Plugin): Promise<void> {
   const hook = plugin.buildStart;
-  if (typeof hook !== 'function') throw new Error(`Expected buildStart hook on ${plugin.name}`);
+  if (typeof hook !== 'function') {
+    throw new Error(`Expected buildStart hook on ${plugin.name}`);
+  }
   await hook.call({} as never, {} as never);
 }
 
 
 function runConfigResolved(plugin: Plugin, config: unknown): void {
   const hook = plugin.configResolved;
-  if (typeof hook !== 'function') throw new Error(`Expected configResolved hook on ${plugin.name}`);
+  if (typeof hook !== 'function') {
+    throw new Error(`Expected configResolved hook on ${plugin.name}`);
+  }
   hook.call({} as never, config as never);
 }
 
 async function runTransform(plugin: Plugin, code: string, id: string): Promise<void> {
   const hook = plugin.transform;
-  if (typeof hook !== 'function') throw new Error(`Expected transform hook on ${plugin.name}`);
+  if (typeof hook !== 'function') {
+    throw new Error(`Expected transform hook on ${plugin.name}`);
+  }
   await hook.call({} as never, code, id);
 }
 
 async function runGenerateBundle(plugin: Plugin, bundle: unknown): Promise<void> {
   const hook = plugin.generateBundle;
-  if (typeof hook !== 'function') throw new Error(`Expected generateBundle hook on ${plugin.name}`);
+  if (typeof hook !== 'function') {
+    throw new Error(`Expected generateBundle hook on ${plugin.name}`);
+  }
   await hook.call({} as never, {} as never, bundle as never, false);
 }
 
@@ -85,7 +95,9 @@ async function runWorkerCssGenerateBundle({
     'naidan-file-protocol-standalone-worker-css-guard',
   );
   const hook = workerCssPolicy.generateBundle;
-  if (typeof hook !== 'function') throw new Error('Expected Worker CSS generateBundle hook');
+  if (typeof hook !== 'function') {
+    throw new Error('Expected Worker CSS generateBundle hook');
+  }
   const moduleInfo = new Map<string, WorkerCssModuleInfoFixture>(moduleInfoEntries);
   await hook.call({
     getModuleIds: () => moduleInfo.keys(),
@@ -239,10 +251,14 @@ describe('createNaidanStandalonePlugin', () => {
       undefined,
       {} as never,
     );
-    if (typeof resolvedId !== 'string') throw new Error('Expected resolved Worker runtime module ID');
+    if (typeof resolvedId !== 'string') {
+      throw new Error('Expected resolved Worker runtime module ID');
+    }
     const loaded = await load.call({} as never, resolvedId, {} as never);
     const source = typeof loaded === 'string' ? loaded : loaded?.code;
-    if (typeof source !== 'string') throw new Error('Expected generated Worker runtime source');
+    if (typeof source !== 'string') {
+      throw new Error('Expected generated Worker runtime source');
+    }
 
     expect(source).toContain('naidan-package-locale');
     expect(source).toContain('__NAIDAN_STANDALONE_PACKAGE_LOCALE__');

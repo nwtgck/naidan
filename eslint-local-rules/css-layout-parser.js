@@ -7,7 +7,9 @@ import { ident, tokenize, tokenTypes } from 'css-tree';
 export function unsafeSyntax({ css }) {
   const tokens = [];
   tokenize(css, (type, start, end) => {
-    if (type !== tokenTypes.WhiteSpace && type !== tokenTypes.Comment) tokens.push({ type, start, raw: css.slice(start, end) });
+    if (type !== tokenTypes.WhiteSpace && type !== tokenTypes.Comment) {
+      tokens.push({ type, start, raw: css.slice(start, end) });
+    }
   });
   let braces = 0;
   let parentheses = 0;
@@ -18,28 +20,42 @@ export function unsafeSyntax({ css }) {
       // Consume complete escapes so an escaped backslash and a numeric
       // escape's optional whitespace terminator are not false positives.
       for (const escape of raw.matchAll(/\\(?:[\da-f]{1,6}(?:\r\n|[\t\n\f\r ])?|[\s\S])/giu)) {
-        if (/^[\\][\t\n\f\r ]/u.test(escape[0])) return { offset: start };
+        if (/^[\\][\t\n\f\r ]/u.test(escape[0])) {
+          return { offset: start };
+        }
       }
       // CSS-tree does not classify escaped spellings of url() as URL tokens.
       // Protect at that function token before comment-like URL text can hide
       // later declarations. Ordinary URL tokens handle escaped ')' correctly.
-      if (type === tokenTypes.Function && raw.includes('\\') && ident.decode(raw.slice(0, -1)).toLowerCase() === 'url') return { offset: start };
+      if (type === tokenTypes.Function && raw.includes('\\') && ident.decode(raw.slice(0, -1)).toLowerCase() === 'url') {
+        return { offset: start };
+      }
       // PostCSS's special handling of /* inside an unquoted URL only covers
       // the lowercase spelling, while CSS treats the function name equally.
-      if (type === tokenTypes.Url && raw.includes('/*') && !raw.startsWith('url(')) return { offset: start };
+      if (type === tokenTypes.Url && raw.includes('/*') && !raw.startsWith('url(')) {
+        return { offset: start };
+      }
       if (type === tokenTypes.Ident && !raw.startsWith('--') && ident.decode(raw).startsWith('--')
         && braces > 0 && parentheses === 0 && brackets === 0
         && [tokenTypes.LeftCurlyBracket, tokenTypes.RightCurlyBracket, tokenTypes.Semicolon].includes(tokens[index - 1]?.type)
-        && tokens[index + 1]?.type === tokenTypes.Colon) return { offset: start };
+        && tokens[index + 1]?.type === tokenTypes.Colon) {
+        return { offset: start };
+      }
     }
     switch (type) {
-    case tokenTypes.LeftCurlyBracket: braces += 1; break;
-    case tokenTypes.RightCurlyBracket: braces -= 1; break;
+    case tokenTypes.LeftCurlyBracket: braces += 1;
+      break;
+    case tokenTypes.RightCurlyBracket: braces -= 1;
+      break;
     case tokenTypes.Function:
-    case tokenTypes.LeftParenthesis: parentheses += 1; break;
-    case tokenTypes.RightParenthesis: parentheses -= 1; break;
-    case tokenTypes.LeftSquareBracket: brackets += 1; break;
-    case tokenTypes.RightSquareBracket: brackets -= 1; break;
+    case tokenTypes.LeftParenthesis: parentheses += 1;
+      break;
+    case tokenTypes.RightParenthesis: parentheses -= 1;
+      break;
+    case tokenTypes.LeftSquareBracket: brackets += 1;
+      break;
+    case tokenTypes.RightSquareBracket: brackets -= 1;
+      break;
     default: break;
     }
   }
@@ -54,7 +70,9 @@ export function syntaxErrorOffset({ css, error }) {
   let offset = 0;
   for (let line = 1; line < error.line; line += 1) {
     const next = css.indexOf('\n', offset);
-    if (next < 0) break;
+    if (next < 0) {
+      break;
+    }
     offset = next + 1;
   }
   return prefix + Math.min(css.length, offset + Math.max(0, error.column - 1));
@@ -77,7 +95,9 @@ export default {
     try {
       stylesheet = parseStylesheet({ css: code });
     } catch (error) {
-      if (error.name !== 'CssSyntaxError') throw error;
+      if (error.name !== 'CssSyntaxError') {
+        throw error;
+      }
       const index = syntaxErrorOffset({ css: code, error });
       const before = code.slice(0, index).split(/\r\n|[\n\r\u2028\u2029]/u);
       throw Object.assign(new SyntaxError(error.reason), {

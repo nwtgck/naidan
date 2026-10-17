@@ -27,7 +27,10 @@ function createMessage({
   case 'assistant': return { ...base, role, parts, modelId: 'model-1', interruption: undefined };
   case 'system': return { ...base, role, parts, modelId: undefined };
   case 'tool': return { ...base, role, parts: [], modelId: undefined };
-  default: { const _ex: never = role; throw new Error(`Unhandled message role: ${_ex}`); }
+  default: {
+    const _ex: never = role;
+    throw new Error(`Unhandled message role: ${_ex}`);
+  }
   }
 }
 

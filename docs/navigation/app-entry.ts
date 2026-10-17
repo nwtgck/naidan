@@ -16,11 +16,17 @@ export function appDestinationPath({ destination }: { destination: AppDestinatio
     case 'folders-settings': return '/#/settings/volumes';
     case 'image-generation': return '/#/image-generation/';
     case 'audio-generation': return '/#/audio-generation';
-    default: { const unreachable: never = destination.screen; throw new Error(`Unknown app screen: ${unreachable}`); }
+    default: {
+      const unreachable: never = destination.screen;
+      throw new Error(`Unknown app screen: ${unreachable}`);
+    }
     }
   }
   case 'model': return `/#/?${new URLSearchParams({ 'llama-cpp-browser-model': destination.model }).toString()}`;
-  default: { const unreachable: never = destination; throw new Error(`Unknown app destination: ${String(unreachable)}`); }
+  default: {
+    const unreachable: never = destination;
+    throw new Error(`Unknown app destination: ${String(unreachable)}`);
+  }
   }
 }
 

@@ -24,7 +24,8 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(() => {
-  expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
+  expect(fetch).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });
 
 function inputs({ ids }: { ids: bigint[] }) {
@@ -70,7 +71,8 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
 
   it('copies actual returned sequence so later tensor mutation cannot change its prefix', () => {
-    const value = fixture(); value.sequences.data[0] = 99n;
+    const value = fixture();
+    value.sequences.data[0] = 99n;
     const ready = prepareGptOssContinuation(value.prepare)!;
     expect((ready.inputs['input_ids'] as InstanceType<typeof runtime.Tensor>).tolist()).toEqual([[10n, 11n, 12n, 13n, 14n, 15n]]);
   });
@@ -88,17 +90,23 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
 
   it('rejects changed model configuration', () => {
-    const value = fixture(); value.prepare.config.model_type = 'changed';
+    const value = fixture();
+    value.prepare.config.model_type = 'changed';
     expect(prepareGptOssContinuation(value.prepare)).toBeUndefined();
   });
 
   it.each(['prompt', 'system', 'assistant', 'tool-id'])('rejects changed %s in the emitted history extension', change => {
-    const value = fixture(); const messages = structuredClone(value.prepare.messages);
+    const value = fixture();
+    const messages = structuredClone(value.prepare.messages);
     switch (change) {
-    case 'prompt': messages[0]!.content = 'Different request'; break;
-    case 'system': messages.unshift({ role: 'system', content: 'Different system' }); break;
-    case 'assistant': messages[1]!.content = 'Not emitted'; break;
-    case 'tool-id': messages[2]!.tool_call_id = toToolCallId({ raw: 'foreign' }); break;
+    case 'prompt': messages[0]!.content = 'Different request';
+      break;
+    case 'system': messages.unshift({ role: 'system', content: 'Different system' });
+      break;
+    case 'assistant': messages[1]!.content = 'Not emitted';
+      break;
+    case 'tool-id': messages[2]!.tool_call_id = toToolCallId({ raw: 'foreign' });
+      break;
     }
     expect(prepareGptOssContinuation({ ...value.prepare, messages })).toBeUndefined();
   });
@@ -135,7 +143,8 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
 
   it.each(['AbortError', 'ProductionWorkerLifecycleError', 'RequiredDownloadedModelResourceError'])('preserves terminal %s instead of treating it as an optimization miss', name => {
-    const error = new Error('Synthetic terminal error'); error.name = name;
+    const error = new Error('Synthetic terminal error');
+    error.name = name;
     expect(() => prepareGptOssContinuation({
       ...fixture().prepare,
       buildBaseInputs: () => {
@@ -145,7 +154,9 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
 
   it('refuses circular/oversized identity and plain-array tensors without a GPU readback', () => {
-    const value = fixture(); const circular: { self?: unknown } = {}; circular.self = circular;
+    const value = fixture();
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
     expect(retainGptOssContinuation({ ...value.retain, config: circular })).toBeUndefined();
     expect(retainGptOssContinuation({ ...value.retain, config: { text: 'x'.repeat(262145) } })).toBeUndefined();
     expect(retainGptOssContinuation({ ...value.retain, sequences: [10n, 11n, 12n, 13n] })).toBeUndefined();
@@ -153,7 +164,8 @@ describe('GPT-OSS operation identity and native sequence/PKV ownership', () => {
   });
 
   it.each([0, -1, 2, 4, 6, 131072, Number.NaN, Number.POSITIVE_INFINITY])('rejects stale or invalid PKV length %s before native preparation', size => {
-    const value = fixture(); value.pastKeyValues.get_seq_length.mockReturnValue(size);
+    const value = fixture();
+    value.pastKeyValues.get_seq_length.mockReturnValue(size);
     expect(prepareGptOssContinuation(value.prepare)).toBeUndefined();
     expect(retainGptOssContinuation(value.retain)).toBeUndefined();
   });

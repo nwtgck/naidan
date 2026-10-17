@@ -1,11 +1,17 @@
 /** Clipboard events do not request permission. Prefer files to avoid importing
  * the same image twice when the browser also exposes it as an item. */
 export function pastedImageFiles({ data }: { data: DataTransfer | undefined }): File[] {
-  if (!data) return [];
+  if (!data) {
+    return [];
+  }
   const files = Array.from(data.files ?? []);
-  if (files.length) return files.filter(file => file.type.startsWith('image/'));
+  if (files.length) {
+    return files.filter(file => file.type.startsWith('image/'));
+  }
   return Array.from(data.items ?? []).flatMap(item => {
-    if (!item.type.startsWith('image/')) return [];
+    if (!item.type.startsWith('image/')) {
+      return [];
+    }
     const file = item.getAsFile();
     return file ? [file] : [];
   });
@@ -18,7 +24,9 @@ export async function readClipboardImageFiles({ clipboard }: { clipboard: Pick<C
   const files: File[] = [];
   for (const item of items) {
     const type = ['image/png', 'image/jpeg', 'image/webp'].find(type => item.types.includes(type));
-    if (!type) continue;
+    if (!type) {
+      continue;
+    }
     const blob = await item.getType(type);
     const extension = type === 'image/jpeg' ? 'jpg' : type.slice('image/'.length);
     files.push(new File([blob], `clipboard-${files.length + 1}.${extension}`, { type }));

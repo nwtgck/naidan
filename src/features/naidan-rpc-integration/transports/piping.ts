@@ -12,27 +12,39 @@ import { normalizeRpcPairingCode } from '@/features/naidan-rpc-integration/runti
 
 /** HTTP status is a relay configuration observation, never peer authentication. */
 function terminalRelayFailure({ error }: { error: unknown }): boolean {
-  if (!(error instanceof PipingStatusError)) return false;
+  if (!(error instanceof PipingStatusError)) {
+    return false;
+  }
   switch (error.kind) {
   case 'fatal': return true;
   case 'waiting-sender': case 'waiting-receiver': case 'transient': case 'established': return false;
-  default: { const exhaustive: never = error.kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = error.kind;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 /** A failed connection may be retried; its RPC calls are never replayed. */
 export class RpcTransportInterruptedError extends Error {
   constructor({ cause }: { cause: unknown }) {
-    super('RPC transport interrupted', { cause }); this.name = 'RpcTransportInterruptedError';
+    super('RPC transport interrupted', { cause });
+    this.name = 'RpcTransportInterruptedError';
   }
 }
 
 /** A cancelled caller still owns failed cleanup. Only successful retirement
  * permits cancellation or a transport error to determine the retry policy. */
 function connectionAttemptFailure({ error, signal }: { error: unknown; signal: AbortSignal }): unknown {
-  if (error instanceof PipingRetirementError) return error;
-  if (signal.aborted) return signal.reason;
-  if (terminalRelayFailure({ error })) return error;
+  if (error instanceof PipingRetirementError) {
+    return error;
+  }
+  if (signal.aborted) {
+    return signal.reason;
+  }
+  if (terminalRelayFailure({ error })) {
+    return error;
+  }
   return new RpcTransportInterruptedError({ cause: error });
 }
 
@@ -51,10 +63,13 @@ async function acceptRpcConnection({ connection, signal }: { connection: NaidanP
     try {
       validateRpcProtocolAdvertisement({ bytes });
     } catch (error) {
-      if (error instanceof NaidanRpcProtocolError) authenticatedProtocolFailures.add(error);
+      if (error instanceof NaidanRpcProtocolError) {
+        authenticatedProtocolFailures.add(error);
+      }
       throw error;
     }
-    signal.throwIfAborted(); return connection;
+    signal.throwIfAborted();
+    return connection;
   } catch (error) {
     const original = signal.aborted ? signal.reason : error;
     let cleanup: { error: unknown } | undefined;
@@ -68,7 +83,9 @@ async function acceptRpcConnection({ connection, signal }: { connection: NaidanP
     } catch (failure) {
       cleanup ??= { error: failure };
     }
-    if (cleanup) throw new PipingRetirementError({ cause: cleanup.error, logicalError: original });
+    if (cleanup) {
+      throw new PipingRetirementError({ cause: cleanup.error, logicalError: original });
+    }
     throw original;
   }
 }
@@ -90,14 +107,21 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
     handshakeResponseTimeoutMs: 75_000,
   };
   const expectedPeer = peerKey === undefined ? undefined : decodePeerKey({ value: peerKey });
-  if (peerKey !== undefined && encodePeerKey({ bytes: identity.publicKey }) === peerKey) throw new Error('Cannot connect to this device itself');
-  if (peerKey === undefined && (code === undefined || !verifyPeer)) throw new Error('Pairing requires a shared code and explicit verifier');
+  if (peerKey !== undefined && encodePeerKey({ bytes: identity.publicKey }) === peerKey) {
+    throw new Error('Cannot connect to this device itself');
+  }
+  if (peerKey === undefined && (code === undefined || !verifyPeer)) {
+    throw new Error('Pairing requires a shared code and explicit verifier');
+  }
   const normalized = peerKey === undefined ? normalizeRpcPairingCode({ code: code! }) : undefined;
   signal.throwIfAborted();
   const physical = new AbortController();
   const forward = () => physical.abort(signal.reason);
   const detach = () => signal.removeEventListener('abort', forward);
-  signal.addEventListener('abort', forward, { once: true }); if (signal.aborted) forward();
+  signal.addEventListener('abort', forward, { once: true });
+  if (signal.aborted) {
+    forward();
+  }
   const wrap = ({ accepted, detach }: { accepted: NaidanPipingDuplexSession; detach(): void }): RpcLink => {
     const ended = accepted.ended.then(outcome => {
       switch (outcome.kind) {
@@ -105,13 +129,19 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
       case 'authenticated-protocol-error': return { error: outcome.error };
       case 'local-stop': case 'response-unconfirmed': case 'record-exhausted':
       case 'transport-fatal':
-        if (terminalRelayFailure({ error: outcome.error })) return { error: outcome.error };
+        if (terminalRelayFailure({ error: outcome.error })) {
+          return { error: outcome.error };
+        }
         return { error: new RpcTransportInterruptedError({ cause: outcome.error }) };
-      default: { const exhaustive: never = outcome.kind; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = outcome.kind;
+        throw new Error(String(exhaustive));
+      }
       }
     });
     void ended.catch(() => {});
-    const closed = accepted.closed.finally(detach); void closed.catch(() => {});
+    const closed = accepted.closed.finally(detach);
+    void closed.catch(() => {});
     // The verified pairing connection is itself usable. No second handshake
     // races the other peer's READY publication or requires extra HTTP lanes.
     return {
@@ -127,7 +157,10 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
           const nextPhysical = new AbortController();
           const forwardNext = () => nextPhysical.abort(ownerSignal.reason);
           const detachNext = () => ownerSignal.removeEventListener('abort', forwardNext);
-          ownerSignal.addEventListener('abort', forwardNext, { once: true }); if (ownerSignal.aborted) forwardNext();
+          ownerSignal.addEventListener('abort', forwardNext, { once: true });
+          if (ownerSignal.aborted) {
+            forwardNext();
+          }
           let prepared: Awaited<ReturnType<typeof NaidanPipingDuplexSession.preparePinnedContact>> | undefined;
           try {
             prepared = await NaidanPipingDuplexSession.preparePinnedContact({
@@ -140,31 +173,46 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
               signal: nextPhysical.signal,
             });
             switch (prepared.kind) {
-            case 'same-connection': detachNext(); return undefined;
+            case 'same-connection': detachNext();
+              return undefined;
             case 'candidate': break;
-            default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+            default: {
+              const exhaustive: never = prepared;
+              throw new Error(String(exhaustive));
+            }
             }
             const bytes = prepared.peerPublicHandshakeData;
             try {
               validateRpcProtocolAdvertisement({ bytes });
             } catch (error) {
-              if (error instanceof NaidanRpcProtocolError) authenticatedProtocolFailures.add(error);
+              if (error instanceof NaidanRpcProtocolError) {
+                authenticatedProtocolFailures.add(error);
+              }
               throw error;
             }
-            ownerSignal.throwIfAborted(); prepared.assertAvailable();
+            ownerSignal.throwIfAborted();
+            prepared.assertAvailable();
             const candidate = prepared;
             let consumed = false;
             const claim = () => {
-              if (consumed) throw new Error('RPC contact already consumed');
+              if (consumed) {
+                throw new Error('RPC contact already consumed');
+              }
               consumed = true;
             };
             return {
               assertAvailable: () => {
-                if (consumed) throw new Error('RPC contact already consumed');
-                ownerSignal.throwIfAborted(); candidate.assertAvailable();
+                if (consumed) {
+                  throw new Error('RPC contact already consumed');
+                }
+                ownerSignal.throwIfAborted();
+                candidate.assertAvailable();
               },
               dispose: async () => {
-                claim(); detachNext(); nextPhysical.abort(); await candidate.dispose();
+                claim();
+                detachNext();
+                nextPhysical.abort();
+                await candidate.dispose();
               },
               finish: async () => {
                 claim();
@@ -180,17 +228,24 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
                   const verified = await acceptRpcConnection({ connection: next, signal: nextPhysical.signal });
                   return wrap({ accepted: verified, detach: detachNext });
                 } catch (error) {
-                  detachNext(); nextPhysical.abort(error); throw error;
+                  detachNext();
+                  nextPhysical.abort(error);
+                  throw error;
                 }
               },
             };
           } catch (error) {
-            detachNext(); nextPhysical.abort(error);
+            detachNext();
+            nextPhysical.abort(error);
             if (prepared) {
               switch (prepared.kind) {
-              case 'candidate': await prepared.dispose(); break;
+              case 'candidate': await prepared.dispose();
+                break;
               case 'same-connection': break;
-              default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+              default: {
+                const exhaustive: never = prepared;
+                throw new Error(String(exhaustive));
+              }
               }
             }
             throw error;
@@ -228,12 +283,15 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
     const accepted = await acceptRpcConnection({ connection, signal });
     return wrap({ accepted, detach });
   } catch (error) {
-    detach(); physical.abort(error);
+    detach();
+    physical.abort(error);
     if (connection) {
       try {
         await connection.closed;
       } catch (cause) {
-        if (error instanceof PipingRetirementError) throw error;
+        if (error instanceof PipingRetirementError) {
+          throw error;
+        }
         throw new PipingRetirementError({ cause, logicalError: error });
       }
     }

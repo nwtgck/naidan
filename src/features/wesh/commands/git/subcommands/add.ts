@@ -83,8 +83,9 @@ export async function runAdd({ context, args }: {
   }
   const allModeSeen = parsed.optionValues.all === true;
   const updateModeSeen = parsed.optionValues.update === true;
-  if (allModeSeen && updateModeSeen)
+  if (allModeSeen && updateModeSeen) {
     throw new Error("options '-A' and '-u' cannot be used together");
+  }
   const mode: 'paths' | 'all' | 'update' = allModeSeen ? 'all' : updateModeSeen ? 'update' : 'paths';
   const force = parsed.optionValues.force === true;
   const operands = parsed.positionals;
@@ -94,7 +95,9 @@ export async function runAdd({ context, args }: {
   switch (mode) {
   case 'all':
     selected = new Set(await listWorktreeEntries({ files: context.files, repository }));
-    for (const path of trackedPaths) selected.add(path);
+    for (const path of trackedPaths) {
+      selected.add(path);
+    }
     break;
   case 'update':
     selected = new Set(trackedPaths);
@@ -120,14 +123,17 @@ export async function runAdd({ context, args }: {
   for (const gitlink of trackedGitlinks) {
     const prefix = `${gitlink.path}/`;
     for (const path of [...selected]) {
-      if (path.startsWith(prefix))
+      if (path.startsWith(prefix)) {
         selected.delete(path);
+      }
     }
-    if (!selected.has(gitlink.path))
+    if (!selected.has(gitlink.path)) {
       continue;
+    }
     const absolutePath = worktreeAbsolutePath({ repository, path: gitlink.path });
-    if (!await pathExists({ files: context.files, path: absolutePath }))
+    if (!await pathExists({ files: context.files, path: absolutePath })) {
       continue;
+    }
     const stat = await context.files.lstat({ path: absolutePath });
     switch (stat.type) {
     case 'directory':
@@ -161,8 +167,9 @@ export async function runAdd({ context, args }: {
           continue;
         }
         const relativePath = relativeToWorktree({ repository, absolutePath });
-        if (relativePath.length === 0)
+        if (relativePath.length === 0) {
           continue;
+        }
         let isDirectory: boolean;
         switch (stat.type) {
         case 'directory':
@@ -185,8 +192,9 @@ export async function runAdd({ context, args }: {
       }
       if (explicitIgnored.length > 0) {
         await context.text().error({ text: 'The following paths are ignored by one of your .gitignore files:\n' });
-        for (const path of explicitIgnored)
+        for (const path of explicitIgnored) {
           await context.text().error({ text: `${path}\n` });
+        }
         await context.text().error({ text: 'hint: Use -f if you really want to add them.\n' });
         await context.text().error({ text: 'hint: Disable this message with "git config advice.addIgnoredFile false"\n' });
         return { exitCode: 1 };
@@ -202,7 +210,9 @@ export async function runAdd({ context, args }: {
     }
     }
     for (const path of selected) {
-      if (!trackedPaths.has(path) && ignoreMatcher.isIgnored({ path, isDirectory: false })) selected.delete(path);
+      if (!trackedPaths.has(path) && ignoreMatcher.isIgnored({ path, isDirectory: false })) {
+        selected.delete(path);
+      }
     }
   }
   const stagedEntries = await stageWorktreePaths({

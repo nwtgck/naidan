@@ -5,7 +5,9 @@ describe('prefill yield pacing', () => {
   it('coalesces fast 128-token batches up to the token budget', () => {
     const time = 0;
     const pacing = createPrefillYieldPacing({ now: () => time });
-    for (let index = 0; index < 7; index++) expect(pacing.shouldYield({ decodedTokens: 128 })).toBe(false);
+    for (let index = 0; index < 7; index++) {
+      expect(pacing.shouldYield({ decodedTokens: 128 })).toBe(false);
+    }
     expect(pacing.shouldYield({ decodedTokens: 128 })).toBe(true);
     pacing.yielded();
     expect(pacing.shouldYield({ decodedTokens: 128 })).toBe(false);
@@ -22,9 +24,12 @@ describe('prefill yield pacing', () => {
     let time = 0;
     const pacing = createPrefillYieldPacing({ now: () => time, maximumElapsedMs: 10, maximumTokens: 4 });
     expect(pacing.shouldYield({ decodedTokens: 4 })).toBe(true);
-    time = 5; pacing.yielded();
-    time = 14; expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(false);
-    time = 15; expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(true);
+    time = 5;
+    pacing.yielded();
+    time = 14;
+    expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(false);
+    time = 15;
+    expect(pacing.shouldYield({ decodedTokens: 1 })).toBe(true);
   });
 
   it.each([NaN, Infinity, -1])('fails open for an unusable elapsed clock %s', value => {

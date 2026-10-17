@@ -74,7 +74,9 @@ async function fixtureWorker() {
   vi.stubGlobal('fetch', network);
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', hardwareConcurrency: 2, storage: { getDirectory: async () => files.root } });
   await import('./entry');
-  if (api === undefined) throw new Error('Worker entry did not expose');
+  if (api === undefined) {
+    throw new Error('Worker entry did not expose');
+  }
   return { api, env, network, files, config, tokenizer, processor, prepare: () => api!.prepareModelRuntimeArtifacts(modelId, revision, () => undefined) };
 }
 
@@ -205,13 +207,16 @@ it('rejects a concurrent prefetch while metadata owns the runtime environment', 
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   h.config.mockImplementation(async () => {
-    entered.resolve(); await release.promise; return { model_type: 'llama' };
+    entered.resolve();
+    await release.promise;
+    return { model_type: 'llama' };
   });
   const preparation = h.prepare();
   await entered.promise;
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      release.resolve(); await preparation;
+      release.resolve();
+      await preparation;
     },
   };
   await expect(h.api.prefetchUrls([`${base}onnx/model_q4.onnx`], () => undefined)).rejects.toThrow(/active|concurrent|busy/u);
@@ -223,13 +228,15 @@ it('rejects concurrent metadata while a prefetch still owns a remote response', 
   const response = Promise.withResolvers<Response>();
   const entered = Promise.withResolvers<void>();
   h.network.mockImplementation(async () => {
-    entered.resolve(); return response.promise;
+    entered.resolve();
+    return response.promise;
   });
   const prefetch = h.api.prefetchUrls([`${base}onnx/model_q4.onnx`], () => undefined);
   await entered.promise;
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      response.resolve(new Response(new Uint8Array([1, 2, 3]))); await prefetch;
+      response.resolve(new Response(new Uint8Array([1, 2, 3])));
+      await prefetch;
     },
   };
   await expect(h.prepare()).rejects.toThrow(/active|concurrent|busy/u);
@@ -241,7 +248,9 @@ it('rejects a second metadata RPC without replacing the first operation environm
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   h.config.mockImplementation(async () => {
-    entered.resolve(); await release.promise; return { model_type: 'llama' };
+    entered.resolve();
+    await release.promise;
+    return { model_type: 'llama' };
   });
   const preparation = h.prepare();
   await entered.promise;
@@ -249,7 +258,8 @@ it('rejects a second metadata RPC without replacing the first operation environm
   const firstFetch = h.env.fetch;
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      release.resolve(); await preparation;
+      release.resolve();
+      await preparation;
     },
   };
   await expect(h.prepare()).rejects.toThrow(/concurrent|busy/u);
@@ -263,11 +273,13 @@ it('retires the Worker after a cleanup deadline and does not permit a new prefet
   vi.useFakeTimers();
   h.network.mockResolvedValue(new Response(new ReadableStream({ cancel: () => new Promise<void>(() => {}) }), { status: 404 }));
   h.tokenizer.mockImplementation(async () => {
-    await h.env.fetch(`${base}processor_config.json`); return {};
+    await h.env.fetch(`${base}processor_config.json`);
+    return {};
   });
   let ready = false;
   const outcome = h.prepare().then(() => {
-    ready = true; return undefined;
+    ready = true;
+    return undefined;
   }, error => error);
   await vi.advanceTimersByTimeAsync(0);
   expect(ready).toBe(false);

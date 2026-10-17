@@ -39,7 +39,9 @@ function basename({ path }: { path: string }): string {
 function dirname({ path }: { path: string }): string {
   const normalized = path === '/' ? '/' : path.replace(/\/+$/u, '');
   const index = normalized.lastIndexOf('/');
-  if (index <= 0) return '/';
+  if (index <= 0) {
+    return '/';
+  }
   return normalized.slice(0, index);
 }
 
@@ -57,7 +59,9 @@ async function pathStat({
   try {
     return await context.files.lstat({ path });
   } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) return undefined;
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -83,7 +87,9 @@ async function collectStreamBytes({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        break;
+      }
       chunks.push(value);
       total += value.byteLength;
     }
@@ -161,9 +167,15 @@ function stripPatchPath({
   path: string | undefined,
   stripCount: number | undefined,
 }): string | undefined {
-  if (path === undefined || path === '/dev/null') return undefined;
-  if (path.includes('\0')) throw new Error('patch path contains a NUL byte');
-  if (path.startsWith('/')) throw new Error(`unsafe absolute patch path '${path}'`);
+  if (path === undefined || path === '/dev/null') {
+    return undefined;
+  }
+  if (path.includes('\0')) {
+    throw new Error('patch path contains a NUL byte');
+  }
+  if (path.startsWith('/')) {
+    throw new Error(`unsafe absolute patch path '${path}'`);
+  }
 
   const components = path.split('/').filter((component) => component.length > 0 && component !== '.');
   if (components.some((component) => component === '..')) {
@@ -173,7 +185,9 @@ function stripPatchPath({
   const stripped = stripCount === undefined
     ? components.slice(-1)
     : components.slice(stripCount);
-  if (stripped.length === 0) return undefined;
+  if (stripped.length === 0) {
+    return undefined;
+  }
   return stripped.join('/');
 }
 
@@ -192,7 +206,9 @@ async function ensureNoSymlinkAncestors({
   for (let index = 0; index < components.length - 1; index++) {
     current = joinPath({ directory: current, name: components[index]! });
     const stat = await pathStat({ context, path: current });
-    if (stat === undefined) return;
+    if (stat === undefined) {
+      return;
+    }
     switch (stat.type) {
     case 'directory':
       break;
@@ -222,7 +238,9 @@ async function resolvePatchRelativePath({
   stripCount: number | undefined,
 }): Promise<string | undefined> {
   const relativePath = stripPatchPath({ path: rawPath, stripCount });
-  if (relativePath === undefined) return undefined;
+  if (relativePath === undefined) {
+    return undefined;
+  }
   await ensureNoSymlinkAncestors({ context, root, relativePath });
   return joinPath({ directory: root, name: relativePath });
 }
@@ -317,7 +335,9 @@ export async function resolvePatchTarget({
       rawPath: candidate,
       stripCount,
     });
-    if (resolved !== undefined) resolvedSourceCandidates.push(resolved);
+    if (resolved !== undefined) {
+      resolvedSourceCandidates.push(resolved);
+    }
   }
 
   let sourcePath = resolvedSourceCandidates[0];
@@ -494,7 +514,9 @@ async function allocateTemporaryPath({
       directory: dirname({ path: targetPath }),
       name: `.${basename({ path: targetPath })}.wesh-patch-${purpose}-${temporarySequence}`,
     });
-    if (!await pathExists({ context, path: candidate })) return candidate;
+    if (!await pathExists({ context, path: candidate })) {
+      return candidate;
+    }
   }
   throw new Error(`cannot allocate temporary path for '${targetPath}'`);
 }
@@ -582,7 +604,9 @@ export async function getPatchContentByteLength({
         throw new Error(`Unhandled output piece: ${JSON.stringify(_ex)}`);
       }
       }
-      if (!Number.isSafeInteger(byteLength)) throw new Error('patched output is too large');
+      if (!Number.isSafeInteger(byteLength)) {
+        throw new Error('patched output is too large');
+      }
     }
     return byteLength;
   }
@@ -592,7 +616,9 @@ export async function getPatchContentByteLength({
     let byteLength = 0;
     for (const child of content.contents) {
       byteLength += await getPatchContentByteLength({ context, content: child });
-      if (!Number.isSafeInteger(byteLength)) throw new Error('patched output is too large');
+      if (!Number.isSafeInteger(byteLength)) {
+        throw new Error('patched output is too large');
+      }
     }
     return byteLength;
   }
@@ -708,7 +734,9 @@ async function findNumberedBackupPath({
 }): Promise<string> {
   for (let number = 1; number <= Number.MAX_SAFE_INTEGER; number++) {
     const candidate = `${targetPath}.~${number}~`;
-    if (!await pathExists({ context, path: candidate })) return candidate;
+    if (!await pathExists({ context, path: candidate })) {
+      return candidate;
+    }
   }
   throw new Error(`cannot allocate numbered backup for '${targetPath}'`);
 }
@@ -721,10 +749,14 @@ async function hasNumberedBackup({
   targetPath: string,
 }): Promise<boolean> {
   const directoryPath = dirname({ path: targetPath });
-  if (!await pathExists({ context, path: directoryPath })) return false;
+  if (!await pathExists({ context, path: directoryPath })) {
+    return false;
+  }
   const prefix = `${basename({ path: targetPath })}.~`;
   for await (const entry of context.files.readDir({ path: directoryPath })) {
-    if (entry.name.startsWith(prefix) && entry.name.endsWith('~')) return true;
+    if (entry.name.startsWith(prefix) && entry.name.endsWith('~')) {
+      return true;
+    }
   }
   return false;
 }
@@ -874,7 +906,9 @@ export async function installPatchedEntry({
   });
 
   if (deleteTarget) {
-    if (!targetExists) return;
+    if (!targetExists) {
+      return;
+    }
     await context.files.rename({ oldPath: targetPath, newPath: recoveryPath });
     try {
       await context.files.unlink({ path: recoveryPath });

@@ -66,7 +66,9 @@ describe('Hugging Face candidate presentation', () => {
 
   it('keeps same-quant variants as separate choices and does not invent unknown quantizations', () => {
     const choices = quantizationChoices({ repository: 'owner/model-GGUF', models: ['base-Q4_K_M.gguf', 'base-Q4_K_M-QAD.gguf', 'model-unknown.gguf'].map(path => model({ path })) });
-    expect(choices).toHaveLength(3); expect(choices[0]?.models).toHaveLength(1); expect(choices[2]?.quantization).toBeUndefined();
+    expect(choices).toHaveLength(3);
+    expect(choices[0]?.models).toHaveLength(1);
+    expect(choices[2]?.quantization).toBeUndefined();
     expect(quantizationName({ path: 'Q4_K_M/other.gguf' })).toBeUndefined();
     expect(quantizationName({ path: 'model-Q4_K_M-00001-of-00003.gguf' })).toBe('Q4_K_M');
   });

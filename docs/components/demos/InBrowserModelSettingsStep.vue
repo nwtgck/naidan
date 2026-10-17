@@ -14,14 +14,20 @@ const llama = computed((): LlamaMessages | undefined => {
   switch (props.mode) {
   case 'llama': return props.messages;
   case 'transformers': return undefined;
-  default: { const exhaustive: never = props; throw new Error(`Unhandled mode: ${String(exhaustive)}`); }
+  default: {
+    const exhaustive: never = props;
+    throw new Error(`Unhandled mode: ${String(exhaustive)}`);
+  }
   }
 });
 const transformers = computed((): TransformersMessages | undefined => {
   switch (props.mode) {
   case 'transformers': return props.messages;
   case 'llama': return undefined;
-  default: { const exhaustive: never = props; throw new Error(`Unhandled mode: ${String(exhaustive)}`); }
+  default: {
+    const exhaustive: never = props;
+    throw new Error(`Unhandled mode: ${String(exhaustive)}`);
+  }
   }
 });
 
@@ -29,7 +35,10 @@ const managerTab = computed(() => {
   switch (props.mode) {
   case 'llama': return props.messages.llama_cpp_browser_tab;
   case 'transformers': return props.messages.transformers_js_tab;
-  default: { const exhaustive: never = props; throw new Error(`Unhandled mode: ${String(exhaustive)}`); }
+  default: {
+    const exhaustive: never = props;
+    throw new Error(`Unhandled mode: ${String(exhaustive)}`);
+  }
   }
 });
 

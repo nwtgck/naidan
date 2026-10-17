@@ -11,7 +11,10 @@ const caption = computed(() => {
   case 'web': return props.messages.web_access_caption;
   case 'send': return props.messages.sending_paths_caption;
   case 'noPrompt': return props.messages.permission_paths_caption;
-  default: { const unreachable: never = props.mode; throw new Error(`Unknown diagram mode: ${String(unreachable)}`); }
+  default: {
+    const unreachable: never = props.mode;
+    throw new Error(`Unknown diagram mode: ${String(unreachable)}`);
+  }
   }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

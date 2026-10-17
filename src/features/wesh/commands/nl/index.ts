@@ -102,7 +102,9 @@ function parseNumberWidth({
     label: 'line number field width',
     minimum: 1,
   });
-  if (!parsed.ok || parsed.value <= NL_MAX_NUMBER_WIDTH) return parsed;
+  if (!parsed.ok || parsed.value <= NL_MAX_NUMBER_WIDTH) {
+    return parsed;
+  }
   return {
     ok: false,
     message: `line number field width exceeds safety limit ${NL_MAX_NUMBER_WIDTH}`,
@@ -162,7 +164,9 @@ function parseNlArgv({
   args: string[],
 }): ParsedNlArgv {
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '--help') continue;
+    if (args[index] !== '--help') {
+      continue;
+    }
 
     const parsedPrefix = parseStandardArgv({
       args: args.slice(0, index + 1),
@@ -262,7 +266,9 @@ function collectNlPreHelpSemanticDiagnostics({
   const diagnostics: NlPreHelpSemanticDiagnostic[] = [];
 
   for (const occurrence of parsed.occurrences) {
-    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
+    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
+      continue;
+    }
 
     const styleLabel = (() => {
       switch (occurrence.key) {
@@ -288,14 +294,18 @@ function collectNlPreHelpSemanticDiagnostics({
           message: style.message,
           fatal: style.message === 'invalid regular expression',
         });
-        if (style.message === 'invalid regular expression') break;
+        if (style.message === 'invalid regular expression') {
+          break;
+        }
       }
       continue;
     }
 
     if (occurrence.key === 'numberFormat') {
       const format = parseNumberFormat({ value: occurrence.value });
-      if (!format.ok) diagnostics.push({ message: format.message, fatal: false });
+      if (!format.ok) {
+        diagnostics.push({ message: format.message, fatal: false });
+      }
     }
   }
 
@@ -330,13 +340,19 @@ function collectNlMixedPreHelpDiagnosticsInArgvOrder({
 
     for (; unknownCount < unknownDiagnostics.length; unknownCount += 1) {
       const diagnostic = unknownDiagnostics[unknownCount];
-      if (diagnostic !== undefined) ordered.push({ message: diagnostic.message, fatal: false });
+      if (diagnostic !== undefined) {
+        ordered.push({ message: diagnostic.message, fatal: false });
+      }
     }
     for (; semanticCount < semanticDiagnostics.length; semanticCount += 1) {
       const diagnostic = semanticDiagnostics[semanticCount];
-      if (diagnostic === undefined) continue;
+      if (diagnostic === undefined) {
+        continue;
+      }
       ordered.push(diagnostic);
-      if (diagnostic.fatal) return ordered;
+      if (diagnostic.fatal) {
+        return ordered;
+      }
     }
   }
 
@@ -388,26 +404,34 @@ function buildOptions({
     label: 'body numbering style',
     characterLocaleMode,
   });
-  if (!bodyStyle.ok) return { ok: false, message: bodyStyle.message };
+  if (!bodyStyle.ok) {
+    return { ok: false, message: bodyStyle.message };
+  }
 
   const headerStyle = parseNumberingStyle({
     value: getStringOption({ value: optionValues.headerNumbering, fallback: 'n' }),
     label: 'header numbering style',
     characterLocaleMode,
   });
-  if (!headerStyle.ok) return { ok: false, message: headerStyle.message };
+  if (!headerStyle.ok) {
+    return { ok: false, message: headerStyle.message };
+  }
 
   const footerStyle = parseNumberingStyle({
     value: getStringOption({ value: optionValues.footerNumbering, fallback: 'n' }),
     label: 'footer numbering style',
     characterLocaleMode,
   });
-  if (!footerStyle.ok) return { ok: false, message: footerStyle.message };
+  if (!footerStyle.ok) {
+    return { ok: false, message: footerStyle.message };
+  }
 
   const format = parseNumberFormat({
     value: getStringOption({ value: optionValues.numberFormat, fallback: 'rn' }),
   });
-  if (!format.ok) return { ok: false, message: format.message };
+  if (!format.ok) {
+    return { ok: false, message: format.message };
+  }
 
   const joinBlankLines = getNumberOption({ value: optionValues.joinBlankLines, fallback: 1 });
 
@@ -845,7 +869,9 @@ function shouldForwardSignal({
   context: WeshCommandContext,
 }): boolean {
   const waitStatus = context.process.getWaitStatus();
-  if (waitStatus === undefined) return false;
+  if (waitStatus === undefined) {
+    return false;
+  }
 
   switch (waitStatus.kind) {
   case 'signaled':
@@ -875,7 +901,9 @@ export const nlCommandImplementation: WeshCommandImplementation = {
       });
       for (const diagnostic of orderedDiagnostics) {
         await context.text().error({ text: `nl: ${diagnostic.message}\n` });
-        if (diagnostic.fatal) return { exitCode: 1 };
+        if (diagnostic.fatal) {
+          return { exitCode: 1 };
+        }
       }
       await writeCommandHelp({
         context,
@@ -910,7 +938,9 @@ export const nlCommandImplementation: WeshCommandImplementation = {
       });
       for (const semanticDiagnostic of semanticDiagnostics) {
         await context.text().error({ text: `nl: ${semanticDiagnostic.message}\n` });
-        if (semanticDiagnostic.fatal) return { exitCode: 1 };
+        if (semanticDiagnostic.fatal) {
+          return { exitCode: 1 };
+        }
       }
       await writeCommandHelp({
         context,

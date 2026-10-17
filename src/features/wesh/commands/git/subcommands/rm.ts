@@ -73,8 +73,9 @@ export async function runRm({ context, args }: {
   const cached = parsed.optionValues.cached === true;
   const recursive = parsed.optionValues.recursive === true;
   const operands = parsed.positionals;
-  if (operands.length === 0)
+  if (operands.length === 0) {
     throw new Error('No pathspec was given. Which files should I remove?');
+  }
   const repository = await discoverRepositoryFromContext({ context });
   const currentEntries = await readIndex({ files: context.files, repository });
   const availablePaths = [...new Set(currentEntries.map(entry => entry.path))];
@@ -99,25 +100,30 @@ export async function runRm({ context, args }: {
     const status = await collectStatus({ context });
     const statusByPath = new Map(status.entries.map(entry => [entry.path, entry]));
     const changed = [...selected].filter(path => {
-      if (unmergedPaths.has(path))
+      if (unmergedPaths.has(path)) {
         return false;
+      }
       const entry = statusByPath.get(path);
-      if (entry === undefined)
+      if (entry === undefined) {
         return false;
-      if (cached)
+      }
+      if (cached) {
         return entry.indexStatus !== ' ' && entry.worktreeStatus !== ' ';
+      }
       return entry.indexStatus !== ' ' || entry.worktreeStatus !== ' ';
     });
     if (changed.length > 0) {
       if (cached) {
         await context.text().error({ text: 'error: the following files have staged content different from both the file and the HEAD:\n' });
-        for (const path of sortGitPaths({ paths: changed }))
+        for (const path of sortGitPaths({ paths: changed })) {
           await context.text().error({ text: `    ${path}\n` });
+        }
         await context.text().error({ text: '(use -f to force removal)\n' });
       } else {
         await context.text().error({ text: 'error: the following files have local modifications:\n' });
-        for (const path of sortGitPaths({ paths: changed }))
+        for (const path of sortGitPaths({ paths: changed })) {
           await context.text().error({ text: `    ${path}\n` });
+        }
         await context.text().error({ text: '(use --cached to keep the file, or -f to force removal)\n' });
       }
       return { exitCode: 1 };
@@ -128,10 +134,12 @@ export async function runRm({ context, args }: {
     repository,
     entries: currentEntries.filter(entry => !selected.has(entry.path)),
   });
-  if (!cached)
+  if (!cached) {
     await removeWorktreePaths({ files: context.files, repository, paths: selected });
-  for (const path of sortGitPaths({ paths: selected }))
+  }
+  for (const path of sortGitPaths({ paths: selected })) {
     await context.text().print({ text: `rm '${path}'\n` });
+  }
   return { exitCode: 0 };
 }
 

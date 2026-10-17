@@ -40,17 +40,25 @@ export async function collectTitleGeneration({ provider, endpoint, messages, mod
       async function* observe(): AsyncGenerator<ChatGenerationItem> {
         for await (const item of items) {
           switch (item.type) {
-          case 'text': case 'reasoning': case 'tool_call_draft': case 'tool_call': emitted = true; break;
+          case 'text': case 'reasoning': case 'tool_call_draft': case 'tool_call': emitted = true;
+            break;
           case 'result': break;
-          default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = item;
+            throw new Error(String(exhaustive));
+          }
           }
           yield item;
         }
       }
       const collected = await collectChatGeneration({ items: observe(), abortController: controller });
-      if (collected.result.type !== 'error' || !canRetry({ error: collected.result.error })) return collected;
+      if (collected.result.type !== 'error' || !canRetry({ error: collected.result.error })) {
+        return collected;
+      }
     } catch (error) {
-      if (!canRetry({ error })) throw error;
+      if (!canRetry({ error })) {
+        throw error;
+      }
     }
     // A new attempt controller is necessary: consuming a failed provider may
     // abort the old attempt during cleanup. Unspecified is not thinking on.

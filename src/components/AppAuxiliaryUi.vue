@@ -40,7 +40,10 @@ watch(() => modelPreset?.value, preset => {
   switch (target) {
   case undefined: case 'onboarding': return;
   case 'settings': break;
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
   const destination = router.currentRoute.value === START_LOCATION ? resolveInitialRoute({ router }) : route;
   void router.replace({ path: destination.path, query: { ...destination.query, settings: 'llama-cpp-browser' }, hash: destination.hash });
@@ -56,33 +59,46 @@ let llamaPerformanceLoadEpoch = 0;
 let llamaPerformanceOpener: HTMLElement | undefined;
 
 async function openLlamaCppPerformance({ defaultModel }: { defaultModel: string | undefined }): Promise<void> {
-  if (llamaPerformanceLoading.value) return;
+  if (llamaPerformanceLoading.value) {
+    return;
+  }
   const epoch = ++llamaPerformanceLoadEpoch;
-  llamaPerformanceLoading.value = true; llamaPerformanceLoadError.value = '';
+  llamaPerformanceLoading.value = true;
+  llamaPerformanceLoadError.value = '';
   llamaPerformanceOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
   try {
     // Keep Settings visible until the lazy chunk is ready; a failed import must
     // not replace the only usable screen with an empty overlay.
     LlamaCppBrowserPerformanceModal.value ??= (await import('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceModal.vue')).default;
-    if (epoch !== llamaPerformanceLoadEpoch || !isSettingsOpen.value) return;
+    if (epoch !== llamaPerformanceLoadEpoch || !isSettingsOpen.value) {
+      return;
+    }
     llamaPerformanceDefaultModel.value = defaultModel;
-    llamaPerformanceOpened.value = true; llamaPerformanceVisible.value = true;
+    llamaPerformanceOpened.value = true;
+    llamaPerformanceVisible.value = true;
   } catch (error) {
-    if (epoch === llamaPerformanceLoadEpoch) llamaPerformanceLoadError.value = error instanceof Error ? error.message : String(error);
+    if (epoch === llamaPerformanceLoadEpoch) {
+      llamaPerformanceLoadError.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
-    if (epoch === llamaPerformanceLoadEpoch) llamaPerformanceLoading.value = false;
+    if (epoch === llamaPerformanceLoadEpoch) {
+      llamaPerformanceLoading.value = false;
+    }
   }
 }
 
 function closeLlamaCppPerformance(): void {
   llamaPerformanceVisible.value = false;
-  const opener = llamaPerformanceOpener; llamaPerformanceOpener = undefined;
+  const opener = llamaPerformanceOpener;
+  llamaPerformanceOpener = undefined;
   void nextTick(() => opener?.focus());
 }
 
 watch(isSettingsOpen, open => {
   if (!open) {
-    llamaPerformanceVisible.value = false; llamaPerformanceLoadEpoch++; llamaPerformanceLoading.value = false;
+    llamaPerformanceVisible.value = false;
+    llamaPerformanceLoadEpoch++;
+    llamaPerformanceLoading.value = false;
   }
 });
 const ordinaryDownloadTiming = shallowRef<DownloadTimingSnapshot | undefined>(undefined);
@@ -98,7 +114,9 @@ watch(() => route.fullPath, (fullPath) => {
 });
 
 function openModelSupportInvestigation({ modelId }: { modelId: string }): void {
-  if (ModelSupportInvestigationModal === undefined) return;
+  if (ModelSupportInvestigationModal === undefined) {
+    return;
+  }
   modelSupportInvestigationOpener = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : undefined;

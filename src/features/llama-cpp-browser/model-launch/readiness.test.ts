@@ -18,7 +18,9 @@ function launchChat(): ChatMeta {
 }
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks(); meta = launchChat();
+  await ensureAllStringsForTest({ locale: 'en' });
+  vi.clearAllMocks();
+  meta = launchChat();
   launch = { version: 1, phase: 'active', input: target.selection.repository, requestedVariant: undefined, target, chatGroupId: toChatGroupId({ raw: 'cg' }) };
   getLaunch.mockImplementation(() => launch);
   chatGroup = { id: toChatGroupId({ raw: 'cg' }), name: 'Model', isCollapsed: false, items: [], updatedAt: 1, endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId };
@@ -34,13 +36,20 @@ describe('model launch generation preflight', () => {
   it.each(['missing-files', 'wrong-file-identity', 'deleted-chat', 'changed-plan', 'changed-endpoint', 'partial-adoption', 'storage-error'])('fails closed for %s', async reason => {
     const chat = launchChat();
     switch (reason) {
-    case 'missing-files': installed.mockResolvedValue(undefined); break;
-    case 'wrong-file-identity': installed.mockResolvedValue({ id: 'user/other' }); break;
-    case 'deleted-chat': meta = null; break;
-    case 'changed-plan': getLaunch.mockReturnValueOnce(launch).mockReturnValue({ ...launch, target: { ...target, selection: { ...target.selection, revision: 'b'.repeat(40) } } }); break;
-    case 'changed-endpoint': chatGroup = { ...chatGroup!, endpoint: { type: 'openai', url: 'https://external.example' } }; break;
-    case 'partial-adoption': launch = { ...launch, phase: 'reserved' }; break;
-    case 'storage-error': installed.mockRejectedValue(new Error('storage')); break;
+    case 'missing-files': installed.mockResolvedValue(undefined);
+      break;
+    case 'wrong-file-identity': installed.mockResolvedValue({ id: 'user/other' });
+      break;
+    case 'deleted-chat': meta = null;
+      break;
+    case 'changed-plan': getLaunch.mockReturnValueOnce(launch).mockReturnValue({ ...launch, target: { ...target, selection: { ...target.selection, revision: 'b'.repeat(40) } } });
+      break;
+    case 'changed-endpoint': chatGroup = { ...chatGroup!, endpoint: { type: 'openai', url: 'https://external.example' } };
+      break;
+    case 'partial-adoption': launch = { ...launch, phase: 'reserved' };
+      break;
+    case 'storage-error': installed.mockRejectedValue(new Error('storage'));
+      break;
     }
     await expect(assertModelLaunchReady({ chat, endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId })).rejects.toThrow('not ready');
   });
@@ -53,7 +62,8 @@ describe('model launch generation preflight', () => {
   });
 
   it('blocks an incomplete reservation before any model-list fallback', async () => {
-    const chat = launchChat(); launch = { ...launch, phase: 'reserved' };
+    const chat = launchChat();
+    launch = { ...launch, phase: 'reserved' };
     await expect(assertModelLaunchReady({ chat, endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId })).rejects.toThrow('not ready');
   });
 });

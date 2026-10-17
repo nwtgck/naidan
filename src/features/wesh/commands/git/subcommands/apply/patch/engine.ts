@@ -92,13 +92,17 @@ function getOldPatchLines({ hunk }: { hunk: TextHunk }): PatchLine[] {
 
 function getLeadingContextCount({ oldLines }: { oldLines: PatchLine[] }): number {
   let count = 0;
-  while (oldLines[count]?.kind === 'context') count += 1;
+  while (oldLines[count]?.kind === 'context') {
+    count += 1;
+  }
   return count;
 }
 
 function getTrailingContextCount({ oldLines }: { oldLines: PatchLine[] }): number {
   let count = 0;
-  while (oldLines[oldLines.length - 1 - count]?.kind === 'context') count += 1;
+  while (oldLines[oldLines.length - 1 - count]?.kind === 'context') {
+    count += 1;
+  }
   return count;
 }
 
@@ -128,16 +132,22 @@ function* iterateCandidatePositions({
   minimum: number,
   maximum: number,
 }): Generator<number> {
-  if (maximum < minimum) return;
+  if (maximum < minimum) {
+    return;
+  }
   const clampedExpected = Math.max(minimum, Math.min(maximum, expected));
   yield clampedExpected;
   const maxDistance = Math.max(clampedExpected - minimum, maximum - clampedExpected);
 
   for (let distance = 1; distance <= maxDistance; distance++) {
     const after = clampedExpected + distance;
-    if (after <= maximum) yield after;
+    if (after <= maximum) {
+      yield after;
+    }
     const before = clampedExpected - distance;
-    if (before >= minimum) yield before;
+    if (before >= minimum) {
+      yield before;
+    }
   }
 }
 
@@ -186,7 +196,9 @@ function patchLineAsFileLine({ line }: { line: PatchLine }): FileLine {
 function pushPiece({ output, piece }: { output: OutputPiece[], piece: OutputPiece }): void {
   switch (piece.kind) {
   case 'source': {
-    if (piece.startLine === piece.endLine) return;
+    if (piece.startLine === piece.endLine) {
+      return;
+    }
     const previous = output[output.length - 1];
     if (previous?.kind === 'source' && previous.endLine === piece.startLine) {
       previous.endLine = piece.endLine;
@@ -196,7 +208,9 @@ function pushPiece({ output, piece }: { output: OutputPiece[], piece: OutputPiec
     return;
   }
   case 'bytes':
-    if (piece.bytes.byteLength === 0 && piece.lineCount === 0) return;
+    if (piece.bytes.byteLength === 0 && piece.lineCount === 0) {
+      return;
+    }
     output.push(piece);
     return;
   default: {
@@ -225,7 +239,9 @@ function pushLinesPiece({
   output: OutputPiece[],
   lines: FileLine[],
 }): void {
-  if (lines.length === 0) return;
+  if (lines.length === 0) {
+    return;
+  }
   pushPiece({
     output,
     piece: {
@@ -253,9 +269,13 @@ async function candidateMatches({
 }): Promise<boolean> {
   for (let index = 0; index < oldLines.length; index++) {
     const patchLine = oldLines[index];
-    if (patchLine === undefined) return false;
+    if (patchLine === undefined) {
+      return false;
+    }
     const ignored = index < ignoredLeading || index >= oldLines.length - ignoredTrailing;
-    if (ignored && patchLine.kind === 'context') continue;
+    if (ignored && patchLine.kind === 'context') {
+      continue;
+    }
     if (!await source.lineMatches({
       lineIndex: candidate + index,
       patchLine,
@@ -448,7 +468,9 @@ function hunkUsesCarriageReturnLineEndings({ hunk }: { hunk: TextHunk }): boolea
 }
 
 function getExpectedSourceIndex({ range }: { range: PatchRange }): number {
-  if (range.count === 0) return range.start;
+  if (range.count === 0) {
+    return range.start;
+  }
   return range.start === 0 ? 0 : range.start - 1;
 }
 
@@ -516,7 +538,9 @@ async function applyTextHunks({
     }
 
     pushSourcePiece({ output, startLine: sourceCursor, endLine: result.matchedAt });
-    for (const piece of result.pieces) pushPiece({ output, piece });
+    for (const piece of result.pieces) {
+      pushPiece({ output, piece });
+    }
     sourceCursor = result.matchedAt + hunk.oldRange.count;
     minimumCandidate = sourceCursor;
     previousOffset = result.offset;
@@ -525,7 +549,9 @@ async function applyTextHunks({
 
     if (result.offset !== 0 || result.fuzz !== 0 || options.quietMode === 'verbose') {
       const parts = [`Hunk #${index + 1} succeeded at ${result.matchedAt + 1}`];
-      if (result.fuzz !== 0) parts.push(`with fuzz ${result.fuzz}`);
+      if (result.fuzz !== 0) {
+        parts.push(`with fuzz ${result.fuzz}`);
+      }
       if (result.offset !== 0) {
         const sign = result.offset > 0 ? '' : '-';
         const absolute = Math.abs(result.offset);
@@ -558,7 +584,9 @@ async function firstHunkApplies({
   options: PatchOptions,
 }): Promise<boolean> {
   const first = section.hunks[0];
-  if (first === undefined) return true;
+  if (first === undefined) {
+    return true;
+  }
   const expected = getExpectedSourceIndex({ range: first.oldRange });
   return (await applyHunk({
     source,
@@ -677,7 +705,9 @@ function edPieceLineCount({ piece }: { piece: EdPiece }): number {
 
 function edSequenceLineCount({ pieces }: { pieces: EdPiece[] }): number {
   let count = 0;
-  for (const piece of pieces) count += edPieceLineCount({ piece });
+  for (const piece of pieces) {
+    count += edPieceLineCount({ piece });
+  }
   return count;
 }
 
@@ -692,13 +722,17 @@ function splitEdPiecesAt({
   if (!Number.isSafeInteger(lineIndex) || lineIndex < 0 || lineIndex > total) {
     throw new Error(`ed line index is outside the file: ${lineIndex}`);
   }
-  if (lineIndex === total) return pieces.length;
+  if (lineIndex === total) {
+    return pieces.length;
+  }
 
   let cursor = 0;
   for (let index = 0; index < pieces.length; index++) {
     const piece = pieces[index]!;
     const count = edPieceLineCount({ piece });
-    if (lineIndex === cursor) return index;
+    if (lineIndex === cursor) {
+      return index;
+    }
     if (lineIndex > cursor && lineIndex < cursor + count) {
       const offset = lineIndex - cursor;
       switch (piece.kind) {
@@ -822,7 +856,9 @@ class ByteChunkBuilder {
   private byteLength = 0;
 
   push({ bytes }: { bytes: Uint8Array }): void {
-    if (bytes.byteLength === 0) return;
+    if (bytes.byteLength === 0) {
+      return;
+    }
     this.chunks.push(bytes);
     this.byteLength += bytes.byteLength;
   }
@@ -896,7 +932,9 @@ export function serializeUnifiedRejects({
 }): Uint8Array {
   const output = new ByteChunkBuilder();
   pushAscii({ output, value: `--- ${oldPath}\n+++ ${newPath}\n` });
-  for (const hunk of hunks) pushUnifiedRejectHunk({ output, hunk });
+  for (const hunk of hunks) {
+    pushUnifiedRejectHunk({ output, hunk });
+  }
   return output.finish();
 }
 
@@ -922,13 +960,19 @@ function contextRejectChangePrefix({
   side: 'old' | 'new',
 }): '- ' | '+ ' | '! ' {
   let start = lineIndex;
-  while (start > 0 && hunk.lines[start - 1]!.kind !== 'context') start -= 1;
+  while (start > 0 && hunk.lines[start - 1]!.kind !== 'context') {
+    start -= 1;
+  }
   let end = lineIndex + 1;
-  while (end < hunk.lines.length && hunk.lines[end]!.kind !== 'context') end += 1;
+  while (end < hunk.lines.length && hunk.lines[end]!.kind !== 'context') {
+    end += 1;
+  }
   const block = hunk.lines.slice(start, end);
   const isReplacement = block.some((line) => line.kind === 'remove')
     && block.some((line) => line.kind === 'add');
-  if (isReplacement) return '! ';
+  if (isReplacement) {
+    return '! ';
+  }
   switch (side) {
   case 'old': return '- ';
   case 'new': return '+ ';
@@ -940,7 +984,9 @@ function contextRejectChangePrefix({
 }
 
 function formatContextRejectRange({ range }: { range: PatchRange }): string {
-  if (range.count <= 1) return String(range.start);
+  if (range.count <= 1) {
+    return String(range.start);
+  }
   return `${range.start},${range.start + range.count - 1}`;
 }
 
@@ -999,7 +1045,9 @@ export function serializeContextRejects({
 }): Uint8Array {
   const output = new ByteChunkBuilder();
   pushAscii({ output, value: `*** ${oldPath}\n--- ${newPath}\n` });
-  for (const hunk of hunks) pushContextRejectHunk({ output, hunk });
+  for (const hunk of hunks) {
+    pushContextRejectHunk({ output, hunk });
+  }
   return output.finish();
 }
 

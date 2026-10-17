@@ -14,9 +14,13 @@ function parseSubcommandArgv({
 
   while (index < args.length) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
     const nextSpec = activeSpec.subcommands[token];
-    if (nextSpec === undefined) break;
+    if (nextSpec === undefined) {
+      break;
+    }
     matchedSubcommands.push(token);
     activeSpec = nextSpec;
     index += 1;

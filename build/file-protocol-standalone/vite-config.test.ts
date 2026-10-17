@@ -9,9 +9,13 @@ import { FILE_PROTOCOL_STANDALONE_WORKERS } from './worker-definitions';
 
 async function loadAliases(mode: string): Promise<readonly { find: string | RegExp, replacement: string }[]> {
   const loaded = await loadConfigFromFile({ command: 'build', mode }, undefined, process.cwd());
-  if (loaded === null) throw new Error(`Expected Vite config to load for ${mode}`);
+  if (loaded === null) {
+    throw new Error(`Expected Vite config to load for ${mode}`);
+  }
   const aliases = loaded.config.resolve?.alias;
-  if (!Array.isArray(aliases)) throw new Error(`Expected array aliases for ${mode}`);
+  if (!Array.isArray(aliases)) {
+    throw new Error(`Expected array aliases for ${mode}`);
+  }
   return aliases;
 }
 

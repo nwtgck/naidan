@@ -236,10 +236,14 @@ function applyOccurrence({
 
 function truncateArgsAtHelp({ args }: { args: string[] }): string[] {
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '--help') continue;
+    if (args[index] !== '--help') {
+      continue;
+    }
     const prefix = args.slice(0, index + 1);
     const parsedPrefix = parseStandardArgv({ args: prefix, spec: duArgvSpec });
-    if (parsedPrefix.optionValues.help === true) return prefix;
+    if (parsedPrefix.optionValues.help === true) {
+      return prefix;
+    }
   }
   return args;
 }
@@ -271,7 +275,9 @@ export function parseDuOptions({
       };
       for (const occurrence of candidate.occurrences) {
         const result = applyOccurrence({ occurrence, state: candidateState });
-        if (!result.ok) return result.message;
+        if (!result.ok) {
+          return result.message;
+        }
       }
       return undefined;
     },

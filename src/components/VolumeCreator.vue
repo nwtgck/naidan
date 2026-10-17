@@ -82,7 +82,9 @@ function fileListToEntries({ files }: { files: FileList }): Array<{ file: File, 
   const result: Array<{ file: File, relativePath: string }> = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
-    if (!file) continue;
+    if (!file) {
+      continue;
+    }
     const parts = file.webkitRelativePath.split('/');
     const relativePath = parts.length > 1 ? parts.slice(1).join('/') : file.name;
     result.push({ file, relativePath });
@@ -98,7 +100,8 @@ async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDire
     function readBatch() {
       reader.readEntries(async (batch) => {
         if (batch.length === 0) {
-          resolve(); return;
+          resolve();
+          return;
         }
         for (const child of batch) {
           if (child.isFile) {
@@ -149,7 +152,9 @@ async function startCopyAndEmit({ name, entries, label, readOnly }: {
 
 async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) return;
+  if (!target.files || target.files.length === 0) {
+    return;
+  }
 
   const folderName = target.files[0]?.webkitRelativePath.split('/')[0] || await ensureStrings.volumes__imported_folder();
   const entries = fileListToEntries({ files: target.files });
@@ -158,42 +163,60 @@ async function handleFileSelect({ event }: { event: Event }) {
     await startCopyAndEmit({ name: folderName, entries, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
     addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return;
+    if ((e as Error).name === 'AbortError') {
+      return;
+    }
     console.error('Failed to import volume:', e);
     addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
   } finally {
-    if (fileInput.value) fileInput.value.value = '';
+    if (fileInput.value) {
+      fileInput.value.value = '';
+    }
   }
 }
 
 async function handleSingleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) return;
+  if (!target.files || target.files.length === 0) {
+    return;
+  }
   const file = target.files[0];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
 
   const entries = [{ file, relativePath: file.name }];
   try {
     await startCopyAndEmit({ name: file.name, entries, label: await ensureStrings.volumes__copying_file_to_browser(), readOnly: true });
     addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name: file.name }) });
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return;
+    if ((e as Error).name === 'AbortError') {
+      return;
+    }
     console.error('Failed to copy file:', e);
     addToast({ message: await ensureStrings.volumes__failed_to_copy_file({ errorMessage: (e as Error).message }) });
   } finally {
-    if (fileInputSingle.value) fileInputSingle.value.value = '';
+    if (fileInputSingle.value) {
+      fileInputSingle.value.value = '';
+    }
   }
 }
 
 async function handleDrop({ event }: { event: DragEvent }) {
-  if (isCreating.value) return;
+  if (isCreating.value) {
+    return;
+  }
   event.preventDefault();
 
   const items = Array.from(event.dataTransfer?.items ?? []).filter(i => i.kind === 'file');
-  if (items.length === 0) return;
+  if (items.length === 0) {
+    return;
+  }
 
   const fsEntries = items.map(i => i.webkitGetAsEntry()).filter(Boolean) as FileSystemEntry[];
-  if (fsEntries.length === 0) return;
+  if (fsEntries.length === 0) {
+    return;
+  }
 
   if (fsEntries.length === 1 && fsEntries[0]!.isDirectory) {
     const dirEntry = fsEntries[0] as FileSystemDirectoryEntry;
@@ -204,7 +227,9 @@ async function handleDrop({ event }: { event: DragEvent }) {
       await startCopyAndEmit({ name: folderName, entries: normalized, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
       addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
+      if ((e as Error).name === 'AbortError') {
+        return;
+      }
       addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
     }
     return;
@@ -217,7 +242,9 @@ async function handleDrop({ event }: { event: DragEvent }) {
       await startCopyAndEmit({ name: file.name, entries: [{ file, relativePath: file.name }], label: await ensureStrings.volumes__copying_file_to_browser(), readOnly: true });
       addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name: file.name }) });
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
+      if ((e as Error).name === 'AbortError') {
+        return;
+      }
       addToast({ message: await ensureStrings.volumes__failed_to_copy_file({ errorMessage: (e as Error).message }) });
     }
     return;
@@ -238,7 +265,9 @@ async function handleDrop({ event }: { event: DragEvent }) {
     await startCopyAndEmit({ name: folderName, entries: allEntries, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
     addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return;
+    if ((e as Error).name === 'AbortError') {
+      return;
+    }
     addToast({ message: await ensureStrings.volumes__failed_to_copy({ errorMessage: (e as Error).message }) });
   }
 }
@@ -254,7 +283,9 @@ async function pickHostVolume({ mode }: { mode: 'read' | 'readwrite' }) {
     emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly: mode === 'read' });
     addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name }) });
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return;
+    if ((e as Error).name === 'AbortError') {
+      return;
+    }
     addToast({ message: await ensureStrings.volumes__failed_to_add_folder_with_error({ errorMessage: (e as Error).message }) });
   } finally {
     isCreating.value = false;
@@ -262,7 +293,9 @@ async function pickHostVolume({ mode }: { mode: 'read' | 'readwrite' }) {
 }
 
 async function createVolume({ type }: { type: 'opfs' | 'host' }) {
-  if (isCreating.value) return;
+  if (isCreating.value) {
+    return;
+  }
 
   switch (type) {
   case 'host': {
@@ -291,7 +324,9 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
         emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly: true });
         addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name }) });
       } catch (e) {
-        if ((e as Error).name === 'AbortError') return;
+        if ((e as Error).name === 'AbortError') {
+          return;
+        }
         addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
       } finally {
         isCreating.value = false;

@@ -32,11 +32,19 @@ const REBASE_START_ARGV_CATALOG = defineArgvCatalog<'onto'>({
 });
 
 function resolveRebaseControlAction({ token }: { token: string }): RebaseControlAction | undefined {
-  if (!token.startsWith('--') || token.includes('=')) return undefined;
+  if (!token.startsWith('--') || token.includes('=')) {
+    return undefined;
+  }
   const name = token.slice(2);
-  if (name.length >= 3 && 'continue'.startsWith(name)) return 'continue';
-  if (name.length >= 2 && 'abort'.startsWith(name)) return 'abort';
-  if (name.length >= 2 && 'skip'.startsWith(name)) return 'skip';
+  if (name.length >= 3 && 'continue'.startsWith(name)) {
+    return 'continue';
+  }
+  if (name.length >= 2 && 'abort'.startsWith(name)) {
+    return 'abort';
+  }
+  if (name.length >= 2 && 'skip'.startsWith(name)) {
+    return 'skip';
+  }
   return undefined;
 }
 
@@ -66,8 +74,9 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
             break;
           case 'following-required': {
             const value = args[index + 1];
-            if (value === undefined)
+            if (value === undefined) {
               throw new GitUsageError({ message: "option `onto' requires a value" });
+            }
             ontoExpression = value;
             index += 1;
             break;
@@ -96,8 +105,9 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
       }
       }
     }
-    if (parsingOptions && arg.startsWith('-'))
+    if (parsingOptions && arg.startsWith('-')) {
       throw new GitUsageError({ message: `unknown option: ${arg}` });
+    }
     operands.push(arg);
   }
   if (operands.length > 2 || (ontoExpression !== undefined && operands.length === 0)) {
@@ -147,8 +157,9 @@ export async function runRebase({ context, args }: {
     return { exitCode: 128 };
   }
   const currentHead = await readHead({ files: context.files, repository });
-  if (currentHead.objectId === undefined)
+  if (currentHead.objectId === undefined) {
     throw new Error('rebase requires HEAD to reference a commit');
+  }
   let headRefName: string;
   let origHeadObjectId: string;
   let branchDisplay: string;
@@ -162,8 +173,9 @@ export async function runRebase({ context, args }: {
   } else {
     headRefName = branchExpression.startsWith('refs/heads/') ? branchExpression : `refs/heads/${branchExpression}`;
     const branchObjectId = await readRef({ files: context.files, repository, refName: headRefName });
-    if (branchObjectId === undefined)
+    if (branchObjectId === undefined) {
       throw new Error(`invalid branch: ${branchExpression}`);
+    }
     await readCommit({ files: context.files, repository, objectId: branchObjectId });
     origHeadObjectId = branchObjectId;
     branchDisplay = headRefName.slice('refs/heads/'.length);
@@ -197,12 +209,15 @@ export async function runRebase({ context, args }: {
   }
 
   const preflightFailure = await validateRebaseStartWorktree({ context, repository, headObjectId: currentHead.objectId });
-  if (preflightFailure !== undefined)
+  if (preflightFailure !== undefined) {
     return preflightFailure;
+  }
 
   const upstreamObjectId = await resolveCommitRevision({ files: context.files, repository, expression: upstreamExpression });
   await readCommit({ files: context.files, repository, objectId: upstreamObjectId });
-  if (ontoExpression === undefined) throw new Error('rebase onto expression was not resolved');
+  if (ontoExpression === undefined) {
+    throw new Error('rebase onto expression was not resolved');
+  }
   const ontoObjectId = await resolveCommitRevision({ files: context.files, repository, expression: ontoExpression });
   await readCommit({ files: context.files, repository, objectId: ontoObjectId });
   const graphCache = createGitCommitGraphCache();
@@ -222,8 +237,9 @@ export async function runRebase({ context, args }: {
         targetObjectId: origHeadObjectId,
         branchDisplay,
       });
-      if (checkoutFailure !== undefined)
+      if (checkoutFailure !== undefined) {
         return checkoutFailure;
+      }
     }
     await context.text().print({ text: `Current branch ${branchDisplay} is up to date.\n` });
     return { exitCode: 0 };
@@ -239,8 +255,9 @@ export async function runRebase({ context, args }: {
       leftObjectId: origHeadObjectId,
       rightObjectId: upstreamObjectId,
     });
-    if (bases.length !== 1)
+    if (bases.length !== 1) {
       throw new Error(`rebase expected one merge base, found ${bases.length}`);
+    }
     replayBaseObjectId = upstreamObjectId;
   }
   return startRebaseSequence({

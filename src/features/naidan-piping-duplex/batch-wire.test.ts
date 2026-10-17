@@ -23,20 +23,26 @@ it('decodes concatenated frames and rejects every truncated prefix of one frame'
   expect(decodeFrames({ bytes: joinBytes({ parts: small.map(frame => encodeFrame({ frame })) }) })).toEqual(small);
   for (const frame of frames.filter(frame => frame.kind !== 'data')) {
     const bytes = encodeFrame({ frame });
-    for (let size = 0; size < bytes.length; size++) expect(() => decodeFrames({ bytes: bytes.subarray(0, size) })).toThrow();
+    for (let size = 0; size < bytes.length; size++) {
+      expect(() => decodeFrames({ bytes: bytes.subarray(0, size) })).toThrow();
+    }
   }
 });
 
 it('rejects the removed kinds, invalid reasons, forged lengths and empty DATA', () => {
   for (const kind of [6, 9, 255]) {
-    const bytes = encodeFrame({ frame: { kind: 'open', id: 0 } }); bytes[0] = kind;
+    const bytes = encodeFrame({ frame: { kind: 'open', id: 0 } });
+    bytes[0] = kind;
     expect(() => decodeFrames({ bytes })).toThrow();
   }
-  const reset = encodeFrame({ frame: { kind: 'reset', id: 0, reason: 'cancelled' } }); reset[9] = 3;
+  const reset = encodeFrame({ frame: { kind: 'reset', id: 0, reason: 'cancelled' } });
+  reset[9] = 3;
   expect(() => decodeFrames({ bytes: reset })).toThrow();
-  const close = encodeFrame({ frame: { kind: 'close', token } }); close[5] = 1;
+  const close = encodeFrame({ frame: { kind: 'close', token } });
+  close[5] = 1;
   expect(() => decodeFrames({ bytes: close })).toThrow();
-  const empty = encodeFrame({ frame: { kind: 'open', id: 0 } }); empty[0] = 3;
+  const empty = encodeFrame({ frame: { kind: 'open', id: 0 } });
+  empty[0] = 3;
   expect(() => decodeFrames({ bytes: empty })).toThrow();
   new DataView(empty.buffer).setUint32(1, 0xffffffff);
   expect(() => decodeFrames({ bytes: empty })).toThrow();
@@ -55,11 +61,16 @@ it('checks per-record frame count and positive bounded windows', () => {
 });
 
 it('validates the whole fixed batch header without accepting unknown versions', () => {
-  for (const count of [1, 2, 256]) expect(inspectBatchHeader({ header: batchHeader({ count }) })).toBe(count);
-  for (const count of [0, 257, -1, 1.5]) expect(() => batchHeader({ count })).toThrow();
+  for (const count of [1, 2, 256]) {
+    expect(inspectBatchHeader({ header: batchHeader({ count }) })).toBe(count);
+  }
+  for (const count of [0, 257, -1, 1.5]) {
+    expect(() => batchHeader({ count })).toThrow();
+  }
   const header = batchHeader({ count: 1 });
   for (const offset of [0, 8, 9, 13]) {
-    const bad = header.slice(); bad[offset]! ^= 1;
-    expect(() => inspectBatchHeader({ header: bad })).toThrow();
+    const bad = header.slice();
+bad[offset]! ^= 1;
+expect(() => inspectBatchHeader({ header: bad })).toThrow();
   }
 });

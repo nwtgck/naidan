@@ -77,17 +77,23 @@ describe('loadLmProvider for persisted experimental endpoints', () => {
       },
     });
     const raw: unknown = JSON.parse(localStorage.getItem(storageKey)!);
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('Missing saved settings');
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      throw new Error('Missing saved settings');
+    }
     localStorage.setItem(storageKey, JSON.stringify({
       ...raw,
       endpoint: { type: 'experimental_type', experimental: { endpoint } },
     }));
     const loaded = await storage.loadSettings();
-    if (!loaded) throw new Error('Missing settings');
+    if (!loaded) {
+      throw new Error('Missing settings');
+    }
     // An unrelated settings save must not change which provider is selected.
     await storage.saveSettings({ settings: { ...loaded, systemPrompt: 'Unrelated edit' } });
     const reloaded = await storage.loadSettings();
-    if (!reloaded) throw new Error('Missing reloaded settings');
+    if (!reloaded) {
+      throw new Error('Missing reloaded settings');
+    }
     return [loaded, reloaded];
   }
 
@@ -99,7 +105,9 @@ describe('loadLmProvider for persisted experimental endpoints', () => {
       expect(settings.endpoint).toEqual({ type: 'naidan_rpc', registrationId: undefined });
       const provider = await loadLmProvider({ endpoint: settings.endpoint, fakeLmDebugModeStatus: 'disabled' });
       await expect(provider.listModels({ signal: undefined })).rejects.toThrow('Select a connection in Naidan RPC settings');
-      if (!provider.runChatOperation) throw new Error('Missing RPC operation scope');
+      if (!provider.runChatOperation) {
+        throw new Error('Missing RPC operation scope');
+      }
       const operation = vi.fn();
       await expect(provider.runChatOperation({ signal: undefined, operation })).rejects.toThrow('Select a connection in Naidan RPC settings');
       expect(operation).not.toHaveBeenCalled();
@@ -128,7 +136,9 @@ describe('loadLmProvider for persisted experimental endpoints', () => {
     }
     expect(rpcManager.get).toHaveBeenCalledTimes(2);
     expect(rpcManager.client).toHaveBeenCalledTimes(2);
-    for (const call of rpcManager.client.mock.calls) expect(call).toEqual([{ id: registrationId }]);
+    for (const call of rpcManager.client.mock.calls) {
+      expect(call).toEqual([{ id: registrationId }]);
+    }
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 

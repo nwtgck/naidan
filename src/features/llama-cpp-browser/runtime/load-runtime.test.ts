@@ -7,7 +7,8 @@ import { gzipSync } from 'node:zlib';
 import { loadRuntime } from './load-runtime';
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('prebuilt runtime loading', () => {
@@ -33,7 +34,9 @@ describe('prebuilt runtime loading', () => {
   }, 30000);
 
   it.each(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const)('reports missing WebGPU for %s without fetching or silently falling back', async (profile) => {
-    vi.stubGlobal('navigator', {}); const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('navigator', {});
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
     await expect(loadRuntime({ profile, assetBaseURL: 'https://example.invalid/runtime/' })).rejects.toThrow('unavailable');
     expect(fetcher).not.toHaveBeenCalled();
   });

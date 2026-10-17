@@ -31,7 +31,9 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
   let transferred = false;
   const tokenize = async (): Promise<number> => {
     // Do not retain a view across native execution: Wasm memory may grow.
-    if (pointer !== undefined) core.bytes({ pointer, length: capacity * 4 });
+    if (pointer !== undefined) {
+      core.bytes({ pointer, length: capacity * 4 });
+    }
     onTokenize();
     const result = await core.api.llama_tokenize(vocab, prompt, promptBytes, pointer ?? 0n, pointer === undefined ? 0 : capacity, 1, 1);
     if (!Number.isInteger(result) || result < -2147483648 || result > maximumNativeCount) {
@@ -48,26 +50,38 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
     let count = await tokenize();
     if (count < 0) {
       const required = -count;
-      if (pointer !== undefined && required <= capacity) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (pointer !== undefined && required <= capacity) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       const previous = pointer;
       // Consume ownership before freeing too: a failing destructor must never
       // be retried by finally, even if it freed the allocation before throwing.
       pointer = undefined;
-      if (previous !== undefined) core.free({ pointer: previous });
+      if (previous !== undefined) {
+        core.free({ pointer: previous });
+      }
       capacity = required;
       pointer = core.tryAlloc({ bytes: capacity * 4 });
-      if (pointer === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (pointer === undefined) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       count = await tokenize();
-      if (count !== required) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (count !== required) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
     }
-    if (pointer === undefined || count > capacity) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    if (pointer === undefined || count > capacity) {
+      throw new LlamaCppBrowserError({ code: 'runtime-error' });
+    }
     const bytes = core.bytes({ pointer, length: count * 4 });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const tokens = Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true));
     transferred = true;
     return { pointer, tokens };
   } finally {
-    if (!transferred && pointer !== undefined) core.free({ pointer });
+    if (!transferred && pointer !== undefined) {
+      core.free({ pointer });
+    }
   }
 }
 

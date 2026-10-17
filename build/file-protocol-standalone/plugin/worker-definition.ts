@@ -23,9 +23,15 @@ export function normalizeWorkerDefinitions({
   const seenNames = new Set<string>();
   const seenEntries = new Set<string>();
   for (const worker of normalizedWorkers) {
-    if (seenVirtualIds.has(worker.virtualId)) throw new Error(`Duplicate Worker virtualId: ${worker.virtualId}`);
-    if (seenNames.has(worker.name)) throw new Error(`Duplicate Worker name: ${worker.name}`);
-    if (seenEntries.has(worker.entry)) throw new Error(`Duplicate Worker entry: ${worker.entry}`);
+    if (seenVirtualIds.has(worker.virtualId)) {
+      throw new Error(`Duplicate Worker virtualId: ${worker.virtualId}`);
+    }
+    if (seenNames.has(worker.name)) {
+      throw new Error(`Duplicate Worker name: ${worker.name}`);
+    }
+    if (seenEntries.has(worker.entry)) {
+      throw new Error(`Duplicate Worker entry: ${worker.entry}`);
+    }
     seenVirtualIds.add(worker.virtualId);
     seenNames.add(worker.name);
     seenEntries.add(worker.entry);

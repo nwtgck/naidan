@@ -6,12 +6,19 @@ it('holds two complete request pairs per origin while independent servers remain
   const one = await pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'background' }).ready;
   const two = await pool.acquire({ origin: 'https://relay.invalid/', signal, mode: 'explicit' }).ready;
   const waiting = pool.acquire({ origin: 'https://relay.invalid:443', signal, mode: 'background' });
-  let ready = false; void waiting.ready.then(() => {
+  let ready = false;
+  void waiting.ready.then(() => {
     ready = true;
-  }); waiting.promote();
+  });
+  waiting.promote();
   const elsewhere = await pool.acquire({ origin: 'https://other.invalid', signal, mode: 'explicit' }).ready;
-  expect(ready).toBe(false); one(); await waiting.ready; expect(ready).toBe(true);
-  two(); (await waiting.ready)(); elsewhere();
+  expect(ready).toBe(false);
+  one();
+  await waiting.ready;
+  expect(ready).toBe(true);
+  two();
+  (await waiting.ready)();
+  elsewhere();
 });
 
 it('canceled queued admissions and repeated release cannot free a live connection twice', async () => {
@@ -19,12 +26,20 @@ it('canceled queued admissions and repeated release cannot free a live connectio
   const first = await pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'explicit' }).ready;
   const second = await pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'explicit' }).ready;
   const canceled = pool.acquire({ origin: 'https://relay.invalid', signal: stopped.signal, mode: 'background' });
-  stopped.abort(new Error('stop')); await expect(canceled.ready).rejects.toThrow('stop'); canceled.promote();
-  first(); first();
+  stopped.abort(new Error('stop'));
+  await expect(canceled.ready).rejects.toThrow('stop');
+  canceled.promote();
+  first();
+  first();
   const third = await pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'explicit' }).ready;
   let admitted = false;
-  const fourth = pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'explicit' }); void fourth.ready.then(() => {
+  const fourth = pool.acquire({ origin: 'https://relay.invalid', signal, mode: 'explicit' });
+  void fourth.ready.then(() => {
     admitted = true;
   });
-  await Promise.resolve(); expect(admitted).toBe(false); second(); (await fourth.ready)(); third();
+  await Promise.resolve();
+  expect(admitted).toBe(false);
+  second();
+  (await fourth.ready)();
+  third();
 });

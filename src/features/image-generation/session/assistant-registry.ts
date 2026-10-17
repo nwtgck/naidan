@@ -6,11 +6,15 @@ import type { Tool } from '@/01-models/tool';
 const registrations = new Map<ChatId, { create: () => Tool[] }>();
 
 export function registerImageGenerationAssistant({ chatId, create }: { chatId: ChatId, create: () => Tool[] }): () => void {
-  if (registrations.has(chatId)) throw new Error('This chat is already connected to another Image Generation.');
+  if (registrations.has(chatId)) {
+    throw new Error('This chat is already connected to another Image Generation.');
+  }
   const registration = { create };
   registrations.set(chatId, registration);
   return () => {
-    if (registrations.get(chatId) === registration) registrations.delete(chatId);
+    if (registrations.get(chatId) === registration) {
+      registrations.delete(chatId);
+    }
   };
 }
 

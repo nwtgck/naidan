@@ -38,14 +38,18 @@ export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDo
   const visited = new Set<string>();
   while (next) {
     signal.throwIfAborted();
-    if (visited.size >= 32 || visited.has(next)) throw new Error('Invalid catalog metadata pagination');
+    if (visited.size >= 32 || visited.has(next)) {
+      throw new Error('Invalid catalog metadata pagination');
+    }
     visited.add(next);
     const response = await fetch({ request: { url: next, signal } });
     if (response.status !== 200) {
       await response.body.cancel().catch(() => undefined);
       throw new Error(`Hugging Face metadata HTTP ${response.status}: ${source.repository}`);
     }
-    const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0;
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
     const cancel = () => {
       void reader.cancel().catch(() => undefined);
     };
@@ -53,37 +57,57 @@ export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDo
     let data: unknown;
     try {
       while (true) {
-        signal.throwIfAborted(); const { value, done } = await reader.read(); signal.throwIfAborted(); if (done) break;
+        signal.throwIfAborted();
+        const { value, done } = await reader.read();
+        signal.throwIfAborted();
+        if (done) {
+          break;
+        }
         total += value.byteLength;
-        if (total > 4 * 1024 * 1024) throw new Error('Catalog metadata exceeds its bounded size');
+        if (total > 4 * 1024 * 1024) {
+          throw new Error('Catalog metadata exceeds its bounded size');
+        }
         chunks.push(value);
       }
-      const bytes = new Uint8Array(total); let offset = 0;
+      const bytes = new Uint8Array(total);
+      let offset = 0;
       for (const part of chunks) {
-        bytes.set(part, offset); offset += part.length;
+        bytes.set(part, offset);
+        offset += part.length;
       }
       data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     } catch (error) {
-      await reader.cancel().catch(() => undefined); throw error;
+      await reader.cancel().catch(() => undefined);
+      throw error;
     } finally {
-      signal.removeEventListener('abort', cancel); reader.releaseLock();
+      signal.removeEventListener('abort', cancel);
+      reader.releaseLock();
     }
     const matches = treeSchema.parse(data).filter(entry => entry.type === 'file' && entry.path === source.path);
-    if (matches.length > 1) throw new Error('Duplicate catalog file metadata');
+    if (matches.length > 1) {
+      throw new Error('Duplicate catalog file metadata');
+    }
     const match = matches[0];
     switch (match?.type) {
     case 'file': {
-      if (!match.lfs || match.lfs.size !== match.size) throw new Error('Catalog file has no verifiable SHA-256 identity');
+      if (!match.lfs || match.lfs.size !== match.size) {
+        throw new Error('Catalog file has no verifiable SHA-256 identity');
+      }
       return imageFileIdentitySchema.parse({ ...source, size: match.size, sha256: match.lfs.oid });
     }
     case 'directory': case undefined: break;
-    default: { const exhaustive: never = match; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = match;
+      throw new Error(String(exhaustive));
+    }
     }
     const link: RegExpMatchArray | null = response.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/) ?? null;
     next = undefined;
     if (link) {
       const url = new URL(link[1]!, 'https://huggingface.co');
-      if (url.origin !== 'https://huggingface.co' || url.pathname !== prefix || url.username || url.password || url.hash) throw new Error('Unsafe catalog pagination URL');
+      if (url.origin !== 'https://huggingface.co' || url.pathname !== prefix || url.username || url.password || url.hash) {
+        throw new Error('Unsafe catalog pagination URL');
+      }
       next = url.href;
     }
   }

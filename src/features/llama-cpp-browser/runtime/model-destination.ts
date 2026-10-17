@@ -7,8 +7,12 @@ export { modelDestinationSchema, destinationKey, hostModelReference, parseHostMo
 export async function hostModelRoot({ destination, mode }: { destination: Extract<ModelDestination, { kind: 'host' }>, mode: 'read' | 'readwrite' }): Promise<HostModelDirectoryHandle> {
   modelDestinationSchema.parse(destination);
   const handle = await hostModelHandles.get({ id: toHostModelDirectoryId({ raw: destination.directoryId }) });
-  if (!handle) throw new Error('Reconnect the linked model folder');
-  if (!hostModelPermissionGranted({ permission: await handle.queryPermission({ mode }) })) throw new Error('Linked model folder permission expired; reconnect the folder');
+  if (!handle) {
+    throw new Error('Reconnect the linked model folder');
+  }
+  if (!hostModelPermissionGranted({ permission: await handle.queryPermission({ mode }) })) {
+    throw new Error('Linked model folder permission expired; reconnect the folder');
+  }
   return handle;
 }
 
@@ -17,7 +21,10 @@ export async function withDestinationLock<T>({ destination, operation, signal }:
   switch (target.kind) {
   case 'opfs': return operation();
   case 'host': return navigator.locks.request(hostModelDirectoryLock({ id: toHostModelDirectoryId({ raw: target.directoryId }) }), { signal }, operation);
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

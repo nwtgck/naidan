@@ -76,12 +76,17 @@ export async function fetchModelsForChat({
         // the public selection name. Resolve only its exact listed directory.
         if (/^.+\.gguf$/i.test(mutableChat.modelId)) {
           const directory = `${mutableChat.modelId.slice(0, -5)}-GGUF`;
-          if (models.includes(directory)) replacement = directory;
+          if (models.includes(directory)) {
+            replacement = directory;
+          }
         }
         break;
       }
       case 'naidan_rpc': case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
-      default: { const exhaustive: never = endpoint; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = endpoint;
+        throw new Error(`Unhandled endpoint: ${exhaustive}`);
+      }
       }
       mutableChat.modelId = replacement;
       mutableChat.updatedAt = Date.now();
@@ -128,7 +133,9 @@ export async function fetchModelsForEndpoint({
   endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
-  if (!isSupportedEndpoint(endpoint)) return [];
+  if (!isSupportedEndpoint(endpoint)) {
+    return [];
+  }
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     return [];
   }

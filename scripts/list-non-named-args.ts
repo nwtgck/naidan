@@ -97,11 +97,21 @@ function getReturnTypeNode(node: ts.Node): ts.TypeNode | undefined {
 }
 
 function getNodeKindLabel(node: ts.Node): string {
-  if (ts.isFunctionDeclaration(node)) return 'function';
-  if (ts.isMethodDeclaration(node)) return 'method';
-  if (ts.isVariableDeclaration(node)) return 'variable';
-  if (ts.isFunctionExpression(node)) return 'function-expression';
-  if (ts.isArrowFunction(node)) return 'arrow-function';
+  if (ts.isFunctionDeclaration(node)) {
+    return 'function';
+  }
+  if (ts.isMethodDeclaration(node)) {
+    return 'method';
+  }
+  if (ts.isVariableDeclaration(node)) {
+    return 'variable';
+  }
+  if (ts.isFunctionExpression(node)) {
+    return 'function-expression';
+  }
+  if (ts.isArrowFunction(node)) {
+    return 'arrow-function';
+  }
   return ts.SyntaxKind[node.kind] ?? 'unknown';
 }
 
@@ -303,8 +313,12 @@ function main() {
   }
 
   findings.sort((left, right) => {
-    if (left.filePath !== right.filePath) return left.filePath.localeCompare(right.filePath);
-    if (left.line !== right.line) return left.line - right.line;
+    if (left.filePath !== right.filePath) {
+      return left.filePath.localeCompare(right.filePath);
+    }
+    if (left.line !== right.line) {
+      return left.line - right.line;
+    }
     return left.column - right.column;
   });
 

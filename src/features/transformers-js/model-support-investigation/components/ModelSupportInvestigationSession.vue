@@ -89,7 +89,9 @@ const ordinaryDownloadTiming = parseDownloadTiming({
   schema: downloadTimingSnapshotSchema,
   value: toRaw((() => {
     const snapshot = sessionView.initialSnapshot;
-    if (snapshot === undefined) return props.ordinaryDownloadTiming;
+    if (snapshot === undefined) {
+      return props.ordinaryDownloadTiming;
+    }
     switch (snapshot.view) {
     case 'setup': return props.ordinaryDownloadTiming;
     case 'results': return snapshot.ordinaryDownloadTiming;
@@ -112,13 +114,18 @@ const teardownError = ref<string | undefined>(undefined);
 const modelExecutionAvailable = computed(() => resourceFailure.value === undefined && teardownError.value === undefined);
 const sessionReady = computed(() => inheritedSessionReady.value && modelExecutionAvailable.value);
 void sessionView.ready.then(result => {
-  if (!sessionView.isActive()) return;
+  if (!sessionView.isActive()) {
+    return;
+  }
   switch (result.status) {
   case 'complete':
     inheritedSessionReady.value = true;
-    if (sessionReady.value && providerRetention.value !== undefined && !running.value) providerRetention.value = { ...providerRetention.value, reserved: emptyInvestigationProviderRetentionUsage() };
+    if (sessionReady.value && providerRetention.value !== undefined && !running.value) {
+      providerRetention.value = { ...providerRetention.value, reserved: emptyInvestigationProviderRetentionUsage() };
+    }
     return;
-  case 'failed': teardownError.value = result.error; return;
+  case 'failed': teardownError.value = result.error;
+    return;
   default: {
     const _ex: never = result;
     return _ex;
@@ -135,7 +142,9 @@ const targetParseResult = computed(() => {
   const targets = [...committedTargets.value];
   const seen = new Set(targets);
   for (const target of targetDraftParseResult.value.targets) {
-    if (seen.has(target)) continue;
+    if (seen.has(target)) {
+      continue;
+    }
     seen.add(target);
     targets.push(target);
   }
@@ -156,9 +165,13 @@ const targetExecutions = shallowRef<ModelSupportInvestigationTargetExecution[]>(
 const currentRunningTarget = computed(() => targetExecutions.value.find(execution => execution.status === 'running')?.target);
 const canSkipCurrentTarget = computed(() => {
   const currentTarget = currentRunningTarget.value;
-  if (currentTarget === undefined) return false;
+  if (currentTarget === undefined) {
+    return false;
+  }
   const currentIndex = targetExecutions.value.findIndex(execution => execution.target === currentTarget);
-  if (currentIndex < 0) return false;
+  if (currentIndex < 0) {
+    return false;
+  }
   return targetExecutions.value.slice(currentIndex + 1).some(execution => execution.status === 'pending');
 });
 const selectedTarget = ref<string | undefined>(undefined);
@@ -184,7 +197,9 @@ const nativeEvidenceVersion = ref(0);
 const providerProgressPresentation = computed(() => {
   const terminal = run.value?.productionProviderInvestigation;
   const live = providerLiveProgress.value;
-  if (terminal === undefined && live === undefined) return undefined;
+  if (terminal === undefined && live === undefined) {
+    return undefined;
+  }
   const progress = terminal?.providerProgress ?? live!.progress.provider;
   const phase: ProductionProviderInvestigationLiveProgress['progress']['phase'] | 'loading' | 'cleanup' | 'seal-release' = waitingForResources.value ?? (terminal !== undefined ? 'finished'
     : live!.progress.phase === 'running' && progress.loadStatus === 'loading' ? 'loading' : live!.progress.phase);
@@ -206,13 +221,17 @@ const displayedCurrentOperation = computed(() => (
 function formatModelLoadCacheDiagnostic({ progress }: {
   progress: ModelSupportInvestigationProgressObservation,
 }): string | undefined {
-  if (progress.cacheMatchRequestCount === undefined && progress.remoteFetchAttemptCount === undefined) return undefined;
+  if (progress.cacheMatchRequestCount === undefined && progress.remoteFetchAttemptCount === undefined) {
+    return undefined;
+  }
   return `cache=${progress.cacheHitCount ?? 0} hit/${progress.cacheMissCount ?? 0} miss/${progress.cacheAliasHitCount ?? 0} alias · opfs-matched-bytes=${progress.cacheMatchedBytes ?? 0} · remote-fetch-attempts=${progress.remoteFetchAttemptCount ?? 0}`;
 }
 
 const displayedProgressDiagnostic = computed(() => {
   const progress = latestProgress.value;
-  if (progress === undefined) return undefined;
+  if (progress === undefined) {
+    return undefined;
+  }
   const activitySeconds = Math.max(0, Math.floor((progressClockMs.value - Date.parse(progress.lastActivityAt)) / 1000));
   const forwardSeconds = progress.lastForwardProgressAt === undefined
     ? "never"
@@ -228,7 +247,9 @@ const displayedProgressDiagnostic = computed(() => {
 });
 const repositorySummary = computed(() => {
   const repository = run.value?.repository;
-  if (repository === undefined) return undefined;
+  if (repository === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__repository_summary({
     fileCount: repository.fileCount,
     pipelineTag: repository.pipelineTag,
@@ -241,7 +262,9 @@ const supportedAutoClasses = computed(() => (
 ));
 const declarationSummary = computed(() => {
   const declarations = run.value?.declarations;
-  if (declarations === undefined) return undefined;
+  if (declarations === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__declaration_files_summary({
     fileCount: declarations.files.length,
     revision: declarations.resolvedRevision,
@@ -249,7 +272,9 @@ const declarationSummary = computed(() => {
 });
 const templateBehaviorSummary = computed(() => {
   const behavior = run.value?.templateBehavior;
-  if (behavior === undefined) return undefined;
+  if (behavior === undefined) {
+    return undefined;
+  }
   const passedCount = behavior.cases.filter(item => item.status === "passed").length;
   return lazyStrings.ModelSupportInvestigationModal__template_behavior_summary({
     tokenizerClass: behavior.tokenizerClass,
@@ -259,7 +284,9 @@ const templateBehaviorSummary = computed(() => {
 });
 const toolTemplateProvenanceSummary = computed(() => {
   const provenance = run.value?.templateBehavior?.toolTemplateProvenance;
-  if (provenance === undefined) return undefined;
+  if (provenance === undefined) {
+    return undefined;
+  }
   switch (provenance.status) {
   case "unavailable":
     return lazyStrings.ModelSupportInvestigationModal__tool_template_provenance_summary({
@@ -347,7 +374,9 @@ function toolProtocolProbeSummary({ attempt }: {
   attempt: ModelSupportInvestigationLoadAttempt,
 }): string | undefined {
   const probe = attempt.toolProtocolProbe;
-  if (probe === undefined) return undefined;
+  if (probe === undefined) {
+    return undefined;
+  }
   switch (probe.status) {
   case "observed": {
     const parserArguments = toolParserSummaryArguments({ observation: probe.parserObservation });
@@ -406,7 +435,9 @@ function toolProtocolProbeSummary({ attempt }: {
 
 const modelFilePlanSummary = computed(() => {
   const plan = run.value?.modelFilePlan;
-  if (plan === undefined) return undefined;
+  if (plan === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__model_file_plan_summary({
     eligibleCount: plan.candidates.filter(candidate => candidate.eligibility === "eligible").length,
     candidateCount: plan.candidates.length,
@@ -416,7 +447,9 @@ const modelFilePlanSummary = computed(() => {
 const productionLaneRouteSummary = computed(() => {
   const observation = run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation;
   const route = observation?.route;
-  if (route === undefined) return undefined;
+  if (route === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__lane_route_summary({
     autoClass: route.autoClass,
     processor: route.processor,
@@ -452,14 +485,18 @@ const productionLoadAttemptsSummary = computed(() => {
 });
 const productionLaneComparisonSummary = computed(() => {
   const currentRun = run.value;
-  if (currentRun === undefined) return undefined;
+  if (currentRun === undefined) {
+    return undefined;
+  }
   if (currentRun.productionLane.status === "failed" && currentRun.productionLane.error !== undefined) {
     return lazyStrings.ModelSupportInvestigationModal__lane_failed({
       message: currentRun.productionLane.error.message,
     });
   }
   const comparison = currentRun.laneComparison;
-  if (comparison === undefined) return undefined;
+  if (comparison === undefined) {
+    return undefined;
+  }
   return comparison.exactInputMatch
     ? lazyStrings.ModelSupportInvestigationModal__lane_input_match({
       tokenCount: comparison.referenceInputTokenIds.length,
@@ -470,7 +507,9 @@ const productionLaneComparisonSummary = computed(() => {
 });
 const persistenceRoundTripSummary = computed(() => {
   const persistence = run.value?.persistenceRoundTrip;
-  if (persistence === undefined) return undefined;
+  if (persistence === undefined) {
+    return undefined;
+  }
   switch (persistence.status) {
   case 'observed':
     return lazyStrings.ModelSupportInvestigationModal__persistence_roundtrip_summary({
@@ -498,7 +537,9 @@ const persistenceRoundTripSummary = computed(() => {
 });
 const productionContinuitySummary = computed(() => {
   const continuity = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.continuity;
-  if (continuity === undefined) return undefined;
+  if (continuity === undefined) {
+    return undefined;
+  }
   switch (continuity.status) {
   case "failed":
     return lazyStrings.ModelSupportInvestigationModal__lane_continuity_failed({
@@ -530,7 +571,9 @@ const productionContinuitySummary = computed(() => {
 });
 const productionToolResultContinuationSummary = computed(() => {
   const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.toolResultContinuation;
-  if (observation === undefined) return undefined;
+  if (observation === undefined) {
+    return undefined;
+  }
   switch (observation.status) {
   case "not-run":
     return undefined;
@@ -559,7 +602,9 @@ const productionToolResultContinuationSummary = computed(() => {
 });
 const productionMultimodalSummary = computed(() => {
   const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.multimodal;
-  if (observation === undefined) return undefined;
+  if (observation === undefined) {
+    return undefined;
+  }
   switch (observation.status) {
   case "observed":
     return lazyStrings.ModelSupportInvestigationModal__multimodal_observed({
@@ -590,7 +635,9 @@ const productionMultimodalSummary = computed(() => {
 });
 const productionReasoningSummary = computed(() => {
   const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.reasoning;
-  if (observation === undefined) return undefined;
+  if (observation === undefined) {
+    return undefined;
+  }
   switch (observation.status) {
   case "observed":
     return lazyStrings.ModelSupportInvestigationModal__reasoning_differential_observed({
@@ -627,7 +674,9 @@ const executionSummary = computed(() => run.value === undefined
   : investigationExecutionSummary({ run: run.value, recovery: recovery.value }));
 const evidenceReadinessSummary = computed(() => {
   const report = evidenceReadiness.value;
-  if (report === undefined) return undefined;
+  if (report === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__evidence_readiness_summary({
     implementationReadyCount: report.domains.filter(item => item.status === "implementation-ready").length,
     partialCount: report.domains.filter(item => item.status === "partial").length,
@@ -659,7 +708,9 @@ const runtimeControlInputs = computed(() => {
 });
 const runtimeEnvironmentSummary = computed(() => {
   const environment = runtimeAssetsView.value?.environment;
-  if (environment === undefined) return undefined;
+  if (environment === undefined) {
+    return undefined;
+  }
   const adapter = environment.webGpu.adapterInfo.description
     ?? environment.webGpu.adapterInfo.device
     ?? environment.webGpu.adapterInfo.architecture
@@ -678,7 +729,9 @@ const runtimeEnvironmentSummary = computed(() => {
 });
 const cacheSummary = computed(() => {
   const cache = run.value?.cache;
-  if (cache === undefined) return undefined;
+  if (cache === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__opfs_inventory_summary({
     fileCount: cache.fileCount,
     totalBytes: cache.totalBytes,
@@ -714,7 +767,9 @@ const findingDetails = computed(() => steps.value
 
 function updateStep({ event }: { event: ModelSupportInvestigationEvent }): void {
   currentOperation.value = event.detail;
-  if (event.progress !== undefined) latestProgress.value = event.progress;
+  if (event.progress !== undefined) {
+    latestProgress.value = event.progress;
+  }
   steps.value = steps.value.map(step => step.id === event.stepId
     ? { ...step, status: event.status, detail: event.detail }
     : step);
@@ -833,7 +888,9 @@ function candidatePlanSummary({ candidate }: {
   candidate: ModelSupportInvestigationCandidateFilePlan,
 }): string | undefined {
   const status = candidateEligibilityLabel({ candidate });
-  if (status === undefined) return undefined;
+  if (status === undefined) {
+    return undefined;
+  }
   return lazyStrings.ModelSupportInvestigationModal__candidate_plan_summary({
     candidateId: candidate.candidateId,
     status,
@@ -866,14 +923,18 @@ function statusLabel({ status }: { status: ModelSupportInvestigationStep["status
 
 function getFocusableElements(): HTMLElement[] {
   const root = modalContent.value;
-  if (root === undefined) return [];
+  if (root === undefined) {
+    return [];
+  }
   return Array.from(root.querySelectorAll<HTMLElement>(
     "button:not([disabled]), a[href], [tabindex]:not([tabindex=\"-1\"])",
   )).filter(element => element.offsetParent !== null);
 }
 
 function close(): void {
-  if (running.value || newInvestigationPending.value) return;
+  if (running.value || newInvestigationPending.value) {
+    return;
+  }
   retireCurrentView();
   emit("close");
 }
@@ -883,7 +944,9 @@ function handleKeydown({ event }: { event: KeyboardEvent }): void {
     close();
     return;
   }
-  if (event.key !== "Tab") return;
+  if (event.key !== "Tab") {
+    return;
+  }
 
   const focusable = getFocusableElements();
   if (focusable.length === 0) {
@@ -893,7 +956,9 @@ function handleKeydown({ event }: { event: KeyboardEvent }): void {
   }
   const first = focusable[0];
   const last = focusable.at(-1);
-  if (first === undefined || last === undefined) return;
+  if (first === undefined || last === undefined) {
+    return;
+  }
   if (event.shiftKey && (document.activeElement === first || document.activeElement === modalContent.value)) {
     event.preventDefault();
     last.focus();
@@ -923,7 +988,9 @@ function recordResourceFailure({ cause }: { cause: unknown }): void {
 
 function disposeOwnedClient({ client }: { client: SessionWorkerClient }): Promise<void> {
   const existing = clientDisposals.get(client);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    return existing;
+  }
   const disposal = (async () => {
     try {
       await client.dispose();
@@ -945,11 +1012,15 @@ async function disposeSessionWorkers(): Promise<void> {
   // Start all physical disposals before waiting for a pending sealing owner.
   const disposals = [...ownedClients].map(client => disposeOwnedClient({ client }));
   await Promise.allSettled([...disposals, ...ownedEvidenceReleases]);
-  if (resourceFailure.value !== undefined) throw resourceFailure.value.cause;
+  if (resourceFailure.value !== undefined) {
+    throw resourceFailure.value.cause;
+  }
 }
 
 function retireCurrentView(): void {
-  if (!sessionView.isActive()) return;
+  if (!sessionView.isActive()) {
+    return;
+  }
   try {
     rememberCurrentSession();
   } catch {
@@ -964,7 +1035,8 @@ function retireCurrentView(): void {
   void sessionView.retire({ dispose: disposeSessionWorkers }).then(result => {
     switch (result.status) {
     case 'complete': return;
-    case 'failed': teardownError.value = result.error; return;
+    case 'failed': teardownError.value = result.error;
+      return;
     default: {
       const _ex: never = result;
       return _ex;
@@ -976,7 +1048,9 @@ function retireCurrentView(): void {
 async function interruptClientBestEffort({ client }: {
   client: ReturnType<typeof createModelSupportInvestigationWorkerClient> | undefined,
 }): Promise<boolean> {
-  if (client === undefined) return false;
+  if (client === undefined) {
+    return false;
+  }
   try {
     await client.interrupt();
     return true;
@@ -989,13 +1063,17 @@ async function interruptClientBestEffort({ client }: {
 
 async function disposeActiveClient(): Promise<void> {
   const client = activeClient;
-  if (client === undefined) return;
+  if (client === undefined) {
+    return;
+  }
   activeClient = undefined;
   await disposeOwnedClient({ client });
 }
 
 async function stopInvestigation(): Promise<void> {
-  if (!running.value || stopping.value) return;
+  if (!running.value || stopping.value) {
+    return;
+  }
   stopping.value = true;
   interruptionRequested = true;
   skipRequestedTarget = undefined;
@@ -1008,10 +1086,14 @@ async function stopInvestigation(): Promise<void> {
 }
 
 async function skipCurrentTarget(): Promise<void> {
-  if (!running.value || stopping.value || skippingCurrentTarget.value || !canSkipCurrentTarget.value) return;
+  if (!running.value || stopping.value || skippingCurrentTarget.value || !canSkipCurrentTarget.value) {
+    return;
+  }
   const target = currentRunningTarget.value;
   const client = activeClient;
-  if (target === undefined || client === undefined) return;
+  if (target === undefined || client === undefined) {
+    return;
+  }
 
   skipRequestedTarget = target;
   skippingCurrentTarget.value = true;
@@ -1044,7 +1126,9 @@ function applyRunPresentation({
   steps.value = sourceRun.steps;
   currentOperation.value = sourceRun.currentOperation;
   const progress = sourceRecovery?.lastEvent?.progress;
-  if (progress !== undefined) latestProgress.value = progress;
+  if (progress !== undefined) {
+    latestProgress.value = progress;
+  }
   const providerProgress = sourceRecovery?.lastEvent?.productionProviderProgress;
   if (providerProgress !== undefined) {
     providerLiveProgress.value = validateProductionProviderInvestigationLiveProgress({ value: providerProgress, runId: sourceRun.runId, modelId: sourceRun.modelId });
@@ -1057,8 +1141,12 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   timeoutMs: number | undefined,
   replayMetadataBudgetBytes: number,
 }): Promise<ModelSupportInvestigationRun> {
-  if (!sessionView.isActive()) throw new Error('Investigation view is retired');
-  if (!modelExecutionAvailable.value) throw new Error('Investigation resource release remains unconfirmed');
+  if (!sessionView.isActive()) {
+    throw new Error('Investigation view is retired');
+  }
+  if (!modelExecutionAvailable.value) {
+    throw new Error('Investigation resource release remains unconfirmed');
+  }
   const client = createModelSupportInvestigationWorkerClient();
   ownedClients.add(client);
   let acceptingCallbacks = true;
@@ -1067,7 +1155,9 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
   let validationFailure: { cause: unknown } | undefined;
   const pendingAdmissions = new Set<Promise<void>>();
   function rejectCheckpoint({ cause }: { cause: unknown }): void {
-    if (!sessionView.isActive() || activeClient !== client) return;
+    if (!sessionView.isActive() || activeClient !== client) {
+      return;
+    }
     validationFailure ??= { cause };
     acceptingCallbacks = false;
     void interruptClientBestEffort({ client });
@@ -1080,7 +1170,9 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     // Admission precedes Blob reads; neither interrupt nor view retirement waits
     // for this promise. Late verification has no authority to adopt a result.
     const size = measureProductionProviderNativeEvidenceSidecar({ evidence });
-    if (size.binaryBytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) throw new Error('Invalid checkpoint recording capacity');
+    if (size.binaryBytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) {
+      throw new Error('Invalid checkpoint recording capacity');
+    }
     let admission = nativeAdmissions.get(evidence);
     if (admission === undefined) {
       admission = {
@@ -1090,9 +1182,13 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
       };
       nativeAdmissions.set(evidence, admission);
     }
-    if (admission.runId !== sourceRun.runId || admission.modelId !== sourceRun.modelId) throw new Error('Invalid checkpoint recording identity');
+    if (admission.runId !== sourceRun.runId || admission.modelId !== sourceRun.modelId) {
+      throw new Error('Invalid checkpoint recording identity');
+    }
     const pending = admission.result.then(owned => {
-      if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client || expectedRunId !== sourceRun.runId) return;
+      if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client || expectedRunId !== sourceRun.runId) {
+        return;
+      }
       nativeEvidenceByTarget.set(target, owned);
       nativeEvidenceVersion.value++;
     }, cause => rejectCheckpoint({ cause }));
@@ -1112,7 +1208,9 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     recordResourceFailure({ cause: error });
   });
   function observeEvidenceRelease(): void {
-    if (!ownsProviderSealing) return;
+    if (!ownsProviderSealing) {
+      return;
+    }
     try {
       void client.waitForEvidenceRelease().then(release.resolve, release.reject);
     } catch (error) {
@@ -1144,8 +1242,12 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
           configuration: structuredClone(configuration),
           replayMetadataBudgetBytes,
           onEvent: ({ event }) => {
-            if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client) return;
-            if (runByTarget.get(target)?.productionProviderInvestigation !== undefined) return;
+            if (!acceptingCallbacks || !sessionView.isActive() || activeClient !== client) {
+              return;
+            }
+            if (runByTarget.get(target)?.productionProviderInvestigation !== undefined) {
+              return;
+            }
             try {
               if (event.productionProviderProgress !== undefined) {
                 providerLiveProgress.value = validateProductionProviderInvestigationLiveProgress({ value: event.productionProviderProgress, runId: expectedRunId ?? '', modelId: target });
@@ -1156,17 +1258,27 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
             }
           },
           onCheckpoint: ({ checkpoint }) => {
-            if (!acceptingCallbacks || !sessionView.isActive()) return;
+            if (!acceptingCallbacks || !sessionView.isActive()) {
+              return;
+            }
             try {
               expectedRunId ??= checkpoint.run.runId;
-              if (checkpoint.run.runId !== expectedRunId) throw new Error('Invalid checkpoint run identity');
-              if (normalizeInvestigationTarget({ input: checkpoint.run.modelId }) !== target) throw new Error('Invalid checkpoint model identity');
-              if (checkpoint.nativeEvidence !== undefined) adoptNativeEvidence({ evidence: checkpoint.nativeEvidence, sourceRun: checkpoint.run });
+              if (checkpoint.run.runId !== expectedRunId) {
+                throw new Error('Invalid checkpoint run identity');
+              }
+              if (normalizeInvestigationTarget({ input: checkpoint.run.modelId }) !== target) {
+                throw new Error('Invalid checkpoint model identity');
+              }
+              if (checkpoint.nativeEvidence !== undefined) {
+                adoptNativeEvidence({ evidence: checkpoint.nativeEvidence, sourceRun: checkpoint.run });
+              }
             } catch (cause) {
               rejectCheckpoint({ cause });
               return;
             }
-            if (checkpoint.replayMetadata !== undefined) replayMetadataByTarget.set(target, checkpoint.replayMetadata);
+            if (checkpoint.replayMetadata !== undefined) {
+              replayMetadataByTarget.set(target, checkpoint.replayMetadata);
+            }
             applyRunPresentation({
               target,
               sourceRun: checkpoint.run,
@@ -1175,20 +1287,30 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
           },
         }).then(
           value => {
-            observeEvidenceRelease(); return value;
+            observeEvidenceRelease();
+            return value;
           },
           error => {
-            observeEvidenceRelease(); throw error;
+            observeEvidenceRelease();
+            throw error;
           },
         );
       },
     });
     await Promise.all([...pendingAdmissions]);
-    if (validationFailure !== undefined) throw validationFailure.cause;
-    if (!acceptingCallbacks || !sessionView.isActive()) return completedRun;
+    if (validationFailure !== undefined) {
+      throw validationFailure.cause;
+    }
+    if (!acceptingCallbacks || !sessionView.isActive()) {
+      return completedRun;
+    }
     try {
-      if (expectedRunId !== undefined && completedRun.runId !== expectedRunId) throw new Error('Invalid completed run identity');
-      if (normalizeInvestigationTarget({ input: completedRun.modelId }) !== target) throw new Error('Invalid completed model identity');
+      if (expectedRunId !== undefined && completedRun.runId !== expectedRunId) {
+        throw new Error('Invalid completed run identity');
+      }
+      if (normalizeInvestigationTarget({ input: completedRun.modelId }) !== target) {
+        throw new Error('Invalid completed model identity');
+      }
     } catch (cause) {
       // A terminal result has the same owner as its checkpoints even when no
       // native recording was collected. Preserve the last accepted evidence.
@@ -1221,8 +1343,12 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     throw cause;
   } finally {
     acceptingCallbacks = false;
-    if (!operationStarted || !ownsProviderSealing) release.resolve();
-    if (activeClient === client) activeClient = undefined;
+    if (!operationStarted || !ownsProviderSealing) {
+      release.resolve();
+    }
+    if (activeClient === client) {
+      activeClient = undefined;
+    }
     try {
       waitingForResources.value = 'cleanup';
       await disposeOwnedClient({ client });
@@ -1240,13 +1366,17 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     } finally {
       waitingForResources.value = undefined;
     }
-    if (skipRequestedTarget === target) skippingCurrentTarget.value = false;
+    if (skipRequestedTarget === target) {
+      skippingCurrentTarget.value = false;
+    }
   }
 }
 
 function selectTargetExecution({ executionIndex }: { executionIndex: number }): void {
   const execution = targetExecutions.value[executionIndex];
-  if (running.value || execution?.run === undefined) return;
+  if (running.value || execution?.run === undefined) {
+    return;
+  }
   applyRunPresentation({
     target: execution.target,
     sourceRun: execution.run,
@@ -1258,7 +1388,9 @@ function appendCommittedTargets({ targets }: { targets: readonly string[] }): vo
   const seen = new Set(committedTargets.value);
   const next = [...committedTargets.value];
   for (const target of targets) {
-    if (seen.has(target)) continue;
+    if (seen.has(target)) {
+      continue;
+    }
     seen.add(target);
     next.push(target);
   }
@@ -1266,9 +1398,13 @@ function appendCommittedTargets({ targets }: { targets: readonly string[] }): vo
 }
 
 function commitTargetDraft(): boolean {
-  if (targetDraft.value.trim().length === 0) return true;
+  if (targetDraft.value.trim().length === 0) {
+    return true;
+  }
   const parsed = targetDraftParseResult.value;
-  if (parsed.errors.length > 0) return false;
+  if (parsed.errors.length > 0) {
+    return false;
+  }
   appendCommittedTargets({ targets: parsed.targets });
   targetDraft.value = '';
   return true;
@@ -1276,7 +1412,9 @@ function commitTargetDraft(): boolean {
 
 function handleTargetDraftPaste({ event }: { event: ClipboardEvent }): void {
   const pasted = event.clipboardData?.getData('text') ?? '';
-  if (pasted.length === 0) return;
+  if (pasted.length === 0) {
+    return;
+  }
   const combined = targetDraft.value.trim().length === 0
     ? pasted
     : `${targetDraft.value}\n${pasted}`;
@@ -1291,20 +1429,28 @@ function handleTargetDraftPaste({ event }: { event: ClipboardEvent }): void {
 }
 
 function handleTargetDraftKeydown({ event }: { event: KeyboardEvent }): void {
-  if (event.key !== 'Enter' || event.shiftKey) return;
+  if (event.key !== 'Enter' || event.shiftKey) {
+    return;
+  }
   event.preventDefault();
   commitTargetDraft();
 }
 
 function removeCommittedTarget({ targetIndex }: { targetIndex: number }): void {
-  if (running.value) return;
+  if (running.value) {
+    return;
+  }
   committedTargets.value = committedTargets.value.filter((_target, index) => index !== targetIndex);
 }
 
 function copyModelList(): void {
-  if (targetParseResult.value.errors.length > 0) return;
+  if (targetParseResult.value.errors.length > 0) {
+    return;
+  }
   const value = canonicalInvestigationTargetList({ targets: targetParseResult.value.targets });
-  if (value.length === 0) return;
+  if (value.length === 0) {
+    return;
+  }
   try {
     void Promise.resolve(navigator.clipboard.writeText(value)).catch(() => {
       // Clipboard permission and platform failures are non-semantic UI failures. Do not
@@ -1352,12 +1498,16 @@ function scopeLabel({ scopeId }: { scopeId: ModelSupportInvestigationScopeId }):
 }
 
 function applyPreset({ preset }: { preset: Exclude<ModelSupportInvestigationPreset, 'custom'> }): void {
-  if (running.value) return;
+  if (running.value) {
+    return;
+  }
   investigationConfiguration.value = configurationForPreset({ preset });
 }
 
 function toggleScope({ scopeId }: { scopeId: ModelSupportInvestigationScopeId }): void {
-  if (running.value) return;
+  if (running.value) {
+    return;
+  }
   const configuration = structuredClone(toRaw(investigationConfiguration.value));
   switch (configuration.scope[scopeId]) {
   case 'selected':
@@ -1377,21 +1527,29 @@ function toggleScope({ scopeId }: { scopeId: ModelSupportInvestigationScopeId })
 function setExternalNetworkPolicy({ policy }: {
   policy: ModelSupportInvestigationExternalNetworkPolicy,
 }): void {
-  if (running.value) return;
+  if (running.value) {
+    return;
+  }
   const configuration = structuredClone(toRaw(investigationConfiguration.value));
   configuration.externalNetworkPolicy = policy;
   investigationConfiguration.value = configuration;
 }
 
 async function newInvestigation(): Promise<void> {
-  if (!started.value || !sessionReady.value || running.value || evidenceExporting.value || newInvestigationPending.value || !sessionView.isActive()) return;
+  if (!started.value || !sessionReady.value || running.value || evidenceExporting.value || newInvestigationPending.value || !sessionView.isActive()) {
+    return;
+  }
   newInvestigationPending.value = true;
   try {
     const title = await ensureStrings.ModelSupportInvestigationModal__new_investigation();
     const message = await ensureStrings.ModelSupportInvestigationModal__replace_results_and_return_to_setup();
-    if (!sessionView.isActive() || running.value || evidenceExporting.value) return;
+    if (!sessionView.isActive() || running.value || evidenceExporting.value) {
+      return;
+    }
     const confirmed = await showConfirm({ title, message, confirmButtonText: title });
-    if (!confirmed || !sessionView.isActive() || running.value || evidenceExporting.value) return;
+    if (!confirmed || !sessionView.isActive() || running.value || evidenceExporting.value) {
+      return;
+    }
     const snapshot: Extract<InvestigationSessionSnapshot, { view: 'setup' }> = {
       view: 'setup',
       batchId: batchRunId.value ?? crypto.randomUUID(),
@@ -1400,22 +1558,29 @@ async function newInvestigation(): Promise<void> {
     };
     const retirement = await sessionView.retire({ dispose: disposeSessionWorkers });
     switch (retirement.status) {
-    case 'failed': teardownError.value = retirement.error; return;
+    case 'failed': teardownError.value = retirement.error;
+      return;
     case 'complete': break;
     default: {
       const _ex: never = retirement;
       return _ex;
     }
     }
-    if (!componentDisposed) emit('newInvestigation', { viewId: sessionView.viewId, snapshot });
+    if (!componentDisposed) {
+      emit('newInvestigation', { viewId: sessionView.viewId, snapshot });
+    }
   } finally {
     newInvestigationPending.value = false;
   }
 }
 
 async function startInvestigation(): Promise<void> {
-  if (started.value || !sessionReady.value || running.value || evidenceExporting.value || !sessionView.isActive() || !hasRequestedScope.value || !commitTargetDraft()) return;
-  if (committedTargets.value.length === 0) return;
+  if (started.value || !sessionReady.value || running.value || evidenceExporting.value || !sessionView.isActive() || !hasRequestedScope.value || !commitTargetDraft()) {
+    return;
+  }
+  if (committedTargets.value.length === 0) {
+    return;
+  }
 
   const targets = [...committedTargets.value];
   const configuration = structuredClone(toRaw(investigationConfiguration.value));
@@ -1484,23 +1649,31 @@ async function startInvestigation(): Promise<void> {
         }
       },
       onUpdate: ({ executions: nextExecutions }) => {
-        if (sessionView.isActive()) targetExecutions.value = [...nextExecutions];
+        if (sessionView.isActive()) {
+          targetExecutions.value = [...nextExecutions];
+        }
       },
       shouldInterrupt: () => interruptionRequested || !modelExecutionAvailable.value || !sessionView.isActive(),
       takeSkipRequest: ({ target }) => {
-        if (skipRequestedTarget !== target) return false;
+        if (skipRequestedTarget !== target) {
+          return false;
+        }
         skipRequestedTarget = undefined;
         return true;
       },
       recoverRunAfterError: ({ target }) => runByTarget.get(target),
     });
-    if (!sessionView.isActive()) return;
+    if (!sessionView.isActive()) {
+      return;
+    }
     targetExecutions.value = executions;
     if (run.value === undefined) {
       const lastCompleted = [...executions].reverse().find(execution => execution.run !== undefined);
       if (lastCompleted?.run !== undefined) {
         const executionIndex = executions.indexOf(lastCompleted);
-        if (executionIndex >= 0) selectTargetExecution({ executionIndex });
+        if (executionIndex >= 0) {
+          selectTargetExecution({ executionIndex });
+        }
       }
     }
   } finally {
@@ -1514,7 +1687,9 @@ async function startInvestigation(): Promise<void> {
 }
 
 function rememberCurrentSession(): void {
-  if (!sessionView.isActive() || batchRunId.value === undefined) return;
+  if (!sessionView.isActive() || batchRunId.value === undefined) {
+    return;
+  }
   if (!started.value) {
     sessionView.remember({
       snapshot: {
@@ -1526,7 +1701,9 @@ function rememberCurrentSession(): void {
     });
     return;
   }
-  if (targetExecutions.value.length === 0) return;
+  if (targetExecutions.value.length === 0) {
+    return;
+  }
   const executions = snapshotEvidenceState({ value: targetExecutions.value });
   const rememberedRuns = new Map(runByTarget);
   const rememberedRecoveries = new Map(recoveryByTarget);
@@ -1581,7 +1758,9 @@ function rememberCurrentSession(): void {
 
 function restorePreviousSession(): void {
   const snapshot = sessionView.initialSnapshot;
-  if (snapshot === undefined) return;
+  if (snapshot === undefined) {
+    return;
+  }
   batchRunId.value = snapshot.batchId;
   committedTargets.value = snapshot.targets;
   investigationConfiguration.value = snapshot.configuration;
@@ -1596,10 +1775,18 @@ function restorePreviousSession(): void {
   batchConfiguration = snapshot.configuration;
   started.value = true;
   targetExecutions.value = snapshot.executions;
-  for (const [target, value] of snapshot.runs) runByTarget.set(target, value);
-  for (const [target, value] of snapshot.recoveries) recoveryByTarget.set(target, value);
-  for (const [target, value] of snapshot.replayMetadata) replayMetadataByTarget.set(target, value);
-  for (const [target, value] of snapshot.nativeEvidence) nativeEvidenceByTarget.set(target, value);
+  for (const [target, value] of snapshot.runs) {
+    runByTarget.set(target, value);
+  }
+  for (const [target, value] of snapshot.recoveries) {
+    recoveryByTarget.set(target, value);
+  }
+  for (const [target, value] of snapshot.replayMetadata) {
+    replayMetadataByTarget.set(target, value);
+  }
+  for (const [target, value] of snapshot.nativeEvidence) {
+    nativeEvidenceByTarget.set(target, value);
+  }
   nativeEvidenceVersion.value++;
   providerRetention.value = {
     retained: measureInvestigationProviderRetention({ runs: runByTarget, nativeEvidence: nativeEvidenceByTarget }),
@@ -1648,10 +1835,14 @@ function updateEvidenceExportPresentation({
 }
 
 async function downloadPartialEvidence(): Promise<void> {
-  if (evidenceExporting.value || !sessionView.isActive()) return;
+  if (evidenceExporting.value || !sessionView.isActive()) {
+    return;
+  }
   const sourceRun = run.value;
   const executions = targetExecutions.value;
-  if (sourceRun === undefined && executions.length === 0) return;
+  if (sourceRun === undefined && executions.length === 0) {
+    return;
+  }
   evidenceExporting.value = true;
   try {
     // Freeze run identity and matching bytes together before the first await.
@@ -1677,7 +1868,9 @@ async function downloadPartialEvidence(): Promise<void> {
       };
     });
     const passedDetail = await evidenceExportDetail({ status: "passed" });
-    if (!sessionView.isActive()) return;
+    if (!sessionView.isActive()) {
+      return;
+    }
     const evidenceClient = createModelSupportInvestigationEvidenceWorkerClient();
     ownedClients.add(evidenceClient);
     try {
@@ -1727,7 +1920,9 @@ async function downloadPartialEvidence(): Promise<void> {
         return;
       }
       await downloadReadableStream({ stream, filename: fileName, size: undefined, signal: undefined });
-      if (sessionView.isActive()) updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
+      if (sessionView.isActive()) {
+        updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
+      }
     } finally {
       // The worker owns the producer until the response is consumed/cancelled.
       try {
@@ -1737,10 +1932,14 @@ async function downloadPartialEvidence(): Promise<void> {
       }
     }
   } catch (error) {
-    if (!sessionView.isActive()) return;
+    if (!sessionView.isActive()) {
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const failedDetail = await evidenceExportDetail({ status: "failed", error: errorMessage });
-    if (!sessionView.isActive()) return;
+    if (!sessionView.isActive()) {
+      return;
+    }
     updateEvidenceExportPresentation({ status: "failed", detail: failedDetail });
     console.error("[model-support-investigation] Evidence export failed", error);
   } finally {
@@ -1749,7 +1948,9 @@ async function downloadPartialEvidence(): Promise<void> {
 }
 
 async function downloadRetainedTiming(): Promise<void> {
-  if (!retainedTimingAvailable || ordinaryDownloadTiming === undefined || started.value || evidenceExporting.value || !sessionView.isActive() || !sessionReady.value) return;
+  if (!retainedTimingAvailable || ordinaryDownloadTiming === undefined || started.value || evidenceExporting.value || !sessionView.isActive() || !sessionReady.value) {
+    return;
+  }
   evidenceExporting.value = true;
   retainedTimingExportError.value = undefined;
   try {
@@ -1772,9 +1973,13 @@ async function downloadRetainedTiming(): Promise<void> {
       await disposeOwnedClient({ client });
     }
   } catch (error) {
-    if (!sessionView.isActive()) return;
+    if (!sessionView.isActive()) {
+      return;
+    }
     const message = await ensureStrings.ModelSupportInvestigationSession__failed_to_export_retained_download_timing({ error: error instanceof Error ? error.message : String(error) });
-    if (sessionView.isActive()) retainedTimingExportError.value = message;
+    if (sessionView.isActive()) {
+      retainedTimingExportError.value = message;
+    }
   } finally {
     evidenceExporting.value = false;
   }
@@ -1792,7 +1997,9 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   componentDisposed = true;
   retireCurrentView();
-  if (progressClock !== undefined) clearInterval(progressClock);
+  if (progressClock !== undefined) {
+    clearInterval(progressClock);
+  }
 });
 
 

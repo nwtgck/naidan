@@ -60,7 +60,9 @@ describe("serializeInvestigationError", () => {
       Object.defineProperty(thrown, `key${index}`, {
         enumerable: true,
         get() {
-          if (index >= 32) lateGetterRead = true;
+          if (index >= 32) {
+            lateGetterRead = true;
+          }
           return index;
         },
       });

@@ -9,7 +9,9 @@ import type { ModelLaunchView } from './history';
 export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLaunchView, signal: AbortSignal }): Promise<ModelLaunchTarget> {
   signal.throwIfAborted();
   const reference = readModelLaunchReference({ modelId: view.modelId });
-  if (reference === undefined) throw new Error('Invalid model launch identity');
+  if (reference === undefined) {
+    throw new Error('Invalid model launch identity');
+  }
   const { repository, mainFilePath, modelId } = reference;
   try {
     const folder = await repositoryFolder({ repository, create: false });
@@ -20,25 +22,33 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
       return modelLaunchTargetSchema.parse({ selection: journal.selection, mainFilePath, modelId });
     }
   } catch (error) {
-    if (!isMissing({ error })) throw error;
+    if (!isMissing({ error })) {
+      throw error;
+    }
   }
   signal.throwIfAborted();
   try {
     const directory = (await repositoryDirectories({ repository })).find(candidate => candidate.id === modelId);
     signal.throwIfAborted();
-    if (directory !== undefined) return modelLaunchTargetSchema.parse({
-      modelId,
-      mainFilePath,
-      selection: { repository, revision: view.revision, files: directory.files.map(file => ({ path: file.path, size: file.file.size })) },
-    });
+    if (directory !== undefined) {
+      return modelLaunchTargetSchema.parse({
+        modelId,
+        mainFilePath,
+        selection: { repository, revision: view.revision, files: directory.files.map(file => ({ path: file.path, size: file.file.size })) },
+      });
+    }
   } catch (error) {
-    if (!isMissing({ error })) throw error;
+    if (!isMissing({ error })) {
+      throw error;
+    }
   }
   // Only the current history entry's explicit link authorizes this metadata
   // request. A plain saved Chat is not permission for background discovery.
   const catalog = await getMetadataSession().inspect({ input: view.input, signal, freshness: 'reuse' });
   signal.throwIfAborted();
-  if (catalog.repository !== repository) throw new Error('Model launch repository changed');
+  if (catalog.repository !== repository) {
+    throw new Error('Model launch repository changed');
+  }
   const target = targetForChoice({ catalog, path: mainFilePath });
   rememberLaunchCatalog({ catalog });
   return target;

@@ -1,6 +1,10 @@
 function requestUrl({ input }: { input: RequestInfo | URL }): string {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.href;
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.href;
+  }
   return input.url;
 }
 
@@ -46,11 +50,17 @@ export function createHostedTransformersModelFetch({
     }
 
     const response = await runtimeFetch(input, init);
-    if (response.status !== 200) return response;
+    if (response.status !== 200) {
+      return response;
+    }
 
     const contentType = response.headers.get("content-type");
-    if (contentType?.includes("text/html") !== true) return response;
-    if (!isModelArtifactRequest({ url }) || pathWithoutQueryOrHash({ url }).endsWith(".html")) return response;
+    if (contentType?.includes("text/html") !== true) {
+      return response;
+    }
+    if (!isModelArtifactRequest({ url }) || pathWithoutQueryOrHash({ url }).endsWith(".html")) {
+      return response;
+    }
 
     console.warn(`[transformers-worker] Intercepted HTML response for ${url}. Treating as 404.`);
     return new Response(null, { status: 404, statusText: "Not Found" });

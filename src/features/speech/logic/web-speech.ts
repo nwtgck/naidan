@@ -72,13 +72,21 @@ class WebSpeechService {
 
     const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
     let lang = 'en-US';
-    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(cleanText)) lang = 'ja-JP';
-    else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(cleanText)) lang = 'ko-KR';
-    else if (/[\u4e00-\u9faf]/.test(cleanText)) lang = 'zh-CN';
-    else if (/[\u0400-\u04ff]/.test(cleanText)) lang = 'ru-RU';
-    else if (/[áéíóúüñ¿¡]/i.test(cleanText)) lang = 'es-ES';
-    else if (/[àâçéèêëîïôûùüÿœæ]/i.test(cleanText)) lang = 'fr-FR';
-    else if (/[äöüß]/i.test(cleanText)) lang = 'de-DE';
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(cleanText)) {
+      lang = 'ja-JP';
+    } else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(cleanText)) {
+      lang = 'ko-KR';
+    } else if (/[\u4e00-\u9faf]/.test(cleanText)) {
+      lang = 'zh-CN';
+    } else if (/[\u0400-\u04ff]/.test(cleanText)) {
+      lang = 'ru-RU';
+    } else if (/[áéíóúüñ¿¡]/i.test(cleanText)) {
+      lang = 'es-ES';
+    } else if (/[àâçéèêëîïôûùüÿœæ]/i.test(cleanText)) {
+      lang = 'fr-FR';
+    } else if (/[äöüß]/i.test(cleanText)) {
+      lang = 'de-DE';
+    }
 
     this.lastDetectedMessageId = messageId;
     this.state.detectedLang = lang;
@@ -114,7 +122,9 @@ class WebSpeechService {
    * Main entry point for speaking. Handles both new messages and streaming updates.
    */
   public speak({ text, messageId, isFinal, lang }: { text: string, messageId: MessageId, isFinal: boolean, lang: SpeechLanguage }) {
-    if (!this.synth) return;
+    if (!this.synth) {
+      return;
+    }
     this.isExpectingMore = !isFinal;
 
     const resolvedLang = (() => {
@@ -176,14 +186,20 @@ class WebSpeechService {
    * Returns true if an utterance was actually queued.
    */
   private enqueueStreamingPart({ text, messageId, isFinal, resolvedLang }: { text: string, messageId: MessageId, isFinal: boolean, resolvedLang: string }): boolean {
-    if (!this.synth) return false;
+    if (!this.synth) {
+      return false;
+    }
 
     const fullCleanedText = this.prepareText({ text });
-    if (!fullCleanedText) return false;
+    if (!fullCleanedText) {
+      return false;
+    }
 
     // Get the part we haven't queued yet
     const pendingText = fullCleanedText.slice(this.readPointer);
-    if (!pendingText) return false;
+    if (!pendingText) {
+      return false;
+    }
 
     let textToQueue = '';
 
@@ -208,7 +224,9 @@ class WebSpeechService {
       }
     }
 
-    if (!textToQueue.trim()) return false;
+    if (!textToQueue.trim()) {
+      return false;
+    }
 
     const utterance = new SpeechSynthesisUtterance(textToQueue);
     utterance.lang = resolvedLang;
@@ -247,13 +265,17 @@ class WebSpeechService {
   }
 
   public pause() {
-    if (!this.synth) return;
+    if (!this.synth) {
+      return;
+    }
     this.synth.pause();
     this.updateState({ status: 'paused' });
   }
 
   public stop() {
-    if (!this.synth) return;
+    if (!this.synth) {
+      return;
+    }
     this.synth.cancel();
     this.readPointer = 0;
     this.isExpectingMore = false;

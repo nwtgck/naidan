@@ -160,12 +160,15 @@ describe('ChatGroupSettingsPanel.vue', () => {
       expect(select.element).toHaveProperty('value', 'naidan_rpc');
       expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
     }
-    mockSettings.experimental = { naidanRpc: 'enabled' }; await nextTick();
+    mockSettings.experimental = { naidanRpc: 'enabled' };
+    await nextTick();
     for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
       expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
     }
     mockSettings.experimental = undefined;
-    mockGroup.endpoint = undefined; mockGroup.titleGeneration = 'inherit'; await nextTick();
+    mockGroup.endpoint = undefined;
+    mockGroup.titleGeneration = 'inherit';
+    await nextTick();
     for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
       expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
     }
@@ -1463,7 +1466,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        wrapper.unmount(); vi.unstubAllGlobals();
+        wrapper.unmount();
+        vi.unstubAllGlobals();
       },
     };
     await flushPromises();

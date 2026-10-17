@@ -47,10 +47,14 @@ export class NaidanPipingDuplexSession {
   private constructor({ connection, publicData, privateData }: {
     connection: OrderedSession; publicData: Uint8Array; privateData: Uint8Array;
   }) {
-    this.connection = connection; this.publicData = publicData; this.privateData = privateData;
+    this.connection = connection;
+    this.publicData = publicData;
+    this.privateData = privateData;
     this.ended = connection.ended;
     this.closed = connection.closed.finally(() => {
-      this.retired = true; publicData.fill(0); privateData.fill(0);
+      this.retired = true;
+      publicData.fill(0);
+      privateData.fill(0);
     });
     void this.closed.catch(() => {});
   }
@@ -87,11 +91,15 @@ export class NaidanPipingDuplexSession {
         } catch (cause) {
           throw new PipingRetirementError({ cause, logicalError: error });
         }
-      } else established?.keys.dispose();
-      established?.peerPublicHandshakeData.fill(0); established?.peerHandshakeData.fill(0);
+      } else {
+        established?.keys.dispose();
+      }
+      established?.peerPublicHandshakeData.fill(0);
+      established?.peerHandshakeData.fill(0);
       throw error;
     } finally {
-      publicData.fill(0); privateData.fill(0);
+      publicData.fill(0);
+      privateData.fill(0);
     }
   }
 
@@ -121,7 +129,10 @@ export class NaidanPipingDuplexSession {
     switch (prepared.kind) {
     case 'same-connection': return prepared;
     case 'candidate': break;
-    default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = prepared;
+      throw new Error(String(exhaustive));
+    }
     }
     return {
       kind: 'candidate',
@@ -149,8 +160,11 @@ export class NaidanPipingDuplexSession {
             } catch (cause) {
               throw new PipingRetirementError({ cause, logicalError: error });
             }
-          } else established.keys.dispose();
-          established.peerPublicHandshakeData.fill(0); established.peerHandshakeData.fill(0);
+          } else {
+            established.keys.dispose();
+          }
+          established.peerPublicHandshakeData.fill(0);
+          established.peerHandshakeData.fill(0);
           throw error;
         } finally {
           clearTimeout(readyDeadline);
@@ -164,7 +178,10 @@ export class NaidanPipingDuplexSession {
     switch (prepared.kind) {
     case 'candidate': return prepared.finish();
     case 'same-connection': throw new Error('New contact unexpectedly retained a connection');
-    default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = prepared;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
@@ -173,11 +190,13 @@ export class NaidanPipingDuplexSession {
   }
 
   get peerPublicHandshakeData(): Uint8Array {
-    requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.publicData.slice();
+    requireValue({ condition: !this.retired, message: 'Connection retired' });
+    return this.publicData.slice();
   }
 
   get peerHandshakeData(): Uint8Array {
-    requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.privateData.slice();
+    requireValue({ condition: !this.retired, message: 'Connection retired' });
+    return this.privateData.slice();
   }
 
   get contextId(): Uint8Array {

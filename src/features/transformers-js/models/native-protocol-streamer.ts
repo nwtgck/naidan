@@ -36,14 +36,18 @@ export class NativeProtocolStreamer extends TextStreamer {
 
 
   override put(value: bigint[][]): void {
-    if (value.length !== 1) throw new Error('Native protocol streaming requires a single sequence.');
+    if (value.length !== 1) {
+      throw new Error('Native protocol streaming requires a single sequence.');
+    }
     if (this.promptPending) {
-      this.promptPending = false; return;
+      this.promptPending = false;
+      return;
     }
     let ordinary: bigint[] = [];
     const flushOrdinary = () => {
       if (ordinary.length > 0) {
-        super.put([ordinary]); ordinary = [];
+        super.put([ordinary]);
+        ordinary = [];
       }
     };
     for (const id of value[0]!) {

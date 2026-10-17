@@ -13,9 +13,11 @@ describe('bounded advisory GGUF inspection', () => {
   it.each([2, 3])('reads version %i without inspecting tensors', async version => {
     const head = ggufFixture({ entries: [architecture], version });
     const file = new NativeBlob([head, new Uint8Array(1024 * 1024)]);
-    const slice = vi.spyOn(file, 'slice'); const whole = vi.spyOn(file, 'arrayBuffer');
+    const slice = vi.spyOn(file, 'slice');
+    const whole = vi.spyOn(file, 'arrayBuffer');
     expect((await read({ file })).get('general.architecture')).toBe('qwen3tts');
-    expect(whole).not.toHaveBeenCalled(); expect(slice).toHaveBeenCalledOnce();
+    expect(whole).not.toHaveBeenCalled();
+    expect(slice).toHaveBeenCalledOnce();
     expect(slice.mock.calls[0]?.[1]).toBeLessThanOrEqual(65536);
   });
 
@@ -75,12 +77,18 @@ describe('bounded advisory GGUF inspection', () => {
   });
 
   it('checks abort before and after IO', async () => {
-    const controller = new AbortController(); const file = ggufFixture({ entries: [architecture] });
-    controller.abort(); const slice = vi.spyOn(file, 'slice');
-    await expect(read({ file, signal: controller.signal })).rejects.toThrow(); expect(slice).not.toHaveBeenCalled();
-    const later = new AbortController(); const original = file.slice.bind(file);
+    const controller = new AbortController();
+    const file = ggufFixture({ entries: [architecture] });
+    controller.abort();
+    const slice = vi.spyOn(file, 'slice');
+    await expect(read({ file, signal: controller.signal })).rejects.toThrow();
+    expect(slice).not.toHaveBeenCalled();
+    const later = new AbortController();
+    const original = file.slice.bind(file);
     slice.mockImplementation((...args) => {
-      const part = original(...args); later.abort(); return part;
+      const part = original(...args);
+      later.abort();
+      return part;
     });
     await expect(read({ file, signal: later.signal })).rejects.toThrow();
   });

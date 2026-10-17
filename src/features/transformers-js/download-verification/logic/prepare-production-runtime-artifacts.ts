@@ -44,7 +44,9 @@ export async function prepareProductionRuntimeArtifacts({ modelId, revision, pro
       error: undefined,
     };
   } catch (error) {
-    if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    if (signal?.aborted === true) {
+      throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+    }
     return {
       modelId,
       revision,

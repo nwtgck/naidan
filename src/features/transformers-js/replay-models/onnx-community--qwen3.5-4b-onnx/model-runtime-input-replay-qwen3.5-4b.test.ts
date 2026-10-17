@@ -67,7 +67,9 @@ describe('Qwen structured reasoning in native model inputs', () => {
     const renderer = {
       // Mirrors the external template method, whose message type is wider than this replay fixture.
       apply_chat_template: (messages: Parameters<Parameters<typeof buildQwen3_5Prompt>[0]['tokenizer']['apply_chat_template']>[0], options: { tokenize: false; add_generation_prompt: true }) => processor.apply_chat_template(messages.map(message => {
-        if (typeof message.content !== 'string') throw new Error('Expected a string-only native fixture');
+        if (typeof message.content !== 'string') {
+          throw new Error('Expected a string-only native fixture');
+        }
         return { ...message, content: message.content };
       }), options),
     };

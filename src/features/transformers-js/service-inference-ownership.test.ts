@@ -115,7 +115,8 @@ describe('Transformers.js inference scope ownership', () => {
     const release = Promise.withResolvers<void>();
     const secondOutcome = Promise.withResolvers<Awaited<ReturnType<typeof observe>>>();
     client.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     const operation = observe({
@@ -273,10 +274,12 @@ describe('Transformers.js inference scope ownership', () => {
       throw new ProductionWorkerLifecycleError({ reason: 'worker-error', message: 'Synthetic retired Worker failure' });
     });
     oldClient.dispose.mockImplementation(async () => {
-      disposing.resolve(); await finishDispose.promise;
+      disposing.resolve();
+      await finishDispose.promise;
     });
     freshClient.generateText.mockImplementation(async () => {
-      freshEntered.resolve(); await releaseFresh.promise;
+      freshEntered.resolve();
+      await releaseFresh.promise;
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/old' });
     const old = observe({
@@ -770,15 +773,21 @@ describe('Transformers.js inference scope ownership', () => {
       // Observe the actual service-issued Comlink request and matching reply;
       // do not invoke an entry directly or manufacture an acknowledgement.
       worker.addEventListener('message', event => {
-        if (!(event instanceof MessageEvent)) return;
+        if (!(event instanceof MessageEvent)) {
+          return;
+        }
         const reply = replySchema.safeParse(event.data);
-        if (!reply.success) return;
+        if (!reply.success) {
+          return;
+        }
         const acknowledgedInterrupt = worker.hostMessages.some(message => {
           const request = requestSchema.safeParse(message);
           return request.success && request.data.id === reply.data.id
             && request.data.path.length === 1 && request.data.path[0] === 'interrupt';
         });
-        if (acknowledgedInterrupt) interruptAcknowledged.resolve();
+        if (acknowledgedInterrupt) {
+          interruptAcknowledged.resolve();
+        }
       });
       await harness.service.interrupt();
       await interruptAcknowledged.promise;
@@ -827,14 +836,20 @@ describe('Transformers.js inference scope ownership', () => {
       generate: async ({ options, tokenizer, runtime }) => {
         nativeCalls++;
         trace.push(`native:${nativeCalls}:entered`);
-        if (nativeCalls !== 1) throw new Error(secondBoundary);
+        if (nativeCalls !== 1) {
+          throw new Error(secondBoundary);
+        }
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected actual tokenizer input and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected actual tokenizer input and streamer');
+        }
         // Explicit synthetic tokens exercise delivery mechanics, not model
         // inference correctness. The actual strategy/streamer/entry still run.
         const output = tokenizer.encode('Synthetic delivery.', { add_special_tokens: false }).map(BigInt);
         options.streamer.put(input.tolist());
-        for (const token of output) options.streamer.put([[token]]);
+        for (const token of output) {
+          options.streamer.put([[token]]);
+        }
         options.streamer.end();
         trace.push('native:1:returned');
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
@@ -889,18 +904,26 @@ describe('Transformers.js inference scope ownership', () => {
 
 describe('structured message operations keep the existing inference lane', () => {
   it('keeps the lane during a tool wait and a second generation, not only one RPC', async () => {
-    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    const client = createClientFixture();
+    const owner = createOwner({ createWorkerClient: () => client });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const toolWait = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>(); const trace: string[] = [];
+    const toolWait = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const trace: string[] = [];
     client.generateMessage.mockImplementation(async ({ onEvent }) => {
-      trace.push('generation'); await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
+      trace.push('generation');
+      await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     const first = owner.service.runInferenceOperation({
       signal: undefined,
       operation: async ({ scope }) => {
         const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: 'one-scope' };
-        await scope.generateMessage(request); toolWait.resolve(); await release.promise;
-        scope.assertActive(); await scope.generateMessage(request); trace.push('first-complete');
+        await scope.generateMessage(request);
+        toolWait.resolve();
+        await release.promise;
+        scope.assertActive();
+        await scope.generateMessage(request);
+        trace.push('first-complete');
       },
     });
     await toolWait.promise;
@@ -910,24 +933,34 @@ describe('structured message operations keep the existing inference lane', () =>
         trace.push('next-scope');
       },
     });
-    await Promise.resolve(); expect(trace).toEqual(['generation']);
-    release.resolve(); await first; await next;
+    await Promise.resolve();
+    expect(trace).toEqual(['generation']);
+    release.resolve();
+    await first;
+    await next;
     expect(trace).toEqual(['generation', 'generation', 'first-complete', 'next-scope']);
     expect(client.generateMessage).toHaveBeenCalledTimes(2);
     expect(client.generateMessage.mock.calls.every(([args]) => args.continuationOwner === 'one-scope')).toBe(true);
   });
 
   it('drains accepted native events after ordinary abort before the next owner starts', async () => {
-    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    const client = createClientFixture();
+    const owner = createOwner({ createWorkerClient: () => client });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const entered = Promise.withResolvers<void>(); const stopSeen = Promise.withResolvers<void>(); const drain = Promise.withResolvers<void>();
-    const delivered: string[] = []; const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const stopSeen = Promise.withResolvers<void>();
+    const drain = Promise.withResolvers<void>();
+    const delivered: string[] = [];
+    const controller = new AbortController();
     client.interrupt.mockImplementation(async () => {
       stopSeen.resolve();
     });
     client.generateMessage.mockImplementation(async ({ onEvent }) => {
-      await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } }); entered.resolve();
-      await stopSeen.promise; await onEvent({ event: { type: 'text_delta', index: 0, text: 'B' } }); await drain.promise;
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } });
+      entered.resolve();
+      await stopSeen.promise;
+      await onEvent({ event: { type: 'text_delta', index: 0, text: 'B' } });
+      await drain.promise;
     });
     const first = observe({
       promise: owner.service.runInferenceOperation({
@@ -939,39 +972,56 @@ describe('structured message operations keep the existing inference lane', () =>
             tools: undefined,
             continuationOwner: undefined,
             onEvent: ({ event }) => {
-              if (event.type === 'text_delta') delivered.push(event.text);
+              if (event.type === 'text_delta') {
+                delivered.push(event.text);
+              }
             },
           });
         },
       }),
     });
-    await entered.promise; controller.abort(); await stopSeen.promise;
-    let nextEntered = false; const next = owner.service.runInferenceOperation({
+    await entered.promise;
+    controller.abort();
+    await stopSeen.promise;
+    let nextEntered = false;
+    const next = owner.service.runInferenceOperation({
       signal: undefined,
       operation: async () => {
         nextEntered = true;
       },
     });
-    await vi.waitFor(() => expect(delivered).toEqual(['A', 'B'])); expect(nextEntered).toBe(false);
-    drain.resolve(); expect((await first).status).toBe('rejected'); await next; expect(nextEntered).toBe(true);
+    await vi.waitFor(() => expect(delivered).toEqual(['A', 'B']));
+    expect(nextEntered).toBe(false);
+    drain.resolve();
+    expect((await first).status).toBe('rejected');
+    await next;
+    expect(nextEntered).toBe(true);
   });
 
   it('revokes the structured method after scope exit and rejects overlapping children', async () => {
-    const client = createClientFixture(); const owner = createOwner({ createWorkerClient: () => client });
+    const client = createClientFixture();
+    const owner = createOwner({ createWorkerClient: () => client });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-    const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     client.generateMessage.mockImplementation(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     let escaped: TransformersJsInferenceScope | undefined;
     const request = { messages: [], onEvent: vi.fn(), params: undefined, tools: undefined, continuationOwner: undefined };
     await owner.service.runInferenceOperation({
       signal: undefined,
       operation: async ({ scope }) => {
-        escaped = scope; const first = scope.generateMessage(request); await entered.promise;
-        await expect(scope.generateMessage(request)).rejects.toThrow('active operation'); release.resolve(); await first;
+        escaped = scope;
+        const first = scope.generateMessage(request);
+        await entered.promise;
+        await expect(scope.generateMessage(request)).rejects.toThrow('active operation');
+        release.resolve();
+        await first;
       },
     });
-    await expect(escaped!.generateMessage(request)).rejects.toThrow(); expect(client.generateMessage).toHaveBeenCalledOnce();
+    await expect(escaped!.generateMessage(request)).rejects.toThrow();
+    expect(client.generateMessage).toHaveBeenCalledOnce();
   });
 });

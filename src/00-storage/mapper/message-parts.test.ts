@@ -46,7 +46,9 @@ describe('versioned message mapping', () => {
       for (const node of nodes) {
         const modern = MessageNodeSchemaDtoV2.parse(node);
         expect(Object.hasOwn(node, 'content')).toBe(false);
-        for (const part of modern.parts) expect(part).not.toHaveProperty('id');
+        for (const part of modern.parts) {
+          expect(part).not.toHaveProperty('id');
+        }
         visit({ nodes: node.replies.items });
       }
     };
@@ -256,8 +258,12 @@ describe('versioned message mapping', () => {
       const domain = messageNodeToDomain({ dto });
       const saved = messageNodeToDto({ domain });
       expect(saved).toEqual(dto);
-      for (const part of saved.parts) expect(part).not.toHaveProperty('id');
-      for (const part of domain.parts) expect(part).not.toHaveProperty('id');
+      for (const part of saved.parts) {
+        expect(part).not.toHaveProperty('id');
+      }
+      for (const part of domain.parts) {
+        expect(part).not.toHaveProperty('id');
+      }
       expect(messageNodeToDto({ domain: roundTrip({ node: domain }) })).toEqual(saved);
     }
   });

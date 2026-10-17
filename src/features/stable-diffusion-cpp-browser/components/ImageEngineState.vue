@@ -10,40 +10,62 @@ const state = props.view.engineState;
 // The pane stays mounted when the user switches tabs. Closing it stops all
 // observation, including a lifecycle refresh that would otherwise run later.
 watch(() => props.active, active => {
-  if (!active) state.setOpened({ opened: false });
+  if (!active) {
+    state.setOpened({ opened: false });
+  }
 });
 onBeforeUnmount(() => state.setOpened({ opened: false }));
 
 const phase = computed(() => {
   const progress = props.view.progress.value;
-  if (!progress) return lazyStrings.llamaCppBrowserDownloads__waiting();
+  if (!progress) {
+    return lazyStrings.llamaCppBrowserDownloads__waiting();
+  }
   switch (progress.phase) {
   case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
   case 'model': return lazyStrings.stableDiffusionCppBrowser__loading_model();
   case 'sampling': return lazyStrings.stableDiffusionCppBrowser__sampling();
   case 'decoding': return lazyStrings.stableDiffusionCppBrowser__decoding_image();
   case 'encoding': return lazyStrings.stableDiffusionCppBrowser__encoding();
-  default: { const exhaustive: never = progress.phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = progress.phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const summary = computed(() => {
-  if (state.snapshot.value) return state.snapshot.value.modelVersion || lazyStrings.ImageEngineState__unknown_model();
+  if (state.snapshot.value) {
+    return state.snapshot.value.modelVersion || lazyStrings.ImageEngineState__unknown_model();
+  }
   switch (state.status.value) {
   case 'failed': return lazyStrings.ImageEngineState__could_not_read_state();
   case 'refreshing': return lazyStrings.ImageEngineState__refreshing();
   case 'idle': case 'unavailable': break;
-  default: { const exhaustive: never = state.status.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = state.status.value;
+    throw new Error(String(exhaustive));
+  }
   }
   switch (state.reason.value) {
   case 'unsupported': return lazyStrings.ImageEngineState__unavailable();
   case 'released': return lazyStrings.ImageEngineState__released();
   case 'not-loaded': return lazyStrings.ImageEngineState__no_model_loaded();
-  case 'busy': if (!state.canRefresh.value) return lazyStrings.ImageEngineState__engine_busy_until_idle(); break;
-  case undefined: break;
-  default: { const exhaustive: never = state.reason.value; throw new Error(String(exhaustive)); }
+  case 'busy': if (!state.canRefresh.value) {
+    return lazyStrings.ImageEngineState__engine_busy_until_idle();
   }
-  if (!props.view.supported.value) return lazyStrings.ImageEngineState__unavailable();
-  if (!props.view.modelResident.value) return lazyStrings.ImageEngineState__no_model_loaded();
+    break;
+  case undefined: break;
+  default: {
+    const exhaustive: never = state.reason.value;
+    throw new Error(String(exhaustive));
+  }
+  }
+  if (!props.view.supported.value) {
+    return lazyStrings.ImageEngineState__unavailable();
+  }
+  if (!props.view.modelResident.value) {
+    return lazyStrings.ImageEngineState__no_model_loaded();
+  }
   return lazyStrings.ImageEngineState__not_observed_yet();
 });
 
@@ -65,7 +87,9 @@ const observedTime = computed(() => {
 });
 const memory = computed(() => {
   const snapshot = state.snapshot.value;
-  if (!snapshot) return [];
+  if (!snapshot) {
+    return [];
+  }
   const values = snapshot.memory;
   return [
     { measure: 'wasm' as const, bytes: formatBytes({ bytes: snapshot.wasmCapacityBytes }) },

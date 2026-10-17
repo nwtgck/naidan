@@ -5,9 +5,12 @@ const MAX_BINARY_PATCH_LINE_BYTES = 52;
 const BASE85_POWERS = [85 ** 4, 85 ** 3, 85 ** 2, 85, 1] as const;
 
 function binaryPatchLengthMarker({ length }: { length: number }): string {
-  if (!Number.isInteger(length) || length < 1 || length > MAX_BINARY_PATCH_LINE_BYTES)
+  if (!Number.isInteger(length) || length < 1 || length > MAX_BINARY_PATCH_LINE_BYTES) {
     throw new Error(`invalid git binary patch line length: ${length}`);
-  if (length <= 26) return String.fromCharCode('A'.charCodeAt(0) + length - 1);
+  }
+  if (length <= 26) {
+    return String.fromCharCode('A'.charCodeAt(0) + length - 1);
+  }
   return String.fromCharCode('a'.charCodeAt(0) + length - 27);
 }
 

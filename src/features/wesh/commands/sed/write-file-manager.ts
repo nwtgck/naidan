@@ -39,7 +39,9 @@ function createBufferedEfficientSedWriter({
   let closed = false;
 
   const flush = async (): Promise<void> => {
-    if (bufferedLength === 0) return;
+    if (bufferedLength === 0) {
+      return;
+    }
     const text = chunks.join("");
     chunks = [];
     bufferedLength = 0;
@@ -48,14 +50,19 @@ function createBufferedEfficientSedWriter({
 
   return {
     async write({ text }) {
-      if (closed)
+      if (closed) {
         throw new Error("sed: attempted to write to a closed output file");
+      }
       chunks.push(text);
       bufferedLength += text.length;
-      if (bufferedLength >= maxBufferLength) await flush();
+      if (bufferedLength >= maxBufferLength) {
+        await flush();
+      }
     },
     async close() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       try {
         await flush();
         await writer.close();
@@ -73,7 +80,9 @@ function createBufferedEfficientSedWriter({
       }
     },
     async abort({ reason }) {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       chunks = [];
       bufferedLength = 0;
@@ -128,7 +137,9 @@ async function createSedTextFileTarget({
   return {
     write: writer.write,
     async close() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       let failure: unknown;
       try {
         await writer.flush();
@@ -147,10 +158,14 @@ async function createSedTextFileTarget({
             );
       }
       closed = true;
-      if (failure !== undefined) throw failure;
+      if (failure !== undefined) {
+        throw failure;
+      }
     },
     async abort() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       await handle.close();
     },
@@ -173,7 +188,9 @@ export async function createSedWriteFileManager({
   const targets = new Map<string, SedWriteFileState>();
   try {
     for (const path of paths) {
-      if (targets.has(path)) continue;
+      if (targets.has(path)) {
+        continue;
+      }
       targets.set(path, {
         target: await createSedTextFileTarget({
           context,
@@ -200,8 +217,9 @@ export async function createSedWriteFileManager({
   return {
     async write({ path, output }) {
       const state = targets.get(path);
-      if (state === undefined)
+      if (state === undefined) {
         throw new Error(`sed: output file was not initialized: ${path}`);
+      }
       if (state.previousOutputMissingNewline) {
         await state.target.write({ text: encodeText({ text: recordTerminator }) });
       }
@@ -215,7 +233,9 @@ export async function createSedWriteFileManager({
       state.previousOutputMissingNewline = !output.hadNewline;
     },
     async close() {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       const failures: unknown[] = [];
       for (const { target } of targets.values()) {
         try {
@@ -225,13 +245,17 @@ export async function createSedWriteFileManager({
         }
       }
       closed = true;
-      if (failures.length === 1) throw failures[0];
+      if (failures.length === 1) {
+        throw failures[0];
+      }
       if (failures.length > 1) {
         throw new AggregateError(failures, "sed: failed to close output files");
       }
     },
     async abort({ reason }) {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       await Promise.all(
         [...targets.values()].map(async ({ target }) => {

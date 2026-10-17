@@ -12,11 +12,15 @@ export class NaidanRpcCallBudget {
   }
 
   reserve(): (() => void) | undefined {
-    if (this.retained >= this.capacity) return undefined;
-    this.retained++; let owned = true;
+    if (this.retained >= this.capacity) {
+      return undefined;
+    }
+    this.retained++;
+    let owned = true;
     return () => {
       if (owned) {
-        owned = false; this.retained--;
+        owned = false;
+        this.retained--;
       }
     };
   }

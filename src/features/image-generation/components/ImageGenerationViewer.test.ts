@@ -9,7 +9,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 it('supports explicit zoom, keyboard next/previous and closing without owning image storage', async () => {
@@ -68,14 +69,18 @@ it('does not consume Escape already handled by a control or by an IME', async ()
   wrapper = mount(ImageGenerationViewer, { props: { count: 1, index: 0, downloadEnabled: false }, global: { stubs: { Teleport: true } } });
   const dialog = wrapper.get('[data-testid="image-viewer"]');
   const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-  handled.preventDefault(); dialog.element.dispatchEvent(handled);
+  handled.preventDefault();
+  dialog.element.dispatchEvent(handled);
   await dialog.trigger('keydown', { key: 'Escape', isComposing: true });
   expect(wrapper.emitted('close')).toBeUndefined();
-  await dialog.trigger('keydown', { key: 'Escape' }); expect(wrapper.emitted('close')).toHaveLength(1);
+  await dialog.trigger('keydown', { key: 'Escape' });
+  expect(wrapper.emitted('close')).toHaveLength(1);
 });
 
 it('traps focus across editable details and links, then restores the opener on close', async () => {
-  const opener = document.createElement('button'); document.body.append(opener); opener.focus();
+  const opener = document.createElement('button');
+  document.body.append(opener);
+  opener.focus();
   using _cleanupResource = {
     [Symbol.dispose]() {
       opener.remove();
@@ -94,12 +99,14 @@ it('traps focus across editable details and links, then restores the opener on c
   await dialog.trigger('keydown', { key: 'Tab' });
   const first = dialog.findAll<HTMLButtonElement>('button').find(button => !button.element.disabled)!;
   expect(document.activeElement).toBe(first.element);
-  first.element.focus(); await first.trigger('keydown', { key: 'Tab', shiftKey: true });
+  first.element.focus();
+  await first.trigger('keydown', { key: 'Tab', shiftKey: true });
   expect(document.activeElement?.tagName).toBe('SUMMARY');
   expect(document.activeElement).not.toBe(dialog.get('[data-testid="hidden-input"]').element);
   await dialog.get('summary').trigger('keydown', { key: 'Tab' });
   expect(document.activeElement).toBe(first.element);
-  wrapper.unmount(); wrapper = undefined;
+  wrapper.unmount();
+  wrapper = undefined;
   expect(document.activeElement).toBe(opener);
 });
 

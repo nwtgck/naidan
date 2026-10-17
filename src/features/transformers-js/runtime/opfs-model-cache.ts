@@ -30,10 +30,14 @@ function revisionAliasUrl({
   } catch {
     return undefined;
   }
-  if (url.hostname !== 'huggingface.co') return undefined;
+  if (url.hostname !== 'huggingface.co') {
+    return undefined;
+  }
 
   const encodedParts = url.pathname.split('/').filter(Boolean);
-  if (encodedParts.length < 5 || encodedParts[2] !== 'resolve') return undefined;
+  if (encodedParts.length < 5 || encodedParts[2] !== 'resolve') {
+    return undefined;
+  }
   let parts: string[];
   try {
     parts = encodedParts.map(part => decodeURIComponent(part));
@@ -48,7 +52,9 @@ function revisionAliasUrl({
     && item.resolvedRevision === requestedRevision
     && item.repositoryPaths.includes(repositoryPath)
   ));
-  if (alias === undefined) return undefined;
+  if (alias === undefined) {
+    return undefined;
+  }
 
   const modelPath = alias.modelId.split('/').map(part => encodeURIComponent(part)).join('/');
   const filePath = repositoryPath.split('/').map(part => encodeURIComponent(part)).join('/');
@@ -61,8 +67,12 @@ async function matchOpfsPath({ urlString, allowMutation }: {
   allowMutation: boolean;
 }): Promise<Response | undefined> {
   const path = urlToPath({ url: urlString });
-  if (!path) return undefined;
-  if (!supportsOpfsCoordination()) return await matchOpfsPathUnderLease({ urlString, allowMutation });
+  if (!path) {
+    return undefined;
+  }
+  if (!supportsOpfsCoordination()) {
+    return await matchOpfsPathUnderLease({ urlString, allowMutation });
+  }
   const found = await withOpfsFileLease({
     path,
     mode: 'shared',
@@ -71,7 +81,9 @@ async function matchOpfsPath({ urlString, allowMutation }: {
     run: async () =>
       await matchOpfsPathUnderLease({ urlString, allowMutation: false }),
   });
-  if (found !== undefined || !allowMutation) return found;
+  if (found !== undefined || !allowMutation) {
+    return found;
+  }
   // Never upgrade a shared lease. Recheck after acquiring exclusive ownership
   // so cleanup cannot delete a file completed by an intervening writer.
   return await withOpfsFileLease({
@@ -92,7 +104,9 @@ async function matchOpfsPathUnderLease({
   allowMutation: boolean,
 }): Promise<Response | undefined> {
   const path = urlToPath({ url: urlString });
-  if (!path) return undefined;
+  if (!path) {
+    return undefined;
+  }
 
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
@@ -101,7 +115,9 @@ async function matchOpfsPathUnderLease({
     const root = await navigator.storage.getDirectory();
     let currentDir = root;
     for (const part of pathParts) {
-      if (!part) continue;
+      if (!part) {
+        continue;
+      }
       currentDir = await currentDir.getDirectoryHandle(part, { create: false });
     }
 
@@ -119,7 +135,9 @@ async function matchOpfsPathUnderLease({
       return undefined;
     }
 
-    if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] CACHE HIT: ${path} (${file.size} bytes)`);
+    if (!__BUILD_MODE_IS_TEST__) {
+      console.log(`[opfsCache] CACHE HIT: ${path} (${file.size} bytes)`);
+    }
     return new Response(file.stream(), {
       headers: {
         'Content-Type': urlString.endsWith('.json') ? 'application/json' : 'application/octet-stream',
@@ -131,8 +149,12 @@ async function matchOpfsPathUnderLease({
     // Only absent entries are cache misses. Permission and I/O failures must
     // not authorize another revision lookup or suggest that Download can repair
     // the cache. Preserve the cause for the owning Load/Download operation.
-    if (!(error instanceof DOMException || error instanceof Error) || error.name !== 'NotFoundError') throw error;
-    if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] CACHE MISS: ${path}`);
+    if (!(error instanceof DOMException || error instanceof Error) || error.name !== 'NotFoundError') {
+      throw error;
+    }
+    if (!__BUILD_MODE_IS_TEST__) {
+      console.log(`[opfsCache] CACHE MISS: ${path}`);
+    }
     return undefined;
   }
 }
@@ -188,7 +210,9 @@ export function createOpfsModelCache({
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Transformers.js invokes the Cache-compatible API positionally.
     async match(request: string | Request): Promise<Response | undefined> {
       const urlString = typeof request === 'string' ? request : request.url;
-      if (typeof request !== 'string' && request.method && request.method !== 'GET') return undefined;
+      if (typeof request !== 'string' && request.method && request.method !== 'GET') {
+        return undefined;
+      }
 
       const exact = await matchOpfsPath({ urlString, allowMutation });
       if (exact !== undefined) {
@@ -229,7 +253,9 @@ export function createOpfsModelCache({
         );
       }
       const path = urlToPath({ url: urlString });
-      if (!path) return;
+      if (!path) {
+        return;
+      }
 
       await assertFullResourceResponse({ response });
 
@@ -241,9 +267,13 @@ export function createOpfsModelCache({
       }
 
       try {
-        if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] WRITING: ${path}...`);
+        if (!__BUILD_MODE_IS_TEST__) {
+          console.log(`[opfsCache] WRITING: ${path}...`);
+        }
         await writeToOpfs({ path, response });
-        if (!__BUILD_MODE_IS_TEST__) console.log(`[opfsCache] COMPLETED: ${path}`);
+        if (!__BUILD_MODE_IS_TEST__) {
+          console.log(`[opfsCache] COMPLETED: ${path}`);
+        }
       } catch (err) {
         console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
         throw err;

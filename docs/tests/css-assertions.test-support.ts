@@ -8,14 +8,20 @@ export function cssForAssertions({ css }: { css: string }): string {
   root.raws.after = '';
   root.walk(node => {
     node.raws.before = '';
-    if ('nodes' in node) node.raws.after = '';
+    if ('nodes' in node) {
+      node.raws.after = '';
+    }
     switch (node.type) {
     case 'decl':
-      if (!node.prop.startsWith('--') && /^[\t\n\f\r ]*:[\t\n\f\r ]*$/u.test(node.raws.between ?? '')) node.raws.between = ':';
+      if (!node.prop.startsWith('--') && /^[\t\n\f\r ]*:[\t\n\f\r ]*$/u.test(node.raws.between ?? '')) {
+        node.raws.between = ':';
+      }
       break;
     case 'rule':
     case 'atrule':
-      if (/^[\t\n\f\r ]*$/u.test(node.raws.between ?? '')) node.raws.between = '';
+      if (/^[\t\n\f\r ]*$/u.test(node.raws.between ?? '')) {
+        node.raws.between = '';
+      }
       break;
     case 'comment': break;
     default: {

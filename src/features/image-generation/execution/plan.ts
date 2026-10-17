@@ -16,43 +16,59 @@ export function createImageExecutionPlan<Snapshot>({ snapshot, copySnapshot, sta
       return copySnapshot({ snapshot: captured });
     },
     start({ seed, signal, onProgress, onPreview }) {
-      if (active) throw new Error('An image execution plan is already running');
-      if (signal.aborted) return { result: Promise.resolve({ status: 'cancelled' }), cancel() {}, updatePreview: undefined };
-      const token = {}; active = token;
+      if (active) {
+        throw new Error('An image execution plan is already running');
+      }
+      if (signal.aborted) {
+        return { result: Promise.resolve({ status: 'cancelled' }), cancel() {}, updatePreview: undefined };
+      }
+      const token = {};
+      active = token;
       let job: ImageExecutionJob;
       try {
         job = start({
           seed,
           signal,
           onProgress({ event }) {
-            if (active !== token || signal.aborted) return;
+            if (active !== token || signal.aborted) {
+              return;
+            }
             try {
               void Promise.resolve(onProgress({ event })).catch(() => undefined);
             } catch { /* Presentation cannot own native success. */ }
           },
           onPreview({ frame }) {
-            if (active !== token || signal.aborted) return;
+            if (active !== token || signal.aborted) {
+              return;
+            }
             try {
               void Promise.resolve(onPreview({ frame })).catch(() => undefined);
             } catch { /* Presentation cannot own native success. */ }
           },
         });
       } catch (error) {
-        active = undefined; throw error;
+        active = undefined;
+        throw error;
       }
       // Cancellation does not release the reservation: the backend must settle
       // after its work retires. A delayed cancel may not affect a later image.
       const result = job.result.finally(() => {
-        if (active === token) active = undefined;
+        if (active === token) {
+          active = undefined;
+        }
       });
       const update = job.updatePreview;
       return {
         result,
         cancel() {
-          if (active === token) job.cancel();
+          if (active === token) {
+            job.cancel();
+          }
         },
         updatePreview: update === undefined ? undefined : ({ settings }) => {
-          if (active === token) update({ settings });
+          if (active === token) {
+            update({ settings });
+          }
         },
       };
     },

@@ -197,7 +197,9 @@ export function buildCompactRequestMessages({
   const messages = prefix.map(message => copyChatMessage({ message }));
   const ids = new Set(messages.map(message => idToRaw({ id: message.id })));
   let raw = 'compact_instruction';
-  while (ids.has(raw)) raw += '_';
+  while (ids.has(raw)) {
+    raw += '_';
+  }
   messages.push({
     id: toMessageId({ raw }),
     role: 'user',
@@ -258,7 +260,10 @@ export async function createCompactChatMessagesFromPrefix({
   switch (promptMode) {
   case 'without_message_ids': return messages;
   case 'with_message_ids': break;
-  default: { const _ex: never = promptMode; throw new Error(`Unhandled compact prompt mode: ${_ex}`); }
+  default: {
+    const _ex: never = promptMode;
+    throw new Error(`Unhandled compact prompt mode: ${_ex}`);
+  }
   }
   return Promise.all(messages.map(async message => {
     switch (message.role) {
@@ -272,16 +277,22 @@ export async function createCompactChatMessagesFromPrefix({
         const annotate = async ({ content }: { content: { type: 'text', text: string } | { type: 'binary_object', id: BinaryObjectId } }) => {
           let text: string;
           switch (content.type) {
-          case 'text': text = content.text; break;
+          case 'text': text = content.text;
+            break;
           case 'binary_object': {
             const blob = await storageService.getFile({ binaryObjectId: content.id });
-            if (!blob) throw new Error('Cannot compact a missing tool result.');
+            if (!blob) {
+              throw new Error('Cannot compact a missing tool result.');
+            }
             // Match inline tool text, including a leading BOM; corrupt bytes must not
             // become replacement characters inside the annotated model input.
             text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await blob.arrayBuffer());
             break;
           }
-          default: { const _ex: never = content; throw new Error(`Unhandled tool content: ${_ex}`); }
+          default: {
+            const _ex: never = content;
+            throw new Error(`Unhandled tool content: ${_ex}`);
+          }
           }
           return { type: 'text' as const, text: createCompactToolMessageContent({ messageId: message.id, content: text, promptMode }) };
         };
@@ -289,11 +300,17 @@ export async function createCompactChatMessagesFromPrefix({
         case 'success': return { ...part, result: { ...result, content: await annotate({ content: result.content }) } };
         case 'error': return { ...part, result: { ...result, error: { ...result.error, message: await annotate({ content: result.error.message }) } } };
         case 'executing': throw new Error('Cannot compact a tool result that is still executing.');
-        default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+        default: {
+          const _ex: never = result;
+          throw new Error(`Unhandled tool result: ${_ex}`);
+        }
         }
       })),
     };
-    default: { const _ex: never = message; throw new Error(`Unhandled compact message: ${_ex}`); }
+    default: {
+      const _ex: never = message;
+      throw new Error(`Unhandled compact message: ${_ex}`);
+    }
     }
   }));
 }
@@ -304,11 +321,15 @@ function addCompactLookupText<Part extends ChatMessage['parts'][number]>({ parts
 }): (Part | { type: 'text', text: string, completeness: 'complete' })[] {
   let annotated = false;
   const copied = parts.map(part => {
-    if (part.type !== 'text' || annotated) return part;
+    if (part.type !== 'text' || annotated) {
+      return part;
+    }
     annotated = true;
     return { ...part, text: createCompactToolMessageContent({ messageId, content: part.text, promptMode: 'with_message_ids' }) };
   });
-  if (annotated) return copied;
+  if (annotated) {
+    return copied;
+  }
   // Reasoning remains before visible text, including reasoning-only assistants.
   const next = copied.findIndex(part => part.type !== 'reasoning');
   return [
@@ -339,20 +360,32 @@ export function createCompactRequestPreview({
           switch (result.content.type) {
           case 'text': return result.content.text;
           case 'binary_object': return '[tool_result: binary object]';
-          default: { const _ex: never = result.content; throw new Error(`Unhandled compact content: ${_ex}`); }
+          default: {
+            const _ex: never = result.content;
+            throw new Error(`Unhandled compact content: ${_ex}`);
+          }
           }
         }
         case 'error': {
           switch (result.error.message.type) {
           case 'text': return result.error.message.text;
           case 'binary_object': return '[tool_result: binary error]';
-          default: { const _ex: never = result.error.message; throw new Error(`Unhandled compact error: ${_ex}`); }
+          default: {
+            const _ex: never = result.error.message;
+            throw new Error(`Unhandled compact error: ${_ex}`);
+          }
           }
         }
-        default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+        default: {
+          const _ex: never = result;
+          throw new Error(`Unhandled tool result: ${_ex}`);
+        }
         }
       }
-      default: { const _ex: never = part; throw new Error(`Unhandled compact preview part: ${_ex}`); }
+      default: {
+        const _ex: never = part;
+        throw new Error(`Unhandled compact preview part: ${_ex}`);
+      }
       }
     }).join('\n');
     return `[${message.role}]\n${content}`;

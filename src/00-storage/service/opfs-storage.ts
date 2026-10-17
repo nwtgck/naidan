@@ -64,12 +64,16 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
     const directory = await this.getExperimentalDir({ create: false });
-    if (!directory) return undefined;
+    if (!directory) {
+      return undefined;
+    }
     let handle: FileSystemFileHandle;
     try {
       handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
     } catch (error) {
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return undefined;
+      }
       throw error;
     }
     return ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
@@ -78,24 +82,33 @@ export class OPFSStorageProvider extends IStorageProvider {
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
     if (registry === undefined) {
       const directory = await this.getExperimentalDir({ create: false });
-      if (!directory) return;
+      if (!directory) {
+        return;
+      }
       try {
         await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
       } catch (error) {
-        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+          throw error;
+        }
       }
       return;
     }
     const text = JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry));
     const directory = await this.getExperimentalDir({ create: true });
-    if (!directory) throw new Error('Experimental storage directory is unavailable.');
+    if (!directory) {
+      throw new Error('Experimental storage directory is unavailable.');
+    }
     let handle: FileSystemFileHandle;
     let created = false;
     try {
       handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
     } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
-      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE, { create: true }); created = true;
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+        throw error;
+      }
+      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE, { create: true });
+      created = true;
     }
     let writable: FileSystemWritableFileStream | undefined;
     try {
@@ -120,7 +133,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       return await this.root!.getDirectoryHandle('experimental', { create });
     } catch (error) {
-      if (!create && (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+      if (!create && (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return undefined;
+      }
       throw error;
     }
   }
@@ -137,7 +152,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch (error) {
       // Only a missing entry at lookup means absence. An acquired handle that
       // later fails to read must never let an updater overwrite an empty chat.
-      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return null;
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return null;
+      }
       throw error;
     }
     const file = await fileHandle.getFile();
@@ -146,7 +163,9 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
-    if (rawContent === null) return null;
+    if (rawContent === null) {
+      return null;
+    }
     return chatContentToDomain({
       dto: ChatContentSchemaDto.parse(JSON.parse(rawContent)),
     });
@@ -213,7 +232,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       // Only failure to locate the source directory means migration is unnecessary.
       // A missing file later in the copy/write sequence must not mark success.
       const isNotFound = error instanceof Error && (error.name === 'NotFoundError' || ('code' in error && error.code === 8));
-      if (isNotFound) return 'completed';
+      if (isNotFound) {
+        return 'completed';
+      }
       throw error;
     }
     try {
@@ -233,7 +254,8 @@ export class OPFSStorageProvider extends IStorageProvider {
               for (const { attachmentId, name, mimeType, createdAt } of readLegacyUploadedFileMetadata({ serialized: await file.text() })) {
                 let files = metadata.get(attachmentId);
                 if (!files) {
-                  files = new Map(); metadata.set(attachmentId, files);
+                  files = new Map();
+                  metadata.set(attachmentId, files);
                 }
                 const previous = files.get(name);
                 if (files.has(name) && (previous?.mimeType !== mimeType || previous.createdAt !== createdAt)) {
@@ -250,7 +272,8 @@ export class OPFSStorageProvider extends IStorageProvider {
             }
           }
           break;
-        case 'directory': deferred = true; break;
+        case 'directory': deferred = true;
+          break;
         default: {
           const _ex: never = entryKind;
           throw new Error(`Unhandled content entry: ${_ex}`);
@@ -288,7 +311,8 @@ export class OPFSStorageProvider extends IStorageProvider {
               });
               let files = idMap.get(attachmentId);
               if (!files) {
-                files = new Map(); idMap.set(attachmentId, files);
+                files = new Map();
+                idMap.set(attachmentId, files);
               }
               files.set(fileEntry.name, idToRaw({ id: newBinaryObjectId }));
               break;
@@ -326,7 +350,9 @@ export class OPFSStorageProvider extends IStorageProvider {
                 serialized: await file.text(),
                 binaryObjectIds: idMap,
               });
-              if (rewritten.unresolvedReferences > 0) deferred = true;
+              if (rewritten.unresolvedReferences > 0) {
+                deferred = true;
+              }
               if (rewritten.serialized !== undefined) {
                 const writable = await (entry as FileSystemFileHandleWithWritable).createWritable();
                 try {
@@ -357,7 +383,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       // Do not delete a directory that may still be needed by failed documents.
-      if (deferred) return 'deferred';
+      if (deferred) {
+        return 'deferred';
+      }
 
       // 3. Cleanup, after every inspected chat reference was committed.
       await this.root!.removeEntry('uploaded-files', { recursive: true });
@@ -397,7 +425,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch (error) {
       const isNotFound = (error instanceof DOMException || error instanceof Error)
         && (error.name === 'NotFoundError' || ('code' in error && error.code === 8));
-      if (isNotFound) return { objects: {} };
+      if (isNotFound) {
+        return { objects: {} };
+      }
       throw error;
     }
     // Invalid or unreadable metadata is not an empty index to overwrite.
@@ -554,7 +584,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     const rawContent = await this.readChatRecord({ directory: 'chat-contents', id });
     const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
     const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
-    if (meta === null || content === null) return null;
+    if (meta === null || content === null) {
+      return null;
+    }
 
     const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
@@ -562,7 +594,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     const hierarchy = await this.loadHierarchy();
     if (hierarchy) {
       const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) chat.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        chat.groupId = toChatGroupId({ raw: group.id });
+      }
     }
 
     // Hydrate attachments with metadata from BinaryObject indices
@@ -573,14 +607,18 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     const rawMeta = await this.readChatRecord({ directory: 'chat-metas', id });
-    if (rawMeta === null) return null;
+    if (rawMeta === null) {
+      return null;
+    }
     const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
 
     // Resolve groupId from hierarchy
     const hierarchy = await this.loadHierarchy();
     if (hierarchy) {
       const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) meta.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        meta.groupId = toChatGroupId({ raw: group.id });
+      }
     }
 
     return meta;
@@ -588,7 +626,9 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     const content = await this.loadUnhydratedChatContent({ id });
-    if (content === null) return null;
+    if (content === null) {
+      return null;
+    }
 
     await this.hydrateAttachments({ nodes: content.root.items });
     return content;
@@ -758,7 +798,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'directory': {
           // Check if shard has any files other than index.json
           for await (const shardEntry of (entry as FileSystemDirectoryHandle).values()) {
-            if (shardEntry.name !== 'index.json') return true;
+            if (shardEntry.name !== 'index.json') {
+              return true;
+            }
           }
           break;
         }
@@ -813,12 +855,16 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       await dir.removeEntry(fileName);
     } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+        throw error;
+      }
     }
     try {
       await dir.removeEntry(markerName);
     } catch (error) {
-      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) {
+        throw error;
+      }
     }
 
     const index = await this.loadShardIndex({ shard: shard });
@@ -940,13 +986,21 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.ensureRoot();
 
     // 1. Restore Structural Metadata
-    if (structure.settings) await this.saveSettings({ settings: structure.settings });
-    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    if (structure.settings) {
+      await this.saveSettings({ settings: structure.settings });
+    }
+    if (structure.hierarchy) {
+      await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    }
     if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
+      for (const meta of structure.chatMetas) {
+        await this.saveChatMeta({ meta });
+      }
     }
     if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
+      for (const group of structure.chatGroups) {
+        await this.saveChatGroup({ chatGroup: group });
+      }
     }
 
     // 2. Restore Heavy Content
@@ -1129,7 +1183,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       const entry = entries[i];
-      if (!entry) continue;
+      if (!entry) {
+        continue;
+      }
       const { file, relativePath } = entry;
       const pathParts = relativePath.split('/').filter(Boolean);
 
@@ -1170,7 +1226,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const index = await this.loadVolumeShardIndex({ shard });
       const volume = index.volumes[idToRaw({ id: volumeId })];
 
-      if (!volume) return null;
+      if (!volume) {
+        return null;
+      }
 
       switch (volume.type) {
       case 'opfs': {
@@ -1194,7 +1252,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     const shard = this.getVolumeShardPath({ id: volumeId });
     const index = await this.loadVolumeShardIndex({ shard });
     const volume = index.volumes[idToRaw({ id: volumeId })];
-    if (!volume) throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
+    if (!volume) {
+      throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
+    }
     index.volumes[idToRaw({ id: volumeId })] = { ...volume, name };
     await this.saveVolumeShardIndex({ shard, index });
   }

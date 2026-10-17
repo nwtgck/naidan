@@ -23,7 +23,9 @@ export async function appendReflog({ files, path, oldObjectId, newObjectId, iden
   message: string,
 }): Promise<void> {
   const directory = parentPath({ path });
-  if (!await pathExists({ files, path: directory })) await files.mkdir({ path: directory, recursive: true });
+  if (!await pathExists({ files, path: directory })) {
+    await files.mkdir({ path: directory, recursive: true });
+  }
   const previous = await pathExists({ files, path }) ? await readFileText({ files, path }) : '';
   const line = `${oldObjectId ?? ZERO_OBJECT_ID} ${newObjectId} ${identity.name} <${identity.email}> ${timestamp}\t${normalizeReflogMessage({ message })}\n`;
   await replaceTextViaLock({ files, path, text: `${previous}${line}` });
@@ -42,16 +44,24 @@ export async function readReflog({ files, path }: {
   files: GitFiles,
   path: string,
 }): Promise<GitReflogEntry[]> {
-  if (!await pathExists({ files, path })) return [];
+  if (!await pathExists({ files, path })) {
+    return [];
+  }
   const result: GitReflogEntry[] = [];
   for (const line of (await readFileText({ files, path })).split('\n')) {
-    if (line.length === 0) continue;
+    if (line.length === 0) {
+      continue;
+    }
     const tabIndex = line.indexOf('\t');
-    if (tabIndex < 0) throw new Error(`invalid reflog entry in ${path}`);
+    if (tabIndex < 0) {
+      throw new Error(`invalid reflog entry in ${path}`);
+    }
     const metadata = line.slice(0, tabIndex);
     const message = line.slice(tabIndex + 1);
     const match = /^([0-9a-f]{40}) ([0-9a-f]{40}) (.+ <[^>]*>) ([0-9]+ [+-][0-9]{4})$/u.exec(metadata);
-    if (match === null) throw new Error(`invalid reflog entry in ${path}`);
+    if (match === null) {
+      throw new Error(`invalid reflog entry in ${path}`);
+    }
     result.push({
       oldObjectId: match[1]!,
       newObjectId: match[2]!,

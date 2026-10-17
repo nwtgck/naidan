@@ -22,7 +22,8 @@ const bridge = vi.hoisted(() => ({ manager: undefined as NaidanPeerManager | und
 vi.mock('../runtime/feature', () => ({
   getRpcManager: async () => bridge.manager,
   subscribeRpcState: ({ listener }: { listener(): void }) => {
-    bridge.listeners.add(listener); return () => bridge.listeners.delete(listener);
+    bridge.listeners.add(listener);
+    return () => bridge.listeners.delete(listener);
   },
 }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: async () => true }) }));
@@ -43,7 +44,9 @@ beforeEach(async () => {
   vi.spyOn(crypto, 'subtle', 'get').mockReturnValue(new Proxy(subtle, {
     get(target, key) {
       const member: unknown = Reflect.get(target, key, target);
-      if (typeof member !== 'function') return member;
+      if (typeof member !== 'function') {
+        return member;
+      }
       return async (...args: unknown[]) => {
         const result: unknown = await Reflect.apply(member, target, args);
         return Object.prototype.toString.call(result) === '[object ArrayBuffer]'
@@ -63,12 +66,19 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
   await Promise.all(managers.splice(0).map(manager => manager.setEnabled({ enabled: false })));
   expect(relay.occupied).toBe(0);
-  expect(pool.stats).toMatchObject({ active: 0, queued: 0 }); expect(pool.stats.peak).toBeLessThanOrEqual(6);
-  for (const [input] of vi.mocked(fetch).mock.calls) expect(new URL(String(input)).searchParams.has('n')).toBe(false);
-  bridge.manager = undefined; bridge.listeners.clear(); vi.restoreAllMocks();
+  expect(pool.stats).toMatchObject({ active: 0, queued: 0 });
+  expect(pool.stats.peak).toBeLessThanOrEqual(6);
+  for (const [input] of vi.mocked(fetch).mock.calls) {
+    expect(new URL(String(input)).searchParams.has('n')).toBe(false);
+  }
+  bridge.manager = undefined;
+  bridge.listeners.clear();
+  vi.restoreAllMocks();
 });
 
 async function peer({ identity, other, startup, connectOnStartup }: { identity: NaidanPipingIdentity, other: NaidanPipingIdentity, startup: 'run' | 'defer', connectOnStartup: NaidanRpcRegistration['connectOnStartup'] }) {
@@ -89,7 +99,8 @@ async function peer({ identity, other, startup, connectOnStartup }: { identity: 
     list: vi.fn(async () => ({ access, registrations: [registration] })),
     remember: async () => access,
     update: vi.fn(async ({ registration: next }) => {
-      registration = next; return next.revision;
+      registration = next;
+      return next.revision;
     }),
     remove: async () => {},
   };
@@ -116,13 +127,17 @@ async function peer({ identity, other, startup, connectOnStartup }: { identity: 
       },
       retireResources: async () => {},
       changed: () => {
-        for (const listener of bridge.listeners) listener();
+        for (const listener of bridge.listeners) {
+          listener();
+        }
       },
     },
   });
   managers.push(manager);
   await manager.setEnabled({ enabled: true });
-  if (startup === 'run') await manager.startAutomaticConnections();
+  if (startup === 'run') {
+    await manager.startAutomaticConnections();
+  }
   return { manager, id, open, storage };
 }
 
@@ -131,7 +146,10 @@ async function setup({ localRole }: { localRole?: 'initiator' | 'responder' } = 
   if (localRole) {
     const ordered = [a, b].sort((left, right) => {
       for (let index = 0; index < 32; index++) {
-        const delta = left.publicKey[index]! - right.publicKey[index]!; if (delta) return delta;
+        const delta = left.publicKey[index]! - right.publicKey[index]!;
+        if (delta) {
+          return delta;
+        }
       }
       return 0;
     });
@@ -139,13 +157,16 @@ async function setup({ localRole }: { localRole?: 'initiator' | 'responder' } = 
   }
   const local = await peer({ identity: a, other: b, startup: 'run', connectOnStartup: 'disabled' }), remote = await peer({ identity: b, other: a, startup: 'run', connectOnStartup: 'disabled' });
   bridge.manager = local.manager;
-  const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); await flushPromises();
+  const wrapper = mount(NaidanRpcTab);
+  wrappers.push(wrapper);
+  await flushPromises();
   return { local, remote, wrapper, identities: { a, b } };
 }
 
 it('enables a live panel, completes a real encrypted memory-relay connection, and does not duplicate the session', async () => {
   const { local, remote, wrapper } = await setup();
-  expect(local.open).not.toHaveBeenCalled(); expect(relay.occupied).toBe(0);
+  expect(local.open).not.toHaveBeenCalled();
+  expect(relay.occupied).toBe(0);
   await wrapper.get('[data-testid="rpc-connect-on-startup"]').setValue(true);
   await vi.waitFor(() => expect(local.open).toHaveBeenCalledOnce());
   expect(local.manager.list()[0]).toMatchObject({ phase: 'connecting', failure: undefined });
@@ -157,8 +178,10 @@ it('enables a live panel, completes a real encrypted memory-relay connection, an
   await vi.waitFor(() => expect(wrapper.find('[data-testid="rpc-peer-chat"]').exists()).toBe(true));
   const token = local.manager.list()[0]?.connectionToken;
   await local.manager.setConnectOnStartup({ id: local.id, connectOnStartup: 'enabled' });
-  expect(local.open).toHaveBeenCalledOnce(); expect(local.manager.list()[0]?.connectionToken).toBe(token);
-  wrapper.unmount(); await flushPromises();
+  expect(local.open).toHaveBeenCalledOnce();
+  expect(local.manager.list()[0]?.connectionToken).toBe(token);
+  wrapper.unmount();
+  await flushPromises();
   expect(local.manager.list()[0]?.phase).toBe('connected');
 });
 
@@ -173,17 +196,20 @@ it('keeps Disconnect usable while enable is waiting for a peer and preserves the
     registration: { connectOnStartup: 'enabled' },
   }));
   expect(relay.occupied).toBe(0);
-  await local.manager.reload(); await local.manager.startAutomaticConnections();
+  await local.manager.reload();
+  await local.manager.startAutomaticConnections();
   expect(local.open).toHaveBeenCalledOnce();
 });
 
 it('does not open a transport or leave the switch enabled when saving the policy fails', async () => {
   const { local, wrapper } = await setup();
   vi.mocked(local.storage.update).mockRejectedValueOnce(new Error('Storage unavailable'));
-  await wrapper.get('[data-testid="rpc-connect-on-startup"]').setValue(true); await flushPromises();
+  await wrapper.get('[data-testid="rpc-connect-on-startup"]').setValue(true);
+  await flushPromises();
   expect(wrapper.get('[data-testid="rpc-connect-on-startup"]').element).toHaveProperty('checked', false);
   expect(wrapper.find('[role="alert"]').exists()).toBe(true);
-  expect(local.open).not.toHaveBeenCalled(); expect(relay.occupied).toBe(0);
+  expect(local.open).not.toHaveBeenCalled();
+  expect(relay.occupied).toBe(0);
 });
 
 // The Settings panel's onMounted reload can supersede the app-ready read.
@@ -196,10 +222,13 @@ it.each(['startup-first', 'panel-first'] as const)('connects on startup with Set
   vi.mocked(local.storage.list).mockClear().mockImplementationOnce(() => startupRead.promise).mockImplementationOnce(() => panelRead.promise);
   const starting = local.manager.startAutomaticConnections();
   bridge.manager = local.manager;
-  const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); await flushPromises();
+  const wrapper = mount(NaidanRpcTab);
+  wrappers.push(wrapper);
+  await flushPromises();
   expect(local.storage.list).toHaveBeenCalledTimes(2);
   if (order === 'startup-first') {
-    startupRead.resolve(snapshot); await flushPromises();
+    startupRead.resolve(snapshot);
+    await flushPromises();
     expect(local.open).not.toHaveBeenCalled();
     panelRead.resolve(snapshot);
   } else {
@@ -229,7 +258,8 @@ it.each(['initiator', 'responder'] as const)('reconnects before default liveness
   const remoteLink = await remote.open.mock.results[0]!.value;
   // Abrupt one-shot connection loss precedes app disposal: no graceful CLOSE.
   remoteLink.abort({ reason: 'Simulated page reload' });
-  await remoteLink.closed; await remote.manager.setEnabled({ enabled: false });
+  await remoteLink.closed;
+  await remote.manager.setEnabled({ enabled: false });
   const started = performance.now();
   const restarted = await peer({ identity: identities.b, other: identities.a, startup: 'run', connectOnStartup: 'enabled' });
   await vi.waitFor(() => {
@@ -238,7 +268,9 @@ it.each(['initiator', 'responder'] as const)('reconnects before default liveness
     expect(local.manager.list()[0]?.connectionToken).not.toBe(oldToken);
   }, { timeout: 3000 });
   expect(performance.now() - started).toBeLessThan(3000);
-  expect(oldBinding.signal.aborted).toBe(true); expect(local.open).toHaveBeenCalledOnce(); expect(restarted.open).toHaveBeenCalledOnce();
+  expect(oldBinding.signal.aborted).toBe(true);
+  expect(local.open).toHaveBeenCalledOnce();
+  expect(restarted.open).toHaveBeenCalledOnce();
   const reconnectedPaths = [...new Set(vi.mocked(fetch).mock.calls.map(([input]) => new URL(String(input)).pathname))];
   expect(reconnectedPaths.some(path => !paths.includes(path))).toBe(true);
   await expect(local.manager.getPeerProvidedMethods({ id: local.id, signal: new AbortController().signal })).resolves.toBeDefined();
@@ -246,22 +278,33 @@ it.each(['initiator', 'responder'] as const)('reconnects before default liveness
 
 it('keeps manual stop final, lets the peer wait, and reconnects only after explicit actions', async () => {
   const { local, remote } = await setup();
-  const first = Promise.all([local.manager.connect({ id: local.id }), remote.manager.connect({ id: remote.id })]); void first.catch(() => {});
-  await vi.waitFor(() => expect({ local: local.manager.list()[0]?.phase, remote: remote.manager.list()[0]?.phase }, 'initial').toEqual({ local: 'connected', remote: 'connected' })); await first;
-  const stopped = local.manager.disconnect({ id: local.id }); void stopped.catch(() => {});
-  await vi.waitFor(() => expect(local.manager.list()[0]?.phase, 'manual stop').toBe('disconnected')); await stopped;
+  const first = Promise.all([local.manager.connect({ id: local.id }), remote.manager.connect({ id: remote.id })]);
+  void first.catch(() => {});
+  await vi.waitFor(() => expect({ local: local.manager.list()[0]?.phase, remote: remote.manager.list()[0]?.phase }, 'initial').toEqual({ local: 'connected', remote: 'connected' }));
+  await first;
+  const stopped = local.manager.disconnect({ id: local.id });
+  void stopped.catch(() => {});
+  await vi.waitFor(() => expect(local.manager.list()[0]?.phase, 'manual stop').toBe('disconnected'));
+  await stopped;
   await vi.waitFor(() => expect(remote.manager.list()[0]?.recoveryStatus).toBe('waiting-peer'));
   expect(local.manager.list()[0]?.desiredConnection).toBe('disconnected');
-  expect(remote.manager.list()[0]?.desiredConnection).toBe('connected'); expect(remote.open).toHaveBeenCalledOnce();
+  expect(remote.manager.list()[0]?.desiredConnection).toBe('connected');
+  expect(remote.open).toHaveBeenCalledOnce();
   const resumed = remote.manager.connect({ id: remote.id });
-  await flushPromises(); expect(local.manager.list()[0]?.phase).toBe('disconnected');
-  const reconnecting = local.manager.connect({ id: local.id }); void reconnecting.catch(() => {}); void resumed.catch(() => {});
+  await flushPromises();
+  expect(local.manager.list()[0]?.phase).toBe('disconnected');
+  const reconnecting = local.manager.connect({ id: local.id });
+  void reconnecting.catch(() => {});
+  void resumed.catch(() => {});
   // The receiver owns a bounded two-second CLOSE_ACK drain before reactivation.
   // This condition budget remains inside the unchanged five-second test budget.
   await vi.waitFor(() => expect({ local: local.manager.list()[0]?.phase, remote: remote.manager.list()[0]?.phase }).toEqual({ local: 'connected', remote: 'connected' }), { timeout: 3000 });
-  await reconnecting; await resumed;
-  expect(local.manager.list()[0]?.phase).toBe('connected'); expect(remote.manager.list()[0]?.phase).toBe('connected');
-  expect(local.open).toHaveBeenCalledTimes(2); expect(remote.open).toHaveBeenCalledTimes(2);
+  await reconnecting;
+  await resumed;
+  expect(local.manager.list()[0]?.phase).toBe('connected');
+  expect(remote.manager.list()[0]?.phase).toBe('connected');
+  expect(local.open).toHaveBeenCalledTimes(2);
+  expect(remote.open).toHaveBeenCalledTimes(2);
 });
 
 it('hands the human-verified pairing itself to RPC under six shared fetch slots', async () => {
@@ -271,7 +314,8 @@ it('hands the human-verified pairing itself to RPC under six shared fetch slots'
   for (const side of [local, remote]) {
     const saved = await side.storage.list();
     vi.mocked(side.storage.list).mockResolvedValue({ ...saved, registrations: [] });
-    await side.manager.revalidate(); await vi.waitFor(() => expect(side.manager.list()).toHaveLength(0));
+    await side.manager.revalidate();
+    await vi.waitFor(() => expect(side.manager.list()).toHaveLength(0));
   }
   const consent = Promise.withResolvers<boolean>();
   const verifyLocal = vi.fn(async () => true), verifyRemote = vi.fn(() => consent.promise);
@@ -291,13 +335,16 @@ it('hands the human-verified pairing itself to RPC under six shared fetch slots'
     consent.resolve(false);
   }
   const { localId, remoteId } = await pairing;
-  expect(verifyLocal).toHaveBeenCalledOnce(); expect(verifyRemote).toHaveBeenCalledOnce();
+  expect(verifyLocal).toHaveBeenCalledOnce();
+  expect(verifyRemote).toHaveBeenCalledOnce();
   const localView = local.manager.list().find(view => view.registration.id === localId);
   const remoteView = remote.manager.list().find(view => view.registration.id === remoteId);
   expect(localView).toMatchObject({ phase: 'connected', persistence: 'temporary', health: { state: 'healthy' } });
   expect(remoteView).toMatchObject({ phase: 'connected', persistence: 'temporary', health: { state: 'healthy' } });
   const opened = await local.open.mock.results[0]!.value;
-  expect(opened.session).toBeDefined(); expect(local.open).toHaveBeenCalledOnce(); expect(remote.open).toHaveBeenCalledOnce();
+  expect(opened.session).toBeDefined();
+  expect(local.open).toHaveBeenCalledOnce();
+  expect(remote.open).toHaveBeenCalledOnce();
   await expect(local.manager.getPeerProvidedMethods({ id: localId, signal })).resolves.toBeDefined();
   expect(pool.stats.peak).toBeLessThanOrEqual(6);
 });

@@ -57,12 +57,15 @@ describe('ChatSettingsPanel.vue', () => {
       expect(select.element).toHaveProperty('value', 'naidan_rpc');
       expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
     }
-    mockSettings.value.experimental = { naidanRpc: 'enabled' }; await nextTick();
+    mockSettings.value.experimental = { naidanRpc: 'enabled' };
+    await nextTick();
     for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
       expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
     }
     mockSettings.value.experimental = undefined;
-    mockCurrentChat.value.endpoint = undefined; mockCurrentChat.value.titleGeneration = 'inherit'; await nextTick();
+    mockCurrentChat.value.endpoint = undefined;
+    mockCurrentChat.value.titleGeneration = 'inherit';
+    await nextTick();
     for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
       expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
     }
@@ -179,7 +182,9 @@ describe('ChatSettingsPanel.vue', () => {
       sameScopeLmParameters: LmParameters | undefined,
     }) => {
       const value = titleGeneration ?? { endpoint: 'same_scope' as const, model: 'same_scope' as const, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
-      if (value === 'disabled') return 'disabled';
+      if (value === 'disabled') {
+        return 'disabled';
+      }
       return {
         endpoint: value.endpoint === 'same_scope' ? sameScopeEndpoint : value.endpoint,
         modelId: value.model === 'same_scope' ? sameScopeModelId : value.model.id,
@@ -1857,7 +1862,8 @@ describe('ChatSettingsPanel.vue', () => {
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        wrapper.unmount(); vi.unstubAllGlobals();
+        wrapper.unmount();
+        vi.unstubAllGlobals();
       },
     };
     await flushPromises();

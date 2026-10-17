@@ -62,7 +62,9 @@ function readFixtureFiles<T>({ files }: { files: Record<string, string> }): Reco
 
 function requireFixture<T>({ fixtures, name }: { fixtures: Record<string, T>; name: string }): T {
   const fixture = fixtures[name];
-  if (fixture === undefined) throw new Error(`Missing Download Verification fixture: ${name}`);
+  if (fixture === undefined) {
+    throw new Error(`Missing Download Verification fixture: ${name}`);
+  }
   return fixture;
 }
 
@@ -99,8 +101,12 @@ describe('Download Verification repository fixtures', () => {
       for (const file of fixture.files) {
         expect(file.path).not.toMatch(/^https?:\/\//);
         expect(file.size).toBeGreaterThanOrEqual(0);
-        if (file.blobId !== undefined) expect(file.blobId).toMatch(/^[0-9a-f]{40}$/);
-        if (file.blobId === undefined) expect(file.lfs).toBeDefined();
+        if (file.blobId !== undefined) {
+          expect(file.blobId).toMatch(/^[0-9a-f]{40}$/);
+        }
+        if (file.blobId === undefined) {
+          expect(file.lfs).toBeDefined();
+        }
         if (file.lfs !== undefined) {
           expect(file.lfs.sha256).toMatch(/^[0-9a-f]{64}$/);
           expect(file.lfs.size).toBe(file.size);

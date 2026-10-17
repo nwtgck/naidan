@@ -39,18 +39,24 @@ function readPackObjectHeader({ bytes }: { bytes: Uint8Array }): {
   size: number,
   dataOffset: number,
 } {
-  if (bytes.byteLength === 0) throw new Error('truncated pack object header');
+  if (bytes.byteLength === 0) {
+    throw new Error('truncated pack object header');
+  }
   let byte = bytes[0]!;
   const typeCode = (byte >>> 4) & 0x7;
   let size = byte & 0x0f;
   let shift = 4;
   let offset = 1;
   while ((byte & 0x80) !== 0) {
-    if (offset >= bytes.byteLength) throw new Error('truncated pack object size');
+    if (offset >= bytes.byteLength) {
+      throw new Error('truncated pack object size');
+    }
     byte = bytes[offset]!;
     offset += 1;
     size += (byte & 0x7f) * (2 ** shift);
-    if (!Number.isSafeInteger(size)) throw new Error('pack object size exceeds JavaScript safe integer range');
+    if (!Number.isSafeInteger(size)) {
+      throw new Error('pack object size exceeds JavaScript safe integer range');
+    }
     shift += 7;
   }
   return { typeCode, size, dataOffset: offset };
@@ -82,7 +88,9 @@ function readOffsetDeltaBase({ bytes, offset, objectOffset }: {
     label: 'OFS_DELTA base offset',
   });
   const baseOffset = objectOffset - encodedDistance.value;
-  if (baseOffset < 12) throw new Error('invalid OFS_DELTA base offset');
+  if (baseOffset < 12) {
+    throw new Error('invalid OFS_DELTA base offset');
+  }
   return { baseOffset, dataOffset: encodedDistance.offset };
 }
 
@@ -93,12 +101,18 @@ function readDeltaVarint({ bytes, offset }: { bytes: Uint8Array, offset: number 
   let value = 0;
   let shift = 0;
   while (true) {
-    if (offset >= bytes.byteLength) throw new Error('truncated delta varint');
+    if (offset >= bytes.byteLength) {
+      throw new Error('truncated delta varint');
+    }
     const byte = bytes[offset]!;
     offset += 1;
     value += (byte & 0x7f) * (2 ** shift);
-    if (!Number.isSafeInteger(value)) throw new Error('delta size exceeds JavaScript safe integer range');
-    if ((byte & 0x80) === 0) return { value, offset };
+    if (!Number.isSafeInteger(value)) {
+      throw new Error('delta size exceeds JavaScript safe integer range');
+    }
+    if ((byte & 0x80) === 0) {
+      return { value, offset };
+    }
     shift += 7;
   }
 }
@@ -110,7 +124,9 @@ export function applyGitDelta({ base, delta }: {
   let offset = 0;
   const baseSizeResult = readDeltaVarint({ bytes: delta, offset });
   offset = baseSizeResult.offset;
-  if (baseSizeResult.value !== base.byteLength) throw new Error('delta base size mismatch');
+  if (baseSizeResult.value !== base.byteLength) {
+    throw new Error('delta base size mismatch');
+  }
   const resultSizeResult = readDeltaVarint({ bytes: delta, offset });
   offset = resultSizeResult.offset;
   const output = new Uint8Array(resultSizeResult.value);
@@ -121,7 +137,9 @@ export function applyGitDelta({ base, delta }: {
     offset += 1;
     if ((opcode & 0x80) === 0) {
       const insertLength = opcode & 0x7f;
-      if (insertLength === 0) throw new Error('invalid zero delta opcode');
+      if (insertLength === 0) {
+        throw new Error('invalid zero delta opcode');
+      }
       if (offset + insertLength > delta.byteLength || outputOffset + insertLength > output.byteLength) {
         throw new Error('delta insert exceeds bounds');
       }
@@ -136,7 +154,9 @@ export function applyGitDelta({ base, delta }: {
     let offsetShift = 0;
     for (const mask of [0x01, 0x02, 0x04, 0x08]) {
       if ((opcode & mask) !== 0) {
-        if (offset >= delta.byteLength) throw new Error('truncated delta copy offset');
+        if (offset >= delta.byteLength) {
+          throw new Error('truncated delta copy offset');
+        }
         copyOffset += delta[offset]! * (2 ** offsetShift);
         offset += 1;
       }
@@ -145,13 +165,17 @@ export function applyGitDelta({ base, delta }: {
     let sizeShift = 0;
     for (const mask of [0x10, 0x20, 0x40]) {
       if ((opcode & mask) !== 0) {
-        if (offset >= delta.byteLength) throw new Error('truncated delta copy size');
+        if (offset >= delta.byteLength) {
+          throw new Error('truncated delta copy size');
+        }
         copySize += delta[offset]! * (2 ** sizeShift);
         offset += 1;
       }
       sizeShift += 8;
     }
-    if (copySize === 0) copySize = 0x10000;
+    if (copySize === 0) {
+      copySize = 0x10000;
+    }
     if (copyOffset + copySize > base.byteLength || outputOffset + copySize > output.byteLength) {
       throw new Error('delta copy exceeds bounds');
     }
@@ -159,7 +183,9 @@ export function applyGitDelta({ base, delta }: {
     outputOffset += copySize;
   }
 
-  if (outputOffset !== output.byteLength) throw new Error('delta result size mismatch');
+  if (outputOffset !== output.byteLength) {
+    throw new Error('delta result size mismatch');
+  }
   return output;
 }
 
@@ -172,11 +198,16 @@ function packObjectRange({ context, objectOffset }: {
   while (low < high) {
     const middle = low + Math.floor((high - low) / 2);
     const offset = context.entriesByOffset[middle]!.offset;
-    if (offset < objectOffset) low = middle + 1;
-    else high = middle;
+    if (offset < objectOffset) {
+      low = middle + 1;
+    } else {
+      high = middle;
+    }
   }
   const entry = context.entriesByOffset[low];
-  if (entry?.offset !== objectOffset) throw new Error(`pack index does not contain object offset ${objectOffset}`);
+  if (entry?.offset !== objectOffset) {
+    throw new Error(`pack index does not contain object offset ${objectOffset}`);
+  }
   return {
     objectId: entry.objectId,
     endOffset: context.entriesByOffset[low + 1]?.offset ?? context.packDataEnd,
@@ -189,17 +220,23 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
   depth: number,
   readExternalObject({ objectId }: { objectId: string }): Promise<GitObject>,
 }): Promise<GitObject> {
-  if (depth > 128) throw new Error('pack delta chain is too deep');
+  if (depth > 128) {
+    throw new Error('pack delta chain is too deep');
+  }
   const range = packObjectRange({ context, objectOffset });
   const endOffset = range.endOffset;
-  if (endOffset <= objectOffset) throw new Error('invalid pack object offsets');
+  if (endOffset <= objectOffset) {
+    throw new Error('invalid pack object offsets');
+  }
   const raw = await readFileRange({
     files: context.files,
     path: context.packPath,
     position: objectOffset,
     length: endOffset - objectOffset,
   });
-  if (raw.byteLength !== endOffset - objectOffset) throw new Error('truncated pack object');
+  if (raw.byteLength !== endOffset - objectOffset) {
+    throw new Error('truncated pack object');
+  }
   const header = readPackObjectHeader({ bytes: raw });
   let dataOffset = header.dataOffset;
   let baseByOffset: number | undefined;
@@ -212,7 +249,9 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
     break;
   }
   case 7:
-    if (dataOffset + 20 > raw.byteLength) throw new Error('truncated REF_DELTA base object id');
+    if (dataOffset + 20 > raw.byteLength) {
+      throw new Error('truncated REF_DELTA base object id');
+    }
     baseByObjectId = bytesToHex({ bytes: raw.subarray(dataOffset, dataOffset + 20) });
     dataOffset += 20;
     break;
@@ -221,7 +260,9 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
   }
 
   const inflated = await inflateZlib({ bytes: raw.subarray(dataOffset) });
-  if (inflated.byteLength !== header.size) throw new Error('pack object size mismatch');
+  if (inflated.byteLength !== header.size) {
+    throw new Error('pack object size mismatch');
+  }
 
   let object: GitObject;
   switch (header.typeCode) {
@@ -232,7 +273,9 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
     object = { type: typeFromPackCode({ typeCode: header.typeCode }), body: inflated };
     break;
   case 6: {
-    if (baseByOffset === undefined) throw new Error('missing OFS_DELTA base offset');
+    if (baseByOffset === undefined) {
+      throw new Error('missing OFS_DELTA base offset');
+    }
     const base = await readPackObjectAtOffset({
       context,
       objectOffset: baseByOffset,
@@ -243,7 +286,9 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
     break;
   }
   case 7: {
-    if (baseByObjectId === undefined) throw new Error('missing REF_DELTA base object id');
+    if (baseByObjectId === undefined) {
+      throw new Error('missing REF_DELTA base object id');
+    }
     const localBaseEntry = findPackIndexEntry({ packIndex: context.packIndex, objectId: baseByObjectId });
     const base = localBaseEntry === undefined
       ? await readExternalObject({ objectId: baseByObjectId })
@@ -274,17 +319,29 @@ async function createPackContext({ files, repository, indexFileName }: {
   const packIndex = await readPackIndex({ files, repository, indexFileName });
   const packFileName = `${indexFileName.slice(0, -4)}.pack`;
   const packPath = joinPath({ base: repository.commonDirPath, child: `objects/pack/${packFileName}` });
-  if (!await pathExists({ files, path: packPath })) throw new Error(`missing pack file for ${indexFileName}`);
+  if (!await pathExists({ files, path: packPath })) {
+    throw new Error(`missing pack file for ${indexFileName}`);
+  }
   const packSize = await fileSize({ files, path: packPath });
-  if (packSize < 32) throw new Error('pack file is too small');
+  if (packSize < 32) {
+    throw new Error('pack file is too small');
+  }
   const header = await readFileRange({ files, path: packPath, position: 0, length: 12 });
-  if (header.byteLength !== 12 || String.fromCharCode(...header.subarray(0, 4)) !== 'PACK') throw new Error('invalid pack signature');
+  if (header.byteLength !== 12 || String.fromCharCode(...header.subarray(0, 4)) !== 'PACK') {
+    throw new Error('invalid pack signature');
+  }
   const version = ((header[4]! << 24) | (header[5]! << 16) | (header[6]! << 8) | header[7]!) >>> 0;
-  if (version !== 2 && version !== 3) throw new Error(`unsupported pack version ${version}`);
+  if (version !== 2 && version !== 3) {
+    throw new Error(`unsupported pack version ${version}`);
+  }
   const objectCount = ((header[8]! << 24) | (header[9]! << 16) | (header[10]! << 8) | header[11]!) >>> 0;
-  if (objectCount !== packIndex.entries.length) throw new Error('pack/index object count mismatch');
+  if (objectCount !== packIndex.entries.length) {
+    throw new Error('pack/index object count mismatch');
+  }
   const trailer = await readFileRange({ files, path: packPath, position: packSize - 20, length: 20 });
-  if (bytesToHex({ bytes: trailer }) !== packIndex.packChecksum) throw new Error('pack checksum does not match index');
+  if (bytesToHex({ bytes: trailer }) !== packIndex.packChecksum) {
+    throw new Error('pack checksum does not match index');
+  }
   const packDataEnd = packSize - 20;
   const entriesByOffset = [...packIndex.entries].sort((left, right) => left.offset - right.offset);
   for (let index = 0; index < entriesByOffset.length; index += 1) {
@@ -324,10 +381,14 @@ async function listPackIndexFileNames({ files, repository }: {
   repository: GitRepository,
 }): Promise<readonly string[]> {
   const packDirectory = joinPath({ base: repository.commonDirPath, child: 'objects/pack' });
-  if (!await pathExists({ files, path: packDirectory })) return [];
+  if (!await pathExists({ files, path: packDirectory })) {
+    return [];
+  }
   const names: string[] = [];
   for await (const directoryEntry of files.readDir({ path: packDirectory })) {
-    if (directoryEntry.type === 'file' && directoryEntry.name.endsWith('.idx')) names.push(directoryEntry.name);
+    if (directoryEntry.type === 'file' && directoryEntry.name.endsWith('.idx')) {
+      names.push(directoryEntry.name);
+    }
   }
   return names;
 }
@@ -337,7 +398,9 @@ async function cachedPackIndexFileNames({ files, repository, cache }: {
   repository: GitRepository,
   cache: GitPackReadCache | undefined,
 }): Promise<readonly string[]> {
-  if (cache === undefined) return listPackIndexFileNames({ files, repository });
+  if (cache === undefined) {
+    return listPackIndexFileNames({ files, repository });
+  }
   assertPackReadCacheRepository({ cache, repository });
   cache.indexFileNames ??= listPackIndexFileNames({ files, repository });
   return cache.indexFileNames;
@@ -349,7 +412,9 @@ async function cachedPackContext({ files, repository, indexFileName, cache }: {
   indexFileName: string,
   cache: GitPackReadCache | undefined,
 }): Promise<PackContext> {
-  if (cache === undefined) return createPackContext({ files, repository, indexFileName });
+  if (cache === undefined) {
+    return createPackContext({ files, repository, indexFileName });
+  }
   assertPackReadCacheRepository({ cache, repository });
   let pending = cache.contextsByIndexFileName.get(indexFileName);
   if (pending === undefined) {
@@ -369,7 +434,9 @@ export async function readPackedObject({ files, repository, objectId, readExtern
   for (const indexFileName of await cachedPackIndexFileNames({ files, repository, cache })) {
     const context = await cachedPackContext({ files, repository, indexFileName, cache });
     const packEntry = findPackIndexEntry({ packIndex: context.packIndex, objectId });
-    if (packEntry === undefined) continue;
+    if (packEntry === undefined) {
+      continue;
+    }
     return readPackObjectAtOffset({
       context,
       objectOffset: packEntry.offset,

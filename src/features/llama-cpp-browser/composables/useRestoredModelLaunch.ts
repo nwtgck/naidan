@@ -23,7 +23,9 @@ export function useRestoredModelLaunch({ chat, resolved }: {
     && router.currentRoute.value.path === `/chat/${idToRaw({ id: chat.value.id })}`));
   const view = computed(() => {
     const current = chat.value;
-    if (!isCurrentRoute.value || current === null || resolved.value?.endpoint.type !== 'llama_cpp_browser' || router === undefined) return undefined;
+    if (!isCurrentRoute.value || current === null || resolved.value?.endpoint.type !== 'llama_cpp_browser' || router === undefined) {
+      return undefined;
+    }
     return readModelLaunchView({ state: router.options.history.state[modelLaunchViewHistoryKey], chatId: current.id, modelId: resolved.value.modelId });
   });
   function synchronize(): void {
@@ -46,19 +48,29 @@ export function useRestoredModelLaunch({ chat, resolved }: {
     restoration.value = 'idle';
     const current = chat.value;
     const hint = view.value;
-    if (launch.value !== undefined || current === null || hint === undefined || current.root.items.length > 0) return;
+    if (launch.value !== undefined || current === null || hint === undefined || current.root.items.length > 0) {
+      return;
+    }
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     restoration.value = 'checking';
     try {
       const target = await restoreModelLaunchTarget({ view: hint, signal: controller.signal });
-      if (controller.signal.aborted || !isStorageCurrent()) return;
+      if (controller.signal.aborted || !isStorageCurrent()) {
+        return;
+      }
       const restored = await storageService.restoreModelLaunch({ chatId: current.id, input: hint.input, requestedVariant: parseRepository({ input: hint.input }).requestedVariant, target, signal: controller.signal });
-      if (controller.signal.aborted || !isStorageCurrent()) return;
-      if (restored === undefined) throw new Error('The model launch settings changed');
+      if (controller.signal.aborted || !isStorageCurrent()) {
+        return;
+      }
+      if (restored === undefined) {
+        throw new Error('The model launch settings changed');
+      }
       launch.value = restored;
       restoration.value = 'idle';
     } catch {
-      if (!controller.signal.aborted && isStorageCurrent()) restoration.value = 'failed';
+      if (!controller.signal.aborted && isStorageCurrent()) {
+        restoration.value = 'failed';
+      }
     }
   }, { immediate: true });
   function retryRestoration(): void {

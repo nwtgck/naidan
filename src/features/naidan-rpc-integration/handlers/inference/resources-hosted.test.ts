@@ -75,18 +75,21 @@ function generate({ input }: { input: PeerImageInput }) {
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal('window', { location: { href: 'https://local.example/' } });
-  vi.clearAllMocks(); mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
+  vi.clearAllMocks();
+  mocks.scan.mockResolvedValue({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
   mocks.create.mockReturnValue({ generate: mocks.generate, dispose: mocks.dispose });
   mocks.generate.mockResolvedValue({ png: new Blob([new Uint8Array(33)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 it('reads catalogs without creating an engine or downloading anything', async () => {
   const catalog = await resource().listImageModels({ signal: new AbortController().signal });
-  expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 }); expect(mocks.create).not.toHaveBeenCalled();
+  expect(catalog[0]?.selection?.primary.file.expected).toEqual({ size: 16, lastModified: 123 });
+  expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it('does not advertise a diffusion file as a complete implicit model configuration', async () => {
@@ -97,28 +100,35 @@ it('does not advertise a diffusion file as a complete implicit model configurati
 it('honors explicit read-only model selection and bounds native-only policies', async () => {
   await generate({ input: request() });
   const actual: Request = mocks.generate.mock.calls[0]![0].request;
-  expect(actual.debug).toBe('off'); expect(actual.parameters.conditioningCacheSize).toBe(0); expect(actual.parameters.modelArguments).toBe('');
-  expect(actual.models[0]?.file.size).toBe(16); expect(actual.parameters.seed).toBe('42');
+  expect(actual.debug).toBe('off');
+  expect(actual.parameters.conditioningCacheSize).toBe(0);
+  expect(actual.parameters.modelArguments).toBe('');
+  expect(actual.models[0]?.file.size).toBe(16);
+  expect(actual.parameters.seed).toBe('42');
   expect(mocks.host).toHaveBeenCalledWith({ directories: [], signal: expect.any(AbortSignal) });
 });
 
 it('rejects a changed model before starting an engine', async () => {
-  const input = request(); input.modelSelection.primary.file.expected!.size = 19;
-  await expect(generate({ input })).rejects.toMatchObject({ code: 'HANDLER_FAILED', details: { stage: 'model-selection', reason: 'model-selection-failed' } });
-  expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('changed') }));
-  expect(mocks.create).not.toHaveBeenCalled();
+  const input = request();
+input.modelSelection.primary.file.expected!.size = 19;
+await expect(generate({ input })).rejects.toMatchObject({ code: 'HANDLER_FAILED', details: { stage: 'model-selection', reason: 'model-selection-failed' } });
+expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('changed') }));
+expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it('cannot read an ungranted host directory or silently choose the owner preset', async () => {
-  const input = request(); input.modelSelection.primary.file = { location: { kind: 'host', directoryId: 'not-granted', path: 'model.gguf' } };
+  const input = request();
+  input.modelSelection.primary.file = { location: { kind: 'host', directoryId: 'not-granted', path: 'model.gguf' } };
   await expect(generate({ input })).rejects.toMatchObject({ details: { stage: 'model-selection' } });
   expect(console.error).toHaveBeenCalledWith('[naidan-peer-rpc:image]', expect.objectContaining({ message: expect.stringContaining('permitted roots') }));
   expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it('rejects unsupported sampler values rather than dropping a caller setting', async () => {
-  const input = request(); input.parameters.sampler = 'unknown-sampler';
-  await expect(generate({ input })).rejects.toThrow(); expect(mocks.create).not.toHaveBeenCalled();
+  const input = request();
+  input.parameters.sampler = 'unknown-sampler';
+  await expect(generate({ input })).rejects.toThrow();
+  expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it('reuses model, component, shard and LoRA snapshots across fresh inventories and per-run parameter changes', async () => {
@@ -126,21 +136,27 @@ it('reuses model, component, shard and LoRA snapshots across fresh inventories a
   mocks.scan.mockImplementation(async () => {
     const model = candidate({ path: 'model.gguf', roles: ['model'] });
     model.files.push({ path: 'shard.gguf', file: new File(['model shard'], 'shard.gguf', { lastModified: 123 }) });
-    const vae = candidate({ path: 'vae.gguf', roles: ['vae'] }), lora = candidate({ path: 'lora.gguf', roles: [] }); lora.classes = ['lora'];
+    const vae = candidate({ path: 'vae.gguf', roles: ['vae'] }), lora = candidate({ path: 'lora.gguf', roles: [] });
+    lora.classes = ['lora'];
     return { candidates: [model, vae, lora] };
   });
   const input = request();
   input.modelSelection.components.push({ slot: 'vae', file: { location: { kind: 'opfs', path: 'models/user/model/vae.gguf' } } });
   input.modelSelection.loras.push({ file: { location: { kind: 'opfs', path: 'models/user/model/lora.gguf' } }, strength: 0.5 });
   await resources.generateImage({ input, signal, onPreview: () => {}, onProgress: () => {} });
-  input.parameters.seed = '43'; input.parameters.prompt = 'second image'; input.modelSelection.loras[0]!.strength = 0.75;
-  await resources.generateImage({ input, signal, onPreview: () => {}, onProgress: () => {} });
-  const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request;
-  expect(second.models[0]?.file).toBe(first.models[0]?.file); expect(second.models[1]?.file).toBe(first.models[1]?.file);
-  expect(second.models[0]?.companions?.[0]?.file).toBe(first.models[0]?.companions?.[0]?.file);
-  expect(second.loras[0]?.file).toBe(first.loras[0]?.file); expect(second.loras[0]?.strength).toBe(0.75);
-  const sessions = createImageSessionKeys(); expect(sessions.key({ request: second })).toBe(sessions.key({ request: first }));
-  await resources.dispose();
+  input.parameters.seed = '43';
+  input.parameters.prompt = 'second image';
+input.modelSelection.loras[0]!.strength = 0.75;
+await resources.generateImage({ input, signal, onPreview: () => {}, onProgress: () => {} });
+const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request;
+expect(second.models[0]?.file).toBe(first.models[0]?.file);
+expect(second.models[1]?.file).toBe(first.models[1]?.file);
+expect(second.models[0]?.companions?.[0]?.file).toBe(first.models[0]?.companions?.[0]?.file);
+expect(second.loras[0]?.file).toBe(first.loras[0]?.file);
+expect(second.loras[0]?.strength).toBe(0.75);
+const sessions = createImageSessionKeys();
+expect(sessions.key({ request: second })).toBe(sessions.key({ request: first }));
+await resources.dispose();
 });
 
 it('a same-size same-time change in a non-primary shard invalidates the native session key', async () => {
@@ -157,7 +173,8 @@ it('a same-size same-time change in a non-primary shard invalidates the native s
   const first: Request = mocks.generate.mock.calls[0]![0].request, second: Request = mocks.generate.mock.calls[1]![0].request;
   expect(second.models[0]?.file).toBe(first.models[0]?.file);
   expect(second.models[0]?.companions?.[0]?.file).not.toBe(first.models[0]?.companions?.[0]?.file);
-  const sessions = createImageSessionKeys(); expect(sessions.key({ request: second })).not.toBe(sessions.key({ request: first }));
+  const sessions = createImageSessionKeys();
+  expect(sessions.key({ request: second })).not.toBe(sessions.key({ request: first }));
   await resources.dispose();
 });
 
@@ -226,7 +243,9 @@ it('distinguishes GPU failures from other native errors', async () => {
 it('disposes the cached image owner exactly once and rejects later calls', async () => {
   const resources = resource(), signal = new AbortController().signal;
   await resources.generateImage({ input: request(), signal, onProgress: () => {}, onPreview: () => {} });
-  resources.dispose(); resources.dispose(); expect(mocks.dispose).toHaveBeenCalledOnce();
+  resources.dispose();
+  resources.dispose();
+  expect(mocks.dispose).toHaveBeenCalledOnce();
   await expect(resources.listChatModels({ signal })).rejects.toMatchObject({ name: 'AbortError' });
   await expect(resources.listImageModels({ signal })).rejects.toMatchObject({ name: 'AbortError' });
   await expect(resources.generateImage({ input: request(), signal, onProgress: () => {}, onPreview: () => {} })).rejects.toMatchObject({ name: 'AbortError' });
@@ -239,26 +258,37 @@ it('does not create a native image owner when disposed during inventory loading'
   const call = resources.generateImage({ input: request(), signal: new AbortController().signal, onProgress: () => {}, onPreview: () => {} });
   const rejected = expect(call).rejects.toMatchObject({ name: 'AbortError' });
   await vi.waitFor(() => expect(mocks.scan).toHaveBeenCalledOnce());
-  resources.dispose(); gate.resolve({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] }); await rejected;
-  expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.generate).not.toHaveBeenCalled();
+  resources.dispose();
+  gate.resolve({ candidates: [candidate({ path: 'model.gguf', roles: ['model'] })] });
+  await rejected;
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.generate).not.toHaveBeenCalled();
 });
 
 it('disposal cancels an in-flight native owner without pretending its result settled', async () => {
-  const resources = resource(), gate = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValueOnce(gate.promise);
+  const resources = resource(), gate = Promise.withResolvers<unknown>();
+  mocks.generate.mockReturnValueOnce(gate.promise);
   const call = resources.generateImage({ input: request(), signal: new AbortController().signal, onProgress: () => {}, onPreview: () => {} });
   const rejected = expect(call).rejects.toMatchObject({ name: 'AbortError' });
   await vi.waitFor(() => expect(mocks.generate).toHaveBeenCalledOnce());
   const nativeSignal: AbortSignal = mocks.generate.mock.calls[0]![0].signal;
-  let settled = false; void call.catch(() => {
+  let settled = false;
+  void call.catch(() => {
     settled = true;
   });
   let retired = false;
   const closing = Promise.resolve(resources.dispose()).then(() => {
     retired = true;
   });
-  expect(nativeSignal.aborted).toBe(true); await Promise.resolve(); expect(settled).toBe(false); expect(retired).toBe(false);
-  gate.resolve({ png: new Blob([], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' }); await rejected; await closing;
-  expect(retired).toBe(true); expect(mocks.dispose).toHaveBeenCalledOnce();
+  expect(nativeSignal.aborted).toBe(true);
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  expect(retired).toBe(false);
+  gate.resolve({ png: new Blob([], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
+  await rejected;
+  await closing;
+  expect(retired).toBe(true);
+  expect(mocks.dispose).toHaveBeenCalledOnce();
 });
 
 it('preserves a native disposal error rather than acknowledging a successful second disposal', async () => {
@@ -269,7 +299,8 @@ it('preserves a native disposal error rather than acknowledging a successful sec
   });
   const closing = resources.dispose();
   await expect(closing).rejects.toThrow('image disposal failed');
-  expect(resources.dispose()).toBe(closing); expect(mocks.dispose).toHaveBeenCalledOnce();
+  expect(resources.dispose()).toBe(closing);
+  expect(mocks.dispose).toHaveBeenCalledOnce();
 });
 
 it('waits for an in-flight result even when disposing its image worker throws', async () => {
@@ -281,16 +312,20 @@ it('waits for an in-flight result even when disposing its image worker throws', 
   mocks.dispose.mockImplementationOnce(() => {
     throw new Error('dispose failed');
   });
-  const closing = resources.dispose(); let settled = false;
+  const closing = resources.dispose();
+  let settled = false;
   void Promise.resolve(closing).then(() => {
     settled = true;
   }, () => {
     settled = true;
   });
-  for (let at = 0; at < 12; at++) await Promise.resolve();
+  for (let at = 0; at < 12; at++) {
+    await Promise.resolve();
+  }
   expect(settled).toBe(false);
   const closingFailure = expect(closing).rejects.toThrow('dispose failed');
   gate.resolve({ png: new Blob([], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'test' });
-  await rejected; await closingFailure;
+  await rejected;
+  await closingFailure;
   expect(resources.dispose()).toBe(closing);
 });

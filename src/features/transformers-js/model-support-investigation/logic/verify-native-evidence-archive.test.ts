@@ -125,7 +125,8 @@ async function archive({ changeIndex, extraBinary }: {
   zip.file(binary.path, await binary.blob.arrayBuffer());
   switch (extraBinary) {
   case 'none': break;
-  case 'unreferenced': zip.file('generation-native/tensors/000002.bin', Uint8Array.of(7)); break;
+  case 'unreferenced': zip.file('generation-native/tensors/000002.bin', Uint8Array.of(7));
+    break;
   default: {
     const exhaustive: never = extraBinary;
     throw new Error(String(exhaustive));
@@ -162,8 +163,11 @@ describe('Native evidence references beyond the outer archive manifest', () => {
         return JSON.stringify(envelope);
       },
     });
-    if (height === 0) await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
-    else await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: 'native-archive' });
+    if (height === 0) {
+      await expect(verifyGeneratedEvidenceArchive({ blob })).rejects.toThrow('Invalid native capture evidence');
+    } else {
+      await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: 'native-archive' });
+    }
   });
 
   it('accepts an exporter-produced native index with exactly its referenced tensor bytes', async () => {

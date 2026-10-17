@@ -274,9 +274,13 @@ function jqSimpleCaseFoldCharacter({
   character: string;
 }): string {
   const fullFold = JQ_FULL_CASE_FOLD_BY_CHARACTER.get(character);
-  if (fullFold !== undefined) return fullFold;
+  if (fullFold !== undefined) {
+    return fullFold;
+  }
   const cached = JQ_SIMPLE_CASE_FOLD_CACHE.get(character);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
 
   const upper = character.toUpperCase();
   const candidate = [...upper].length === 1
@@ -300,9 +304,13 @@ function jqExplicitSimpleCaseCharacters({
   character: string;
 }): readonly string[] {
   const special = JQ_SIMPLE_CASE_FOLD_SPECIAL_GROUP_BY_CHARACTER.get(character);
-  if (special !== undefined) return [...special];
+  if (special !== undefined) {
+    return [...special];
+  }
   const cached = JQ_EXPLICIT_SIMPLE_CASE_CHARACTERS_CACHE.get(character);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
 
   const candidates = new Set([character]);
   for (const variant of [
@@ -407,7 +415,9 @@ export function renderJqExplicitFullCaseFoldAlternative({
 }: {
   character: string;
 }): string | undefined {
-  if (!JQ_FULL_CASE_FOLD_BY_CHARACTER.has(character)) return undefined;
+  if (!JQ_FULL_CASE_FOLD_BY_CHARACTER.has(character)) {
+    return undefined;
+  }
   return translateJqUnicodeFullCaseFoldLiteral({
     literal: character,
     mode: "explicit",
@@ -491,9 +501,13 @@ function foldEntryMatches({
   startIndex: number;
   entry: JqUnicodeFullCaseFold;
 }): boolean {
-  if (startIndex + entry.foldCodePoints.length > codePoints.length) return false;
+  if (startIndex + entry.foldCodePoints.length > codePoints.length) {
+    return false;
+  }
   for (let index = 0; index < entry.foldCodePoints.length; index += 1) {
-    if (codePoints[startIndex + index] !== entry.foldCodePoints[index]) return false;
+    if (codePoints[startIndex + index] !== entry.foldCodePoints[index]) {
+      return false;
+    }
   }
   return true;
 }
@@ -518,7 +532,9 @@ export function translateJqUnicodeFullCaseFoldLiteral({
   literal: string;
   mode: JqFullCaseFoldRenderingMode;
 }): string {
-  if (literal.length === 0) return "";
+  if (literal.length === 0) {
+    return "";
+  }
   const canonical = jqCanonicalCaseFold({ value: literal });
   const codePoints = [...canonical];
   const paths: string[][] = Array.from(
@@ -530,18 +546,24 @@ export function translateJqUnicodeFullCaseFoldLiteral({
 
   for (let index = 0; index < codePoints.length; index += 1) {
     const prefixes = paths[index]!;
-    if (prefixes.length === 0) continue;
+    if (prefixes.length === 0) {
+      continue;
+    }
     const ordinary = renderJqCanonicalCharacterAtom({
       character: codePoints[index]!,
       mode,
     });
-    for (const prefix of prefixes) paths[index + 1]!.push(prefix + ordinary);
+    for (const prefix of prefixes) {
+paths[index + 1]!.push(prefix + ordinary);
+    }
 
     const entries = JQ_FULL_CASE_FOLDS_BY_FIRST_CODE_POINT.get(
       codePoints[index]!,
     ) ?? [];
     for (const entry of entries) {
-      if (!foldEntryMatches({ codePoints, startIndex: index, entry })) continue;
+      if (!foldEntryMatches({ codePoints, startIndex: index, entry })) {
+        continue;
+      }
       const destination = paths[index + entry.foldCodePoints.length]!;
       const replacement = renderJqFullFoldCharacterAtom({
         character: entry.representative,
@@ -560,7 +582,9 @@ export function translateJqUnicodeFullCaseFoldLiteral({
   const original = renderJqLiteralOriginalAlternative({ literal, mode });
   const alternatives = [original, ...paths.at(-1)!];
   const unique = [...new Set(alternatives)];
-  if (unique.length === 1) return unique[0]!;
+  if (unique.length === 1) {
+    return unique[0]!;
+  }
   return `(?:${unique.join("|")})`;
 }
 
@@ -572,7 +596,9 @@ function findJqCaseFoldEscapeEnd({
   startIndex: number;
 }): number {
   const marker = source[startIndex + 1];
-  if (marker === undefined) return startIndex + 1;
+  if (marker === undefined) {
+    return startIndex + 1;
+  }
   const opening = source[startIndex + 2];
   if (
     (marker === "g" || marker === "k") &&
@@ -601,7 +627,9 @@ function findJqCaseFoldEscapeEnd({
     const end = source.indexOf("}", startIndex + 3);
     return end === -1 ? source.length : end + 1;
   }
-  if (marker === "u") return Math.min(source.length, startIndex + 6);
+  if (marker === "u") {
+    return Math.min(source.length, startIndex + 6);
+  }
   return Math.min(source.length, startIndex + 2);
 }
 
@@ -613,14 +641,20 @@ function findJqCaseFoldCharacterClassEnd({
   startIndex: number;
 }): number {
   let index = startIndex + 1;
-  if (source[index] === "^") index += 1;
-  if (source[index] === "]") index += 1;
+  if (source[index] === "^") {
+    index += 1;
+  }
+  if (source[index] === "]") {
+    index += 1;
+  }
   for (; index < source.length; index += 1) {
     if (source[index] === "\\") {
       index = findJqCaseFoldEscapeEnd({ source, startIndex: index }) - 1;
       continue;
     }
-    if (source[index] === "]") return index;
+    if (source[index] === "]") {
+      return index;
+    }
   }
   return source.length - 1;
 }
@@ -634,11 +668,15 @@ function translateJqPositiveCharacterClassFullCaseFolds({
 }): { readonly source: string; readonly endIndex: number } {
   const endIndex = findJqCaseFoldCharacterClassEnd({ source, startIndex });
   const original = source.slice(startIndex, endIndex + 1);
-  if (source[startIndex + 1] === "^") return { source: original, endIndex };
+  if (source[startIndex + 1] === "^") {
+    return { source: original, endIndex };
+  }
 
   const foldAlternatives: string[] = [];
   let index = startIndex + 1;
-  if (source[index] === "]") index += 1;
+  if (source[index] === "]") {
+    index += 1;
+  }
   while (index < endIndex) {
     if (source[index] === "\\") {
       index = findJqCaseFoldEscapeEnd({ source, startIndex: index });
@@ -680,12 +718,16 @@ function findJqCaseFoldQuantifierEnd({
     endIndex = startIndex + 1;
   } else if (marker === "{") {
     const match = /^\{\d+(?:,\d*)?\}/u.exec(source.slice(startIndex));
-    if (match === null) return undefined;
+    if (match === null) {
+      return undefined;
+    }
     endIndex = startIndex + match[0].length;
   } else {
     return undefined;
   }
-  if (source[endIndex] === "?" || source[endIndex] === "+") endIndex += 1;
+  if (source[endIndex] === "?" || source[endIndex] === "+") {
+    endIndex += 1;
+  }
   return endIndex;
 }
 
@@ -704,13 +746,17 @@ function consumeJqCaseFoldGroupPrefix({
     source.startsWith("(?=", startIndex) ||
     source.startsWith("(?!", startIndex) ||
     source.startsWith("(?>", startIndex)
-  ) return startIndex + 3;
+  ) {
+    return startIndex + 3;
+  }
   if (source.startsWith("(?<=", startIndex) || source.startsWith("(?<!", startIndex)) {
     return startIndex + 4;
   }
   if (source.startsWith("(?<", startIndex)) {
     const marker = source[startIndex + 3];
-    if (marker === "=" || marker === "!") return startIndex + 4;
+    if (marker === "=" || marker === "!") {
+      return startIndex + 4;
+    }
     const end = source.indexOf(">", startIndex + 3);
     return end === -1 ? source.length : end + 1;
   }
@@ -729,7 +775,9 @@ export function translateJqUnicodeFullCaseFolds({
   const parts: string[] = [];
   let literalRun = "";
   const flushLiteralRun = (): void => {
-    if (literalRun.length === 0) return;
+    if (literalRun.length === 0) {
+      return;
+    }
     parts.push(
       translateJqUnicodeFullCaseFoldLiteral({
         literal: literalRun,

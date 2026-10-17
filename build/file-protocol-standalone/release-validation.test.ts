@@ -78,7 +78,9 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
       releaseReportFile,
     });
     const writeBundle = plugin.writeBundle;
-    if (typeof writeBundle !== 'function') throw new Error('Expected release validation writeBundle hook');
+    if (typeof writeBundle !== 'function') {
+      throw new Error('Expected release validation writeBundle hook');
+    }
     await writeBundle.call(
       {} as never,
       {} as never,

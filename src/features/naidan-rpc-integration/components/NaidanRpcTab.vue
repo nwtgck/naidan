@@ -34,7 +34,9 @@ const current = computed(() => views.value.find(view => view.registration.id ===
 let mounted = true;
 
 const sync = () => {
-  if (!mounted || !manager.value) return;
+  if (!mounted || !manager.value) {
+    return;
+  }
   views.value = manager.value.list();
   if (!selected.value || !views.value.some(view => view.registration.id === selected.value)) {
     const next = views.value[0]?.registration.id;
@@ -43,9 +45,13 @@ const sync = () => {
     // carry the old peer's methods or credentials into that peer's form.
     // A new-pairing form is independent and must survive registry changes.
     if (!adding.value) {
-      if (next) choose({ id: next });
-      else {
-        label.value = ''; server.value = ''; headers.value = []; methods.value = [];
+      if (next) {
+        choose({ id: next });
+      } else {
+        label.value = '';
+        server.value = '';
+        headers.value = [];
+        methods.value = [];
       }
     }
   }
@@ -53,27 +59,43 @@ const sync = () => {
 
 const unsubscribe = subscribeRpcState({ listener: sync });
 onScopeDispose(() => {
-  mounted = false; unsubscribe(); pending.abort(); verification.value?.decide({ approved: false });
+  mounted = false;
+  unsubscribe();
+  pending.abort();
+  verification.value?.decide({ approved: false });
 });
 
 async function action({ run }: { run(): Promise<void> }): Promise<void> {
-  if (busy.value) return;
-  busy.value = true; failure.value = '';
+  if (busy.value) {
+    return;
+  }
+  busy.value = true;
+  failure.value = '';
   try {
     await run();
   } catch {
-    if (mounted) failure.value = await ensureStrings.naidanRpc__failed();
+    if (mounted) {
+      failure.value = await ensureStrings.naidanRpc__failed();
+    }
   } finally {
-    busy.value = false; sync();
+    busy.value = false;
+    sync();
   }
 }
 
 async function reload(): Promise<void> {
-  manager.value = await getRpcManager(); await manager.value.reload(); sync();
+  manager.value = await getRpcManager();
+  await manager.value.reload();
+  sync();
   // Refreshing the registry must preserve an in-progress pairing form.
-  if (adding.value) return;
-  if (selected.value) choose({ id: selected.value });
-  else newConnection();
+  if (adding.value) {
+    return;
+  }
+  if (selected.value) {
+    choose({ id: selected.value });
+  } else {
+    newConnection();
+  }
 }
 
 onMounted(() => {
@@ -81,16 +103,24 @@ onMounted(() => {
 });
 
 function choose({ id }: { id: NaidanRpcRegistrationId }): void {
-  selected.value = id; adding.value = false;
+  selected.value = id;
+  adding.value = false;
   const view = views.value.find(view => view.registration.id === id);
-  if (!view) return;
-  label.value = view.registration.label; server.value = view.registration.transport.serverUrl;
+  if (!view) {
+    return;
+  }
+  label.value = view.registration.label;
+  server.value = view.registration.transport.serverUrl;
   headers.value = view.registration.transport.headers.map(({ name, value }) => ({ name, value }));
   methods.value = [...view.access.effective];
 }
 
 function newConnection(): void {
-  adding.value = true; code.value = ''; server.value = ''; headers.value = []; label.value = '';
+  adding.value = true;
+  code.value = '';
+  server.value = '';
+  headers.value = [];
+  label.value = '';
 }
 
 function settings(): NaidanRpcTransportSettings {
@@ -100,13 +130,19 @@ function settings(): NaidanRpcTransportSettings {
 const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Promise(resolve => {
   let done = false;
   const finish = ({ approved }: { approved: boolean }) => {
-    if (done) return; done = true;
-    signal.removeEventListener('abort', abort); verification.value = undefined; resolve(approved);
+    if (done) {
+      return;
+    }
+    done = true;
+    signal.removeEventListener('abort', abort);
+    verification.value = undefined;
+    resolve(approved);
   };
   const abort = () => finish({ approved: false });
   signal.addEventListener('abort', abort, { once: true });
   if (signal.aborted || !mounted) {
-    abort(); return;
+    abort();
+    return;
   }
   // This is the full 256-bit binding, not a shortened fingerprint or the rendezvous number.
   const text = Array.from(comparison, byte => byte.toString(16).padStart(2, '0')).join('').match(/.{1,8}/g)?.join(' ') ?? '';
@@ -114,9 +150,13 @@ const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Pro
 });
 
 async function pair(): Promise<void> {
-  if (!manager.value) return;
+  if (!manager.value) {
+    return;
+  }
   const id = await manager.value.pair({ settings: settings(), code: code.value, verifyPeer, signal: pending.signal });
-  code.value = ''; sync(); choose({ id });
+  code.value = '';
+  sync();
+  choose({ id });
 }
 
 function toggleMethod({ name, enabled }: { name: NaidanPeerControlledMethodName, enabled: boolean }): void {
@@ -133,21 +173,31 @@ function toggleMethodGroup({ names, enabled }: { names: readonly NaidanPeerContr
 }
 
 async function applyMethods(): Promise<void> {
-  if (current.value) await manager.value?.updateInboundAllowedMethods({ id: current.value.registration.id, inboundAllowedMethods: methods.value });
+  if (current.value) {
+    await manager.value?.updateInboundAllowedMethods({ id: current.value.registration.id, inboundAllowedMethods: methods.value });
+  }
 }
 
 async function remember(): Promise<void> {
-  if (current.value) await manager.value?.remember({ id: current.value.registration.id, label: label.value });
+  if (current.value) {
+    await manager.value?.remember({ id: current.value.registration.id, label: label.value });
+  }
 }
 
 async function connect(): Promise<void> {
-  if (current.value) await manager.value?.connect({ id: current.value.registration.id });
+  if (current.value) {
+    await manager.value?.connect({ id: current.value.registration.id });
+  }
 }
 
 async function disconnect(): Promise<void> {
-  if (!current.value) return;
+  if (!current.value) {
+    return;
+  }
   const disconnectCurrent = manager.value?.prepareDisconnect({ id: current.value.registration.id });
-  if (await showConfirm({ title: await ensureStrings.naidanRpc__disconnect_confirm() })) await disconnectCurrent?.();
+  if (await showConfirm({ title: await ensureStrings.naidanRpc__disconnect_confirm() })) {
+    await disconnectCurrent?.();
+  }
 }
 
 async function disconnectSafely(): Promise<void> {
@@ -156,24 +206,34 @@ async function disconnectSafely(): Promise<void> {
   try {
     await disconnect();
   } catch {
-    if (mounted) failure.value = await ensureStrings.naidanRpc__failed();
+    if (mounted) {
+      failure.value = await ensureStrings.naidanRpc__failed();
+    }
   } finally {
     sync();
   }
 }
 
 async function forget(): Promise<void> {
-  if (!current.value) return;
+  if (!current.value) {
+    return;
+  }
   const id = current.value.registration.id;
-  if (await showConfirm({ title: await ensureStrings.naidanRpc__forget_confirm() })) await manager.value?.forget({ id });
+  if (await showConfirm({ title: await ensureStrings.naidanRpc__forget_confirm() })) {
+    await manager.value?.forget({ id });
+  }
 }
 
 async function saveRegistration(): Promise<void> {
-  if (current.value) await manager.value?.edit({ id: current.value.registration.id, label: label.value, transport: settings() });
+  if (current.value) {
+    await manager.value?.edit({ id: current.value.registration.id, label: label.value, transport: settings() });
+  }
 }
 
 async function rename(): Promise<void> {
-  if (current.value) await manager.value?.rename({ id: current.value.registration.id, label: label.value });
+  if (current.value) {
+    await manager.value?.rename({ id: current.value.registration.id, label: label.value });
+  }
 }
 
 async function toggleConnectOnStartup({ event }: { event: Event }): Promise<void> {
@@ -184,7 +244,9 @@ async function toggleConnectOnStartup({ event }: { event: Event }): Promise<void
   input.checked = current.value?.registration.connectOnStartup === 'enabled';
   await action({
     run: async () => {
-      if (current.value) await manager.value?.setConnectOnStartup({ id: current.value.registration.id, connectOnStartup });
+      if (current.value) {
+        await manager.value?.setConnectOnStartup({ id: current.value.registration.id, connectOnStartup });
+      }
     },
   });
 }
@@ -198,11 +260,17 @@ function phaseLabel({ phase, health }: { phase: RpcConnectionPhase; health: RpcR
     switch (state) {
     case 'checking': return lazyStrings.naidanRpc__checking_response();
     case 'healthy': case undefined: return lazyStrings.naidanRpc__connected();
-    default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = state;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   case 'stopping': return lazyStrings.naidanRpc__stopping();
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

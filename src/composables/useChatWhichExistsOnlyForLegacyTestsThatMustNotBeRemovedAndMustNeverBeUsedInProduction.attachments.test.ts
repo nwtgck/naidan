@@ -62,7 +62,9 @@ vi.mock('../00-storage/service', () => ({
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
     loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
       const chat = chats.get(id);
-      if (!chat) return Promise.resolve(null);
+      if (!chat) {
+        return Promise.resolve(null);
+      }
       return Promise.resolve(chat);
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(chats.values()))),

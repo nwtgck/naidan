@@ -46,15 +46,21 @@ const thumbnailObserver = ref<IntersectionObserver | null>(null);
 let disposed = false;
 
 const loadMediaDetails = async ({ item }: { item: MediaItem }) => {
-  if (thumbnails.value.has(item.binaryObjectId)) return;
+  if (thumbnails.value.has(item.binaryObjectId)) {
+    return;
+  }
 
   try {
     const blob = item.memoryBlob ?? await storageService.getFile({ binaryObjectId: item.binaryObjectId });
-    if (!blob || disposed) return;
+    if (!blob || disposed) {
+      return;
+    }
     const support = await ImageDownloadHydrator.detectSupport({ blob });
     // A removed shelf or image must not retain a late object URL.
     if (disposed || !allMediaItems.value.some(current => current.binaryObjectId === item.binaryObjectId)
-      || thumbnails.value.has(item.binaryObjectId)) return;
+      || thumbnails.value.has(item.binaryObjectId)) {
+      return;
+    }
     thumbnails.value.set(item.binaryObjectId, URL.createObjectURL(blob));
     isSupportedMap.value.set(item.binaryObjectId, support);
   } catch (e) {
@@ -69,7 +75,9 @@ const setupObserver = () => {
         const id = (entry.target as HTMLElement).dataset.id;
         if (id) {
           const item = allMediaItems.value.find(i => idToRaw({ id: i.binaryObjectId }) === id);
-          if (item) loadMediaDetails({ item });
+          if (item) {
+            loadMediaDetails({ item });
+          }
         }
       }
     });
@@ -84,14 +92,20 @@ const scrollContainer = ref<HTMLElement | null>(null);
 watch(mediaGroups, async () => {
   const visibleIds = new Set(allMediaItems.value.map(item => item.binaryObjectId));
   for (const [id, url] of thumbnails.value) {
-    if (visibleIds.has(id)) continue;
+    if (visibleIds.has(id)) {
+      continue;
+    }
     URL.revokeObjectURL(url);
     thumbnails.value.delete(id);
     isSupportedMap.value.delete(id);
   }
   await nextTick();
-  if (disposed) return;
-  if (!thumbnailObserver.value) setupObserver();
+  if (disposed) {
+    return;
+  }
+  if (!thumbnailObserver.value) {
+    setupObserver();
+  }
 
   const els = scrollContainer.value?.querySelectorAll('.media-item-trigger');
   els?.forEach(el => thumbnailObserver.value?.observe(el));
@@ -107,7 +121,9 @@ const handlePreview = async ({ item }: { item: MediaItem }): Promise<void> => {
   const chatId = props.chatId;
   const items = allMediaItems.value.map(image => ({ ...image }));
   const generatedImageName = await ensureStrings.ChatMediaShelf__generated_image();
-  if (disposed || props.chatId !== chatId || !allMediaItems.value.some(image => image.id === item.id)) return;
+  if (disposed || props.chatId !== chatId || !allMediaItems.value.some(image => image.id === item.id)) {
+    return;
+  }
   const objects: BinaryObjectPreviewItem[] = items.map(i => ({
     id: i.binaryObjectId,
     mimeType: i.mimeType,
@@ -161,7 +177,9 @@ const copyPrompt = async ({ prompt, messageId }: { prompt: string, messageId: Me
     await navigator.clipboard.writeText(prompt);
     copiedPromptId.value = messageId;
     setTimeout(() => {
-      if (copiedPromptId.value === messageId) copiedPromptId.value = null;
+      if (copiedPromptId.value === messageId) {
+        copiedPromptId.value = null;
+      }
     }, 2000);
   } catch (e) {
     console.error('Failed to copy prompt:', e);
@@ -172,12 +190,16 @@ const showingInfoId = ref<string | null>(null);
 const copiedField = ref<string | null>(null);
 
 const copyField = async ({ text, field }: { text: string | number | undefined, field: string }) => {
-  if (text === undefined) return;
+  if (text === undefined) {
+    return;
+  }
   try {
     await navigator.clipboard.writeText(String(text));
     copiedField.value = `${showingInfoId.value}-${field}`;
     setTimeout(() => {
-      if (copiedField.value === `${showingInfoId.value}-${field}`) copiedField.value = null;
+      if (copiedField.value === `${showingInfoId.value}-${field}`) {
+        copiedField.value = null;
+      }
     }, 1500);
   } catch (e) {
     console.error(`Failed to copy ${field}:`, e);

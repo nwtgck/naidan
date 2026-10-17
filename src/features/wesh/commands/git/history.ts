@@ -40,7 +40,9 @@ async function peelCachedCommitObjectId({ files, repository, objectId, cache }: 
   cache: CommitReadCache,
 }): Promise<string> {
   const cached = cache.peeledObjectIds.get(objectId);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const peeled = await peelToCommitObjectId({ files, repository, objectId });
   cache.peeledObjectIds.set(objectId, peeled);
   cache.peeledObjectIds.set(peeled, peeled);
@@ -60,7 +62,9 @@ async function loadClosureObjectIds({ files, repository, roots, cache }: {
   }
   while (pending.length > 0) {
     const objectId = pending.pop()!;
-    if (objectIds.has(objectId)) continue;
+    if (objectIds.has(objectId)) {
+      continue;
+    }
     const commit = await readCachedCommit({ files, repository, objectId, cache: cache.commits });
     objectIds.add(objectId);
     pending.push(...commit.parentObjectIds);
@@ -71,7 +75,9 @@ async function loadClosureObjectIds({ files, repository, roots, cache }: {
 function committerEpoch({ commit }: { commit: ParsedCommit }): number {
   const timestamp = parseCommitAuthor({ value: commit.committer }).timestamp;
   const value = Number.parseInt(timestamp.split(' ', 1)[0]!, 10);
-  if (!Number.isSafeInteger(value)) throw new Error(`invalid commit timestamp: ${timestamp}`);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`invalid commit timestamp: ${timestamp}`);
+  }
   return value;
 }
 
@@ -86,7 +92,9 @@ function pushReadyCommit({ queue, objectId }: { queue: CommitReadyQueue, objectI
   let index = objectIds.length - 1;
   while (index > 0) {
     const parentIndex = Math.floor((index - 1) / 2);
-    if (compare({ left: objectIds[parentIndex]!, right: objectIds[index]! }) <= 0) break;
+    if (compare({ left: objectIds[parentIndex]!, right: objectIds[index]! }) <= 0) {
+      break;
+    }
     [objectIds[parentIndex], objectIds[index]] = [objectIds[index]!, objectIds[parentIndex]!];
     index = parentIndex;
   }
@@ -94,22 +102,30 @@ function pushReadyCommit({ queue, objectId }: { queue: CommitReadyQueue, objectI
 
 function popReadyCommit({ queue }: { queue: CommitReadyQueue }): string | undefined {
   const { objectIds, compare } = queue;
-  if (objectIds.length === 0) return undefined;
+  if (objectIds.length === 0) {
+    return undefined;
+  }
   const first = objectIds[0]!;
   const last = objectIds.pop()!;
-  if (objectIds.length === 0) return first;
+  if (objectIds.length === 0) {
+    return first;
+  }
   objectIds[0] = last;
   let index = 0;
   while (true) {
     const leftIndex = index * 2 + 1;
-    if (leftIndex >= objectIds.length) break;
+    if (leftIndex >= objectIds.length) {
+      break;
+    }
     const rightIndex = leftIndex + 1;
     let nextIndex = leftIndex;
     if (rightIndex < objectIds.length
       && compare({ left: objectIds[rightIndex]!, right: objectIds[leftIndex]! }) < 0) {
       nextIndex = rightIndex;
     }
-    if (compare({ left: objectIds[index]!, right: objectIds[nextIndex]! }) <= 0) break;
+    if (compare({ left: objectIds[index]!, right: objectIds[nextIndex]! }) <= 0) {
+      break;
+    }
     [objectIds[index], objectIds[nextIndex]] = [objectIds[nextIndex]!, objectIds[index]!];
     index = nextIndex;
   }
@@ -140,14 +156,20 @@ async function collectCommitHistoryWithCache({ files, repository, includeObjectI
 }): Promise<GitHistoryCommit[]> {
   const included = await loadClosureObjectIds({ files, repository, roots: includeObjectIds, cache });
   const excluded = await loadClosureObjectIds({ files, repository, roots: excludeObjectIds, cache });
-  for (const objectId of excluded) included.delete(objectId);
+  for (const objectId of excluded) {
+    included.delete(objectId);
+  }
 
   const childCounts = new Map<string, number>();
-  for (const objectId of included) childCounts.set(objectId, 0);
+  for (const objectId of included) {
+    childCounts.set(objectId, 0);
+  }
   for (const objectId of included) {
     const commit = cache.commits.get(objectId)!;
     for (const parentObjectId of commit.parentObjectIds) {
-      if (included.has(parentObjectId)) childCounts.set(parentObjectId, childCounts.get(parentObjectId)! + 1);
+      if (included.has(parentObjectId)) {
+        childCounts.set(parentObjectId, childCounts.get(parentObjectId)! + 1);
+      }
     }
   }
 
@@ -155,7 +177,9 @@ async function collectCommitHistoryWithCache({ files, repository, includeObjectI
   const committerEpochs = new Map<string, number>();
   const committerEpochForObjectId = ({ objectId }: { objectId: string }): number => {
     const cached = committerEpochs.get(objectId);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
     const value = committerEpoch({ commit: cache.commits.get(objectId)! });
     committerEpochs.set(objectId, value);
     return value;
@@ -168,20 +192,28 @@ async function collectCommitHistoryWithCache({ files, repository, includeObjectI
     },
   };
   for (const objectId of included) {
-    if (childCounts.get(objectId) === 0) pushReadyCommit({ queue: ready, objectId });
+    if (childCounts.get(objectId) === 0) {
+      pushReadyCommit({ queue: ready, objectId });
+    }
   }
   while (ready.objectIds.length > 0) {
     const objectId = popReadyCommit({ queue: ready })!;
     const commit = cache.commits.get(objectId)!;
     result.push({ objectId, commit });
     for (const parentObjectId of commit.parentObjectIds) {
-      if (!included.has(parentObjectId)) continue;
+      if (!included.has(parentObjectId)) {
+        continue;
+      }
       const remainingChildren = childCounts.get(parentObjectId)! - 1;
       childCounts.set(parentObjectId, remainingChildren);
-      if (remainingChildren === 0) pushReadyCommit({ queue: ready, objectId: parentObjectId });
+      if (remainingChildren === 0) {
+        pushReadyCommit({ queue: ready, objectId: parentObjectId });
+      }
     }
   }
-  if (result.length !== included.size) throw new Error('commit graph contains a cycle');
+  if (result.length !== included.size) {
+    throw new Error('commit graph contains a cycle');
+  }
   return result;
 }
 
@@ -196,11 +228,15 @@ export async function countCommitDivergence({ files, repository, leftObjectId, r
   const right = await loadClosureObjectIds({ files, repository, roots: [rightObjectId], cache });
   let leftOnly = 0;
   for (const objectId of left) {
-    if (!right.has(objectId)) leftOnly += 1;
+    if (!right.has(objectId)) {
+      leftOnly += 1;
+    }
   }
   let rightOnly = 0;
   for (const objectId of right) {
-    if (!left.has(objectId)) rightOnly += 1;
+    if (!left.has(objectId)) {
+      rightOnly += 1;
+    }
   }
   return { leftOnly, rightOnly };
 }
@@ -214,14 +250,20 @@ export async function collectGraphCommitHistory({ files, repository, includeObje
   const cache = createCommitReadCache();
   const included = await loadClosureObjectIds({ files, repository, roots: includeObjectIds, cache });
   const excluded = await loadClosureObjectIds({ files, repository, roots: excludeObjectIds, cache });
-  for (const objectId of excluded) included.delete(objectId);
+  for (const objectId of excluded) {
+    included.delete(objectId);
+  }
 
   const childCounts = new Map<string, number>();
-  for (const objectId of included) childCounts.set(objectId, 0);
+  for (const objectId of included) {
+    childCounts.set(objectId, 0);
+  }
   for (const objectId of included) {
     const commit = cache.commits.get(objectId)!;
     for (const parentObjectId of commit.parentObjectIds) {
-      if (included.has(parentObjectId)) childCounts.set(parentObjectId, childCounts.get(parentObjectId)! + 1);
+      if (included.has(parentObjectId)) {
+        childCounts.set(parentObjectId, childCounts.get(parentObjectId)! + 1);
+      }
     }
   }
 
@@ -238,13 +280,19 @@ export async function collectGraphCommitHistory({ files, repository, includeObje
     const commit = cache.commits.get(objectId)!;
     result.push({ objectId, commit });
     for (const parentObjectId of commit.parentObjectIds) {
-      if (!included.has(parentObjectId)) continue;
+      if (!included.has(parentObjectId)) {
+        continue;
+      }
       const remainingChildren = childCounts.get(parentObjectId)! - 1;
       childCounts.set(parentObjectId, remainingChildren);
-      if (remainingChildren === 0) frontStack.push(parentObjectId);
+      if (remainingChildren === 0) {
+        frontStack.push(parentObjectId);
+      }
     }
   }
-  if (result.length !== included.size) throw new Error('commit graph contains a cycle');
+  if (result.length !== included.size) {
+    throw new Error('commit graph contains a cycle');
+  }
   return result;
 }
 
@@ -264,7 +312,9 @@ export async function readPathTree({ files, repository, treeObjectId, cache, obj
   objectReadCache?: GitCommitCache['objectReadCache'],
 }): Promise<PathTree> {
   const cached = cache.get(treeObjectId);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const tree = new Map<string, PathTreeEntry>();
   for (const entry of await readTreeRecursively({ files, repository, treeObjectId, objectReadCache })) {
     tree.set(entry.path, { objectId: entry.objectId, mode: entry.mode });
@@ -281,7 +331,9 @@ function pathTreesEqual({ left, right, paths }: {
   for (const path of paths) {
     const a = left.get(path);
     const b = right.get(path);
-    if (a?.objectId !== b?.objectId || a?.mode !== b?.mode) return false;
+    if (a?.objectId !== b?.objectId || a?.mode !== b?.mode) {
+      return false;
+    }
   }
   return true;
 }
@@ -319,7 +371,9 @@ export async function collectPathLimitedHistory({
 
   while (pending.length > 0) {
     const objectId = pending.pop()!;
-    if (visited.has(objectId) || excluded.has(objectId)) continue;
+    if (visited.has(objectId) || excluded.has(objectId)) {
+      continue;
+    }
     visited.add(objectId);
     const commit = await readCachedCommit({ files, repository, objectId, cache: cache.commits });
     const currentTree = await readPathTree({
@@ -331,7 +385,9 @@ export async function collectPathLimitedHistory({
     });
     const parentData: Array<{ objectId: string, tree: PathTree }> = [];
     for (const parentObjectId of commit.parentObjectIds) {
-      if (excluded.has(parentObjectId)) continue;
+      if (excluded.has(parentObjectId)) {
+        continue;
+      }
       const parent = await readCachedCommit({ files, repository, objectId: parentObjectId, cache: cache.commits });
       parentData.push({
         objectId: parentObjectId,
@@ -346,7 +402,11 @@ export async function collectPathLimitedHistory({
     }
 
     const availablePaths = new Set(currentTree.keys());
-    for (const parent of parentData) for (const path of parent.tree.keys()) availablePaths.add(path);
+    for (const parent of parentData) {
+      for (const path of parent.tree.keys()) {
+        availablePaths.add(path);
+      }
+    }
     const selectedPaths = matchRepositoryPathSelection({
       repository,
       cwd,
@@ -355,7 +415,9 @@ export async function collectPathLimitedHistory({
     }).selected;
 
     if (parentData.length === 0) {
-      if ([...selectedPaths].some(path => currentTree.has(path))) emitted.add(objectId);
+      if ([...selectedPaths].some(path => currentTree.has(path))) {
+        emitted.add(objectId);
+      }
       continue;
     }
 
@@ -381,12 +443,14 @@ function followRepositoryPath({ repository, cwd, operand }: {
   cwd: string,
   operand: string,
 }): string {
-  if (operand.startsWith(':') || /[*?[]/u.test(operand))
+  if (operand.startsWith(':') || /[*?[]/u.test(operand)) {
     throw new Error('--follow does not support pathspec magic or wildcards yet');
+  }
   const absolutePath = normalizePath({ cwd, path: operand });
   const relativePath = relativeToWorktree({ repository, absolutePath });
-  if (relativePath.length === 0)
+  if (relativePath.length === 0) {
     throw new Error('--follow requires a file path');
+  }
   return relativePath;
 }
 
@@ -397,7 +461,9 @@ async function readSimilarityRenameCandidate({ files, repository, entry, path, o
   path: string,
   objectReadCache?: GitCommitCache['objectReadCache'],
 }): Promise<GitSimilarityRenameCandidate | undefined> {
-  if ((entry.mode & 0o170000) !== 0o100000) return undefined;
+  if ((entry.mode & 0o170000) !== 0o100000) {
+    return undefined;
+  }
   const object = await readObject({ files, repository, objectId: entry.objectId, cache: objectReadCache });
   switch (object.type) {
   case 'blob':
@@ -421,17 +487,25 @@ export async function followRenameSourcePath({ files, repository, parentTree, cu
   objectReadCache?: GitCommitCache['objectReadCache'],
 }): Promise<string | undefined> {
   const destination = currentTree.get(destinationPath);
-  if (destination === undefined) return undefined;
+  if (destination === undefined) {
+    return undefined;
+  }
   const deleted = [...parentTree]
     .filter(([path]) => !currentTree.has(path))
     .map(([path, entry]) => ({ path, objectId: entry.objectId, mode: entry.mode }));
-  if (deleted.length === 0) return undefined;
+  if (deleted.length === 0) {
+    return undefined;
+  }
   const exact = findExactRenames({
     deleted,
     added: [{ path: destinationPath, objectId: destination.objectId, mode: destination.mode }],
   }).find(rename => rename.destinationPath === destinationPath);
-  if (exact !== undefined) return exact.sourcePath;
-  if (renameLimit > 0 && deleted.length > renameLimit) return undefined;
+  if (exact !== undefined) {
+    return exact.sourcePath;
+  }
+  if (renameLimit > 0 && deleted.length > renameLimit) {
+    return undefined;
+  }
 
   const destinationCandidate = await readSimilarityRenameCandidate({
     files,
@@ -440,7 +514,9 @@ export async function followRenameSourcePath({ files, repository, parentTree, cu
     path: destinationPath,
     objectReadCache,
   });
-  if (destinationCandidate === undefined) return undefined;
+  if (destinationCandidate === undefined) {
+    return undefined;
+  }
   const deletedCandidates: GitSimilarityRenameCandidate[] = [];
   for (const candidate of deleted) {
     const entry = parentTree.get(candidate.path)!;
@@ -451,7 +527,9 @@ export async function followRenameSourcePath({ files, repository, parentTree, cu
       path: candidate.path,
       objectReadCache,
     });
-    if (loaded !== undefined) deletedCandidates.push(loaded);
+    if (loaded !== undefined) {
+      deletedCandidates.push(loaded);
+    }
   }
   return findGitRenameMatches({
     deleted: deletedCandidates,
@@ -489,7 +567,9 @@ export async function collectFollowHistory({ files, repository, includeObjectIds
   while (pending.length > 0) {
     const state = pending.pop()!;
     const visitKey = `${state.objectId}\0${state.path}`;
-    if (visited.has(visitKey) || excluded.has(state.objectId)) continue;
+    if (visited.has(visitKey) || excluded.has(state.objectId)) {
+      continue;
+    }
     visited.add(visitKey);
     const commit = await readCachedCommit({ files, repository, objectId: state.objectId, cache: cache.commits });
     const currentTree = await readPathTree({
@@ -511,7 +591,9 @@ export async function collectFollowHistory({ files, repository, includeObjectIds
 
     const parentStates: Array<{ objectId: string, path: string, same: boolean }> = [];
     for (const parentObjectId of commit.parentObjectIds) {
-      if (excluded.has(parentObjectId)) continue;
+      if (excluded.has(parentObjectId)) {
+        continue;
+      }
       const parent = await readCachedCommit({ files, repository, objectId: parentObjectId, cache: cache.commits });
       const parentTree = await readPathTree({
         files,
@@ -553,9 +635,13 @@ export async function collectFollowHistory({ files, repository, includeObjectIds
 
   const ordered = await collectCommitHistoryWithCache({ files, repository, includeObjectIds, excludeObjectIds, cache });
   return ordered.flatMap(entry => {
-    if (!emitted.has(entry.objectId)) return [];
+    if (!emitted.has(entry.objectId)) {
+      return [];
+    }
     const paths = emittedPaths.get(entry.objectId);
-    if (paths === undefined) throw new Error(`missing follow paths for commit: ${entry.objectId}`);
+    if (paths === undefined) {
+      throw new Error(`missing follow paths for commit: ${entry.objectId}`);
+    }
     return [{ ...entry, ...paths }];
   });
 }
@@ -602,14 +688,22 @@ export function formatCommitTemplate({ objectId, commit, format }: {
     }
     const token = format.slice(offset, offset + 2);
     switch (token) {
-    case '%%': result += '%'; break;
-    case '%H': result += objectId; break;
-    case '%h': result += objectId.slice(0, 7); break;
-    case '%P': result += commit.parentObjectIds.join(' '); break;
-    case '%p': result += commit.parentObjectIds.map(parent => parent.slice(0, 7)).join(' '); break;
-    case '%s': result += commitSubject({ commit }); break;
-    case '%B': result += commit.message.replace(/\n+$/u, ''); break;
-    case '%n': result += '\n'; break;
+    case '%%': result += '%';
+      break;
+    case '%H': result += objectId;
+      break;
+    case '%h': result += objectId.slice(0, 7);
+      break;
+    case '%P': result += commit.parentObjectIds.join(' ');
+      break;
+    case '%p': result += commit.parentObjectIds.map(parent => parent.slice(0, 7)).join(' ');
+      break;
+    case '%s': result += commitSubject({ commit });
+      break;
+    case '%B': result += commit.message.replace(/\n+$/u, '');
+      break;
+    case '%n': result += '\n';
+      break;
     default: throw new Error(`unsupported log format placeholder: ${token}`);
     }
     offset += 2;

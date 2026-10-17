@@ -8,7 +8,9 @@ import { createFileExplorerStreamClient } from './stream-client';
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+  for (const cleanup of cleanups.splice(0)) {
+    cleanup();
+  }
 });
 
 function fixture() {
@@ -34,7 +36,8 @@ describe('File Explorer stream client lifecycle', () => {
     const error = new DOMException('Cannot transfer the request', 'DataCloneError');
     const received: MessagePort[] = [];
     const fail = ({ port }: { port: MessagePort }): never => {
-      received.push(port); throw error;
+      received.push(port);
+      throw error;
     };
     remote.streamFile.mockImplementation(fail);
     remote.createDirectoryArchive.mockImplementation(fail);
@@ -61,7 +64,8 @@ describe('File Explorer stream client lifecycle', () => {
     const { remote, client } = fixture();
     const opened = vi.fn(async () => new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+        controller.close();
       },
     }));
     remote.streamFile.mockImplementation(({ port }: { port: MessagePort }) => {
@@ -87,7 +91,9 @@ describe('File Explorer stream client lifecycle', () => {
     remote.prepareFileDownload.mockResolvedValue({ kind: 'file', blob: file });
     const prepared = await client.prepareFileDownload({ path: '/native' });
     expect(prepared.kind).toBe('file');
-    if (prepared.kind === 'file') expect(prepared.blob).toBe(file);
+    if (prepared.kind === 'file') {
+      expect(prepared.blob).toBe(file);
+    }
     expect(remote.prepareFileDownload).toHaveBeenCalledWith({ request: { sessionId: 'session', path: '/native' } });
     expect(remote.streamFile).not.toHaveBeenCalled();
   });
@@ -108,8 +114,11 @@ describe('File Explorer stream client lifecycle', () => {
     remote.prepareFileDownload.mockReturnValue(new Promise(() => undefined));
     const pending = client.prepareFileDownload({ path: '/file' });
     const rejected = expect(pending).rejects.toThrow();
-    if (reason === 'error') worker.dispatchEvent(new Event('error'));
-    else client.disposeStreams();
+    if (reason === 'error') {
+      worker.dispatchEvent(new Event('error'));
+    } else {
+      client.disposeStreams();
+    }
     await rejected;
     await expect(client.prepareFileDownload({ path: '/later' })).rejects.toThrow();
     expect(remote.prepareFileDownload).toHaveBeenCalledOnce();

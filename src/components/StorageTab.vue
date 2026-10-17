@@ -97,7 +97,9 @@ async function handleEnablePersistence() {
 }
 
 async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs' | 'memory' }) {
-  if (targetType === props.storageType) return;
+  if (targetType === props.storageType) {
+    return;
+  }
 
   const currentProviderType = storageService.getCurrentType();
 
@@ -176,7 +178,9 @@ async function handleDeleteAllHistory() {
 }
 
 async function handleCopyExportURL() {
-  if (isExportingURL.value) return;
+  if (isExportingURL.value) {
+    return;
+  }
 
   isExportingURL.value = true;
   try {

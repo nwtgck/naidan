@@ -82,7 +82,9 @@ const isPickingColor = ref(false);
 const colorHistory = ref<FillColor[]>([]);
 
 function addToHistory({ color }: { color: FillColor }) {
-  if (color === TRANSPARENT) return;
+  if (color === TRANSPARENT) {
+    return;
+  }
   const index = colorHistory.value.indexOf(color);
   if (index !== -1) {
     colorHistory.value.splice(index, 1);
@@ -136,7 +138,9 @@ async function initEditor() {
     img.onload = resolve;
   });
 
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const canvas = canvasRef.value;
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
@@ -144,7 +148,9 @@ async function initEditor() {
   updateResizeInputs({ w: canvas.width, h: canvas.height });
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   ctx.drawImage(img, 0, 0);
 
   // Initial history state
@@ -171,9 +177,13 @@ function handleWheel({ event }: { event: WheelEvent }) {
   const newZoom = delta > 0 ? oldZoom * zoomFactor : oldZoom / zoomFactor;
   const clampedZoom = Math.min(Math.max(newZoom, 0.1), 10);
 
-  if (clampedZoom === oldZoom) return;
+  if (clampedZoom === oldZoom) {
+    return;
+  }
 
-  if (!containerRef.value) return;
+  if (!containerRef.value) {
+    return;
+  }
   const rect = containerRef.value.getBoundingClientRect();
   const mouseX = event.clientX - rect.left;
   const mouseY = event.clientY - rect.top;
@@ -208,7 +218,9 @@ function startPanning({ event }: { event: MouseEvent }) {
 }
 
 function onPanning({ event }: { event: MouseEvent }) {
-  if (!isPanning.value) return;
+  if (!isPanning.value) {
+    return;
+  }
   const dx = event.clientX - lastMousePos.value.x;
   const dy = event.clientY - lastMousePos.value.y;
   panOffset.value = {
@@ -259,7 +271,9 @@ watch(resizeH, (newH) => {
  * Calculate display scale to fit canvas in container
  */
 function updateDisplayLayout() {
-  if (!containerRef.value || !canvasRef.value) return;
+  if (!containerRef.value || !canvasRef.value) {
+    return;
+  }
   const container = containerRef.value;
   const canvas = canvasRef.value;
 
@@ -274,9 +288,13 @@ function updateDisplayLayout() {
  * Commit current canvas state to history
  */
 function commitHistory() {
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const ctx = canvasRef.value.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   const imageData = ctx.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
 
@@ -295,20 +313,26 @@ function commitHistory() {
 }
 
 function undo() {
-  if (!canUndo.value) return;
+  if (!canUndo.value) {
+    return;
+  }
   historyIndex.value--;
   restoreFromHistory();
 }
 
 function redo() {
-  if (!canRedo.value) return;
+  if (!canRedo.value) {
+    return;
+  }
   historyIndex.value++;
   restoreFromHistory();
 }
 
 function restoreFromHistory() {
   const entry = history.value[historyIndex.value];
-  if (!entry || !canvasRef.value) return;
+  if (!entry || !canvasRef.value) {
+    return;
+  }
 
   const { imageData, selection: storedSelection } = entry;
   const canvas = canvasRef.value;
@@ -330,10 +354,14 @@ function restoreFromHistory() {
  * Execute transformation (Rotate/Flip)
  */
 async function applyTransform({ type }: { type: 'rotate-l' | 'rotate-r' | 'flip-h' | 'flip-v' }) {
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const canvas = canvasRef.value;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   const currentW = canvas.width;
   const currentH = canvas.height;
@@ -390,7 +418,9 @@ async function applyTransform({ type }: { type: 'rotate-l' | 'rotate-r' | 'flip-
  * Execute Resize
  */
 function applyResize() {
-  if (!canvasRef.value || resizeW.value <= 0 || resizeH.value <= 0) return;
+  if (!canvasRef.value || resizeW.value <= 0 || resizeH.value <= 0) {
+    return;
+  }
   const canvas = canvasRef.value;
 
   const temp = document.createElement('canvas');
@@ -411,10 +441,14 @@ function applyResize() {
  * Execute Crop or Mask Action
  */
 function executeAction({ action }: { action: ActionType }) {
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const canvas = canvasRef.value;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   // Before performing action, ensure the *previous* state in history remembers
   // the selection that was just used. This allows Undo to restore it.
@@ -479,7 +513,9 @@ function executeAction({ action }: { action: ActionType }) {
   case 'mask-inside': {
     const fillColor = selectedFill.value;
     ctx.fillStyle = (() => {
-      if (fillColor === TRANSPARENT) return 'black'; // Opaque for destination-out
+      if (fillColor === TRANSPARENT) {
+        return 'black';
+      } // Opaque for destination-out
       return fillColor as string;
     })();
 
@@ -487,7 +523,9 @@ function executeAction({ action }: { action: ActionType }) {
 
     switch (action) {
     case 'mask-inside':
-      if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
+      if (isTransparent) {
+        ctx.globalCompositeOperation = 'destination-out';
+      }
       createSelectionPath({ context: ctx, x: sx, y: sy, w: sw, h: sh });
       ctx.fill();
       break;
@@ -507,7 +545,9 @@ function executeAction({ action }: { action: ActionType }) {
         tctx.fill();
 
         // Draw the mask onto the main canvas
-        if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
+        if (isTransparent) {
+          ctx.globalCompositeOperation = 'destination-out';
+        }
         ctx.drawImage(temp, 0, 0);
       }
       break;
@@ -534,17 +574,23 @@ function executeAction({ action }: { action: ActionType }) {
 
 
 function pickColor({ event }: { event: MouseEvent }) {
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const canvas = canvasRef.value;
   const rect = canvas.getBoundingClientRect();
 
   const x = Math.floor(((event.clientX - rect.left) / rect.width) * canvas.width);
   const y = Math.floor(((event.clientY - rect.top) / rect.height) * canvas.height);
 
-  if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
+  if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) {
+    return;
+  }
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   const pixel = ctx.getImageData(x, y, 1, 1).data;
   const [r = 0, g = 0, b = 0, a = 0] = pixel;
@@ -562,7 +608,9 @@ function pickColor({ event }: { event: MouseEvent }) {
  * Final save
  */
 async function performSave() {
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
   const format = selectedFormat.value;
   const mimeType = (() => {
     switch (format) {
@@ -578,7 +626,9 @@ async function performSave() {
   })();
 
   canvasRef.value.toBlob((blob) => {
-    if (blob) emit('save', { blob });
+    if (blob) {
+      emit('save', { blob });
+    }
   }, mimeType);
 }
 
@@ -592,10 +642,14 @@ function startNewSelection({ event }: { event: MouseEvent }) {
     pickColor({ event });
     return;
   }
-  if (startPanning({ event })) return;
+  if (startPanning({ event })) {
+    return;
+  }
 
   event.preventDefault();
-  if (!canvasRef.value) return;
+  if (!canvasRef.value) {
+    return;
+  }
 
   const rect = canvasRef.value.getBoundingClientRect();
   const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -624,7 +678,9 @@ function startDragging({ event, handle }: { event: MouseEvent, handle: string })
 }
 
 function onMouseMove({ event }: { event: MouseEvent }) {
-  if (editorMode.value === 'idle' || !canvasRef.value) return;
+  if (editorMode.value === 'idle' || !canvasRef.value) {
+    return;
+  }
 
   const totalScale = displayScale.value * zoom.value;
   const dx = (event.clientX - dragStart.value.x) / (canvasRef.value.width * totalScale);
@@ -659,14 +715,18 @@ function onMouseMove({ event }: { event: MouseEvent }) {
     break;
   case 'resizing':
     if (activeHandle.value) {
-      if (activeHandle.value.includes('e')) w = Math.max(0.01, Math.min(1 - x, w + dx));
+      if (activeHandle.value.includes('e')) {
+        w = Math.max(0.01, Math.min(1 - x, w + dx));
+      }
       if (activeHandle.value.includes('w')) {
         const maxX = x + w - 0.01;
         const nx = Math.max(0, Math.min(maxX, x + dx));
         w = w - (nx - x);
         x = nx;
       }
-      if (activeHandle.value.includes('s')) h = Math.max(0.01, Math.min(1 - y, h + dy));
+      if (activeHandle.value.includes('s')) {
+        h = Math.max(0.01, Math.min(1 - y, h + dy));
+      }
       if (activeHandle.value.includes('n')) {
         const maxY = y + h - 0.01;
         const ny = Math.max(0, Math.min(maxY, y + dy));
@@ -721,7 +781,9 @@ onUnmounted(() => {
 });
 
 const cropBoxStyle = computed(() => {
-  if (!canvasRef.value) return {};
+  if (!canvasRef.value) {
+    return {};
+  }
   return {
     left: `${selection.value.rect.x * 100}%`,
     top: `${selection.value.rect.y * 100}%`,

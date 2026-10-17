@@ -137,7 +137,9 @@ describe('stopStandardArgvAtFirstEarlyExit', () => {
 describe('standardSemanticIssuePrecedesDiagnostic', () => {
   const semanticIssue = ({ parsed }: { parsed: ParsedStandardArgv }): string | undefined => {
     const occurrence = parsed.occurrences.find(value => value.kind === 'value' && value.key === 'value');
-    if (occurrence?.kind !== 'value' || occurrence.value !== 'bad') return undefined;
+    if (occurrence?.kind !== 'value' || occurrence.value !== 'bad') {
+      return undefined;
+    }
     return 'bad value';
   };
 
@@ -227,8 +229,12 @@ describe('findFirstStandardSemanticIssue', () => {
   };
 
   const semanticIssue = ({ parsed }: { parsed: ParsedStandardArgv }): 'alpha' | 'beta' | undefined => {
-    if (parsed.optionValues.alpha === 'bad') return 'alpha';
-    if (parsed.optionValues.beta === 'bad') return 'beta';
+    if (parsed.optionValues.alpha === 'bad') {
+      return 'alpha';
+    }
+    if (parsed.optionValues.beta === 'bad') {
+      return 'beta';
+    }
     return undefined;
   };
 

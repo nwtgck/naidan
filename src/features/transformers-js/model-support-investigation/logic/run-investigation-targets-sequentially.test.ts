@@ -85,7 +85,9 @@ describe('runInvestigationTargetsSequentially', () => {
   it('marks only the current model as skipped and continues with the next model', async () => {
     let skippedTarget: string | undefined = 'owner/b';
     const runTarget = vi.fn(async ({ target }: { target: string }) => {
-      if (target === 'owner/b') throw new Error('stopped current model');
+      if (target === 'owner/b') {
+        throw new Error('stopped current model');
+      }
       return run({ modelId: target, status: 'passed' });
     });
 
@@ -95,7 +97,9 @@ describe('runInvestigationTargetsSequentially', () => {
       onUpdate: () => undefined,
       shouldInterrupt: () => false,
       takeSkipRequest: ({ target }) => {
-        if (skippedTarget !== target) return false;
+        if (skippedTarget !== target) {
+          return false;
+        }
         skippedTarget = undefined;
         return true;
       },
@@ -113,7 +117,9 @@ describe('runInvestigationTargetsSequentially', () => {
     const partial = run({ modelId: 'owner/b', status: 'failed' });
     partial.currentOperation = 'last checkpoint before worker failure';
     const runTarget = vi.fn(async ({ target }: { target: string }) => {
-      if (target === 'owner/b') throw new Error('worker crashed');
+      if (target === 'owner/b') {
+        throw new Error('worker crashed');
+      }
       return run({ modelId: target, status: 'passed' });
     });
 

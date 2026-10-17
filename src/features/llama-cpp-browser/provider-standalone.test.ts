@@ -9,23 +9,30 @@ const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['gene
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 
 beforeEach(async () => {
-  vi.clearAllMocks(); await ensureAllStringsForTest({ locale: 'en' });
+  vi.clearAllMocks();
+  await ensureAllStringsForTest({ locale: 'en' });
   service.listModels.mockResolvedValue([]);
   service.generate.mockImplementation(async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'answer' }), onEvent }));
 });
 
 describe('standalone llama.cpp generation facade', () => {
   it('uses the shared generation contract while leaving runtime loading to the selected service', async () => {
-    const provider = new LlamaCppBrowserProvider();const readBinaryObject = vi.fn();using fetcher = vi.spyOn(globalThis, 'fetch');
+    const provider = new LlamaCppBrowserProvider();
+    const readBinaryObject = vi.fn();
+    using fetcher = vi.spyOn(globalThis, 'fetch');
     expect(await provider.listModels({ signal: undefined })).toEqual([]);
     const { text, result } = await collectChatGeneration({ items: provider.chat({ ...chatRequest(), readBinaryObject }), abortController: new AbortController() });
-    expect(text).toBe('answer');expect(result).toEqual({ type: 'finished', next: 'user' });
-    expect(service.generate).toHaveBeenCalledOnce();expect(readBinaryObject).not.toHaveBeenCalled();expect(fetcher).not.toHaveBeenCalled();
+    expect(text).toBe('answer');
+    expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(service.generate).toHaveBeenCalledOnce();
+    expect(readBinaryObject).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('represents pre-cancellation as interruption without starting generation', async () => {
     const { result, text } = await collectChatGeneration({ items: new LlamaCppBrowserProvider().chat({ ...chatRequest(), signal: AbortSignal.abort() }), abortController: new AbortController() });
-    expect(text).toBe('');expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
+    expect(text).toBe('');
+    expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
     expect(service.generate).not.toHaveBeenCalled();
   });
 });

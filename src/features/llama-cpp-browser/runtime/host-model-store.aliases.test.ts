@@ -43,7 +43,9 @@ describe('host model inventory public names', () => {
     const directories = names.map((name, index) => directory({ id: `root-${index}`, name }));
     vi.mocked(listHuggingFaceModels).mockImplementation(async options => {
       const destination = options?.destination;
-      if (destination?.kind === 'host' && destination.directoryId === 'root-1') return [storedModel({ directoryId: 'root-1' })];
+      if (destination?.kind === 'host' && destination.directoryId === 'root-1') {
+        return [storedModel({ directoryId: 'root-1' })];
+      }
       throw new Error('Linked model folder permission expired');
     });
 

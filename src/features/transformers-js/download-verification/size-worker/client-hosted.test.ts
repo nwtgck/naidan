@@ -17,8 +17,12 @@ function installSilentWorker() {
 }
 
 afterEach(() => {
-  for (const worker of workers.splice(0)) worker.terminate();
-  vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks();
+  for (const worker of workers.splice(0)) {
+    worker.terminate();
+  }
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 it('returns unknown when the optional Worker constructor throws', async () => {
@@ -34,7 +38,8 @@ it('returns unknown when the optional Worker constructor throws', async () => {
 });
 
 it('bounds an unexposed Worker by the owner deadline without waiting for RPC cleanup', async () => {
-  vi.useFakeTimers(); installSilentWorker();
+  vi.useFakeTimers();
+  installSilentWorker();
   const client = createDownloadSizeClient();
   const result = client.collect({ request });
   expect(workers).toHaveLength(1);
@@ -64,7 +69,8 @@ it('keeps optional retirement failure separate from its unknown observation resu
   const worker = workers[0]!;
   const original = worker.terminate.bind(worker);
   const terminate = vi.spyOn(worker, 'terminate').mockImplementation(() => {
-    original(); throw new Error('Synthetic cleanup failure');
+    original();
+    throw new Error('Synthetic cleanup failure');
   });
   expect(() => client.dispose()).not.toThrow();
   expect(await result).toEqual({ sizes: [], quotaLimited: false });

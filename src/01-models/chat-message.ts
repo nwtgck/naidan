@@ -55,7 +55,10 @@ export function createChatMessageSnapshot({ node }: { node: MessageNode }): Chat
   case 'user':
   case 'system':
   case 'tool': return copyChatMessage({ message });
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
 }
 

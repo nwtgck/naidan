@@ -9,7 +9,9 @@ function isStylesheetSideEffectModuleId({ moduleId }: Readonly<{moduleId: string
   const queryFlags = new URLSearchParams(query);
   const directStylesheet = /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)$/iu.test(pathname);
   const vueSfcStyle = queryFlags.has('vue') && queryFlags.get('type') === 'style';
-  if (!directStylesheet && !vueSfcStyle) return false;
+  if (!directStylesheet && !vueSfcStyle) {
+    return false;
+  }
   return !queryFlags.has('raw') && !queryFlags.has('inline') && !queryFlags.has('url');
 }
 
@@ -34,10 +36,14 @@ export function createWorkerCssGuardPlugin({ workers, diagnostics, allowWorkerOn
         const pending = [...entryModuleIds];
         while (pending.length > 0) {
           const moduleId = pending.pop();
-          if (moduleId === undefined || seen.has(moduleId)) continue;
+          if (moduleId === undefined || seen.has(moduleId)) {
+            continue;
+          }
           seen.add(moduleId);
           const info = this.getModuleInfo(moduleId);
-          if (!info) continue;
+          if (!info) {
+            continue;
+          }
           pending.push(...info.importedIds, ...info.dynamicallyImportedIds);
         }
         return seen;

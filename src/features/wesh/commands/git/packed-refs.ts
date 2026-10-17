@@ -11,7 +11,9 @@ export interface GitPackedRef {
 }
 
 function assertPackedObjectId({ objectId }: { objectId: string }): void {
-  if (!/^[0-9a-f]{40}$/u.test(objectId)) throw new Error(`invalid packed ref object id: ${objectId}`);
+  if (!/^[0-9a-f]{40}$/u.test(objectId)) {
+    throw new Error(`invalid packed ref object id: ${objectId}`);
+  }
 }
 
 export async function readPackedRefs({ files, repository }: {
@@ -19,20 +21,28 @@ export async function readPackedRefs({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitPackedRef[]> {
   const path = joinPath({ base: repository.commonDirPath, child: 'packed-refs' });
-  if (!await pathExists({ files, path })) return [];
+  if (!await pathExists({ files, path })) {
+    return [];
+  }
   const result: GitPackedRef[] = [];
   let previous: GitPackedRef | undefined;
   for (const line of (await readFileText({ files, path })).split(/\r?\n/u)) {
-    if (line.length === 0 || line.startsWith('#')) continue;
+    if (line.length === 0 || line.startsWith('#')) {
+      continue;
+    }
     if (line.startsWith('^')) {
-      if (previous === undefined) throw new Error('packed-refs contains a peeled line without a ref');
+      if (previous === undefined) {
+        throw new Error('packed-refs contains a peeled line without a ref');
+      }
       const peeledObjectId = line.slice(1);
       assertPackedObjectId({ objectId: peeledObjectId });
       previous.peeledObjectId = peeledObjectId;
       continue;
     }
     const match = /^([0-9a-f]{40}) (refs\/.+)$/u.exec(line);
-    if (match === null) throw new Error(`invalid packed-refs line: ${line}`);
+    if (match === null) {
+      throw new Error(`invalid packed-refs line: ${line}`);
+    }
     assertPackedObjectId({ objectId: match[1]! });
     previous = { refName: match[2]!, objectId: match[1]!, peeledObjectId: undefined };
     result.push(previous);
@@ -49,7 +59,9 @@ async function writePackedRefs({ files, repository, entries }: {
   const lines = ['# pack-refs with: peeled fully-peeled sorted '];
   for (const entry of sorted) {
     lines.push(`${entry.objectId} ${entry.refName}`);
-    if (entry.peeledObjectId !== undefined) lines.push(`^${entry.peeledObjectId}`);
+    if (entry.peeledObjectId !== undefined) {
+      lines.push(`^${entry.peeledObjectId}`);
+    }
   }
   await replaceTextViaLock({
     files,
@@ -65,7 +77,9 @@ export async function removePackedRef({ files, repository, refName }: {
 }): Promise<boolean> {
   const entries = await readPackedRefs({ files, repository });
   const filtered = entries.filter(entry => entry.refName !== refName);
-  if (filtered.length === entries.length) return false;
+  if (filtered.length === entries.length) {
+    return false;
+  }
   await writePackedRefs({ files, repository, entries: filtered });
   return true;
 }

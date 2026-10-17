@@ -19,8 +19,12 @@ describe('parseConcatenatedJson', () => {
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
-    if (r0.success) expect(r0.data).toEqual({ a: 1 });
-    if (r1.success) expect(r1.data).toEqual({ b: 2 });
+    if (r0.success) {
+      expect(r0.data).toEqual({ a: 1 });
+    }
+    if (r1.success) {
+      expect(r1.data).toEqual({ b: 2 });
+    }
   });
 
   it('should handle newlines between and within objects', () => {
@@ -34,8 +38,12 @@ describe('parseConcatenatedJson', () => {
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
-    if (r0.success) expect(r0.data).toEqual({ a: 1 });
-    if (r1.success) expect(r1.data).toEqual({ b: 2 });
+    if (r0.success) {
+      expect(r0.data).toEqual({ a: 1 });
+    }
+    if (r1.success) {
+      expect(r1.data).toEqual({ b: 2 });
+    }
   });
 
   it('should handle nested objects', () => {
@@ -44,8 +52,12 @@ describe('parseConcatenatedJson', () => {
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
-    if (r0.success) expect(r0.data).toEqual({ outer: { inner: 1 } });
-    if (r1.success) expect(r1.data).toEqual({ simple: true });
+    if (r0.success) {
+      expect(r0.data).toEqual({ outer: { inner: 1 } });
+    }
+    if (r1.success) {
+      expect(r1.data).toEqual({ simple: true });
+    }
   });
 
   it('should handle strings containing braces', () => {
@@ -53,7 +65,9 @@ describe('parseConcatenatedJson', () => {
     const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(1);
     const r0 = results[0]!;
-    if (r0.success) expect(r0.data).toEqual({ text: 'contains { braces }' });
+    if (r0.success) {
+      expect(r0.data).toEqual({ text: 'contains { braces }' });
+    }
   });
 
   it('should handle escaped quotes in strings', () => {
@@ -97,8 +111,12 @@ describe('parseConcatenatedJson', () => {
     const input = '{"a": [1, 2, {"b": 3}]}{"c": {"d": [4]}}';
     const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
-    if (results[0]?.success) expect(results[0].data).toEqual({ a: [1, 2, { b: 3 }] });
-    if (results[1]?.success) expect(results[1].data).toEqual({ c: { d: [4] } });
+    if (results[0]?.success) {
+      expect(results[0].data).toEqual({ a: [1, 2, { b: 3 }] });
+    }
+    if (results[1]?.success) {
+      expect(results[1].data).toEqual({ c: { d: [4] } });
+    }
   });
 
   it('should handle whitespace and random text between objects if they are not braces', () => {
@@ -111,7 +129,11 @@ describe('parseConcatenatedJson', () => {
   {"b": 2}  `;
     const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
-    if (results[0]?.success) expect(results[0].data).toEqual({ a: 1 });
-    if (results[1]?.success) expect(results[1].data).toEqual({ b: 2 });
+    if (results[0]?.success) {
+      expect(results[0].data).toEqual({ a: 1 });
+    }
+    if (results[1]?.success) {
+      expect(results[1].data).toEqual({ b: 2 });
+    }
   });
 });

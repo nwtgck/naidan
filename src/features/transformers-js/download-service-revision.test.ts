@@ -71,7 +71,9 @@ function fixture() {
   vi.stubGlobal('navigator', { storage: { getDirectory } });
   const repositoryFetch = vi.fn<typeof fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url !== metadataUrl || request.method !== 'GET') throw new Error('Unexpected revision-fixture transport');
+    if (request.url !== metadataUrl || request.method !== 'GET') {
+      throw new Error('Unexpected revision-fixture transport');
+    }
     expect(request.credentials).toBe('omit');
     expect(request.referrerPolicy).toBe('no-referrer');
     return Response.json({ sha: exactRevision });

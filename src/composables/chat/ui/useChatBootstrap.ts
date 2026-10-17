@@ -84,7 +84,10 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
             switch (type) {
             case 'llama_cpp_browser': return llamaCppBrowserService;
             case 'transformers_js': return transformersJsService;
-            default: { const exhaustive: never = type; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+            default: {
+              const exhaustive: never = type;
+              throw new Error(`Unhandled endpoint: ${exhaustive}`);
+            }
             }
           })();
           const unsubscribe = modelService.subscribeModelList({

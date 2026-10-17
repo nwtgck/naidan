@@ -6,7 +6,9 @@ import { isExperimentalImageCatalogMain } from '@/01-models/experimental-image-c
  * Receipts record a verified File snapshot; they are not signatures/authorship.
  */
 export function modelFileMarker({ name, state }: { name: string, state: 'complete' | 'pending' }): string {
-  if (!name || /[/\\\0]/.test(name) || name === '.' || name === '..') throw new Error('Invalid model filename');
+  if (!name || /[/\\\0]/.test(name) || name === '.' || name === '..') {
+    throw new Error('Invalid model filename');
+  }
   return `.${name}.${state}`;
 }
 
@@ -14,7 +16,9 @@ export async function optionalModelFile({ directory, name }: { directory: FileSy
   try {
     return await directory.getFileHandle(name);
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'NotFoundError') return undefined;
+    if (error instanceof DOMException && error.name === 'NotFoundError') {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -49,7 +53,9 @@ export type ModelFileReceipt = z.infer<typeof modelFileReceiptSchema>;
 
 export async function readModelMarkerJson({ handle }: { handle: FileSystemFileHandle }): Promise<unknown> {
   const file = await handle.getFile();
-  if (file.size > 64 * 1024) throw new Error('Model file marker exceeds its size limit');
+  if (file.size > 64 * 1024) {
+    throw new Error('Model file marker exceeds its size limit');
+  }
   return JSON.parse(await file.text());
 }
 
@@ -60,7 +66,9 @@ export async function writeModelMarkerJson({ directory, name, value }: { directo
   let writer: FileSystemWritableFileStream | undefined;
   try {
     writer = await handle.createWritable();
-    await writer.write(JSON.stringify(value)); await writer.close(); return handle;
+    await writer.write(JSON.stringify(value));
+    await writer.close();
+    return handle;
   } catch (error) {
     await writer?.abort().catch(() => undefined);
     // Callers hold the model mutation lock. A failed first write must not leave
@@ -71,7 +79,9 @@ export async function writeModelMarkerJson({ directory, name, value }: { directo
         const current = await optionalModelFile({ directory, name });
         if (current && await current.isSameEntry(handle)) {
           const file = await current.getFile();
-          if (file.size === 0 && file.lastModified === created.lastModified) await directory.removeEntry(name);
+          if (file.size === 0 && file.lastModified === created.lastModified) {
+            await directory.removeEntry(name);
+          }
         }
       } catch { /* Uncertain ownership or failed cleanup preserves the original error. */ }
     }
@@ -80,28 +90,39 @@ export async function writeModelMarkerJson({ directory, name, value }: { directo
 }
 
 export async function readModelFileReceipt({ directory, name, file }: { directory: FileSystemDirectoryHandle, name: string, file: File }): Promise<ModelFileReceipt | undefined> {
-  if (await modelFileIsPending({ directory, name })) return undefined;
+  if (await modelFileIsPending({ directory, name })) {
+    return undefined;
+  }
   const handle = await optionalModelFile({ directory, name: modelFileMarker({ name, state: 'complete' }) });
-  if (!handle) return undefined;
+  if (!handle) {
+    return undefined;
+  }
   let value: unknown;
   try {
     value = await readModelMarkerJson({ handle });
   } catch (error) {
     // Only malformed content is absence of a receipt. Permission/I/O errors
     // remain observable and must never authorize an overwrite or a download.
-    if (error instanceof SyntaxError) return undefined;
+    if (error instanceof SyntaxError) {
+      return undefined;
+    }
     throw error;
   }
   const parsed = modelFileReceiptSchema.safeParse(value);
-  if (!parsed.success || parsed.data.size !== file.size || parsed.data.lastModified !== file.lastModified) return undefined;
+  if (!parsed.success || parsed.data.size !== file.size || parsed.data.lastModified !== file.lastModified) {
+    return undefined;
+  }
   return parsed.data;
 }
 
 export async function publishModelFile({ directory, name, handle, file, source }: {
   directory: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, file: File, source: ModelFileReceipt['source'],
 }): Promise<void> {
-  const current = await directory.getFileHandle(name); const now = await current.getFile();
-  if (!await current.isSameEntry(handle) || now.size !== file.size || now.lastModified !== file.lastModified) throw new Error('Model changed before publication');
+  const current = await directory.getFileHandle(name);
+  const now = await current.getFile();
+  if (!await current.isSameEntry(handle) || now.size !== file.size || now.lastModified !== file.lastModified) {
+    throw new Error('Model changed before publication');
+  }
   await writeModelMarkerJson({ directory, name: modelFileMarker({ name, state: 'complete' }), value: modelFileReceiptSchema.parse({ version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified, source }) });
 }
 

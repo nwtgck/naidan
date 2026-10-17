@@ -25,7 +25,8 @@ function assistant(): AssistantMessageNode {
 
 describe('parts in read-only sysfs projections', () => {
   it('keeps order, empty parts, raw tags, time, partial, and the recorded error language in JSON', () => {
-    const node = assistant(); const before = structuredClone(node);
+    const node = assistant();
+    const before = structuredClone(node);
     expect(JSON.parse(renderMessageJson({ node }))).toEqual({
       id: 'a',
       role: 'assistant',
@@ -44,11 +45,14 @@ describe('parts in read-only sysfs projections', () => {
   });
 
   it('keeps the same part boundaries and order in Markdown without parsing literal tags', () => {
-    const node = assistant(); const rendered = renderMessageMarkdown({ node });
+    const node = assistant();
+    const rendered = renderMessageMarkdown({ node });
     const headers = [...rendered.matchAll(/^## Part (.+)$/gm)].map(match => match[1]);
     expect(headers).toEqual(['1 (reasoning)', '2 (text)', '3 (reasoning)', '4 (text)', '5 (tool_call)']);
-    expect(rendered).toContain('  理由\r\n'); expect(rendered).toContain('<think>literal</think>🙂');
-    expect(rendered).toContain('completeness: partial'); expect(rendered).toContain('日本語の記録: offline');
+    expect(rendered).toContain('  理由\r\n');
+    expect(rendered).toContain('<think>literal</think>🙂');
+    expect(rendered).toContain('completeness: partial');
+    expect(rendered).toContain('日本語の記録: offline');
   });
 
   it('does not serialize a memory Blob, implementation properties, or descendant bodies in a message file', () => {
@@ -75,7 +79,9 @@ describe('parts in read-only sysfs projections', () => {
         note: '[binary attachment hidden]',
       },
     });
-    for (const value of ['blob', 'SECRET', '日本語の記録', 'replies']) expect(rendered).not.toContain(value);
+    for (const value of ['blob', 'SECRET', '日本語の記録', 'replies']) {
+      expect(rendered).not.toContain(value);
+    }
   });
 
   it('shows initial cancellation with no synthetic text or completion part', () => {
@@ -101,14 +107,18 @@ describe('parts in read-only sysfs projections', () => {
         { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'f' }), status: 'error', error: { code: 'other', message: { type: 'binary_object', id: toBinaryObjectId({ raw: 'error' }) } } } },
       ],
     };
-    const before = structuredClone(node); const json = JSON.parse(renderMessageJson({ node }));
+    const before = structuredClone(node);
+    const json = JSON.parse(renderMessageJson({ node }));
     expect(json.parts[0].result.error.message.text).toBe(`${'x'.repeat(4000)}\n[truncated]`);
     expect(json.parts[1].result.status).toBe('executing');
     expect(json.parts[2].result.content.id).toBe('result');
     expect(json.parts[3].result.error.message.id).toBe('error');
     const markdown = renderMessageMarkdown({ node });
-    expect(markdown).toContain('d: executing'); expect(markdown).toContain('[binary object result]'); expect(markdown).toContain('[binary object error]');
-    expect(markdown).toContain(`${'x'.repeat(4000)} [truncated]`); expect(node).toEqual(before);
+    expect(markdown).toContain('d: executing');
+    expect(markdown).toContain('[binary object result]');
+    expect(markdown).toContain('[binary object error]');
+    expect(markdown).toContain(`${'x'.repeat(4000)} [truncated]`);
+    expect(node).toEqual(before);
   });
 
   for (const role of ['system', 'user'] as const) {

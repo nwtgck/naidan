@@ -59,29 +59,46 @@ describe('local-only missing-model inspection', () => {
 
 describe('bounded availability observation cache', () => {
   it('shares an in-flight check between panes and caches only a short observation', async () => {
-    const gate = Promise.withResolvers<ModelAvailability>(); const inspect = vi.fn(() => gate.promise); let time = 0;
+    const gate = Promise.withResolvers<ModelAvailability>();
+    const inspect = vi.fn(() => gate.promise);
+    let time = 0;
     const cache = createModelAvailabilityCache({ inspect, now: () => time });
-    const first = cache.check({ modelId: 'one' }); const second = cache.check({ modelId: 'one' });
-    expect(first).toBe(second); await Promise.resolve(); expect(inspect).toHaveBeenCalledOnce();
-    gate.resolve('available'); await first;
-    expect(await cache.check({ modelId: 'one' })).toBe('available'); expect(inspect).toHaveBeenCalledOnce();
-    time = 5001; await cache.check({ modelId: 'one' }); expect(inspect).toHaveBeenCalledTimes(2);
+    const first = cache.check({ modelId: 'one' });
+    const second = cache.check({ modelId: 'one' });
+    expect(first).toBe(second);
+    await Promise.resolve();
+    expect(inspect).toHaveBeenCalledOnce();
+    gate.resolve('available');
+    await first;
+    expect(await cache.check({ modelId: 'one' })).toBe('available');
+    expect(inspect).toHaveBeenCalledOnce();
+    time = 5001;
+    await cache.check({ modelId: 'one' });
+    expect(inspect).toHaveBeenCalledTimes(2);
   });
 
   it('does not allow an old in-flight observation to undo invalidation', async () => {
     const gate = Promise.withResolvers<ModelAvailability>();
     const inspect = vi.fn().mockReturnValueOnce(gate.promise).mockResolvedValue('missing');
     const cache = createModelAvailabilityCache({ inspect, now: () => 0 });
-    const old = cache.check({ modelId: 'one' }); await Promise.resolve(); cache.invalidate();
+    const old = cache.check({ modelId: 'one' });
+    await Promise.resolve();
+    cache.invalidate();
     expect(await cache.check({ modelId: 'one' })).toBe('missing');
-    gate.resolve('available'); await old;
-    expect(await cache.check({ modelId: 'one' })).toBe('missing'); expect(inspect).toHaveBeenCalledTimes(2);
+    gate.resolve('available');
+    await old;
+    expect(await cache.check({ modelId: 'one' })).toBe('missing');
+    expect(inspect).toHaveBeenCalledTimes(2);
   });
 
   it('limits retained keys and does not cache storage failures', async () => {
-    const inspect = vi.fn().mockResolvedValue('missing'); const cache = createModelAvailabilityCache({ inspect, now: () => 0 });
-    for (let i = 0; i < 33; i++) await cache.check({ modelId: String(i) });
-    await cache.check({ modelId: '0' }); expect(inspect).toHaveBeenCalledTimes(34);
+    const inspect = vi.fn().mockResolvedValue('missing');
+    const cache = createModelAvailabilityCache({ inspect, now: () => 0 });
+    for (let i = 0; i < 33; i++) {
+      await cache.check({ modelId: String(i) });
+    }
+    await cache.check({ modelId: '0' });
+    expect(inspect).toHaveBeenCalledTimes(34);
     inspect.mockRejectedValueOnce(new Error('disk'));
     expect(await cache.check({ modelId: 'bad' })).toBe('unreadable');
     expect(await cache.check({ modelId: 'bad' })).toBe('missing');

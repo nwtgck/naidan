@@ -59,7 +59,9 @@ function sortedUnique(values: Iterable<string>): string[] {
 }
 
 function assertRelativeOutputPath(fileName: string): string {
-  if (typeof fileName !== 'string' || fileName.length === 0) throw new Error('Output file name must be non-empty');
+  if (typeof fileName !== 'string' || fileName.length === 0) {
+    throw new Error('Output file name must be non-empty');
+  }
   const normalized = path.posix.normalize(fileName.replaceAll('\\', '/'));
   if (normalized === '..' || normalized.startsWith('../') || normalized.startsWith('/') || /^[A-Za-z]:\//u.test(normalized)) {
     throw new Error(`Output file escapes the distribution root: ${fileName}`);
@@ -73,12 +75,18 @@ export function collectChunkClosure({ entryFileName, chunksByFileName, includeDy
   const queue = [entry];
   while (queue.length > 0) {
     const fileName = queue.shift();
-    if (fileName === undefined || visited.has(fileName)) continue;
+    if (fileName === undefined || visited.has(fileName)) {
+      continue;
+    }
     visited.add(fileName);
     const chunk = chunksByFileName.get(fileName);
-    if (!chunk) continue;
+    if (!chunk) {
+      continue;
+    }
     queue.push(...(chunk.imports ?? []).map(assertRelativeOutputPath));
-    if (includeDynamic) queue.push(...(chunk.dynamicImports ?? []).map(assertRelativeOutputPath));
+    if (includeDynamic) {
+      queue.push(...(chunk.dynamicImports ?? []).map(assertRelativeOutputPath));
+    }
   }
   return [...visited].sort();
 }
@@ -127,13 +135,17 @@ export function createStandaloneWorkerMetricsPlan({
   }
   const assertDistributionFile = (fileName: string, kind: string): string => {
     const normalized = assertRelativeOutputPath(fileName);
-    if (!fileSet.has(normalized)) throw new Error(`${kind} is missing from distribution files: ${normalized}`);
+    if (!fileSet.has(normalized)) {
+      throw new Error(`${kind} is missing from distribution files: ${normalized}`);
+    }
     return normalized;
   };
   const normalizedRuntimeFiles = sortedUnique(runtimeFileNames.map(fileName => assertDistributionFile(fileName, 'Runtime file')));
   const normalizedStyles = sortedUnique(initialStyleFileNames.map(fileName => assertDistributionFile(fileName, 'Initial stylesheet')));
   const uiEntry = assertRelativeOutputPath(uiEntryFileName);
-  if (!chunksByFileName.has(uiEntry)) throw new Error(`UI entry chunk is missing from the chunk graph: ${uiEntry}`);
+  if (!chunksByFileName.has(uiEntry)) {
+    throw new Error(`UI entry chunk is missing from the chunk graph: ${uiEntry}`);
+  }
   const uiStaticChunkClosure = collectChunkClosure({ entryFileName: uiEntry, chunksByFileName });
   const uiReachableChunkClosure = collectChunkClosure({ entryFileName: uiEntry, chunksByFileName, includeDynamic: true });
   const normalizedWorkers = workers.map(worker => {
@@ -193,7 +205,9 @@ function sumSizes(fileNames: readonly string[], sizes: ReadonlyMap<string, numbe
 
 export async function measureStandaloneWorkerMetricsFromDisk({ plan, outputDirectory, archiveFile }: Readonly<{plan: StandaloneWorkerMetricsPlan; outputDirectory: string; archiveFile?: string}> ) {
   const sizes = new Map<string, number>();
-  for (const fileName of plan.files) sizes.set(fileName, await fileSize({ outputDirectory, fileName }));
+  for (const fileName of plan.files) {
+    sizes.set(fileName, await fileSize({ outputDirectory, fileName }));
+  }
   const uiRealmStaticSet = new Set([...plan.runtimeFileNames, ...plan.ui.staticChunkClosure]);
   const workerStaticUnion = sortedUnique(plan.workers.flatMap(worker => worker.staticChunkClosure));
   const workerReachableUnion = sortedUnique(plan.workers.flatMap(worker => worker.reachableChunkClosure));
@@ -263,7 +277,9 @@ export async function measureStandaloneWorkerMetricsFromDisk({ plan, outputDirec
 export function collectStandaloneWorkerBudgetFailures({ metrics, budgets = {} }: Readonly<{metrics: StandaloneWorkerMetrics; budgets?: StandaloneWorkerBudgets}>): string[] {
   const failures: string[] = [];
   const check = (label: string, actual: number, limit: number | undefined): void => {
-    if (limit !== undefined && actual > limit) failures.push(`${label} ${actual} bytes exceeds ${limit} bytes`);
+    if (limit !== undefined && actual > limit) {
+      failures.push(`${label} ${actual} bytes exceeds ${limit} bytes`);
+    }
   };
   check('initial entry', metrics.ui.entryBytes, budgets.maxInitialEntryBytes);
   check('initial requests', metrics.ui.initialRequestBytes, budgets.maxInitialRequestBytes);

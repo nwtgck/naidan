@@ -23,7 +23,12 @@ describe('test-resource policy integration', () => {
   });
 
   it('does not enable unrelated type-aware rules or reject their inline directives', async () => {
-    const results = await createEslint().lintText('// eslint-disable-next-line local-rules-named-args/require-named-args\nfunction f(value) { return value; }\n', { filePath: 'scripts/example.ts' });
+    const results = await createEslint().lintText(`\
+// eslint-disable-next-line local-rules-named-args/require-named-args
+function f(value) {
+  return value;
+}
+`, { filePath: 'scripts/example.ts' });
     expect(results[0]?.messages).toEqual([]);
   });
 

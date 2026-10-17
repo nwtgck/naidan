@@ -41,12 +41,18 @@ export function useChatModels({ scope: providedScope }: { scope?: Readonly<Ref<C
   let sequence = 0, disposed = false;
   // An embedded ChatPane must not borrow the globally selected chat's model
   // list. Each view also rejects late responses after switching its identity.
-  if (scope) watch(scope, () => {
-    sequence++; modelsForView.value = [];
-  }, { flush: 'sync' });
-  if (getCurrentScope()) onScopeDispose(() => {
-    disposed = true; sequence++;
-  });
+  if (scope) {
+    watch(scope, () => {
+      sequence++;
+      modelsForView.value = [];
+    }, { flush: 'sync' });
+  }
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      disposed = true;
+      sequence++;
+    });
+  }
 
   async function fetchForChat({
     chatId,
@@ -57,7 +63,9 @@ export function useChatModels({ scope: providedScope }: { scope?: Readonly<Ref<C
     requests.value++;
     try {
       const result = await fetchModelsForChat({ chatId, errorSource: 'useChatModels:fetchForChat' });
-      if (scope && scope.value === chatId && token === sequence && !disposed) modelsForView.value = result;
+      if (scope && scope.value === chatId && token === sequence && !disposed) {
+        modelsForView.value = result;
+      }
       return result;
     } finally {
       requests.value--;

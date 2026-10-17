@@ -39,7 +39,9 @@ export async function buildTransformersJsFixesArtifact({ projectRoot }: { projec
       },
     },
   });
-  if ('close' in result) throw new Error('Compatibility artifact build unexpectedly entered watch mode');
+  if ('close' in result) {
+    throw new Error('Compatibility artifact build unexpectedly entered watch mode');
+  }
   const outputs = (Array.isArray(result) ? result : [result]) as RolldownOutput[];
   const chunks = outputs.flatMap(output => output.output).filter(item => item.type === 'chunk');
   const chunk = chunks[0];

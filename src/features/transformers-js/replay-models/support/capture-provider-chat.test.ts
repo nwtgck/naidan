@@ -126,7 +126,9 @@ describe('public chat observation mechanics', () => {
     const first = capture.snapshot();
     expect(first.parts).toMatchObject([{ toolCall: { function: { name: 'original' } } }]);
     const part = first.parts[0];
-    if (part?.type !== 'tool_call') throw new Error('Expected a completed tool call');
+    if (part?.type !== 'tool_call') {
+      throw new Error('Expected a completed tool call');
+    }
     part.toolCall.function.name = 'snapshot mutation';
     first.events.length = 0;
     expect(capture.snapshot().parts).toMatchObject([{ toolCall: { function: { name: 'original' } } }]);
@@ -146,7 +148,9 @@ describe('public chat observation mechanics', () => {
               completeness: Promise.resolve('complete'),
               chunks: {
                 async *[Symbol.asyncIterator]() {
-                  yield 'first'; await release.promise; yield 'last';
+                  yield 'first';
+                  await release.promise;
+                  yield 'last';
                 },
               },
             }, finished,
@@ -203,7 +207,8 @@ describe('public chat observation mechanics', () => {
               completeness: Promise.resolve('complete'),
               chunks: {
                 async *[Symbol.asyncIterator]() {
-                  yield 'partial'; childFinished.resolve();
+                  yield 'partial';
+                  childFinished.resolve();
                 },
               },
             };
@@ -232,7 +237,8 @@ describe('public chat observation mechanics', () => {
               completeness: Promise.resolve('complete'),
               chunks: {
                 async *[Symbol.asyncIterator]() {
-                  yield 'partial'; throw error;
+                  yield 'partial';
+                  throw error;
                 },
               },
             }, finished,
@@ -279,7 +285,8 @@ describe('public chat observation mechanics', () => {
               chunks: {
                 [Symbol.asyncIterator]: () => ({
                   next: () => {
-                    childRead.resolve(); return pending.promise;
+                    childRead.resolve();
+                    return pending.promise;
                   },
                   return: childReturn,
                 }),
@@ -364,10 +371,14 @@ describe('public chat observation mechanics', () => {
     const snapshot = capture.snapshot();
     expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
     expect(snapshot.result).toEqual({ type: 'error', error });
-    if (snapshot.result?.type !== 'error') throw new Error('Expected an error result');
+    if (snapshot.result?.type !== 'error') {
+      throw new Error('Expected an error result');
+    }
     expect(snapshot.result.error).toBe(error);
     const event = snapshot.events.find(event => event.kind === 'result');
-    if (event?.kind !== 'result' || event.result.type !== 'error') throw new Error('Expected an error event');
+    if (event?.kind !== 'result' || event.result.type !== 'error') {
+      throw new Error('Expected an error event');
+    }
     expect(event.result.error).toBe(error);
     expect(capture.snapshot().parts).toMatchObject([{ completeness: 'partial' }]);
   });
@@ -422,7 +433,8 @@ describe('public chat observation mechanics', () => {
     const childPending = Promise.withResolvers<IteratorResult<string>>();
     const completeness = Promise.withResolvers<'complete' | 'partial'>();
     const outerReturn = vi.fn(async () => {
-      await cleanup.promise; return { done: true as const, value: undefined };
+      await cleanup.promise;
+      return { done: true as const, value: undefined };
     });
     const childReturn = vi.fn(async () => ({ done: true as const, value: undefined }));
     let reads = 0;
@@ -431,7 +443,9 @@ describe('public chat observation mechanics', () => {
         chat: () => ({
           [Symbol.asyncIterator]: () => ({
             next: async () => {
-              if (reads++ !== 0) return outerPending.promise;
+              if (reads++ !== 0) {
+                return outerPending.promise;
+              }
               return {
                 done: false,
                 value: {
@@ -442,7 +456,8 @@ describe('public chat observation mechanics', () => {
                   chunks: {
                     [Symbol.asyncIterator]: () => ({
                       next: () => {
-                        childRead.resolve(); return childPending.promise;
+                        childRead.resolve();
+                        return childPending.promise;
                       },
                       return: childReturn,
                     }),
@@ -482,7 +497,8 @@ describe('public chat observation mechanics', () => {
         chat: () => ({
           [Symbol.asyncIterator]: () => ({
             next: () => {
-              read.resolve(); return pending.promise;
+              read.resolve();
+              return pending.promise;
             },
             return: async () => {
               throw error;
@@ -502,7 +518,9 @@ describe('public chat observation mechanics', () => {
     let calls = 0;
     const provider: Pick<LmProvider, 'chat'> = {
       chat: () => {
-        if (calls++ !== 0) return values({ items: [text({ partId: 'new', index: 0, chunks: ['new text'], completeness: 'complete' }), finished] });
+        if (calls++ !== 0) {
+          return values({ items: [text({ partId: 'new', index: 0, chunks: ['new text'], completeness: 'complete' }), finished] });
+        }
         return { [Symbol.asyncIterator]: () => ({ next: () => oldRead.promise, return: async () => ({ done: true, value: undefined }) }) };
       },
     };

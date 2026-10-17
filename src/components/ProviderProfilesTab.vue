@@ -30,10 +30,14 @@ const editingProviderProfileName = ref('');
 
 async function handleDeleteProviderProfile({ id }: { id: ProviderProfileId }) {
   const index = props.profiles.findIndex(p => p.id === id);
-  if (index === -1) return;
+  if (index === -1) {
+    return;
+  }
 
   const deletedProfile = props.profiles[index];
-  if (!deletedProfile) return;
+  if (!deletedProfile) {
+    return;
+  }
 
   const newProfiles = [...props.profiles];
   newProfiles.splice(index, 1);
@@ -59,7 +63,9 @@ function startRename({ providerProfile }: { providerProfile: ProviderProfile }) 
 }
 
 async function saveRename() {
-  if (!editingProviderProfileId.value) return;
+  if (!editingProviderProfileId.value) {
+    return;
+  }
   const index = props.profiles.findIndex(p => p.id === editingProviderProfileId.value);
   if (index !== -1 && editingProviderProfileName.value.trim()) {
     const newProfiles = JSON.parse(JSON.stringify(props.profiles)) as ProviderProfile[];

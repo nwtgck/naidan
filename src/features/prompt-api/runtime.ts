@@ -86,7 +86,9 @@ function isCurrentAvailabilityRefresh({ revision }: { revision: number }): boole
 }
 
 function cancelWarmKeeperRecreation(): void {
-  if (warmKeeperRecreationTimer === undefined) return;
+  if (warmKeeperRecreationTimer === undefined) {
+    return;
+  }
   clearTimeout(warmKeeperRecreationTimer);
   warmKeeperRecreationTimer = undefined;
 }
@@ -203,7 +205,9 @@ async function createWarmKeeper({ availabilityCheck, downloadProgressOverlap }: 
   availabilityCheck: 'required' | 'skip',
   downloadProgressOverlap: 'allow' | 'disallow',
 }): Promise<void> {
-  if (!canCreateWarmKeeper({ downloadProgressOverlap })) return;
+  if (!canCreateWarmKeeper({ downloadProgressOverlap })) {
+    return;
+  }
 
   const lifecycleRevision = runtimeLifecycleRevision;
   let shouldReevaluateAfterFinalization = false;
@@ -212,7 +216,9 @@ async function createWarmKeeper({ availabilityCheck, downloadProgressOverlap }: 
       switch (availabilityCheck) {
       case 'required': {
         const availability = await getPromptApiAvailability({ inputMode: 'text' });
-        if (lifecycleRevision !== runtimeLifecycleRevision) return;
+        if (lifecycleRevision !== runtimeLifecycleRevision) {
+          return;
+        }
 
         switch (availability) {
         case 'available':
@@ -264,7 +270,9 @@ async function createWarmKeeper({ availabilityCheck, downloadProgressOverlap }: 
       warmKeeper = session;
       setState({ state: { status: 'ready' } });
     } catch (error) {
-      if (lifecycleRevision !== runtimeLifecycleRevision) return;
+      if (lifecycleRevision !== runtimeLifecycleRevision) {
+        return;
+      }
       handleBackgroundWarmKeeperError({ error });
     }
   };
@@ -283,7 +291,9 @@ async function createWarmKeeper({ availabilityCheck, downloadProgressOverlap }: 
 }
 
 function scheduleWarmKeeperRecreation(): void {
-  if (!canCreateWarmKeeper({ downloadProgressOverlap: 'disallow' })) return;
+  if (!canCreateWarmKeeper({ downloadProgressOverlap: 'disallow' })) {
+    return;
+  }
 
   warmKeeperRecreationTimer = setTimeout(() => {
     warmKeeperRecreationTimer = undefined;
@@ -387,7 +397,9 @@ export async function refreshPromptApiAvailability({
 }): Promise<void> {
   // Download progress tracking owns runtime state while create() is downloading
   // or loading a model. A focus event or polling tick must not replace it.
-  if (downloadProgressPromise !== undefined) return;
+  if (downloadProgressPromise !== undefined) {
+    return;
+  }
 
   const refreshRevision = availabilityRefreshRevision + 1;
   availabilityRefreshRevision = refreshRevision;
@@ -415,10 +427,14 @@ export async function refreshPromptApiAvailability({
 
   try {
     const availability = await getPromptApiAvailability({ inputMode: 'text' });
-    if (!isCurrentAvailabilityRefresh({ revision: refreshRevision })) return;
+    if (!isCurrentAvailabilityRefresh({ revision: refreshRevision })) {
+      return;
+    }
     setAvailabilityState({ availability });
   } catch (error) {
-    if (!isCurrentAvailabilityRefresh({ revision: refreshRevision })) return;
+    if (!isCurrentAvailabilityRefresh({ revision: refreshRevision })) {
+      return;
+    }
 
     const normalized = normalizePromptApiError({ error });
     switch (normalized.code) {
@@ -458,7 +474,9 @@ export async function preparePromptApi({ signal }: {
     setState({ state: { status: 'ready' } });
     return;
   }
-  if (downloadProgressPromise !== undefined) return downloadProgressPromise;
+  if (downloadProgressPromise !== undefined) {
+    return downloadProgressPromise;
+  }
 
   cancelWarmKeeperRecreation();
   const currentDownloadProgressRevision = downloadProgressRevision + 1;
@@ -515,7 +533,9 @@ export async function preparePromptApi({ signal }: {
         signal,
         inputMode: 'text',
         onDownloadProgress: ({ progress }) => {
-          if (!isCurrentDownloadProgress()) return;
+          if (!isCurrentDownloadProgress()) {
+            return;
+          }
           setState({
             state: progress >= 1
               ? { status: 'preparing' }
@@ -524,7 +544,9 @@ export async function preparePromptApi({ signal }: {
         },
       });
 
-      if (!isCurrentDownloadProgress()) return;
+      if (!isCurrentDownloadProgress()) {
+        return;
+      }
 
       hasActivatedPromptApi = true;
       await createWarmKeeper({
@@ -590,7 +612,9 @@ export async function acquirePromptApiGenerationSession({
   let pendingRegistrationActive = true;
 
   const releasePendingRegistration = (): void => {
-    if (!pendingRegistrationActive) return;
+    if (!pendingRegistrationActive) {
+      return;
+    }
     pendingRegistrationActive = false;
     if (lifecycleRevision === runtimeLifecycleRevision) {
       pendingGenerationSessionCount = Math.max(0, pendingGenerationSessionCount - 1);
@@ -627,9 +651,13 @@ export async function acquirePromptApiGenerationSession({
     return {
       session,
       release(): void {
-        if (released) return;
+        if (released) {
+          return;
+        }
         released = true;
-        if (!activeGenerationSessions.delete(session)) return;
+        if (!activeGenerationSessions.delete(session)) {
+          return;
+        }
 
         try {
           session.destroy();
@@ -680,7 +708,9 @@ export function acquirePromptApiRuntimeMonitoring(): () => void {
 
   let released = false;
   return () => {
-    if (released) return;
+    if (released) {
+      return;
+    }
     released = true;
     monitoringReferences = Math.max(0, monitoringReferences - 1);
 
@@ -730,7 +760,9 @@ export const TEST_ONLY = {
   reset(): void {
     disposePromptApiSessionResources();
     monitoringReferences = 0;
-    if (pollingTimer !== undefined) clearInterval(pollingTimer);
+    if (pollingTimer !== undefined) {
+      clearInterval(pollingTimer);
+    }
     pollingTimer = undefined;
     mutableState.value = { status: 'unchecked' };
     if (typeof window !== 'undefined') {

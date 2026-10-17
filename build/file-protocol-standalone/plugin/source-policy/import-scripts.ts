@@ -27,10 +27,16 @@ function isFunctionLike(node: Node | null | undefined): boolean {
 }
 
 function guardExpressionMentionsWorkerImportScripts(test: Node | null | undefined, code: string, safeGuardIdentifiers: ReadonlySet<string> = new Set()): boolean {
-  if (!test || typeof test.start !== 'number' || typeof test.end !== 'number') return false;
-  if (isBabelNodeType(test, 'Identifier') && safeGuardIdentifiers.has(test.name)) return true;
+  if (!test || typeof test.start !== 'number' || typeof test.end !== 'number') {
+    return false;
+  }
+  if (isBabelNodeType(test, 'Identifier') && safeGuardIdentifiers.has(test.name)) {
+    return true;
+  }
   const source = code.slice(test.start, test.end);
-  if ([...safeGuardIdentifiers].some(identifier => new RegExp(`\\b${identifier}\\b`, 'u').test(source))) return true;
+  if ([...safeGuardIdentifiers].some(identifier => new RegExp(`\\b${identifier}\\b`, 'u').test(source))) {
+    return true;
+  }
   return /typeof\s+importScripts\s*(?:===?\s*['"]function['"]|!==?\s*['"]undefined['"])/u.test(source)
     || /['"]undefined['"]\s*!==?\s*typeof\s+importScripts/u.test(source)
     || /['"]function['"]\s*===?\s*typeof\s+importScripts/u.test(source);
@@ -46,9 +52,13 @@ function analyzeImportScriptsCalls(code: string, id = '<unknown>'): ImportScript
   const calls: ImportScriptsCall[] = [];
   const safeGuardIdentifiers = new Set<string>();
   for (const statement of ast.program?.body ?? []) {
-    if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') continue;
+    if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
+      continue;
+    }
     for (const declaration of statement.declarations) {
-      if (declaration.id?.type !== 'Identifier' || !declaration.init) continue;
+      if (declaration.id?.type !== 'Identifier' || !declaration.init) {
+        continue;
+      }
       if (guardExpressionMentionsWorkerImportScripts(declaration.init, code)) {
         safeGuardIdentifiers.add(declaration.id.name);
       }
@@ -56,13 +66,18 @@ function analyzeImportScriptsCalls(code: string, id = '<unknown>'): ImportScript
   }
 
   function visit(node: Node | null | undefined, ancestors: readonly Node[]): void {
-    if (!node || typeof node !== 'object') return;
+    if (!node || typeof node !== 'object') {
+      return;
+    }
     if (isBabelNodeType(node, 'CallExpression') && node.callee?.type === 'Identifier' && node.callee.name === 'importScripts') {
       const staticSpecifiers: string[] = [];
       const unsupportedArguments: string[] = [];
       for (const argument of node.arguments) {
-        if (isBabelNodeType(argument, 'StringLiteral')) staticSpecifiers.push(argument.value);
-        else unsupportedArguments.push(argument.type);
+        if (isBabelNodeType(argument, 'StringLiteral')) {
+          staticSpecifiers.push(argument.value);
+        } else {
+          unsupportedArguments.push(argument.type);
+        }
       }
       const deferred = ancestors.some(isFunctionLike);
       const guarded = ancestors.some((ancestor, index) => {
@@ -100,7 +115,9 @@ function analyzeImportScriptsCalls(code: string, id = '<unknown>'): ImportScript
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
         for (const item of value) {
-          if (isBabelNode(item)) visit(item, nextAncestors);
+          if (isBabelNode(item)) {
+            visit(item, nextAncestors);
+          }
         }
       } else if (isBabelNode(value)) {
         visit(value, nextAncestors);
@@ -191,7 +208,9 @@ export function createImportScriptsAssetPlugin({
       sourcePath: importerSourcePath,
     });
     const scanKey = `${realSourcePath}\0${outputFileName}\0${sourceRoot}`;
-    if (scannedSourceRoots.has(scanKey)) return;
+    if (scannedSourceRoots.has(scanKey)) {
+      return;
+    }
     scannedSourceRoots.add(scanKey);
 
     const source = await fs.readFile(realSourcePath, 'utf8');
@@ -234,16 +253,24 @@ export function createImportScriptsAssetPlugin({
     name: 'naidan-file-protocol-standalone-importscripts-assets',
     enforce: 'pre',
     async transform(code, id) {
-      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) return null;
+      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) {
+        return null;
+      }
       // Most application modules do not mention importScripts. Avoid constructing
       // a Babel AST unless the lexical token is present; the full parser remains
       // the source of truth for every candidate module.
-      if (!code.includes('importScripts')) return null;
+      if (!code.includes('importScripts')) {
+        return null;
+      }
       const sourcePath = id.split('?', 1)[0];
       const calls = findImportScriptsCalls(code, sourcePath);
-      if (calls.length === 0) return null;
+      if (calls.length === 0) {
+        return null;
+      }
       const unsafeCalls = calls.filter(call => call.topLevelUnsafeForUi);
-      if (unsafeCalls.length > 0) unsafeTopLevelImportScriptsByModule.set(sourcePath, unsafeCalls);
+      if (unsafeCalls.length > 0) {
+        unsafeTopLevelImportScriptsByModule.set(sourcePath, unsafeCalls);
+      }
       for (const call of calls) {
         if (call.unsupportedArguments.length > 0) {
           throw new Error(`Dynamic importScripts() URL is unsupported in ${sourcePath}`);
@@ -259,18 +286,26 @@ export function createImportScriptsAssetPlugin({
       return null;
     },
     generateBundle(_options, bundle) {
-      if (unsafeTopLevelImportScriptsByModule.size === 0) return;
+      if (unsafeTopLevelImportScriptsByModule.size === 0) {
+        return;
+      }
       const chunks = Object.values(bundle).filter(output => output.type === 'chunk');
       const byFileName = new Map(chunks.map(chunk => [chunk.fileName, chunk]));
       const workerEntryIds = new Set(workers.map(worker => path.resolve(worker.entry)));
       const uiRoots = chunks.filter(chunk => chunk.isEntry && !workerEntryIds.has(path.resolve(chunk.facadeModuleId || '')));
       const uiReachable = new Set<string>();
       const visit = (chunk: OutputChunk | undefined): void => {
-        if (!chunk || uiReachable.has(chunk.fileName)) return;
+        if (!chunk || uiReachable.has(chunk.fileName)) {
+          return;
+        }
         uiReachable.add(chunk.fileName);
-        for (const imported of [...chunk.imports, ...chunk.dynamicImports]) visit(byFileName.get(imported));
+        for (const imported of [...chunk.imports, ...chunk.dynamicImports]) {
+          visit(byFileName.get(imported));
+        }
       };
-      for (const root of uiRoots) visit(root);
+      for (const root of uiRoots) {
+        visit(root);
+      }
       for (const [moduleId, calls] of unsafeTopLevelImportScriptsByModule) {
         const owners = chunks.filter(chunk => Object.hasOwn(chunk.modules, moduleId));
         const uiOwners = owners.filter(chunk => uiReachable.has(chunk.fileName));

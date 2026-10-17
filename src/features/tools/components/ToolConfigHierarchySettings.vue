@@ -87,7 +87,9 @@ const toolDefinitions = computed<readonly ToolDefinition[]>(() => {
 
   const resolved: ToolDefinition[] = [];
   for (const draft of drafts) {
-    if (draft.name === undefined || draft.description === undefined) return [];
+    if (draft.name === undefined || draft.description === undefined) {
+      return [];
+    }
     resolved.push({ ...draft, name: draft.name, description: draft.description });
   }
   return resolved;
@@ -187,7 +189,9 @@ function toggleAriaLabel({
   key: BuiltinToolKey,
   toolName: string | undefined,
 }): string | undefined {
-  if (toolName === undefined) return undefined;
+  if (toolName === undefined) {
+    return undefined;
+  }
   return isEffectivelyEnabled({ key })
     ? lazyStrings.ToolConfigHierarchySettings__turn_off_tool({ toolName })
     : lazyStrings.ToolConfigHierarchySettings__turn_on_tool({ toolName });
@@ -195,7 +199,9 @@ function toggleAriaLabel({
 
 function handleAccessScopeChange({ event }: { event: Event }): void {
   const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) return;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
   const accessScope = target.value as NaidanSysfsAccessScope;
   switch (accessScope) {
   case 'current_chat_only':

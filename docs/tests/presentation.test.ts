@@ -89,7 +89,9 @@ describe('accessible guide presentation', () => {
   it.each(DOCS_PAGES)('ships the scripts and motion support used by $id', page => {
     for (const locale of DOCS_LOCALES) {
       const output = pages.get(docsHref({ locale, page: page.id }));
-      if (!output) throw new Error('Missing generated page');
+      if (!output) {
+        throw new Error('Missing generated page');
+      }
       using document = parsePage({ html: output.html });
       const animations = document.document.querySelectorAll('[data-docs-animation]');
       expect(document.document.querySelector('[data-testid="docs-motion-toggle"]')).toBeNull();
@@ -120,13 +122,17 @@ describe('accessible guide presentation', () => {
           keyframes.push(rule.params);
         });
         tree.walkDecls('animation', declaration => {
-          if (declaration.value !== 'none') motions.push(declaration.value);
+          if (declaration.value !== 'none') {
+            motions.push(declaration.value);
+          }
         });
         tree.walkDecls('animation-play-state', declaration => {
           pauseRules.push(declaration.parent?.toString() ?? '');
         });
         tree.walkAtRules('media', rule => {
-          if (rule.params.includes('prefers-reduced-motion')) reduced.push(rule.toString());
+          if (rule.params.includes('prefers-reduced-motion')) {
+            reduced.push(rule.toString());
+          }
         });
         expect(keyframes.length).toBeGreaterThan(0);
         expect(motions.length).toBeGreaterThan(0);
@@ -135,7 +141,9 @@ describe('accessible guide presentation', () => {
       }
       for (const link of document.document.querySelectorAll('a[href]')) {
         const href = link.getAttribute('href') ?? '';
-        if (!href.startsWith('https://')) continue;
+        if (!href.startsWith('https://')) {
+          continue;
+        }
         if (link.hasAttribute('data-docs-app-entry-path')) {
           expect(link.querySelector('[data-docs-external-icon]')).toBeNull();
           continue;
@@ -149,7 +157,9 @@ describe('accessible guide presentation', () => {
     for (const locale of DOCS_LOCALES) {
       const home = pages.get(docsHref({ locale, page: 'index' }));
       const guide = pages.get(docsHref({ locale, page: 'standalone' }));
-      if (!home || !guide) throw new Error('Missing standalone guide');
+      if (!home || !guide) {
+        throw new Error('Missing standalone guide');
+      }
       using homePage = parsePage({ html: home.html });
       using guidePage = parsePage({ html: guide.html });
       const link = homePage.document.querySelector('[data-testid="docs-home-standalone"] a');
@@ -159,7 +169,9 @@ describe('accessible guide presentation', () => {
       expect(article?.textContent).toContain('index.html');
       expect(article?.textContent).toContain('assets');
       expect(article?.textContent).toContain(locale === 'ja' ? '一時保存方式' : 'Ephemeral');
-      if (locale === 'en') expect(article?.querySelector('.ui-label')?.textContent).toBe('Ephemeral');
+      if (locale === 'en') {
+        expect(article?.querySelector('.ui-label')?.textContent).toBe('Ephemeral');
+      }
       expect(article?.textContent).toContain('llama.cpp server');
       expect(article?.querySelector('a[href="https://naidan.pages.dev/naidan-standalone.zip"]')).not.toBeNull();
     }
@@ -171,11 +183,15 @@ describe('accessible guide presentation', () => {
       : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Direct access prevented', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
     for (const page of ['index', 'browser-boundaries', 'file-access', 'standalone'] as const) {
       const output = pages.get(docsHref({ locale, page }));
-      if (!output) throw new Error('Missing localized demonstration page');
+      if (!output) {
+        throw new Error('Missing localized demonstration page');
+      }
       using document = parsePage({ html: output.html });
       expect(document.document.documentElement.lang).toBe(locale);
       const diagram = document.document.querySelector('[data-testid="boundary-diagram"]');
-      if (page === 'index' || page === 'browser-boundaries') expect(diagram).not.toBeNull();
+      if (page === 'index' || page === 'browser-boundaries') {
+        expect(diagram).not.toBeNull();
+      }
       if (diagram) {
         const os = diagram.querySelector('[data-testid="os-boundary"]');
         const browser = diagram.querySelector('[data-testid="browser-boundary"]');
@@ -216,7 +232,9 @@ describe('accessible guide presentation', () => {
         expect(folder.hasAttribute('lang')).toBe(false);
       }
       const standalone = document.document.querySelector('[data-testid="standalone-demo"]');
-      if (page === 'standalone') expect(standalone).not.toBeNull();
+      if (page === 'standalone') {
+        expect(standalone).not.toBeNull();
+      }
       if (standalone) {
         expect(standalone.textContent).toContain(expected.open);
         expect(standalone.textContent).toContain(expected.newChat);
@@ -228,7 +246,9 @@ describe('accessible guide presentation', () => {
         expect(standalone.hasAttribute('lang')).toBe(false);
       }
       const chrome = document.document.querySelector('[data-testid="replica-chrome"]');
-      if (page === 'index') expect(chrome).not.toBeNull();
+      if (page === 'index') {
+        expect(chrome).not.toBeNull();
+      }
       if (chrome) {
         expect(chrome.textContent).toContain(expected.newChat);
         expect(chrome.hasAttribute('lang')).toBe(false);
@@ -238,7 +258,9 @@ describe('accessible guide presentation', () => {
 
   it.each(DOCS_LOCALES)('links model choices to complete localized guides in %s', locale => {
     const output = pages.get(docsHref({ locale, page: 'index' }));
-    if (!output) throw new Error('Missing homepage');
+    if (!output) {
+      throw new Error('Missing homepage');
+    }
     using document = parsePage({ html: output.html });
     const links = [...document.document.querySelectorAll('[data-testid="docs-model-guide"]')];
     expect(links.map(link => link.getAttribute('href'))).toEqual([
@@ -247,7 +269,9 @@ describe('accessible guide presentation', () => {
     ]);
     for (const page of ['in-browser-models', 'local-ai-servers'] as const) {
       const guide = pages.get(docsHref({ locale, page }));
-      if (!guide) throw new Error('Missing model guide');
+      if (!guide) {
+        throw new Error('Missing model guide');
+      }
       using document = parsePage({ html: guide.html });
       expect(document.document.documentElement.lang).toBe(locale);
       expect(document.document.querySelector('article h1')?.textContent?.trim()).toBeTruthy();

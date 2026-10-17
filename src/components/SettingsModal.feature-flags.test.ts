@@ -98,7 +98,9 @@ describe('SettingsModal feature flags', () => {
 
   beforeEach(() => {
     mockIsFeatureEnabled.mockReset();
-    mockRpcStatus.value = 'disabled'; route.query = {}; route.params = {};
+    mockRpcStatus.value = 'disabled';
+    route.query = {};
+    route.params = {};
     (useRoute as unknown as ReturnType<typeof vi.fn>).mockReturnValue(route);
     (useRouter as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       push: vi.fn(),
@@ -140,7 +142,8 @@ describe('SettingsModal feature flags', () => {
   it('shows Naidan RPC immediately above Developer only when explicitly enabled', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ThemeToggle: true, ConnectionTab: true, NaidanRpcTab: true } } });
     expect(wrapper.find('[data-testid="tab-naidan-rpc"]').exists()).toBe(false);
-    mockRpcStatus.value = 'enabled'; await nextTick();
+    mockRpcStatus.value = 'enabled';
+    await nextTick();
     const tabs = wrapper.findAll('[data-testid^="tab-"]').map(tab => tab.attributes('data-testid'));
     expect(tabs.indexOf('tab-naidan-rpc')).toBe(tabs.indexOf('tab-developer') - 1);
     wrapper.unmount();
@@ -148,17 +151,24 @@ describe('SettingsModal feature flags', () => {
 
   it.each(['query', 'params'] as const)('does not open the RPC tab through a disabled %s deep link', async source => {
     switch (source) {
-    case 'query': route.query = { settings: 'naidan-rpc' }; break;
-    case 'params': route.params = { tab: 'naidan-rpc' }; break;
-    default: { const exhaustive: never = source; throw new Error(String(exhaustive)); }
+    case 'query': route.query = { settings: 'naidan-rpc' };
+      break;
+    case 'params': route.params = { tab: 'naidan-rpc' };
+      break;
+    default: {
+      const exhaustive: never = source;
+      throw new Error(String(exhaustive));
+    }
     }
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: { ThemeToggle: true, ConnectionTab: true, NaidanRpcTab: true } } });
     expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
     expect(wrapper.findComponent({ name: 'NaidanRpcTab' }).exists()).toBe(false);
     expect(useRouter().push).not.toHaveBeenCalled();
-    mockRpcStatus.value = 'enabled'; await nextTick();
+    mockRpcStatus.value = 'enabled';
+    await nextTick();
     expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(false);
-    mockRpcStatus.value = 'disabled'; await nextTick();
+    mockRpcStatus.value = 'disabled';
+    await nextTick();
     expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
     wrapper.unmount();
   });

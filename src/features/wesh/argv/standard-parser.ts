@@ -75,8 +75,12 @@ export function parseStandardArgv({
   const longOptions = new Map<string, ArgvOptionSpec>();
 
   for (const option of spec.options) {
-    if (option.short !== undefined) shortOptions.set(option.short, option);
-    if (option.long !== undefined) longOptions.set(option.long, option);
+    if (option.short !== undefined) {
+      shortOptions.set(option.short, option);
+    }
+    if (option.long !== undefined) {
+      longOptions.set(option.long, option);
+    }
   }
 
   const scanner = new ArgvScanner({ tokens: args });
@@ -84,7 +88,9 @@ export function parseStandardArgv({
 
   while (scanner.hasMore()) {
     const token = scanner.peek();
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     if (!stopParsingOptions && spec.stopAtDoubleDash && token === '--') {
       scanner.next();
@@ -99,7 +105,9 @@ export function parseStandardArgv({
           token,
           nextToken: scanner.peekNext(),
         });
-        if (result === undefined) continue;
+        if (result === undefined) {
+          continue;
+        }
 
         applyEffects({ optionValues, effects: result.effects });
         if (result.occurrences !== undefined) {
@@ -109,7 +117,9 @@ export function parseStandardArgv({
         handledSpecial = true;
         break;
       }
-      if (handledSpecial) continue;
+      if (handledSpecial) {
+        continue;
+      }
     }
 
     if (
@@ -188,7 +198,9 @@ export function parseStandardArgv({
       shortOptionLoop:
       for (let index = 0; index < shortBody.length; index++) {
         const short = shortBody[index];
-        if (short === undefined) continue;
+        if (short === undefined) {
+          continue;
+        }
 
         const option = shortOptions.get(short);
         if (option === undefined) {

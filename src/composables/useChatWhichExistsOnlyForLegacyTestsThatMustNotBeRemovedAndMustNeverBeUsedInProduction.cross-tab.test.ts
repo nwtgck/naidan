@@ -247,7 +247,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Also update the meta in storage so loadChat returns the correct groupId
     const meta = mocks.mockChatStorage.get(idToRaw({ id: chatId }));
-    if (meta) meta.groupId = toChatGroupId({ raw: 'group-x' });
+    if (meta) {
+      meta.groupId = toChatGroupId({ raw: 'group-x' });
+    }
 
     vi.advanceTimersByTime(1000);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
@@ -273,7 +275,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'ge' }), name: 'E', items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: toChatGroupId({ raw: 'ge' }) } }], isCollapsed: false, updatedAt: 0 } });
 
     const meta = mocks.mockChatStorage.get(idToRaw({ id: chatId }));
-    if (meta) meta.groupId = toChatGroupId({ raw: 'ge' });
+    if (meta) {
+      meta.groupId = toChatGroupId({ raw: 'ge' });
+    }
 
     vi.advanceTimersByTime(2000);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });

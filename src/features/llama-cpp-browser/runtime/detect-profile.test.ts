@@ -5,8 +5,12 @@ function browser({ memory64, jspi, adapter }: { memory64: boolean, jspi: boolean
   const validate = vi.fn(() => memory64);
   vi.stubGlobal('WebAssembly', { validate, ...(jspi ? { promising: () => {}, Suspending: () => {} } : {}) });
   const requestAdapter = vi.fn(async () => {
-    if (adapter === 'error') throw new Error('private adapter failure');
-    if (adapter === 'missing') return undefined;
+    if (adapter === 'error') {
+      throw new Error('private adapter failure');
+    }
+    if (adapter === 'missing') {
+      return undefined;
+    }
     return { features: new Set(adapter === 'ready' ? ['shader-f16'] : []) };
   });
   vi.stubGlobal('navigator', {
@@ -50,7 +54,8 @@ describe('automatic browser inference profile', () => {
     for (const profile of ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify'] as const) {
       expect(await resolveRuntimeProfile({ profile })).toBe(profile);
     }
-    expect(validate).not.toHaveBeenCalled(); expect(requestAdapter).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(requestAdapter).not.toHaveBeenCalled();
   });
 
   it('selects WebGPU wasm32 JSPI when JSPI is available without memory64', async () => {
@@ -61,7 +66,8 @@ describe('automatic browser inference profile', () => {
   it('keeps an explicit wasm32 JSPI selection when memory64 is also available', async () => {
     const { requestAdapter, validate } = browser({ memory64: true, jspi: true, adapter: 'ready' });
     expect(await resolveRuntimeProfile({ profile: 'webgpu-wasm32-jspi' })).toBe('webgpu-wasm32-jspi');
-    expect(validate).not.toHaveBeenCalled(); expect(requestAdapter).not.toHaveBeenCalled();
+    expect(validate).not.toHaveBeenCalled();
+    expect(requestAdapter).not.toHaveBeenCalled();
   });
 
   it('handles engines that throw while validating memory64', async () => {
@@ -73,7 +79,8 @@ describe('automatic browser inference profile', () => {
   });
 
   it('uses CPU wasm64 when there is no GPU API', async () => {
-    browser({ memory64: true, jspi: true, adapter: 'missing' }); vi.stubGlobal('navigator', {});
+    browser({ memory64: true, jspi: true, adapter: 'missing' });
+    vi.stubGlobal('navigator', {});
     expect(await resolveRuntimeProfile({ profile: 'auto' })).toBe('cpu-wasm64');
   });
 });

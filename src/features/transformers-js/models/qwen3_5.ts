@@ -67,7 +67,10 @@ export function buildQwen3_5Prompt({
     case 'default': return {};
     case 'enabled': return { enable_thinking: true };
     case 'disabled': return { enable_thinking: false };
-    default: { const exhaustive: never = reasoningMode; throw new Error(`Unhandled Qwen reasoning mode: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = reasoningMode;
+      throw new Error(`Unhandled Qwen reasoning mode: ${exhaustive}`);
+    }
     }
   })();
   // Undefined effort is intentionally absent: different native model templates
@@ -125,7 +128,9 @@ export function assessQwen3_5NoToolContinuationEligibility({
   if (!lastMessage || lastMessage.role !== 'user') {
     return { status: 'ineligible', reason: 'last-message-is-not-user' };
   }
-  if (messages.at(-2)?.role !== 'assistant') return { status: 'ineligible', reason: 'preceding-message-is-not-assistant' };
+  if (messages.at(-2)?.role !== 'assistant') {
+    return { status: 'ineligible', reason: 'preceding-message-is-not-assistant' };
+  }
 
   const hasToolHistory = messages.some((message, index) => (
     index !== messages.length - 1
@@ -145,10 +150,18 @@ export function normalizeQwen3_5ProcessorInputs({
 }): Record<string, unknown> {
   const mergedInputs = { ...inputs };
 
-  if (mergedInputs['pixel_values'] == null) delete mergedInputs['pixel_values'];
-  if (mergedInputs['pixel_values_videos'] == null) delete mergedInputs['pixel_values_videos'];
-  if (mergedInputs['image_grid_thw'] == null) delete mergedInputs['image_grid_thw'];
-  if (mergedInputs['video_grid_thw'] == null) delete mergedInputs['video_grid_thw'];
+  if (mergedInputs['pixel_values'] == null) {
+    delete mergedInputs['pixel_values'];
+  }
+  if (mergedInputs['pixel_values_videos'] == null) {
+    delete mergedInputs['pixel_values_videos'];
+  }
+  if (mergedInputs['image_grid_thw'] == null) {
+    delete mergedInputs['image_grid_thw'];
+  }
+  if (mergedInputs['video_grid_thw'] == null) {
+    delete mergedInputs['video_grid_thw'];
+  }
 
   return mergedInputs;
 }

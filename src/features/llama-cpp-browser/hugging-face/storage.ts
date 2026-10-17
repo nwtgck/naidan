@@ -18,28 +18,37 @@ export async function repositoryFolder({ repository, create, destination }: { re
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: create ? 'readwrite' : 'read' }) : await opfsRoot();
   const path = isHostDestination(destination) ? [owner!, repo!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve', 'main'];
-  for (const name of path) folder = await folder.getDirectoryHandle(name, { create });
+  for (const name of path) {
+    folder = await folder.getDirectoryHandle(name, { create });
+  }
   return folder;
 }
 
 export async function selectedFile({ folder, path, create }: { folder: FileSystemDirectoryHandle, path: string, create: boolean }): Promise<FileSystemFileHandle> {
-  const parts = path.split('/'); const name = parts.pop()!;
-  for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
+  const parts = path.split('/');
+  const name = parts.pop()!;
+  for (const part of parts) {
+    folder = await folder.getDirectoryHandle(part, { create });
+  }
   return folder.getFileHandle(name, { create });
 }
 
 export async function readJournal({ folder }: { folder: FileSystemDirectoryHandle }): Promise<DownloadJournal> {
   const file = await (await folder.getFileHandle(pendingName)).getFile();
-  if (file.size > 4 * 1024 * 1024) throw new Error('Download journal exceeds the size limit');
+  if (file.size > 4 * 1024 * 1024) {
+    throw new Error('Download journal exceeds the size limit');
+  }
   return journalSchema.parse(JSON.parse(await file.text()));
 }
 
 export async function writeJournal({ folder, journal }: { folder: FileSystemDirectoryHandle, journal: DownloadJournal }): Promise<void> {
   const writer = await (await folder.getFileHandle(pendingName, { create: true })).createWritable();
   try {
-    await writer.write(JSON.stringify(journalSchema.parse(journal))); await writer.close();
+    await writer.write(JSON.stringify(journalSchema.parse(journal)));
+    await writer.close();
   } catch (error) {
-    await writer.abort().catch(() => {}); throw error;
+    await writer.abort().catch(() => {});
+    throw error;
   }
 }
 
@@ -48,22 +57,42 @@ export async function visitRepositories({ visit, destination, onIssue }: { desti
   try {
     host = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'read' }) : await (await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR)).getDirectoryHandle('huggingface.co');
   } catch (error) {
-    if (isMissing({ error })) return; throw error;
+    if (isMissing({ error })) {
+      return;
+    }
+    throw error;
   }
   for await (const [owner, ownerFolder] of host.entries()) {
     switch (ownerFolder.kind) {
-    case 'file': continue; case 'directory': break; default: { const exhaustive: never = ownerFolder; throw new Error(String(exhaustive)); }
+    case 'file': continue;
+    case 'directory': break;
+    default: {
+      const exhaustive: never = ownerFolder;
+      throw new Error(String(exhaustive));
+    }
     }
     for await (const [repo, repoFolder] of ownerFolder.entries()) {
       switch (repoFolder.kind) {
-      case 'file': continue; case 'directory': break; default: { const exhaustive: never = repoFolder; throw new Error(String(exhaustive)); }
+      case 'file': continue;
+      case 'directory': break;
+      default: {
+        const exhaustive: never = repoFolder;
+        throw new Error(String(exhaustive));
       }
-      const repository = `${owner}/${repo}`; if (!repositorySchema.safeParse(repository).success) continue;
+      }
+      const repository = `${owner}/${repo}`;
+      if (!repositorySchema.safeParse(repository).success) {
+        continue;
+      }
       try {
         await visit({ repository, folder: isHostDestination(destination) ? repoFolder : await (await repoFolder.getDirectoryHandle('resolve')).getDirectoryHandle('main') });
       } catch (error) {
         if (!isMissing({ error })) {
-          if (onIssue) onIssue({ repository, error }); else throw error;
+          if (onIssue) {
+            onIssue({ repository, error });
+          } else {
+            throw error;
+          }
         }
       }
     }
@@ -76,7 +105,9 @@ async function repositoryFiles({ repository, destination }: { repository: string
   try {
     pending = await readJournal({ folder });
   } catch (error) {
-    if (!isMissing({ error })) throw error;
+    if (!isMissing({ error })) {
+      throw error;
+    }
   }
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
   return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path)).map(file => isHostDestination(destination) ? { ...file, storageKind: 'host' as const } : file);
@@ -87,15 +118,20 @@ export async function repositoryDirectories({ repository, destination }: { repos
 }
 
 async function describeRepositoryDirectories({ repository, actual, onlyModelPath, destination }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
-  const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
+  const { models, projectors } = modelGroups({ files: actual });
+  const result: ModelDirectory[] = [];
   for (const group of models) {
     const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
     try {
       const resolved = resolveModelFiles({ files });
       // A launch checks one exact model, not the headers of every quantization.
       // Keep grouping and projector selection identical to normal model listing.
-      if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) continue;
-      if (!await allValid({ files })) continue;
+      if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) {
+        continue;
+      }
+      if (!await allValid({ files })) {
+        continue;
+      }
       const id = isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: resolved.modelPath }) : huggingFaceModelId({ repository, modelPath: resolved.modelPath });
       const variant = modelVariantName({ repository, path: resolved.modelPath });
       const name = isHostDestination(destination)
@@ -103,7 +139,9 @@ async function describeRepositoryDirectories({ repository, actual, onlyModelPath
         : `${modelName({ repository })}:${variant}`;
       result.push({ id, name, files, ...resolved });
     } catch (error) {
-      if (!(error instanceof LlamaCppBrowserError)) throw error;
+      if (!(error instanceof LlamaCppBrowserError)) {
+        throw error;
+      }
     }
   }
   return result;
@@ -114,29 +152,43 @@ export async function installedSelection({ selection, destination }: { selection
   try {
     actual = await repositoryFiles({ repository: selection.repository, destination });
   } catch (error) {
-    if (isMissing({ error })) return undefined; throw error;
+    if (isMissing({ error })) {
+      return undefined;
+    }
+    throw error;
   }
   const selectedFiles: ModelDirectory['files'] = [];
   for (const expected of selection.files) {
     const found = actual.find(file => file.path === expected.path && file.file.size === expected.size);
-    if (!found) return undefined;
+    if (!found) {
+      return undefined;
+    }
     selectedFiles.push(found);
   }
   // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
-  if (!await allValid({ files: selectedFiles })) return undefined;
+  if (!await allValid({ files: selectedFiles })) {
+    return undefined;
+  }
   const requested = resolveModelFiles({ files: selection.files });
   const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath, destination })).find(model => model.modelPath === requested.modelPath);
   return directory ? describeDirectory({ directory }) : undefined;
 }
 
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
-  for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
+  for (const entry of files) {
+    if (!await validGguf({ file: entry.file })) {
+      return false;
+    }
+  }
   return true;
 }
 
 export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
-  if (!name.startsWith('hf.co/')) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  const value = name.slice('hf.co/'.length); const colon = value.indexOf(':');
+  if (!name.startsWith('hf.co/')) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
+  const value = name.slice('hf.co/'.length);
+  const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
 
@@ -145,7 +197,9 @@ export function parseModelReference({ name }: { name: string }): { repository: s
  */
 export function selectRepositoryModel({ models, repository, selectors }: { models: ModelDirectory[], repository: string, selectors: string[] | undefined }): ModelDirectory {
   const matching = selectors === undefined ? models : models.filter(model => selectors.some(selector => model.modelPath === selector || modelVariantName({ repository, path: model.modelPath }) === selector));
-  if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
+  if (matching.length !== 1) {
+    throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
+  }
   return matching[0]!;
 }
 
@@ -156,7 +210,9 @@ function repositorySelectors({ variant }: { variant: string | undefined }): stri
   if (variant !== undefined) {
     try {
       const decoded = decodeURIComponent(variant);
-      if (encodeURIComponent(decoded) === variant) selectors!.push(decoded);
+      if (encodeURIComponent(decoded) === variant) {
+selectors!.push(decoded);
+      }
     } catch { /* A literal percent in an existing raw label is not URI encoding. */ }
   }
   return selectors;
@@ -180,9 +236,13 @@ export async function listHuggingFaceModels({ destination, onIssue }: { destinat
         try {
           // Resolve against the complete inventory, including hidden collisions.
           // Exact locators remain available to launch, availability and deletion.
-          if (selectRepositoryModel({ models, repository, selectors }).id === directory.id) result.push(describeDirectory({ directory }));
+          if (selectRepositoryModel({ models, repository, selectors }).id === directory.id) {
+            result.push(describeDirectory({ directory }));
+          }
         } catch (error) {
-          if (!(error instanceof LlamaCppBrowserError)) throw error;
+          if (!(error instanceof LlamaCppBrowserError)) {
+            throw error;
+          }
         }
       }
     },
@@ -196,7 +256,9 @@ export async function listPendingDownloads({ destination }: { destination?: Mode
     destination,
     visit: async ({ repository, folder }) => {
       const journal = await readJournal({ folder });
-      if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
+      if (journal.selection.repository !== repository) {
+        throw new Error('Download journal repository mismatch');
+      }
       result.push(journal);
     },
   });
@@ -205,40 +267,61 @@ export async function listPendingDownloads({ destination }: { destination?: Mode
 
 export async function withRepositoryLock<T>({ repository, operation }: { repository: string, operation: () => Promise<T> }): Promise<T> {
   repositorySchema.parse(repository);
-  if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  if (!navigator.locks) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
   return navigator.locks.request(`naidan-llama-cpp-browser-hf:${repository}`, { ifAvailable: true }, lock => {
-    if (!lock) throw new LlamaCppBrowserError({ code: 'busy' }); return operation();
+    if (!lock) {
+      throw new LlamaCppBrowserError({ code: 'busy' });
+    }
+    return operation();
   });
 }
 
 export async function deleteRepository({ repository, plan, destination }: { repository: string, plan: DeletionPlan, destination?: ModelDestination }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
-  if (plan.id !== (isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: undefined }) : modelName({ repository }))) throw new Error('Deletion plan does not match the repository');
+  if (plan.id !== (isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: undefined }) : modelName({ repository }))) {
+    throw new Error('Deletion plan does not match the repository');
+  }
   const [owner, repo] = repositorySchema.parse(repository).split('/');
   let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'readwrite' }) : await opfsRoot();
-  for (const name of isHostDestination(destination) ? [owner!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
+  for (const name of isHostDestination(destination) ? [owner!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) {
+    folder = await folder.getDirectoryHandle(name);
+  }
   const leaf = isHostDestination(destination) ? repo! : 'main';
   const current = await folder.getDirectoryHandle(leaf);
   let journal: DownloadJournal | undefined;
   try {
     journal = await readJournal({ folder: current });
   } catch (error) {
-    if (!isMissing({ error })) throw error;
+    if (!isMissing({ error })) {
+      throw error;
+    }
   }
-  if (journal && isHostDestination(destination)) for (let index = 0; index < journal.selection.files.length; index++) {
-    if (!journal.reused?.[index]) await hostDownloadMarker({ folder: current, selection: journal.selection, index, action: 'check' });
+  if (journal && isHostDestination(destination)) {
+    for (let index = 0; index < journal.selection.files.length; index++) {
+      if (!journal.reused?.[index]) {
+        await hostDownloadMarker({ folder: current, selection: journal.selection, index, action: 'check' });
+      }
+    }
   }
   const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).flatMap(file => isHostDestination(destination) ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])] : (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path);
   const result = await executeDeletionPlan({ folder: current, plan, selectedPaths });
   switch (result) {
   case 'changed': return result;
   case 'deleted': break;
-  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(String(exhaustive));
+  }
   }
   try {
-    await folder.getDirectoryHandle(leaf); await folder.removeEntry(leaf);
+    await folder.getDirectoryHandle(leaf);
+    await folder.removeEntry(leaf);
   } catch (error) {
-    if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
+    if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) {
+      throw error;
+    }
   }
   return result;
 }

@@ -14,12 +14,16 @@ const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0x4a, 0x46, 0xff, 0xd
 
 function webpFixture({ chunks }: { chunks: { name: string, payload: number[] }[] }): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(12 + chunks.reduce((total, chunk) => total + 8 + chunk.payload.length + chunk.payload.length % 2, 0));
-  bytes.set(new TextEncoder().encode('RIFF')); bytes.set(new TextEncoder().encode('WEBP'), 8);
-  const view = new DataView(bytes.buffer); view.setUint32(4, bytes.length - 8, true);
+  bytes.set(new TextEncoder().encode('RIFF'));
+  bytes.set(new TextEncoder().encode('WEBP'), 8);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(4, bytes.length - 8, true);
   let offset = 12;
   for (const chunk of chunks) {
-    bytes.set(new TextEncoder().encode(chunk.name), offset); view.setUint32(offset + 4, chunk.payload.length, true);
-    bytes.set(chunk.payload, offset + 8); offset += 8 + chunk.payload.length + chunk.payload.length % 2;
+    bytes.set(new TextEncoder().encode(chunk.name), offset);
+    view.setUint32(offset + 4, chunk.payload.length, true);
+    bytes.set(chunk.payload, offset + 8);
+    offset += 8 + chunk.payload.length + chunk.payload.length % 2;
   }
   return bytes;
 }
@@ -34,7 +38,9 @@ function parseWebp({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
   for (let position = 12; position < bytes.length;) {
     const length = view.getUint32(position + 4, true);
     chunks.push({ name: new TextDecoder().decode(bytes.slice(position, position + 4)), payload: bytes.slice(position + 8, position + 8 + length) });
-    if (length % 2) expect(bytes[position + 8 + length]).toBe(0);
+    if (length % 2) {
+      expect(bytes[position + 8 + length]).toBe(0);
+    }
     position += 8 + length + length % 2;
   }
   return chunks;
@@ -50,7 +56,9 @@ function decodePacket({ packet }: { packet: Uint8Array }): unknown {
   const xml = new dom.window.DOMParser().parseFromString(new TextDecoder().decode(packet), 'application/xml');
   expect(xml.querySelector('parsererror')).toBeNull();
   const json = xml.getElementsByTagNameNS('https://naidan.app/ns/image-generation/1.0/', 'Generation')[0]?.textContent;
-  if (!json) throw new Error('Missing XMP settings');
+  if (!json) {
+    throw new Error('Missing XMP settings');
+  }
   return JSON.parse(json);
 }
 
@@ -91,14 +99,16 @@ describe('download image conversion', () => {
     const { bitmap, canvas } = encoder({ output });
     expect(await convertDownloadImage({ png, format })).toBe(output);
     expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), `image/${format}`, 1);
-    expect(bitmap.close).toHaveBeenCalledOnce(); expect([canvas.width, canvas.height]).toEqual([0, 0]);
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
     expect(new Uint8Array(await png.arrayBuffer())).toEqual(pngBytes);
   });
 
   it('rejects a browser PNG fallback and releases resources', async () => {
     const { bitmap, canvas } = encoder({ output: png });
     await expect(convertDownloadImage({ png, format: 'webp' })).rejects.toThrow('did not produce a valid WEBP');
-    expect(bitmap.close).toHaveBeenCalledOnce(); expect(canvas.width).toBe(0);
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect(canvas.width).toBe(0);
   });
 
   it('rejects encoding failure and a MIME/signature disagreement', async () => {
@@ -121,7 +131,8 @@ describe('structured image download metadata', () => {
     const data = { request: request(), image };
     const packet = generationXmp({ json: JSON.stringify(data) });
     const output = new Uint8Array(await jpegWithXmp({ bytes: jpeg, packet }).arrayBuffer());
-    expect(output.slice(0, 8)).toEqual(jpeg.slice(0, 8)); expect(output.slice(8, 10)).toEqual(new Uint8Array([255, 225]));
+    expect(output.slice(0, 8)).toEqual(jpeg.slice(0, 8));
+    expect(output.slice(8, 10)).toEqual(new Uint8Array([255, 225]));
     const size = new DataView(output.buffer).getUint16(10);
     expect(new TextDecoder().decode(output.slice(12, 41))).toBe('http://ns.adobe.com/xap/1.0/\0');
     expect(decodePacket({ packet: output.slice(41, 10 + size) })).toEqual(data);
@@ -142,11 +153,13 @@ describe('structured image download metadata', () => {
     const chunks = parseWebp({ bytes: output });
     expect(chunks.map(chunk => chunk.name)).toEqual(['VP8X', 'VP8 ', 'XMP ']);
     expect(chunks[0]?.payload).toEqual(new Uint8Array([4, 0, 0, 0, 15, 0, 0, 11, 0, 0]));
-    expect(chunks[1]?.payload).toEqual(new Uint8Array(vp8)); expect(chunks[2]?.payload).toEqual(packet);
+    expect(chunks[1]?.payload).toEqual(new Uint8Array(vp8));
+    expect(chunks[2]?.payload).toEqual(packet);
   });
 
   it('keeps lossless WebP alpha and exact dimensions in the new extended header', async () => {
-    const bits = new Uint8Array(5); bits[0] = 0x2f;
+    const bits = new Uint8Array(5);
+    bits[0] = 0x2f;
     new DataView(bits.buffer).setUint32(1, 31 | 63 << 14 | 1 << 28, true);
     const source = webpFixture({ chunks: [{ name: 'VP8L', payload: [...bits] }] });
     const output = new Uint8Array(await webpWithXmp({ bytes: source, packet: new Uint8Array() }).arrayBuffer());
@@ -174,17 +187,20 @@ describe('structured image download metadata', () => {
   it('rejects truncated WebP chunks and bad RIFF sizes without rewriting them', () => {
     const truncated = webp.slice(0, -1);
     expect(() => webpWithXmp({ bytes: truncated, packet: new Uint8Array() })).toThrow('Invalid WebP container');
-    const invalid = webp.slice(); new DataView(invalid.buffer).setUint32(16, 0xffffffff, true);
+    const invalid = webp.slice();
+    new DataView(invalid.buffer).setUint32(16, 0xffffffff, true);
     expect(() => webpWithXmp({ bytes: invalid, packet: new Uint8Array() })).toThrow('Invalid WebP chunk padding');
   });
 
   it.each(['webp', 'jpeg'] as const)('converts before embedding the full fixed request in %s', async format => {
     encoder({ output: new Blob([format === 'webp' ? webp : jpeg], { type: `image/${format}` }) });
-    const snapshot = request(); snapshot.parameters.prompt = '猫と湖 <夜> & 朝';
+    const snapshot = request();
+    snapshot.parameters.prompt = '猫と湖 <夜> & 朝';
     const blob = await imageGenerationDownloadBlob({ png, request: snapshot, image, format, includeMetadata: true });
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const packet = format === 'webp' ? parseWebp({ bytes }).at(-1)!.payload : bytes.slice(41, 10 + new DataView(bytes.buffer).getUint16(10));
     expect(decodePacket({ packet })).toEqual({ request: snapshot, image });
-    expect(blob.type).toBe(`image/${format}`); expect(new Uint8Array(await png.arrayBuffer())).toEqual(pngBytes);
+    expect(blob.type).toBe(`image/${format}`);
+    expect(new Uint8Array(await png.arrayBuffer())).toEqual(pngBytes);
   });
 });

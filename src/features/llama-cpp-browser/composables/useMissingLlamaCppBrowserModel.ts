@@ -31,7 +31,9 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
   const canDownload = computed(() => reference.value !== undefined);
   const job = computed(() => {
     const source = reference.value;
-    if (source === undefined) return undefined;
+    if (source === undefined) {
+      return undefined;
+    }
     const matching = queue.jobs.value.filter(candidate => candidate.selection?.repository === source.repository
       && candidate.selection.files.some(file => file.path === source.mainFilePath));
     return matching.find(candidate => jobIsBusy({ job: candidate })) ?? matching.at(-1);
@@ -50,7 +52,9 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     const id = modelId.value;
     const request = ++generation;
     if (current === undefined || id === undefined) {
-      availability.value = 'inactive'; verification.value = 'idle'; return;
+      availability.value = 'inactive';
+      verification.value = 'idle';
+      return;
     }
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     verification.value = 'checking';
@@ -61,21 +65,35 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
       fallbackDelayMs: 0,
       task: async () => {
         const result = await localModelAvailability.check({ modelId: id });
-        if (disposed || request !== generation || current !== context.value) return;
-        if (!isStorageCurrent()) {
-          availability.value = 'unreadable'; verification.value = 'idle'; target.value = undefined; return;
+        if (disposed || request !== generation || current !== context.value) {
+          return;
         }
-        availability.value = result; verification.value = 'idle';
+        if (!isStorageCurrent()) {
+          availability.value = 'unreadable';
+          verification.value = 'idle';
+          target.value = undefined;
+          return;
+        }
+        availability.value = result;
+        verification.value = 'idle';
         switch (result) {
-        case 'available': target.value = undefined; failure.value = false; break;
+        case 'available': target.value = undefined;
+          failure.value = false;
+          break;
         case 'missing': case 'unreadable': break;
-        default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = result;
+          throw new Error(String(exhaustive));
+        }
         }
       },
     });
   }
   watch(context, () => {
-    actionController?.abort(); operation.value = 'idle'; target.value = undefined; failure.value = false;
+    actionController?.abort();
+    operation.value = 'idle';
+    target.value = undefined;
+    failure.value = false;
     availability.value = context.value === undefined ? 'inactive' : 'checking';
     refresh();
   }, { immediate: true });
@@ -85,14 +103,22 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
   const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => localModelAvailability.invalidate() });
   const unsubscribeState = llamaCppBrowserService.subscribe({
     listener: ({ state }) => {
-      if (state.status === 'error' && state.code === 'missing-model') localModelAvailability.invalidate();
+      if (state.status === 'error' && state.code === 'missing-model') {
+        localModelAvailability.invalidate();
+      }
     },
   });
   function onFocus(): void {
-    if (context.value !== undefined && document.visibilityState !== 'hidden') localModelAvailability.invalidate();
+    if (context.value !== undefined && document.visibilityState !== 'hidden') {
+      localModelAvailability.invalidate();
+    }
   }
-  if (typeof window !== 'undefined') window.addEventListener('focus', onFocus);
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onFocus);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', onFocus);
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onFocus);
+  }
   function retry(): void {
     localModelAvailability.invalidate();
   }
@@ -100,48 +126,69 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
   async function runAction({ kind }: { kind: 'review' | 'download' }): Promise<void> {
     const id = modelId.value;
     const current = context.value;
-    if (id === undefined || current === undefined || availability.value !== 'missing' || !canDownload.value || busy.value || verification.value === 'checking') return;
+    if (id === undefined || current === undefined || availability.value !== 'missing' || !canDownload.value || busy.value || verification.value === 'checking') {
+      return;
+    }
     const isStorageCurrent = storageService.captureModelLaunchStorage();
-    const controller = new AbortController(); actionController = controller;
+    const controller = new AbortController();
+    actionController = controller;
     const isCurrent = () => !disposed && !controller.signal.aborted && current === context.value && isStorageCurrent();
     switch (kind) {
-    case 'review': operation.value = 'reviewing'; break;
-    case 'download': operation.value = 'starting'; break;
-    default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+    case 'review': operation.value = 'reviewing';
+      break;
+    case 'download': operation.value = 'starting';
+      break;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
     }
     failure.value = false;
     try {
       switch (kind) {
       case 'review': {
         const plan = await resolveRecoveryDownload({ modelId: id, signal: controller.signal });
-        if (isCurrent()) target.value = plan;
+        if (isCurrent()) {
+          target.value = plan;
+        }
         return;
       }
       case 'download': break;
-      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(String(exhaustive));
+      }
       }
       const plan = target.value ?? (job.value?.selection === undefined || reference.value === undefined ? undefined : {
         modelId: id,
         mainFilePath: reference.value.mainFilePath,
         selection: job.value.selection,
       });
-      if (plan === undefined || plan.modelId !== id) return;
+      if (plan === undefined || plan.modelId !== id) {
+        return;
+      }
       // Another tab may have installed the same files since the notice appeared.
       // This check is after the explicit click and does not stall Chat opening.
       const installed = await installedSelection({ selection: plan.selection });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       if (installed?.id === id) {
-        localModelAvailability.invalidate(); return;
+        localModelAvailability.invalidate();
+        return;
       }
       const queued = queue.enqueue({ key: selectionKey({ selection: plan.selection }), repository: plan.selection.repository, source: 'repository', prepare: async () => plan.selection });
       // Once explicitly started, download lifetime belongs to the page queue,
       // not to this Chat. Completion never submits a draft or changes settings.
       void queued.done.then(() => localModelAvailability.invalidate());
     } catch {
-      if (isCurrent()) failure.value = true;
+      if (isCurrent()) {
+        failure.value = true;
+      }
     } finally {
       if (actionController === controller) {
-        actionController = undefined; operation.value = 'idle';
+        actionController = undefined;
+        operation.value = 'idle';
       }
     }
   }
@@ -152,9 +199,18 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     return runAction({ kind: 'download' });
   }
   onScopeDispose(() => {
-    disposed = true; generation++; scheduled?.cancel(); actionController?.abort(); unsubscribeModels(); unsubscribeState();
-    if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
-    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onFocus);
+    disposed = true;
+    generation++;
+    scheduled?.cancel();
+    actionController?.abort();
+    unsubscribeModels();
+    unsubscribeState();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', onFocus);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onFocus);
+    }
   });
   return {
     modelId,

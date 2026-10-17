@@ -55,25 +55,34 @@ function releaseModelFiles({ mounts, accesses }: {
       failure ??= { error };
     }
   }
-  if (failure) throw failure.error;
+  if (failure) {
+    throw failure.error;
+  }
 }
 
 /** Keep one model resident. Eager weights release storage after load; file-backed
  * rows retain only their source shard until native model destruction. The decoded token prefix stays with its context; samplers remain request-local. */
 export async function releaseSession({ releaseRuntime }: { releaseRuntime: boolean }): Promise<void> {
   try {
-    const current = resident; resident = undefined;
-    if (current) current.cache.initialMemoryState = 'unknown';
+    const current = resident;
+    resident = undefined;
+    if (current) {
+      current.cache.initialMemoryState = 'unknown';
+    }
     if (runtime && current) {
       try {
         try {
-          const checkpoint = current.cache.checkpoint; current.cache.checkpoint = undefined;
+          const checkpoint = current.cache.checkpoint;
+          current.cache.checkpoint = undefined;
           disposePromptCheckpoint({ core: runtime.core, checkpoint });
         } finally {
           try {
-            if (current.context !== 0n) await runtime.core.api.llama_free(current.context);
+            if (current.context !== 0n) {
+              await runtime.core.api.llama_free(current.context);
+            }
           } finally {
-            current.census?.release(); current.census = undefined;
+            current.census?.release();
+            current.census = undefined;
           }
         }
       } finally {
@@ -89,7 +98,8 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
             try {
               await runtime.core.api.llama_model_free(current.model);
             } finally {
-              const release = current.releaseFiles; current.releaseFiles = undefined;
+              const release = current.releaseFiles;
+              current.releaseFiles = undefined;
               release?.();
             }
           }
@@ -99,7 +109,8 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
       logDiagnostic({ diagnostic: { event: "released" } });
     }
     if (runtime && releaseRuntime) {
-      const previous = runtime; runtime = undefined;
+      const previous = runtime;
+      runtime = undefined;
       await previous.core.api.llama_backend_free();
       sampleMemoryDiagnostics({ core: previous.core, checkpoint: 'runtime-released' });
     }
@@ -113,7 +124,9 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
 }
 
 export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
-  if (resident && resident.id === id) await releaseSession({ releaseRuntime: false });
+  if (resident && resident.id === id) {
+    await releaseSession({ releaseRuntime: false });
+  }
 }
 
 type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement'>;
@@ -140,7 +153,10 @@ export async function prepareGenerationSession({ request, onProgress, signal }: 
     switch (part.type) {
     case 'image': return true;
     case 'text': return false;
-    default: { const exhaustive: never = part; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = part;
+      throw new Error(String(exhaustive));
+    }
     }
   }));
   return prepareChatSession({ request, onProgress, signal, projector: needsProjector ? 'load-if-present' : 'defer' });
@@ -151,7 +167,9 @@ async function prepareChatSession({ request, onProgress, signal, projector }: {
   projector: ProjectorPolicy,
 }) {
   const session = await prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'chat', projector } });
-  if (session.sequenceRemoval === undefined || session.chatMetadata === undefined) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  if (session.sequenceRemoval === undefined || session.chatMetadata === undefined) {
+    throw new LlamaCppBrowserError({ code: 'runtime-error' });
+  }
   return { ...session, sequenceRemoval: session.sequenceRemoval, ...session.chatMetadata };
 }
 
@@ -174,9 +192,12 @@ async function releaseResidentContext({ core, current }: { core: Core, current: 
     disposePromptCheckpoint({ core, checkpoint });
   } finally {
     try {
-      if (context !== 0n) await core.api.llama_free(context);
+      if (context !== 0n) {
+        await core.api.llama_free(context);
+      }
     } finally {
-      current.census?.release(); current.census = undefined;
+      current.census?.release();
+      current.census = undefined;
     }
   }
 }
@@ -187,7 +208,9 @@ export async function prepareAudioSession({ request, contextTokens, audioBackend
   request: SessionRequest, contextTokens: number, audioBackend: AudioBackend,
   onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined,
 }) {
-  if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  if (signal?.aborted) {
+    throw new LlamaCppBrowserError({ code: 'aborted' });
+  }
   await releaseSession({ releaseRuntime: false });
   return prepareResidentSession({ request, onProgress, signal, purpose: { kind: 'audio', contextTokens, audioBackend } });
 }
@@ -201,8 +224,11 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       if (resident) {
         resident.cache.validity = 'invalid';
         resident.cache.initialMemoryState = 'unknown';
-        const checkpoint = resident.cache.checkpoint; resident.cache.checkpoint = undefined;
-        if (runtime) disposePromptCheckpoint({ core: runtime.core, checkpoint });
+        const checkpoint = resident.cache.checkpoint;
+        resident.cache.checkpoint = undefined;
+        if (runtime) {
+          disposePromptCheckpoint({ core: runtime.core, checkpoint });
+        }
       }
       throw new LlamaCppBrowserError({ code: "aborted" });
     }
@@ -214,7 +240,10 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     switch (purpose.kind) {
     case 'chat': return chatContextTokensSchema.parse(request.options.contextTokens ?? defaultChatContextTokens);
     case 'audio': return undefined;
-    default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = purpose;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const profile = runtime?.requestedProfile === request.options.profile && runtime.assetBaseURL === request.assetBaseURL
@@ -227,19 +256,26 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     beginMemoryDiagnostics({ core: runtime.core, profile });
   }
   runtime.requestedProfile = request.options.profile;
-  const core = runtime.core; const api = core.api;
+  const core = runtime.core;
+  const api = core.api;
   const directory = await storedModelDirectory({ name: request.model });
-  if (purpose.kind === 'audio' && !directory.projectorPath) throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
+  if (purpose.kind === 'audio' && !directory.projectorPath) {
+    throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
+  }
   let unchanged = resident?.id === directory.id && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
-      const next = directory.files[index]!; const previous = resident.files[index]!;
+      const next = directory.files[index]!;
+      const previous = resident.files[index]!;
       if (previous.path !== next.path || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await previous.handle.isSameEntry(next.handle)) {
-        unchanged = false; break;
+        unchanged = false;
+        break;
       }
     }
   }
-  if (resident && !unchanged) await releaseSession({ releaseRuntime: false });
+  if (resident && !unchanged) {
+    await releaseSession({ releaseRuntime: false });
+  }
   checkCancelled();
   if (!resident) {
     sampleMemoryDiagnostics({ core, checkpoint: 'before-model-load' });
@@ -251,13 +287,18 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     let cleanupFailure: { error: unknown } | undefined;
     const mounts: ReturnType<typeof mountReadOnlyFile>[] = [];
     const accesses: { close(): void }[] = [];
-    const allocations: bigint[] = []; let callback: number | bigint | undefined; let model = 0n;
+    const allocations: bigint[] = [];
+    let callback: number | bigint | undefined;
+    let model = 0n;
     const reportFileReads = (() => {
       const debug = request.debug ?? 'off';
       switch (debug) {
       case 'on': return true;
       case 'off': return false;
-      default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = debug;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     const readCache = createModelReadCache({ mode: 'read-ahead', now: reportFileReads ? () => performance.now() : undefined });
@@ -266,11 +307,14 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     try {
       for (const [index, entry] of weights.entries()) {
         checkCancelled();
-        const access = await openModelFileAccess({ entry }); accesses.push(access);
+        const access = await openModelFileAccess({ entry });
+        accesses.push(access);
         // Retain ownership before cancellation can throw. Do not open the next
         // shard or start native loading after a cancelled storage acquisition.
         checkCancelled();
-        if (access.getSize() !== entry.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+        if (access.getSize() !== entry.file.size) {
+          throw new LlamaCppBrowserError({ code: 'storage-error' });
+        }
         const traced = createModelFileDiagnostics({
           ordinal: index + 1,
           source: {
@@ -291,7 +335,8 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         }));
       }
       checkCancelled();
-      const params = core.allocRecord({ name: "llama_model_params" }); allocations.push(params);
+      const params = core.allocRecord({ name: "llama_model_params" });
+      allocations.push(params);
       await api.llama_model_default_params(params);
       for (const [field, value] of Object.entries({
         n_gpu_layers: usesWebGpu({ profile }) ? 999 : 0,
@@ -304,27 +349,39 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       let lastProgress = 0;
       callback = core.module.addFunction((amount: number) => {
         if (performance.now() - lastProgress > 150) {
-          onProgress({ progress: { phase: "loading", completed: Math.max(0, Math.min(1, amount)), total: 1 } }); lastProgress = performance.now();
+          onProgress({ progress: { phase: "loading", completed: Math.max(0, Math.min(1, amount)), total: 1 } });
+          lastProgress = performance.now();
         }
         return signal?.aborted ? 0 : 1;
       }, core.pointerBytes === 8 ? "ifj" : "ifi");
       core.setField({ name: "llama_model_params", pointer: params, field: "progress_callback", value: BigInt(callback) });
-      const path = core.utf8({ text: `/models/${directory.modelPath}` }); allocations.push(path);
+      const path = core.utf8({ text: `/models/${directory.modelPath}` });
+      allocations.push(path);
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } });
       checkCancelled();
       logDiagnostic({ diagnostic: { event: 'operation-start', stage: 'model-load', profile, modelFileCount: weights.length, fileBackedRowsAvailable: Boolean(fileRows) } });
       if (weights.length > 1) {
-        const pointers = core.alloc({ bytes: weights.length * core.pointerBytes }); allocations.push(pointers);
+        const pointers = core.alloc({ bytes: weights.length * core.pointerBytes });
+        allocations.push(pointers);
         const paths = weights.map(entry => {
-          const value = core.utf8({ text: `/models/${entry.path}` }); allocations.push(value); return value;
+          const value = core.utf8({ text: `/models/${entry.path}` });
+          allocations.push(value);
+          return value;
         });
-        const bytes = core.bytes({ pointer: pointers, length: paths.length * core.pointerBytes }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const bytes = core.bytes({ pointer: pointers, length: paths.length * core.pointerBytes });
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         paths.forEach((value, index) => {
-          if (core.pointerBytes === 8) view.setBigUint64(index * 8, value, true); else view.setUint32(index * 4, Number(value), true);
+          if (core.pointerBytes === 8) {
+            view.setBigUint64(index * 8, value, true);
+          } else {
+            view.setUint32(index * 4, Number(value), true);
+          }
         });
         // Explicit paths preserve original casing and nested placement for every shard.
         model = await api.llama_model_load_from_splits(pointers, BigInt(weights.length), params);
-      } else model = await api.llama_model_load_from_file(path, params);
+      } else {
+        model = await api.llama_model_load_from_file(path, params);
+      }
       checkCancelled();
       if (model === 0n) {
         logDiagnostic({ diagnostic: { event: 'native-error', stage: 'model-load', profile, failureKind: 'native-model-load-failed' } });
@@ -364,7 +421,8 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       // Each resource has independent ownership. A failed destructor or callback
       // removal must not skip the remaining native allocations and file handles.
       if (model !== 0n) {
-        const pendingModel = model; model = 0n;
+        const pendingModel = model;
+        model = 0n;
         try {
           await api.llama_model_free(pendingModel);
         } catch (error) {
@@ -372,7 +430,8 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         }
       }
       if (callback !== undefined) {
-        const pendingCallback = callback; callback = undefined;
+        const pendingCallback = callback;
+        callback = undefined;
         attempt({ operation: () => core.module.removeFunction(pendingCallback) });
       }
       while (allocations.length) {
@@ -380,16 +439,20 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         attempt({ operation: () => core.free({ pointer }) });
       }
       attempt({ operation: () => releaseModelFiles({ mounts, accesses }) });
-      if (!retainedReadCache) attempt({ operation: () => readCache.dispose() });
+      if (!retainedReadCache) {
+        attempt({ operation: () => readCache.dispose() });
+      }
       try {
-        if (reportFileReads || request.measurement) logDiagnostic({
-          diagnostic: {
-            event: 'file-read-performance',
-            profile,
-            fileReads: { target: 'model', ...readCache.counters },
-            modelShardReads: shardReads,
-          },
-        });
+        if (reportFileReads || request.measurement) {
+          logDiagnostic({
+            diagnostic: {
+              event: 'file-read-performance',
+              profile,
+              fileReads: { target: 'model', ...readCache.counters },
+              modelShardReads: shardReads,
+            },
+          });
+        }
       } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
       if (cleanupFailure) {
         // Also reclaim a published model's retained shard if cleanup of another
@@ -401,13 +464,19 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
     // Keep the original failure, including `throw undefined`, after every
     // independent cleanup has been attempted. Never override it in finally.
-    if (loadFailure) throw loadFailure.error;
-    if (cleanupFailure) throw cleanupFailure.error;
+    if (loadFailure) {
+      throw loadFailure.error;
+    }
+    if (cleanupFailure) {
+      throw cleanupFailure.error;
+    }
   } else {
     logDiagnostic({ diagnostic: { event: "model-reused", profile } });
   }
   const current = resident;
-  if (!current) throw new LlamaCppBrowserError({ code: "runtime-error" });
+  if (!current) {
+    throw new LlamaCppBrowserError({ code: "runtime-error" });
+  }
   checkCancelled();
   if (request.measurement) {
     current.descriptor ??= await readLoadedModelDescriptor({ core, model: current.model });
@@ -452,11 +521,18 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     current.projector = undefined;
     checkCancelled();
     const file = directory.files.find(file => file.path === directory.projectorPath);
-    if (!file) throw new LlamaCppBrowserError({ code: 'storage-error' });
+    if (!file) {
+      throw new LlamaCppBrowserError({ code: 'storage-error' });
+    }
     switch (purpose.kind) {
-    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal }); break;
-    case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend }); break;
-    default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+    case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal });
+      break;
+    case 'audio': current.projector = await loadProjectorForBackend({ core, model: current.model, file, profile, debug, signal, backend: purpose.audioBackend });
+      break;
+    default: {
+      const exhaustive: never = purpose;
+      throw new Error(String(exhaustive));
+    }
     }
     preparation.projector = 'loaded';
   }
@@ -476,7 +552,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval_user_data', value: 0n });
       }
       const swaField = core.fieldLayout({ name: 'llama_context_params', field: 'swa_full' });
-      if (swaField.kind !== 'boolean' || swaField.size !== 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (swaField.kind !== 'boolean' || swaField.size !== 1) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       // Full SWA retention needs no extra SWA snapshot. Read the actual native
       // default instead of assuming that every model with n_swa needs one.
       const swaFull = core.bytes({ pointer: cp + swaField.offset, length: 1 })[0] !== 0;
@@ -487,16 +565,22 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       const trainingSize = await api.llama_model_n_ctx_train(current.model);
       // This is an application allocation target, not an estimate of free device memory.
       // Reject unknown metadata; n_ctx=0 delegates to the model training capacity.
-      if (!Number.isSafeInteger(trainingSize) || trainingSize < 1) throw new LlamaCppBrowserError({ code: "runtime-error" });
+      if (!Number.isSafeInteger(trainingSize) || trainingSize < 1) {
+        throw new LlamaCppBrowserError({ code: "runtime-error" });
+      }
       let contextTarget: number;
       switch (purpose.kind) {
-      case 'chat': contextTarget = requestedChatContext!; break;
+      case 'chat': contextTarget = requestedChatContext!;
+        break;
       case 'audio':
         contextTarget = purpose.contextTokens;
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'embeddings', value: 1 });
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'pooling_type', value: core.constant({ name: 'LLAMA_POOLING_TYPE_NONE' }) });
         break;
-      default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = purpose;
+        throw new Error(String(exhaustive));
+      }
       }
       const target = Math.min(contextTarget, trainingSize);
       const floor = Math.min(4096, target);
@@ -505,9 +589,14 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       // the established batch size and allocation/fallback behavior.
       let configuredPrefillBatchTokens: number;
       switch (purpose.kind) {
-      case 'chat': configuredPrefillBatchTokens = prefillBatchTokens; break;
-      case 'audio': configuredPrefillBatchTokens = prefillMicroBatchTokens; break;
-      default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+      case 'chat': configuredPrefillBatchTokens = prefillBatchTokens;
+        break;
+      case 'audio': configuredPrefillBatchTokens = prefillMicroBatchTokens;
+        break;
+      default: {
+        const exhaustive: never = purpose;
+        throw new Error(String(exhaustive));
+      }
       }
       while (true) {
         core.setField({ name: "llama_context_params", pointer: cp, field: "n_batch", value: configuredPrefillBatchTokens });
@@ -527,15 +616,21 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           continue;
         }
         // A normal null return is recoverable; exceptions/traps must never enter this loop.
-        if (requested === floor) throw new LlamaCppBrowserError({ code: "runtime-error" });
+        if (requested === floor) {
+          throw new LlamaCppBrowserError({ code: "runtime-error" });
+        }
         requested = Math.max(floor, Math.floor(requested / 2));
         logDiagnostic({ diagnostic: { event: "context-retry", contextTokens: requested, batchTokens: configuredPrefillBatchTokens, reason: 'context-allocation' } });
       }
       try {
         switch (purpose.kind) {
-        case 'chat': current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context }); break;
+        case 'chat': current.sequenceRemoval = await probeNewContextSequenceRemoval({ core, context: current.context });
+          break;
         case 'audio': break;
-        default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = purpose;
+          throw new Error(String(exhaustive));
+        }
         }
       } catch (error) {
         logFailure({ stage: 'cache-probe', error });
@@ -543,23 +638,33 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       }
       checkCancelled();
       const contextTokens = await api.llama_n_ctx(current.context);
-      if (!Number.isSafeInteger(contextTokens) || contextTokens < 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      if (!Number.isSafeInteger(contextTokens) || contextTokens < 1) {
+        throw new LlamaCppBrowserError({ code: 'runtime-error' });
+      }
       switch (purpose.kind) {
       case 'chat': {
         const vocab = await api.llama_model_get_vocab(current.model);
         const memory = await api.llama_get_memory(current.context);
         const nativeRollbackTokens = await api.llama_n_rs_seq(current.context);
         const nativeBatchTokens = await api.llama_n_batch(current.context);
-        if (!Number.isSafeInteger(nativeBatchTokens) || nativeBatchTokens < 1) throw new LlamaCppBrowserError({ code: 'runtime-error' });
-        if (vocab === 0n || !Number.isSafeInteger(nativeRollbackTokens) || nativeRollbackTokens < 0) throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        if (!Number.isSafeInteger(nativeBatchTokens) || nativeBatchTokens < 1) {
+          throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        }
+        if (vocab === 0n || !Number.isSafeInteger(nativeRollbackTokens) || nativeRollbackTokens < 0) {
+          throw new LlamaCppBrowserError({ code: 'runtime-error' });
+        }
         current.chatMetadata = { requestedContextTokens: requestedChatContext!, vocab, contextTokens, memory, nativeRollbackTokens, prefillBatchTokens: Math.min(configuredPrefillBatchTokens, nativeBatchTokens) };
         // The probe's finally block completed both clear and synchronize. Do
         // not infer this from sequence-removal support or an empty token list.
         current.cache.initialMemoryState = memory === 0n ? 'unknown' : 'probe-cleared';
         break;
       }
-      case 'audio': current.chatMetadata = undefined; break;
-      default: { const exhaustive: never = purpose; throw new Error(String(exhaustive)); }
+      case 'audio': current.chatMetadata = undefined;
+        break;
+      default: {
+        const exhaustive: never = purpose;
+        throw new Error(String(exhaustive));
+      }
       }
       logDiagnostic({ diagnostic: { event: "context-ready", requestedContextTokens: requestedChatContext, cacheRemoval: current.sequenceRemoval, slidingWindowTokens: current.slidingWindow, contextTokens, batchTokens: current.chatMetadata?.prefillBatchTokens, elapsedMs: performance.now() - started, profile } });
     } catch (error) {
@@ -569,7 +674,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
       try {
         core.free({ pointer: cp });
       } finally {
-        if (failed) await releaseSession({ releaseRuntime: true });
+        if (failed) {
+          await releaseSession({ releaseRuntime: true });
+        }
       }
     }
   }

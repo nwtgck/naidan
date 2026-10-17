@@ -18,7 +18,9 @@ function mountPrint() {
       return () => h(Client);
     },
   }));
-  if (api === undefined) throw new Error('Print client did not mount');
+  if (api === undefined) {
+    throw new Error('Print client did not mount');
+  }
   return {
     api,
     [Symbol.dispose]() {
@@ -132,9 +134,13 @@ describe('usePrint composable', () => {
     using fixture = mountPrint();
     const { activePrintMode, print } = fixture.api;
     const setter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
-    if (setter === undefined) throw new Error('Missing native title setter');
+    if (setter === undefined) {
+      throw new Error('Missing native title setter');
+    }
     vi.spyOn(document, 'title', 'set').mockImplementation(value => {
-      if (value === 'Boom') throw new Error('Title Swap Failed');
+      if (value === 'Boom') {
+        throw new Error('Title Swap Failed');
+      }
       setter.call(document, value);
     });
     await expect(print({ title: 'Boom', mode: 'chat' })).rejects.toThrow('Title Swap Failed');

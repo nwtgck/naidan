@@ -212,7 +212,9 @@ function parseEscapeSequence({
     let cursor = index + 2;
     while (octalDigits.length < 3 && cursor < source.length) {
       const digit = source[cursor];
-      if (digit === undefined || !isOctalByte({ value: digit })) break;
+      if (digit === undefined || !isOctalByte({ value: digit })) {
+        break;
+      }
       octalDigits.push(digit);
       cursor += 1;
     }
@@ -302,10 +304,16 @@ function findTerminator({
 }
 
 function parseSingleByteExpression({ source }: { source: Uint8Array }): number | undefined {
-  if (source.length === 1) return source[0];
-  if (source[0] !== BACKSLASH_BYTE) return undefined;
+  if (source.length === 1) {
+    return source[0];
+  }
+  if (source[0] !== BACKSLASH_BYTE) {
+    return undefined;
+  }
   const parsed = parseEscapeSequence({ source, index: 0 });
-  if (parsed.nextIndex !== source.length - 1 || parsed.values.length !== 1) return undefined;
+  if (parsed.nextIndex !== source.length - 1 || parsed.values.length !== 1) {
+    return undefined;
+  }
   return parsed.values[0];
 }
 
@@ -322,7 +330,9 @@ interface TokenizedTrSet {
 }
 
 function parseRepeatCount({ raw }: { raw: string }): number | undefined {
-  if (raw === '' || raw === '0') return undefined;
+  if (raw === '' || raw === '0') {
+    return undefined;
+  }
   if (!/^\d+$/u.test(raw)) {
     throw new TrSetSyntaxError({ message: `invalid repeat count '${raw}' in [c*n] construct` });
   }
@@ -351,12 +361,16 @@ function tokenizeTrSet({
 
   for (let index = 0; index < source.length; index += 1) {
     const current = source[index];
-    if (current === undefined) continue;
+    if (current === undefined) {
+      continue;
+    }
 
     if (current === BACKSLASH_BYTE) {
       const escaped = parseEscapeSequence({ source, index });
       tokens.push({ kind: 'bytes', values: escaped.values });
-      for (const warning of escaped.warnings) warnings.push(warning);
+      for (const warning of escaped.warnings) {
+        warnings.push(warning);
+      }
       index = escaped.nextIndex;
       continue;
     }
@@ -448,7 +462,9 @@ function validateCaseClassAlignment({
 }): void {
   for (let index = 0; index < set2Tokens.length; index += 1) {
     const set2Token = set2Tokens[index];
-    if (set2Token === undefined) continue;
+    if (set2Token === undefined) {
+      continue;
+    }
     let expected: 'lower' | 'upper';
     switch (set2Token.kind) {
     case 'bytes':
@@ -543,7 +559,9 @@ function createTrSetSequence({
     switch (segment.kind) {
     case 'values':
       length += BigInt(segment.values.length);
-      for (const value of segment.values) membership[value] = 1;
+      for (const value of segment.values) {
+        membership[value] = 1;
+      }
       break;
     case 'repeat':
       if (segment.count > 0n) {
@@ -564,7 +582,9 @@ function expandedFixedLength({ tokens }: { tokens: TrSetToken[] }): bigint {
   let length = 0n;
   for (let index = 0; index < tokens.length; index += 1) {
     const current = tokens[index];
-    if (current === undefined) continue;
+    if (current === undefined) {
+      continue;
+    }
     const start = tokenSingleValue({ token: current });
     const rangeOperator = tokens[index + 1];
     const rangeEnd = tokens[index + 2];
@@ -621,7 +641,9 @@ function expandTrSetTokens({
 
   for (let index = 0; index < tokens.length; index += 1) {
     const current = tokens[index];
-    if (current === undefined) continue;
+    if (current === undefined) {
+      continue;
+    }
     const rangeOperator = tokens[index + 1];
     const rangeEnd = tokens[index + 2];
     const start = tokenSingleValue({ token: current });
@@ -640,7 +662,9 @@ function expandTrSetTokens({
     switch (current.kind) {
     case 'bytes':
     case 'class':
-      if (current.values.length > 0) segments.push({ kind: 'values', values: current.values });
+      if (current.values.length > 0) {
+        segments.push({ kind: 'values', values: current.values });
+      }
       break;
     case 'equivalence':
       segments.push({ kind: 'values', values: [current.value] });
@@ -650,7 +674,9 @@ function expandTrSetTokens({
       break;
     case 'repeat': {
       const count = current.count === undefined ? automaticLength : BigInt(current.count);
-      if (count > 0n) segments.push({ kind: 'repeat', value: current.value, count });
+      if (count > 0n) {
+        segments.push({ kind: 'repeat', value: current.value, count });
+      }
       break;
     }
     default: {
@@ -713,7 +739,9 @@ function trSetValueAt({
   sequence: TrSetSequence,
   index: bigint,
 }): number | undefined {
-  if (index < 0n || index >= sequence.length) return undefined;
+  if (index < 0n || index >= sequence.length) {
+    return undefined;
+  }
   let offset = 0n;
   for (const segment of sequence.segments) {
     const segmentLength = trSetSegmentLength({ segment });
@@ -744,7 +772,9 @@ function trSetLastValue({ sequence }: { sequence: TrSetSequence }): number | und
 function complementByteSet({ source }: { source: TrSetSequence }): TrSetSequence {
   const values: number[] = [];
   for (let value = 0; value < BYTE_VALUE_COUNT; value += 1) {
-    if (source.membership[value] === 0) values.push(value);
+    if (source.membership[value] === 0) {
+      values.push(value);
+    }
   }
   return createTrSetSequence({ segments: [{ kind: 'values', values }] });
 }
@@ -759,7 +789,9 @@ function lastTrSetPositions({
   const result: (bigint | undefined)[] = Array.from({ length: BYTE_VALUE_COUNT }, () => undefined);
   let offset = 0n;
   for (const segment of sequence.segments) {
-    if (offset >= limit) break;
+    if (offset >= limit) {
+      break;
+    }
     const segmentLength = trSetSegmentLength({ segment });
     const usableLength = (offset + segmentLength) > limit
       ? limit - offset
@@ -768,11 +800,15 @@ function lastTrSetPositions({
     case 'values':
       for (let index = 0; index < Number(usableLength); index += 1) {
         const value = segment.values[index];
-        if (value !== undefined) result[value] = offset + BigInt(index);
+        if (value !== undefined) {
+          result[value] = offset + BigInt(index);
+        }
       }
       break;
     case 'repeat':
-      if (usableLength > 0n) result[segment.value] = offset + usableLength - 1n;
+      if (usableLength > 0n) {
+        result[segment.value] = offset + usableLength - 1n;
+      }
       break;
     default: {
       const _ex: never = segment;
@@ -814,7 +850,9 @@ function validateComplementedCharacterClassTranslation({
   const set2Last = trSetLastValue({ sequence: set2.sequence });
   for (let index = 0n; index < effectiveSet1.length; index += 1n) {
     const from = trSetValueAt({ sequence: effectiveSet1, index });
-    if (from === undefined) continue;
+    if (from === undefined) {
+      continue;
+    }
     const mapped = index < effectiveLength
       ? (trSetValueAt({ sequence: set2.sequence, index }) ?? set2Last ?? from)
       : from;
@@ -836,7 +874,9 @@ function createBufferedByteWriter({
   let length = 0;
 
   const flush = async (): Promise<void> => {
-    if (length === 0) return;
+    if (length === 0) {
+      return;
+    }
     await writeAllBytesToHandle({
       handle: context.stdout,
       data: buffer.subarray(0, length),
@@ -868,7 +908,9 @@ async function transformInput({
   const deleteTable = effectiveSet1.membership;
   const squeezeTable = new Uint8Array(BYTE_VALUE_COUNT);
   const translationTable = new Uint8Array(BYTE_VALUE_COUNT);
-  for (let value = 0; value < BYTE_VALUE_COUNT; value += 1) translationTable[value] = value;
+  for (let value = 0; value < BYTE_VALUE_COUNT; value += 1) {
+    translationTable[value] = value;
+  }
 
   if (!options.deleteMode) {
     const effectiveLength = options.truncateSet1 && set2.length < effectiveSet1.length
@@ -878,7 +920,9 @@ async function transformInput({
     const set2Last = trSetLastValue({ sequence: set2 });
     for (let from = 0; from < BYTE_VALUE_COUNT; from += 1) {
       const position = lastPositions[from];
-      if (position === undefined) continue;
+      if (position === undefined) {
+        continue;
+      }
       translationTable[from] = trSetValueAt({ sequence: set2, index: position }) ?? set2Last ?? from;
     }
   }
@@ -895,9 +939,13 @@ async function transformInput({
       stream: openHandleReadStream({ handle: context.stdin }),
     })) {
       for (const input of chunk) {
-        if (options.deleteMode && deleteTable[input] === 1) continue;
+        if (options.deleteMode && deleteTable[input] === 1) {
+          continue;
+        }
         const output = options.deleteMode ? input : translationTable[input]!;
-        if (options.squeezeRepeats && squeezeTable[output] === 1 && output === lastOutput) continue;
+        if (options.squeezeRepeats && squeezeTable[output] === 1 && output === lastOutput) {
+          continue;
+        }
         if (writer.writeByte({ value: output })) {
           await writer.flush();
         }
@@ -1065,7 +1113,9 @@ export const trCommandImplementation: WeshCommandImplementation = {
       });
       return { exitCode: 0 };
     } catch (error) {
-      if (!(error instanceof TrSetSyntaxError)) throw error;
+      if (!(error instanceof TrSetSyntaxError)) {
+        throw error;
+      }
       await writeTrSetDiagnostic({ context, message: error.message });
       return { exitCode: 1 };
     }

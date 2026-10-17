@@ -83,7 +83,8 @@ beforeEach(() => {
 afterEach(async () => {
   using _cleanupResource = {
     [Symbol.dispose]() {
-      vi.restoreAllMocks(); vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
     },
   };
   await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
@@ -189,7 +190,9 @@ describe('Production Provider capture evidence', () => {
       throw new Error('private');
     });
     const imageInput = capture.requests[12]?.input;
-    if (imageInput === undefined) throw new Error('Missing test image');
+    if (imageInput === undefined) {
+      throw new Error('Missing test image');
+    }
     Object.defineProperty(imageInput.messages[0], 'content', { get: getter });
     expect(() => exportCapture({ capture })).toThrow(/^Invalid Production Provider capture evidence$/u);
     expect(getter).not.toHaveBeenCalled();
@@ -252,7 +255,9 @@ describe('Production Provider capture evidence', () => {
       { ...JSON.parse(exported.json), limits: { ...JSON.parse(exported.json).limits, maximumEvents: 5000 } },
       { ...JSON.parse(exported.json), limitations: { ...JSON.parse(exported.json).limitations, replayEligibility: 'ready' } },
       { ...JSON.parse(exported.json), privateEnvironment: 'secret' },
-    ]) expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(changed), runId: 'capture-run', modelId: 'fixture/model' })).toThrow(/^Invalid Production Provider capture evidence$/u);
+    ]) {
+      expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(changed), runId: 'capture-run', modelId: 'fixture/model' })).toThrow(/^Invalid Production Provider capture evidence$/u);
+    }
   });
 
   it('rejects foreign expected identities and malformed JSON without copying input into the error', () => {
@@ -339,7 +344,8 @@ describe('Production Provider capture evidence', () => {
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'partial' } });
       await vi.waitFor(() => expect(owner.snapshot().requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'part_text', text: 'partial' })));
       await new Promise<void>(resolve => {
-        release = resolve; entered();
+        release = resolve;
+        entered();
       });
       await finishMessage({ onEvent });
     });
@@ -351,7 +357,8 @@ describe('Production Provider capture evidence', () => {
     expect(document.snapshot.requests[0].trace.settled).toEqual({ captureValue: 'undefined' });
     expect(document.snapshot.abortReason).toBe('deadline');
     expect(document.snapshot.events.at(-1).kind).toBe('abort-requested');
-    release(); await run;
+    release();
+    await run;
   });
 
   it('keeps a completed settled projection exportable after synthetic applied-part late observation overflow', async () => {
@@ -490,7 +497,9 @@ describe('Production Provider capture evidence', () => {
     const completed = await owner.run();
     expect(() => exportCapture({ capture: { ...completed, run: { status: 'running' }, requests: [initial.requests[0]!, ...completed.requests.slice(1)] } })).toThrow();
     const request = completed.requests[1]!;
-    if (request.input === undefined) throw new Error('Expected captured continuity');
+    if (request.input === undefined) {
+      throw new Error('Expected captured continuity');
+    }
     const altered = { ...request, input: { ...request.input, messages: [{ role: 'user' as const, content: 'arbitrary user content' }] } };
     expect(() => exportCapture({ capture: { ...completed, requests: [completed.requests[0]!, altered, completed.requests[2]!] } })).toThrow();
   });
@@ -523,7 +532,8 @@ describe('versioned parts observation evidence', () => {
     });
     const artifact = exportCapture({ capture: captured });
     const parsed = readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' });
-    expect(parsed).toEqual(captured); expect(exportCapture({ capture: parsed }).json).toBe(artifact.json);
+    expect(parsed).toEqual(captured);
+    expect(exportCapture({ capture: parsed }).json).toBe(artifact.json);
     expect(parsed.requests[0]?.trace.settled?.outcome).toEqual({ status: 'fulfilled' });
     expect(parsed.requests[0]?.trace.events).toContainEqual(expect.objectContaining({ kind: 'generation_interrupted', reason: 'limit' }));
     expect(client.loadDownloadedModel).toHaveBeenCalledOnce();
@@ -537,10 +547,14 @@ describe('versioned parts observation evidence', () => {
     for (const field of ['capture', 'trace', 'capabilities', 'limitations']) {
       const invalid = JSON.parse(artifact.json);
       switch (field) {
-      case 'capture': invalid.snapshot.format = 'production-provider-capture-v2'; break;
-      case 'trace': invalid.snapshot.requests[0].trace.format = 'production-provider-trace-v2'; break;
-      case 'capabilities': invalid.snapshot.capabilities.providerCallbacks = 'bounded-projection'; break;
-      case 'limitations': invalid.limitations.providerCallbacks = 'bounded-projection'; break;
+      case 'capture': invalid.snapshot.format = 'production-provider-capture-v2';
+        break;
+      case 'trace': invalid.snapshot.requests[0].trace.format = 'production-provider-trace-v2';
+        break;
+      case 'capabilities': invalid.snapshot.capabilities.providerCallbacks = 'bounded-projection';
+        break;
+      case 'limitations': invalid.limitations.providerCallbacks = 'bounded-projection';
+        break;
       }
       expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(invalid), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
     }
@@ -553,7 +567,8 @@ describe('versioned parts observation evidence', () => {
     const trace = document.snapshot.requests[0].trace;
     const position = trace.events.length - 2;
     expect(trace.events[position]).toMatchObject({ kind: 'part_text', partType: 'text', completeness: 'complete' });
-    trace.events[position].partType = 'reasoning'; trace.settled.events[position].partType = 'reasoning';
+    trace.events[position].partType = 'reasoning';
+    trace.settled.events[position].partType = 'reasoning';
     expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(document), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
   });
 
@@ -568,10 +583,12 @@ describe('versioned parts observation evidence', () => {
     const captured = await owner.run();
     const artifact = exportCapture({ capture: captured });
     expect(readProductionProviderCaptureEvidence({ json: artifact.json, runId: 'capture-run', modelId: 'fixture/model' })).toEqual(captured);
-    const document = JSON.parse(artifact.json); const trace = document.snapshot.requests[0].trace;
+    const document = JSON.parse(artifact.json);
+    const trace = document.snapshot.requests[0].trace;
     const event = trace.events.at(-1);
     const replacement = { sequence: event.sequence, phase: event.phase, kind: 'generation_finished', next: 'user' };
-    trace.events[trace.events.length - 1] = replacement; trace.settled.events[trace.settled.events.length - 1] = replacement;
+    trace.events[trace.events.length - 1] = replacement;
+    trace.settled.events[trace.settled.events.length - 1] = replacement;
     expect(() => readProductionProviderCaptureEvidence({ json: JSON.stringify(document), runId: 'capture-run', modelId: 'fixture/model' })).toThrow('Invalid Production Provider capture evidence');
   });
 });
@@ -596,7 +613,9 @@ describe('fixed continuity does not omit unexpected tool history', () => {
       if (plan === 'generation-continuity-v2') {
         expect(captured.requests[1]?.notStartedReason).toBe('first-settlement-unavailable');
         expect(captured.requests[2]?.status).toBe('settled');
-      } else expect(captured.run).toEqual({ status: 'stopped', reason: 'capture-incomplete' });
+      } else {
+        expect(captured.run).toEqual({ status: 'stopped', reason: 'capture-incomplete' });
+      }
     });
   }
 });

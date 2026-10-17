@@ -117,7 +117,9 @@ describe('settings inheritance guide', () => {
     const { descriptor, errors } = parse(readFileSync(filename, 'utf8'), { filename: filename.pathname });
     expect(errors).toHaveLength(0);
     const style = descriptor.styles[0];
-    if (!style) throw new Error(`Missing style block in ${file}`);
+    if (!style) {
+      throw new Error(`Missing style block in ${file}`);
+    }
     const compiled = compileStyle({ source: style.content, filename: filename.pathname, id: 'data-v-test', scoped: true });
     expect(compiled.errors).toHaveLength(0);
     expect(compiled.code).toContain(`html:has(#docs-pause-motion:checked) ${completed}`);
@@ -151,7 +153,9 @@ describe('settings inheritance guide', () => {
       const html = await renderToString(createSSRApp({ render: () => h(SettingsInheritanceStep, { stage, messages: en }) }));
       using page = parsePage({ html });
       const scene = page.document.querySelector(`[data-testid="inheritance-step-${stage}"]`);
-      for (const selector of expected.split(', ')) expect(scene?.querySelector(selector)).not.toBeNull();
+      for (const selector of expected.split(', ')) {
+        expect(scene?.querySelector(selector)).not.toBeNull();
+      }
     }
   });
 

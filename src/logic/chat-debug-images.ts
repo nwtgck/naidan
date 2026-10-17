@@ -19,8 +19,11 @@ export function inspectDebugImages({ message }: { message: Readonly<MessageNode>
         const key = JSON.stringify([getMessagePartDisplayKey({ part }), occurrence++]);
         try {
           const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] ?? ''));
-          if (result.success) images.push({ key, image: result.data });
-          else errors.push(result.error.message);
+          if (result.success) {
+            images.push({ key, image: result.data });
+          } else {
+            errors.push(result.error.message);
+          }
         } catch (error) {
           errors.push(error instanceof Error ? error.message : String(error));
         }

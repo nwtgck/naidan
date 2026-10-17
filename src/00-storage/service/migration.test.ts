@@ -20,7 +20,8 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
-        this.content = data; Promise.resolve();
+        this.content = data;
+        Promise.resolve();
       },
       close: () => Promise.resolve(),
     });
@@ -44,7 +45,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'directory') throw new Error(`Not a directory: ${name}`);
+    if (entry?.kind !== 'directory') {
+      throw new Error(`Not a directory: ${name}`);
+    }
     return entry;
   }
 
@@ -59,7 +62,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'file') throw new Error(`Not a file: ${name}`);
+    if (entry?.kind !== 'file') {
+      throw new Error(`Not a file: ${name}`);
+    }
     return entry;
   }
 
@@ -181,7 +186,9 @@ describe('Storage Migration (Round-Trip)', () => {
 
     // 4. Restore
     async function* arrayToGenerator(array: MigrationChunkDto[]) {
-      for (const item of array) yield item;
+      for (const item of array) {
+        yield item;
+      }
     }
     await provider.restore({
       snapshot: {

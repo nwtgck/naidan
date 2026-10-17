@@ -65,7 +65,9 @@ function renderFunctionHelp({ definition }: { definition: CalculatorFunctionDefi
     lines.push('', 'Requirements:', ...definition.requirements.map(item => `  - ${item}`));
   }
   lines.push('', 'Examples:', ...definition.examples.map(item => `  ${item.expression} => ${item.result} (${item.exactness})`));
-  if (definition.related.length > 0) lines.push('', `Related: ${definition.related.join(' ')}`);
+  if (definition.related.length > 0) {
+    lines.push('', `Related: ${definition.related.join(' ')}`);
+  }
   return lines.join('\n');
 }
 
@@ -73,7 +75,9 @@ function renderCategoryHelp({ category }: {
   category: Parameters<typeof listCalculatorFunctionsByCategory>[0]['category'],
 }): string {
   const metadata = CALCULATOR_CATEGORY_DEFINITIONS.find(item => item.name === category);
-  if (metadata === undefined) throw new Error(`Missing calculator category definition: ${category}`);
+  if (metadata === undefined) {
+    throw new Error(`Missing calculator category definition: ${category}`);
+  }
   const lines = [metadata.title, ''];
   for (const definition of listCalculatorFunctionsByCategory({ category })) {
     lines.push(`  ${formatUsage({ definition })}`, `    ${definition.summary}`, `    Precision: ${definition.precision}`);
@@ -159,9 +163,13 @@ function getHelpSuggestions({ topic }: { topic: string }): readonly string[] {
 
 export function resolveCalculatorHelp({ input }: { input: string }): CalculatorHelpResolution {
   const trimmed = input.trim();
-  if (trimmed !== 'help' && !/^help\s/u.test(trimmed)) return { status: 'not_help' };
+  if (trimmed !== 'help' && !/^help\s/u.test(trimmed)) {
+    return { status: 'not_help' };
+  }
   const parts = trimmed.split(/\s+/u);
-  if (parts.length === 1) return { status: 'success', topic: 'overview', text: renderOverview() };
+  if (parts.length === 1) {
+    return { status: 'success', topic: 'overview', text: renderOverview() };
+  }
   if (parts.length !== 2) {
     return failCalculatorInput({
       code: 'invalid_help_usage',
@@ -174,9 +182,13 @@ export function resolveCalculatorHelp({ input }: { input: string }): CalculatorH
   if ((FIXED_HELP_TOPICS as readonly string[]).includes(topic)) {
     return { status: 'success', topic, text: renderFixedHelp({ topic: topic as typeof FIXED_HELP_TOPICS[number] }) };
   }
-  if (isCalculatorFunctionCategory(topic)) return { status: 'success', topic, text: renderCategoryHelp({ category: topic }) };
+  if (isCalculatorFunctionCategory(topic)) {
+    return { status: 'success', topic, text: renderCategoryHelp({ category: topic }) };
+  }
   const definition = getCalculatorFunction({ name: topic });
-  if (definition !== undefined) return { status: 'success', topic, text: renderFunctionHelp({ definition }) };
+  if (definition !== undefined) {
+    return { status: 'success', topic, text: renderFunctionHelp({ definition }) };
+  }
   const suggestions = getHelpSuggestions({ topic });
   return failCalculatorInput({
     code: 'unknown_help_topic',

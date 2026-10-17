@@ -13,7 +13,10 @@ export function referenceAudioErrorMessage({ code }: { code: ReferenceAudioError
   case 'microphone': return lazyStrings.audioGeneration__microphone_unavailable();
   case 'recording': return lazyStrings.audioGeneration__recording_failed();
   case undefined: return undefined;
-  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = code;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

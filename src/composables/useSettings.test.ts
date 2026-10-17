@@ -119,13 +119,15 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   it('republishes the editor storage boundary after migration removes the saved Settings record', async () => {
-    const { init, settings } = useSettings(); await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
     const previous = settings.value;
     mocks.loadSettings.mockResolvedValue(null);
     await synchronizeSettings({ event: { type: 'settings', timestamp: 1 } });
     expect(settings.value).toBe(previous);
     await synchronizeSettings({ event: { type: 'migration', timestamp: 2 } });
-    expect(settings.value).not.toBe(previous); expect(settings.value).toEqual(previous);
+    expect(settings.value).not.toBe(previous);
+    expect(settings.value).toEqual(previous);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 

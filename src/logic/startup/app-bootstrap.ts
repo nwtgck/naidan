@@ -18,7 +18,9 @@ export function scheduleAppBootstrap({
 }): void {
   let started = false;
   const startOnce = (): void => {
-    if (started) return;
+    if (started) {
+      return;
+    }
     started = true;
     void Promise.resolve()
       .then(bootstrap)

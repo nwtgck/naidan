@@ -198,7 +198,9 @@ function buildReplacementResult({
 
 function findCommonPrefix({ values }: { values: string[] }): string {
   const first = values[0];
-  if (first === undefined) return '';
+  if (first === undefined) {
+    return '';
+  }
 
   let end = first.length;
   for (const value of values.slice(1)) {

@@ -38,8 +38,12 @@ const languages = (Object.entries(languageLabels) as [UiLocale, string][])
   // Plain string comparison intentionally keeps the order independent of the
   // browser and active locale.
   .toSorted((left, right) => {
-    if (left.label < right.label) return -1;
-    if (left.label > right.label) return 1;
+    if (left.label < right.label) {
+      return -1;
+    }
+    if (left.label > right.label) {
+      return 1;
+    }
     return 0;
   });
 
@@ -50,7 +54,9 @@ const currentLanguageLabel = computed(() => {
 async function changeLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
-  if (!canChangeLocale.value) return;
+  if (!canChangeLocale.value) {
+    return;
+  }
 
   isChangingLocale.value = true;
   try {
@@ -68,7 +74,9 @@ function selectLanguage({ locale }: { locale: UiLocale }) {
 }
 
 function toggleDropdown() {
-  if (isChangingLocale.value) return;
+  if (isChangingLocale.value) {
+    return;
+  }
   isOpen.value = !isOpen.value;
 }
 

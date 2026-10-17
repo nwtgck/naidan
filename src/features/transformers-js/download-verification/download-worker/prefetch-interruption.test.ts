@@ -19,7 +19,9 @@ async function fixture() {
   });
   const network = vi.fn<typeof fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url !== url || request.method !== 'GET') throw new Error('Unexpected prefetch fixture request');
+    if (request.url !== url || request.method !== 'GET') {
+      throw new Error('Unexpected prefetch fixture request');
+    }
     return transport(input, init);
   });
   // This suite checks the real transfer entry and writer, not model selection.
@@ -44,7 +46,9 @@ async function fixture() {
   vi.stubGlobal('fetch', network);
   vi.stubGlobal('self', { fetch: network, location: new URL('http://localhost/assets/download-worker.js') });
   await import('./entry');
-  if (!exposed) throw new Error('Missing Download Worker fixture API');
+  if (!exposed) {
+    throw new Error('Missing Download Worker fixture API');
+  }
   return { fs, api: exposed, network, transport, getDirectory, unexpectedMetadata };
 }
 
@@ -89,8 +93,11 @@ it('does not mark a fresh split artifact complete after its network stream is in
   let pulls = 0;
   h.transport.mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({
     pull(controller) {
-      if (pulls++ === 0) controller.enqueue(Uint8Array.of(7));
-      else controller.error(new Error('Fixture transfer interrupted'));
+      if (pulls++ === 0) {
+        controller.enqueue(Uint8Array.of(7));
+      } else {
+        controller.error(new Error('Fixture transfer interrupted'));
+      }
     },
   }, { highWaterMark: 0 }), { headers: { 'Content-Length': '2' } }));
   const progress = vi.fn();

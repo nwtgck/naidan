@@ -21,7 +21,9 @@ export function setupScrollToMock() {
       }
     };
 
-    if (!window.scrollTo) window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+    if (!window.scrollTo) {
+      window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
+    }
     if (!window.HTMLElement.prototype.scrollTo) {
       window.HTMLElement.prototype.scrollTo = mockScrollTo as unknown as typeof window.HTMLElement.prototype.scrollTo;
     }

@@ -275,7 +275,9 @@ export async function inspectCachedModelDeclarations({
   const files = [await readCachedJsonDeclaration({ runtimeTarget, path: "config.json", readCachedFile })];
   const fileFailures: ModelSupportInvestigationModelDeclarations["fileFailures"] = [];
   for (const path of DECLARATION_PATHS) {
-    if (path === "config.json" || !completedPaths.has(path)) continue;
+    if (path === "config.json" || !completedPaths.has(path)) {
+      continue;
+    }
     try {
       files.push(await readCachedJsonDeclaration({ runtimeTarget, path, readCachedFile }));
     } catch (error) {

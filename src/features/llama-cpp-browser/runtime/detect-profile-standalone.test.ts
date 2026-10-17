@@ -9,7 +9,8 @@ function platform() {
   let bytes = new Uint8Array();
   const close = vi.fn();
   const read = vi.fn((destination: Uint8Array) => {
-    destination.set(bytes); return bytes.length;
+    destination.set(bytes);
+    return bytes.length;
   });
   const sync = vi.fn(async () => ({ getSize: () => bytes.length, read, close }));
   const write = vi.fn(async (value: Uint8Array) => {
@@ -36,11 +37,14 @@ let environment: ReturnType<typeof platform>;
 
 beforeEach(() => {
   installBrotliDecoderForTest();
-  environment = platform(); vi.stubGlobal('navigator', environment.nav); vi.stubGlobal('WebAssembly', environment.wasm);
+  environment = platform();
+  vi.stubGlobal('navigator', environment.nav);
+  vi.stubGlobal('WebAssembly', environment.wasm);
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('standalone Worker capability detection', () => {
@@ -72,7 +76,9 @@ describe('standalone Worker capability detection', () => {
     expect(actualWasm.validate(TEST_ONLY.suspensionProbe)).toBe(true);
     const probe = await actualWasm.instantiate(TEST_ONLY.suspensionProbe, { e: { f: () => 7 } });
     const run = probe.instance.exports.run;
-    if (typeof run !== 'function') throw new Error('Missing probe export');
+    if (typeof run !== 'function') {
+      throw new Error('Missing probe export');
+    }
     expect(run()).toBe(7);
   });
 
@@ -139,33 +145,51 @@ describe('standalone Worker capability detection', () => {
       .map(capability => ({ profile, capability })),
   ))('rejects $profile when required $capability is unavailable', async ({ profile, capability }) => {
     switch (capability) {
-    case 'memory64': environment.wasm.validate.mockReturnValue(false); break;
-    case 'JSPI': vi.stubGlobal('WebAssembly', { ...environment.wasm, promising: undefined }); break;
-    case 'suspension': environment.wasm.promising.mockReturnValue(async () => 6); break;
-    case 'adapter': environment.nav.gpu.requestAdapter.mockRejectedValue(new Error('no adapter')); break;
-    case 'f16': environment.nav.gpu.requestAdapter.mockResolvedValue({ features: new Set() }); break;
-    case 'compression-api': vi.stubGlobal('DecompressionStream', undefined); break;
+    case 'memory64': environment.wasm.validate.mockReturnValue(false);
+      break;
+    case 'JSPI': vi.stubGlobal('WebAssembly', { ...environment.wasm, promising: undefined });
+      break;
+    case 'suspension': environment.wasm.promising.mockReturnValue(async () => 6);
+      break;
+    case 'adapter': environment.nav.gpu.requestAdapter.mockRejectedValue(new Error('no adapter'));
+      break;
+    case 'f16': environment.nav.gpu.requestAdapter.mockResolvedValue({ features: new Set() });
+      break;
+    case 'compression-api': vi.stubGlobal('DecompressionStream', undefined);
+      break;
     case 'brotli-format': vi.stubGlobal('DecompressionStream', class {
       constructor(format: string) {
-        expect(format).toBe('brotli'); throw new TypeError('Unsupported format');
+        expect(format).toBe('brotli');
+        throw new TypeError('Unsupported format');
       }
-    }); break;
+    });
+      break;
     case 'brotli-data': vi.stubGlobal('DecompressionStream', class {
       // Accepts the format but decodes the known probe to the wrong byte.
       readonly readable = new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new Uint8Array([72])); controller.close();
+          controller.enqueue(new Uint8Array([72]));
+          controller.close();
         },
       });
       readonly writable = new WritableStream();
-    }); break;
-    case 'hash': vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('denied')); break;
-    case 'sync': environment.sync.mockRejectedValue(new Error('sync denied')); break;
-    case 'locks': environment.nav.locks.request.mockRejectedValue(new Error('locks denied')); break;
-    default: { const exhaustive: never = capability; throw new Error(exhaustive); }
+    });
+      break;
+    case 'hash': vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new Error('denied'));
+      break;
+    case 'sync': environment.sync.mockRejectedValue(new Error('sync denied'));
+      break;
+    case 'locks': environment.nav.locks.request.mockRejectedValue(new Error('locks denied'));
+      break;
+    default: {
+      const exhaustive: never = capability;
+      throw new Error(exhaustive);
+    }
     }
     await expect(resolveRuntimeProfile({ profile })).rejects.toThrow('unavailable');
-    if (capability === 'sync' || capability === 'locks') expect(environment.root.removeEntry).toHaveBeenCalledOnce();
+    if (capability === 'sync' || capability === 'locks') {
+      expect(environment.root.removeEntry).toHaveBeenCalledOnce();
+    }
   });
 
   it('closes sync handles after a read failure and removes only its own probe', async () => {

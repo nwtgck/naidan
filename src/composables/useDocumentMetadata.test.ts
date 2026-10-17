@@ -54,7 +54,8 @@ beforeEach(() => {
 
 describe('document metadata ownership', () => {
   it('matches the same routed page with a trailing slash for both page and loading sources', async () => {
-    const router = routerForPages(); await router.push('/chat/one/');
+    const router = routerForPages();
+    await router.push('/chat/one/');
     const loading = ref<string | undefined>('Loading 12%');
     const metadata = { title: 'Model guide', description: 'Model description' };
     using _owner = mountOwner({
@@ -68,12 +69,16 @@ describe('document metadata ownership', () => {
         },
       }),
     });
-    await nextTick(); expectHead({ page: metadata, documentTitle: 'Loading 12%' });
-    loading.value = undefined; await nextTick(); expectHead({ page: metadata, documentTitle: metadata.title });
+    await nextTick();
+    expectHead({ page: metadata, documentTitle: 'Loading 12%' });
+    loading.value = undefined;
+    await nextTick();
+    expectHead({ page: metadata, documentTitle: metadata.title });
   });
 
   it('disables a kept-alive page source until it is activated again', async () => {
-    const router = routerForPages(); await router.push('/chat/one');
+    const router = routerForPages();
+    await router.push('/chat/one');
     const visible = ref(true);
     const metadata = { title: 'Cached guide', description: 'Cached description' };
     const Guide = defineComponent({
@@ -83,15 +88,21 @@ describe('document metadata ownership', () => {
       },
     });
     using _owner = mountOwner({ router, introduction: presentationTestOnly.createHomeIntroduction({ router }), content: defineComponent({ setup: () => () => h(KeepAlive, () => visible.value ? h(Guide) : undefined) }) });
-    await nextTick(); expectHead({ page: metadata, documentTitle: metadata.title });
-    visible.value = false; await nextTick(); await nextTick();
+    await nextTick();
+    expectHead({ page: metadata, documentTitle: metadata.title });
+    visible.value = false;
+    await nextTick();
+    await nextTick();
     expectHead({ page: APPLICATION_METADATA, documentTitle: 'Naidan' });
-    visible.value = true; await nextTick(); await nextTick();
+    visible.value = true;
+    await nextTick();
+    await nextTick();
     expectHead({ page: metadata, documentTitle: metadata.title });
   });
 
   it('ignores late print completion after its document owner has unmounted', async () => {
-    const router = routerForPages(); await router.push('/chat/one');
+    const router = routerForPages();
+    await router.push('/chat/one');
     const printed = Promise.withResolvers<void>();
     let manager: ReturnType<typeof useDocumentMetadata>;
     using owner = mountOwner({
@@ -99,16 +110,19 @@ describe('document metadata ownership', () => {
       introduction: presentationTestOnly.createHomeIntroduction({ router }),
       content: defineComponent({
         setup() {
-          manager = useDocumentMetadata(); return () => h('div');
+          manager = useDocumentMetadata();
+          return () => h('div');
         },
       }),
     });
     const operation = manager!.withPrintTitle({ title: 'Old print', run: () => printed.promise });
     owner.wrapper.unmount();
-    const nextRouter = routerForPages(); await nextRouter.push('/audio-generation');
+    const nextRouter = routerForPages();
+    await nextRouter.push('/audio-generation');
     using _nextOwner = mountOwner({ router: nextRouter, introduction: presentationTestOnly.createHomeIntroduction({ router: nextRouter }), content: defineComponent({ template: '<div />' }) });
     await nextTick();
-    printed.resolve(); await operation;
+    printed.resolve();
+    await operation;
     expectHead({ page: AUDIO_METADATA, documentTitle: AUDIO_METADATA.title });
   });
 

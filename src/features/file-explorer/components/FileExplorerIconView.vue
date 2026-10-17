@@ -85,7 +85,9 @@ function onBackgroundNativeContextMenu({ event }: { event: MouseEvent }): void {
 }
 
 function onBackgroundClick({ event }: { event: MouseEvent }): void {
-  if (backgroundLongPress.consumeClick({ event })) return;
+  if (backgroundLongPress.consumeClick({ event })) {
+    return;
+  }
   ctx.applySelection({ action: { type: 'clear' } });
 }
 

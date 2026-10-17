@@ -313,7 +313,9 @@ const tailArgvSpec: StandardArgvParserSpec = {
   treatSingleDashAsPositional: true,
   specialTokenParsers: [
     ({ token }) => {
-      if (!/^-\d+$/.test(token)) return undefined;
+      if (!/^-\d+$/.test(token)) {
+        return undefined;
+      }
       return {
         kind: 'matched',
         consumeCount: 1,

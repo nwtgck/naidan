@@ -40,7 +40,9 @@ function resolveMenuItems({ items }: { items: MenuItemDraft[] }): MenuItem[] {
       resolved.push(item);
       break;
     case 'action':
-      if (item.label === undefined) return [];
+      if (item.label === undefined) {
+        return [];
+      }
       resolved.push({ ...item, label: item.label });
       break;
     default: {

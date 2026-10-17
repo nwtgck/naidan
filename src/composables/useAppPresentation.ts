@@ -111,7 +111,9 @@ function createAppPresentation({
 
 function createOnboardingRouteExcluded({ router }: { router: Router | undefined }): ComputedRef<boolean> {
   return computed(() => {
-    if (router === undefined) return false;
+    if (router === undefined) {
+      return false;
+    }
     // Navigation is gated until the main app renders. START_LOCATION must not
     // briefly expose onboarding when opening an excluded deep link directly.
     const route = router.currentRoute.value === START_LOCATION
@@ -137,16 +139,23 @@ function createHomeIntroduction({ router }: { router: Router | undefined }) {
     case 'active':
       state.value = { kind: 'active', routePaths: [...new Set([...current.routePaths, routePath])] };
       return;
-    default: { const _ex: never = current; return _ex; }
+    default: {
+      const _ex: never = current;
+      return _ex;
+    }
     }
   }
 
   if (router !== undefined) {
     watch(() => router.currentRoute.value, route => {
-      if (route === START_LOCATION) return;
+      if (route === START_LOCATION) {
+        return;
+      }
       const current = state.value;
       if (current.kind === 'active' && (!current.routePaths.includes(route.path)
-        || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined)) finishHomeIntroduction();
+        || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined)) {
+        finishHomeIntroduction();
+      }
     });
   }
 

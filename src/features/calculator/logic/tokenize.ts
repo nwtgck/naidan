@@ -47,16 +47,24 @@ export function tokenizeCalculatorInput({ input }: { input: string }): readonly 
 
     if (isAsciiDigit({ character }) || (character === '.' && isAsciiDigit({ character: input[position + 1] }))) {
       const start = position;
-      while (isAsciiDigit({ character: input[position] })) position += 1;
+      while (isAsciiDigit({ character: input[position] })) {
+        position += 1;
+      }
       if (input[position] === '.') {
         position += 1;
-        while (isAsciiDigit({ character: input[position] })) position += 1;
+        while (isAsciiDigit({ character: input[position] })) {
+          position += 1;
+        }
       }
       if (input[position] === 'e' || input[position] === 'E') {
         position += 1;
-        if (input[position] === '+' || input[position] === '-') position += 1;
+        if (input[position] === '+' || input[position] === '-') {
+          position += 1;
+        }
         const exponentStart = position;
-        while (isAsciiDigit({ character: input[position] })) position += 1;
+        while (isAsciiDigit({ character: input[position] })) {
+          position += 1;
+        }
         if (position === exponentStart) {
           failCalculatorInput({
             code: 'invalid_number',
@@ -88,7 +96,9 @@ export function tokenizeCalculatorInput({ input }: { input: string }): readonly 
     if (isIdentifierStart({ character })) {
       const start = position;
       position += 1;
-      while (isIdentifierContinuation({ character: input[position] })) position += 1;
+      while (isIdentifierContinuation({ character: input[position] })) {
+        position += 1;
+      }
       const value = input.slice(start, position);
       if (value.length > CALCULATOR_LIMITS.maximumIdentifierLength) {
         failCalculatorInput({

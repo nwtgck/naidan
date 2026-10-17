@@ -56,7 +56,10 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
     } catch { /* diagnostic only */ }
   }
   function flush({ final, reason }: { final: boolean, reason: string }): void {
-    const run = current; if (!run || run.closed) return;
+    const run = current;
+    if (!run || run.closed) {
+      return;
+    }
     const time = now();
     const fields = {
       runId: run.runId,
@@ -92,10 +95,14 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
           maxCompletedMs: value.maxCompletedMs,
         },
       });
-      if (!final) Object.assign(previous, value);
+      if (!final) {
+        Object.assign(previous, value);
+      }
     }
     if (!final) {
-      run.previous = { ...run.counts }; run.previousHistogram = [...run.histogram]; run.lastAt = time;
+      run.previous = { ...run.counts };
+      run.previousHistogram = [...run.histogram];
+      run.lastAt = time;
     }
   }
   return {
@@ -103,15 +110,21 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
       return current?.closed ? undefined : current;
     },
     unavailable({ method }: { method: string }): void {
-      if (unavailable.size < 32) unavailable.add(method);
+      if (unavailable.size < 32) {
+        unavailable.add(method);
+      }
     },
     device({ fields }: { fields: ImageDiagnosticInput['fields'] }): void {
       // This runtime requests very few devices. Keep only small immutable facts.
-      if (deviceSummaries.length < 4) deviceSummaries.push(fields);
+      if (deviceSummaries.length < 4) {
+        deviceSummaries.push(fields);
+      }
       report({ metric: 'gpu-device', fields });
     },
     begin({ runId }: { runId: number }): void {
-      if (current) current.closed = true;
+      if (current) {
+        current.closed = true;
+      }
       const time = now();
       current = {
         runId,
@@ -139,32 +152,52 @@ export function createGpuMeasurements({ emit, now }: { emit: ReturnType<typeof c
           unavailableMethods: [...unavailable].join(',').slice(0, 512),
         },
       });
-      for (const fields of deviceSummaries) report({ metric: 'gpu-device', fields: { ...fields, runId, reusedDevice: true } });
+      for (const fields of deviceSummaries) {
+        report({ metric: 'gpu-device', fields: { ...fields, runId, reusedDevice: true } });
+      }
     },
     checkpoint({ point }: { point: MeasurementPoint }): void {
-      if (!current || current.closed) return;
-      flush({ final: false, reason: point.reason }); current.point = { ...point };
+      if (!current || current.closed) {
+        return;
+      }
+      flush({ final: false, reason: point.reason });
+      current.point = { ...point };
     },
     finish({ outcome }: { outcome: MeasurementOutcome }): void {
-      if (!current || current.closed) return;
-      flush({ final: false, reason: outcome }); flush({ final: true, reason: outcome });
+      if (!current || current.closed) {
+        return;
+      }
+      flush({ final: false, reason: outcome });
+      flush({ final: true, reason: outcome });
       report({ metric: 'gpu-observation-end', fields: { runId: current.runId, unavailableMethods: [...unavailable].join(',').slice(0, 512) } });
       current.closed = true;
     },
     write({ bytes, usage }: { bytes: number | undefined, usage: number }): void {
-      const run = current; if (!run || run.closed) return;
+      const run = current;
+      if (!run || run.closed) {
+        return;
+      }
       run.counts.writes++;
       if (bytes === undefined) {
-        run.counts.writeBytesUnknown++; return;
+        run.counts.writeBytesUnknown++;
+        return;
       }
-      run.counts.writeBytes += bytes; run.histogram[uploadBucket({ bytes })]!++;
+      run.counts.writeBytes += bytes;
+run.histogram[uploadBucket({ bytes })]!++;
       // API usage is NOT semantic ownership (weights vs activations).
-      if (usage & 0x0040) run.counts.uniformWriteBytes += bytes;
-      else if (usage & 0x0080) run.counts.storageWriteBytes += bytes;
-      else run.counts.otherWriteBytes += bytes;
+if (usage & 0x0040) {
+  run.counts.uniformWriteBytes += bytes;
+} else if (usage & 0x0080) {
+  run.counts.storageWriteBytes += bytes;
+} else {
+  run.counts.otherWriteBytes += bytes;
+}
     },
     dispose(): void {
-      if (current) current.closed = true; current = undefined;
+      if (current) {
+        current.closed = true;
+      }
+      current = undefined;
     },
   };
 }

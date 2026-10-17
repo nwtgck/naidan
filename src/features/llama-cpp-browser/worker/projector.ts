@@ -20,40 +20,52 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
   core: Core, model: bigint, file: ModelFile, profile: LlamaCppProfile, debug: 'off' | 'on', signal: AbortSignal | undefined, backend: AudioBackend,
 }): Promise<ResidentProjector> {
   const checkCancelled = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
   };
   checkCancelled();
   const reportFileReads = (() => {
     switch (debug) {
     case 'on': return true;
     case 'off': return false;
-    default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = debug;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const access = await openModelFileAccess({ entry: file });
   const readCache = createModelReadCache({ mode: 'read-ahead', now: reportFileReads ? () => performance.now() : undefined });
   let mounted: ReturnType<typeof mountReadOnlyFile> | undefined;
   let trace: ReturnType<typeof createProjectorTrace> | undefined;
-  const allocations: bigint[] = []; let pointer = 0n;
+  const allocations: bigint[] = [];
+  let pointer = 0n;
   let nativeReleaseFailure: { error: unknown } | undefined;
   const release = async (): Promise<void> => {
-    if (nativeReleaseFailure) throw nativeReleaseFailure.error;
+    if (nativeReleaseFailure) {
+      throw nativeReleaseFailure.error;
+    }
     if (pointer !== 0n) {
       // If destruction fails, keep the callback valid and let the host discard the worker.
       try {
         await core.api.mtmd_free(pointer);
       } catch (error) {
-        nativeReleaseFailure = { error }; throw error;
+        nativeReleaseFailure = { error };
+        throw error;
       }
       pointer = 0n;
     }
-    trace?.release(); trace = undefined;
+    trace?.release();
+    trace = undefined;
   };
   const cleanupTemporary = async (): Promise<void> => {
     let failure: { error: unknown } | undefined;
     try {
       try {
-        for (const allocation of allocations.reverse()) core.free({ pointer: allocation });
+        for (const allocation of allocations.reverse()) {
+          core.free({ pointer: allocation });
+        }
       } finally {
         mounted?.remove();
       }
@@ -66,12 +78,15 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
       failure ??= { error };
     }
     if (failure) {
-      await release(); throw failure.error;
+      await release();
+      throw failure.error;
     }
   };
   try {
     checkCancelled();
-    if (access.getSize() !== file.file.size) throw new LlamaCppBrowserError({ code: 'storage-error' });
+    if (access.getSize() !== file.file.size) {
+      throw new LlamaCppBrowserError({ code: 'storage-error' });
+    }
     mounted = mountReadOnlyFile({
       core,
       path: `/models/${file.path}`,
@@ -85,41 +100,52 @@ export async function loadProjectorForBackend({ core, model, file, profile, debu
       }),
       maxChunkBytes: 8 * 1024 * 1024,
     });
-    const params = core.allocRecord({ name: 'mtmd_context_params' }); allocations.push(params);
+    const params = core.allocRecord({ name: 'mtmd_context_params' });
+    allocations.push(params);
     await core.api.mtmd_context_params_default(params);
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'use_gpu', value: backend === 'profile' && usesWebGpu({ profile }) ? 1 : 0 });
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'n_threads', value: 1 });
     switch (debug) {
-    case 'on': trace = createProjectorTrace({ core }); break;
+    case 'on': trace = createProjectorTrace({ core });
+      break;
     case 'off': break;
-    default: { const exhaustive: never = debug; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = debug;
+      throw new Error(String(exhaustive));
+    }
     }
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'cb_eval', value: trace ? BigInt(trace.pointer) : 0n });
     core.setField({ name: 'mtmd_context_params', pointer: params, field: 'cb_eval_user_data', value: 0n });
-    const path = core.utf8({ text: `/models/${file.path}` }); allocations.push(path);
+    const path = core.utf8({ text: `/models/${file.path}` });
+    allocations.push(path);
     checkCancelled();
     await logOperation({ diagnostic: { event: 'operation-start', stage: 'projector-load', profile } });
     pointer = await core.api.mtmd_init_from_file(path, model, params);
     await logOperation({ diagnostic: { event: 'operation-complete', stage: 'projector-load', statusCode: pointer === 0n ? 1 : 0, profile } });
     checkCancelled();
-    if (pointer === 0n) throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    if (pointer === 0n) {
+      throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+    }
 
   } catch (error) {
     logFailure({ stage: 'projector-load', error });
-    await release(); throw error;
+    await release();
+    throw error;
   } finally {
     try {
       await cleanupTemporary();
     } finally {
       readCache.dispose();
       try {
-        if (reportFileReads) logDiagnostic({
-          diagnostic: {
-            event: 'file-read-performance',
-            profile,
-            fileReads: { target: 'projector', ...readCache.counters },
-          },
-        });
+        if (reportFileReads) {
+          logDiagnostic({
+            diagnostic: {
+              event: 'file-read-performance',
+              profile,
+              fileReads: { target: 'projector', ...readCache.counters },
+            },
+          });
+        }
       } catch { /* Read diagnostics must not replace the load/cleanup result. */ }
     }
   }

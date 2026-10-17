@@ -44,7 +44,9 @@ export async function runInvestigationTargetsSequentially({
   publish();
 
   for (const [index, target] of targets.entries()) {
-    if (shouldInterrupt()) break;
+    if (shouldInterrupt()) {
+      break;
+    }
     const execution = executions[index]!;
     execution.status = 'running';
     publish();

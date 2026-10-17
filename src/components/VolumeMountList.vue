@@ -85,14 +85,18 @@ const editForm = ref({ mountPath: '', readOnly: true });
 
 function startEditing({ volume }: { volume: Volume }) {
   const mount = getMount({ volId: volume.id });
-  if (!mount) return;
+  if (!mount) {
+    return;
+  }
   editingMountId.value = volume.id;
   editForm.value = { mountPath: mount.mountPath, readOnly: mount.readOnly };
 }
 
 function saveMountSettings({ volId }: { volId: VolumeId }) {
   let path = editForm.value.mountPath;
-  if (!path.startsWith('/')) path = '/' + path;
+  if (!path.startsWith('/')) {
+    path = '/' + path;
+  }
   emit('update-mount', { volumeId: volId, mountPath: path, readOnly: editForm.value.readOnly });
   editingMountId.value = null;
 }

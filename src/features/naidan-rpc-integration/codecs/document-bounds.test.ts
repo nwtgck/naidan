@@ -15,7 +15,9 @@ it('rejects excessive document nodes even inside the byte budget', () => {
 
 it('applies the same structural bound before encoding an outbound document', () => {
   let value: unknown = undefined;
-  for (let index = 0; index < 256; index++) value = { child: value };
+  for (let index = 0; index < 256; index++) {
+    value = { child: value };
+  }
   expect(() => encodeDocument({ value, limit: 1024 * 1024 })).toThrow('depth');
 });
 
@@ -49,7 +51,9 @@ it.each([NaN, Infinity, -1, 1.5])('rejects an invalid collection budget %s witho
 
 it('accepts the declared maximum depth and rejects the next nested value', () => {
   let value: unknown = null;
-  for (let depth = 0; depth < peerDocumentLimits.depth; depth++) value = { child: value };
+  for (let depth = 0; depth < peerDocumentLimits.depth; depth++) {
+    value = { child: value };
+  }
   const bytes = encodeDocument({ value, limit: 4096 });
   expect(decodeDocument({ bytes })).toEqual(value);
   expect(() => encodeDocument({ value: { child: value }, limit: 4096 })).toThrow('depth');
@@ -83,6 +87,7 @@ it('bounds a local tool schema before recursive Zod validation, including cyclic
     stop: [],
     debug: undefined,
   };
-  const parameters: NonNullable<Parameters<typeof prepareTranscript>[0]['input']['tools']>[number]['function']['parameters'] = {}; parameters.child = parameters;
+  const parameters: NonNullable<Parameters<typeof prepareTranscript>[0]['input']['tools']>[number]['function']['parameters'] = {};
+  parameters.child = parameters;
   expect(() => prepareTranscript({ input: { ...input, tools: [{ type: 'function', function: { name: 'tool', description: '', parameters } }] } })).toThrow('depth');
 });

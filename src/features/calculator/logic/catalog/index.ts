@@ -41,16 +41,30 @@ const categories = new Set<CalculatorFunctionCategory>(CALCULATOR_CATEGORY_DEFIN
 const identifierPattern = /^[a-z][a-z0-9_]*$/;
 
 for (const definition of CALCULATOR_CONSTANT_DEFINITIONS) {
-  if (!identifierPattern.test(definition.name)) throw new Error(`Invalid calculator constant name: ${definition.name}`);
-  if (constantsByName.has(definition.name)) throw new Error(`Duplicate calculator constant: ${definition.name}`);
+  if (!identifierPattern.test(definition.name)) {
+    throw new Error(`Invalid calculator constant name: ${definition.name}`);
+  }
+  if (constantsByName.has(definition.name)) {
+    throw new Error(`Duplicate calculator constant: ${definition.name}`);
+  }
   constantsByName.set(definition.name, definition);
 }
 for (const definition of allFunctions) {
-  if (!identifierPattern.test(definition.name)) throw new Error(`Invalid calculator function name: ${definition.name}`);
-  if (!categories.has(definition.category)) throw new Error(`Unknown calculator category: ${definition.category}`);
-  if (functionsByName.has(definition.name)) throw new Error(`Duplicate calculator function: ${definition.name}`);
-  if (constantsByName.has(definition.name)) throw new Error(`Calculator function conflicts with constant: ${definition.name}`);
-  if (definition.examples.length === 0) throw new Error(`Calculator function lacks an example: ${definition.name}`);
+  if (!identifierPattern.test(definition.name)) {
+    throw new Error(`Invalid calculator function name: ${definition.name}`);
+  }
+  if (!categories.has(definition.category)) {
+    throw new Error(`Unknown calculator category: ${definition.category}`);
+  }
+  if (functionsByName.has(definition.name)) {
+    throw new Error(`Duplicate calculator function: ${definition.name}`);
+  }
+  if (constantsByName.has(definition.name)) {
+    throw new Error(`Calculator function conflicts with constant: ${definition.name}`);
+  }
+  if (definition.examples.length === 0) {
+    throw new Error(`Calculator function lacks an example: ${definition.name}`);
+  }
   if (definition.arguments.type === 'variadic'
     && definition.arguments.requiredNames.length > definition.arguments.maximumCount) {
     throw new Error(`Invalid variadic calculator arity: ${definition.name}`);
@@ -59,7 +73,9 @@ for (const definition of allFunctions) {
 }
 for (const definition of allFunctions) {
   for (const related of definition.related) {
-    if (!functionsByName.has(related)) throw new Error(`Unknown related calculator function ${related} in ${definition.name}`);
+    if (!functionsByName.has(related)) {
+      throw new Error(`Unknown related calculator function ${related} in ${definition.name}`);
+    }
   }
 }
 

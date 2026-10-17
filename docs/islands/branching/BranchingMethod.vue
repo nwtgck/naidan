@@ -19,7 +19,10 @@ function initialPath({ value }: { value: Method }): { branch: 0 | 1; chat: 'orig
   case 'edit':
   case 'resend':
   case 'regenerate': return { branch: 1, chat: 'original' };
-  default: { const unreachable: never = value; throw new Error(`Unsupported branching method: ${unreachable}`); }
+  default: {
+    const unreachable: never = value;
+    throw new Error(`Unsupported branching method: ${unreachable}`);
+  }
   }
 }
 
@@ -33,7 +36,10 @@ function sidebarFor({ value }: { value: Method }): 'visible' | 'hidden' {
   case 'edit':
   case 'resend':
   case 'regenerate': return 'hidden';
-  default: { const unreachable: never = value; throw new Error(`Unsupported branching method: ${unreachable}`); }
+  default: {
+    const unreachable: never = value;
+    throw new Error(`Unsupported branching method: ${unreachable}`);
+  }
   }
 }
 
@@ -52,7 +58,10 @@ const reserve = computed(() => {
   case 'resend': return { prompts: [props.copy.prompt], replies: props.copy.replies, userVersions: true, assistantVersions: false };
   case 'regenerate': return { prompts: [props.copy.prompt], replies: props.copy.replies, userVersions: false, assistantVersions: true };
   case 'fork': return { prompts: [props.copy.prompt], replies: [props.copy.replies[0]], userVersions: false, assistantVersions: false };
-  default: { const unreachable: never = props.variant; throw new Error(`Unsupported branching method: ${unreachable}`); }
+  default: {
+    const unreachable: never = props.variant;
+    throw new Error(`Unsupported branching method: ${unreachable}`);
+  }
   }
 });
 
@@ -77,8 +86,11 @@ onMounted(() => {
   pauseControl?.addEventListener('change', settleMotion);
   motionQuery?.addEventListener('change', settleMotion);
   availability.value = 'interactive';
-  if (motionUnavailable()) settleMotion();
-  else showStage({ value: 0 });
+  if (motionUnavailable()) {
+    settleMotion();
+  } else {
+    showStage({ value: 0 });
+  }
 });
 
 onUnmounted(() => {
@@ -101,7 +113,10 @@ const shownPrompt = computed(() => {
   case 'edit': return branch.value === 1 ? submittedPrompt.value : props.copy.prompt;
   case 'resend':
   case 'regenerate': return props.copy.prompt;
-  default: { const unreachable: never = value; return unreachable; }
+  default: {
+    const unreachable: never = value;
+    return unreachable;
+  }
   }
 });
 const shownReply = computed(() => {
@@ -111,7 +126,10 @@ const shownReply = computed(() => {
   case 'edit': return branch.value === 1 ? props.copy.editedReply : props.copy.replies[0];
   case 'resend':
   case 'regenerate': return props.copy.replies[branch.value];
-  default: { const unreachable: never = value; return unreachable; }
+  default: {
+    const unreachable: never = value;
+    return unreachable;
+  }
   }
 });
 const activeTitle = computed(() => forkOpen.value ? props.copy.forkTitle : props.copy.chatTitle);
@@ -120,7 +138,9 @@ function showStage({ value }: { value: Stage }): void {
   stage.value = value;
   branch.value = method.value !== 'fork' && (value === 2 || (value === 1 && method.value !== 'edit')) ? 1 : 0;
   chat.value = value === 2 ? 'fork' : 'original';
-  if (value === 1 && method.value === 'edit') draft.value = props.copy.editedPrompt;
+  if (value === 1 && method.value === 'edit') {
+    draft.value = props.copy.editedPrompt;
+  }
 }
 
 function chooseStage({ value }: { value: Stage }): void {
@@ -130,18 +150,27 @@ function chooseStage({ value }: { value: Stage }): void {
 
 function advance(): void {
   // CSS drives this invisible clock. No independent timer runs.
-  if (availability.value !== 'interactive' || playback.value !== 'automatic') return;
+  if (availability.value !== 'interactive' || playback.value !== 'automatic') {
+    return;
+  }
   if (motionUnavailable()) {
     settleMotion();
     return;
   }
   const value = stage.value;
   switch (value) {
-  case 0: showStage({ value: 1 }); break;
-  case 1: showStage({ value: 2 }); break;
-  case 2: showStage({ value: 3 }); break;
-  case 3: showStage({ value: 0 }); break;
-  default: { const unreachable: never = value; throw new Error(`Unsupported walkthrough stage: ${unreachable}`); }
+  case 0: showStage({ value: 1 });
+    break;
+  case 1: showStage({ value: 2 });
+    break;
+  case 2: showStage({ value: 3 });
+    break;
+  case 3: showStage({ value: 0 });
+    break;
+  default: {
+    const unreachable: never = value;
+    throw new Error(`Unsupported walkthrough stage: ${unreachable}`);
+  }
   }
 }
 
@@ -207,11 +236,16 @@ function reset(): void {
   playback.value = 'manual';
   const value = method.value;
   switch (value) {
-  case 'fork': chat.value = 'original'; break;
+  case 'fork': chat.value = 'original';
+    break;
   case 'edit':
   case 'resend':
-  case 'regenerate': selectBranch({ value: 0 }); break;
-  default: { const unreachable: never = value; throw new Error(`Unsupported branching method: ${unreachable}`); }
+  case 'regenerate': selectBranch({ value: 0 });
+    break;
+  default: {
+    const unreachable: never = value;
+    throw new Error(`Unsupported branching method: ${unreachable}`);
+  }
   }
 }
 

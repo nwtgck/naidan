@@ -31,17 +31,23 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
 
   function fail({ error }: { error: unknown }): unknown {
     if (failure === undefined) {
-      failure = { error }; failed.resolve();
+      failure = { error };
+      failed.resolve();
     }
     return failure.error;
   }
   function check() {
-    if (failure !== undefined) throw failure.error;
+    if (failure !== undefined) {
+      throw failure.error;
+    }
     switch (state) {
     case 'active':
     case 'finishing': return;
     case 'closed': throw new Error('Metadata operation is closed');
-    default: { const exhaustive: never = state; throw new Error(`Unknown operation state: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = state;
+      throw new Error(`Unknown operation state: ${exhaustive}`);
+    }
     }
   }
   function assertActive() {
@@ -49,16 +55,22 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     case 'active': return;
     case 'finishing':
     case 'closed': throw new Error('Metadata operation is not active');
-    default: { const exhaustive: never = state; throw new Error(`Unknown operation state: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = state;
+      throw new Error(`Unknown operation state: ${exhaustive}`);
+    }
     }
   }
   function cancelLease({ lease }: { lease: { cancel(): Promise<void> } }): Promise<void> {
     const previous = cancelled.get(lease);
-    if (previous !== undefined) return previous;
+    if (previous !== undefined) {
+      return previous;
+    }
     const task = Promise.resolve().then(() => lease.cancel()).catch(error => {
       throw fail({ error });
     }).finally(() => {
-      cancellations.delete(task); leases.delete(lease);
+      cancellations.delete(task);
+      leases.delete(lease);
     });
     cancelled.set(lease, task);
     cancellations.add(task);
@@ -69,7 +81,9 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     leases.add(lease);
     // Responses resolving during cleanup or after its deadline still belong to
     // this operation. Do not drop them with an earlier cleanup snapshot.
-    if (draining) void cancelLease({ lease }).catch(() => undefined);
+    if (draining) {
+      void cancelLease({ lease }).catch(() => undefined);
+    }
   }
   function tracked<T>({ run }: { run: () => Promise<T> | T }): Promise<T> {
     try {
@@ -78,7 +92,8 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
       return Promise.reject(fail({ error }));
     }
     const task = Promise.resolve().then(() => {
-      check(); return run();
+      check();
+      return run();
     }).catch(error => {
       throw fail({ error });
     }).finally(() => pending.delete(task));
@@ -101,33 +116,44 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
       throw new Error('Noncanonical metadata resource identity');
     }
     if (path.startsWith('onnx/') || isModelWeightFileName({ fileName: path.split('/').at(-1)! })) {
-      url.search = ''; url.hash = '';
+      url.search = '';
+      url.hash = '';
       throw new Error(`Runtime artifact preparation MUST NOT fetch model artifacts: ${url.href}`);
     }
     const allowPresence = (() => {
       switch (presence) {
       case 'allowed': return true;
       case 'forbidden': return false;
-      default: { const exhaustive: never = presence; throw new Error(`Unknown presence policy: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = presence;
+        throw new Error(`Unknown presence policy: ${exhaustive}`);
+      }
       }
     })();
     const aliased = requestedRevision === 'main' && allowPresence && presencePaths.has(path);
-    if (requestedRevision !== revision && !aliased) throw new Error('Unexpected metadata revision identity');
+    if (requestedRevision !== revision && !aliased) {
+      throw new Error('Unexpected metadata revision identity');
+    }
     url.pathname = `${prefix}${revision}/${parts.join('/')}`;
     // Query strings do not create a separate cache identity. Transport keeps
     // its original query; signed/redirect credentials are never persisted.
-    url.search = ''; url.hash = '';
+    url.search = '';
+    url.hash = '';
     return { url: url.href, path, aliased };
   }
 
   function ownResponse({ response, url, obligation }: { response: Response, url: string, obligation: 'save' | 'cached' | 'probe' | 'none' }): Response {
     function recordSize({ size }: { size: number | undefined }) {
       switch (obligation) {
-      case 'save': required.set(url, size); return;
+      case 'save': required.set(url, size);
+        return;
       case 'cached':
       case 'probe':
       case 'none': return;
-      default: { const exhaustive: never = obligation; throw new Error(`Unknown response obligation: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = obligation;
+        throw new Error(`Unknown response obligation: ${exhaustive}`);
+      }
       }
     }
     const expected = expectedDecodedResponseByteLength({ response });
@@ -140,13 +166,17 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
       throw new Error(`Runtime artifact preparation refused an unexpectedly large non-model artifact (${expected} bytes)`);
     }
     recordSize({ size: expected });
-    if (response.body === null) return response;
+    if (response.body === null) {
+      return response;
+    }
     const reader = response.body.getReader();
     let ended = false;
     let received = 0;
     const lease = {
       async cancel() {
-        if (ended) return;
+        if (ended) {
+          return;
+        }
         ended = true;
         await reader.cancel();
       },
@@ -159,13 +189,19 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
           const item = await reader.read();
           check();
           if (item.done) {
-            ended = true; leases.delete(lease);
-            if (expected !== undefined && received !== expected) throw new Error('Metadata response byte length mismatch');
+            ended = true;
+            leases.delete(lease);
+            if (expected !== undefined && received !== expected) {
+              throw new Error('Metadata response byte length mismatch');
+            }
             recordSize({ size: received });
-            controller.close(); return;
+            controller.close();
+            return;
           }
           received += item.value.byteLength;
-          if (received > maximumByteLength) throw new Error(`Runtime artifact preparation exceeded the non-model artifact byte limit (${maximumByteLength} bytes)`);
+          if (received > maximumByteLength) {
+            throw new Error(`Runtime artifact preparation exceeded the non-model artifact byte limit (${maximumByteLength} bytes)`);
+          }
           controller.enqueue(item.value);
         } catch (error) {
           controller.error(fail({ error }));
@@ -187,7 +223,9 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
       const request = new Request(input, init);
       request.signal.throwIfAborted();
       const probe = request.method === 'GET' && request.headers.get('Range') === 'bytes=0-0';
-      if (request.method !== 'GET') throw new Error('Unexpected metadata request method');
+      if (request.method !== 'GET') {
+        throw new Error('Unexpected metadata request method');
+      }
       const id = resource({ value: request.url, presence: probe ? 'allowed' : 'forbidden' });
       // TJS also probes the size of any exact-revision metadata resource when
       // its full GET omits Content-Length. This is independent of the two known
@@ -218,7 +256,9 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
       }
       if (!probe && response.status !== 404) {
         const error = fullResourceResponseError({ response });
-        if (error !== undefined) throw error;
+        if (error !== undefined) {
+          throw error;
+        }
       }
       if (response.status !== 200 && response.status !== 404 && !(probe && response.status === 206)) {
         throw new Error(`Metadata HTTP status ${response.status} is not an optional absence or complete response`);
@@ -240,24 +280,36 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
           const value = typeof input === 'string' ? input : input.url;
           // Ignore only the known same-model local lookup made before the HF key.
           // Do not read user uploads or mutable local-path cache aliases.
-          if (value.startsWith(`/models/${modelId}/`)) return undefined;
+          if (value.startsWith(`/models/${modelId}/`)) {
+            return undefined;
+          }
           const id = resource({ value, presence: 'allowed' });
           if (id.aliased) {
             const size = await storage.stat({ url: id.url });
             check();
-            if (size === undefined) return undefined;
-            if (size > maximumByteLength) throw new Error('Cached metadata exceeds byte limit');
+            if (size === undefined) {
+              return undefined;
+            }
+            if (size > maximumByteLength) {
+              throw new Error('Cached metadata exceeds byte limit');
+            }
             return new Response(null, { headers: { 'Content-Length': String(size) } });
           }
           // Stat first prevents an oversized cached resource from opening a body.
           const size = await storage.stat({ url: id.url });
           check();
-          if (size === undefined) return undefined;
-          if (size > maximumByteLength) throw new Error('Cached metadata exceeds byte limit');
+          if (size === undefined) {
+            return undefined;
+          }
+          if (size > maximumByteLength) {
+            throw new Error('Cached metadata exceeds byte limit');
+          }
           const stored = await storage.read({ url: id.url });
           const owned = stored === undefined ? undefined : ownResponse({ response: stored.response, url: id.url, obligation: 'cached' });
           check();
-          if (stored === undefined || stored.byteLength !== size) throw new Error('Metadata changed after cache stat');
+          if (stored === undefined || stored.byteLength !== size) {
+            throw new Error('Metadata changed after cache stat');
+          }
           required.set(id.url, size);
           return owned;
         },
@@ -272,7 +324,9 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
             ownResponse({ response, url: id.url, obligation: 'none' });
             if (response.status !== 404) {
               const error = fullResourceResponseError({ response });
-              if (error !== undefined) throw error;
+              if (error !== undefined) {
+                throw error;
+              }
             }
             return;
           }
@@ -282,19 +336,27 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
             check();
             const guarded = ownResponse({ response, url: id.url, obligation: 'save' });
             const error = fullResourceResponseError({ response });
-            if (error !== undefined) throw error;
-            if (response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) throw new Error('HTML response is not runtime metadata');
+            if (error !== undefined) {
+              throw error;
+            }
+            if (response.headers.get('Content-Type')?.toLowerCase().includes('text/html')) {
+              throw new Error('HTML response is not runtime metadata');
+            }
             await storage.write({ url: id.url, response: guarded });
             check();
             const size = await storage.stat({ url: id.url });
             check();
-            if (size === undefined || size !== required.get(id.url)) throw new Error('Metadata is not durably complete after write');
+            if (size === undefined || size !== required.get(id.url)) {
+              throw new Error('Metadata is not durably complete after write');
+            }
           })();
           writes.set(id.url, task);
           try {
             await task;
           } finally {
-            if (writes.get(id.url) === task) writes.delete(id.url);
+            if (writes.get(id.url) === task) {
+              writes.delete(id.url);
+            }
           }
         },
       });
@@ -307,11 +369,14 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     // response after cleanup starts; ownLease also handles post-timeout arrivals.
     const drained = (async () => {
       while (pending.size > 0 || leases.size > 0 || cancellations.size > 0) {
-        for (const lease of leases) void cancelLease({ lease }).catch(() => undefined);
+        for (const lease of leases) {
+          void cancelLease({ lease }).catch(() => undefined);
+        }
         const results = await Promise.allSettled([...pending, ...cancellations]);
         for (const result of results) {
           switch (result.status) {
-          case 'rejected': fail({ error: result.reason }); break;
+          case 'rejected': fail({ error: result.reason });
+            break;
           case 'fulfilled': break;
           default: {
             const unexpected: never = result;
@@ -332,8 +397,12 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
     } catch (error) {
       fail({ error });
     } finally {
-      if (timeout !== undefined) clearTimeout(timeout);
-      state = 'closed'; required.clear(); writes.clear();
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      state = 'closed';
+      required.clear();
+      writes.clear();
     }
   }
 
@@ -359,22 +428,30 @@ export function createRuntimeMetadataOperation({ modelId, revision, downloadFetc
         for (const [url, expected] of required) {
           const size = await storage.stat({ url });
           check();
-          if (expected === undefined || size !== expected || size === 0) throw new Error('Metadata preparation lacks a complete saved resource');
+          if (expected === undefined || size !== expected || size === 0) {
+            throw new Error('Metadata preparation lacks a complete saved resource');
+          }
         }
       } catch (error) {
         fail({ error });
       }
       await cleanup();
-      if (failure !== undefined) throw failure.error;
+      if (failure !== undefined) {
+        throw failure.error;
+      }
     },
     async abort({ error }: { error: unknown }) {
       switch (state) {
       case 'closed': throw fail({ error });
       case 'active':
       case 'finishing': break;
-      default: { const exhaustive: never = state; throw new Error(`Unknown operation state: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = state;
+        throw new Error(`Unknown operation state: ${exhaustive}`);
       }
-      fail({ error }); state = 'finishing';
+      }
+      fail({ error });
+      state = 'finishing';
       await cleanup();
       throw failure!.error;
     },

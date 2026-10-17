@@ -47,16 +47,22 @@ const unobservedLoad = { status: 'not-observed', reason: 'no-completed-load' } a
 function fixture({ overrides }: { overrides: Partial<typeof limits> }) {
   const capture = createGenerationCapture({ run, limits: { ...limits, ...overrides }, tensorClass: runtime.Tensor });
   const call = capture.beginCall({ context, loadIdentity: unobservedLoad });
-  if (!call) throw new Error('Expected a recording call');
+  if (!call) {
+    throw new Error('Expected a recording call');
+  }
   const invocation = call.beginInvocation();
-  if (!invocation) throw new Error('Expected a recording invocation');
+  if (!invocation) {
+    throw new Error('Expected a recording invocation');
+  }
   return { capture, call, invocation };
 }
 
 function take({ capture }: { capture: ReturnType<typeof createGenerationCapture> }) {
   const result = capture.take({ run });
   expect(result.status).toBe('captured');
-  if (result.status !== 'captured') throw new Error('Expected captured result');
+  if (result.status !== 'captured') {
+    throw new Error('Expected captured result');
+  }
   return result.capture;
 }
 
@@ -113,9 +119,13 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(new TextEncoder().encode(JSON.stringify(field)).byteLength).toBeLessThanOrEqual(GENERATION_CAPTURE_IMAGE_SIZE_FIELD_BYTES);
     expect(pretty.length + 32 * pretty.split('\n').length + 1).toBeLessThanOrEqual(GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES);
     const count = GENERATION_CAPTURE_IMAGE_SIZE_TOTAL_BYTES / GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES;
-    for (let index = 0; index < count; index++) invocation.recordInputs({ phase: 'pre-budget', inputs: { original_sizes: values } });
+    for (let index = 0; index < count; index++) {
+      invocation.recordInputs({ phase: 'pre-budget', inputs: { original_sizes: values } });
+    }
     const nextInvocation = call.beginInvocation();
-    if (!nextInvocation) throw new Error('Expected second native invocation');
+    if (!nextInvocation) {
+      throw new Error('Expected second native invocation');
+    }
     nextInvocation.recordInputs({ phase: 'native-kwargs', inputs: { reshaped_input_sizes: values } });
     call.finish({ outcome: 'fulfilled' });
     const result = take({ capture });
@@ -125,7 +135,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(values).toEqual(Array.from({ length: 8 }, () => [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]));
     const forged = structuredClone(result);
     const last = forged.events.at(-1);
-    if (last?.kind !== 'inputs') throw new Error('Expected last inputs');
+    if (last?.kind !== 'inputs') {
+      throw new Error('Expected last inputs');
+    }
     Reflect.set(last.values[0]!, 'snapshot', field.snapshot);
     expect(generationCaptureTakeResultSchema.safeParse({ status: 'captured', capture: forged }).success).toBe(false);
   });
@@ -138,12 +150,16 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     for (const name of ['input_ids', 'num_soft_tokens_per_image', 'private_metadata']) {
       const forged = structuredClone(source);
       const event = forged.events[0];
-      if (event?.kind !== 'inputs') throw new Error('Expected inputs');
+      if (event?.kind !== 'inputs') {
+        throw new Error('Expected inputs');
+      }
       event.values[0]!.name = name;
       expect(generationCaptureTakeResultSchema.safeParse({ status: 'captured', capture: forged }).success).toBe(false);
     }
     const event = source.events[0];
-    if (event?.kind !== 'inputs') throw new Error('Expected inputs');
+    if (event?.kind !== 'inputs') {
+      throw new Error('Expected inputs');
+    }
     const getter = vi.fn(() => 1);
     const row = [1, 2];
     Object.defineProperty(row, '0', { get: getter });
@@ -184,7 +200,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     const expected = structuredClone(identity);
     const capture = createGenerationCapture({ run, limits, tensorClass: runtime.Tensor });
     const call = capture.beginCall({ context, loadIdentity: identity });
-    if (!call || identity.status !== 'ready') throw new Error('Expected ready Load and recording call');
+    if (!call || identity.status !== 'ready') {
+      throw new Error('Expected ready Load and recording call');
+    }
     identity.selectedCandidate.dtype = 'q4f16';
     call.finish({ outcome: 'rejected' });
     expect(take({ capture }).calls[0]?.loadIdentity).toEqual(expected);
@@ -232,10 +250,14 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(result.unobserved).toEqual(['native-stop-cause', 'native-forward-input', 'kv-bytes']);
     expect(result.calls[0]?.invocations[0]?.stream).toEqual({ status: 'not-attempted' });
     const event = result.events[0];
-    if (event?.kind !== 'inputs') throw new Error('Expected input event');
+    if (event?.kind !== 'inputs') {
+      throw new Error('Expected input event');
+    }
     const idSnapshot = event.values[0]?.snapshot;
     const pixelSnapshot = event.values[1]?.snapshot;
-    if (idSnapshot?.status !== 'captured' || pixelSnapshot?.status !== 'captured') throw new Error('Actual CPU tensors were not captured');
+    if (idSnapshot?.status !== 'captured' || pixelSnapshot?.status !== 'captured') {
+      throw new Error('Actual CPU tensors were not captured');
+    }
     expect(idSnapshot.dtype).toBe('int64');
     expect(idSnapshot.dims).toEqual([1, 2]);
     expect(Array.from(new BigInt64Array(idSnapshot.bytes.buffer))).toEqual([9007199254740993n, 7n]);
@@ -260,7 +282,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     const events = take({ capture }).events;
     expect(events.map(event => event.kind === 'sequence' && event.resultShape)).toEqual(['tensor', 'dictionary']);
     for (const event of events) {
-      if (event.kind !== 'sequence' || event.snapshot.status !== 'captured') throw new Error('Missing native sequence capture');
+      if (event.kind !== 'sequence' || event.snapshot.status !== 'captured') {
+        throw new Error('Missing native sequence capture');
+      }
       expect(Array.from(new BigInt64Array(event.snapshot.bytes.buffer))).toEqual([2n, 3n]);
     }
   });
@@ -284,7 +308,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     invocation.recordInputs({ phase: 'native-kwargs', inputs });
     call.finish({ outcome: 'fulfilled' });
     const event = take({ capture }).events[0];
-    if (event?.kind !== 'inputs') throw new Error('Expected inputs');
+    if (event?.kind !== 'inputs') {
+      throw new Error('Expected inputs');
+    }
     expect(event.values.map(value => value.snapshot.status)).toEqual(['captured', 'not-recorded', 'not-recorded']);
     expect(event.values[1]?.snapshot).toEqual({ status: 'not-recorded', reason: 'not-cpu' });
     expect(event.values[2]?.snapshot).toEqual({ status: 'not-recorded', reason: 'excluded-field' });
@@ -312,7 +338,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(result.calls[0]?.outcome).toBe('rejected');
     expect(result.events.map(event => event.kind)).toEqual(['inputs', 'settings', 'chunk', 'chunk']);
     const settings = result.events[1];
-    if (settings?.kind !== 'settings') throw new Error('Expected settings');
+    if (settings?.kind !== 'settings') {
+      throw new Error('Expected settings');
+    }
     expect(settings.value).toEqual(setting);
     settings.value.budget.maxNewTokens = 99;
     expect(setting.budget.maxNewTokens).toBe(3);
@@ -349,7 +377,9 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     call.finish({ outcome: 'fulfilled' });
     const result = take({ capture });
     const event = result.events[0];
-    if (event?.kind !== 'inputs') throw new Error('Expected inputs');
+    if (event?.kind !== 'inputs') {
+      throw new Error('Expected inputs');
+    }
     expect(event.values.map(value => value.snapshot.status === 'not-recorded' ? value.snapshot.reason : value.snapshot.status)).toEqual(['tensor-limit', 'captured', 'total-tensor-limit']);
     expect(result.incompleteReasons).toContain('tensor-limit');
     expect(result.incompleteReasons).toContain('total-tensor-limit');
@@ -403,9 +433,13 @@ describe('capture receive schemas reject forged or ambiguous data', () => {
   }
   function capturedInput({ result }: { result: ReturnType<typeof validResult> }) {
     const event = result.capture.events[0];
-    if (event?.kind !== 'inputs') throw new Error('Expected input event');
+    if (event?.kind !== 'inputs') {
+      throw new Error('Expected input event');
+    }
     const value = event.values[0];
-    if (value?.snapshot.status !== 'captured') throw new Error('Expected captured tensor');
+    if (value?.snapshot.status !== 'captured') {
+      throw new Error('Expected captured tensor');
+    }
     return { event, value, snapshot: value.snapshot };
   }
 
@@ -518,7 +552,9 @@ describe('native stream token recording and receive limits', () => {
     call.finish({ outcome: 'fulfilled' });
     const result = { status: 'captured' as const, capture: take({ capture }) };
     const event = result.capture.events[0];
-    if (event?.kind !== 'native-stream' || event.detail.kind !== 'tokens') throw new Error('Expected recorded token group');
+    if (event?.kind !== 'native-stream' || event.detail.kind !== 'tokens') {
+      throw new Error('Expected recorded token group');
+    }
     return { result, event, tokens: event.detail };
   }
 

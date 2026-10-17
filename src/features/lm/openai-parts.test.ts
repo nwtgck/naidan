@@ -16,7 +16,8 @@ function node(): AssistantMessageNode {
 async function run({ payload, onChange }: { payload: string, onChange: (node: AssistantMessageNode) => void }) {
   const fetcher = vi.fn(async () => new Response(payload));
   const provider: LmProvider = new OpenAIProvider({ endpoint: 'https://example.invalid/v1', fetcher });
-  const controller = new AbortController(); const message = node();
+  const controller = new AbortController();
+  const message = node();
   const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: message, items: provider.chat({ debug: undefined, messages: [], model: 'm', parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: controller.signal }), abortController: controller, onChange: () => onChange(message) });
   return { message, result, fetcher };
 }
@@ -48,7 +49,9 @@ data: {"choices":[{"delta":{"content":"It is sunny."},"finish_reason":"stop"}]}
     expect(execute).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ args: { city: 'Tokyo' } }));
     expect(fetcher).toHaveBeenCalledTimes(2);
     const request = fetcher.mock.calls[1]?.[1];
-    if (typeof request?.body !== 'string') throw new Error('Expected a serialized API request');
+    if (typeof request?.body !== 'string') {
+      throw new Error('Expected a serialized API request');
+    }
     expect(JSON.parse(request.body).messages).toEqual([
       { role: 'user', content: 'Weather?' },
       { role: 'assistant', tool_calls: [{ id: 'weather-call', type: 'function', function: { name: 'weather', arguments: '{"city":"Tokyo"}' } }] },
@@ -101,7 +104,8 @@ data: {"choices":[{"finish_reason":"stop","delta":{}}]}
     });
     expect(message.parts.map(part => part.type)).toEqual(['reasoning', 'text']);
     expect(message.parts).toMatchObject([{ text: '  R\n', completeness: 'complete' }, { text: '<think>literal</think>', completeness: 'complete' }]);
-    expect(result).toEqual({ type: 'finished', next: 'user' }); expect(fetcher).toHaveBeenCalledOnce();
+    expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it('keeps the final line without newline and supports multiline SSE data events', async () => {
@@ -124,7 +128,8 @@ data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name"
 `,
       onChange: () => {},
     });
-    expect(message.parts.map(part => part.type)).toEqual(['text']); expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
+    expect(message.parts.map(part => part.type)).toEqual(['text']);
+    expect(result).toEqual({ type: 'interrupted', reason: 'limit' });
   });
 
   it('preserves completed calls for caller execution without a provider-internal second request', async () => {
@@ -136,12 +141,14 @@ data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name"
       onChange: () => {},
     });
     expect(message.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: '  {} ' } } });
-    expect(result).toEqual({ type: 'finished', next: 'tool_results' }); expect(fetcher).toHaveBeenCalledOnce();
+    expect(result).toEqual({ type: 'finished', next: 'tool_results' });
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it('does not call EOF a successful completion and keeps received content partial', async () => {
     const { message, result } = await run({ payload: 'data: {"choices":[{"delta":{"content":"A"}}]}\n\n', onChange: () => {} });
-    expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
+    expect(result).toEqual({ type: 'interrupted', reason: 'unknown' });
   });
 
   it('keeps accepted text and surfaces an invalid later event', async () => {
@@ -154,11 +161,13 @@ data: {broken}
 `,
       onChange: () => {},
     });
-    expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(result.type).toBe('error');
+    expect(message.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
+    expect(result.type).toBe('error');
   });
 
   it('rejects conflicting reasoning aliases instead of throwing one away', async () => {
     const { message, result } = await run({ payload: 'data: {"choices":[{"delta":{"reasoning":"A","reasoning_content":"B"}}]}\n\n', onChange: () => {} });
-    expect(message.parts).toEqual([]); expect(result.type).toBe('error');
+    expect(message.parts).toEqual([]);
+    expect(result.type).toBe('error');
   });
 });

@@ -46,7 +46,8 @@ it('requires the Qwen Image 2.1 VAE and VL encoder structures, not the old Qwen 
     ggufFixture({ name: 'lm.gguf', tensors: qwenTextTensors({ width: 4096, layers: 36 }), metadata: { 'general.architecture': 'qwen3vl' }, extraBytes: 0 }).file,
   ];
   const result = await scanImageRepositories({ repositories: files.map((file, i) => repository({ id: `user/${i}`, file })), signal: undefined });
-  const main = result.candidates[0]!; expect(main.family).toBe('qwen-image-2.1');
+  const main = result.candidates[0]!;
+  expect(main.family).toBe('qwen-image-2.1');
   const required = componentRequirements({ family: main.family });
   expect(defaultCompanion({ main, candidates: result.candidates, requirement: required[0]! })).toBe(result.candidates[1]!.id);
   expect(defaultCompanion({ main, candidates: result.candidates, requirement: required[1]! })).toBe(result.candidates[3]!.id);
@@ -56,7 +57,9 @@ it('groups complete GGUF shards without merging file bytes, and blocks missing s
   const files = zImageTensors.slice(0, 2).map((t, i) => ({ path: `model-0000${i + 1}-of-00002.gguf`, file: ggufFixture({ name: `model-0000${i + 1}-of-00002.gguf`, tensors: [t], metadata: { 'split.no': i, 'split.count': 2, 'split.tensors.count': 2 }, extraBytes: 0 }).file }));
   const repo = { id: 'user/group', name: 'group', files };
   const complete = await scanImageRepositories({ repositories: [repo], signal: undefined });
-  expect(complete.candidates).toHaveLength(1); expect(complete.candidates[0]!.issue).toBeUndefined(); expect(complete.candidates[0]!.files).toHaveLength(2);
+  expect(complete.candidates).toHaveLength(1);
+  expect(complete.candidates[0]!.issue).toBeUndefined();
+  expect(complete.candidates[0]!.files).toHaveLength(2);
   const partial = await scanImageRepositories({ repositories: [{ ...repo, files: files.slice(0, 1) }], signal: undefined });
   expect(partial.candidates[0]!.issue).toBeDefined();
 });
@@ -66,7 +69,8 @@ it('resolves safetensors index siblings, retaining relative paths and rejecting 
   const index = new File([JSON.stringify({ weight_map: { x: 'part.safetensors' } })], 'model.safetensors.index.json');
   const repo = { id: 'user/index', name: 'index', files: [{ path: 'encoder/part.safetensors', file: shard }, { path: 'encoder/model.safetensors.index.json', file: index }] };
   const result = await scanImageRepositories({ repositories: [repo], signal: undefined });
-  expect(result.candidates).toHaveLength(1); expect(result.candidates[0]!.files.map(file => file.path)).toEqual(['encoder/model.safetensors.index.json', 'encoder/part.safetensors']);
+  expect(result.candidates).toHaveLength(1);
+  expect(result.candidates[0]!.files.map(file => file.path)).toEqual(['encoder/model.safetensors.index.json', 'encoder/part.safetensors']);
   expect(result.candidates[0]!.issue).toBeUndefined();
   repo.files[1]!.file = new File(['{"weight_map":{"x":"../part.safetensors"}}'], index.name);
   const bad = await scanImageRepositories({ repositories: [repo], signal: undefined });
@@ -76,7 +80,8 @@ it('resolves safetensors index siblings, retaining relative paths and rejecting 
 it('does not infer a model family or compatibility from filenames alone', async () => {
   const file = ggufFixture({ name: 'z_image_turbo-Q4_K.gguf', tensors: [tensor({ name: 'opaque.weight', shape: [4] })], metadata: { 'general.name': 'Qwen Image 2.1' }, extraBytes: 0 }).file;
   const result = await scanImageRepositories({ repositories: [repository({ id: 'user/Qwen-Image', file })], signal: undefined });
-  expect(result.candidates[0]!.family).toBe('unknown'); expect(result.candidates[0]!.classes).toEqual([]);
+  expect(result.candidates[0]!.family).toBe('unknown');
+  expect(result.candidates[0]!.classes).toEqual([]);
 });
 
 it('leaves a dimension-matching encoder without family evidence unverified rather than claiming incompatibility', async () => {

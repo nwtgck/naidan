@@ -34,7 +34,9 @@ function isAsciiEncoded({
   bytes: Uint8Array,
 }): boolean {
   for (const byte of bytes) {
-    if (byte > 0x7F) return false;
+    if (byte > 0x7F) {
+      return false;
+    }
   }
   return true;
 }
@@ -44,7 +46,9 @@ function isAllowedTextCharacter({
 }: {
   codePoint: number,
 }): boolean {
-  if (codePoint >= 0x20 && codePoint !== 0x7F) return true;
+  if (codePoint >= 0x20 && codePoint !== 0x7F) {
+    return true;
+  }
   return codePoint === 0x07
     || codePoint === 0x08
     || codePoint === 0x09
@@ -62,7 +66,9 @@ function isTextLike({
 }): boolean {
   for (const character of text) {
     const codePoint = character.codePointAt(0);
-    if (codePoint === undefined || !isAllowedTextCharacter({ codePoint })) return false;
+    if (codePoint === undefined || !isAllowedTextCharacter({ codePoint })) {
+      return false;
+    }
   }
   return true;
 }
@@ -165,14 +171,18 @@ function decodeSingleByteText({
   const chunkCodeUnits: number[] = [];
 
   const flush = () => {
-    if (chunkCodeUnits.length === 0) return;
+    if (chunkCodeUnits.length === 0) {
+      return;
+    }
     text += String.fromCharCode(...chunkCodeUnits);
     chunkCodeUnits.length = 0;
   };
 
   for (const byte of bytes) {
     if (byte < 0x80) {
-      if (!isAllowedTextCharacter({ codePoint: byte })) return undefined;
+      if (!isAllowedTextCharacter({ codePoint: byte })) {
+        return undefined;
+      }
     } else {
       hasHighByte = true;
       if (byte >= 0x80 && byte <= 0x9F) {
@@ -186,11 +196,15 @@ function decodeSingleByteText({
     }
 
     chunkCodeUnits.push(byte);
-    if (chunkCodeUnits.length === 4096) flush();
+    if (chunkCodeUnits.length === 4096) {
+      flush();
+    }
   }
   flush();
 
-  if (!hasHighByte) return undefined;
+  if (!hasHighByte) {
+    return undefined;
+  }
   return {
     text,
     encoding: hasOnlyNextLineControl
@@ -213,10 +227,18 @@ function buildTextDetails({
     0,
   );
   const lineTerminators: FileCommandLineTerminator[] = [];
-  if (/\r\n/u.test(decoded.text)) lineTerminators.push('crlf');
-  if (/\r(?!\n|$)/u.test(decoded.text)) lineTerminators.push('cr');
-  if (/(^|[^\r])\n/u.test(decoded.text)) lineTerminators.push('lf');
-  if (decoded.text.includes('\u0085')) lineTerminators.push('nel');
+  if (/\r\n/u.test(decoded.text)) {
+    lineTerminators.push('crlf');
+  }
+  if (/\r(?!\n|$)/u.test(decoded.text)) {
+    lineTerminators.push('cr');
+  }
+  if (/(^|[^\r])\n/u.test(decoded.text)) {
+    lineTerminators.push('lf');
+  }
+  if (decoded.text.includes('\u0085')) {
+    lineTerminators.push('nel');
+  }
   return {
     encoding: decoded.encoding,
     hasByteOrderMark: decoded.hasByteOrderMark,
@@ -234,17 +256,25 @@ function shebangInterpreterName({
 }: {
   text: string,
 }): string | undefined {
-  if (!text.startsWith('#!')) return undefined;
+  if (!text.startsWith('#!')) {
+    return undefined;
+  }
 
   const lineEnd = text.search(/[\r\n]/u);
   const line = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim();
-  if (line.length === 0) return undefined;
+  if (line.length === 0) {
+    return undefined;
+  }
 
   const words = line.split(/[\t ]+/u);
   const executable = words[0];
-  if (executable === undefined) return undefined;
+  if (executable === undefined) {
+    return undefined;
+  }
   const executableName = executable.slice(executable.lastIndexOf('/') + 1);
-  if (executableName !== 'env') return executableName;
+  if (executableName !== 'env') {
+    return executableName;
+  }
 
   const envCommand = words[1];
   if (
@@ -262,17 +292,25 @@ function shebangGenericCommand({
 }: {
   text: string,
 }): string | undefined {
-  if (!text.startsWith('#!')) return undefined;
+  if (!text.startsWith('#!')) {
+    return undefined;
+  }
 
   const lineEnd = text.search(/[\r\n]/u);
   const line = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim();
-  if (line.length === 0) return undefined;
+  if (line.length === 0) {
+    return undefined;
+  }
 
   const words = line.split(/[\t ]+/u);
   const executable = words[0];
-  if (executable === undefined) return undefined;
+  if (executable === undefined) {
+    return undefined;
+  }
   const executableName = executable.slice(executable.lastIndexOf('/') + 1);
-  if (executableName !== 'env') return executable;
+  if (executableName !== 'env') {
+    return executable;
+  }
 
   const envCommand = words.slice(1).join(' ');
   return envCommand === '' ? executable : envCommand;
@@ -319,7 +357,9 @@ function classifyStructuredText({
   const htmlCandidateLower = htmlCandidate.toLowerCase();
   const text = buildTextDetails({ decoded });
 
-  if (!isTextLike({ text: normalizedText })) return undefined;
+  if (!isTextLike({ text: normalizedText })) {
+    return undefined;
+  }
 
   const scriptLanguage = classifyScriptLanguage({ text: normalizedText });
   if (scriptLanguage !== undefined) {
@@ -378,7 +418,9 @@ async function classifyBytes({
   }
 
   if (decoded?.encoding === 'utf-16le' || decoded?.encoding === 'utf-16be') {
-    if (!isTextLike({ text: decoded.text })) return { kind: 'data' };
+    if (!isTextLike({ text: decoded.text })) {
+      return { kind: 'data' };
+    }
     return {
       kind: 'utf16_text',
       text: buildTextDetails({ decoded }),
@@ -392,7 +434,9 @@ async function classifyBytes({
 
   if (isLikelyBinary({ bytes }) || decoded === undefined) {
     const singleByteText = decodeSingleByteText({ bytes });
-    if (singleByteText === undefined) return { kind: 'data' };
+    if (singleByteText === undefined) {
+      return { kind: 'data' };
+    }
     const text = buildTextDetails({ decoded: singleByteText });
     switch (singleByteText.encoding) {
     case 'us-ascii':
@@ -411,7 +455,9 @@ async function classifyBytes({
     }
   }
 
-  if (!isTextLike({ text: decoded.text })) return { kind: 'data' };
+  if (!isTextLike({ text: decoded.text })) {
+    return { kind: 'data' };
+  }
 
   const text = buildTextDetails({ decoded });
   switch (decoded.encoding) {

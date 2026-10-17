@@ -22,9 +22,13 @@ const current = shallowRef<Chat | null>(null);
 const hosts: ReturnType<typeof mount>[] = [];
 
 beforeEach(() => {
-  vi.resetAllMocks(); storageCurrent = true; settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } };
+  vi.resetAllMocks();
+  storageCurrent = true;
+  settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } };
   current.value = { id: chatId, groupId: chatGroupId, title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
-  calls.get.mockReturnValue(undefined); calls.target.mockResolvedValue(target); calls.restore.mockResolvedValue(launch);
+  calls.get.mockReturnValue(undefined);
+  calls.target.mockResolvedValue(target);
+  calls.restore.mockResolvedValue(launch);
 });
 
 afterEach(() => hosts.splice(0).forEach(host => host.unmount()));
@@ -41,7 +45,9 @@ async function start({ context, path }: { context: 'present' | 'absent', path: s
     template: '<div />',
   }), { global: { plugins: [router] } });
   hosts.push(host);
-  if (state === undefined) throw new Error('Missing setup');
+  if (state === undefined) {
+    throw new Error('Missing setup');
+  }
   return { state, router, host };
 }
 
@@ -50,43 +56,64 @@ describe('restored embedded launch card', () => {
     const before = structuredClone(current.value);
     const { state, router } = await start({ context: 'present', path: '/chat/saved-chat' });
     expect(state.restoration.value).toBe('checking');
-    await flushPromises(); expect(state.launch.value).toEqual(launch); expect(state.restoration.value).toBe('idle');
+    await flushPromises();
+    expect(state.launch.value).toEqual(launch);
+    expect(state.restoration.value).toBe('idle');
     expect(state.launch.value?.requestedVariant).toBe('Q4_K_M');
-    expect(current.value).toEqual(before); expect(current.value).not.toHaveProperty('modelLaunch');
-    expect(router.currentRoute.value.fullPath).toBe('/chat/saved-chat'); expect(calls.restore).toHaveBeenCalledOnce();
+    expect(current.value).toEqual(before);
+    expect(current.value).not.toHaveProperty('modelLaunch');
+    expect(router.currentRoute.value.fullPath).toBe('/chat/saved-chat');
+    expect(calls.restore).toHaveBeenCalledOnce();
   });
 
   it('does not discover external metadata for an ordinary bookmark with no model-link context', async () => {
-    const { state } = await start({ context: 'absent', path: '/chat/saved-chat' }); await flushPromises();
-    expect(state.launch.value).toBeUndefined(); expect(calls.target).not.toHaveBeenCalled();
+    const { state } = await start({ context: 'absent', path: '/chat/saved-chat' });
+    await flushPromises();
+    expect(state.launch.value).toBeUndefined();
+    expect(calls.target).not.toHaveBeenCalled();
   });
 
   it('does not let a different split pane consume or rewrite this route context', async () => {
     const { state, router } = await start({ context: 'present', path: '/chat/another-chat' });
-    calls.get.mockReturnValue(launch); const original = structuredClone(router.options.history.state);
-    state.synchronize(); await flushPromises();
-    expect(state.isCurrentRoute.value).toBe(false); expect(calls.target).not.toHaveBeenCalled();
+    calls.get.mockReturnValue(launch);
+    const original = structuredClone(router.options.history.state);
+    state.synchronize();
+    await flushPromises();
+    expect(state.isCurrentRoute.value).toBe(false);
+    expect(calls.target).not.toHaveBeenCalled();
     expect(router.options.history.state).toEqual(original);
   });
 
   it('cancels an old restore after navigation away without resurrecting the launch', async () => {
-    const gate = Promise.withResolvers<ModelLaunchTarget>(); calls.target.mockReturnValueOnce(gate.promise);
+    const gate = Promise.withResolvers<ModelLaunchTarget>();
+    calls.target.mockReturnValueOnce(gate.promise);
     const { router, state } = await start({ context: 'present', path: '/chat/saved-chat' });
-    await router.push('/'); gate.resolve(target); await flushPromises();
-    expect(calls.restore).not.toHaveBeenCalled(); expect(state.launch.value).toBeUndefined();
+    await router.push('/');
+    gate.resolve(target);
+    await flushPromises();
+    expect(calls.restore).not.toHaveBeenCalled();
+    expect(state.launch.value).toBeUndefined();
   });
 
   it('rejects restoration when saved endpoint/model or membership no longer permits it', async () => {
     calls.restore.mockResolvedValueOnce(undefined);
-    const { state } = await start({ context: 'present', path: '/chat/saved-chat' }); await flushPromises();
-    expect(state.restoration.value).toBe('failed'); expect(state.launch.value).toBeUndefined();
-    state.retryRestoration(); await flushPromises(); expect(state.launch.value).toEqual(launch);
+    const { state } = await start({ context: 'present', path: '/chat/saved-chat' });
+    await flushPromises();
+    expect(state.restoration.value).toBe('failed');
+    expect(state.launch.value).toBeUndefined();
+    state.retryRestoration();
+    await flushPromises();
+    expect(state.launch.value).toEqual(launch);
   });
 
   it('does not hydrate a different storage provider after an asynchronous lookup', async () => {
-    const gate = Promise.withResolvers<ModelLaunchTarget>(); calls.target.mockReturnValueOnce(gate.promise);
+    const gate = Promise.withResolvers<ModelLaunchTarget>();
+    calls.target.mockReturnValueOnce(gate.promise);
     const { state } = await start({ context: 'present', path: '/chat/saved-chat' });
-    storageCurrent = false; gate.resolve(target); await flushPromises();
-    expect(calls.restore).not.toHaveBeenCalled(); expect(state.launch.value).toBeUndefined();
+    storageCurrent = false;
+    gate.resolve(target);
+    await flushPromises();
+    expect(calls.restore).not.toHaveBeenCalled();
+    expect(state.launch.value).toBeUndefined();
   });
 });

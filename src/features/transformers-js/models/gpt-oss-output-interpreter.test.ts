@@ -16,7 +16,9 @@ describe("GptOssOutputInterpreter", () => {
       "<|message|>",
       "{\"city\":\"Tokyo\"}",
       "<|call|>",
-    ]) interpreter.feed({ output });
+    ]) {
+      interpreter.feed({ output });
+    }
 
     expect(onCall).toHaveBeenCalledTimes(1);
     expect(onChunk).not.toHaveBeenCalled();
@@ -40,7 +42,9 @@ describe("GptOssOutputInterpreter", () => {
     for (const output of [
       "<|start|>", "assistant", "<|channel|>", "analysis", "<|message|>", "Think",
       "<|end|>", "<|start|>", "assistant", "<|channel|>", "final", "<|message|>", "Done", "<|return|>",
-    ]) interpreter.feed({ output });
+    ]) {
+      interpreter.feed({ output });
+    }
 
     expect(chunks.join("")).toBe("<think>Think</think>Done");
   });

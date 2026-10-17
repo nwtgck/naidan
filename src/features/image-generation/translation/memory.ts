@@ -18,22 +18,33 @@ export function createImageTranslationMemory({ maxEntries, maxCharacters }: { ma
   }
   function save({ key, entry }: { key: ImageTranslationKey, entry: ImageTranslationMemoryEntry }): boolean {
     const identity = keyOf({ key });
-    if (!entry.text.trim() || entry.sourceText.length + entry.text.length > maxCharacters || maxEntries < 1) return false;
-    entries.delete(identity); entries.set(identity, { ...entry });
+    if (!entry.text.trim() || entry.sourceText.length + entry.text.length > maxCharacters || maxEntries < 1) {
+      return false;
+    }
+    entries.delete(identity);
+    entries.set(identity, { ...entry });
     let characters = [...entries.values()].reduce((total, value) => total + value.sourceText.length + value.text.length, 0);
     for (const [oldKey, value] of entries) {
-      if (entries.size <= maxEntries && characters <= maxCharacters) break;
-      entries.delete(oldKey); characters -= value.sourceText.length + value.text.length;
+      if (entries.size <= maxEntries && characters <= maxCharacters) {
+        break;
+      }
+      entries.delete(oldKey);
+      characters -= value.sourceText.length + value.text.length;
     }
     revision.value++;
     return true;
   }
   function clear(): void {
-    entries.clear(); revision.value++;
+    entries.clear();
+    revision.value++;
   }
   function removeSession({ storeId, sessionId }: { storeId: string | undefined, sessionId: string }): void {
     const prefix = JSON.stringify([storeId, sessionId]).slice(0, -1) + ',';
-    for (const key of entries.keys()) if (key.startsWith(prefix)) entries.delete(key);
+    for (const key of entries.keys()) {
+      if (key.startsWith(prefix)) {
+        entries.delete(key);
+      }
+    }
     revision.value++;
   }
   return { read, save, clear, removeSession };

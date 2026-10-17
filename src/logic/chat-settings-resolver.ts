@@ -53,7 +53,9 @@ function applyLmParameterOverrides({
   target: LmParameters,
   source: ResolvableLmParameters | LmParameters | undefined,
 }): void {
-  if (source === undefined) return;
+  if (source === undefined) {
+    return;
+  }
 
   // Keep resolution keyed by the canonical domain shape. New top-level or
   // reasoning parameters must fail typechecking until their inheritance rules
@@ -61,10 +63,14 @@ function applyLmParameterOverrides({
   for (const key of LM_PARAMETER_KEYS) {
     switch (key) {
     case 'temperature':
-      if (source.temperature !== undefined) target.temperature = source.temperature;
+      if (source.temperature !== undefined) {
+        target.temperature = source.temperature;
+      }
       break;
     case 'topP':
-      if (source.topP !== undefined) target.topP = source.topP;
+      if (source.topP !== undefined) {
+        target.topP = source.topP;
+      }
       break;
     case 'maxCompletionTokens':
       if (source.maxCompletionTokens !== undefined) {
@@ -72,13 +78,19 @@ function applyLmParameterOverrides({
       }
       break;
     case 'presencePenalty':
-      if (source.presencePenalty !== undefined) target.presencePenalty = source.presencePenalty;
+      if (source.presencePenalty !== undefined) {
+        target.presencePenalty = source.presencePenalty;
+      }
       break;
     case 'frequencyPenalty':
-      if (source.frequencyPenalty !== undefined) target.frequencyPenalty = source.frequencyPenalty;
+      if (source.frequencyPenalty !== undefined) {
+        target.frequencyPenalty = source.frequencyPenalty;
+      }
       break;
     case 'stop':
-      if (source.stop !== undefined) target.stop = [...source.stop];
+      if (source.stop !== undefined) {
+        target.stop = [...source.stop];
+      }
       break;
     case 'reasoning':
       for (const reasoningKey of REASONING_PARAMETER_KEYS) {
@@ -106,7 +118,9 @@ function applyLmParameterOverrides({
 /** Layers are supplied from lowest to highest precedence. */
 export function resolveLmParameterLayers({ layers }: { layers: readonly (LmParameters | undefined)[] }): LmParameters | undefined {
   const target: LmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } };
-  for (const source of layers) applyLmParameterOverrides({ target, source });
+  for (const source of layers) {
+    applyLmParameterOverrides({ target, source });
+  }
   return normalizeLmParameters({ lmParameters: target });
 }
 
@@ -160,7 +174,9 @@ function resolveSettingsTitleGeneration({
   titleGeneration?: SettingsTitleGeneration,
   sameScope: ResolvedNormalGeneration,
 }): ResolvedTitleGeneration {
-  if (titleGeneration === 'disabled') return 'disabled';
+  if (titleGeneration === 'disabled') {
+    return 'disabled';
+  }
   return resolveLocalTitleGeneration({
     titleGeneration: titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS },
     sameScope,
@@ -201,8 +217,12 @@ function titleSource({
   chat: Chat,
   group: ChatGroup | null | undefined,
 }): 'chat' | 'chat_group' | 'global' {
-  if (hasLocalTitleGenerationOverride({ titleGeneration: chat.titleGeneration })) return 'chat';
-  if (hasLocalTitleGenerationOverride({ titleGeneration: group?.titleGeneration })) return 'chat_group';
+  if (hasLocalTitleGenerationOverride({ titleGeneration: chat.titleGeneration })) {
+    return 'chat';
+  }
+  if (hasLocalTitleGenerationOverride({ titleGeneration: group?.titleGeneration })) {
+    return 'chat_group';
+  }
   return 'global';
 }
 
@@ -264,7 +284,9 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   });
 
   let systemPrompts: string[] = [];
-  if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
+  if (globalSettings.systemPrompt) {
+    systemPrompts.push(globalSettings.systemPrompt);
+  }
 
   const groupSystemPrompt = group?.systemPrompt;
   if (groupSystemPrompt) {
@@ -275,7 +297,9 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
       systemPrompts = groupSystemPrompt.content ? [groupSystemPrompt.content] : [];
       break;
     case 'append':
-      if (groupSystemPrompt.content) systemPrompts.push(groupSystemPrompt.content);
+      if (groupSystemPrompt.content) {
+        systemPrompts.push(groupSystemPrompt.content);
+      }
       break;
     default: {
       const _ex: never = groupSystemPrompt;
@@ -293,7 +317,9 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
       systemPrompts = chatSystemPrompt.content ? [chatSystemPrompt.content] : [];
       break;
     case 'append':
-      if (chatSystemPrompt.content) systemPrompts.push(chatSystemPrompt.content);
+      if (chatSystemPrompt.content) {
+        systemPrompts.push(chatSystemPrompt.content);
+      }
       break;
     default: {
       const _ex: never = chatSystemPrompt;

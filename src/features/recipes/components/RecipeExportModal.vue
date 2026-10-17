@@ -98,7 +98,9 @@ function removeModelPattern({ id }: { id: RecipeModelPatternEditorItemId }) {
 }
 
 function isRegexValid({ pattern }: { pattern: string }): boolean {
-  if (!pattern) return true;
+  if (!pattern) {
+    return true;
+  }
   try {
     new RegExp(pattern);
     return true;

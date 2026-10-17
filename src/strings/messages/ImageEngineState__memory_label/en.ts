@@ -8,6 +8,9 @@ export const ImageEngineState__memory_label = ({ measure }: { measure: "wasm" | 
   case "last-cpu-buffers": return "Last reported CPU runtime buffers";
   case "last-non-cpu-buffers": return "Last reported non-CPU runtime buffers";
   case "last-unknown-buffers": return "Last reported runtime buffers (device unknown)";
-  default: { const exhaustive: never = measure; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = measure;
+    throw new Error(String(exhaustive));
+  }
   }
 };

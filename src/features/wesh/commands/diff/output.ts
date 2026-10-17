@@ -674,8 +674,10 @@ async function writeContextSection({
         break;
       }
       switch (current.kind) {
-      case 'delete': hasDelete = true; break;
-      case 'insert': hasInsert = true; break;
+      case 'delete': hasDelete = true;
+        break;
+      case 'insert': hasInsert = true;
+        break;
       case 'equal': break;
       default: {
         const _ex: never = current;
@@ -929,7 +931,9 @@ function getValidUtf8SequenceLength({
   index: number,
 }): number {
   const first = bytes[index];
-  if (first === undefined || first < 0x80) return 1;
+  if (first === undefined || first < 0x80) {
+    return 1;
+  }
   const second = bytes[index + 1];
   if (first >= 0xc2 && first <= 0xdf) {
     return isUtf8ContinuationByte({ value: second }) ? 2 : 1;
@@ -1151,7 +1155,9 @@ function padSideBySideToColumn({
   let column = currentColumn;
   while (useTabs) {
     const nextTabStop = column + (tabSize - (column % tabSize));
-    if (nextTabStop > targetColumn) break;
+    if (nextTabStop > targetColumn) {
+      break;
+    }
     text += '\t';
     column = nextTabStop;
   }
@@ -1417,10 +1423,14 @@ async function writeSideBySide({
       }
       switch (current.kind) {
       case 'delete':
-        for (let offset = 0; offset < current.length; offset++) deleted.push(current.leftStart + offset);
+        for (let offset = 0; offset < current.length; offset++) {
+          deleted.push(current.leftStart + offset);
+        }
         break;
       case 'insert':
-        for (let offset = 0; offset < current.length; offset++) inserted.push(current.rightStart + offset);
+        for (let offset = 0; offset < current.length; offset++) {
+          inserted.push(current.rightStart + offset);
+        }
         break;
       case 'equal': break;
       default: {
@@ -1626,7 +1636,9 @@ async function writeIfdef({
   let operationIndex = 0;
   while (operationIndex < operations.length) {
     const operation = operations[operationIndex];
-    if (operation === undefined) break;
+    if (operation === undefined) {
+      break;
+    }
     if (isEqualOperation({ operation })) {
       for (let offset = 0; offset < operation.length; offset++) {
         await writeScriptInputLine({
@@ -1648,10 +1660,14 @@ async function writeIfdef({
     let hasInsert = false;
     while (operationIndex < operations.length) {
       const current = operations[operationIndex];
-      if (current === undefined || isEqualOperation({ operation: current })) break;
+      if (current === undefined || isEqualOperation({ operation: current })) {
+        break;
+      }
       switch (current.kind) {
-      case 'delete': hasDelete = true; break;
-      case 'insert': hasInsert = true; break;
+      case 'delete': hasDelete = true;
+        break;
+      case 'insert': hasInsert = true;
+        break;
       case 'equal': break;
       default: {
         const _ex: never = current;
@@ -1664,7 +1680,9 @@ async function writeIfdef({
     if (ignoredOperationStarts.has(blockStart)) {
       for (let index = blockStart; index < operationIndex; index++) {
         const current = operations[index];
-        if (current === undefined) continue;
+        if (current === undefined) {
+          continue;
+        }
         switch (current.kind) {
         case 'delete':
           for (let offset = 0; offset < current.length; offset++) {
@@ -1691,12 +1709,17 @@ async function writeIfdef({
       continue;
     }
 
-    if (hasDelete) await writer.writeText({ text: `#ifndef ${name}\n` });
-    else await writer.writeText({ text: `#ifdef ${name}\n` });
+    if (hasDelete) {
+      await writer.writeText({ text: `#ifndef ${name}\n` });
+    } else {
+      await writer.writeText({ text: `#ifdef ${name}\n` });
+    }
 
     for (let index = blockStart; index < operationIndex; index++) {
       const current = operations[index];
-      if (current === undefined) continue;
+      if (current === undefined) {
+        continue;
+      }
       switch (current.kind) {
       case 'delete':
         for (let offset = 0; offset < current.length; offset++) {
@@ -1720,11 +1743,15 @@ async function writeIfdef({
       }
     }
 
-    if (hasDelete && hasInsert) await writer.writeText({ text: `#else /* ${name} */\n` });
+    if (hasDelete && hasInsert) {
+      await writer.writeText({ text: `#else /* ${name} */\n` });
+    }
 
     for (let index = blockStart; index < operationIndex; index++) {
       const current = operations[index];
-      if (current === undefined) continue;
+      if (current === undefined) {
+        continue;
+      }
       switch (current.kind) {
       case 'insert':
         for (let offset = 0; offset < current.length; offset++) {

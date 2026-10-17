@@ -17,8 +17,12 @@ const SIMPLE_ESCAPES: Readonly<Record<string, string>> = {
 };
 
 function encodeLegacyUtf8Bytes({ value }: { value: number }): readonly number[] {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) return [];
-  if (value <= 0x7f) return [value];
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) {
+    return [];
+  }
+  if (value <= 0x7f) {
+    return [value];
+  }
 
   let continuationCount: 1 | 2 | 3 | 4 | 5;
   let prefix: number;
@@ -50,7 +54,9 @@ function encodeLegacyUtf8Bytes({ value }: { value: number }): readonly number[] 
 }
 
 function decodeUnicodeEscape({ value }: { value: number }): string {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) return '';
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) {
+    return '';
+  }
   if (value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)) {
     return String.fromCodePoint(value);
   }
@@ -63,16 +69,26 @@ function decodeUnicodeEscape({ value }: { value: number }): string {
 }
 
 function asciiHexDigitValue({ value }: { value: string | undefined }): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const code = value.charCodeAt(0);
-  if (code >= 0x30 && code <= 0x39) return code - 0x30;
-  if (code >= 0x41 && code <= 0x46) return code - 0x41 + 10;
-  if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
+  if (code >= 0x30 && code <= 0x39) {
+    return code - 0x30;
+  }
+  if (code >= 0x41 && code <= 0x46) {
+    return code - 0x41 + 10;
+  }
+  if (code >= 0x61 && code <= 0x66) {
+    return code - 0x61 + 10;
+  }
   return undefined;
 }
 
 function asciiOctalDigitValue({ value }: { value: string | undefined }): number | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   const code = value.charCodeAt(0);
   return code >= 0x30 && code <= 0x37 ? code - 0x30 : undefined;
 }
@@ -99,7 +115,9 @@ function readEscapeInteger({
     const digit = base === 16
       ? asciiHexDigitValue({ value: text[nextIndex] })
       : asciiOctalDigitValue({ value: text[nextIndex] });
-    if (digit === undefined) break;
+    if (digit === undefined) {
+      break;
+    }
     value = value * base + digit;
     digits += 1;
     nextIndex += 1;
@@ -172,7 +190,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         throw new Error('Missing Bash control escape operand byte');
       }
       const controlValue = firstByte === 0x3f ? 0x7f : firstByte & 0x1f;
-      if (controlValue === 0) return finishAtNul();
+      if (controlValue === 0) {
+        return finishAtNul();
+      }
       output.push(shellByteValueToText({ byte: controlValue }));
       for (let byteIndex = 1; byteIndex < operandBytes.length; byteIndex += 1) {
         const byte = operandBytes[byteIndex];
@@ -199,7 +219,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         literalStart = index;
         continue;
       }
-      if (parsed.value === 0) return finishAtNul();
+      if (parsed.value === 0) {
+        return finishAtNul();
+      }
       output.push(shellByteValueToText({ byte: parsed.value }));
       index = parsed.nextIndex;
       literalStart = index;
@@ -229,7 +251,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         literalStart = index;
         continue;
       }
-      if (parsed.value === 0) return finishAtNul();
+      if (parsed.value === 0) {
+        return finishAtNul();
+      }
       output.push(decodeUnicodeEscape({ value: parsed.value }));
       index = parsed.nextIndex;
       literalStart = index;
@@ -244,7 +268,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         base: 8,
       });
       const byte = parsed.value & 0xff;
-      if (byte === 0) return finishAtNul();
+      if (byte === 0) {
+        return finishAtNul();
+      }
       output.push(shellByteValueToText({ byte }));
       index = parsed.nextIndex;
       literalStart = index;

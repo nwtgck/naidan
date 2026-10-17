@@ -28,8 +28,12 @@ describe('Git wildmatch translation', () => {
     ];
     for (const { pattern, matches, rejects } of cases) {
       const matcher = compilePathspec({ pattern });
-      for (const value of matches) expect(matcher.matches({ value })).toBe(true);
-      for (const value of rejects) expect(matcher.matches({ value })).toBe(false);
+      for (const value of matches) {
+        expect(matcher.matches({ value })).toBe(true);
+      }
+      for (const value of rejects) {
+        expect(matcher.matches({ value })).toBe(false);
+      }
     }
   });
 

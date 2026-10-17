@@ -39,7 +39,9 @@ async function peelTagObject({ files, repository, objectId, depth = 0, objectRea
   depth?: number,
   objectReadCache?: GitObjectReadCache,
 }): Promise<PeeledTagObject> {
-  if (depth > 16) throw new Error(`tag chain is too deep at ${objectId}`);
+  if (depth > 16) {
+    throw new Error(`tag chain is too deep at ${objectId}`);
+  }
   const object = await readObject({ files, repository, objectId, cache: objectReadCache });
   switch (object.type) {
   case 'blob':
@@ -49,7 +51,9 @@ async function peelTagObject({ files, repository, objectId, depth = 0, objectRea
   case 'tag': {
     const text = new TextDecoder().decode(object.body);
     const match = /^object ([0-9a-f]{40})$/mu.exec(text);
-    if (match === null) throw new Error(`corrupt tag ${objectId}: object header is missing`);
+    if (match === null) {
+      throw new Error(`corrupt tag ${objectId}: object header is missing`);
+    }
     return peelTagObject({
       files,
       repository,
@@ -100,10 +104,14 @@ function parseRevisionExpression({ expression }: { expression: string }): {
   suffixes: RevisionSuffix[],
 } {
   const specialIndex = expression.search(/[~^]/u);
-  if (specialIndex < 0) return { base: expression, suffixes: [] };
+  if (specialIndex < 0) {
+    return { base: expression, suffixes: [] };
+  }
   const base = expression.slice(0, specialIndex);
   const suffixText = expression.slice(specialIndex);
-  if (base.length === 0) throw ambiguousRevisionError({ expression });
+  if (base.length === 0) {
+    throw ambiguousRevisionError({ expression });
+  }
 
   const suffixes: RevisionSuffix[] = [];
   let offset = 0;
@@ -115,11 +123,17 @@ function parseRevisionExpression({ expression }: { expression: string }): {
     offset += 1;
     if (marker === '^' && suffixText[offset] === '{') {
       const close = suffixText.indexOf('}', offset + 1);
-      if (close < 0) throw new Error(`invalid revision suffix in '${expression}'`);
+      if (close < 0) {
+        throw new Error(`invalid revision suffix in '${expression}'`);
+      }
       const expected = suffixText.slice(offset + 1, close);
-      if (expected === '') suffixes.push({ type: 'peel', expected: 'any' });
-      else if (expected === 'commit') suffixes.push({ type: 'peel', expected: 'commit' });
-      else throw new Error(`unsupported revision peel type '${expected}'`);
+      if (expected === '') {
+        suffixes.push({ type: 'peel', expected: 'any' });
+      } else if (expected === 'commit') {
+        suffixes.push({ type: 'peel', expected: 'commit' });
+      } else {
+        throw new Error(`unsupported revision peel type '${expected}'`);
+      }
       offset = close + 1;
       continue;
     }
@@ -149,7 +163,9 @@ async function resolveAbbreviatedObjectId({ files, repository, prefix }: {
   repository: GitRepository,
   prefix: string,
 }): Promise<string | undefined> {
-  if (!/^[0-9a-f]{4,39}$/u.test(prefix)) return undefined;
+  if (!/^[0-9a-f]{4,39}$/u.test(prefix)) {
+    return undefined;
+  }
   const matches = new Set<string>();
   const looseDirectory = joinPath({
     base: repository.commonDirPath,
@@ -158,9 +174,15 @@ async function resolveAbbreviatedObjectId({ files, repository, prefix }: {
   if (await pathExists({ files, path: looseDirectory })) {
     const suffixPrefix = prefix.slice(2);
     for await (const entry of files.readDir({ path: looseDirectory })) {
-      if (entry.type !== 'file' || !/^[0-9a-f]{38}$/u.test(entry.name)) continue;
-      if (entry.name.startsWith(suffixPrefix)) matches.add(`${prefix.slice(0, 2)}${entry.name}`);
-      if (matches.size > 1) break;
+      if (entry.type !== 'file' || !/^[0-9a-f]{38}$/u.test(entry.name)) {
+        continue;
+      }
+      if (entry.name.startsWith(suffixPrefix)) {
+        matches.add(`${prefix.slice(0, 2)}${entry.name}`);
+      }
+      if (matches.size > 1) {
+        break;
+      }
     }
   }
 
@@ -168,18 +190,26 @@ async function resolveAbbreviatedObjectId({ files, repository, prefix }: {
     const packDirectory = joinPath({ base: repository.commonDirPath, child: 'objects/pack' });
     if (await pathExists({ files, path: packDirectory })) {
       for await (const entry of files.readDir({ path: packDirectory })) {
-        if (entry.type !== 'file' || !entry.name.endsWith('.idx')) continue;
+        if (entry.type !== 'file' || !entry.name.endsWith('.idx')) {
+          continue;
+        }
         const packIndex = await readPackIndex({ files, repository, indexFileName: entry.name });
         for (const objectId of findPackIndexObjectIdsByPrefix({ packIndex, prefix, limit: 2 })) {
           matches.add(objectId);
-          if (matches.size > 1) break;
+          if (matches.size > 1) {
+            break;
+          }
         }
-        if (matches.size > 1) break;
+        if (matches.size > 1) {
+          break;
+        }
       }
     }
   }
 
-  if (matches.size > 1) throw new Error(`short object ID ${prefix} is ambiguous`);
+  if (matches.size > 1) {
+    throw new Error(`short object ID ${prefix} is ambiguous`);
+  }
   return matches.values().next().value as string | undefined;
 }
 
@@ -191,7 +221,9 @@ async function resolveBaseRevision({ files, repository, base, objectReadCache }:
 }): Promise<string> {
   if (base === 'HEAD') {
     const head = await readHead({ files, repository });
-    if (head.objectId === undefined) throw ambiguousRevisionError({ expression: base });
+    if (head.objectId === undefined) {
+      throw ambiguousRevisionError({ expression: base });
+    }
     return head.objectId;
   }
 
@@ -210,11 +242,15 @@ async function resolveBaseRevision({ files, repository, base, objectReadCache }:
     ];
   for (const refName of candidates) {
     const objectId = await readRef({ files, repository, refName });
-    if (objectId !== undefined) return objectId;
+    if (objectId !== undefined) {
+      return objectId;
+    }
   }
 
   const abbreviated = await resolveAbbreviatedObjectId({ files, repository, prefix: base });
-  if (abbreviated !== undefined) return abbreviated;
+  if (abbreviated !== undefined) {
+    return abbreviated;
+  }
 
   throw ambiguousRevisionError({ expression: base });
 }
@@ -232,10 +268,14 @@ export async function resolveRevision({ files, repository, expression, objectRea
     switch (suffix.type) {
     case 'parent': {
       objectId = await peelToCommitObjectId({ files, repository, objectId, objectReadCache });
-      if (suffix.count === 0) break;
+      if (suffix.count === 0) {
+        break;
+      }
       const commit = await readCommit({ files, repository, objectId, objectReadCache });
       const parent = commit.parentObjectIds[suffix.count - 1];
-      if (parent === undefined) throw ambiguousRevisionError({ expression });
+      if (parent === undefined) {
+        throw ambiguousRevisionError({ expression });
+      }
       objectId = parent;
       break;
     }
@@ -244,7 +284,9 @@ export async function resolveRevision({ files, repository, expression, objectRea
       for (let count = 0; count < suffix.count; count += 1) {
         const commit = await readCommit({ files, repository, objectId, objectReadCache });
         const parent = commit.parentObjectIds[0];
-        if (parent === undefined) throw ambiguousRevisionError({ expression });
+        if (parent === undefined) {
+          throw ambiguousRevisionError({ expression });
+        }
         objectId = parent;
       }
       break;
@@ -287,10 +329,14 @@ export async function resolveRevisionPath({ files, repository, expression }: {
   expression: string,
 }): Promise<{ objectId: string, mode: number }> {
   const colonIndex = expression.indexOf(':');
-  if (colonIndex <= 0) throw new Error(`invalid object name '${expression}'`);
+  if (colonIndex <= 0) {
+    throw new Error(`invalid object name '${expression}'`);
+  }
   const revisionExpression = expression.slice(0, colonIndex);
   const path = expression.slice(colonIndex + 1).replace(/^\/+/, '');
-  if (path.length === 0) throw new Error(`invalid object name '${expression}'`);
+  if (path.length === 0) {
+    throw new Error(`invalid object name '${expression}'`);
+  }
   const objectReadCache = createGitObjectReadCache();
   const commitObjectId = await resolveCommitRevision({
     files,
@@ -306,7 +352,9 @@ export async function resolveRevisionPath({ files, repository, expression }: {
     path,
     objectReadCache,
   });
-  if (entry === undefined) throw new Error(`path '${path}' does not exist in '${revisionExpression}'`);
+  if (entry === undefined) {
+    throw new Error(`path '${path}' does not exist in '${revisionExpression}'`);
+  }
   return { objectId: entry.objectId, mode: entry.mode };
 }
 

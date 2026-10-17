@@ -204,7 +204,9 @@ function normalizeLineBytes({
   for (const byte of bytes) {
     if (options.ignoreTabExpansion && byte === 0x09) {
       const spaces = options.tabSize - (column % options.tabSize);
-      for (let index = 0; index < spaces; index++) values.push(0x20);
+      for (let index = 0; index < spaces; index++) {
+        values.push(0x20);
+      }
       column += spaces;
     } else {
       values.push(byte);
@@ -222,7 +224,9 @@ function normalizeLineBytes({
         pendingWhitespace = true;
         continue;
       }
-      if (pendingWhitespace) collapsed.push(0x20);
+      if (pendingWhitespace) {
+        collapsed.push(0x20);
+      }
       collapsed.push(byte);
       pendingWhitespace = false;
     }
@@ -312,7 +316,9 @@ export function createLineComparator({
     if (leftComparable.normalized !== undefined && rightComparable.normalized !== undefined) {
       const leftNormalized = leftComparable.normalized[leftIndex];
       const rightNormalized = rightComparable.normalized[rightIndex];
-      if (leftNormalized === undefined || rightNormalized === undefined) return false;
+      if (leftNormalized === undefined || rightNormalized === undefined) {
+        return false;
+      }
       return areBytesIdentical({ left: leftNormalized, right: rightNormalized });
     }
     return areBytesIdentical({

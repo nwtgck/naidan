@@ -10,7 +10,9 @@ vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove
 afterEach(() => vi.restoreAllMocks());
 
 function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
-  const fields = new Map<string, number | bigint>(); const order: string[] = []; let allocation = 100n;
+  const fields = new Map<string, number | bigint>();
+  const order: string[] = [];
+  let allocation = 100n;
   const api = {
     mtmd_context_params_default: vi.fn(async () => {}),
     mtmd_init_from_file: vi.fn(async () => 500n),
@@ -18,10 +20,12 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
       order.push('native-free');
     }),
   };
-  const addFunction = vi.fn(() => 7); const removeFunction = vi.fn(() => {
+  const addFunction = vi.fn(() => 7);
+  const removeFunction = vi.fn(() => {
     order.push('callback-free');
   });
-  const close = vi.fn(); const free = vi.fn();
+  const close = vi.fn();
+  const free = vi.fn();
   const core = {
     pointerBytes,
     api,
@@ -42,45 +46,59 @@ describe('projector callback ownership', () => {
     const f = fixture({ pointerBytes });
     const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'on', signal: undefined });
     expect(f.addFunction).toHaveBeenCalledWith(expect.any(Function), pointerBytes === 8 ? 'ijij' : 'iiii');
-    expect(f.fields.get('cb_eval')).toBe(7n); expect(f.fields.get('cb_eval_user_data')).toBe(0n);
-    expect(f.removeFunction).not.toHaveBeenCalled(); expect(f.close).toHaveBeenCalledOnce();
-    await projector.release(); await projector.release();
+    expect(f.fields.get('cb_eval')).toBe(7n);
+    expect(f.fields.get('cb_eval_user_data')).toBe(0n);
+    expect(f.removeFunction).not.toHaveBeenCalled();
+    expect(f.close).toHaveBeenCalledOnce();
+    await projector.release();
+    await projector.release();
     expect(f.order).toEqual(['native-free', 'callback-free']);
   });
 
   it('installs no callback with debugging off', async () => {
     const f = fixture({ pointerBytes: 4 });
     const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'off', signal: undefined });
-    expect(f.fields.get('cb_eval')).toBe(0n); expect(f.addFunction).not.toHaveBeenCalled();
-    await projector.release(); expect(f.removeFunction).not.toHaveBeenCalled();
+    expect(f.fields.get('cb_eval')).toBe(0n);
+    expect(f.addFunction).not.toHaveBeenCalled();
+    await projector.release();
+    expect(f.removeFunction).not.toHaveBeenCalled();
   });
 
   it('releases a callback when native initialization fails', async () => {
-    const f = fixture({ pointerBytes: 8 }); f.api.mtmd_init_from_file.mockResolvedValue(0n);
+    const f = fixture({ pointerBytes: 8 });
+    f.api.mtmd_init_from_file.mockResolvedValue(0n);
     await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined })).rejects.toThrow('unsupported-input');
-    expect(f.order).toEqual(['callback-free']); expect(f.close).toHaveBeenCalledOnce(); expect(f.free).toHaveBeenCalledTimes(2);
+    expect(f.order).toEqual(['callback-free']);
+    expect(f.close).toHaveBeenCalledOnce();
+    expect(f.free).toHaveBeenCalledTimes(2);
   });
 
   it('frees a newly initialized projector before its callback when cancellation arrives during loading', async () => {
-    const f = fixture({ pointerBytes: 8 }); const controller = new AbortController();
+    const f = fixture({ pointerBytes: 8 });
+    const controller = new AbortController();
     f.api.mtmd_init_from_file.mockImplementation(async () => {
-      controller.abort(); return 500n;
+      controller.abort();
+      return 500n;
     });
     await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: controller.signal })).rejects.toThrow('aborted');
-    expect(f.order).toEqual(['native-free', 'callback-free']); expect(f.close).toHaveBeenCalledOnce();
+    expect(f.order).toEqual(['native-free', 'callback-free']);
+    expect(f.close).toHaveBeenCalledOnce();
   });
 
   it('does not remove a callback if native projector release fails', async () => {
     const f = fixture({ pointerBytes: 8 });
     const projector = await loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: undefined });
     f.api.mtmd_free.mockRejectedValueOnce(new Error('native release failed'));
-    await expect(projector.release()).rejects.toThrow(); expect(f.removeFunction).not.toHaveBeenCalled();
+    await expect(projector.release()).rejects.toThrow();
+    expect(f.removeFunction).not.toHaveBeenCalled();
   });
 
   it('preserves a native cleanup failure instead of reporting a reusable cancellation', async () => {
-    const f = fixture({ pointerBytes: 8 }); const controller = new AbortController();
+    const f = fixture({ pointerBytes: 8 });
+    const controller = new AbortController();
     f.api.mtmd_init_from_file.mockImplementation(async () => {
-      controller.abort(); return 500n;
+      controller.abort();
+      return 500n;
     });
     f.api.mtmd_free.mockRejectedValueOnce(new Error('native cleanup failed'));
     await expect(loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm64', debug: 'on', signal: controller.signal })).rejects.toThrow('native cleanup failed');
@@ -102,7 +120,8 @@ it.each(['cpu', 'profile'] as const)('applies the explicit %s audio backend inde
   const projector = await loadProjectorForBackend({ core: f.core, model: 1n, file: f.file, profile: 'webgpu-wasm64-jspi', debug: 'off', signal: undefined, backend });
   expect(f.fields.get('use_gpu')).toBe(backend === 'profile' ? 1 : 0);
   expect(f.fields.get('n_threads')).toBe(1);
-  await projector.release(); expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
+  await projector.release();
+  expect(f.api.mtmd_free).toHaveBeenCalledExactlyOnceWith(500n);
 });
 
 it.each(['success', 'native-failure', 'close-failure'] as const)('owns and clears a projector read window on %s', async outcome => {
@@ -110,24 +129,35 @@ it.each(['success', 'native-failure', 'close-failure'] as const)('owns and clear
   const original = modelReadModule.createModelReadCache;
   const caches: ReturnType<typeof original>[] = [];
   vi.spyOn(modelReadModule, 'createModelReadCache').mockImplementation(args => {
-    const cache = original(args); caches.push(cache);
+    const cache = original(args);
+    caches.push(cache);
     const dispose = cache.dispose;
     cache.dispose = vi.fn(() => {
-      expect(f.close).toHaveBeenCalledOnce(); dispose();
+      expect(f.close).toHaveBeenCalledOnce();
+      dispose();
     });
     return cache;
   });
   switch (outcome) {
   case 'success': break;
-  case 'native-failure': f.api.mtmd_init_from_file.mockRejectedValueOnce(new Error('native failure')); break;
+  case 'native-failure': f.api.mtmd_init_from_file.mockRejectedValueOnce(new Error('native failure'));
+    break;
   case 'close-failure': f.close.mockImplementationOnce(() => {
     throw new Error('close failure');
-  }); break;
-  default: { const exhaustive: never = outcome; throw new Error(exhaustive); }
+  });
+    break;
+  default: {
+    const exhaustive: never = outcome;
+    throw new Error(exhaustive);
+  }
   }
   const loading = loadProjector({ core: f.core, model: 1n, file: f.file, profile: 'cpu-wasm32', debug: 'off', signal: undefined });
-  if (outcome === 'success') await (await loading).release();
-  else await expect(loading).rejects.toThrow(outcome === 'native-failure' ? 'native failure' : 'close failure');
-  expect(caches).toHaveLength(1); expect(caches[0]!.dispose).toHaveBeenCalledOnce();
+  if (outcome === 'success') {
+    await (await loading).release();
+  } else {
+    await expect(loading).rejects.toThrow(outcome === 'native-failure' ? 'native failure' : 'close failure');
+  }
+  expect(caches).toHaveLength(1);
+  expect(caches[0]!.dispose).toHaveBeenCalledOnce();
   expect(() => caches[0]!.wrap({ source: { size: 0, read: () => 0 } })).toThrow('disposed');
 });

@@ -38,7 +38,9 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
   let index = 0;
   while (index < context.args.length) {
     const arg = context.args[index]!;
-    if (arg === '--help' || arg === '--version') break;
+    if (arg === '--help' || arg === '--version') {
+      break;
+    }
     if (arg.startsWith('--')) {
       const analysis = analyzeArgvLongForm({
         token: arg,
@@ -82,7 +84,9 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
               return analysis.value.rawValue;
             case 'following-required': {
               const following = context.args[index + 1];
-              if (following === undefined) throw missingGitDirectoryValue({ option: target.option });
+              if (following === undefined) {
+                throw missingGitDirectoryValue({ option: target.option });
+              }
               index += 1;
               return following;
             }
@@ -116,7 +120,9 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
     }
     if (arg === '-c') {
       const assignment = context.args[index + 1];
-      if (assignment === undefined) throw new Error("option '-c' requires a value");
+      if (assignment === undefined) {
+        throw new Error("option '-c' requires a value");
+      }
       const separator = assignment.indexOf('=');
       const key = separator < 0 ? assignment : assignment.slice(0, separator);
       const value: GitCommandConfigEntry['value'] = separator < 0
@@ -127,9 +133,13 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
       index += 2;
       continue;
     }
-    if (arg !== '-C') break;
+    if (arg !== '-C') {
+      break;
+    }
     const path = context.args[index + 1];
-    if (path === undefined) throw new Error("option '-C' requires a value");
+    if (path === undefined) {
+      throw new Error("option '-C' requires a value");
+    }
     const resolved = normalizePath({ cwd, path });
     let stat;
     try {

@@ -22,7 +22,9 @@ export async function assertModelLaunchReady({ chat, endpoint, modelId }: {
   chat: Pick<Chat, 'id'>, endpoint: Endpoint, modelId: string | undefined,
 }): Promise<ModelLaunchTarget | undefined> {
   const target = applicableModelLaunchTarget({ chat, endpoint, modelId });
-  if (target === undefined && storageService.getModelLaunch({ chatId: chat.id })?.phase !== 'reserved') return undefined;
+  if (target === undefined && storageService.getModelLaunch({ chatId: chat.id })?.phase !== 'reserved') {
+    return undefined;
+  }
   let ready = false;
   try {
     if (target !== undefined) {

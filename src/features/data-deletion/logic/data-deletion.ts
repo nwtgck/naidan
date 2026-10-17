@@ -563,7 +563,9 @@ async function deleteSelector({ selector }: { selector: DataDeletionSelector }):
 
 function getLocalStorage(): Storage | undefined {
   try {
-    if (typeof globalThis.localStorage === 'undefined') return undefined;
+    if (typeof globalThis.localStorage === 'undefined') {
+      return undefined;
+    }
     const storage = globalThis.localStorage;
     void storage.length;
     return storage;
@@ -598,7 +600,9 @@ function getIndexedDbDatabases({ indexedDb }: { indexedDb: IDBFactory }): (() =>
 
 function getLocalStorageKeysByPrefix({ prefix }: { prefix: string }): readonly string[] {
   const storage = getLocalStorage();
-  if (storage === undefined) return [];
+  if (storage === undefined) {
+    return [];
+  }
 
   const keys: string[] = [];
   for (let index = 0; index < storage.length; index += 1) {
@@ -612,7 +616,9 @@ function getLocalStorageKeysByPrefix({ prefix }: { prefix: string }): readonly s
 
 function getLocalStorageKeyIfExists({ key }: { key: string }): readonly string[] {
   const storage = getLocalStorage();
-  if (storage === undefined || storage.getItem(key) === null) return [];
+  if (storage === undefined || storage.getItem(key) === null) {
+    return [];
+  }
   return [key];
 }
 
@@ -642,7 +648,9 @@ function previewLocalStorageKeys({ keys }: { keys: readonly string[] }): { entri
 
 function deleteLocalStorageKeys({ keys }: { keys: readonly string[] }): DeleteSelectorResult {
   const storage = getLocalStorage();
-  if (storage === undefined) return { status: 'skipped', message: LOCAL_STORAGE_UNAVAILABLE_MESSAGE };
+  if (storage === undefined) {
+    return { status: 'skipped', message: LOCAL_STORAGE_UNAVAILABLE_MESSAGE };
+  }
   for (const key of keys) {
     storage.removeItem(key);
   }
@@ -660,7 +668,9 @@ function getOpfsApi(): { getDirectory: () => Promise<FileSystemDirectoryHandle> 
 
 async function getOpfsRoot(): Promise<FileSystemDirectoryHandle | undefined> {
   const api = getOpfsApi();
-  if (api === undefined) return undefined;
+  if (api === undefined) {
+    return undefined;
+  }
   try {
     return await api.getDirectory();
   } catch {
@@ -723,22 +733,32 @@ async function previewRemoteModelsSelector(): Promise<{ entries: readonly DataDe
 
 async function deleteOpfsPath({ path }: { path: string }): Promise<DeleteSelectorResult> {
   const root = await getOpfsRoot();
-  if (root === undefined) return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
+  if (root === undefined) {
+    return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
+  }
 
   const segments = getOpfsPathSegments({ path });
-  if (segments.length === 0) return { status: 'deleted' };
+  if (segments.length === 0) {
+    return { status: 'deleted' };
+  }
 
   let parent = root;
   for (const segment of segments.slice(0, -1)) {
     const next = await getChildDirectoryIfExists({ parent, name: segment });
-    if (next === undefined) return { status: 'deleted' };
+    if (next === undefined) {
+      return { status: 'deleted' };
+    }
     parent = next;
   }
 
   const target = segments.at(-1);
-  if (target === undefined) return { status: 'deleted' };
+  if (target === undefined) {
+    return { status: 'deleted' };
+  }
   await parent.removeEntry(target, { recursive: true }).catch(error => {
-    if (isNotFoundError({ error })) return;
+    if (isNotFoundError({ error })) {
+      return;
+    }
     throw error;
   });
   return { status: 'deleted' };
@@ -746,9 +766,13 @@ async function deleteOpfsPath({ path }: { path: string }): Promise<DeleteSelecto
 
 async function deleteRemoteModelDirectories(): Promise<DeleteSelectorResult> {
   const root = await getOpfsRoot();
-  if (root === undefined) return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
+  if (root === undefined) {
+    return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
+  }
   const models = await getChildDirectoryIfExists({ parent: root, name: OPFS_MODELS_DIR });
-  if (models === undefined) return { status: 'deleted' };
+  if (models === undefined) {
+    return { status: 'deleted' };
+  }
   const names: string[] = [];
   for await (const child of models.values()) {
     if (child.kind === 'directory' && child.name !== 'user') {
@@ -763,20 +787,28 @@ async function deleteRemoteModelDirectories(): Promise<DeleteSelectorResult> {
 
 async function resolveOpfsHandle({ root, path }: { root: FileSystemDirectoryHandle, path: string }): Promise<FileSystemHandle | undefined> {
   const segments = getOpfsPathSegments({ path });
-  if (segments.length === 0) return root;
+  if (segments.length === 0) {
+    return root;
+  }
 
   let current: FileSystemDirectoryHandle = root;
   for (const segment of segments.slice(0, -1)) {
     const next = await getChildDirectoryIfExists({ parent: current, name: segment });
-    if (next === undefined) return undefined;
+    if (next === undefined) {
+      return undefined;
+    }
     current = next;
   }
 
   const finalSegment = segments.at(-1);
-  if (finalSegment === undefined) return current;
+  if (finalSegment === undefined) {
+    return current;
+  }
 
   const directory = await getChildDirectoryIfExists({ parent: current, name: finalSegment });
-  if (directory !== undefined) return directory;
+  if (directory !== undefined) {
+    return directory;
+  }
   return await getChildFileIfExists({ parent: current, name: finalSegment });
 }
 
@@ -784,7 +816,9 @@ async function getChildDirectoryIfExists({ parent, name }: { parent: FileSystemD
   try {
     return await parent.getDirectoryHandle(name);
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -793,7 +827,9 @@ async function getChildFileIfExists({ parent, name }: { parent: FileSystemDirect
   try {
     return await parent.getFileHandle(name);
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -874,7 +910,9 @@ async function previewUnknownNaidanIndexedDbs(): Promise<{ entries: readonly Dat
 
 async function deleteIndexedDbDatabase({ name }: { name: string }): Promise<DeleteSelectorResult> {
   const indexedDb = getIndexedDb();
-  if (indexedDb === undefined) return { status: 'skipped', message: INDEXED_DB_UNAVAILABLE_MESSAGE };
+  if (indexedDb === undefined) {
+    return { status: 'skipped', message: INDEXED_DB_UNAVAILABLE_MESSAGE };
+  }
   await new Promise<void>((resolve, reject) => {
     const request = indexedDb.deleteDatabase(name);
     request.onsuccess = () => resolve();
@@ -954,7 +992,9 @@ async function previewCacheStorage({ filter }: { filter: string | undefined }): 
 
 async function deleteCacheStorage({ filter }: { filter: string | undefined }): Promise<DeleteSelectorResult> {
   const cacheStorage = getCacheStorage();
-  if (cacheStorage === undefined) return { status: 'skipped', message: CACHE_STORAGE_UNAVAILABLE_MESSAGE };
+  if (cacheStorage === undefined) {
+    return { status: 'skipped', message: CACHE_STORAGE_UNAVAILABLE_MESSAGE };
+  }
   let names: string[];
   try {
     names = (await cacheStorage.keys()).filter(name => filter === undefined || name.toLowerCase().includes(filter.toLowerCase()));

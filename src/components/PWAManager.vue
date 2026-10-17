@@ -18,11 +18,17 @@ onMounted(async () => {
    */
   try {
     await nextTick();
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     await waitForPresentationPaint({ window });
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     const { startPWAUpdateRuntime } = await import('@/composables/pwa-update-runtime');
-    if (!disposed) startPWAUpdateRuntime();
+    if (!disposed) {
+      startPWAUpdateRuntime();
+    }
   } catch (error) {
     console.error('[PWA] Failed to start post-paint update checks.', error);
   }

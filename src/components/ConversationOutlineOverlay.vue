@@ -35,7 +35,9 @@ const bottomScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
 const outlineItems = computed(() => {
   const includedMessageIds = new Set<MessageId>();
   return props.flowItems.flatMap(item => {
-    if (item.type !== 'message' || item.mode !== 'content' || includedMessageIds.has(item.node.id)) return [];
+    if (item.type !== 'message' || item.mode !== 'content' || includedMessageIds.has(item.node.id)) {
+      return [];
+    }
     includedMessageIds.add(item.node.id);
     // The outline navigates messages, while the main display navigates their parts.
     const partContent = (() => {
@@ -44,7 +46,10 @@ const outlineItems = computed(() => {
       case 'user':
       case 'system':
       case 'tool': return item.partContent ?? getDisplayedMessageText({ message: item.node });
-      default: { const _ex: never = item.node; throw new Error(`Unhandled outline message: ${_ex}`); }
+      default: {
+        const _ex: never = item.node;
+        throw new Error(`Unhandled outline message: ${_ex}`);
+      }
       }
     })();
     const preview = partContent.replace(/\s+/g, ' ').trim();
@@ -95,7 +100,9 @@ function scrollToInitialMessage() {
 
   const rows = Array.from(body.querySelectorAll('[data-outline-message-id]'));
   const target = rows.find((row) => {
-    if (!(row instanceof HTMLElement)) return false;
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
     return row.dataset.outlineMessageId === idToRaw({ id: initialMessageId });
   });
 

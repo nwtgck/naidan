@@ -49,7 +49,9 @@ function chatSettingsUpdatesToChanges({
   // Record<> and the `never` branch force its conversion semantics to be
   // reviewed instead of silently dropping the update.
   for (const key of CHAT_SETTINGS_UPDATE_KEYS) {
-    if (!Object.hasOwn(updates, key)) continue;
+    if (!Object.hasOwn(updates, key)) {
+      continue;
+    }
 
     switch (key) {
     case 'endpoint':
@@ -181,7 +183,9 @@ export function useChatMetadata(): ChatMetadataAdapter {
 
   async function toggleDebug({ chatId }: { chatId: ChatId }): Promise<void> {
     const targetChat = getLiveChatById({ chatId });
-    if (targetChat === null) return;
+    if (targetChat === null) {
+      return;
+    }
 
     const debugEnabled = !targetChat.debugEnabled;
     targetChat.debugEnabled = debugEnabled;
@@ -191,7 +195,9 @@ export function useChatMetadata(): ChatMetadataAdapter {
     await updateChatMeta({
       id: chatId,
       updater: ({ current }) => {
-        if (current === null) throw new Error('Chat not found');
+        if (current === null) {
+          throw new Error('Chat not found');
+        }
         return { ...current, debugEnabled, updatedAt: Date.now() };
       },
     });
@@ -239,7 +245,9 @@ export function useChatMetadata(): ChatMetadataAdapter {
     await updateChatMeta({
       id: chatId,
       updater: ({ current }) => {
-        if (current === null) throw new Error('Chat not found');
+        if (current === null) {
+          throw new Error('Chat not found');
+        }
         return { ...current, groupId: chatGroupId, updatedAt: Date.now() };
       },
     });

@@ -20,7 +20,9 @@ vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcMana
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
+  for (const cleanup of cleanups.splice(0)) {
+    await cleanup();
+  }
   vi.clearAllMocks();
 });
 
@@ -68,7 +70,9 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
   vi.spyOn(manager, 'client').mockImplementation(() => caller.client({ contract: naidanPeerContract }));
   vi.mocked(getRpcManager).mockResolvedValue(manager);
   cleanups.push(async () => {
-    lifetime.abort(); transport.close(); await Promise.all([caller.retire(), callee.retire()]);
+    lifetime.abort();
+    transport.close();
+    await Promise.all([caller.retire(), callee.retire()]);
     expect(inputBudget.reserved).toBe(0);
   });
   const provider = new NaidanRpcLmProvider({ registrationId });
@@ -94,7 +98,8 @@ it('preserves 124 title-only off fallback across the typed RPC boundary', async 
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>().mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'reasoning-unsupported' })).mockImplementation(successful);
   const { title } = fixture({ generate });
   const output = await title({ effective: parameters });
-  expect(output.text).toBe('Title'); expect(output.result).toEqual({ type: 'finished', next: 'user' });
+  expect(output.text).toBe('Title');
+  expect(output.result).toEqual({ type: 'finished', next: 'user' });
   expect(generate).toHaveBeenCalledTimes(2);
   expect(generate.mock.calls[0]?.[0].input.reasoningEffort).toBe('none');
   expect(generate.mock.calls[1]?.[0].input.reasoningEffort).toBeUndefined();
@@ -104,7 +109,8 @@ it('preserves 124 title-only off fallback across the typed RPC boundary', async 
 
 it('never retries regular chat or discloses the provider error text', async () => {
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>().mockRejectedValue(new LlamaCppBrowserError({ code: 'reasoning-unsupported' }));
-  const { provider } = fixture({ generate }); const abortController = new AbortController();
+  const { provider } = fixture({ generate });
+  const abortController = new AbortController();
   const output = await collectChatGeneration({
     items: provider.chat({
       messages,
@@ -117,14 +123,19 @@ it('never retries regular chat or discloses the provider error text', async () =
     }),
     abortController,
   });
-  expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();
+  expect(output.result.type).toBe('error');
+  expect(generate).toHaveBeenCalledOnce();
 });
 
 it('does not treat arbitrary internal error prose as an unsupported reasoning control', async () => {
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>().mockRejectedValue(new Error('reasoning is unsupported; secret provider path /private/file'));
-  const { title } = fixture({ generate }); const output = await title({ effective: parameters });
-  expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();
-  if (output.result.type !== 'error') throw new Error('Expected an error');
+  const { title } = fixture({ generate });
+  const output = await title({ effective: parameters });
+  expect(output.result.type).toBe('error');
+  expect(generate).toHaveBeenCalledOnce();
+  if (output.result.type !== 'error') {
+    throw new Error('Expected an error');
+  }
   expect(output.result.error.message).not.toContain('secret provider');
 });
 
@@ -133,15 +144,19 @@ it('does not retry a title after any native output preceded the typed rejection'
     await onEvent({ event: { type: 'text', text: 'Partial' } });
     throw new LlamaCppBrowserError({ code: 'reasoning-unsupported' });
   });
-  const { title } = fixture({ generate }); const output = await title({ effective: parameters });
-  expect(output.text).toBe('Partial'); expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();
+  const { title } = fixture({ generate });
+  const output = await title({ effective: parameters });
+  expect(output.text).toBe('Partial');
+  expect(output.result.type).toBe('error');
+  expect(generate).toHaveBeenCalledOnce();
 });
 
 it.each([undefined, 'high'] as const)('does not rewrite the title preference %s', async effort => {
   const generate = vi.fn<ReadOnlyInferenceResources['generateChat']>().mockRejectedValue(new LlamaCppBrowserError({ code: 'reasoning-unsupported' }));
   const { title } = fixture({ generate });
   const output = await title({ effective: { ...parameters, reasoning: { effort } } });
-  expect(output.result.type).toBe('error'); expect(generate).toHaveBeenCalledOnce();
+  expect(output.result.type).toBe('error');
+  expect(generate).toHaveBeenCalledOnce();
 });
 
 export const TEST_ONLY = {

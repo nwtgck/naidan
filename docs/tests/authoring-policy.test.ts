@@ -12,8 +12,12 @@ import { createSiteFixture, startSiteDev } from './site.test-support';
 const root = '/docs';
 
 const resolve = async ({ specifier, importer }: { specifier: string; importer: string }): Promise<string | undefined> => {
-  if (specifier === '@branching') return '/docs/islands/branching/BranchingDemo.vue';
-  if (specifier.endsWith('/core')) return `${path.resolve(path.dirname(importer), specifier)}.ts`;
+  if (specifier === '@branching') {
+    return '/docs/islands/branching/BranchingDemo.vue';
+  }
+  if (specifier.endsWith('/core')) {
+    return `${path.resolve(path.dirname(importer), specifier)}.ts`;
+  }
   if (specifier.startsWith('.')) {
     const resolved = path.resolve(path.dirname(importer), specifier);
     return path.extname(resolved) ? resolved : `${resolved}.ts`;

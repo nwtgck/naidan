@@ -62,7 +62,9 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
     if (keepAlive.success) {
       const owner = clientSchema.safeParse(event.source);
       const session = [...active].find(item => item.token === keepAlive.data.token && item.version === keepAlive.data.version);
-      for (const port of event.ports) port.close();
+      for (const port of event.ports) {
+        port.close();
+      }
       if (owner.success && session?.ownerId === owner.data.id) {
         session.extendLifetime({ event });
         session.heartbeat();
@@ -71,14 +73,18 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
     }
     // Other messages belong to Workbox (e.g. SKIP_WAITING), not this protocol.
     if (!event.data || typeof event.data !== 'object'
-      || !('type' in event.data) || event.data.type !== 'naidan-download/prepare') return;
+      || !('type' in event.data) || event.data.type !== 'naidan-download/prepare') {
+      return;
+    }
     const prepared = downloadPrepareSchema.safeParse(event.data);
     const owner = clientSchema.safeParse(event.source);
     const control = event.ports[0];
     const data = event.ports[1];
     if (!byteStreamPortSchema.safeParse(control).success || !byteStreamPortSchema.safeParse(data).success
       || !control || !data || event.ports.length !== 2) {
-      for (const port of event.ports) port.close();
+      for (const port of event.ports) {
+        port.close();
+      }
       return;
     }
     let sessionForControl: Session | undefined = undefined;
@@ -91,9 +97,14 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
       },
       onMessage({ message }) {
         switch (message.type) {
-        case 'cancel': sessionForControl?.finish({ reason: new DOMException('Download cancelled', 'AbortError') }); return;
-        case 'ping': channel.send({ message: { type: 'pong' }, transferables: [] }); return;
-        default: { const exhaustive: never = message; throw new Error(`Unknown download control: ${String(exhaustive)}`); }
+        case 'cancel': sessionForControl?.finish({ reason: new DOMException('Download cancelled', 'AbortError') });
+          return;
+        case 'ping': channel.send({ message: { type: 'pong' }, transferables: [] });
+          return;
+        default: {
+          const exhaustive: never = message;
+          throw new Error(`Unknown download control: ${String(exhaustive)}`);
+        }
         }
       },
     });
@@ -103,17 +114,20 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
       data.close();
     };
     if (!prepared.success || !owner.success || active.size >= MAX_DOWNLOADS || !canPrepare()) {
-      reject(); return;
+      reject();
+      return;
     }
     const ownerUrl = new URL(owner.data.url);
     ownerUrl.hash = '';
     if (ownerUrl.origin !== base.origin || !ownerUrl.pathname.startsWith(base.pathname)) {
-      reject(); return;
+      reject();
+      return;
     }
     const { token, metadata, version } = prepared.data;
     const url = createDownloadUrl({ base, token, version }).href;
     if ([...active].some(session => session.url === url)) {
-      reject(); return;
+      reject();
+      return;
     }
     const receiver = receiveByteStream({ port: data });
     let releaseLease: (() => void) | undefined;
@@ -128,11 +142,15 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
       ownerId: owner.data.id,
       ownerUrl: ownerUrl.href,
       extendLifetime({ event }) {
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         const lease = Promise.withResolvers<void>();
         const release = () => {
           clearTimeout(timeout);
-          if (releaseLease === release) releaseLease = undefined;
+          if (releaseLease === release) {
+            releaseLease = undefined;
+          }
           lease.resolve();
         };
         const timeout = setTimeout(release, DOWNLOAD_EVENT_LEASE_MS);
@@ -153,7 +171,9 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
         channel.send({ message: { type: 'pong' }, transferables: [] });
       },
       finish({ reason }) {
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         finished = true;
         preparedLifetime.resolve();
         clearTimeout(timer);
@@ -165,12 +185,18 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
           responseController?.error(reason);
           const reader = responseReader;
           responseReader = undefined;
-          if (reader) void reader.cancel(reason).catch(() => undefined).finally(() => reader.releaseLock());
+          if (reader) {
+            void reader.cancel(reason).catch(() => undefined).finally(() => reader.releaseLock());
+          }
           channel.send({ message: { type: 'error', message: 'Streaming download interrupted' }, transferables: [] });
-        } else channel.send({ message: { type: 'consumed' }, transferables: [] });
+        } else {
+          channel.send({ message: { type: 'consumed' }, transferables: [] });
+        }
         channel.close();
         releaseLease?.();
-        if (active.size === 0) onIdle();
+        if (active.size === 0) {
+          onIdle();
+        }
       },
       response() {
         preparedLifetime.resolve();
@@ -186,16 +212,22 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
           async pull(controller) {
             try {
               const result = await reader.read();
-              if (finished) return;
+              if (finished) {
+                return;
+              }
               if (result.done) {
-                if (metadata.size !== undefined && written !== metadata.size) throw new Error('Download size mismatch');
+                if (metadata.size !== undefined && written !== metadata.size) {
+                  throw new Error('Download size mismatch');
+                }
                 controller.close();
                 reader.releaseLock();
                 responseReader = undefined;
                 session.finish({ reason: undefined });
               } else {
                 written += result.value.byteLength;
-                if (metadata.size !== undefined && written > metadata.size) throw new Error('Download size mismatch');
+                if (metadata.size !== undefined && written > metadata.size) {
+                  throw new Error('Download size mismatch');
+                }
                 controller.enqueue(result.value);
               }
             } catch (reason) {
@@ -221,7 +253,9 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
     // assuming that a slow producer (or a paused download) has failed.
     const watcher = setInterval(() => {
       void scope.clients.get(session.ownerId).then(client => {
-        if (!client) session.finish({ reason: new Error('Download page closed') });
+        if (!client) {
+          session.finish({ reason: new Error('Download page closed') });
+        }
       }).catch(reason => session.finish({ reason }));
     }, 15_000);
     void receiver.completed.catch(reason => session.finish({ reason }));
@@ -233,7 +267,9 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
   scope.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
     if (url.origin !== root.origin || (url.pathname !== root.pathname.slice(0, -1)
-      && !url.pathname.startsWith(root.pathname))) return;
+      && !url.pathname.startsWith(root.pathname))) {
+      return;
+    }
     // Own ALL requests below this prefix, including invalid and expired tokens.
     // They must never hit the network, precache or the SPA navigation fallback.
     event.stopImmediatePropagation();
@@ -242,14 +278,17 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
       headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
     });
     if (event.request.method !== 'GET') {
-      event.respondWith(unavailable({ status: 405 })); return;
+      event.respondWith(unavailable({ status: 405 }));
+      return;
     }
     if (event.request.headers.has('Range')) {
-      event.respondWith(unavailable({ status: 416 })); return;
+      event.respondWith(unavailable({ status: 416 }));
+      return;
     }
     const session = pending.get(url.href);
     if (!session) {
-      event.respondWith(unavailable({ status: 410 })); return;
+      event.respondWith(unavailable({ status: 410 }));
+      return;
     }
     // An iframe can have an empty or different clientId. v2's unguessable
     // fragment is a one-shot bearer capability, registered by an in-scope
@@ -265,10 +304,14 @@ export function installStreamDownloadWorker({ scope, canPrepare = () => true, on
     case 2:
       authorized = event.request.mode === 'navigate';
       break;
-    default: { const exhaustive: never = session.version; throw new Error(`Unknown download version: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = session.version;
+      throw new Error(`Unknown download version: ${exhaustive}`);
+    }
     }
     if (!authorized) {
-      event.respondWith(unavailable({ status: 403 })); return;
+      event.respondWith(unavailable({ status: 403 }));
+      return;
     }
     try {
       event.respondWith(session.response());

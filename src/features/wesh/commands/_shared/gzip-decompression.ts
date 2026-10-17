@@ -99,18 +99,24 @@ class GzipHeaderLengthTracker {
   }
 
   append({ chunk }: { chunk: Uint8Array }): void {
-    if (this.currentStage() === 'done' || this.currentStage() === 'invalid') return;
+    if (this.currentStage() === 'done' || this.currentStage() === 'invalid') {
+      return;
+    }
 
     for (const byte of chunk) {
       const stage = this.currentStage();
-      if (stage === 'done' || stage === 'invalid') return;
+      if (stage === 'done' || stage === 'invalid') {
+        return;
+      }
       this.totalBytes += 1;
 
       switch (stage) {
       case 'fixed': {
         this.fixedHeader[this.fixedHeaderLength] = byte;
         this.fixedHeaderLength += 1;
-        if (this.fixedHeaderLength < this.fixedHeader.byteLength) break;
+        if (this.fixedHeaderLength < this.fixedHeader.byteLength) {
+          break;
+        }
         if (
           this.fixedHeader[0] !== GZIP_MAGIC_FIRST
           || this.fixedHeader[1] !== GZIP_MAGIC_SECOND
@@ -142,10 +148,14 @@ class GzipHeaderLengthTracker {
         }
         break;
       case 'file-name':
-        if (byte === 0) this.completeOptionalField({ completed: 'file-name' });
+        if (byte === 0) {
+          this.completeOptionalField({ completed: 'file-name' });
+        }
         break;
       case 'comment':
-        if (byte === 0) this.completeOptionalField({ completed: 'comment' });
+        if (byte === 0) {
+          this.completeOptionalField({ completed: 'comment' });
+        }
         break;
       case 'header-crc':
         this.headerCrcBytesRemaining -= 1;
@@ -228,7 +238,9 @@ export async function peekGzipInput({
   let prefixLength = 0;
   while (prefixLength < 2) {
     const result = await reader.read();
-    if (result.done) break;
+    if (result.done) {
+      break;
+    }
     prefixChunks.push(result.value);
     prefixLength += result.value.byteLength;
   }

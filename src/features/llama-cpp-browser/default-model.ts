@@ -18,15 +18,22 @@ export function localModelDisplayName({ model }: { model: LocalModel }): string 
     switch (role) {
     case 'model': break;
     case 'projector': case 'auxiliary': return model.name;
-    default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = role;
+      throw new Error(String(exhaustive));
+    }
     }
     const token = quantizationName({ path });
-    if (!token) return model.name;
+    if (!token) {
+      return model.name;
+    }
     for (const suggestion of modelSuggestions) {
       const quantization = suggestion.quantizationHints.find(choice =>
         model.id.toLowerCase().startsWith(`hf.co/${choice.hfRepository}:`.toLowerCase())
         && choice.preferredQuantization === token);
-      if (quantization) return `${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`;
+      if (quantization) {
+        return `${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`;
+      }
     }
     return model.name;
   } catch {

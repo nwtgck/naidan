@@ -18,7 +18,9 @@ export interface RgIgnoreParseResult {
 }
 
 function normalizeBasePath({ path }: { path: string }): string {
-  if (path === '.' || path === './') return '';
+  if (path === '.' || path === './') {
+    return '';
+  }
   return path.replace(/^\.\//, '').replace(/\/$/, '');
 }
 
@@ -35,13 +37,21 @@ export function parseRgIgnoreFile({
   const lines = text.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index] ?? '';
-    if (rawLine.length === 0 || rawLine.startsWith('#')) continue;
+    if (rawLine.length === 0 || rawLine.startsWith('#')) {
+      continue;
+    }
     const negated = rawLine.startsWith('!');
     let pattern = negated ? rawLine.slice(1) : rawLine;
-    if (pattern.length === 0) continue;
+    if (pattern.length === 0) {
+      continue;
+    }
     const directoryOnly = pattern.endsWith('/');
-    if (directoryOnly) pattern = pattern.slice(0, -1);
-    if (pattern.startsWith('/')) pattern = pattern.slice(1);
+    if (directoryOnly) {
+      pattern = pattern.slice(0, -1);
+    }
+    if (pattern.startsWith('/')) {
+      pattern = pattern.slice(1);
+    }
     const anchoredPattern = pattern.includes('/') ? pattern : `**/${pattern}`;
     try {
       rules.push({
@@ -68,9 +78,15 @@ function pathRelativeToBase({
   basePath: string,
 }): string | undefined {
   const normalizedPath = path.replace(/^\.\//, '');
-  if (basePath.length === 0) return normalizedPath;
-  if (normalizedPath === basePath) return '';
-  if (!normalizedPath.startsWith(`${basePath}/`)) return undefined;
+  if (basePath.length === 0) {
+    return normalizedPath;
+  }
+  if (normalizedPath === basePath) {
+    return '';
+  }
+  if (!normalizedPath.startsWith(`${basePath}/`)) {
+    return undefined;
+  }
   return normalizedPath.slice(basePath.length + 1);
 }
 
@@ -85,10 +101,16 @@ export function isIgnoredByRgRules({
 }): boolean {
   let ignored = false;
   for (const rule of rules) {
-    if (rule.directoryOnly && !isDirectory) continue;
+    if (rule.directoryOnly && !isDirectory) {
+      continue;
+    }
     const candidate = pathRelativeToBase({ path: relativePath, basePath: rule.basePath });
-    if (candidate === undefined) continue;
-    if (rule.glob.regex.test(candidate)) ignored = !rule.negated;
+    if (candidate === undefined) {
+      continue;
+    }
+    if (rule.glob.regex.test(candidate)) {
+      ignored = !rule.negated;
+    }
   }
   return ignored;
 }

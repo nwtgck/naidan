@@ -24,37 +24,49 @@ export class OwnedByteQueue {
     let offset = 0;
     while (offset < bytes.length) {
       if (this.tail === PAGE_BYTES) {
-        this.pages.push(new Uint8Array(PAGE_BYTES)); this.tail = 0;
+        this.pages.push(new Uint8Array(PAGE_BYTES));
+        this.tail = 0;
       }
       const size = Math.min(PAGE_BYTES - this.tail, bytes.length - offset);
       this.pages[this.pages.length - 1]!.set(bytes.subarray(offset, offset + size), this.tail);
-      this.tail += size; offset += size;
+      this.tail += size;
+      offset += size;
     }
     this.length += bytes.length;
   }
 
   take({ maximum }: { maximum: number }): Uint8Array<ArrayBuffer> {
     requireValue({ condition: Number.isSafeInteger(maximum) && maximum > 0, message: 'Invalid read size' });
-    const bytes = new Uint8Array(Math.min(maximum, this.length)); let offset = 0;
+    const bytes = new Uint8Array(Math.min(maximum, this.length));
+    let offset = 0;
     while (offset < bytes.length) {
       const size = Math.min(PAGE_BYTES - this.start, bytes.length - offset), page = this.pages[this.head]!;
       bytes.set(page.subarray(this.start, this.start + size), offset);
-      this.start += size; offset += size;
+      this.start += size;
+      offset += size;
       if (this.start === PAGE_BYTES) {
-        this.pages[this.head] = new Uint8Array(); this.head++; this.start = 0;
+        this.pages[this.head] = new Uint8Array();
+        this.head++;
+        this.start = 0;
       }
     }
     this.length -= bytes.length;
-    if (this.length === 0) this.clear();
-    else if (this.head > 32 && this.head * 2 >= this.pages.length) {
-      this.pages = this.pages.slice(this.head); this.head = 0;
+    if (this.length === 0) {
+      this.clear();
+    } else if (this.head > 32 && this.head * 2 >= this.pages.length) {
+      this.pages = this.pages.slice(this.head);
+      this.head = 0;
     }
     return bytes;
   }
 
   clear(): number {
     const released = this.length;
-    this.pages = []; this.head = 0; this.start = 0; this.tail = PAGE_BYTES; this.length = 0;
+    this.pages = [];
+    this.head = 0;
+    this.start = 0;
+    this.tail = PAGE_BYTES;
+    this.length = 0;
     return released;
   }
 }

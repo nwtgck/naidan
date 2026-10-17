@@ -7,7 +7,8 @@ export function createImageSessionKeys() {
   function token({ file }: { file: File }): number {
     let value = files.get(file);
     if (value === undefined) {
-      value = ++next; files.set(file, value);
+      value = ++next;
+      files.set(file, value);
     }
     return value;
   }

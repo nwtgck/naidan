@@ -30,8 +30,12 @@ const loadMoreTrigger = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | undefined;
 
 function setupObserver() {
-  if (typeof IntersectionObserver === 'undefined') return;
-  if (observer) observer.disconnect();
+  if (typeof IntersectionObserver === 'undefined') {
+    return;
+  }
+  if (observer) {
+    observer.disconnect();
+  }
 
   observer = new IntersectionObserver((entries) => {
     const entry = entries[0];
@@ -58,7 +62,9 @@ watch([() => props.isOpen, loadMoreTrigger], ([isOpen, trigger]) => {
 });
 
 onUnmounted(() => {
-  if (observer) observer.disconnect();
+  if (observer) {
+    observer.disconnect();
+  }
 });
 
 interface VersionItem {
@@ -80,10 +86,14 @@ const versionItems = computed((): VersionItem[] => {
 });
 
 const customDiff = computed(() => {
-  if (!baseVersionId.value || !targetVersionId.value) return null;
+  if (!baseVersionId.value || !targetVersionId.value) {
+    return null;
+  }
   const base = versionItems.value.find(v => v.id === baseVersionId.value);
   const target = versionItems.value.find(v => v.id === targetVersionId.value);
-  if (!base || !target) return null;
+  if (!base || !target) {
+    return null;
+  }
 
   return {
     base,
@@ -111,7 +121,9 @@ const sequentialDiffs = computed(() => {
 
   for (let i = 0; i < reversedSiblings.length; i++) {
     const msg = reversedSiblings[i];
-    if (!msg) continue;
+    if (!msg) {
+      continue;
+    }
 
     const isSkipped = skippedMessageIds.value.has(msg.id);
 
@@ -158,8 +170,12 @@ function toggleSkip({ id }: { id: MessageId }) {
   } else {
     next.add(id);
     // If it was base or target, clear it
-    if (baseVersionId.value === id) baseVersionId.value = undefined;
-    if (targetVersionId.value === id) targetVersionId.value = undefined;
+    if (baseVersionId.value === id) {
+      baseVersionId.value = undefined;
+    }
+    if (targetVersionId.value === id) {
+      targetVersionId.value = undefined;
+    }
   }
   skippedMessageIds.value = next;
 }
@@ -169,7 +185,9 @@ async function handleCopy({ id, content }: { id: MessageId, content: string }) {
     await navigator.clipboard.writeText(content);
     copiedId.value = id;
     setTimeout(() => {
-      if (copiedId.value === id) copiedId.value = undefined;
+      if (copiedId.value === id) {
+        copiedId.value = undefined;
+      }
     }, 2000);
   } catch (err) {
     console.error('Failed to copy version content:', err);

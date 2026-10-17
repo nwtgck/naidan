@@ -5,7 +5,10 @@ export function hostModelPermissionGranted({ permission }: { permission: Permiss
   switch (permission) {
   case 'granted': return true;
   case 'denied': case 'prompt': return false;
-  default: { const exhaustive: never = permission; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = permission;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

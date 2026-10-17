@@ -37,9 +37,13 @@ function entriesEquivalent({ left, right }: {
   left: readonly GitIndexEntry[],
   right: readonly GitIndexEntry[],
 }): boolean {
-  if (left.length !== right.length) return false;
+  if (left.length !== right.length) {
+    return false;
+  }
   const rightByPath = new Map(right.map(entry => [entry.path, entry]));
-  if (rightByPath.size !== right.length) return false;
+  if (rightByPath.size !== right.length) {
+    return false;
+  }
   return left.every(entry => {
     const other = rightByPath.get(entry.path);
     return other !== undefined
@@ -69,7 +73,9 @@ export async function createStash({ files, repository, config, env, message, inc
 }): Promise<GitCreatedStash | undefined> {
   const contentConfig = resolveWorktreeContentConfig({ config });
   const head = await readHead({ files, repository });
-  if (head.objectId === undefined) throw new Error('You do not have the initial commit yet');
+  if (head.objectId === undefined) {
+    throw new Error('You do not have the initial commit yet');
+  }
   const headCommit = await readCommit({ files, repository, objectId: head.objectId });
   const headEntries = await readTreeIntoIndex({ files, repository, treeObjectId: headCommit.treeObjectId });
   const indexEntries = await readIndex({ files, repository });
@@ -103,7 +109,9 @@ export async function createStash({ files, repository, config, env, message, inc
 
   if (entriesEquivalent({ left: headEntries, right: indexEntries })
     && entriesEquivalent({ left: indexEntries, right: worktreeEntries })
-    && untrackedEntries.length === 0) return undefined;
+    && untrackedEntries.length === 0) {
+    return undefined;
+  }
 
   const branch = branchDescription({ branchName: branchNameFromHead({ head }) });
   const shortHead = head.objectId.slice(0, 7);
@@ -175,7 +183,9 @@ export async function createStash({ files, repository, config, env, message, inc
     contentConfig,
   });
   await writeIndex({ files, repository, entries: headEntries });
-  if (includeUntracked) await removeWorktreePaths({ files, repository, paths: untrackedPaths });
+  if (includeUntracked) {
+    await removeWorktreePaths({ files, repository, paths: untrackedPaths });
+  }
   return { objectId: stashCommit.objectId, subject, untrackedPaths };
 }
 
@@ -198,9 +208,13 @@ export async function listStashes({ files, repository }: {
 }
 
 export function parseStashIndex({ expression }: { expression: string | undefined }): number {
-  if (expression === undefined || expression === 'stash' || expression === 'stash@{0}') return 0;
+  if (expression === undefined || expression === 'stash' || expression === 'stash@{0}') {
+    return 0;
+  }
   const match = /^stash@\{([0-9]+)\}$/u.exec(expression);
-  if (match === null) throw new Error(`${expression} is not a valid reference`);
+  if (match === null) {
+    throw new Error(`${expression} is not a valid reference`);
+  }
   return Number.parseInt(match[1]!, 10);
 }
 
@@ -212,7 +226,9 @@ export async function resolveStash({ files, repository, expression }: {
   const index = parseStashIndex({ expression });
   const stashes = await listStashes({ files, repository });
   const entry = stashes[index];
-  if (entry === undefined) throw new Error(`log for 'refs/stash' only has ${stashes.length} entries`);
+  if (entry === undefined) {
+    throw new Error(`log for 'refs/stash' only has ${stashes.length} entries`);
+  }
   return entry;
 }
 
@@ -229,11 +245,15 @@ export async function dropStash({ files, repository, index }: {
   const chronological = await readReflog({ files, path });
   const chronologicalIndex = chronological.length - 1 - index;
   const dropped = chronological[chronologicalIndex];
-  if (dropped === undefined) throw new Error(`log for 'refs/stash' only has ${chronological.length} entries`);
+  if (dropped === undefined) {
+    throw new Error(`log for 'refs/stash' only has ${chronological.length} entries`);
+  }
   chronological.splice(chronologicalIndex, 1);
   if (chronological.length === 0) {
     await deleteRef({ files, repository, refName: STASH_REF });
-    if (await pathExists({ files, path })) await files.unlink({ path });
+    if (await pathExists({ files, path })) {
+      await files.unlink({ path });
+    }
   } else {
     const newest = chronological[chronological.length - 1]!;
     await updateRef({ files, repository, refName: STASH_REF, objectId: newest.newObjectId, reflog: undefined });
@@ -248,13 +268,17 @@ export async function clearStashes({ files, repository }: {
 }): Promise<void> {
   await deleteRef({ files, repository, refName: STASH_REF });
   const path = stashLogPath({ repository });
-  if (await pathExists({ files, path })) await files.unlink({ path });
+  if (await pathExists({ files, path })) {
+    await files.unlink({ path });
+  }
 }
 
 function entryMap({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
   const result = new Map<string, GitIndexEntry>();
   for (const entry of entries) {
-    if (entry.stage !== 0) throw new Error(`stash operation requires stage-0 entries: ${entry.path}`);
+    if (entry.stage !== 0) {
+      throw new Error(`stash operation requires stage-0 entries: ${entry.path}`);
+    }
     result.set(entry.path, entry);
   }
   return result;
@@ -264,7 +288,9 @@ function entryEquals({ left, right }: {
   left: GitIndexEntry | undefined,
   right: GitIndexEntry | undefined,
 }): boolean {
-  if (left === undefined || right === undefined) return left === right;
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
   return left.objectId === right.objectId && left.mode === right.mode;
 }
 
@@ -276,7 +302,9 @@ async function mergeStashTrees({ files, repository, baseEntries, oursEntries, th
   theirsEntries: readonly GitIndexEntry[],
 }): Promise<GitIndexEntry[]> {
   const treeMerge = mergeThreeTrees({ baseEntries, oursEntries, theirsEntries });
-  if (treeMerge.conflicts.length === 0) return treeMerge.entries;
+  if (treeMerge.conflicts.length === 0) {
+    return treeMerge.entries;
+  }
   const textMerge = await autoMergeTextConflicts({
     files,
     repository,
@@ -300,7 +328,9 @@ function defaultAppliedIndex({ currentEntries, baseEntries, stashIndexEntries }:
   const base = entryMap({ entries: baseEntries });
   const stashed = entryMap({ entries: stashIndexEntries });
   for (const [path, stashedEntry] of stashed) {
-    if (base.has(path)) continue;
+    if (base.has(path)) {
+      continue;
+    }
     const currentEntry = current.get(path);
     if (currentEntry !== undefined && !entryEquals({ left: currentEntry, right: stashedEntry })) {
       throw new Error(`stash apply conflict in ${path}`);
@@ -324,7 +354,9 @@ async function assertUntrackedCanMaterialize({ files, repository, entries }: {
     for (let count = 1; count < parts.length; count += 1) {
       const parentRelative = parts.slice(0, count).join('/');
       const parentAbsolute = worktreeAbsolutePath({ repository, path: parentRelative });
-      if (!await pathExists({ files, path: parentAbsolute })) continue;
+      if (!await pathExists({ files, path: parentAbsolute })) {
+        continue;
+      }
       const stat = await files.lstat({ path: parentAbsolute });
       switch (stat.type) {
       case 'directory':
@@ -354,10 +386,14 @@ export async function applyStash({ files, repository, expression, restoreIndex, 
   const stashCommit = await readCommit({ files, repository, objectId: stashEntry.objectId });
   const baseObjectId = stashCommit.parentObjectIds[0];
   const indexObjectId = stashCommit.parentObjectIds[1];
-  if (baseObjectId === undefined || indexObjectId === undefined) throw new Error('stash commit has invalid parents');
+  if (baseObjectId === undefined || indexObjectId === undefined) {
+    throw new Error('stash commit has invalid parents');
+  }
 
   const head = await readHead({ files, repository });
-  if (head.objectId === undefined) throw new Error('cannot apply a stash on an unborn branch');
+  if (head.objectId === undefined) {
+    throw new Error('cannot apply a stash on an unborn branch');
+  }
   const currentHeadCommit = await readCommit({ files, repository, objectId: head.objectId });
   const baseCommit = await readCommit({ files, repository, objectId: baseObjectId });
   const indexCommit = await readCommit({ files, repository, objectId: indexObjectId });
@@ -393,7 +429,9 @@ export async function applyStash({ files, repository, expression, restoreIndex, 
     targetEntries: targetWorktreeEntries,
     contentConfig,
   });
-  if (plan.conflicts.length > 0) throw new Error(`stash apply conflict in ${plan.conflicts[0]!.path}`);
+  if (plan.conflicts.length > 0) {
+    throw new Error(`stash apply conflict in ${plan.conflicts[0]!.path}`);
+  }
 
   const untrackedParent = stashCommit.parentObjectIds[2];
   const untrackedEntries = untrackedParent === undefined

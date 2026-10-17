@@ -97,26 +97,46 @@ export function resolveWikipediaSearchLanguages({
   query: string,
   contextLanguage: string | undefined,
 }): WikipediaSearchLanguages {
-  if (hasKana({ text: query })) return ['ja', 'en'];
-  if (hasHangul({ text: query })) return ['ko', 'en'];
-  if (hasThai({ text: query })) return ['th', 'en'];
-  if (hasHebrew({ text: query })) return ['he', 'en'];
-  if (hasGreek({ text: query })) return ['el', 'en'];
+  if (hasKana({ text: query })) {
+    return ['ja', 'en'];
+  }
+  if (hasHangul({ text: query })) {
+    return ['ko', 'en'];
+  }
+  if (hasThai({ text: query })) {
+    return ['th', 'en'];
+  }
+  if (hasHebrew({ text: query })) {
+    return ['he', 'en'];
+  }
+  if (hasGreek({ text: query })) {
+    return ['el', 'en'];
+  }
 
   if (hasCyrillic({ text: query })) {
-    if (contextLanguage === 'uk') return ['uk', 'en'];
+    if (contextLanguage === 'uk') {
+      return ['uk', 'en'];
+    }
     return ['ru', 'en'];
   }
 
   if (hasArabicScript({ text: query })) {
-    if (contextLanguage === 'fa') return ['fa', 'en'];
+    if (contextLanguage === 'fa') {
+      return ['fa', 'en'];
+    }
     return ['ar', 'en'];
   }
 
   if (hasHan({ text: query })) {
-    if (contextLanguage === 'ja') return ['ja', 'en'];
-    if (contextLanguage === 'zh') return ['zh', 'en'];
-    if (contextLanguage === 'ko') return ['ko', 'en'];
+    if (contextLanguage === 'ja') {
+      return ['ja', 'en'];
+    }
+    if (contextLanguage === 'zh') {
+      return ['zh', 'en'];
+    }
+    if (contextLanguage === 'ko') {
+      return ['ko', 'en'];
+    }
     return ['zh', 'en'];
   }
 

@@ -25,7 +25,9 @@ function formatSymbolicMask({ mask }: { mask: number }): string {
 }
 
 function isUmaskSymbolicMode({ value }: { value: string }): boolean {
-  if (value.length === 0) return false;
+  if (value.length === 0) {
+    return false;
+  }
   return value.split(',').every(clause => /^([ugoa]*)([+=-])([rwx]*)$/u.test(clause));
 }
 
@@ -67,8 +69,12 @@ function parseUmaskArguments({
         return { ok: false, invalidOption: argument };
       }
       for (const character of optionCharacters) {
-        if (character === 'p') portable = true;
-        if (character === 'S') symbolic = true;
+        if (character === 'p') {
+          portable = true;
+        }
+        if (character === 'S') {
+          symbolic = true;
+        }
       }
       continue;
     }

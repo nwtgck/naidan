@@ -240,7 +240,9 @@ export async function runCompactCurrentBranchForChat({
           signal?.throwIfAborted();
           const blob = await storageService.getFile({ binaryObjectId });
           signal?.throwIfAborted();
-          if (!blob) throw new Error('Cannot compact a missing binary object.');
+          if (!blob) {
+            throw new Error('Cannot compact a missing binary object.');
+          }
           return blob;
         },
         signal: controller.signal,
@@ -267,7 +269,10 @@ export async function runCompactCurrentBranchForChat({
       switch (result.next) {
       case 'user': break;
       case 'tool_results': throw new Error('Context compaction requested a tool instead of a summary.');
-      default: { const _ex: never = result.next; throw new Error(`Unhandled compaction step: ${_ex}`); }
+      default: {
+        const _ex: never = result.next;
+        throw new Error(`Unhandled compaction step: ${_ex}`);
+      }
       }
       break;
     case 'error': throw result.error;
@@ -277,9 +282,15 @@ export async function runCompactCurrentBranchForChat({
       case 'limit':
       case 'stop_sequence':
       case 'unknown': throw new Error(`Context compaction stopped before completion: ${result.reason}`);
-      default: { const _ex: never = result.reason; throw new Error(`Unhandled compaction interruption: ${_ex}`); }
+      default: {
+        const _ex: never = result.reason;
+        throw new Error(`Unhandled compaction interruption: ${_ex}`);
       }
-    default: { const _ex: never = result; throw new Error(`Unhandled compaction result: ${_ex}`); }
+      }
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled compaction result: ${_ex}`);
+    }
     }
 
     const finalCompactContent = compactContent;

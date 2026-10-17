@@ -79,7 +79,9 @@ function artifactResolveUrl({ normalizedModelId, resolvedRevision, path, remoteB
 }
 
 export function sanitizeObservedUrl({ value }: { value: string | undefined }): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   try {
     const parsed = new URL(value);
     return `${parsed.origin}${parsed.pathname}`;
@@ -93,7 +95,9 @@ export function sanitizeDiagnosticText({ value }: { value: string }): string {
 }
 
 function optionalFiniteHeaderNumber({ value }: { value: string | null }): number | undefined {
-  if (value === null || value.trim() === '') return undefined;
+  if (value === null || value.trim() === '') {
+    return undefined;
+  }
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
@@ -135,7 +139,9 @@ function selectProbeFiles({ files, maximumProbedArtifacts }: {
     .sort((left, right) => {
       const leftSize = left.size ?? -1;
       const rightSize = right.size ?? -1;
-      if (leftSize !== rightSize) return rightSize - leftSize;
+      if (leftSize !== rightSize) {
+        return rightSize - leftSize;
+      }
       return left.path.localeCompare(right.path);
     })
     .slice(0, maximumProbedArtifacts);
@@ -232,7 +238,9 @@ async function consumeBoundedBody({ response, controller, byteBudget }: {
   controller: AbortController,
   byteBudget: number,
 }): Promise<{ bytesConsumed: number; abortedByByteBudget: boolean; error: unknown | undefined }> {
-  if (!response.body) return { bytesConsumed: 0, abortedByByteBudget: false, error: undefined };
+  if (!response.body) {
+    return { bytesConsumed: 0, abortedByByteBudget: false, error: undefined };
+  }
 
   const reader = response.body.getReader();
   let bytesConsumed = 0;
@@ -242,8 +250,12 @@ async function consumeBoundedBody({ response, controller, byteBudget }: {
     while (bytesConsumed < byteBudget) {
       try {
         const { value, done } = await reader.read();
-        if (done) break;
-        if (!value) continue;
+        if (done) {
+          break;
+        }
+        if (!value) {
+          continue;
+        }
         bytesConsumed += value.byteLength;
         if (bytesConsumed >= byteBudget) {
           abortedByByteBudget = true;
@@ -275,13 +287,17 @@ function requestAbortController({ signal, timeoutMs }: {
 } {
   const controller = new AbortController();
   let didTimeOut = false;
-  if (signal.aborted) controller.abort(signal.reason);
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+  }
   const abort = () => controller.abort(signal.reason);
   signal.addEventListener('abort', abort, { once: true });
   // The parent can abort after the first check but before the listener is
   // registered. Re-check after registration so a close/abort cannot leave the
   // underlying fetch alive until the request timeout.
-  if (signal.aborted) abort();
+  if (signal.aborted) {
+    abort();
+  }
   const timeoutId = setTimeout(() => {
     didTimeOut = true;
     controller.abort('download verification request timeout');
@@ -321,9 +337,13 @@ async function probeArtifact({
     const observation = baseObservation({ path, method: 'HEAD', response });
     const hasUsefulSize = observation.contentLength !== undefined;
     const advertisesRanges = observation.acceptRanges?.toLowerCase().includes('bytes') === true;
-    if (response.ok && hasUsefulSize && advertisesRanges) return observation;
+    if (response.ok && hasUsefulSize && advertisesRanges) {
+      return observation;
+    }
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal.aborted) {
+      throw error;
+    }
   } finally {
     headRequest.dispose();
   }
@@ -340,7 +360,9 @@ async function probeArtifact({
     const byteBudget = Math.max(0, Math.min(perFileByteBudget, remainingTotalByteBudget));
     const body = await consumeBoundedBody({ response, controller, byteBudget });
     if (body.error !== undefined) {
-      if (signal.aborted) throw body.error;
+      if (signal.aborted) {
+        throw body.error;
+      }
       const observedError = rangeRequest.timedOut()
         ? new Error('Browser transport probe request timed out')
         : body.error;
@@ -357,7 +379,9 @@ async function probeArtifact({
       abortedByByteBudget: body.abortedByByteBudget,
     };
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal.aborted) {
+      throw error;
+    }
     const observedError = rangeRequest.timedOut()
       ? new Error('Browser transport probe request timed out')
       : error;
@@ -429,8 +453,12 @@ export async function runBrowserDownloadVerification({
       }
       metadataText = await metadataResponse.text();
     } catch (error) {
-      if (signal.aborted) throw error;
-      if (metadataRequest.timedOut()) throw new Error('Hugging Face repository metadata request timed out');
+      if (signal.aborted) {
+        throw error;
+      }
+      if (metadataRequest.timedOut()) {
+        throw new Error('Hugging Face repository metadata request timed out');
+      }
       throw error;
     } finally {
       metadataRequest.dispose();
@@ -452,7 +480,9 @@ export async function runBrowserDownloadVerification({
 
   for (const file of probeFiles) {
     signal.throwIfAborted();
-    if (bytesConsumed >= totalByteBudget) break;
+    if (bytesConsumed >= totalByteBudget) {
+      break;
+    }
     const observation = await probeArtifact({
       path: file.path,
       url: artifactResolveUrl({

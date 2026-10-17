@@ -30,7 +30,9 @@ function checkout(): { rootDir: string, sourceCommit: string } {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const rootDir of roots.splice(0)) rmSync(rootDir, { recursive: true, force: true });
+  for (const rootDir of roots.splice(0)) {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 describe('Naidan app source identity', () => {
@@ -46,7 +48,9 @@ describe('Naidan app source identity', () => {
     const { rootDir, sourceCommit } = checkout();
     const file = change === 'untracked' ? 'private-file-name.ts' : 'source.ts';
     writeFileSync(path.join(rootDir, file), 'export const value = 2;');
-    if (change === 'staged') git({ rootDir, args: ['add', file] });
+    if (change === 'staged') {
+      git({ rootDir, args: ['add', file] });
+    }
     const identity = readAppSource({ rootDir });
     expect(identity).toEqual({ sourceCommit, workingTree: 'dirty' });
     expect(JSON.stringify(identity)).not.toContain(file);

@@ -14,22 +14,33 @@ export function copyMessageWithoutReplies({ message }: { message: MessageNode })
     case 'user':
     case 'system':
     case 'tool': throw new Error('Snapshot role differs from its history node.');
-    default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = message;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
     const interruption = (() => {
       const recorded = message.interruption;
-      if (recorded === undefined) return undefined;
+      if (recorded === undefined) {
+        return undefined;
+      }
       switch (recorded.type) {
       case 'cancelled': return { type: 'cancelled' as const };
       case 'error': return { type: 'error' as const, message: recorded.message };
-      default: { const _ex: never = recorded; throw new Error(`Unhandled interruption: ${_ex}`); }
+      default: {
+        const _ex: never = recorded;
+        throw new Error(`Unhandled interruption: ${_ex}`);
+      }
       }
     })();
     return { ...common, ...content, parts: [...content.parts], modelId: message.modelId, lmParameters: cloneLmParameters({ lmParameters: message.lmParameters }), interruption };
   }
   case 'system': return { ...common, ...content, parts: [...content.parts], modelId: undefined, lmParameters: undefined };
   case 'tool': return { ...common, ...content, parts: [...content.parts], modelId: undefined, lmParameters: undefined };
-  default: { const _ex: never = content; throw new Error(`Unhandled snapshot: ${_ex}`); }
+  default: {
+    const _ex: never = content;
+    throw new Error(`Unhandled snapshot: ${_ex}`);
+  }
   }
 }
 

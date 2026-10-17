@@ -16,8 +16,12 @@ import { createSearchIndex } from './search';
 
 export function docsBuildConfig({ root }: { root: string }): UserConfig {
   const inputs: Record<string, string> = {};
-  for (const page of DOCS_PAGES) inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
-  for (const [name, entry] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = entry;
+  for (const page of DOCS_PAGES) {
+    inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
+  }
+  for (const [name, entry] of Object.entries(ISLAND_ENTRIES)) {
+    inputs[`island-${name}`] = entry;
+  }
   inputs['app-entry'] = path.resolve(root, APP_ENTRY_CLIENT);
   inputs['home-brand'] = path.resolve(root, HOME_BRAND_CLIENT);
   return mergeConfig(docsCompilerConfig({ root }), {
@@ -66,21 +70,33 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         }));
         // A unique output directory prevents stale ESM instances on repeated builds.
         const renderer = await import(pathToFileURL(path.join(temporary, 'renderer.js')).href) as DocsRenderer;
-        if (typeof renderer.renderPage !== 'function') throw new Error('Invalid Docs renderer module');
+        if (typeof renderer.renderPage !== 'function') {
+          throw new Error('Invalid Docs renderer module');
+        }
         const files = new Map<string, string>();
         const entryAsset = Object.values(bundle).find(item => item.type === 'asset' && item.names.includes('locale.js'));
-        if (!entryAsset) throw new Error('Missing Docs locale bootstrap');
+        if (!entryAsset) {
+          throw new Error('Missing Docs locale bootstrap');
+        }
         const bootstrap = `${DOCS_BASE}${entryAsset.fileName}`;
         const faviconAsset = Object.values(bundle).find(item => item.type === 'asset' && item.names.includes('favicon.svg'));
-        if (!faviconAsset) throw new Error('Missing Docs favicon');
+        if (!faviconAsset) {
+          throw new Error('Missing Docs favicon');
+        }
         const favicon = publicAssetHref({ file: faviconAsset.fileName });
         const homeAssets = manifestEntry({ manifest, name: styleEntryName({ page: 'index' }) });
         const searchAssets = manifestEntry({ manifest, name: 'island-search' });
-        if (!searchAssets.script) throw new Error('Missing Docs search client entry');
+        if (!searchAssets.script) {
+          throw new Error('Missing Docs search client entry');
+        }
         const appEntryAssets = manifestEntry({ manifest, name: 'app-entry' });
-        if (!appEntryAssets.script) throw new Error('Missing Docs app entry client');
+        if (!appEntryAssets.script) {
+          throw new Error('Missing Docs app entry client');
+        }
         const homeBrandAssets = manifestEntry({ manifest, name: 'home-brand' });
-        if (!homeBrandAssets.script) throw new Error('Missing Docs home brand client');
+        if (!homeBrandAssets.script) {
+          throw new Error('Missing Docs home brand client');
+        }
         const renderedPages = new Map<string, RenderedPage>();
         files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [], favicon }, bootstrap }));
         for (const locale of DOCS_LOCALES) {
@@ -91,7 +107,9 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
             const scripts: string[] = [];
             for (const island of findIslands({ body: rendered.body })) {
               const entry = manifestEntry({ manifest, name: `island-${island}` });
-              if (!entry.script) throw new Error(`Missing client entry for ${island}`);
+              if (!entry.script) {
+                throw new Error(`Missing client entry for ${island}`);
+              }
               scripts.push(entry.script);
               assets.styles.push(...entry.styles);
             }
@@ -103,14 +121,18 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
               scripts.push(homeBrandAssets.script);
               assets.styles.push(...homeBrandAssets.styles);
             }
-            if (!assets.styles.length) throw new Error(`Missing styles for ${page.id}`);
+            if (!assets.styles.length) {
+              throw new Error(`Missing styles for ${page.id}`);
+            }
             const relative = `${docsHref({ locale, page: page.id }).slice(DOCS_BASE.length)}index.html`;
             files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts, favicon }, bootstrap }));
           }
         }
         const home = ({ locale }: { locale: DocsLocale }): RenderedPage => {
           const result = renderedPages.get(docsHref({ locale, page: 'index' }));
-          if (!result) throw new Error(`Missing home for ${locale}`);
+          if (!result) {
+            throw new Error(`Missing home for ${locale}`);
+          }
           return result;
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;

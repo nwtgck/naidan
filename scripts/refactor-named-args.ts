@@ -27,22 +27,27 @@ async function main() {
     [vueLanguagePlugin, { getLanguageId: (id) => (volar as any).resolveFileLanguageId(id) }],
     scriptRegistry,
     (fileName) => {
-        if (!sourceFileSnapshots.has(fileName)) {
-            const content = ts.sys.readFile(fileName);
-            if (content !== undefined) sourceFileSnapshots.set(fileName, ts.ScriptSnapshot.fromString(content));
+      if (!sourceFileSnapshots.has(fileName)) {
+        const content = ts.sys.readFile(fileName);
+        if (content !== undefined) {
+          sourceFileSnapshots.set(fileName, ts.ScriptSnapshot.fromString(content));
         }
-        const snapshot = sourceFileSnapshots.get(fileName);
-        if (snapshot) language.scripts.set(fileName, snapshot);
-        else language.scripts.delete(fileName);
+      }
+      const snapshot = sourceFileSnapshots.get(fileName);
+      if (snapshot) {
+        language.scripts.set(fileName, snapshot);
+      } else {
+        language.scripts.delete(fileName);
+      }
     }
   );
 
   for (const fileName of parsedConfig.fileNames) {
-      const content = ts.sys.readFile(fileName);
-      if (content !== undefined) {
-          sourceFileSnapshots.set(fileName, ts.ScriptSnapshot.fromString(content));
-          language.scripts.set(fileName, ts.ScriptSnapshot.fromString(content));
-      }
+    const content = ts.sys.readFile(fileName);
+    if (content !== undefined) {
+      sourceFileSnapshots.set(fileName, ts.ScriptSnapshot.fromString(content));
+      language.scripts.set(fileName, ts.ScriptSnapshot.fromString(content));
+    }
   }
 
   const { languageServiceHost } = (volar as any).createLanguageServiceHost(ts, ts.sys, language, id => id, {
@@ -60,11 +65,11 @@ async function main() {
   // --- 2. Find Def and Params ---
   let primaryDefNode: ts.Identifier | undefined;
   function findPrimaryDef(node: ts.Node) {
-      if ((ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) && 
+    if ((ts.isVariableDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node)) &&
           node.name && ts.isIdentifier(node.name) && node.name.getText(sourceFile!) === targetFunction) {
-          primaryDefNode = node;
-      }
-      ts.forEachChild(node, findPrimaryDef);
+      primaryDefNode = node;
+    }
+    ts.forEachChild(node, findPrimaryDef);
   }
   findPrimaryDef(sourceFile);
   const primaryDefStart = primaryDefNode!.getStart(sourceFile);
@@ -72,9 +77,12 @@ async function main() {
   let params: ts.NodeArray<ts.ParameterDeclaration> | undefined;
   let currNode: ts.Node = primaryDefNode!;
   while (currNode && !params) {
-      if (ts.isVariableDeclaration(currNode) && currNode.initializer && ts.isFunctionLike(currNode.initializer)) params = currNode.initializer.parameters;
-      else if (ts.isFunctionDeclaration(currNode) || ts.isMethodDeclaration(currNode) || ts.isArrowFunction(currNode)) params = currNode.parameters;
-      currNode = currNode.parent;
+    if (ts.isVariableDeclaration(currNode) && currNode.initializer && ts.isFunctionLike(currNode.initializer)) {
+      params = currNode.initializer.parameters;
+    } else if (ts.isFunctionDeclaration(currNode) || ts.isMethodDeclaration(currNode) || ts.isArrowFunction(currNode)) {
+      params = currNode.parameters;
+    }
+    currNode = currNode.parent;
   }
   const paramNames = params!.map(p => p.name.getText(sourceFile!));
   console.log(`Parameters identified: [${paramNames.join(', ')}]`);
@@ -83,39 +91,46 @@ async function main() {
   const allEntries = new Map<string, { fileName: string, start: number }>();
   const queue: { fileName: string, pos: number }[] = [];
   function collectSearchPositions(node: ts.Node) {
-      if (ts.isIdentifier(node) && node.getText(sourceFile!) === targetFunction) {
-          queue.push({ fileName: targetFile, pos: node.getStart(sourceFile!) });
-      }
-      ts.forEachChild(node, collectSearchPositions);
+    if (ts.isIdentifier(node) && node.getText(sourceFile!) === targetFunction) {
+      queue.push({ fileName: targetFile, pos: node.getStart(sourceFile!) });
+    }
+    ts.forEachChild(node, collectSearchPositions);
   }
   collectSearchPositions(sourceFile);
 
   const seen = new Set<string>();
   while (queue.length > 0) {
-      const { fileName, pos } = queue.shift()!;
-      if (seen.has(`${fileName}:${pos}`)) continue;
-      seen.add(`${fileName}:${pos}`);
+    const { fileName, pos } = queue.shift()!;
+    if (seen.has(`${fileName}:${pos}`)) {
+      continue;
+    }
+    seen.add(`${fileName}:${pos}`);
 
-      const refs = ls.findReferences(fileName, pos);
-      if (refs) {
-          for (const group of refs) {
-              for (const entry of group.references) {
-                  const entryId = `${entry.fileName}:${entry.textSpan.start}`;
-                  if (!allEntries.has(entryId)) {
-                      let start = entry.textSpan.start;
-                      const script = language.scripts.get(entry.fileName);
-                      if (script?.generated && !entry.fileName.endsWith('.vue')) {
-                          for (const code of vue.forEachEmbeddedCode(script.generated.root)) {
-                              const m = code.mappings.find(m => start >= m.generatedOffsets[0] && start < m.generatedOffsets[0] + m.lengths[0]);
-                              if (m) { start = m.sourceOffsets[0] + (start - m.generatedOffsets[0]); break; }
-                          }
-                      }
-                      allEntries.set(entryId, { fileName: entry.fileName, start });
-                      if (!entry.fileName.endsWith('.vue')) queue.push({ fileName: entry.fileName, pos: entry.textSpan.start });
-                  }
+    const refs = ls.findReferences(fileName, pos);
+    if (refs) {
+      for (const group of refs) {
+        for (const entry of group.references) {
+          const entryId = `${entry.fileName}:${entry.textSpan.start}`;
+          if (!allEntries.has(entryId)) {
+            let start = entry.textSpan.start;
+            const script = language.scripts.get(entry.fileName);
+            if (script?.generated && !entry.fileName.endsWith('.vue')) {
+              for (const code of vue.forEachEmbeddedCode(script.generated.root)) {
+                const m = code.mappings.find(m => start >= m.generatedOffsets[0] && start < m.generatedOffsets[0] + m.lengths[0]);
+                if (m) {
+                  start = m.sourceOffsets[0] + (start - m.generatedOffsets[0]);
+                  break;
+                }
               }
+            }
+            allEntries.set(entryId, { fileName: entry.fileName, start });
+            if (!entry.fileName.endsWith('.vue')) {
+              queue.push({ fileName: entry.fileName, pos: entry.textSpan.start });
+            }
           }
+        }
       }
+    }
   }
 
   // --- 4. Heuristic Backup for .vue files ---
@@ -124,24 +139,26 @@ async function main() {
   const targetFileBase = path.basename(inputFilePath, path.extname(inputFilePath));
 
   for (const vf of vueFiles) {
-      const absVf = path.resolve(vf);
-      const content = fs.readFileSync(absVf, 'utf-8');
-      
-      // Only check files that import the target composable
-      if (!content.includes(targetFileBase)) continue;
+    const absVf = path.resolve(vf);
+    const content = fs.readFileSync(absVf, 'utf-8');
 
-      let index = content.indexOf(targetFunction);
-      while (index !== -1) {
-          const entryId = `${absVf}:${index}`;
-          if (!allEntries.has(entryId)) {
-              // Check if it looks like a call and is NOT in a comment
-              if (isCallInSource(content, index, targetFunction)) {
-                  console.log(`[HEURISTIC] Found call site in ${vf} at ${index}`);
-                  allEntries.set(entryId, { fileName: absVf, start: index });
-              }
-          }
-          index = content.indexOf(targetFunction, index + 1);
+    // Only check files that import the target composable
+    if (!content.includes(targetFileBase)) {
+      continue;
+    }
+
+    let index = content.indexOf(targetFunction);
+    while (index !== -1) {
+      const entryId = `${absVf}:${index}`;
+      if (!allEntries.has(entryId)) {
+        // Check if it looks like a call and is NOT in a comment
+        if (isCallInSource(content, index, targetFunction)) {
+          console.log(`[HEURISTIC] Found call site in ${vf} at ${index}`);
+          allEntries.set(entryId, { fileName: absVf, start: index });
+        }
       }
+      index = content.indexOf(targetFunction, index + 1);
+    }
   }
 
   console.log(`Total sites to refactor: ${allEntries.size}`);
@@ -149,28 +166,36 @@ async function main() {
   // --- 5. Refactor ---
   const fileChanges = new Map<string, MagicString>();
   const getMS = (f: string) => {
-      if (!fileChanges.has(f)) fileChanges.set(f, new MagicString(fs.readFileSync(f, 'utf-8')));
-      return fileChanges.get(f)!;
+    if (!fileChanges.has(f)) {
+      fileChanges.set(f, new MagicString(fs.readFileSync(f, 'utf-8')));
+    }
+    return fileChanges.get(f)!;
   };
 
   for (const entry of allEntries.values()) {
-      if (entry.fileName === targetFile && entry.start === primaryDefStart) continue;
+    if (entry.fileName === targetFile && entry.start === primaryDefStart) {
+      continue;
+    }
 
-      const ms = getMS(entry.fileName);
-      const code = ms.original;
-      const rest = code.substring(entry.start + targetFunction.length);
-      const match = rest.match(/^\s*\(([\s\S]*?)\)/);
-      if (match) {
-          const argsText = match[1]!;
-          if (argsText.trim().startsWith('{') && argsText.trim().endsWith('}')) continue;
-
-          const argsList = splitArguments(argsText);
-          if (argsList.length === 0 && paramNames.length > 0) continue; 
-
-          const named = argsList.map((a, i) => `${paramNames[i] || `arg${i}`}: ${a.trim()}`).join(', ');
-          ms.overwrite(entry.start + targetFunction.length, entry.start + targetFunction.length + match[0].length, `({ ${named} })`);
-          console.log(`[CALL] Updated ${path.relative(process.cwd(), entry.fileName)} at pos ${entry.start}`);
+    const ms = getMS(entry.fileName);
+    const code = ms.original;
+    const rest = code.substring(entry.start + targetFunction.length);
+    const match = rest.match(/^\s*\(([\s\S]*?)\)/);
+    if (match) {
+      const argsText = match[1]!;
+      if (argsText.trim().startsWith('{') && argsText.trim().endsWith('}')) {
+        continue;
       }
+
+      const argsList = splitArguments(argsText);
+      if (argsList.length === 0 && paramNames.length > 0) {
+        continue;
+      }
+
+      const named = argsList.map((a, i) => `${paramNames[i] || `arg${i}`}: ${a.trim()}`).join(', ');
+      ms.overwrite(entry.start + targetFunction.length, entry.start + targetFunction.length + match[0].length, `({ ${named} })`);
+      console.log(`[CALL] Updated ${path.relative(process.cwd(), entry.fileName)} at pos ${entry.start}`);
+    }
   }
 
   // Definition
@@ -181,45 +206,69 @@ async function main() {
   console.log(`[DEF] Updated definition in ${path.relative(process.cwd(), targetFile)}`);
 
   if (isDryRun) {
-      console.log('\n--- DRY RUN ---');
-      for (const [f, ms] of fileChanges) if (ms.hasChanged()) console.log(`Modified: ${path.relative(process.cwd(), f)}`);
+    console.log('\n--- DRY RUN ---');
+    for (const [f, ms] of fileChanges) {
+      if (ms.hasChanged()) {
+        console.log(`Modified: ${path.relative(process.cwd(), f)}`);
+      }
+    }
   } else {
-      for (const [f, ms] of fileChanges) if (ms.hasChanged()) fs.writeFileSync(f, ms.toString());
-      console.log('\n✨ Refactoring complete.');
+    for (const [f, ms] of fileChanges) {
+      if (ms.hasChanged()) {
+        fs.writeFileSync(f, ms.toString());
+      }
+    }
+    console.log('\n✨ Refactoring complete.');
   }
 }
 
 function isCallInSource(content: string, index: number, fnName: string): boolean {
-    const before = content.substring(0, index);
-    const after = content.substring(index + fnName.length);
-    
-    // Must be followed by '('
-    if (!after.trim().startsWith('(')) return false;
+  const before = content.substring(0, index);
+  const after = content.substring(index + fnName.length);
 
-    // Must NOT be in a line comment
-    const lastNewline = before.lastIndexOf('\n');
-    const lineBefore = before.substring(lastNewline + 1);
-    if (lineBefore.includes('//')) return false;
+  // Must be followed by '('
+  if (!after.trim().startsWith('(')) {
+    return false;
+  }
 
-    // Must NOT be in a block comment
-    const lastBlockStart = before.lastIndexOf('/*');
-    const lastBlockEnd = before.lastIndexOf('*/');
-    if (lastBlockStart > lastBlockEnd) return false;
+  // Must NOT be in a line comment
+  const lastNewline = before.lastIndexOf('\n');
+  const lineBefore = before.substring(lastNewline + 1);
+  if (lineBefore.includes('//')) {
+    return false;
+  }
 
-    return true;
+  // Must NOT be in a block comment
+  const lastBlockStart = before.lastIndexOf('/*');
+  const lastBlockEnd = before.lastIndexOf('*/');
+  if (lastBlockStart > lastBlockEnd) {
+    return false;
+  }
+
+  return true;
 }
 
 function splitArguments(text: string): string[] {
-    const res: string[] = [];
-    let cur = '', d = 0;
-    for (const c of text) {
-        if (['(', '{', '['].includes(c)) d++;
-        if ([')', '}', ']'].includes(c)) d--;
-        if (c === ',' && d === 0) { res.push(cur); cur = ''; }
-        else cur += c;
+  const res: string[] = [];
+  let cur = '', d = 0;
+  for (const c of text) {
+    if (['(', '{', '['].includes(c)) {
+      d++;
     }
-    if (cur.trim()) res.push(cur);
-    return res;
+    if ([')', '}', ']'].includes(c)) {
+      d--;
+    }
+    if (c === ',' && d === 0) {
+      res.push(cur);
+      cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  if (cur.trim()) {
+    res.push(cur);
+  }
+  return res;
 }
 
 main().catch(console.error);

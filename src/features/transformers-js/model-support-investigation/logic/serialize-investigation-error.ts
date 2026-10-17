@@ -33,7 +33,9 @@ function isErrorValue(value: unknown): value is Error {
 }
 
 function errorCause({ value }: { value: unknown }): unknown {
-  if (!isErrorValue(value)) return undefined;
+  if (!isErrorValue(value)) {
+    return undefined;
+  }
   try {
     return 'cause' in value ? value.cause : undefined;
   } catch {
@@ -54,15 +56,27 @@ function sanitizeSerializableValue({
   maxStringLength: number,
   seen: WeakSet<object>,
 }): unknown {
-  if (value === undefined || value === null || typeof value === "boolean" || typeof value === "number") return value;
+  if (value === undefined || value === null || typeof value === "boolean" || typeof value === "number") {
+    return value;
+  }
   if (typeof value === "string") {
     return truncated({ value: redactSensitiveString({ value }), maxLength: maxStringLength });
   }
-  if (typeof value === "bigint") return `${value}n`;
-  if (typeof value === "function" || typeof value === "symbol") return safeString({ value });
-  if (typeof value !== "object") return safeString({ value });
-  if (seen.has(value)) return "[Circular]";
-  if (depth >= maxDepth) return "[MaxDepth]";
+  if (typeof value === "bigint") {
+    return `${value}n`;
+  }
+  if (typeof value === "function" || typeof value === "symbol") {
+    return safeString({ value });
+  }
+  if (typeof value !== "object") {
+    return safeString({ value });
+  }
+  if (seen.has(value)) {
+    return "[Circular]";
+  }
+  if (depth >= maxDepth) {
+    return "[MaxDepth]";
+  }
   seen.add(value);
 
   if (Array.isArray(value)) {
@@ -137,7 +151,9 @@ function sanitizeSerializableValue({
   }
   let truncatedEntries = false;
   for (const key in value) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(value, key)) {
+      continue;
+    }
     if (entryCount >= MAX_COLLECTION_ENTRIES) {
       truncatedEntries = true;
       break;
@@ -159,7 +175,9 @@ function sanitizeSerializableValue({
       });
     entryCount += 1;
   }
-  if (truncatedEntries) result["[Truncated]"] = `more than ${MAX_COLLECTION_ENTRIES} object entries`;
+  if (truncatedEntries) {
+    result["[Truncated]"] = `more than ${MAX_COLLECTION_ENTRIES} object entries`;
+  }
   return result;
 }
 
@@ -172,7 +190,9 @@ function safeSerializedValue({
   maxDepth: number,
   maxLength: number,
 }): string | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   try {
     const sanitized = sanitizeSerializableValue({
       value,

@@ -31,10 +31,15 @@ watch(() => props.view.deletedAssetIds.value, deleted => {
 watch(current, tile => {
   feedback.value = '';
   if (!tile) {
-    queue.value = []; return;
+    queue.value = [];
+    return;
   }
-  if (!queue.value.length) queue.value = [...props.view.tiles.value];
-  if (!queue.value.some(value => value.id === tile.id)) queue.value = [...queue.value, tile];
+  if (!queue.value.length) {
+    queue.value = [...props.view.tiles.value];
+  }
+  if (!queue.value.some(value => value.id === tile.id)) {
+    queue.value = [...queue.value, tile];
+  }
   queue.value = queue.value.map(value => value.id === tile.id ? tile : value);
 }, { immediate: true, flush: 'sync' });
 watch(() => props.view.tiles.value, tiles => {
@@ -42,44 +47,63 @@ watch(() => props.view.tiles.value, tiles => {
   queue.value = queue.value.map(tile => updated.get(tile.id) ?? tile);
 }, { flush: 'sync' });
 watch(() => props.active, active => {
-  if (!active) props.view.closeDetails();
+  if (!active) {
+    props.view.closeDetails();
+  }
 });
 const index = computed({
   get: () => Math.max(0, queue.value.findIndex(tile => tile.id === current.value?.id)),
   set(value: number) {
     const tile = queue.value[value];
-    if (tile && tile.id !== current.value?.id) void props.view.inspect({ tile });
+    if (tile && tile.id !== current.value?.id) {
+      void props.view.inspect({ tile });
+    }
   },
 });
 const actionDisabled = computed(() => !props.view.details.value || props.view.inspectLoading.value || !props.view.editorReady.value || props.view.editor.formDisabled.value);
 
 async function reuse({ kind }: { kind: 'settings' | 'prompt' | 'initial' | 'reference' }): Promise<void> {
-  if (actionDisabled.value) return;
+  if (actionDisabled.value) {
+    return;
+  }
   const id = current.value?.id;
   feedback.value = '';
   try {
     const result = await props.view.reuse({ kind });
-    if (current.value?.id !== id) return;
+    if (current.value?.id !== id) {
+      return;
+    }
     const error = props.view.failure.value || props.view.editor.historyActions.error.value;
     if (error) {
-      feedback.value = error; return;
+      feedback.value = error;
+      return;
     }
     switch (result) {
-    case 'applied': feedback.value = await ensureStrings.imageGeneration__action_applied(); break;
+    case 'applied': feedback.value = await ensureStrings.imageGeneration__action_applied();
+      break;
     case 'unavailable': break;
-    default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = result;
+      throw new Error(String(exhaustive));
+    }
     }
   } catch (error) {
-    if (current.value?.id === id) feedback.value = error instanceof Error ? error.message : String(error);
+    if (current.value?.id === id) {
+      feedback.value = error instanceof Error ? error.message : String(error);
+    }
   }
 }
 
 async function download({ format, includeMetadata }: { format: ImageDownloadFormat, includeMetadata: boolean }): Promise<ImageDownloadResult> {
   const selected = props.view.details.value;
-  if (!selected) return { status: 'cancelled' };
+  if (!selected) {
+    return { status: 'cancelled' };
+  }
   try {
     const png = await props.view.getImage({ binaryObjectId: selected.asset.result.binaryObjectId });
-    if (!png) throw new Error('The saved image is unavailable.');
+    if (!png) {
+      throw new Error('The saved image is unavailable.');
+    }
     const blob = await imageGenerationDownloadBlob({
       png,
       request: { ...selected.run.request, parameters: { ...selected.run.request.parameters, seed: selected.asset.seed } },
@@ -91,7 +115,10 @@ async function download({ format, includeMetadata }: { format: ImageDownloadForm
       switch (format) {
       case 'jpeg': return 'jpg';
       case 'png': case 'webp': return format;
-      default: { const exhaustive: never = format; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = format;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     downloadBlob({ blob, filename: `naidan-${idToRaw({ id: selected.asset.id })}.${extension}` });

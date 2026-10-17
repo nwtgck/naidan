@@ -332,13 +332,15 @@ function resolveOutputMode({
   for (const occurrence of occurrences) {
     const kindValue = getEffectValue({ occurrence, key: 'outputKind' });
     switch (kindValue) {
-    case 'brief': brief = true; break;
+    case 'brief': brief = true;
+      break;
     case 'normal':
     case 'context':
     case 'unified':
     case 'ed':
     case 'rcs':
-    case 'side-by-side': detailedKinds.add(kindValue); break;
+    case 'side-by-side': detailedKinds.add(kindValue);
+      break;
     default: break;
     }
 
@@ -361,7 +363,8 @@ function resolveOutputMode({
     const commonValue = getEffectValue({ occurrence, key: 'commonLineMode' });
     switch (commonValue) {
     case 'left-only':
-    case 'suppress': commonLineMode = commonValue; break;
+    case 'suppress': commonLineMode = commonValue;
+      break;
     default: break;
     }
     const ifdefValue = getEffectValue({ occurrence, key: 'ifdefName' });
@@ -418,7 +421,9 @@ async function readExcludePatterns({
     const lines = new TextDecoder('utf-8', { ignoreBOM: true })
       .decode(bytes)
       .split('\n');
-    if (lines[lines.length - 1] === '') lines.pop();
+    if (lines[lines.length - 1] === '') {
+      lines.pop();
+    }
     for (const line of lines) {
       patterns.push(line.endsWith('\r') ? line.slice(0, -1) : line);
     }
@@ -428,7 +433,9 @@ async function readExcludePatterns({
 
 function shouldForwardSignal({ context }: { context: WeshCommandContext }): boolean {
   const waitStatus = context.process.getWaitStatus();
-  if (waitStatus === undefined) return false;
+  if (waitStatus === undefined) {
+    return false;
+  }
   switch (waitStatus.kind) {
   case 'signaled': return true;
   case 'exited':
@@ -478,7 +485,9 @@ function mergeCompareStatus({
 }
 
 function shellQuote({ value }: { value: string }): string {
-  if (/^[A-Za-z0-9_@%+=:,./-]+$/u.test(value)) return value;
+  if (/^[A-Za-z0-9_@%+=:,./-]+$/u.test(value)) {
+    return value;
+  }
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -491,13 +500,17 @@ function restoreShortFlagBundles({
 }): string[] {
   const restored = [...tokens];
   for (const arg of args) {
-    if (!/^-[A-Za-z]{2,}$/u.test(arg)) continue;
+    if (!/^-[A-Za-z]{2,}$/u.test(arg)) {
+      continue;
+    }
     const expanded = [...arg.slice(1)].map(character => `-${character}`);
     const firstCandidate = restored.findIndex((token, index) => (
       token === expanded[0]
       && expanded.every((expected, offset) => restored[index + offset] === expected)
     ));
-    if (firstCandidate < 0) continue;
+    if (firstCandidate < 0) {
+      continue;
+    }
     restored.splice(firstCandidate, expanded.length, arg);
   }
   return restored;
@@ -761,7 +774,9 @@ export const diffCommandImplementation: WeshCommandImplementation = {
         context,
         paths: collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'excludeFrom' }),
       });
-      for (const excluded of excludedFromFiles) excludeSources.push(excluded);
+      for (const excluded of excludedFromFiles) {
+        excludeSources.push(excluded);
+      }
       const fileNameCaseMode = parsed.optionValues.fileNameCaseMode === 'insensitive' ? 'insensitive' : 'sensitive';
       const comparisonOptions: DiffComparisonOptions = {
         stripTrailingCarriageReturn: parsed.optionValues.stripTrailingCarriageReturn === true,

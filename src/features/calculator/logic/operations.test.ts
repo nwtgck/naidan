@@ -219,7 +219,9 @@ describe('calculator operation errors', () => {
     it(`${testCase.operation}: ${testCase.input} -> ${testCase.code}`, () => {
       const result = runCalculator({ input: testCase.input, output: testCase.output ?? DECIMAL_15 });
       expect(result.status, testCase.input).toBe('error');
-      if (result.status === 'error') expect(result.diagnostic.code).toBe(testCase.code);
+      if (result.status === 'error') {
+        expect(result.diagnostic.code).toBe(testCase.code);
+      }
     });
   }
 });
@@ -247,7 +249,9 @@ describe('calculator cross-operation invariants', () => {
           output: RATIONAL,
         });
         expect(remainder.status).toBe('success');
-        if (remainder.status !== 'success' || remainder.output.kind !== 'value') continue;
+        if (remainder.status !== 'success' || remainder.output.kind !== 'value') {
+          continue;
+        }
         const numericRemainder = Number(remainder.output.text);
         expect(numericRemainder >= 0).toBe(true);
         expect(numericRemainder < divisor).toBe(true);

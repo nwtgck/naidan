@@ -28,37 +28,57 @@ function magnify({ factor }: { factor: number }): void {
 }
 
 function keydown({ event }: { event: KeyboardEvent }): void {
-  if (event.defaultPrevented || event.isComposing) return;
+  if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
   trapImageDialogFocus({ root: container.value, event });
   if (event.key === 'Escape') {
-    event.preventDefault(); emit('close'); return;
+    event.preventDefault();
+    emit('close');
+    return;
   }
-  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-  if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="listbox"], [role="menu"], [data-image-viewer-keys="local"]')) return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="listbox"], [role="menu"], [data-image-viewer-keys="local"]')) {
+    return;
+  }
   switch (event.key) {
-  case 'ArrowLeft': event.preventDefault(); move({ offset: -1 }); break;
-  case 'ArrowRight': event.preventDefault(); move({ offset: 1 }); break;
+  case 'ArrowLeft': event.preventDefault();
+    move({ offset: -1 });
+    break;
+  case 'ArrowRight': event.preventDefault();
+    move({ offset: 1 });
+    break;
   }
 }
 
 function pointerDown({ event }: { event: PointerEvent }): void {
-  if (!(event.currentTarget instanceof HTMLElement) || event.button !== 0) return;
+  if (!(event.currentTarget instanceof HTMLElement) || event.button !== 0) {
+    return;
+  }
   pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
   event.currentTarget.setPointerCapture(event.pointerId);
 }
 
 function pointerMove({ event }: { event: PointerEvent }): void {
-  if (!pointer || event.pointerId !== pointer.id) return;
+  if (!pointer || event.pointerId !== pointer.id) {
+    return;
+  }
   position.value = { x: position.value.x + event.clientX - pointer.x, y: position.value.y + event.clientY - pointer.y };
   pointer = { ...pointer, x: event.clientX, y: event.clientY };
 }
 
 onMounted(() => {
-  if (document.activeElement instanceof HTMLElement) previousFocus = document.activeElement;
+  if (document.activeElement instanceof HTMLElement) {
+    previousFocus = document.activeElement;
+  }
   container.value?.focus();
 });
 onBeforeUnmount(() => {
-  if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+  if (previousFocus?.isConnected) {
+    previousFocus.focus({ preventScroll: true });
+  }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { zoom, position, detailsOpen } }) || {}) });
 </script>

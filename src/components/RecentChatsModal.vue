@@ -48,7 +48,9 @@ const groupNameMap = computed(() => {
 
 const filteredRecentChats = computed(() => {
   const q = filterQuery.value.trim().toLowerCase();
-  if (!q) return recentChats.value;
+  if (!q) {
+    return recentChats.value;
+  }
   return recentChats.value.filter((chat) => {
     const displayTitle = chat.title || lazyStrings.SHARED__new_chat();
     return displayTitle?.toLowerCase().includes(q) === true;
@@ -56,7 +58,9 @@ const filteredRecentChats = computed(() => {
 });
 
 const handlePreviewMouseEnter = () => {
-  if (previewHoverTimeout) clearTimeout(previewHoverTimeout);
+  if (previewHoverTimeout) {
+    clearTimeout(previewHoverTimeout);
+  }
 };
 
 const handlePreviewMouseLeave = () => {
@@ -153,7 +157,9 @@ const deferredSelectedItem = ref(currentSelectedItem.value);
 let previewDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
 watch(currentSelectedItem, (newItem) => {
-  if (previewDebounceTimeout) clearTimeout(previewDebounceTimeout);
+  if (previewDebounceTimeout) {
+    clearTimeout(previewDebounceTimeout);
+  }
   previewDebounceTimeout = setTimeout(() => {
     deferredSelectedItem.value = newItem;
   }, 250);
@@ -161,7 +167,9 @@ watch(currentSelectedItem, (newItem) => {
 
 function scrollToSelected() {
   nextTick(() => {
-    if (!scrollContainer.value) return;
+    if (!scrollContainer.value) {
+      return;
+    }
     const el = scrollContainer.value.querySelector(`[data-index="${selectedIndex.value}"]`);
     if (el instanceof HTMLElement) {
       scrollIntoViewSafe({
@@ -176,7 +184,9 @@ function scrollToSelected() {
 
 async function selectItem({ index }: { index: number }) {
   const target = filteredRecentChats.value[index];
-  if (!target) return;
+  if (!target) {
+    return;
+  }
 
   documentMetadata?.finishHomeIntroduction();
   await openChat({ chatId: target.id });
@@ -212,12 +222,17 @@ function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): s
   case 'always': return lazyStrings.RecentChatsModal__on();
   case 'peek': return lazyStrings.RecentChatsModal__peek();
   case 'disabled': return lazyStrings.RecentChatsModal__off();
-  default: { const _ex: never = mode; return _ex; }
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
   }
 }
 
 const mappedDeferredItem = computed(() => {
-  if (!deferredSelectedItem.value) return undefined;
+  if (!deferredSelectedItem.value) {
+    return undefined;
+  }
   return {
     type: 'chat' as const,
     chatId: idToRaw({ id: deferredSelectedItem.value.id }),

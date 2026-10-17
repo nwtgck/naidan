@@ -1,11 +1,15 @@
 export function isAsciiDecimalDigit({ value }: { value: string | undefined }): boolean {
-  if (value === undefined || value.length !== 1) return false;
+  if (value === undefined || value.length !== 1) {
+    return false;
+  }
   const code = value.charCodeAt(0);
   return code >= 0x30 && code <= 0x39;
 }
 
 export function isAsciiHexDigit({ value }: { value: string | undefined }): boolean {
-  if (value === undefined || value.length !== 1) return false;
+  if (value === undefined || value.length !== 1) {
+    return false;
+  }
   const code = value.charCodeAt(0);
   return (
     (code >= 0x30 && code <= 0x39)
@@ -15,14 +19,20 @@ export function isAsciiHexDigit({ value }: { value: string | undefined }): boole
 }
 
 export function isAsciiOctalDigit({ value }: { value: string | undefined }): boolean {
-  if (value === undefined || value.length !== 1) return false;
+  if (value === undefined || value.length !== 1) {
+    return false;
+  }
   const code = value.charCodeAt(0);
   return code >= 0x30 && code <= 0x37;
 }
 
 export function isAsciiShellIdentifierStart({ value }: { value: string | undefined }): boolean {
-  if (value === '_') return true;
-  if (value === undefined || value.length !== 1) return false;
+  if (value === '_') {
+    return true;
+  }
+  if (value === undefined || value.length !== 1) {
+    return false;
+  }
   const code = value.charCodeAt(0);
   return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
 }

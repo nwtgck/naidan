@@ -188,8 +188,12 @@ export function resolveInvestigationExecutionPlan({ scope }: {
 
 function stripKnownHostPrefix({ input }: { input: string }): string {
   const trimmed = input.trim();
-  if (trimmed.startsWith('hf.co/')) return trimmed.slice('hf.co/'.length);
-  if (trimmed.startsWith('huggingface.co/')) return trimmed.slice('huggingface.co/'.length);
+  if (trimmed.startsWith('hf.co/')) {
+    return trimmed.slice('hf.co/'.length);
+  }
+  if (trimmed.startsWith('huggingface.co/')) {
+    return trimmed.slice('huggingface.co/'.length);
+  }
   return trimmed;
 }
 
@@ -200,10 +204,16 @@ function normalizeUrlTarget({ input }: { input: string }): string | undefined {
   } catch {
     return undefined;
   }
-  if (url.protocol !== 'https:') return undefined;
-  if (url.hostname !== 'hf.co' && url.hostname !== 'huggingface.co') return undefined;
+  if (url.protocol !== 'https:') {
+    return undefined;
+  }
+  if (url.hostname !== 'hf.co' && url.hostname !== 'huggingface.co') {
+    return undefined;
+  }
   const parts = url.pathname.split('/').filter(Boolean);
-  if (parts.length !== 2) return undefined;
+  if (parts.length !== 2) {
+    return undefined;
+  }
   try {
     return `${decodeURIComponent(parts[0]!)}/${decodeURIComponent(parts[1]!)}`;
   } catch {
@@ -213,7 +223,9 @@ function normalizeUrlTarget({ input }: { input: string }): string | undefined {
 
 function validCanonicalModelId({ input }: { input: string }): boolean {
   const parts = input.split('/');
-  if (parts.length !== 2) return false;
+  if (parts.length !== 2) {
+    return false;
+  }
   return parts.every(part => (
     part.length > 0
     && part !== '.'
@@ -224,9 +236,13 @@ function validCanonicalModelId({ input }: { input: string }): boolean {
 
 export function normalizeInvestigationTarget({ input }: { input: string }): string | undefined {
   const trimmed = input.trim();
-  if (trimmed.length === 0) return undefined;
+  if (trimmed.length === 0) {
+    return undefined;
+  }
   const fromUrl = normalizeUrlTarget({ input: trimmed });
-  if (fromUrl !== undefined) return validCanonicalModelId({ input: fromUrl }) ? fromUrl : undefined;
+  if (fromUrl !== undefined) {
+    return validCanonicalModelId({ input: fromUrl }) ? fromUrl : undefined;
+  }
   const canonical = stripKnownHostPrefix({ input: trimmed }).replace(/\/$/u, '');
   return validCanonicalModelId({ input: canonical }) ? canonical : undefined;
 }
@@ -239,13 +255,17 @@ export function parseInvestigationTargets({ text }: { text: string }): ModelSupp
   for (const [index, rawLine] of text.split(/\r?\n/u).entries()) {
     const lineNumber = index + 1;
     const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith('#')) continue;
+    if (line.length === 0 || line.startsWith('#')) {
+      continue;
+    }
     const normalized = normalizeInvestigationTarget({ input: line });
     if (normalized === undefined) {
       errors.push({ lineNumber, input: rawLine, reason: 'invalid-model-id' });
       continue;
     }
-    if (seen.has(normalized)) continue;
+    if (seen.has(normalized)) {
+      continue;
+    }
     seen.add(normalized);
     targets.push(normalized);
   }

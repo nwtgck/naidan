@@ -49,13 +49,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           const existing = chats.get(id) || null;
           const current = existing ? { root: existing.root, currentLeafId: existing.currentLeafId } : null;
           const updated = updater({ current: current });
-          if (existing) chats.set(id, { ...existing, ...updated });
+          if (existing) {
+            chats.set(id, { ...existing, ...updated });
+          }
           return Promise.resolve(updated);
         }),
         updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
           const existing = chats.get(id) || null;
           const updated = updater({ current: existing });
-          if (updated) chats.set(id, { ...existing, ...updated });
+          if (updated) {
+            chats.set(id, { ...existing, ...updated });
+          }
           return Promise.resolve(updated);
         }),
         updateHierarchy: vi.fn().mockImplementation(({ updater }) => {

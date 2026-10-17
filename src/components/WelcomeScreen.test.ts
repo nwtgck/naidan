@@ -120,7 +120,8 @@ describe('WelcomeScreen primary slot', () => {
     expect(wrapper.find('[data-testid="launch-slot"]').text()).toBe('Linked model');
     expect(wrapper.text()).not.toContain('All conversations are stored locally.');
     expect(wrapper.find('a[download]').exists()).toBe(false);
-    expect(wrapper.classes()).toContain('relative'); expect(wrapper.classes()).not.toContain('absolute');
+    expect(wrapper.classes()).toContain('relative');
+    expect(wrapper.classes()).not.toContain('absolute');
     wrapper.unmount();
   });
 });

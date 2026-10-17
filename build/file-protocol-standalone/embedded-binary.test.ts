@@ -13,16 +13,20 @@ import { createExternalWasmGuardPlugin } from './plugin/external-wasm';
 const directories: string[] = [];
 
 function fixture() {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-embedded-binary-')); directories.push(root);
+  const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-embedded-binary-'));
+  directories.push(root);
   const bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]);
-  const filePath = path.join(root, 'input.wasm'); writeFileSync(filePath, bytes);
+  const filePath = path.join(root, 'input.wasm');
+  writeFileSync(filePath, bytes);
   const binary: StandaloneEmbeddedBinary = { virtualId: 'virtual:file-protocol-standalone/binary/test', filePath, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
   writeFileSync(path.join(root, 'main.js'), `globalThis.loadBinary = () => import(${JSON.stringify(binary.virtualId)});`);
   return { root, bytes, binary };
 }
 
 afterEach(() => {
-  for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of directories.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 async function buildBinary({ root, binary, diagnostics }: { root: string, binary: StandaloneEmbeddedBinary, diagnostics: Record<string, unknown> }) {
@@ -34,19 +38,27 @@ async function buildBinary({ root, binary, diagnostics }: { root: string, binary
     plugins: [createEmbeddedBinaryPlugin({ binaries: [binary], diagnostics }), createExternalWasmGuardPlugin({ allowExternalWasmAssets: false })],
     build: { write: false, minify: false, modulePreload: false, rollupOptions: { input: path.join(root, 'main.js') } },
   });
-  if (Array.isArray(result) || !('output' in result)) throw new Error('Unexpected fixture result');
+  if (Array.isArray(result) || !('output' in result)) {
+    throw new Error('Unexpected fixture result');
+  }
   return result.output;
 }
 
 describe('standalone binary embedding', () => {
   it('creates one lazy compressed module with verified source provenance and no WASM sidecar', async () => {
-    const { root, bytes, binary } = fixture(); const diagnostics: Record<string, unknown> = {};
+    const { root, bytes, binary } = fixture();
+    const diagnostics: Record<string, unknown> = {};
     const output = await buildBinary({ root, binary, diagnostics });
     const payloads = output.filter(file => file.type === 'chunk' && Object.keys(file.modules).includes(`\0${binary.virtualId}`));
     expect(payloads).toHaveLength(1);
-    const payload = payloads[0]; if (payload?.type !== 'chunk') throw new Error('Missing payload');
+    const payload = payloads[0];
+    if (payload?.type !== 'chunk') {
+      throw new Error('Missing payload');
+    }
     const base64 = /base64\s*=\s*["']([^"']+)/.exec(payload.code)?.[1];
-    if (!base64) throw new Error('Missing encoded payload');
+    if (!base64) {
+      throw new Error('Missing encoded payload');
+    }
     expect(brotliDecompressSync(Buffer.from(base64, 'base64'))).toEqual(Buffer.from(bytes));
     expect(output.every(file => !/\.wasm(?:\.(?:gz|br))?$/i.test(file.fileName))).toBe(true);
     expect(output.filter(file => file.type === 'chunk' && file.isEntry).every(file => file.type === 'chunk' && !file.code.includes(base64))).toBe(true);
@@ -84,7 +96,9 @@ describe('standalone binary embedding', () => {
 
   it.each(['copied.wasm', 'nested/copied.wasm.gz', 'nested/copied.wasm.br', 'nested/COPIED.WASM.BR'])('rejects publicDir sidecars before later packaging hooks: %s', async name => {
     const { root } = fixture();
-    const asset = path.join(root, 'public', name); mkdirSync(path.dirname(asset), { recursive: true }); writeFileSync(asset, 'unexpected');
+    const asset = path.join(root, 'public', name);
+    mkdirSync(path.dirname(asset), { recursive: true });
+    writeFileSync(asset, 'unexpected');
     writeFileSync(path.join(root, 'main.js'), 'globalThis.fixture = true;');
     let packaged = false;
     const packaging: Plugin = {

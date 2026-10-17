@@ -13,7 +13,9 @@ import { recommendationForSelection } from './recommendations';
 const scopes: ReturnType<typeof effectScope>[] = [];
 
 afterEach(() => {
-  for (const scope of scopes.splice(0)) scope.stop();
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
 });
 
 // Synthetic sparse headers exercise composition, not native model compatibility.
@@ -48,7 +50,8 @@ function repositories({ id, storageRevision }: { id: 'flux2-klein-4b' | 'anima-t
 
 it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files and explicit companions in main and diagnostics', async id => {
   const entries = repositories({ id, storageRevision: 'pinned' });
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const download = vi.fn();
   const library = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
@@ -61,7 +64,8 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
       download,
     },
   }))!;
-  await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
+  await library.refresh();
+  library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(true);
   expect(library.selectedFacts.value?.family).toBe(id === 'anima-turbo-1.1' ? 'anima' : id);
   expect(library.recipeAvailability({ recipeId: id, selections: {} })).toMatchObject({ available: 3, total: 3, selected: true });
@@ -82,8 +86,10 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
 });
 
 it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable until every requested companion has been downloaded and inspected', async id => {
-  const entries = repositories({ id, storageRevision: 'main' }); let available = entries.slice(0, 1);
-  const scope = effectScope(); scopes.push(scope);
+  const entries = repositories({ id, storageRevision: 'main' });
+  let available = entries.slice(0, 1);
+  const scope = effectScope();
+  scopes.push(scope);
   const download = vi.fn(async () => {
     available = entries;
   });
@@ -99,7 +105,8 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
       download,
     },
   }))!;
-  await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
+  await library.refresh();
+  library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(false);
   expect(library.selectedModels()).toBeUndefined();
   expect(library.benchmarkTargets({ selections: {} })[0]?.missing).toEqual(['vae', 'lm']);
@@ -115,7 +122,8 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
 
 it('rejects cross-family companion overrides in main and diagnostics', async () => {
   const entries = [...repositories({ id: 'flux2-klein-4b', storageRevision: 'pinned' }), ...repositories({ id: 'anima-turbo-1.1', storageRevision: 'pinned' })];
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => false,
@@ -127,7 +135,8 @@ it('rejects cross-family companion overrides in main and diagnostics', async () 
       download: vi.fn(),
     },
   }))!;
-  await library.refresh(); library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });
+  await library.refresh();
+  library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });
   const original = library.selectedModels();
   const wrongVae = JSON.stringify([entries[4]!.id, entries[4]!.files[0]!.path]);
   library.chooseComponent({ slot: 'vae', id: wrongVae });

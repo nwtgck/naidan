@@ -314,17 +314,27 @@ export function createModelSupportInvestigationWorkerClient({
   let disposal: Promise<void> | undefined;
 
   const terminateAllWorkers = (): void => {
-    for (const client of activeMetadataClients) client.dispose();
+    for (const client of activeMetadataClients) {
+      client.dispose();
+    }
     activeMetadataClients.clear();
-    for (const worker of activeWorkers) worker.terminate();
+    for (const worker of activeWorkers) {
+      worker.terminate();
+    }
     activeWorkers.clear();
-    for (const session of activeProductionSessions) session.dispose();
+    for (const session of activeProductionSessions) {
+      session.dispose();
+    }
     activeProductionSessions.clear();
   };
 
   const createWorkerHandle = (): InvestigationWorkerHandle => {
-    if (userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
-    if (disposed) throw new Error("Model Support Investigation client is disposed");
+    if (userInterruptionRequested) {
+      throw new ModelSupportInvestigationUserInterruptedError();
+    }
+    if (disposed) {
+      throw new Error("Model Support Investigation client is disposed");
+    }
     const worker = new Worker(new URL("./entry.ts", import.meta.url), { type: "module" });
     activeWorkers.add(worker);
     return {
@@ -351,14 +361,20 @@ export function createModelSupportInvestigationWorkerClient({
       // The operation has already settled. A Comlink release failure is cleanup-only and
       // must not replace the investigation result; terminating the Worker is authoritative.
     } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       terminateWorkerHandle({ handle });
     }
   };
 
   const createProductionWorkerHandle = (): ProductionWorkerHandle => {
-    if (userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
-    if (disposed) throw new Error("Model Support Investigation client is disposed");
+    if (userInterruptionRequested) {
+      throw new ModelSupportInvestigationUserInterruptedError();
+    }
+    if (disposed) {
+      throw new Error("Model Support Investigation client is disposed");
+    }
     // Production Lane intentionally uses the ordinary Production bootstrap so
     // both its offline network boundary and loader body remain identical.
     const worker = new Worker(new URL("../../worker/bootstrap.ts", import.meta.url), { type: "module" });
@@ -376,8 +392,12 @@ export function createModelSupportInvestigationWorkerClient({
     async runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint, replayMetadataBudgetBytes }) {
       switch (invocation) {
       case 'started': throw new Error('Model Support Investigation client can run only once');
-      case 'not-started': invocation = 'started'; break;
-      default: { const exhaustive: never = invocation; throw new Error('Unhandled investigation invocation: ' + exhaustive); }
+      case 'not-started': invocation = 'started';
+        break;
+      default: {
+        const exhaustive: never = invocation;
+        throw new Error('Unhandled investigation invocation: ' + exhaustive);
+      }
       }
       const now = (): string => new Date().toISOString();
       const userInterruptionError = new ModelSupportInvestigationUserInterruptedError();
@@ -406,17 +426,23 @@ export function createModelSupportInvestigationWorkerClient({
       let retainedNativeEvidence: ModelSupportInvestigationCheckpoint['nativeEvidence'];
       let flushActiveProductionInterruptionEvidence: (() => void) | undefined;
       const publishCheckpoint = ({ force = false }: { force?: boolean } = {}): void => {
-        if (userInterruptionRequested && !force) return;
+        if (userInterruptionRequested && !force) {
+          return;
+        }
         onCheckpoint({ checkpoint: { ...structuredClone(checkpoint), ...(retainedReplayMetadata === undefined ? {} : { replayMetadata: retainedReplayMetadata }), ...(retainedNativeEvidence === undefined ? {} : { nativeEvidence: retainedNativeEvidence }) } });
       };
       const publishEvent = ({ event }: { event: Parameters<typeof onEvent>[0]['event'] }): void => {
-        if (userInterruptionRequested) return;
+        if (userInterruptionRequested) {
+          return;
+        }
         checkpoint = recordInvestigationEvent({ checkpoint, event, now });
         onEvent({ event });
         publishCheckpoint();
       };
       activeInterrupt = () => {
-        if (userInterruptionRequested) return;
+        if (userInterruptionRequested) {
+          return;
+        }
         if (providerInvestigation !== undefined) {
           userInterruptionRequested = true;
           // The coordinator owns finite partial sealing after this synchronous
@@ -453,29 +479,39 @@ export function createModelSupportInvestigationWorkerClient({
             },
             workerProxy({
               value: ({ event }) => {
-                if (!planningAcceptingCallbacks) return;
+                if (!planningAcceptingCallbacks) {
+                  return;
+                }
                 // Planning has no Provider collection owner. Do not forward a
                 // forged host-only progress projection from that Worker boundary.
-                if (Object.hasOwn(event, 'productionProviderProgress')) return;
+                if (Object.hasOwn(event, 'productionProviderProgress')) {
+                  return;
+                }
                 planningStage = event.stepId;
                 publishEvent({ event });
               },
             }),
             workerProxy({
               value: ({ run, replayMetadata }) => {
-                if (!planningAcceptingCallbacks) return;
+                if (!planningAcceptingCallbacks) {
+                  return;
+                }
                 checkpoint = replaceInvestigationCheckpointRun({
                   checkpoint,
                   run: withExecutionPolicy({ run: fromPlanningWorkerRun({ run }) }),
                   now,
                 });
-                if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
+                if (replayMetadata !== undefined) {
+                  retainedReplayMetadata = replayMetadata;
+                }
                 publishCheckpoint();
               },
             }),
             workerProxy({
               value: async ({ request: input }) => {
-                if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
+                if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) {
+                  throw new ModelSupportInvestigationUserInterruptedError();
+                }
                 const request = freshMetadataRequestSchema.parse(input);
                 if (configuration.externalNetworkPolicy !== 'allow' || !executionPlan.repositoryDownload
                 || request.modelId !== normalizeTransformersJsProductionModelId({ modelId })
@@ -503,7 +539,9 @@ export function createModelSupportInvestigationWorkerClient({
                     repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })),
                     signal: controller.signal,
                     onObservation: ({ summary }) => {
-                      if (!planningAcceptingCallbacks || userInterruptionRequested) return;
+                      if (!planningAcceptingCallbacks || userInterruptionRequested) {
+                        return;
+                      }
                       checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: { ...checkpoint.run, freshMetadata: summary }, now });
                       const last = summary.requests.at(-1);
                       publishEvent({
@@ -518,7 +556,9 @@ export function createModelSupportInvestigationWorkerClient({
                 } finally {
                   client.dispose();
                   activeMetadataClients.delete(client);
-                  if (activeRuntimeAbortController === controller) activeRuntimeAbortController = undefined;
+                  if (activeRuntimeAbortController === controller) {
+                    activeRuntimeAbortController = undefined;
+                  }
                 }
               },
             }),
@@ -531,7 +571,9 @@ export function createModelSupportInvestigationWorkerClient({
               onTimeout: () => {
                 planningTimedOut = true;
                 planningAcceptingCallbacks = false;
-                for (const client of activeMetadataClients) client.dispose();
+                for (const client of activeMetadataClients) {
+                  client.dispose();
+                }
                 activeMetadataClients.clear();
                 terminateWorkerHandle({ handle: planningHandle });
                 publishEvent({
@@ -568,7 +610,9 @@ export function createModelSupportInvestigationWorkerClient({
           planningAcceptingCallbacks = false;
         } finally {
           planningAcceptingCallbacks = false;
-          if (!planningTimedOut && !userInterruptionRequested) await releaseWorkerHandle({ handle: planningHandle });
+          if (!planningTimedOut && !userInterruptionRequested) {
+            await releaseWorkerHandle({ handle: planningHandle });
+          }
         }
         checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
         publishCheckpoint();
@@ -605,7 +649,9 @@ export function createModelSupportInvestigationWorkerClient({
             }),
             createUnrecordedWorkerClient: createTransformersJsWorkerClient,
             onProgress: ({ progress }) => {
-              if (providerInvestigation !== owned || disposed) return;
+              if (providerInvestigation !== owned || disposed) {
+                return;
+              }
               const event = {
                 stepId: 'loading-investigation',
                 status: 'running',
@@ -614,8 +660,11 @@ export function createModelSupportInvestigationWorkerClient({
               } satisfies Parameters<typeof onEvent>[0]['event'];
               // After a user stop, only this owned small coordinator telemetry
               // remains observable. It cannot publish a new raw checkpoint.
-              if (userInterruptionRequested) onEvent({ event });
-              else publishEvent({ event });
+              if (userInterruptionRequested) {
+                onEvent({ event });
+              } else {
+                publishEvent({ event });
+              }
             },
           });
           providerInvestigation = owned;
@@ -633,7 +682,9 @@ export function createModelSupportInvestigationWorkerClient({
             runId: partialRun.runId,
             modelId: partialRun.modelId,
           });
-          if (providerInvestigation !== owned) throw new Error('Investigation result owner changed');
+          if (providerInvestigation !== owned) {
+            throw new Error('Investigation result owner changed');
+          }
           retainedNativeEvidence = result.nativeEvidence;
           const rejected = summary.requests.filter(request => request.outcome === 'rejected').length;
           const unexecuted = summary.requests.filter(request => request.status === 'not-started' && request.notStartedReason !== 'scope-not-selected').length;
@@ -657,7 +708,10 @@ export function createModelSupportInvestigationWorkerClient({
               case 'template-behavior': return { ...step, status: 'skipped', detail: 'Template inputs are observed only through the public Provider capture; no independent template execution' };
               case 'runtime-assets': case 'repository-information': case 'download-evidence': case 'existing-model-data':
               case 'model-declarations': case 'model-file-plan': case 'evidence-export': return step;
-              default: { const exhaustive: never = step.id; throw new Error('Unhandled Provider step: ' + exhaustive); }
+              default: {
+                const exhaustive: never = step.id;
+                throw new Error('Unhandled Provider step: ' + exhaustive);
+              }
               }
             }),
           };
@@ -678,7 +732,10 @@ export function createModelSupportInvestigationWorkerClient({
               };
               case 'runtime-assets': case 'repository-information': case 'existing-model-data': case 'model-declarations':
               case 'model-file-plan': case 'loading-investigation': case 'template-behavior': case 'lane-comparison': case 'evidence-export': return step;
-              default: { const exhaustive: never = step.id; throw new Error('Unknown receipt presentation step: ' + exhaustive); }
+              default: {
+                const exhaustive: never = step.id;
+                throw new Error('Unknown receipt presentation step: ' + exhaustive);
+              }
               }
             });
           }
@@ -689,8 +746,12 @@ export function createModelSupportInvestigationWorkerClient({
           }
           // Only this owned terminal adoption bypasses the user-stop callback
           // gate. A disposed host must never write into a later modal instance.
-          if (!disposed) publishCheckpoint({ force: true });
-          if (userInterruptionRequested || disposed) throw userInterruptionError;
+          if (!disposed) {
+            publishCheckpoint({ force: true });
+          }
+          if (userInterruptionRequested || disposed) {
+            throw userInterruptionError;
+          }
           return checkpoint.run;
         }
 
@@ -709,14 +770,16 @@ export function createModelSupportInvestigationWorkerClient({
           let progressDetail = '';
           const flushAcceptanceProgress = (): void => {
             const sample = progressTracker?.flush();
-            if (sample !== undefined) publishEvent({
-              event: {
-                stepId: 'download-evidence',
-                status: 'running',
-                detail: progressDetail,
-                progress: sample,
-              },
-            });
+            if (sample !== undefined) {
+              publishEvent({
+                event: {
+                  stepId: 'download-evidence',
+                  status: 'running',
+                  detail: progressDetail,
+                  progress: sample,
+                },
+              });
+            }
           };
           flushActiveProductionInterruptionEvidence = flushAcceptanceProgress;
           publishEvent({
@@ -735,7 +798,9 @@ export function createModelSupportInvestigationWorkerClient({
                   evidence: evidenceBeforeAcceptance,
                   signal: runtimeAbortController.signal,
                   onProgress: ({ progress }) => {
-                    if (!acceptingRuntimeProgress || runtimeAbortController.signal.aborted) return;
+                    if (!acceptingRuntimeProgress || runtimeAbortController.signal.aborted) {
+                      return;
+                    }
                     const candidateId = progress.candidate === undefined
                       ? 'candidate-selection'
                       : `${progress.candidate.device}-${progress.candidate.dtype}`;
@@ -753,7 +818,9 @@ export function createModelSupportInvestigationWorkerClient({
                       acceptancePhase = progress.phase;
                       break;
                     case 'runtime':
-                      if (progress.info?.status.startsWith('cache-acceptance-')) acceptancePhase = progress.info.status;
+                      if (progress.info?.status.startsWith('cache-acceptance-')) {
+                        acceptancePhase = progress.info.status;
+                      }
                       break;
                     default: {
                       const exhaustive: never = progress.phase;
@@ -766,7 +833,9 @@ export function createModelSupportInvestigationWorkerClient({
                       at: now(),
                       nowMs: performance.now(),
                     });
-                    if (sample === undefined) return;
+                    if (sample === undefined) {
+                      return;
+                    }
                     publishEvent({
                       event: {
                         stepId: 'download-evidence',
@@ -810,9 +879,13 @@ export function createModelSupportInvestigationWorkerClient({
             publishCheckpoint();
           } finally {
             flushAcceptanceProgress();
-            if (flushActiveProductionInterruptionEvidence === flushAcceptanceProgress) flushActiveProductionInterruptionEvidence = undefined;
+            if (flushActiveProductionInterruptionEvidence === flushAcceptanceProgress) {
+              flushActiveProductionInterruptionEvidence = undefined;
+            }
             acceptingRuntimeProgress = false;
-            if (activeRuntimeAbortController === runtimeAbortController) activeRuntimeAbortController = undefined;
+            if (activeRuntimeAbortController === runtimeAbortController) {
+              activeRuntimeAbortController = undefined;
+            }
           }
         }
 
@@ -887,7 +960,9 @@ export function createModelSupportInvestigationWorkerClient({
             checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
             publishCheckpoint();
           } catch (error) {
-            if (userInterruptionRequested || isModelSupportInvestigationUserInterruptedError({ error })) throw userInterruptionError;
+            if (userInterruptionRequested || isModelSupportInvestigationUserInterruptedError({ error })) {
+              throw userInterruptionError;
+            }
             const serialized = serializeInvestigationError({ error });
             const detail = `Template behavior failed after runtime completion: ${serialized.message}`;
             partialRun.steps = updateTemplateBehaviorCoordinatorStep({
@@ -905,9 +980,13 @@ export function createModelSupportInvestigationWorkerClient({
             publishCheckpoint();
             // An unresponsive template Worker must end this target rather than
             // start more runtime work with stale template observations.
-            if (templateTimedOut) throw error;
+            if (templateTimedOut) {
+              throw error;
+            }
           } finally {
-            if (!templateTimedOut && !userInterruptionRequested) await releaseWorkerHandle({ handle: templateHandle });
+            if (!templateTimedOut && !userInterruptionRequested) {
+              await releaseWorkerHandle({ handle: templateHandle });
+            }
           }
         }
 
@@ -933,20 +1012,26 @@ export function createModelSupportInvestigationWorkerClient({
                 { generation: executionPlan.generation, capabilityProbes: executionPlan.capabilityProbes },
                 workerProxy({
                   value: ({ event }) => {
-                    if (!attemptAcceptingCallbacks) return;
+                    if (!attemptAcceptingCallbacks) {
+                      return;
+                    }
                     publishEvent({ event });
                   },
                 }),
                 workerProxy({
                   value: ({ event }) => {
-                    if (!attemptAcceptingCallbacks) return;
+                    if (!attemptAcceptingCallbacks) {
+                      return;
+                    }
                     lastStage = event.stage;
                     attemptEvents.push(event);
                   },
                 }),
                 workerProxy({
                   value: ({ attempt }) => {
-                    if (!attemptAcceptingCallbacks) return;
+                    if (!attemptAcceptingCallbacks) {
+                      return;
+                    }
                     onAttemptCheckpoint({ attempt });
                   },
                 }),
@@ -978,7 +1063,9 @@ export function createModelSupportInvestigationWorkerClient({
               return result;
             } finally {
               attemptAcceptingCallbacks = false;
-              if (!timedOut && !userInterruptionRequested) await releaseWorkerHandle({ handle: attemptHandle });
+              if (!timedOut && !userInterruptionRequested) {
+                await releaseWorkerHandle({ handle: attemptHandle });
+              }
             }
           },
           onEvent: publishEvent,
@@ -1024,7 +1111,9 @@ export function createModelSupportInvestigationWorkerClient({
         const completedRun = await runProductionLaneComparison({
           run: loadRun,
           runProductionScenario: async ({ scenario, onObservationCheckpoint }) => {
-            if (disposed) throw new Error("Model Support Investigation client is disposed");
+            if (disposed) {
+              throw new Error("Model Support Investigation client is disposed");
+            }
             const accumulatedLoadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
             let lastCandidateError: unknown;
 
@@ -1095,7 +1184,9 @@ export function createModelSupportInvestigationWorkerClient({
                     multimodal: undefined,
                   } satisfies TransformersJsProductionInvestigationPartialObservation
                   : mergePartialObservation({ observation: latestCandidateObservation });
-                if (!isProductionModelLoadStage({ stage: stageState.lastStage })) return observation;
+                if (!isProductionModelLoadStage({ stage: stageState.lastStage })) {
+                  return observation;
+                }
                 const existingActiveAttempt = observation.activeLoadAttempt;
                 observation.activeLoadAttempt = {
                   candidate: structuredClone(candidate),
@@ -1116,7 +1207,9 @@ export function createModelSupportInvestigationWorkerClient({
                     candidateScenario,
                     workerProxy({
                       value: ({ event }) => {
-                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
+                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) {
+                          return;
+                        }
                         switch (event.kind) {
                         case "model-load":
                           latestCandidateLoadProgress = structuredClone(event.progress);
@@ -1154,7 +1247,9 @@ export function createModelSupportInvestigationWorkerClient({
                     }),
                     workerProxy({
                       value: ({ observation }) => {
-                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
+                        if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) {
+                          return;
+                        }
                         latestCandidateObservation = structuredClone(observation);
                         onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
                       },
@@ -1246,7 +1341,9 @@ export function createModelSupportInvestigationWorkerClient({
               } finally {
                 productionAcceptingCallbacks = false;
                 flushActiveProductionInterruptionEvidence = undefined;
-                if (!timedOut && !userInterruptionRequested) terminateProductionWorkerHandle({ handle: productionHandle });
+                if (!timedOut && !userInterruptionRequested) {
+                  terminateProductionWorkerHandle({ handle: productionHandle });
+                }
               }
             }
 
@@ -1288,7 +1385,9 @@ export function createModelSupportInvestigationWorkerClient({
       activeInterrupt?.();
     },
     dispose(): Promise<void> {
-      if (disposal !== undefined) return disposal;
+      if (disposal !== undefined) {
+        return disposal;
+      }
       disposed = true;
       try {
         // Acceptance Workers are owned by the revision-acceptance client, not
@@ -1309,7 +1408,10 @@ export function createModelSupportInvestigationWorkerClient({
       switch (runTermination) {
       case 'pending': return Promise.reject(new Error('Evidence release requires the investigation run to finish'));
       case 'finished': return providerInvestigation?.waitForEvidenceRelease() ?? Promise.resolve();
-      default: { const exhaustive: never = runTermination; throw new Error('Unhandled investigation termination: ' + exhaustive); }
+      default: {
+        const exhaustive: never = runTermination;
+        throw new Error('Unhandled investigation termination: ' + exhaustive);
+      }
       }
     },
   };

@@ -71,10 +71,16 @@ async function assertConditionalResponse({ base, url, contentType, includes, exc
   expect(response.status).toBe(200);
   expect(body.length).toBeGreaterThan(0);
   expect(response.headers.get('content-type')).toContain(contentType);
-  for (const text of includes) expect(body).toContain(text);
-  for (const text of excludes) expect(body).not.toContain(text);
+  for (const text of includes) {
+    expect(body).toContain(text);
+  }
+  for (const text of excludes) {
+    expect(body).not.toContain(text);
+  }
   const etag = response.headers.get('etag');
-  if (etag === null) throw new Error('Expected a real Vite ETag');
+  if (etag === null) {
+    throw new Error('Expected a real Vite ETag');
+  }
   for (const method of ['GET', 'HEAD']) {
     const repeated = await fetch(base + url, { method, headers: { 'If-None-Match': etag } });
     const repeatedBody = await repeated.text();
@@ -168,7 +174,9 @@ describe('development isolation through real Vite middleware', () => {
       http.listen(0, '127.0.0.1', resolve);
     });
     const address = http.address();
-    if (address === null || typeof address === 'string') throw new Error('Missing fixture listener');
+    if (address === null || typeof address === 'string') {
+      throw new Error('Missing fixture listener');
+    }
     base = `http://127.0.0.1:${address.port}`;
   });
 
@@ -178,12 +186,16 @@ describe('development isolation through real Vite middleware', () => {
         try {
           await server?.close();
         } finally {
-          if (root !== undefined) await rm(root, { recursive: true, force: true });
+          if (root !== undefined) {
+            await rm(root, { recursive: true, force: true });
+          }
         }
       },
     };
     http.closeAllConnections();
-    if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
+    if (http.listening) {
+      await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
+    }
   });
 
   it.each([
@@ -209,7 +221,9 @@ describe('development isolation through real Vite middleware', () => {
     const initial = await fetch(base + '/dependency.ts');
     await initial.text();
     const etag = initial.headers.get('etag');
-    if (etag === null) throw new Error('Expected a module ETag');
+    if (etag === null) {
+      throw new Error('Expected a module ETag');
+    }
     expect(server?.environments.client?.moduleGraph.getModuleByEtag(etag)?.url).toBe('/dependency.ts');
     // Vite removes only 13-digit timestamps. The raw request misses the cached
     // URL equality gate, then normalizes to the original module in send().
@@ -240,7 +254,9 @@ describe('development isolation through real Vite middleware', () => {
       async [Symbol.asyncDispose]() {
         try {
           listener.closeAllConnections();
-          if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
+          if (listener.listening) {
+            await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
+          }
         } finally {
           await baseline.close();
         }
@@ -251,7 +267,9 @@ describe('development isolation through real Vite middleware', () => {
       listener.listen(0, '127.0.0.1', resolve);
     });
     const address = listener.address();
-    if (address === null || typeof address === 'string') throw new Error('Missing baseline listener');
+    if (address === null || typeof address === 'string') {
+      throw new Error('Missing baseline listener');
+    }
     await assertResponseUnchanged({
       actual: await fetch(base + '/dependency.ts'),
       baseline: await fetch(`http://127.0.0.1:${address.port}/dependency.ts`),
@@ -279,7 +297,9 @@ describe('preview isolation through the real Vite preview server', () => {
       },
     });
     const address = server.httpServer.address();
-    if (address === null || typeof address === 'string') throw new Error('Missing preview listener');
+    if (address === null || typeof address === 'string') {
+      throw new Error('Missing preview listener');
+    }
     base = `http://127.0.0.1:${address.port}`;
   });
 
@@ -289,7 +309,9 @@ describe('preview isolation through the real Vite preview server', () => {
         try {
           await server?.close();
         } finally {
-          if (root !== undefined) await rm(root, { recursive: true, force: true });
+          if (root !== undefined) {
+            await rm(root, { recursive: true, force: true });
+          }
         }
       },
     };
@@ -338,7 +360,9 @@ describe('preview isolation through the real Vite preview server', () => {
       },
     };
     const address = baseline.httpServer.address();
-    if (address === null || typeof address === 'string') throw new Error('Missing baseline preview listener');
+    if (address === null || typeof address === 'string') {
+      throw new Error('Missing baseline preview listener');
+    }
     await assertResponseUnchanged({
       actual: await fetch(base + '/worker.js'),
       baseline: await fetch(`http://127.0.0.1:${address.port}/worker.js`),
@@ -375,7 +399,9 @@ it('does not change production bundle output', async () => {
         lib: { entry: path.join(root, 'dependency.ts'), formats: ['es'], fileName: 'fixture' },
       },
     });
-    if ('close' in result) throw new Error('Unexpected build watcher');
+    if ('close' in result) {
+      throw new Error('Unexpected build watcher');
+    }
     outputs.push((Array.isArray(result) ? result : [result]).flatMap(item => item.output.map(file => JSON.stringify(file))));
   }
   expect(outputs[1]).toEqual(outputs[0]);

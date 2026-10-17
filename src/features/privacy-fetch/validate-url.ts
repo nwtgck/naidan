@@ -63,7 +63,9 @@ export function validatePrivacyFetchUrl({
     });
   }
 
-  if (url.hostname === 'huggingface.co') return validateHuggingFacePrivacyFetchUrl({ url });
+  if (url.hostname === 'huggingface.co') {
+    return validateHuggingFacePrivacyFetchUrl({ url });
+  }
   return validateWikipediaPrivacyFetchUrl({ url });
 }
 

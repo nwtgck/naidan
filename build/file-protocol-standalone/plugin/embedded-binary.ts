@@ -46,9 +46,13 @@ export function createEmbeddedBinaryPlugin({ binaries, diagnostics }: {
       return inputs.has(id) ? `\0${id}` : undefined;
     },
     load(id) {
-      if (!id.startsWith('\0')) return;
+      if (!id.startsWith('\0')) {
+        return;
+      }
       const input = inputs.get(id.slice(1));
-      if (!input) return;
+      if (!input) {
+        return;
+      }
       this.addWatchFile(input.filePath);
       const bytes = readFileSync(input.filePath);
       if (bytes.length !== input.bytes || createHash('sha256').update(bytes).digest('hex') !== input.sha256) {
@@ -85,7 +89,9 @@ export function createEmbeddedBinaryPlugin({ binaries, diagnostics }: {
       for (const [id, record] of records) {
         record.owners = Object.values(bundle).flatMap(output => output.type === 'chunk'
           && (output.modules[id]?.renderedLength ?? 0) > 0 ? [output.fileName] : []);
-        if (record.owners.length > 1) throw new Error(`Duplicate embedded binary owner: ${record.virtualId}`);
+        if (record.owners.length > 1) {
+          throw new Error(`Duplicate embedded binary owner: ${record.virtualId}`);
+        }
       }
     },
   };

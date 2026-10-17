@@ -48,7 +48,9 @@ function createDirectory({ name }: { name: string }) {
     files,
     getFileHandle: vi.fn(async (fileName: string) => {
       const file = files.get(fileName);
-      if (!file) throw new DOMException('Missing file', 'NotFoundError');
+      if (!file) {
+        throw new DOMException('Missing file', 'NotFoundError');
+      }
       return file;
     }),
   };
@@ -60,8 +62,12 @@ function installOpfs() {
   const storage = {
     ...createDirectory({ name: 'naidan-storage' }),
     getDirectoryHandle: vi.fn(async (name: string) => {
-      if (name === 'chat-contents') return contentDirectory;
-      if (name === 'chat-metas') return metaDirectory;
+      if (name === 'chat-contents') {
+        return contentDirectory;
+      }
+      if (name === 'chat-metas') {
+        return metaDirectory;
+      }
       throw new Error(`Unexpected directory: ${name}`);
     }),
   };
@@ -78,7 +84,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 for (const backend of ['local', 'opfs'] as const) {
@@ -92,7 +99,8 @@ for (const backend of ['local', 'opfs'] as const) {
         };
       }
       const fs = installOpfs();
-      const provider = new OPFSStorageProvider(); await provider.init();
+      const provider = new OPFSStorageProvider();
+      await provider.init();
       return {
         provider,
         write: ({ kind, value }: { kind: 'content' | 'meta'; value: string }) => {
@@ -117,7 +125,8 @@ for (const backend of ['local', 'opfs'] as const) {
     for (const [index, raw] of invalidContents.entries()) {
       it(`rejects invalid content ${index} without treating it as an absent chat`, async () => {
         const { provider, write, read } = await setup();
-        write({ kind: 'meta', value: meta }); write({ kind: 'content', value: raw });
+        write({ kind: 'meta', value: meta });
+        write({ kind: 'content', value: raw });
         await expect(provider.loadChatContent({ id })).rejects.toThrow();
         await expect(provider.loadChatContentWithoutAttachments({ id })).rejects.toThrow();
         await expect(provider.loadChat({ id })).rejects.toThrow();
@@ -141,7 +150,8 @@ for (const backend of ['local', 'opfs'] as const) {
     for (const raw of ['', '{', '{"id":"incomplete"}']) {
       it(`propagates malformed metadata ${JSON.stringify(raw)} and keeps content readable`, async () => {
         const { provider, write, read } = await setup();
-        write({ kind: 'meta', value: raw }); write({ kind: 'content', value: content });
+        write({ kind: 'meta', value: raw });
+        write({ kind: 'content', value: content });
         await expect(provider.loadChatMeta({ id })).rejects.toThrow();
         await expect(provider.loadChat({ id })).rejects.toThrow();
         expect((await provider.loadChatContent({ id }))?.root.items[0]?.parts).toHaveLength(1);
@@ -180,7 +190,8 @@ for (const backend of ['local', 'opfs'] as const) {
           }],
         },
       });
-      write({ kind: 'meta', value: meta }); write({ kind: 'content', value: legacy });
+      write({ kind: 'meta', value: meta });
+      write({ kind: 'content', value: legacy });
       const loaded = await provider.loadChatContentWithoutAttachments({ id });
       expect(loaded?.root.items[0]).toMatchObject({
         createdAt: 7,
@@ -204,25 +215,30 @@ for (const backend of ['local', 'opfs'] as const) {
 
 for (const name of ['NotAllowedError', 'NotReadableError', 'TypeMismatchError']) {
   it(`propagates OPFS file lookup ${name}`, async () => {
-    const fs = installOpfs(); const error = new DOMException('Unreadable', name);
+    const fs = installOpfs();
+    const error = new DOMException('Unreadable', name);
     fs.contentDirectory.getFileHandle.mockRejectedValue(error);
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     await expect(provider.loadChatContent({ id })).rejects.toBe(error);
     await expect(provider.loadChatContentWithoutAttachments({ id })).rejects.toBe(error);
   });
 }
 
 it('does not mistake a removed or unreadable acquired file for a missing lookup', async () => {
-  const fs = installOpfs(); const file = createFile({ name: `${rawId}.json`, text: content });
+  const fs = installOpfs();
+  const file = createFile({ name: `${rawId}.json`, text: content });
   fs.contentDirectory.files.set(file.name, file);
   const error = new DOMException('Disappeared after lookup', 'NotFoundError');
   file.getFile.mockRejectedValue(error);
-  const provider = new OPFSStorageProvider(); await provider.init();
+  const provider = new OPFSStorageProvider();
+  await provider.init();
   await expect(provider.loadChatContent({ id })).rejects.toBe(error);
 });
 
 it('does not interpret failure to acquire the storage directory as a missing chat', async () => {
-  const fs = installOpfs(); const error = new DOMException('Root unavailable', 'NotFoundError');
+  const fs = installOpfs();
+  const error = new DOMException('Root unavailable', 'NotFoundError');
   fs.getDirectory.mockRejectedValue(error);
   await expect(new OPFSStorageProvider().loadChatContent({ id })).rejects.toBe(error);
 });

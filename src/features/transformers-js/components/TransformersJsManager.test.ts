@@ -336,7 +336,8 @@ describe('TransformersJsManager.vue', () => {
       const wrapper = mount(TransformersJsManager);
       using _cleanupResource = {
         [Symbol.dispose]() {
-          wrapper.unmount(); vi.unstubAllGlobals();
+          wrapper.unmount();
+          vi.unstubAllGlobals();
         },
       };
       await flushPromises();

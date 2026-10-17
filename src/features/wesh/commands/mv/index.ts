@@ -738,7 +738,9 @@ export const mvCommandImplementation: WeshCommandImplementation = {
                 finalSymlinkTreatment: 'no-follow',
               });
             } catch (error: unknown) {
-              if (isPathNotFoundError({ error })) return undefined;
+              if (isPathNotFoundError({ error })) {
+                return undefined;
+              }
               throw error;
             }
           })();

@@ -24,7 +24,8 @@ it('supplies the same verified buffer, retains only scalar evidence, and restore
     verifiedWasm,
     observeBinding: observed,
     run: async () => {
-      supplied.push(environment.wasmBinary); return 7;
+      supplied.push(environment.wasmBinary);
+      return 7;
     },
   });
   expect(result).toBe(7);
@@ -62,7 +63,10 @@ it.each([
   const nativeError = new Error('native control rejection');
   const environment = { wasmPaths: { mjs: assets.mjsUrl, wasm: assets.wasmUrl }, wasmBinary: undefined as Uint8Array | undefined };
   const run = vi.fn(async () => {
-    if (rejected) throw nativeError; return 7;
+    if (rejected) {
+      throw nativeError;
+    }
+    return 7;
   });
   const result = await withVerifiedRuntimeControl({
     executionProvider: 'webgpu',

@@ -21,7 +21,9 @@ export function copyStandalonePackagesToHosted({
 }>): readonly string[] {
   const packageFileNames = getStandalonePackageFileNames({ locales });
   const existingFileNames = packageFileNames.filter(fileName => fs.existsSync(path.join(sourceDirectory, fileName)));
-  if (existingFileNames.length === 0) return [];
+  if (existingFileNames.length === 0) {
+    return [];
+  }
 
   const missingFileNames = packageFileNames.filter(fileName => !existingFileNames.includes(fileName));
   if (missingFileNames.length > 0) {

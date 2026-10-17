@@ -83,7 +83,8 @@ describe('Transformers.js service instance ownership', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     client.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     await owner.service.loadDownloadedModel({ modelId: 'fixture/reasoning' });
     const first = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
@@ -91,15 +92,18 @@ describe('Transformers.js service instance ownership', () => {
     const reasoning = { text: '  R\n', completeness: 'complete' as 'complete' | 'partial' };
     const accepted: InferenceMessage[] = [{ role: 'assistant', content: '<think>literal</think>', reasoning }];
     const next = owner.service.generateText({ messages: accepted, onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'reasoning-owner' });
-    reasoning.text = 'edited'; reasoning.completeness = 'partial';
+    reasoning.text = 'edited';
+    reasoning.completeness = 'partial';
     accepted[0]!.content = 'edited';
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled([first, next]);
+        release.resolve();
+        await Promise.allSettled([first, next]);
       },
     };
     expect(client.generateText).toHaveBeenCalledTimes(1);
-    release.resolve(); await Promise.all([first, next]);
+    release.resolve();
+    await Promise.all([first, next]);
     const sent = client.generateText.mock.calls[1]![0];
     expect(sent.messages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }]);
     expect(sent.messages[0]?.reasoning).not.toBe(reasoning);
@@ -161,13 +165,17 @@ describe('Transformers.js service instance ownership', () => {
     const revision = 'a'.repeat(40);
     const order: string[] = [];
     client.generateText.mockImplementationOnce(async () => {
-      order.push('generation'); generationEntered.resolve(); await releaseGeneration.promise;
+      order.push('generation');
+      generationEntered.resolve();
+      await releaseGeneration.promise;
     });
     client.resetCache.mockImplementationOnce(async () => {
       order.push('reset');
     });
     download.resolve.mockImplementationOnce(async () => {
-      order.push('download'); downloadEntered.resolve(); await releaseDownload.promise;
+      order.push('download');
+      downloadEntered.resolve();
+      await releaseDownload.promise;
       return { normalizedModelId: 'fixture/download', requestedRevision: 'main', resolvedRevision: revision };
     });
     download.reuse.mockResolvedValue({
@@ -183,7 +191,9 @@ describe('Transformers.js service instance ownership', () => {
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
+        releaseGeneration.resolve();
+        releaseDownload.resolve();
+        await Promise.allSettled(operations);
       },
     };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/loaded' });
@@ -388,7 +398,8 @@ describe('Transformers.js service instance ownership', () => {
     const entered = deferred<void>();
     const disposed = new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Fixture client disposed' });
     client.generateText.mockImplementationOnce(() => {
-      entered.resolve(); return pending.promise;
+      entered.resolve();
+      return pending.promise;
     });
     client.dispose.mockImplementationOnce(async () => pending.reject(disposed));
     const factory = vi.fn(() => client);
@@ -409,7 +420,8 @@ describe('Transformers.js service instance ownership', () => {
     const pending = deferred<{ device: 'webgpu' }>();
     const entered = deferred<void>();
     client.loadDownloadedModel.mockImplementationOnce(() => {
-      entered.resolve(); return pending.promise;
+      entered.resolve();
+      return pending.promise;
     });
     const factory = vi.fn(() => client);
     const owner = await createOwner({ createWorkerClient: factory });
@@ -436,7 +448,8 @@ describe('Transformers.js service instance ownership', () => {
     const releaseDisposal = deferred<void>();
     const disposalStarted = deferred<void>();
     client.dispose.mockImplementationOnce(() => {
-      disposalStarted.resolve(); return releaseDisposal.promise;
+      disposalStarted.resolve();
+      return releaseDisposal.promise;
     });
     const factory = vi.fn(() => client);
     const owner = await createOwner({ createWorkerClient: factory });
@@ -498,7 +511,8 @@ describe('Transformers.js service instance ownership', () => {
     const releaseDisposal = deferred<void>();
     client.generateText.mockRejectedValueOnce(error);
     client.dispose.mockImplementationOnce(() => {
-      disposalStarted.resolve(); return releaseDisposal.promise;
+      disposalStarted.resolve();
+      return releaseDisposal.promise;
     });
     const factory = vi.fn(() => client);
     const owner = await createOwner({ createWorkerClient: factory });
@@ -519,7 +533,8 @@ describe('Transformers.js service instance ownership', () => {
     const pending = deferred<void>();
     const error = new Error('Synthetic delayed unload failure');
     client.unloadModel.mockImplementationOnce(() => {
-      entered.resolve(); return pending.promise;
+      entered.resolve();
+      return pending.promise;
     });
     const factory = vi.fn(() => client);
     const owner = await createOwner({ createWorkerClient: factory });
@@ -544,7 +559,8 @@ describe('Transformers.js service instance ownership', () => {
     const resolution = deferred<Awaited<ReturnType<typeof resolvePublicHuggingFaceRevision>>>();
     const entered = deferred<void>();
     download.resolve.mockImplementationOnce(() => {
-      entered.resolve(); return resolution.promise;
+      entered.resolve();
+      return resolution.promise;
     });
     const factory = vi.fn(() => createClientFixture());
     const owner = await createOwner({ createWorkerClient: factory });
@@ -572,7 +588,8 @@ describe('Transformers.js service instance ownership', () => {
     const pending = deferred<void>();
     const entered = deferred<void>();
     firstClient.generateText.mockImplementationOnce(() => {
-      entered.resolve(); return pending.promise;
+      entered.resolve();
+      return pending.promise;
     });
     const controller = new AbortController();
     const onChunk = vi.fn();

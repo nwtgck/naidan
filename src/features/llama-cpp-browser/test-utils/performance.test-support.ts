@@ -20,9 +20,15 @@ export function performanceReport({ reused = 0, outcome = 'completed' }: { reuse
   metrics.counters.promptTokens = 32;
   metrics.counters.contextTokens = 4096;
   metrics.counters.prefillBatchTokens = 512;
-  time = 100; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-  time = 200; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-  time = 230; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+  time = 100;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: false });
+  time = 200;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: false });
+  time = 230;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: true });
   return metrics.finish({ outcome, profile: 'webgpu-wasm64-jspi' })!;
 }
 

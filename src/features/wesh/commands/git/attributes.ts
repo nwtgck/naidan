@@ -86,12 +86,16 @@ function decodeQuotedAttributeToken({ line, start }: { line: string, start: numb
   while (offset < line.length) {
     const character = line[offset]!;
     offset += 1;
-    if (character === '"') return { token, offset };
+    if (character === '"') {
+      return { token, offset };
+    }
     if (character !== '\\') {
       token += character;
       continue;
     }
-    if (offset >= line.length) throw new Error('unterminated quoted attribute token');
+    if (offset >= line.length) {
+      throw new Error('unterminated quoted attribute token');
+    }
     const escaped = line[offset]!;
     offset += 1;
     switch (escaped) {
@@ -119,8 +123,12 @@ function tokenizeAttributeLine({ line }: { line: string }): string[] {
   const tokens: string[] = [];
   let offset = 0;
   while (offset < line.length) {
-    while (offset < line.length && /\s/u.test(line[offset]!)) offset += 1;
-    if (offset >= line.length) break;
+    while (offset < line.length && /\s/u.test(line[offset]!)) {
+      offset += 1;
+    }
+    if (offset >= line.length) {
+      break;
+    }
     if (line[offset] === '"') {
       const quoted = decodeQuotedAttributeToken({ line, start: offset });
       tokens.push(quoted.token);
@@ -131,7 +139,9 @@ function tokenizeAttributeLine({ line }: { line: string }): string[] {
       continue;
     }
     const start = offset;
-    while (offset < line.length && !/\s/u.test(line[offset]!)) offset += 1;
+    while (offset < line.length && !/\s/u.test(line[offset]!)) {
+      offset += 1;
+    }
     tokens.push(line.slice(start, offset));
   }
   return tokens;
@@ -146,15 +156,21 @@ function parseAttributeRules({ text, basePath }: { text: string, basePath: strin
   const rules: GitAttributeRule[] = [];
   for (const rawLine of text.split('\n')) {
     const line = rawLine.replace(/\r$/u, '');
-    if (line.trim().length === 0 || line.trimStart().startsWith('#')) continue;
+    if (line.trim().length === 0 || line.trimStart().startsWith('#')) {
+      continue;
+    }
     const tokens = tokenizeAttributeLine({ line });
     const pattern = tokens.shift();
-    if (pattern === undefined || pattern.startsWith('!') || pattern.endsWith('/')) continue;
+    if (pattern === undefined || pattern.startsWith('!') || pattern.endsWith('/')) {
+      continue;
+    }
     if (pattern.startsWith('[attr]')) {
       throw new Error(`attribute macros are not supported yet: ${pattern}`);
     }
     const normalizedPattern = pattern.startsWith('/') ? pattern.slice(1) : pattern;
-    if (normalizedPattern.length === 0) continue;
+    if (normalizedPattern.length === 0) {
+      continue;
+    }
     const updates: GitAttributeRule['updates'] = [];
     for (const attribute of tokens) {
       switch (attribute) {
@@ -187,7 +203,9 @@ function parseAttributeRules({ text, basePath }: { text: string, basePath: strin
         break;
       }
     }
-    if (updates.length === 0) continue;
+    if (updates.length === 0) {
+      continue;
+    }
     rules.push({
       basePath,
       matcher: compileGitWildmatch({
@@ -202,8 +220,12 @@ function parseAttributeRules({ text, basePath }: { text: string, basePath: strin
 }
 
 function relativeToBase({ path, basePath }: { path: string, basePath: string }): string | undefined {
-  if (basePath.length === 0) return path;
-  if (!path.startsWith(`${basePath}/`)) return undefined;
+  if (basePath.length === 0) {
+    return path;
+  }
+  if (!path.startsWith(`${basePath}/`)) {
+    return undefined;
+  }
   return path.slice(basePath.length + 1);
 }
 
@@ -214,13 +236,19 @@ function containsNul({ bytes }: { bytes: Uint8Array }): boolean {
 function normalizeCrLf({ bytes }: { bytes: Uint8Array }): Uint8Array {
   let count = 0;
   for (let index = 0; index + 1 < bytes.byteLength; index += 1) {
-    if (bytes[index] === 13 && bytes[index + 1] === 10) count += 1;
+    if (bytes[index] === 13 && bytes[index + 1] === 10) {
+      count += 1;
+    }
   }
-  if (count === 0) return bytes;
+  if (count === 0) {
+    return bytes;
+  }
   const result = new Uint8Array(bytes.byteLength - count);
   let output = 0;
   for (let index = 0; index < bytes.byteLength; index += 1) {
-    if (bytes[index] === 13 && bytes[index + 1] === 10) continue;
+    if (bytes[index] === 13 && bytes[index + 1] === 10) {
+      continue;
+    }
     result[output++] = bytes[index]!;
   }
   return result;
@@ -258,13 +286,19 @@ function configuredCheckoutEol({ contentConfig }: { contentConfig: GitWorktreeCo
 function expandLfToCrLf({ bytes }: { bytes: Uint8Array }): Uint8Array {
   let count = 0;
   for (let index = 0; index < bytes.byteLength; index += 1) {
-    if (bytes[index] === 10 && (index === 0 || bytes[index - 1] !== 13)) count += 1;
+    if (bytes[index] === 10 && (index === 0 || bytes[index - 1] !== 13)) {
+      count += 1;
+    }
   }
-  if (count === 0) return bytes;
+  if (count === 0) {
+    return bytes;
+  }
   const result = new Uint8Array(bytes.byteLength + count);
   let output = 0;
   for (let index = 0; index < bytes.byteLength; index += 1) {
-    if (bytes[index] === 10 && (index === 0 || bytes[index - 1] !== 13)) result[output++] = 13;
+    if (bytes[index] === 10 && (index === 0 || bytes[index - 1] !== 13)) {
+      result[output++] = 13;
+    }
     result[output++] = bytes[index]!;
   }
   return result;
@@ -278,7 +312,9 @@ function matcherFromRules({ rules, contentConfig }: {
     const result: GitPathAttributes = { text: 'unspecified', eol: undefined };
     for (const rule of rules) {
       const relative = relativeToBase({ path, basePath: rule.basePath });
-      if (relative === undefined || !rule.matcher.matches({ value: relative })) continue;
+      if (relative === undefined || !rule.matcher.matches({ value: relative })) {
+        continue;
+      }
       for (const update of rule.updates) {
         switch (update.type) {
         case 'text':
@@ -363,7 +399,9 @@ function matcherFromRules({ rules, contentConfig }: {
         throw new Error(`Unhandled text attribute: ${_ex}`);
       }
       }
-      if (!convertText) return bytes;
+      if (!convertText) {
+        return bytes;
+      }
       const eol = attributes.eol ?? configuredCheckoutEol({ contentConfig });
       switch (eol) {
       case 'crlf':
@@ -394,7 +432,9 @@ export async function loadWorktreeAttributes({ files, repository, contentConfig 
       });
     }
     for await (const entry of files.readDir({ path: directoryPath })) {
-      if (entry.name === '.git') continue;
+      if (entry.name === '.git') {
+        continue;
+      }
       switch (entry.type) {
       case 'directory':
         await visit({ directoryPath: entry.fullPath });
@@ -428,9 +468,13 @@ export async function loadIndexAttributes({ files, repository, entries, contentC
 }): Promise<GitAttributesMatcher> {
   const sources: GitAttributeSource[] = [];
   for (const entry of entries) {
-    if (entry.stage !== 0 || !entry.path.endsWith('.gitattributes')) continue;
+    if (entry.stage !== 0 || !entry.path.endsWith('.gitattributes')) {
+      continue;
+    }
     const baseName = entry.path.slice(entry.path.lastIndexOf('/') + 1);
-    if (baseName !== '.gitattributes') continue;
+    if (baseName !== '.gitattributes') {
+      continue;
+    }
     const object = await readObject({ files, repository, objectId: entry.objectId });
     switch (object.type) {
     case 'blob':

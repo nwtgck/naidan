@@ -32,7 +32,9 @@ export function quantizationChoices({ repository, models }: { repository: string
     return { id: path, label, quantization, models: [model] };
   }).sort((a, b) => {
     const rank = ({ choice }: { choice: QuantizationChoice }): number => {
-      if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) return quantizationPreference.indexOf(choice.quantization);
+      if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) {
+        return quantizationPreference.indexOf(choice.quantization);
+      }
       // Unknown 4-bit schemes still precede higher/lower-bit defaults without enumerating vendor variants.
       return /(?:^|[-_.])(?:I?Q|MXFP|NVFP)4(?:[-_.]|$)/i.test(choice.label) ? 7.5 : quantizationPreference.length;
     };
@@ -50,7 +52,8 @@ function projectorFamily({ path }: { path: string }): string {
 export function rankedProjectors<T extends { path: string }>({ files }: { files: T[] }): T[] {
   const preference = ['Q8_0', 'F16', 'BF16', 'F32', 'Q8_1', ...quantizationPreference];
   const rank = ({ path }: { path: string }): number => {
-    const quantization = quantizationName({ path }); return quantization === undefined || !preference.includes(quantization) ? preference.length : preference.indexOf(quantization);
+    const quantization = quantizationName({ path });
+    return quantization === undefined || !preference.includes(quantization) ? preference.length : preference.indexOf(quantization);
   };
   return [...files].sort((a, b) => rank(a) - rank(b) || lexical({ left: a.path, right: b.path }));
 }
@@ -63,13 +66,21 @@ export function projectorChoices({ files }: { files: RepositoryFile[] }): { file
 }
 
 export function preferredProjector({ files }: { files: RepositoryFile[] }): RepositoryFile | undefined {
-  if (files.length === 1) return files[0];
-  if (!files.length || new Set(files.map(file => projectorFamily({ path: file.path }))).size !== 1) return undefined;
+  if (files.length === 1) {
+    return files[0];
+  }
+  if (!files.length || new Set(files.map(file => projectorFamily({ path: file.path }))).size !== 1) {
+    return undefined;
+  }
   const preference = ['Q8_0', 'F16', 'BF16', 'F32', 'Q8_1', ...quantizationPreference];
   const ranked = files.map(file => ({ file, quantization: quantizationName({ path: file.path }) }));
-  if (ranked.some(entry => entry.quantization === undefined || !preference.includes(entry.quantization))) return undefined;
+  if (ranked.some(entry => entry.quantization === undefined || !preference.includes(entry.quantization))) {
+    return undefined;
+  }
   ranked.sort((a, b) => preference.indexOf(a.quantization!) - preference.indexOf(b.quantization!));
-  if (ranked[0]?.quantization === ranked[1]?.quantization) return undefined;
+  if (ranked[0]?.quantization === ranked[1]?.quantization) {
+    return undefined;
+  }
   return ranked[0]?.file;
 }
 

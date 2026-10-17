@@ -128,7 +128,9 @@ export function createSedRuntimeCommands({
       const lookup = new Map<string, string>();
       while (true) {
         const sourceCharacter = sourceCharacters.next();
-        if (sourceCharacter.done) break;
+        if (sourceCharacter.done) {
+          break;
+        }
         const targetCharacter = targetCharacters.next();
         if (
           command.duplicateSourcePrecedence === "last" ||

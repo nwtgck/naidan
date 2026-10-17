@@ -15,7 +15,9 @@ function fixture() {
     llama_synchronize: vi.fn(async () => {}),
   };
   const allocate = () => {
-    const result = ++pointer; allocations.add(result); return result;
+    const result = ++pointer;
+    allocations.add(result);
+    return result;
   };
   const core = {
     api,
@@ -42,8 +44,11 @@ describe('new-context native sequence removal probe', () => {
     expect(Array.from(temporaryTokens)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
     expect(api.llama_batch_get_one).toHaveBeenCalledExactlyOnceWith(102n, 101n, 2);
     expect(api.llama_decode).toHaveBeenCalledExactlyOnceWith(20n, 102n);
-    if (rollback > 0) expect(api.llama_memory_seq_rm).not.toHaveBeenCalled();
-    else expect(api.llama_memory_seq_rm).toHaveBeenCalledExactlyOnceWith(10n, 0, 1, -1);
+    if (rollback > 0) {
+      expect(api.llama_memory_seq_rm).not.toHaveBeenCalled();
+    } else {
+      expect(api.llama_memory_seq_rm).toHaveBeenCalledExactlyOnceWith(10n, 0, 1, -1);
+    }
     expect(api.llama_memory_clear).toHaveBeenCalledTimes(2);
     expect(api.llama_memory_clear).toHaveBeenLastCalledWith(10n, 1);
     expect(api.llama_synchronize).toHaveBeenCalledExactlyOnceWith(20n);
@@ -72,9 +77,14 @@ describe('new-context native sequence removal probe', () => {
   it.each(['decode-trap', 'removal-exception'] as const)('fails explicitly and releases temporary state after %s', async failure => {
     const { core, api, allocations } = fixture();
     switch (failure) {
-    case 'decode-trap': api.llama_decode.mockRejectedValue(new WebAssembly.RuntimeError('fixture trap')); break;
-    case 'removal-exception': api.llama_memory_seq_rm.mockRejectedValue(new Error('fixture removal failure')); break;
-    default: { const exhaustive: never = failure; throw new Error(`Unknown probe failure: ${exhaustive}`); }
+    case 'decode-trap': api.llama_decode.mockRejectedValue(new WebAssembly.RuntimeError('fixture trap'));
+      break;
+    case 'removal-exception': api.llama_memory_seq_rm.mockRejectedValue(new Error('fixture removal failure'));
+      break;
+    default: {
+      const exhaustive: never = failure;
+      throw new Error(`Unknown probe failure: ${exhaustive}`);
+    }
     }
     await expect(probeNewContextSequenceRemoval({ core, context: 20n })).rejects.toThrow();
     expect(api.llama_memory_clear).toHaveBeenCalledTimes(2);

@@ -27,7 +27,9 @@ function request({ parameters }: { parameters: LmParameters | undefined }): Para
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetchMock.mock.calls[index]?.[1]?.body;
   expect(typeof raw).toBe('string');
-  if (typeof raw !== 'string') throw new Error('Expected a serialized request.');
+  if (typeof raw !== 'string') {
+    throw new Error('Expected a serialized request.');
+  }
   return JSON.parse(raw);
 }
 
@@ -143,7 +145,8 @@ data: [DONE]
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
       const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
       expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(body({ index: 0 }).think).toBe('medium'); expect(body({ index: 1 }).think).toBe(true);
+      expect(body({ index: 0 }).think).toBe('medium');
+      expect(body({ index: 1 }).think).toBe(true);
       expect(node.parts).toMatchObject([{ type: 'text', text: 'Success', completeness: 'complete' }]);
       expect(result).toEqual({ type: 'finished', next: 'user' });
     });
@@ -153,7 +156,8 @@ data: [DONE]
         .mockResolvedValueOnce(failure({ message: 'think is not supported' }));
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
       const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
-      expect(fetchMock).toHaveBeenCalledTimes(2); expect(node.parts).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(node.parts).toEqual([]);
       expect(result).toMatchObject({ type: 'error', error: { message: expect.stringContaining('Ollama API Error (400)') } });
     });
 
@@ -161,21 +165,24 @@ data: [DONE]
       fetchMock.mockResolvedValueOnce(failure({ message: 'think value "false" is not supported' }));
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
       const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } }) });
-      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result.type).toBe('error');
+      expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it('should NOT fallback when parameters is missing (title gen)', async () => {
       fetchMock.mockResolvedValueOnce(failure({ message: 'some error' }));
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
       const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: undefined }) });
-      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result.type).toBe('error');
+      expect(fetchMock).toHaveBeenCalledOnce();
     });
 
     it('should NOT retry when the error does not match not supported', async () => {
       fetchMock.mockResolvedValueOnce(failure({ message: 'Invalid parameter: temperature' }));
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
       const { result } = await consumeProviderGenerationForTest({ provider, request: request({ parameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } } }) });
-      expect(result.type).toBe('error'); expect(fetchMock).toHaveBeenCalledOnce();
+      expect(result.type).toBe('error');
+      expect(fetchMock).toHaveBeenCalledOnce();
     });
   });
 });

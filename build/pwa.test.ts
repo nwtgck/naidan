@@ -28,7 +28,9 @@ beforeAll(async () => {
 }, 60000);
 
 afterAll(async () => {
-  if (root) await rm(root, { recursive: true, force: true });
+  if (root) {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 const scope = 'https://example.test/naidan/';
@@ -46,12 +48,15 @@ function setup() {
   clients.clients.set('other-tab', { id: 'other-tab', type: 'window', url: scope });
   clients.clients.set('other-app', { id: 'other-app', type: 'window', url: 'https://example.test/another/' });
   const network: typeof fetch = async (input, init) => {
-    if (offline) throw new TypeError('offline');
+    if (offline) {
+      throw new TypeError('offline');
+    }
     const url = new URL(input instanceof Request ? input.url : String(input));
     const file = url.pathname.slice('/naidan/'.length) || 'index.html';
     requested.push({ path: file, cache: init?.cache ?? (input instanceof Request ? input.cache : undefined) });
     if (file === 'naidan-standalone.zip' && hold) {
-      delayed?.(); await hold;
+      delayed?.();
+      await hold;
     }
     const bytes = deployed.files.get(file);
     return new Response(bytes ? new Uint8Array(bytes) : 'missing', {
@@ -76,7 +81,8 @@ function setup() {
     make,
     holdInstall,
     release: () => {
-      release?.(); hold = undefined;
+      release?.();
+      hold = undefined;
     },
     deployC: () => {
       deployed = c;
@@ -96,8 +102,11 @@ function setup() {
 describe('real generated Workbox worker', () => {
   it.each([['cache-first', 1], ['network-only', 1], ['cache-first', 2], ['network-only', 2]] as const)('streams a multi-hop 64 MiB download locally in %s mode with v%i', async (mode, version) => {
     const f = setup(), worker = f.make(a);
-    await worker.lifecycle('install'); await worker.lifecycle('activate');
-    if (mode === 'network-only') await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    if (mode === 'network-only') {
+      await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    }
     f.requested.length = 0;
     f.offline();
     const chunks = 256;
@@ -109,10 +118,12 @@ describe('real generated Workbox worker', () => {
       openStream: async () => new ReadableStream<Uint8Array>({
         pull(controller) {
           if (produced === chunks) {
-            controller.close(); return;
+            controller.close();
+            return;
           }
           controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES).fill(produced % 251));
-          produced += 1; maximumAhead = Math.max(maximumAhead, produced - consumed);
+          produced += 1;
+          maximumAhead = Math.max(maximumAhead, produced - consumed);
         },
       }, { highWaterMark: 0 }),
     });
@@ -132,7 +143,8 @@ describe('real generated Workbox worker', () => {
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
         control.port1.postMessage({ type: 'cancel' });
-        sender.abort({ reason: new Error('test cleanup') }); source.abort({ reason: new Error('test cleanup') });
+        sender.abort({ reason: new Error('test cleanup') });
+        source.abort({ reason: new Error('test cleanup') });
         control.port1.close();
         await prepared;
       },
@@ -159,11 +171,14 @@ describe('real generated Workbox worker', () => {
     let total = 0;
     for (;;) {
       const part = await reader.read();
-      if (part.done) break;
+      if (part.done) {
+        break;
+      }
       expect(part.value.byteLength).toBe(BYTE_STREAM_CHUNK_BYTES);
       expect(part.value[0]).toBe(consumed % 251);
       expect(part.value.at(-1)).toBe(consumed % 251);
-      total += part.value.byteLength; consumed += 1;
+      total += part.value.byteLength;
+      consumed += 1;
       if (consumed === 1) {
         const pausedAt = produced;
         await new Promise(resolve => setTimeout(resolve, 20));
@@ -171,7 +186,9 @@ describe('real generated Workbox worker', () => {
       }
     }
     reader.releaseLock();
-    await completed; await sender.completed; await source.completed;
+    await completed;
+    await sender.completed;
+    await source.completed;
     expect(total).toBe(64 * 1024 * 1024);
     expect(maximumAhead).toBeLessThanOrEqual(3);
     expect(f.requested).toEqual([]);
@@ -183,8 +200,10 @@ describe('real generated Workbox worker', () => {
     const f = setup(), old = f.make(a), next = f.make(b);
     await old.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
     f.offline();
-    for (const worker of [old, next]) for (const suffix of ['', 'v0/old', 'v1/missing', 'v99/future', 'v1/missing?invalid=1', 'v2/', 'v2/#?id=missing', 'v2/?id=private', 'v2/private']) {
-      expect((await worker.request({ url: `${scope}${DOWNLOAD_ROOT}${suffix}`, navigation: true })).status).toBe(410);
+    for (const worker of [old, next]) {
+      for (const suffix of ['', 'v0/old', 'v1/missing', 'v99/future', 'v1/missing?invalid=1', 'v2/', 'v2/#?id=missing', 'v2/?id=private', 'v2/private']) {
+        expect((await worker.request({ url: `${scope}${DOWNLOAD_ROOT}${suffix}`, navigation: true })).status).toBe(410);
+      }
     }
     expect((await old.request({ url: `${scope}${DOWNLOAD_ROOT}v1/missing`, method: 'POST' })).status).toBe(405);
     expect((await old.request({ url: `${scope}${DOWNLOAD_ROOT.slice(0, -1)}`, navigation: true })).status).toBe(410);
@@ -193,9 +212,12 @@ describe('real generated Workbox worker', () => {
 
   it('keeps every automatic precache resource but excludes locale packages and source maps', async () => {
     const f = setup(), worker = f.make(a);
-    await worker.lifecycle('install'); await worker.lifecycle('activate');
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
     const downloaded = f.requested.map(item => item.path);
-    for (const file of ['runtime.wasm.gz', 'future-format.arbitrary', 'naidan-standalone.zip', 'worker.js']) expect(downloaded).toContain(file);
+    for (const file of ['runtime.wasm.gz', 'future-format.arbitrary', 'naidan-standalone.zip', 'worker.js']) {
+      expect(downloaded).toContain(file);
+    }
     for (const locale of UI_LOCALES) {
       const file = `naidan-standalone-${locale}.zip`;
       expect(a.files.has(file)).toBe(true);
@@ -210,11 +232,15 @@ describe('real generated Workbox worker', () => {
   it('serves B before full installation, survives worker restart, and returns to offline only with B', async () => {
     const f = setup();
     await (await f.storage.open('user-model-sentinel')).put(`${scope}saved-model`, new Response('keep-model'));
-    const old = f.make(a); await old.lifecycle('install'); await old.lifecycle('activate');
+    const old = f.make(a);
+    await old.lifecycle('install');
+    await old.lifecycle('activate');
     const originalCacheNames = await f.storage.keys();
     const deleted = vi.spyOn(f.storage, 'delete');
-    f.deployB(); const delayed = f.holdInstall();
-    const next = f.make(b); let prepared = false;
+    f.deployB();
+    const delayed = f.holdInstall();
+    const next = f.make(b);
+    let prepared = false;
     const installing = next.lifecycle('install').then(() => {
       prepared = true;
     });
@@ -231,7 +257,10 @@ describe('real generated Workbox worker', () => {
     expect(await f.storage.keys()).toEqual(expect.arrayContaining(originalCacheNames));
     f.offline();
     await expect(restarted.request({ url: scope, navigation: true })).rejects.toThrow('offline');
-    f.online(); f.release(); await installing; await next.lifecycle('activate');
+    f.online();
+    f.release();
+    await installing;
+    await next.lifecycle('activate');
     expect(prepared).toBe(true);
     f.offline();
     expect(await (await next.request({ url: scope, navigation: true })).text()).toContain('version-b');
@@ -241,13 +270,16 @@ describe('real generated Workbox worker', () => {
   });
 
   it('reports unreadable mode metadata and still loads the online version, never stale HTML', async () => {
-    const f = setup(), old = f.make(a); await old.lifecycle('install'); await old.lifecycle('activate');
+    const f = setup(), old = f.make(a);
+    await old.lifecycle('install');
+    await old.lifecycle('activate');
     const cache = await f.storage.open(`naidan-pwa-network-mode:${scope}`);
     const match = vi.spyOn(cache, 'match').mockRejectedValue(new Error('storage read failed'));
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     using _cleanupResource = {
       [Symbol.dispose]() {
-        match.mockRestore(); logged.mockRestore();
+        match.mockRestore();
+        logged.mockRestore();
       },
     };
     f.deployB();
@@ -259,14 +291,20 @@ describe('real generated Workbox worker', () => {
   });
 
   it('cannot enable network mode from another application or an unrecognized command', async () => {
-    const f = setup(), worker = f.make(a); await worker.lifecycle('install'); await worker.lifecycle('activate'); f.deployB();
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    f.deployB();
     expect(await worker.message({ clientId: 'other-app', data: { type: USE_NETWORK_MESSAGE } })).toBeUndefined();
     expect(await worker.message({ clientId: 'page', data: { type: 'unexpected' } })).toBeUndefined();
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
   });
 
   it('acknowledges network mode only after its write is durable', async () => {
-    const f = setup(), worker = f.make(a); await worker.lifecycle('install'); await worker.lifecycle('activate'); f.deployB();
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    f.deployB();
     const cache = await f.storage.open(`naidan-pwa-network-mode:${scope}`);
     const realPut = cache.put.bind(cache);
     let release!: () => void;
@@ -274,20 +312,25 @@ describe('real generated Workbox worker', () => {
       release = resolve;
     });
     const put = vi.spyOn(cache, 'put').mockImplementation(async (...args) => {
-      await gate; await realPut(...args);
+      await gate;
+      await realPut(...args);
     });
     let acknowledged = false;
     const operation = worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } }).then(reply => {
-      acknowledged = true; return reply;
+      acknowledged = true;
+      return reply;
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release(); await operation; put.mockRestore();
+        release();
+        await operation;
+        put.mockRestore();
       },
     };
     expect(acknowledged).toBe(false);
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
-    release(); expect(await operation).toBe(USE_NETWORK_MESSAGE);
+    release();
+    expect(await operation).toBe(USE_NETWORK_MESSAGE);
     expect(await (await f.make(a).request({ url: scope, navigation: true })).text()).toContain('version-b');
   });
 
@@ -303,7 +346,8 @@ describe('real generated Workbox worker', () => {
       ['https://example.test/naidan-other/data', 'GET'],
       [`${scope}api`, 'POST'],
     ]) {
-      fetch.mockClear(); fetch.mockResolvedValue(reply);
+      fetch.mockClear();
+      fetch.mockResolvedValue(reply);
       expect(await worker.request({ url: url!, method: method! })).toBe(reply);
       // An unhandled fetch uses the browser default: no no-store override,
       // response wrapper, cloned stream or involvement of the Workbox router.
@@ -312,7 +356,10 @@ describe('real generated Workbox worker', () => {
   });
 
   it.each(['foreign-origin', 'worker-source', 'missing-port'] as const)('rejects %s network opt-ins', async kind => {
-    const f = setup(), worker = f.make(a); await worker.lifecycle('install'); await worker.lifecycle('activate'); f.deployB();
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    f.deployB();
     f.clients.clients.set('worker', { id: 'worker', type: 'worker', url: `${scope}worker.js` });
     expect(await worker.message({
       clientId: kind === 'worker-source' ? 'worker' : 'page',
@@ -324,13 +371,16 @@ describe('real generated Workbox worker', () => {
   });
 
   it('does not acknowledge a failed opt-in write or change the working cache path', async () => {
-    const f = setup(), worker = f.make(a); await worker.lifecycle('install'); await worker.lifecycle('activate');
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
     const cache = await f.storage.open(`naidan-pwa-network-mode:${scope}`);
     const put = vi.spyOn(cache, 'put').mockRejectedValue(new Error('storage full'));
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     using _cleanupResource = {
       [Symbol.dispose]() {
-        put.mockRestore(); logged.mockRestore();
+        put.mockRestore();
+        logged.mockRestore();
       },
     };
     expect(await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } })).toBe(false);
@@ -345,15 +395,21 @@ describe('real generated Workbox worker', () => {
       const open = f.storage.open.bind(f.storage);
       vi.spyOn(f.storage, 'open').mockImplementation(async name => {
         const cache = await open(name);
-        if (name.startsWith('workbox-precache')) vi.spyOn(cache, 'put').mockRejectedValue(error);
+        if (name.startsWith('workbox-precache')) {
+          vi.spyOn(cache, 'put').mockRejectedValue(error);
+        }
         return cache;
       });
     }
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if (url.pathname.endsWith('/naidan-standalone.zip')) {
-        if (mode === 'http') return new Response('missing', { status: 404 });
-        if (mode === 'network') throw error;
+        if (mode === 'http') {
+          return new Response('missing', { status: 404 });
+        }
+        if (mode === 'network') {
+          throw error;
+        }
       }
       return f.network(input, init);
     };
@@ -366,7 +422,9 @@ describe('real generated Workbox worker', () => {
     const worker = createWorkerHarness({ script: a.script, scope, cacheStorage: f.storage, clients: f.clients, fetch });
     await expect(worker.lifecycle('install')).rejects.toThrow();
     expect(log).toHaveBeenCalledWith('[PWA] Failed to precache an application resource.', expect.any(String), expect.any(Error));
-    if (mode !== 'http') expect(log.mock.calls.some(call => call[2] === error)).toBe(true);
+    if (mode !== 'http') {
+      expect(log.mock.calls.some(call => call[2] === error)).toBe(true);
+    }
   });
 });
 
@@ -390,18 +448,24 @@ describe('page reloads using real generated workers', () => {
     const controllerA = createPWAUpdateController({ platform: { serviceWorkers: pageA, reload }, baseUrl: new URL(scope), pageBuildId: a.pageBuildId, onState: ({ next }) => statesA.push(next), onError, onWarning, onOfflineReady });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let controllerB: ReturnType<typeof createPWAUpdateController> | undefined;
-    f.deployB(); const delayed = f.holdInstall();
+    f.deployB();
+    const delayed = f.holdInstall();
     native.addWorker({ key: 'worker-b', script: b.script });
     const installing = native.install({ key: 'worker-b' });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        controllerA.dispose(); controllerB?.dispose(); f.release(); await installing;
+        controllerA.dispose();
+        controllerB?.dispose();
+        f.release();
+        await installing;
       },
     };
     await delayed;
     await vi.waitFor(() => expect(statesA.at(-1)?.kind).toBe('preparing'));
     const action = statesA.at(-1)!;
-    if (action.kind === 'idle') throw new Error('Missing update');
+    if (action.kind === 'idle') {
+      throw new Error('Missing update');
+    }
     await action.handler!();
     expect(reload).toHaveBeenCalledOnce();
     expect(native.workers.get('worker-b')!.state).toBe('installing');
@@ -415,7 +479,8 @@ describe('page reloads using real generated workers', () => {
     await vi.waitFor(() => expect(statesB.length).toBeGreaterThan(1));
     expect(statesB.every(state => state.kind === 'idle')).toBe(true);
     expect(native.workers.get('worker-b')!.skipped).toBe(false);
-    f.release(); await installing;
+    f.release();
+    await installing;
     await vi.waitFor(() => expect(native.workers.get('worker-b')!.state).toBe('activated'));
     expect(native.workers.get('worker-a')!.state).toBe('redundant');
     expect(pageB.controller).toBe(native.registration({ viewer: 'page-b' }).active);
@@ -424,7 +489,8 @@ describe('page reloads using real generated workers', () => {
     f.offline();
     expect(await (await native.request({ pageKey: 'page-b', navigation: true })).text()).toContain(b.pageBuildId);
     expect(await (await native.request({ pageKey: 'page-b', path: 'runtime.wasm.gz' })).text()).toBe('version-b:runtime.wasm.gz');
-    f.online(); f.deployC();
+    f.online();
+    f.deployC();
     native.addWorker({ key: 'worker-c', script: c.script });
     await native.install({ key: 'worker-c' });
     await vi.waitFor(() => expect(statesB.at(-1)?.kind).toBe('ready'));
@@ -454,7 +520,9 @@ describe('page reloads using real generated workers', () => {
       signal: undefined,
       openStream: async () => new ReadableStream<Uint8Array>({
         async start(controller) {
-          await release.promise; controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+          await release.promise;
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+          controller.close();
         },
       }),
     });
@@ -464,8 +532,12 @@ describe('page reloads using real generated workers', () => {
     let settled: Promise<PromiseSettledResult<unknown>[]> | undefined;
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); control.port1.postMessage({ type: 'cancel' });
-        await prepared; sender.abort({ reason: new Error('cleanup') }); await settled; control.port1.close();
+        release.resolve();
+        control.port1.postMessage({ type: 'cancel' });
+        await prepared;
+        sender.abort({ reason: new Error('cleanup') });
+        await settled;
+        control.port1.close();
       },
     };
     await vi.waitFor(() => expect(statuses).toContainEqual(expect.objectContaining({ type: 'ready' })));
@@ -479,7 +551,8 @@ describe('page reloads using real generated workers', () => {
     expect(old.state).toBe('activated');
     release.resolve();
     expect([...new Uint8Array(await bytes)]).toEqual([1, 2, 3]);
-    await sender.completed; await result.completed;
+    await sender.completed;
+    await result.completed;
     await vi.waitFor(() => expect(native.workers.get('worker-b')!.state).toBe('activated'));
     await vi.waitFor(() => expect(statuses).toContainEqual({ type: 'consumed' }));
     expect(native.failures).toEqual([]);
@@ -487,20 +560,27 @@ describe('page reloads using real generated workers', () => {
 
   it('does not clean away C entries when C is installing before B activates', async () => {
     const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
-    native.addWorker({ key: 'worker-a', script: a.script }); await native.install({ key: 'worker-a' });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
     native.page({ key: 'page' });
-    f.deployB(); native.addWorker({ key: 'worker-b', script: b.script }); await native.install({ key: 'worker-b' });
-    f.deployC(); const delayed = f.holdInstall();
-    native.addWorker({ key: 'worker-c', script: c.script }); const installation = native.install({ key: 'worker-c' });
+    f.deployB();
+    native.addWorker({ key: 'worker-b', script: b.script });
+    await native.install({ key: 'worker-b' });
+    f.deployC();
+    const delayed = f.holdInstall();
+    native.addWorker({ key: 'worker-c', script: c.script });
+    const installation = native.install({ key: 'worker-c' });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        f.release(); await installation;
+        f.release();
+        await installation;
       },
     };
     await delayed;
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await vi.waitFor(() => expect(native.workers.get('worker-b')!.state).toBe('activated'));
-    f.release(); await installation;
+    f.release();
+    await installation;
     f.offline();
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await vi.waitFor(() => expect(native.workers.get('worker-c')!.state).toBe('activated'));
@@ -511,34 +591,46 @@ describe('page reloads using real generated workers', () => {
 
   it('delays C writes if B cleanup started first, then serves C offline', async () => {
     const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
-    native.addWorker({ key: 'worker-a', script: a.script }); await native.install({ key: 'worker-a' });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
     native.page({ key: 'page' });
-    f.deployB(); native.addWorker({ key: 'worker-b', script: b.script }); await native.install({ key: 'worker-b' });
+    f.deployB();
+    native.addWorker({ key: 'worker-b', script: b.script });
+    await native.install({ key: 'worker-b' });
     const cache = [...native.storage.stores.values()].find(item => [...item.entries.keys()].some(key => key.includes('__WB_REVISION__')))!;
     const originalKeys = cache.keys.bind(cache);
     const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
     const cleanup = vi.spyOn(cache, 'keys').mockImplementation(async () => {
       // Hold BEFORE collecting deletion keys: unguarded C writes would be
       // included in B's cleanup, not merely arrive after a harmless snapshot.
-      started.resolve(); await release.promise; return originalKeys();
+      started.resolve();
+      await release.promise;
+      return originalKeys();
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let installation: Promise<void> | undefined;
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await installation; cleanup.mockRestore();
+        release.resolve();
+        await installation;
+        cleanup.mockRestore();
       },
     };
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await started.promise;
     expect(native.workers.get('worker-b')!.state).toBe('activating');
-    f.deployC(); f.requested.length = 0;
-    native.addWorker({ key: 'worker-c', script: c.script }); installation = native.install({ key: 'worker-c' });
+    f.deployC();
+    f.requested.length = 0;
+    native.addWorker({ key: 'worker-c', script: c.script });
+    installation = native.install({ key: 'worker-c' });
     // Drain queued stream/cache/message tasks, not only two Promise callbacks.
     // Removing the install barrier must expose actual C network requests.
-    for (let turn = 0; turn < 12; turn++) await setImmediate();
+    for (let turn = 0; turn < 12; turn++) {
+      await setImmediate();
+    }
     expect(f.requested).toEqual([]);
-    release.resolve(); await installation;
+    release.resolve();
+    await installation;
     f.offline();
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await vi.waitFor(() => expect(native.workers.get('worker-c')!.state).toBe('activated'));
@@ -549,9 +641,12 @@ describe('page reloads using real generated workers', () => {
 
   it('does not let a waiting worker approve completion using its empty download session map', async () => {
     const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
-    native.addWorker({ key: 'worker-a', script: a.script }); await native.install({ key: 'worker-a' });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
     native.page({ key: 'page' });
-    f.deployB(); native.addWorker({ key: 'worker-b', script: b.script }); await native.install({ key: 'worker-b' });
+    f.deployB();
+    native.addWorker({ key: 'worker-b', script: b.script });
+    await native.install({ key: 'worker-b' });
     const next = native.workers.get('worker-b')!;
     expect(await next.runtime.message({ clientId: 'page', data: { type: COMPLETE_OFFLINE_MESSAGE, buildId: b.pageBuildId } })).toBe(false);
     expect(next.skipped).toBe(false);
@@ -560,9 +655,12 @@ describe('page reloads using real generated workers', () => {
 
   it('requires both the active-worker sender and the exact build for automatic activation', async () => {
     const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
-    native.addWorker({ key: 'worker-a', script: a.script }); await native.install({ key: 'worker-a' });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
     native.page({ key: 'page' });
-    f.deployB(); native.addWorker({ key: 'worker-b', script: b.script }); await native.install({ key: 'worker-b' });
+    f.deployB();
+    native.addWorker({ key: 'worker-b', script: b.script });
+    await native.install({ key: 'worker-b' });
     const next = native.workers.get('worker-b')!;
     await next.runtime.messageWithPorts({ clientId: 'page', data: { type: ACTIVATE_BUILD_MESSAGE, buildId: b.pageBuildId }, ports: [] });
     expect(next.skipped).toBe(false);
@@ -577,7 +675,8 @@ describe('page reloads using real generated workers', () => {
   it('does not implicitly claim a document during first installation', async () => {
     const f = setup(), native = createRegistrationPlatform({ scope, fetch: f.network });
     const page = native.page({ key: 'first-page' });
-    native.addWorker({ key: 'worker-a', script: a.script }); await native.install({ key: 'worker-a' });
+    native.addWorker({ key: 'worker-a', script: a.script });
+    await native.install({ key: 'worker-a' });
     expect(native.workers.get('worker-a')!.state).toBe('activated');
     expect(page.controller).toBeNull();
     const second = native.page({ key: 'second-page' });
@@ -588,8 +687,11 @@ describe('page reloads using real generated workers', () => {
 describe('independently published Docs', () => {
   it.each(['cache-first', 'network-only'] as const)('leaves Docs URLs to the browser in %s mode', async mode => {
     const f = setup(), worker = f.make(a);
-    await worker.lifecycle('install'); await worker.lifecycle('activate');
-    if (mode === 'network-only') await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    await worker.lifecycle('install');
+    await worker.lifecycle('activate');
+    if (mode === 'network-only') {
+      await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    }
     f.requested.length = 0;
     for (const suffix of ['docs', 'docs?lang=ja', 'docs/', 'docs/ja/', 'docs/assets/example.js']) {
       const response = await worker.request({ url: new URL(suffix, scope).href, navigation: true });

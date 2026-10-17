@@ -9,7 +9,9 @@ export function createSyntaxHighlighter({ language }: { language: SyntaxLanguage
       update({ edit }) {
         const { offset, text, ...unhandled } = edit;
         unhandled satisfies Record<PropertyKey, never>;
-        if (!Number.isSafeInteger(offset) || offset < 0 || offset > length) throw new Error('Invalid code edit offset');
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > length) {
+          throw new Error('Invalid code edit offset');
+        }
         length = offset + text.length;
         return { offset, tokens: text.length === 0 ? [] : [{ kind: 'plain', text }] };
       },

@@ -25,8 +25,12 @@ function relatedExternalDataPaths({
     .filter((file) => {
       switch (file.kind) {
       case "external-data":
-        if (file.path === prefix) return true;
-        if (!file.path.startsWith(prefix)) return false;
+        if (file.path === prefix) {
+          return true;
+        }
+        if (!file.path.startsWith(prefix)) {
+          return false;
+        }
         return /^_[0-9]+$/u.test(file.path.slice(prefix.length));
       case "config":
       case "core-onnx":

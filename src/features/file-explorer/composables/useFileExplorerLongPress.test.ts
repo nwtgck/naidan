@@ -59,7 +59,9 @@ describe('useFileExplorerLongPress', () => {
         return () => h('div');
       },
     }));
-    if (controller === undefined) throw new Error('Expected long press controller');
+    if (controller === undefined) {
+      throw new Error('Expected long press controller');
+    }
     return { controller, onLongPress, wrapper };
   }
 

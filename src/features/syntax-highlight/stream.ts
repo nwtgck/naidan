@@ -2,7 +2,9 @@ import { createSyntaxHighlighter } from './highlight';
 import type { CodeEdit, HighlightEdit, SyntaxLanguage } from './types';
 
 async function nextInput({ iterator, signal }: { iterator: AsyncIterator<CodeEdit>, signal: AbortSignal }) {
-  if (signal.aborted) return { type: 'aborted' } as const;
+  if (signal.aborted) {
+    return { type: 'aborted' } as const;
+  }
   let abort: () => void = () => {};
   const aborted = new Promise<{ type: 'aborted' }>((resolve) => {
     abort = () => resolve({ type: 'aborted' });
@@ -25,7 +27,9 @@ export async function* highlightSyntaxStream({ edits, language, signal }: {
   language: SyntaxLanguage,
   signal: AbortSignal,
 }): AsyncGenerator<HighlightEdit> {
-  if (signal.aborted) return;
+  if (signal.aborted) {
+    return;
+  }
   const highlighter = createSyntaxHighlighter({ language });
   const iterator = edits[Symbol.asyncIterator]();
   try {
@@ -34,10 +38,15 @@ export async function* highlightSyntaxStream({ edits, language, signal }: {
       switch (next.type) {
       case 'aborted': return;
       case 'input':
-        if (next.result.done || signal.aborted) return;
+        if (next.result.done || signal.aborted) {
+          return;
+        }
         yield highlighter.update({ edit: next.result.value });
         break;
-      default: { const _ex: never = next; throw new Error(`Unhandled input event: ${_ex}`); }
+      default: {
+        const _ex: never = next;
+        throw new Error(`Unhandled input event: ${_ex}`);
+      }
       }
     }
   } finally {

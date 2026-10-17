@@ -19,15 +19,23 @@ export function createModelSupportInvestigationEvidenceWorker(): WorkerServerApi
       const { run, recovery } = await readModelSupportInvestigationEvidenceWorkerRequest({ request });
       const sidecars = replayMetadata === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata);
       const timing = ordinaryDownloadTiming === undefined ? undefined : await readOrdinaryDownloadTimingEvidenceFile({ file: ordinaryDownloadTiming });
-      if (timing !== undefined && (timing.association.kind !== 'investigation-run' || timing.association.runId !== run.runId)) throw new Error('Retained Download timing run association mismatch');
+      if (timing !== undefined && (timing.association.kind !== 'investigation-run' || timing.association.runId !== run.runId)) {
+        throw new Error('Retained Download timing run association mismatch');
+      }
       return await createPartialModelSupportEvidence({ run, recovery, replayMetadata: sidecars, nativeEvidence, ordinaryDownloadTiming: timing?.snapshot });
     },
     async createBatchEvidence({ request, replayMetadata, nativeEvidence, ordinaryDownloadTiming }) {
       const { batchId, items } = await readModelSupportInvestigationBatchEvidenceWorkerRequest({ request });
-      if (replayMetadata !== undefined && replayMetadata.length !== items.length) throw new Error('Replay sidecar target count mismatch');
-      if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) throw new Error('Native sidecar target count mismatch');
+      if (replayMetadata !== undefined && replayMetadata.length !== items.length) {
+        throw new Error('Replay sidecar target count mismatch');
+      }
+      if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) {
+        throw new Error('Native sidecar target count mismatch');
+      }
       const timing = ordinaryDownloadTiming === undefined ? undefined : await readOrdinaryDownloadTimingEvidenceFile({ file: ordinaryDownloadTiming });
-      if (timing !== undefined && (timing.association.kind !== 'investigation-batch' || timing.association.batchId !== batchId)) throw new Error('Retained Download timing batch association mismatch');
+      if (timing !== undefined && (timing.association.kind !== 'investigation-batch' || timing.association.batchId !== batchId)) {
+        throw new Error('Retained Download timing batch association mismatch');
+      }
       return await createBatchModelSupportEvidence({
         batchId,
         ordinaryDownloadTiming: timing?.snapshot,

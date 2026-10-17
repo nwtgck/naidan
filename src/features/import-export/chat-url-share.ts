@@ -13,7 +13,9 @@ import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-gener
  */
 export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Promise<string> {
   const chat = await storageService.loadChat({ id: chatId });
-  if (!chat) throw new Error('Chat not found');
+  if (!chat) {
+    throw new Error('Chat not found');
+  }
 
   // Create an ephemeral memory storage for this export
   const memoryProvider = new MemoryStorageProvider();
@@ -75,20 +77,28 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
         const attachment = part.attachment;
         binaryObjectIds.add(attachment.binaryObjectId);
         switch (attachment.status) {
-        case 'memory': memoryFiles.set(attachment.binaryObjectId, { blob: attachment.blob, name: attachment.originalName, mimeType: attachment.mimeType }); break;
+        case 'memory': memoryFiles.set(attachment.binaryObjectId, { blob: attachment.blob, name: attachment.originalName, mimeType: attachment.mimeType });
+          break;
         case 'persisted':
         case 'missing': break;
-        default: { const _ex: never = attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+        default: {
+          const _ex: never = attachment;
+          throw new Error(`Unhandled attachment: ${_ex}`);
+        }
         }
         break;
       }
       case 'text': {
         const blocks = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
         for (const match of part.text.matchAll(blocks)) {
-          if (match[1] === undefined) continue;
+          if (match[1] === undefined) {
+            continue;
+          }
           try {
             const parsed = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1]));
-            if (parsed.success) binaryObjectIds.add(toBinaryObjectId({ raw: parsed.data.binaryObjectId }));
+            if (parsed.success) {
+              binaryObjectIds.add(toBinaryObjectId({ raw: parsed.data.binaryObjectId }));
+            }
           } catch { /* Invalid marker text is preserved, not treated as a reference. */ }
         }
         break;
@@ -100,21 +110,31 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
           case 'executing': return undefined;
           case 'success': return result.content;
           case 'error': return result.error.message;
-          default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+          default: {
+            const _ex: never = result;
+            throw new Error(`Unhandled tool result: ${_ex}`);
+          }
           }
         })();
         if (content !== undefined) {
           switch (content.type) {
           case 'text': break;
-          case 'binary_object': binaryObjectIds.add(content.id); break;
-          default: { const _ex: never = content; throw new Error(`Unhandled result content: ${_ex}`); }
+          case 'binary_object': binaryObjectIds.add(content.id);
+            break;
+          default: {
+            const _ex: never = content;
+            throw new Error(`Unhandled result content: ${_ex}`);
+          }
           }
         }
         break;
       }
       case 'reasoning':
       case 'tool_call': break;
-      default: { const _ex: never = part; throw new Error(`Unhandled message part: ${_ex}`); }
+      default: {
+        const _ex: never = part;
+        throw new Error(`Unhandled message part: ${_ex}`);
+      }
       }
     }
   }
@@ -143,8 +163,12 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   const reader = stream.getReader();
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
-    if (value) chunks.push(value);
+    if (done) {
+      break;
+    }
+    if (value) {
+      chunks.push(value);
+    }
   }
   const zipBlob = new Blob(chunks as unknown as BlobPart[], { type: 'application/zip' });
 
@@ -153,7 +177,9 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
     fr.onloadend = () => {
       const result = fr.result as string;
       const zipBase64 = result.split(',')[1];
-      if (!zipBase64) return reject(new Error('Failed to encode ZIP to Base64'));
+      if (!zipBase64) {
+        return reject(new Error('Failed to encode ZIP to Base64'));
+      }
 
       const url = new URL(window.location.href);
       url.search = '';

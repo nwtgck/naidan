@@ -10,17 +10,23 @@ const props = defineProps<{
 }>();
 
 const currentNumber = computed(() => {
-  if (props.totalCount === undefined || props.remainingCount === undefined) return undefined;
+  if (props.totalCount === undefined || props.remainingCount === undefined) {
+    return undefined;
+  }
   return Math.min(props.totalCount, Math.max(1, props.totalCount - props.remainingCount + 1));
 });
 
 const displayedCurrentStep = computed(() => {
-  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps <= 0) return undefined;
+  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps <= 0) {
+    return undefined;
+  }
   return Math.min(props.totalSteps, Math.max(1, props.currentStep + 1));
 });
 
 const stepProgress = computed(() => {
-  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps === 0) return undefined;
+  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps === 0) {
+    return undefined;
+  }
   return Math.round((props.currentStep / props.totalSteps) * 100);
 });
 

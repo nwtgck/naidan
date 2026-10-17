@@ -158,7 +158,9 @@ describe('exclusive hosted Provider investigation routing', () => {
       const capture: GenerationCaptureClient = original(input);
       take.mockImplementation(async () => {
         const context = capture.getCaptureLifetime().issuedCalls[0];
-        if (context === undefined) throw new Error('Expected a host-issued first request');
+        if (context === undefined) {
+          throw new Error('Expected a host-issued first request');
+        }
         return {
           status: 'captured',
           capture: {
@@ -263,7 +265,8 @@ describe('exclusive hosted Provider investigation routing', () => {
     const entered = Promise.withResolvers<void>();
     const pending = Promise.withResolvers<nativeEvidence.ProductionProviderNativeEvidenceSidecar>();
     vi.spyOn(nativeEvidence, 'createProductionProviderNativeEvidence').mockImplementation(() => {
-      entered.resolve(); return pending.promise;
+      entered.resolve();
+      return pending.promise;
     });
     const checkpoints: ModelSupportInvestigationCheckpoint[] = [];
     const operation = host.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'full' }), onEvent: vi.fn(), onCheckpoint: ({ checkpoint }) => checkpoints.push(checkpoint) });

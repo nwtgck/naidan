@@ -29,7 +29,9 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()))),
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       return JSON.parse(JSON.stringify(chat));
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),

@@ -34,16 +34,22 @@ async function disposeSuccessfulReplayModel({ result }: {
   result: { status: 'completed'; model: ModelStub } | { status: 'rejected'; error: unknown };
 }) {
   switch (result.status) {
-  case 'completed': await result.model.dispose(); break;
+  case 'completed': await result.model.dispose();
+    break;
   case 'rejected': break;
-  default: { const exhaustive: never = result; throw new Error(`Unexpected result: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(`Unexpected result: ${exhaustive}`);
+  }
   }
 }
 
 const cleanups: Array<() => void> = [];
 
 export function cleanupParsedMetadataRequests() {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {
+    cleanup();
+  }
   vi.unstubAllGlobals();
 }
 
@@ -78,8 +84,11 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
   const originalGpu = Object.getOwnPropertyDescriptor(navigator, 'gpu');
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} });
   cleanups.push(() => {
-    if (originalGpu === undefined) Reflect.deleteProperty(navigator, 'gpu');
-    else Object.defineProperty(navigator, 'gpu', originalGpu);
+    if (originalGpu === undefined) {
+      Reflect.deleteProperty(navigator, 'gpu');
+    } else {
+      Object.defineProperty(navigator, 'gpu', originalGpu);
+    }
   });
   // Browser branch selection only; this does not emulate a GPU or browser Worker.
   vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
@@ -112,13 +121,15 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
       const marker = `${fixture.modelId}/`;
       const index = request.indexOf(marker);
       if (index < 0) {
-        unknownRequests.push(request); throw new Error('Unexpected model identity');
+        unknownRequests.push(request);
+        throw new Error('Unexpected model identity');
       }
       let path = request.slice(index + marker.length);
       if (path.startsWith('resolve/')) {
         const revisionPrefix = `resolve/${fixture.revision}/`;
         if (!path.startsWith(revisionPrefix)) {
-          unknownRequests.push(request); throw new Error('Unexpected revision');
+          unknownRequests.push(request);
+          throw new Error('Unexpected revision');
         }
         path = path.slice(revisionPrefix.length);
       }
@@ -138,7 +149,8 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
       }
       const serialized = declarations.get(path);
       if (serialized === undefined) {
-        unknownRequests.push(request); throw new Error('Uncaptured metadata request');
+        unknownRequests.push(request);
+        throw new Error('Uncaptured metadata request');
       }
       const bytes = new TextEncoder().encode(serialized);
       return new Response(new ReadableStream<Uint8Array>({
@@ -184,9 +196,14 @@ export async function assertParsedMetadataModelRequest({ fixture, expected, dtyp
     await disposeSuccessfulReplayModel({ result });
   }
   switch (result.status) {
-  case 'completed': expect(result.status).toBe('completed'); break;
-  case 'rejected': expect(result.status, String(result.error)).toBe('completed'); throw result.error;
-  default: { const exhaustive: never = result; throw new Error(`Unexpected result: ${exhaustive}`); }
+  case 'completed': expect(result.status).toBe('completed');
+    break;
+  case 'rejected': expect(result.status, String(result.error)).toBe('completed');
+    throw result.error;
+  default: {
+    const exhaustive: never = result;
+    throw new Error(`Unexpected result: ${exhaustive}`);
+  }
   }
   expect(h.paths()).toEqual(expectedArtifacts);
   expect(h.syntheticBodyReads.sort()).toEqual(expectedArtifacts);
@@ -247,9 +264,14 @@ export async function assertCausalMetadataPrepass({ fixture, dtype, expectedCons
     await disposeSuccessfulReplayModel({ result });
   }
   switch (result.status) {
-  case 'completed': expect(result.status).toBe('completed'); break;
-  case 'rejected': expect(result.status, String(result.error)).toBe('completed'); break;
-  default: { const exhaustive: never = result; throw new Error(`Unexpected result: ${exhaustive}`); }
+  case 'completed': expect(result.status).toBe('completed');
+    break;
+  case 'rejected': expect(result.status, String(result.error)).toBe('completed');
+    break;
+  default: {
+    const exhaustive: never = result;
+    throw new Error(`Unexpected result: ${exhaustive}`);
+  }
   }
   expect(h.paths()).toEqual(observed);
   expect(h.syntheticBodyReads.sort()).toEqual(consumed);

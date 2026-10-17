@@ -72,10 +72,16 @@ function closeFloatingMenus() {
 }
 
 function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
-  if (!showMoreMenu.value && !showMoveMenu.value) return;
+  if (!showMoreMenu.value && !showMoveMenu.value) {
+    return;
+  }
   const target = event.target;
-  if (!(target instanceof Node)) return;
-  if (actionsMenuRoot.value?.contains(target)) return;
+  if (!(target instanceof Node)) {
+    return;
+  }
+  if (actionsMenuRoot.value?.contains(target)) {
+    return;
+  }
   closeFloatingMenus();
 }
 

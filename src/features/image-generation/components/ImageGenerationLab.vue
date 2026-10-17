@@ -34,7 +34,9 @@ watch([activeTab, view.history.available], ([tab, historyAvailable]) => {
     historyVisited.value = true;
     // Returning to OPFS clears the old snapshot even if the tab did not change.
     // Only the visible history pane should start its replacement query.
-    if (historyAvailable) void view.history.reload();
+    if (historyAvailable) {
+      void view.history.reload();
+    }
     break;
   case 'generate': case 'models': break;
   default: {
@@ -54,13 +56,16 @@ function openTab({ tab }: { tab: typeof activeTab.value }): void {
   // A different session can still be the same generate tab. Do not lose its URL
   // change to defineModel's same-value suppression.
   if (props.workspace && tab === 'generate') {
-    emit('openGeneration'); return;
+    emit('openGeneration');
+    return;
   }
   activeTab.value = tab;
 }
 
 function tabKey({ event }: { event: KeyboardEvent }): void {
-  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+    return;
+  }
   event.preventDefault();
   const index = tabs.value.findIndex(tab => tab.id === activeTab.value);
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.value.length - 1 : (index + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) + tabs.value.length) % tabs.value.length;
@@ -73,17 +78,23 @@ function tabKey({ event }: { event: KeyboardEvent }): void {
 
 async function openHistory({ id }: { id: ImageGenerationId | undefined }): Promise<void> {
   openTab({ tab: 'history' });
-  if (id) await view.history.select({ id });
+  if (id) {
+    await view.history.select({ id });
+  }
 }
 
 async function reuseHistory({ record }: { record: ImageGenerationRecord }): Promise<void> {
   await view.reuseHistory({ record });
-  if (!view.historyActions.error.value) openTab({ tab: 'generate' });
+  if (!view.historyActions.error.value) {
+    openTab({ tab: 'generate' });
+  }
 }
 
 async function useHistoryImage({ binaryObjectId, role }: { binaryObjectId: BinaryObjectId, role: 'initial' | 'reference' }): Promise<void> {
   await view.useHistoryImage({ binaryObjectId, role });
-  if (!view.historyActions.error.value) openTab({ tab: 'generate' });
+  if (!view.historyActions.error.value) {
+    openTab({ tab: 'generate' });
+  }
 }
 
 const { library, busy, supported, formDisabled, debug, unavailable, files, loras, imageInputs, parameters, retainModel, modelResident, maxResults, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } = view;

@@ -24,7 +24,9 @@ function sha256({ bytes }: { bytes: Uint8Array }): string {
 }
 
 afterEach(() => {
-  for (const path of temporaryDirectories.splice(0)) rmSync(path, { recursive: true, force: true });
+  for (const path of temporaryDirectories.splice(0)) {
+    rmSync(path, { recursive: true, force: true });
+  }
 });
 
 it('reads identity assets as fresh browser byte arrays without changing the original bytes', () => {

@@ -136,7 +136,9 @@ export async function embedMetadataInWebp({ blob, metadata }: {
   chunk.set(chunkType, 0);
   view.setUint32(4, chunkLength, true);
   chunk.set(xmpBytes, 8);
-  if (padding) chunk[8 + chunkLength] = 0;
+  if (padding) {
+    chunk[8 + chunkLength] = 0;
+  }
 
   const newRiffSize = bytes.length + chunk.length - 8;
   const result = new Uint8Array(bytes.length + chunk.length);
@@ -177,7 +179,9 @@ function computeCrc32({ data }: { data: Uint8Array }): number {
   let crc = 0xffffffff;
   for (let i = 0; i < data.length; i++) {
     const byte = data[i];
-    if (byte === undefined) continue;
+    if (byte === undefined) {
+      continue;
+    }
     crc ^= byte;
     for (let j = 0; j < 8; j++) {
       if (crc & 1) {

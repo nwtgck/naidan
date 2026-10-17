@@ -26,7 +26,8 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
   const promise = new Promise<T>((fulfill, fail) => {
-    resolve = fulfill; reject = fail;
+    resolve = fulfill;
+    reject = fail;
   });
   return { promise, resolve, reject };
 }
@@ -255,7 +256,10 @@ it.each(['accepted', 'failed'] as const)('retains batched size correction contex
     await flushPromises();
     expect(wrapper.get('[data-testid="download-progress"]').text()).toContain('Synthetic fallback failure');
     break;
-  default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = outcome;
+    throw new Error(String(exhaustive));
+  }
   }
   expect(wrapper.find('[data-testid="download-candidate-retry"]').exists()).toBe(false);
 });
@@ -326,7 +330,9 @@ it.each<{
     expect(wrapper.get('[data-testid="download-eta"]').text()).toBe(expected);
   }
   expect(wrapper.find('[data-testid="download-eta-scope"]').exists()).toBe(false);
-  if (expected !== undefined) expect(wrapper.get('[data-testid="download-progress-heading"]').text()).toContain(`32% · ${expected}`);
+  if (expected !== undefined) {
+    expect(wrapper.get('[data-testid="download-progress-heading"]').text()).toContain(`32% · ${expected}`);
+  }
 });
 
 it.each(['resolving-revision', 'checking-cache', 'preparing-metadata', 'observing-candidate', 'saving'] as const)('keeps the internal %s phase without showing a separate preparation or saving heading', async (phase) => {
@@ -343,7 +349,9 @@ it.each(['resolving-revision', 'checking-cache', 'preparing-metadata', 'observin
   await flushPromises();
   expect(wrapper.get('[data-testid="download-phase"]').text()).toBe('Downloading');
   const text = wrapper.get('[data-testid="download-progress"]').text();
-  for (const hidden of ['Resolving revision', 'Checking cache', 'Preparing metadata', 'Checking required files']) expect(text).not.toContain(hidden);
+  for (const hidden of ['Resolving revision', 'Checking cache', 'Preparing metadata', 'Checking required files']) {
+    expect(text).not.toContain(hidden);
+  }
   expect(wrapper.find('[data-testid="download-eta"]').exists()).toBe(false);
 });
 

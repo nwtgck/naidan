@@ -31,11 +31,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const scope of scopes.splice(0)) scope.stop();
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
 });
 
 function harness() {
-  const blocked = ref(false), scope = effectScope(); scopes.push(scope);
+  const blocked = ref(false), scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   return { blocked, scope, library };
 }
@@ -59,7 +62,8 @@ it('releases cancellation while the final host permission refresh is pending and
   mocks.refresh.mockReturnValueOnce(pending.promise);
   const downloading = library.downloadRecipe({ recipeId: imageModelRecipes[0]!.id, selections: {} });
   await vi.waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
-  library.cancelDownload(); await downloading;
+  library.cancelDownload();
+  await downloading;
   expect(library.downloading.value).toBe(false);
   expect(library.downloadState.value).toBe('paused');
   pending.reject(new Error('Late permission lookup failure'));
@@ -78,10 +82,12 @@ it('settles the linked-folder stopDownload callback during inventory publication
   const downloading = library.downloadRecipe({ recipeId: imageModelRecipes[0]!.id, selections: {} });
   await new Promise(resolve => setImmediate(resolve));
   expect(library.downloading.value).toBe(true);
-  await mocks.stopDownload({ id: 'linked-models' }); await downloading;
+  await mocks.stopDownload({ id: 'linked-models' });
+  await downloading;
   expect(library.downloading.value).toBe(false);
   expect(library.downloadState.value).toBe('paused');
-  blocked.value = false; await new Promise(resolve => setImmediate(resolve));
+  blocked.value = false;
+  await new Promise(resolve => setImmediate(resolve));
   expect(mocks.inspect).toHaveBeenCalledOnce();
   pending.resolve({ candidates: [], issues: [] });
 });
@@ -90,20 +96,25 @@ it.each(['before inspection', 'during inspection'] as const)('publishes a comple
   const { library, blocked } = harness();
   const next = await inventory(), pending = Promise.withResolvers<ModelInventory>();
   mocks.inspect.mockResolvedValue(next);
-  if (timing === 'during inspection') mocks.inspect.mockReturnValueOnce(pending.promise);
-  else blocked.value = true;
+  if (timing === 'during inspection') {
+    mocks.inspect.mockReturnValueOnce(pending.promise);
+  } else {
+    blocked.value = true;
+  }
   let settled = false;
   const changing = mocks.change().then(() => {
     settled = true;
   });
   if (timing === 'during inspection') {
     await vi.waitFor(() => expect(mocks.inspect).toHaveBeenCalledOnce());
-    blocked.value = true; pending.resolve(next);
+    blocked.value = true;
+    pending.resolve(next);
   }
   await new Promise(resolve => setImmediate(resolve));
   expect(settled).toBe(false);
   expect(library.models.value).toEqual([]);
-  blocked.value = false; await changing;
+  blocked.value = false;
+  await changing;
   expect(library.models.value).toHaveLength(1);
   expect(settled).toBe(true);
 });
@@ -117,8 +128,10 @@ it('disposes a deferred linked-folder publication without a later inventory upda
   });
   await new Promise(resolve => setImmediate(resolve));
   expect(settled).toBe(false);
-  scope.stop(); await changing;
-  blocked.value = false; await new Promise(resolve => setImmediate(resolve));
+  scope.stop();
+  await changing;
+  blocked.value = false;
+  await new Promise(resolve => setImmediate(resolve));
   expect(mocks.inspect).not.toHaveBeenCalled();
   expect(library.models.value).toEqual([]);
 });

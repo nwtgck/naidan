@@ -5,13 +5,17 @@ export function cleanupMessage({ text }: {
   for (const rawLine of text.split('\n')) {
     const line = rawLine.replace(/[\t ]+$/u, '');
     if (line.length === 0) {
-      if (lines.length === 0 || lines.at(-1) === '') continue;
+      if (lines.length === 0 || lines.at(-1) === '') {
+        continue;
+      }
       lines.push('');
       continue;
     }
     lines.push(line);
   }
-  if (lines.at(-1) === '') lines.pop();
+  if (lines.at(-1) === '') {
+    lines.pop();
+  }
   return lines.join('\n');
 }
 

@@ -7,13 +7,19 @@ export function useAutoTitleActivity() {
   let releaseComposition: (() => void) | undefined;
   let disposed = false;
   function noteActivity(): void {
-    if (!disposed) autoTitleScheduler.noteActivity();
+    if (!disposed) {
+      autoTitleScheduler.noteActivity();
+    }
   }
   function hold(): () => void {
-    if (disposed) return () => {};
+    if (disposed) {
+      return () => {};
+    }
     const release = autoTitleScheduler.hold();
     const stop = () => {
-      if (releases.delete(stop)) release();
+      if (releases.delete(stop)) {
+        release();
+      }
     };
     releases.add(stop);
     return stop;
@@ -25,13 +31,17 @@ export function useAutoTitleActivity() {
   onScopeDispose(() => {
     disposed = true;
     releaseComposition = undefined;
-    for (const release of releases) release();
+    for (const release of releases) {
+      release();
+    }
   });
   return {
     noteActivity,
     hold,
     beginComposition(): void {
-      if (releaseComposition === undefined) releaseComposition = hold();
+      if (releaseComposition === undefined) {
+        releaseComposition = hold();
+      }
     },
     endComposition,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),

@@ -19,7 +19,10 @@ const browserImageModelLocationToDomain = ({ dto }: { dto: BrowserImageModelLoca
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<BrowserImageModelLocation, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }), path });
   }
-  default: { const exhaustive: never = dto; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = dto;
+    throw new Error(String(exhaustive));
+  }
   }
 };
 
@@ -35,7 +38,10 @@ const browserImageModelLocationToDto = ({ domain }: { domain: BrowserImageModelL
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<BrowserImageModelLocationDto, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }), path });
   }
-  default: { const exhaustive: never = domain; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = domain;
+    throw new Error(String(exhaustive));
+  }
   }
 };
 
@@ -60,7 +66,10 @@ export const browserImageModelSelectionToDomain = ({ dto }: { dto: BrowserImageM
           unhandledNone satisfies Record<PropertyKey, never>;
           return exactObject<Extract<BrowserImageModelSelection['components'][number]['choice'], { kind: 'none' }>>()({ kind });
         }
-        default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = choice;
+          throw new Error(String(exhaustive));
+        }
         }
       })();
       return exactObject<BrowserImageModelSelection['components'][number]>()({ slot, choice: mappedChoice });
@@ -93,7 +102,10 @@ export const browserImageModelSelectionToDto = ({ domain }: { domain: BrowserIma
           unhandledNone satisfies Record<PropertyKey, never>;
           return exactObject<Extract<BrowserImageModelSelectionDto['components'][number]['choice'], { kind: 'none' }>>()({ kind });
         }
-        default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = choice;
+          throw new Error(String(exhaustive));
+        }
         }
       })();
       return exactObject<BrowserImageModelSelectionDto['components'][number]>()({ slot, choice: mappedChoice });

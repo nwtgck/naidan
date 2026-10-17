@@ -416,7 +416,9 @@ describe('LFM2.5 350M Provider / history', () => {
   it("system-user-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM2.5 350M input verified; no generation replay';
     const nativeInputs: Array<{
       input: { type: string; location: string; dims: number[]; data: unknown } | undefined;
@@ -510,7 +512,9 @@ describe('LFM2.5 350M Provider / history', () => {
   it("multi-turn-generation preserves the recorded native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM2.5 350M input verified; no generation replay';
     const nativeInputs: Array<{
       input: { type: string; location: string; dims: number[]; data: unknown } | undefined;
@@ -789,7 +793,9 @@ A separate synthetic conversation.<|im_end|>
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent-input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent-input replay');
+        }
         return next(context);
       },
     });
@@ -942,7 +948,9 @@ A separate synthetic conversation.<|im_end|>
 
       const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
       unhandled satisfies Record<PropertyKey, never>;
-      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      if (completeness === 'pending') {
+        throw new Error('Expected a drained first text part');
+      }
       firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',
@@ -1298,7 +1306,9 @@ describe('LFM2.5 350M Provider / tools', () => {
   it("tools-generation retains public tool definitions and result content, but the native template omits call details", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM350 tool input captured; no inference output supplied';
     let inference: Pick<Parameters<ProviderReplayGenerate>[0], 'tokenizer' | 'runtime'> | undefined;
     const nativeInputs: Array<{
@@ -1391,7 +1401,9 @@ describe('LFM2.5 350M Provider / tools', () => {
     const productionTokenizations = templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
     expect(productionTokenizations).toHaveLength(1);
     const productionCall = productionTokenizations[0];
-    if (!productionCall) throw new Error('Expected Production template invocation');
+    if (!productionCall) {
+      throw new Error('Expected Production template invocation');
+    }
     // Validate raw arguments first, then compare semantic values. An absent
     // optional field and an own undefined field are not different tool input.
     const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
@@ -1406,7 +1418,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
     })));
     expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictToolDefinitions });
-    if (!inference) throw new Error('Actual inference boundary was not reached');
+    if (!inference) {
+      throw new Error('Actual inference boundary was not reached');
+    }
     const { tokenizer, runtime } = inference;
     expect(nativeInputs).toHaveLength(1);
     const observedInput = nativeInputs[0]!;
@@ -1458,7 +1472,9 @@ describe('LFM2.5 350M Provider / tools', () => {
     })).toBe(strictPrompt);
     const changed = roleAndContent.map(message => ({ ...message }));
     const last = changed.at(-1);
-    if (!last) throw new Error('Expected a final fixture message');
+    if (!last) {
+      throw new Error('Expected a final fixture message');
+    }
     const originalContent = last.content;
     expect(originalContent).not.toBe('');
     expect(strictPrompt.split(originalContent)).toHaveLength(2);
@@ -1490,7 +1506,9 @@ describe('LFM2.5 350M Provider / tools', () => {
   it("tool-result-continuation preserves the call through verified content while retaining the original native-template input facts", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'LFM350 tool input captured; no inference output supplied';
     let inference: Pick<Parameters<ProviderReplayGenerate>[0], 'tokenizer' | 'runtime'> | undefined;
     const nativeInputs: Array<{
@@ -1584,7 +1602,9 @@ describe('LFM2.5 350M Provider / tools', () => {
     const productionTokenizations = templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
     expect(productionTokenizations).toHaveLength(1);
     const productionCall = productionTokenizations[0];
-    if (!productionCall) throw new Error('Expected Production template invocation');
+    if (!productionCall) {
+      throw new Error('Expected Production template invocation');
+    }
     // Validate raw arguments first, then compare semantic values. An absent
     // optional field and an own undefined field are not different tool input.
     const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
@@ -1598,7 +1618,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       { role: 'tool', content: '{"temperatureC":20,"condition":"clear"}', tool_calls: undefined, tool_call_id: 'call_template_probe_1' },
     ]);
     expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictToolDefinitions });
-    if (!inference) throw new Error('Actual inference boundary was not reached');
+    if (!inference) {
+      throw new Error('Actual inference boundary was not reached');
+    }
     const { tokenizer, runtime } = inference;
     expect(nativeInputs).toHaveLength(1);
     const observedInput = nativeInputs[0]!;
@@ -1662,7 +1684,9 @@ describe('LFM2.5 350M Provider / tools', () => {
     })).toBe(strictPrompt);
     const changed = roleAndContent.map(message => ({ ...message }));
     const last = changed.at(-1);
-    if (!last) throw new Error('Expected a final fixture message');
+    if (!last) {
+      throw new Error('Expected a final fixture message');
+    }
     const originalContent = last.content;
     expect(originalContent).not.toBe('');
     expect(strictPrompt.split(originalContent)).toHaveLength(2);
@@ -1757,7 +1781,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(results).toEqual([{ toolCallId: calls[0]!.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' } }]);
       expect(executions.map(execution => execution.args)).toEqual([{ city: 'Tokyo' }]);
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(executions[0]?.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -1862,7 +1888,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(execution.signal?.aborted).toBe(false);
       // The caller records an executing result after the completed call and before the follow-up.
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -1950,7 +1978,9 @@ describe('LFM2.5 350M Provider / tools', () => {
       expect(execution.signal?.aborted).toBe(false);
       // The caller records an executing result after the completed call and before the follow-up.
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -2299,7 +2329,9 @@ describe('LFM2.5 350M Provider / sequences', () => {
       artifacts: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in two-turn replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in two-turn replay');
+        }
         return next(context);
       },
     });
@@ -2336,7 +2368,9 @@ describe('LFM2.5 350M Provider / sequences', () => {
     // Immutable at settlement: late first callbacks cannot rewrite the next
     // request. There is no timer, callback drain, or artificial callback ACK.
     const firstPart = firstCapture.snapshot().parts[0];
-    if (firstPart?.type !== 'text' || firstPart.completeness === 'pending') throw new Error('Expected a drained first text part');
+    if (firstPart?.type !== 'text' || firstPart.completeness === 'pending') {
+      throw new Error('Expected a drained first text part');
+    }
     const { partId, type, chunks, completeness, index: _index, ...unhandled } = firstPart;
     unhandled satisfies Record<PropertyKey, never>;
     const firstTextAtSettlement = chunks.join('');
@@ -2462,7 +2496,9 @@ describe('LFM2.5 350M Provider / sequences', () => {
 
       const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
       unhandled satisfies Record<PropertyKey, never>;
-      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      if (completeness === 'pending') {
+        throw new Error('Expected a drained first text part');
+      }
       firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',

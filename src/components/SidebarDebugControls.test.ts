@@ -15,7 +15,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
 });
 
 it('opens the independent audio workspace from Quick Access and closes the menu', async () => {
@@ -27,11 +28,15 @@ it('opens the independent audio workspace from Quick Access and closes the menu'
       { path: '/image-generation', component: { template: '<div />' } },
     ],
   });
-  await router.push('/'); await router.isReady();
+  await router.push('/');
+  await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
   await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
-  const link = wrapper.get('[data-testid="sidebar-audio-generation-link"]'); expect(link.attributes('href')).toBe('/audio-generation');
-  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/audio-generation');
+  const link = wrapper.get('[data-testid="sidebar-audio-generation-link"]');
+  expect(link.attributes('href')).toBe('/audio-generation');
+  await link.trigger('click');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/audio-generation');
   expect(wrapper.find('[data-testid="sidebar-audio-generation-link"]').exists()).toBe(false);
 });
 
@@ -44,10 +49,14 @@ it('opens the independent image workspace from Quick Access and closes the menu'
       { path: '/image-generation', component: { template: '<div />' } },
     ],
   });
-  await router.push('/'); await router.isReady();
+  await router.push('/');
+  await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
   await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
-  const link = wrapper.get('[data-testid="sidebar-image-generation-link"]'); expect(link.attributes('href')).toBe('/image-generation');
-  await link.trigger('click'); await flushPromises(); expect(router.currentRoute.value.path).toBe('/image-generation');
+  const link = wrapper.get('[data-testid="sidebar-image-generation-link"]');
+  expect(link.attributes('href')).toBe('/image-generation');
+  await link.trigger('click');
+  await flushPromises();
+  expect(router.currentRoute.value.path).toBe('/image-generation');
   expect(wrapper.find('[data-testid="sidebar-image-generation-link"]').exists()).toBe(false);
 });

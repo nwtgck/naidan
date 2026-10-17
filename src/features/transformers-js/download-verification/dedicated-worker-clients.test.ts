@@ -29,13 +29,16 @@ class MockWorker extends EventTarget {
     if (url.pathname.endsWith('/worker/bootstrap.ts')) {
       MockWorker.production = this;
       queueMicrotask(() => {
-        if (this.active) this.startup.start();
+        if (this.active) {
+          this.startup.start();
+        }
       });
     }
   }
 
   terminate = () => {
-    this.active = false; mocks.terminate();
+    this.active = false;
+    mocks.terminate();
   };
 }
 

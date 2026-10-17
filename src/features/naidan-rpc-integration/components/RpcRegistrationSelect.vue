@@ -18,25 +18,32 @@ const unsubscribe = subscribeRpcState({
   },
 });
 onScopeDispose(() => {
-  disposed = true; unsubscribe();
+  disposed = true;
+  unsubscribe();
 });
 
 async function refresh(): Promise<void> {
   try {
     const manager = await getRpcManager();
     if (!disposed) {
-      registrations.value = manager.list().filter(item => item.persistence === 'saved'); failed.value = false;
+      registrations.value = manager.list().filter(item => item.persistence === 'saved');
+      failed.value = false;
     }
   } catch {
-    if (!disposed) failed.value = true;
+    if (!disposed) {
+      failed.value = true;
+    }
   }
 }
 
 onMounted(async () => {
   try {
-    await (await getRpcManager()).reload(); await refresh();
+    await (await getRpcManager()).reload();
+    await refresh();
   } catch {
-    if (!disposed) failed.value = true;
+    if (!disposed) {
+      failed.value = true;
+    }
   }
 });
 

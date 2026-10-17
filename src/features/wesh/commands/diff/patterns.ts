@@ -67,9 +67,13 @@ function parseCharacterClass({
       hasContent = true;
       continue;
     }
-    if (character === '^') source += '\\^';
-    else if (character === ']') source += '\\]';
-    else source += character;
+    if (character === '^') {
+      source += '\\^';
+    } else if (character === ']') {
+      source += '\\]';
+    } else {
+      source += character;
+    }
     index++;
     hasContent = true;
   }
@@ -115,8 +119,11 @@ function convertBasicRegularExpression({ pattern }: { pattern: string }): string
         continue;
       }
     }
-    if ('+?|(){}'.includes(character)) result += `\\${character}`;
-    else result += character;
+    if ('+?|(){}'.includes(character)) {
+      result += `\\${character}`;
+    } else {
+      result += character;
+    }
     index++;
   }
   return result;

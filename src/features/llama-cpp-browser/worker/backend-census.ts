@@ -12,11 +12,14 @@ export function createBackendCensus({ core }: { core: Core }) {
   const entries = new Map<string, BackendCensus['entries'][number]>();
   const pointer = core.module.addFunction((tensor: number | bigint, ask: number, _userData: number | bigint): number => {
     // false on ask means do not split the graph for this node's completion.
-    if (!ask) return 1;
+    if (!ask) {
+      return 1;
+    }
     observedNodes++;
     const count = phaseReads.get(phase) ?? 0;
     if (count >= 25000) {
-      droppedNodes++; return 0;
+      droppedNodes++;
+      return 0;
     }
     phaseReads.set(phase, count + 1);
     try {
@@ -26,13 +29,17 @@ export function createBackendCensus({ core }: { core: Core }) {
       let entry = entries.get(key);
       if (!entry) {
         if ((phaseEntries.get(phase) ?? 0) >= 512) {
-          droppedNodes++; return 0;
+          droppedNodes++;
+          return 0;
         }
         entry = { phase, ...metadata, nodes: 0, examples: [] };
-        entries.set(key, entry); phaseEntries.set(phase, (phaseEntries.get(phase) ?? 0) + 1);
+        entries.set(key, entry);
+        phaseEntries.set(phase, (phaseEntries.get(phase) ?? 0) + 1);
       }
       entry.nodes++;
-      if (name && entry.examples.length < 3 && !entry.examples.includes(name)) entry.examples.push(name);
+      if (name && entry.examples.length < 3 && !entry.examples.includes(name)) {
+        entry.examples.push(name);
+      }
     } catch {
       errors++; /* Never unwind an observation error through native code. */
     }
@@ -44,7 +51,13 @@ export function createBackendCensus({ core }: { core: Core }) {
       phase = value;
     },
     reset(): void {
-      phase = 'setup'; observedNodes = 0; droppedNodes = 0; errors = 0; entries.clear(); phaseReads.clear(); phaseEntries.clear();
+      phase = 'setup';
+      observedNodes = 0;
+      droppedNodes = 0;
+      errors = 0;
+      entries.clear();
+      phaseReads.clear();
+      phaseEntries.clear();
     },
     snapshot(): BackendCensus {
       return {
@@ -66,7 +79,8 @@ export function createBackendCensus({ core }: { core: Core }) {
     },
     release(): void {
       if (!released) {
-        core.module.removeFunction(pointer); released = true;
+        core.module.removeFunction(pointer);
+        released = true;
       }
     },
   };

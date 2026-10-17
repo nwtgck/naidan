@@ -92,7 +92,9 @@ describe('Production native collection through actual Comlink', () => {
           async takeGenerationCapture() {
             takeCalls.push(workerEpoch);
             const result = await capture.takeGenerationCapture();
-            if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
+            if (collectionMode === 'take-failed') {
+              throw new Error('Synthetic capture reply discarded after the actual take');
+            }
             return result;
           },
         };
@@ -138,10 +140,14 @@ describe('Production native collection through actual Comlink', () => {
     expect(clients).toHaveLength(1);
     expect(replacementEpochs).toEqual(collectionMode === 'fatal-auto-retirement' ? [2] : []);
     expect(replacementOperations).toEqual([]);
-    if (collectionMode === 'session-inactive') await clients[0]!.client.dispose();
+    if (collectionMode === 'session-inactive') {
+      await clients[0]!.client.dispose();
+    }
     await owner.collectNative();
     const snapshot = owner.snapshot();
-    if (snapshot.native.status !== 'retained') throw new Error('Expected retained allocation diagnostics');
+    if (snapshot.native.status !== 'retained') {
+      throw new Error('Expected retained allocation diagnostics');
+    }
     expect(snapshot.native.capture.epochs).toHaveLength(collectionMode === 'fatal-auto-retirement' ? 2 : 1);
     if (collectionMode === 'fatal-auto-retirement') {
       expect(snapshot.native.capture.epochs[1]).toEqual({
@@ -151,7 +157,9 @@ describe('Production native collection through actual Comlink', () => {
       });
     }
     const epoch = snapshot.native.capture.epochs[0]!;
-    if (epoch.lifetime.status !== 'observed') throw new Error('Expected host-owned lifetime');
+    if (epoch.lifetime.status !== 'observed') {
+      throw new Error('Expected host-owned lifetime');
+    }
     const diagnostics = loadDiagnosticsSchema.parse(epoch.lifetime.value.loadDiagnostics);
     expect(diagnostics.owner).toEqual({ runId: provider.runId, workerEpoch: 1 });
     expect(creationSnapshots).toHaveLength(1);
@@ -185,12 +193,21 @@ describe('Production native collection through actual Comlink', () => {
     expect(diagnostics.events.some(event => event.kind === 'load-failed')).toBe(true);
     expect(diagnostics.events.filter(event => event.kind === 'session-entering' || event.kind === 'allocation-succeeded')).toEqual([]);
     switch (collectionMode) {
-    case 'available': expect(epoch.collection.status).toBe('returned'); expect(takeCalls).toEqual([1]); break;
+    case 'available': expect(epoch.collection.status).toBe('returned');
+      expect(takeCalls).toEqual([1]);
+      break;
     case 'session-inactive': case 'fatal-auto-retirement':
       expect(epoch.collection).toEqual({ status: 'unavailable', reason: 'session-inactive' });
-      expect(epoch.lifetime.value.session).toBe('inactive'); expect(takeCalls).toEqual([]); break;
-    case 'take-failed': expect(epoch.collection).toEqual({ status: 'failed', reason: 'take-failed' }); expect(takeCalls).toEqual([1]); break;
-    default: { const exhaustive: never = collectionMode; throw new Error(String(exhaustive)); }
+      expect(epoch.lifetime.value.session).toBe('inactive');
+      expect(takeCalls).toEqual([]);
+      break;
+    case 'take-failed': expect(epoch.collection).toEqual({ status: 'failed', reason: 'take-failed' });
+      expect(takeCalls).toEqual([1]);
+      break;
+    default: {
+      const exhaustive: never = collectionMode;
+      throw new Error(String(exhaustive));
+    }
     }
     const { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidenceSidecar } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence');
     const sidecar = await createProductionProviderNativeEvidence({ native: snapshot.native.capture, provider: snapshot.provider, maximumBinaryBytes: 65536 });
@@ -218,7 +235,9 @@ describe('Production native collection through actual Comlink', () => {
     });
     const paths = Object.keys(firstZip.files).filter(path => !firstZip.files[path]!.dir).sort();
     expect(Object.keys(secondZip.files).filter(path => !secondZip.files[path]!.dir).sort()).toEqual(paths);
-    for (const entry of paths) expect(await secondZip.file(entry)!.async('uint8array')).toEqual(await firstZip.file(entry)!.async('uint8array'));
+    for (const entry of paths) {
+      expect(await secondZip.file(entry)!.async('uint8array')).toEqual(await firstZip.file(entry)!.async('uint8array'));
+    }
     expect(takeCalls).toEqual(collectionMode === 'session-inactive' || collectionMode === 'fatal-auto-retirement' ? [] : [1]);
     expect(harness.observations.workers).toHaveLength(1);
     expect(harness.observations.workers[0]!.terminated).toBe(true);
@@ -246,7 +265,9 @@ describe('Production native collection through actual Comlink', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected native inputs and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected native inputs and streamer');
+        }
         if (Object.hasOwn(options, 'original_sizes')) {
           imageInputs.push({ original_sizes: Reflect.get(options, 'original_sizes'), reshaped_input_sizes: Reflect.get(options, 'reshaped_input_sizes') });
           throw new Error(boundary);
@@ -308,16 +329,22 @@ describe('Production native collection through actual Comlink', () => {
     expect(imageInputs).toEqual([{ original_sizes: [[1, 1]], reshaped_input_sizes: [[256, 256]] }]);
     await owner.collectNative();
     const snapshot = owner.snapshot();
-    if (snapshot.native.status !== 'retained') throw new Error('Expected retained native collection');
+    if (snapshot.native.status !== 'retained') {
+      throw new Error('Expected retained native collection');
+    }
     const collection = snapshot.native.capture.epochs[0]?.collection;
-    if (collection?.status !== 'returned' || collection.result.status !== 'captured') throw new Error('Expected captured epoch');
+    if (collection?.status !== 'returned' || collection.result.status !== 'captured') {
+      throw new Error('Expected captured epoch');
+    }
     const capture = collection.result.capture;
     expect(capture.calls.map(call => call.context.requestId)).toEqual(provider.requests.map(request => request.requestId));
     expect(capture.incompleteReasons).toEqual([]);
     const imageEvents = capture.events.filter(event => event.kind === 'inputs' && event.identity.requestId === provider.requests.at(-1)!.requestId);
     expect(imageEvents).toHaveLength(2);
     for (const event of imageEvents) {
-      if (event.kind !== 'inputs') throw new Error('Expected image inputs');
+      if (event.kind !== 'inputs') {
+        throw new Error('Expected image inputs');
+      }
       expect(event.values.filter(value => value.name === 'original_sizes' || value.name === 'reshaped_input_sizes')).toEqual([
         { name: 'original_sizes', snapshot: { status: 'image-sizes', values: imageInputs[0]!.original_sizes } },
         { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: imageInputs[0]!.reshaped_input_sizes } },
@@ -431,7 +458,9 @@ describe('Production native collection through actual Comlink', () => {
     expect(worker.terminated).toBe(true);
     expect(terminate).toHaveBeenCalledOnce();
     const detached = owner.detachNativeCollection({ reason: 'user-requested' });
-    if (detached.status !== 'detached') throw new Error('Expected one native ownership transfer');
+    if (detached.status !== 'detached') {
+      throw new Error('Expected one native ownership transfer');
+    }
     expect(detached.capture.phase).toBe('not-requested');
     expect(detached.cutoff.epochs.map(epoch => epoch.collectionStatus)).toEqual(['not-requested']);
     const cutoffProvider = owner.snapshot().provider;
@@ -464,7 +493,9 @@ describe('Production native collection through actual Comlink', () => {
       imagePlatform: undefined,
       generate: async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected real strategy input and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected real strategy input and streamer');
+        }
         const output = tokenizer.encode('Synthetic reply.', { add_special_tokens: false }).map(BigInt);
         nativeInputs.push(Array.from(input.data, String));
         nativeOutputs.push(output.map(String));
@@ -536,7 +567,9 @@ describe('Production native collection through actual Comlink', () => {
     expect(owner.collectNative()).toBe(collecting);
     expect(takeCalls[0]).toHaveBeenCalledOnce();
     const snapshot = owner.snapshot();
-    if (snapshot.native.status !== 'retained') throw new Error('Expected retained native collection');
+    if (snapshot.native.status !== 'retained') {
+      throw new Error('Expected retained native collection');
+    }
     expect(snapshot.native.capture.phase).toBe('finished');
     expect(snapshot.native.capture.incompleteReasons).toEqual([]);
     expect(snapshot.native.capture.unrecordedWorkerCreations).toBe(0);
@@ -548,7 +581,9 @@ describe('Production native collection through actual Comlink', () => {
       requestId: request.requestId,
       generationCallId: index + 1,
     }));
-    if (epoch.lifetime.status !== 'observed') throw new Error('Expected host-owned lifetime');
+    if (epoch.lifetime.status !== 'observed') {
+      throw new Error('Expected host-owned lifetime');
+    }
     const { loadDiagnostics, ...existingLifetime } = epoch.lifetime.value;
     expect(loadDiagnosticsSchema.parse(loadDiagnostics).events).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'allocation-succeeded', resource: 'onnx/model_q4f16.onnx', requestedBytes: 3 }),
@@ -569,7 +604,9 @@ describe('Production native collection through actual Comlink', () => {
         revisionSelection: { kind: 'discover-cached' },
       }],
     });
-    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected actual native capture result');
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') {
+      throw new Error('Expected actual native capture result');
+    }
     const capture = epoch.collection.result.capture;
     expect(capture.calls).toEqual(contexts.map(context => ({
       context,
@@ -687,7 +724,9 @@ describe('Production native collection through actual Comlink', () => {
       imagePlatform: undefined,
       generate: async ({ options, tokenizer, runtime }) => {
         const input = options.input_ids;
-        if (!(input instanceof runtime.Tensor) || !options.streamer) throw new Error('Expected real strategy input and streamer');
+        if (!(input instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Expected real strategy input and streamer');
+        }
         // Synthetic inference never emits a tool call. This checks collection
         // coverage, not weather-tool use or this text-only model's image ability.
         const output = tokenizer.encode('Synthetic reply.', { add_special_tokens: false }).map(BigInt);
@@ -766,11 +805,15 @@ describe('Production native collection through actual Comlink', () => {
     await owner.collectNative();
     expect(takeCalls[0]).toHaveBeenCalledOnce();
     const snapshot = owner.snapshot();
-    if (snapshot.native.status !== 'retained') throw new Error('Expected retained Full native collection');
+    if (snapshot.native.status !== 'retained') {
+      throw new Error('Expected retained Full native collection');
+    }
     expect(snapshot.native.capture.phase).toBe('finished');
     expect(snapshot.native.capture.epochs).toHaveLength(1);
     const epoch = snapshot.native.capture.epochs[0]!;
-    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected Full native capture');
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') {
+      throw new Error('Expected Full native capture');
+    }
     expect(epoch.collection.result.capture.calls.map(call => call.context.requestId)).toEqual(provider.requests.map(request => request.requestId));
     expect(epoch.collection.result.capture.calls.map(call => call.loadIdentity)).toEqual(Array(13).fill({
       status: 'ready',

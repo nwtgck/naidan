@@ -110,7 +110,9 @@ export function createWeshTerminalSessions({
 
   async function refreshShellState({ session }: { session: InternalSession }) {
     const client = session._client;
-    if (!client || typeof client.getShellState !== 'function') return;
+    if (!client || typeof client.getShellState !== 'function') {
+      return;
+    }
     session.shellState = await client.getShellState();
   }
 
@@ -211,7 +213,9 @@ export function createWeshTerminalSessions({
 
   async function runCommand({ script }: { script: string }) {
     const session = sessionsInternal.value.find(s => s.id === activeSessionId.value);
-    if (!session || !session._client || session.state !== 'ready' || !script.trim()) return;
+    if (!session || !session._client || session.state !== 'ready' || !script.trim()) {
+      return;
+    }
     const client = session._client;
 
     let executionId: string | undefined;
@@ -223,7 +227,9 @@ export function createWeshTerminalSessions({
     const stderrDec = new TextDecoder();
 
     const doCancel = () => {
-      if (cancelRequested || !executionId) return;
+      if (cancelRequested || !executionId) {
+        return;
+      }
       cancelRequested = true;
       cancelPromise = client.cancelExecution({ request: { executionId } })
         .catch(() => {})
@@ -259,7 +265,9 @@ export function createWeshTerminalSessions({
           }
           case 'stderr': {
             const text = stderrDec.decode(event.chunk, { stream: true });
-            if (text) session.lines.push(mkLine({ kind: 'stderr', text }));
+            if (text) {
+              session.lines.push(mkLine({ kind: 'stderr', text }));
+            }
             break;
           }
           case 'exit':
@@ -276,17 +284,25 @@ export function createWeshTerminalSessions({
       });
 
       executionId = started.executionId;
-      if (pendingCancel) doCancel();
-      if (!executionId) throw new Error('Worker did not return an execution id.');
+      if (pendingCancel) {
+        doCancel();
+      }
+      if (!executionId) {
+        throw new Error('Worker did not return an execution id.');
+      }
 
       const activeExecId = executionId;
       const result = await client.awaitExecution({ request: { executionId: activeExecId } });
 
       // Flush any bytes still buffered in the UTF-8 decoders.
       const tailOut = stdoutDec.decode();
-      if (tailOut) session.lines.push(mkLine({ kind: 'stdout', text: tailOut }));
+      if (tailOut) {
+        session.lines.push(mkLine({ kind: 'stdout', text: tailOut }));
+      }
       const tailErr = stderrDec.decode();
-      if (tailErr) session.lines.push(mkLine({ kind: 'stderr', text: tailErr }));
+      if (tailErr) {
+        session.lines.push(mkLine({ kind: 'stderr', text: tailErr }));
+      }
 
       await cancelPromise;
       session.lastExitCode = result.exitCode;
@@ -311,7 +327,9 @@ export function createWeshTerminalSessions({
 
   async function closeSession({ sessionId }: { sessionId: string }) {
     const session = sessionsInternal.value.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session) {
+      return;
+    }
     cancelFns.delete(sessionId);
     await session._client?.dispose();
     sessionsInternal.value = sessionsInternal.value.filter(s => s.id !== sessionId);

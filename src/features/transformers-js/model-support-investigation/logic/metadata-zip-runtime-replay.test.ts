@@ -83,7 +83,9 @@ function evidenceItem({ capture }: { capture: InvestigationReplayMetadataSnapsho
 // import API. It never fills missing entries with invented JSON or body bytes.
 async function restore({ zip, prefix }: { zip: JSZip, prefix: string }) {
   const index = zip.file(`${prefix}replay-metadata/index.json`);
-  if (index === null) throw new Error('Missing replay index');
+  if (index === null) {
+    throw new Error('Missing replay index');
+  }
   const { replayScope: _replayScope, files, ...fields } = z.object({
     replayScope: z.string(),
     files: z.array(z.object({ archived: z.boolean() }).passthrough()),
@@ -91,12 +93,20 @@ async function restore({ zip, prefix }: { zip: JSZip, prefix: string }) {
   const summary = replayMetadataSummarySchema.parse({ ...fields, files: files.map(({ archived: _archived, ...file }) => file) });
   const restored = new Map<string, Blob>();
   for (const file of summary.files) {
-    if (!files.find(item => item.path === file.path)?.archived) continue;
-    if (file.status !== 'collected') throw new Error('Archived file was not collected');
+    if (!files.find(item => item.path === file.path)?.archived) {
+      continue;
+    }
+    if (file.status !== 'collected') {
+      throw new Error('Archived file was not collected');
+    }
     const entry = zip.file(`${prefix}replay-metadata/files/${file.path}`);
-    if (entry === null) throw new Error(`Missing archived file: ${file.path}`);
+    if (entry === null) {
+      throw new Error(`Missing archived file: ${file.path}`);
+    }
     const bytes = await entry.async('uint8array');
-    if (bytes.length !== file.byteLength || await replayMetadataSha256({ bytes }) !== file.sha256) throw new Error(`Replay integrity mismatch: ${file.path}`);
+    if (bytes.length !== file.byteLength || await replayMetadataSha256({ bytes }) !== file.sha256) {
+      throw new Error(`Replay integrity mismatch: ${file.path}`);
+    }
     const blob = new Blob([Uint8Array.from(bytes)]);
     restored.set(file.path, blob);
   }
@@ -141,27 +151,33 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
   const directory = ({ prefix }: { prefix: string }): FileSystemDirectoryHandle => ({
     getDirectoryHandle: async (name: string, options: FileSystemGetDirectoryOptions) => {
       if (options?.create === true) {
-        mutations(); throw new Error('Directory mutation forbidden');
+        mutations();
+        throw new Error('Directory mutation forbidden');
       }
       return directory({ prefix: `${prefix}${name}/` });
     },
     getFileHandle: async (name: string, options: FileSystemGetFileOptions) => {
       if (options?.create === true) {
-        mutations(); throw new Error('File mutation forbidden');
+        mutations();
+        throw new Error('File mutation forbidden');
       }
       const path = `${prefix}${name}`;
       reads.push(path);
       const blob = blobs.get(path);
-      if (blob === undefined) throw new DOMException('Missing fixture file', 'NotFoundError');
+      if (blob === undefined) {
+        throw new DOMException('Missing fixture file', 'NotFoundError');
+      }
       return {
         getFile: async () => blob,
         createWritable: () => {
-          mutations(); throw new Error('Writes forbidden');
+          mutations();
+          throw new Error('Writes forbidden');
         },
       };
     },
     removeEntry: () => {
-      mutations(); throw new Error('Deletes forbidden');
+      mutations();
+      throw new Error('Deletes forbidden');
     },
   } as unknown as FileSystemDirectoryHandle);
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', storage: { getDirectory: async () => directory({ prefix: '' }) } });

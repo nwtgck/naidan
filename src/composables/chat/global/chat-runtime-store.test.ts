@@ -50,9 +50,11 @@ describe('createChatRuntimeStore', () => {
     const first = store.startTask({ key });
     const second = store.startTask({ key });
     expect(store.getTaskCount({ key })).toBe(2);
-    first(); first();
+    first();
+    first();
     expect(store.getTaskCount({ key })).toBe(1);
-    second(); second();
+    second();
+    second();
     expect(store.getTaskCount({ key })).toBe(0);
   });
 
@@ -62,13 +64,20 @@ describe('createChatRuntimeStore', () => {
     const key = { kind: 'title' as const, chatId };
     const stale = store.startTask({ key });
     switch (clearing) {
-    case 'task': store.clearTask({ key }); break;
-    case 'chat': store.clearTasksForChat({ chatId }); break;
-    case 'all': store.clearActiveTaskCounts(); break;
-    default: { const exhaustive: never = clearing; throw new Error(String(exhaustive)); }
+    case 'task': store.clearTask({ key });
+      break;
+    case 'chat': store.clearTasksForChat({ chatId });
+      break;
+    case 'all': store.clearActiveTaskCounts();
+      break;
+    default: {
+      const exhaustive: never = clearing;
+      throw new Error(String(exhaustive));
+    }
     }
     const current = store.startTask({ key });
-    stale(); stale();
+    stale();
+    stale();
     expect(store.getTaskCount({ key })).toBe(1);
     current();
     expect(store.getTaskCount({ key })).toBe(0);

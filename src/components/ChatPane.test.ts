@@ -151,7 +151,10 @@ function createTextNode({ id, role, text, createdAt }: {
   switch (role) {
   case 'user': return { ...common, role } satisfies MessageNode;
   case 'assistant': return { ...common, role, interruption: undefined } satisfies MessageNode;
-  default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = role;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -677,7 +680,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of mockSettings.value.mounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -685,7 +690,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of chatGroupMounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -693,7 +700,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of chatMounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -1139,7 +1148,9 @@ Question`,
   it('should display the model name with correct casing (not forced to uppercase)', async () => {
     // Set a specifically lowercase model name in settings to test for uppercase transformation
     const testModelName = 'gemma3:1b-lowercase';
-    if (mockCurrentChat.value) mockCurrentChat.value.modelId = testModelName;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.modelId = testModelName;
+    }
 
     wrapper = mountChatPane( {
       global: {
@@ -1220,7 +1231,9 @@ Question`,
   });
 
   it('should open and close the chat inspector independently of debug mode', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+    }
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
@@ -1419,7 +1432,9 @@ Question`,
   it('should preserve the previous title in dialog history when generation replaces it', async () => {
     mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
     mockGenerateChatTitle.mockImplementation(async () => {
-      if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value.title = 'Generated Title';
+      }
       return 'Generated Title';
     });
     wrapper = mountChatPane( {
@@ -1442,7 +1457,9 @@ Question`,
     let resolveTitleGeneration: ((title: string) => void) | undefined;
     mockGenerateChatTitle.mockImplementation(async () => new Promise<string>((resolve) => {
       resolveTitleGeneration = (title) => {
-        if (mockCurrentChat.value) mockCurrentChat.value.title = title;
+        if (mockCurrentChat.value) {
+          mockCurrentChat.value.title = title;
+        }
         resolve(title);
       };
     }));
@@ -1764,7 +1781,9 @@ Question`,
   });
 
   it('should keep the chat inspector closed until explicitly opened', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = false;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = false;
+    }
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1784,7 +1803,9 @@ Question`,
   });
 
   it('should show jump to origin button when originChatId is present', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.originChatId = toChatId({ raw: 'original-id' });
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.originChatId = toChatId({ raw: 'original-id' });
+    }
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -2268,7 +2289,9 @@ describe('ChatPane Scrolling Logic', () => {
     targetEl.id = 'message-target-message';
     targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
     container.querySelector = vi.fn().mockImplementation((selector: string) => {
-      if (selector === '#message-target-message') return targetEl;
+      if (selector === '#message-target-message') {
+        return targetEl;
+      }
       return null;
     });
 
@@ -2293,7 +2316,9 @@ describe('ChatPane Scrolling Logic', () => {
     targetEl.id = 'message-late-message';
     targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
     container.querySelector = vi.fn().mockImplementation((selector: string) => {
-      if (selector === '#message-late-message') return targetEl;
+      if (selector === '#message-late-message') {
+        return targetEl;
+      }
       return null;
     });
     scrollTopSetterSpy.mockClear();
@@ -3038,7 +3063,9 @@ describe('ChatPane Header Delete Action', () => {
   });
 
   afterEach(() => {
-    if (wrapper) wrapper.unmount();
+    if (wrapper) {
+      wrapper.unmount();
+    }
     wrapper = null;
   });
 
@@ -3134,7 +3161,8 @@ describe('ChatPane Export Functionality', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     if (wrapper) {
-      wrapper.unmount(); wrapper = null;
+      wrapper.unmount();
+      wrapper = null;
     }
     document.body.innerHTML = '';
   });
@@ -3653,7 +3681,8 @@ Line 7`;
       configurable: true,
       get: () => internalScrollTop,
       set: (val) => {
-        internalScrollTop = val; scrollTopSpy(val);
+        internalScrollTop = val;
+        scrollTopSpy(val);
       },
     });
 
@@ -4158,7 +4187,8 @@ describe('model-link composer visibility wiring', () => {
   });
 
   afterEach(() => {
-    wrapper?.unmount(); wrapper = null;
+    wrapper?.unmount();
+    wrapper = null;
     launchComposerOverride.value = undefined;
     document.body.innerHTML = '';
   });
@@ -4186,7 +4216,8 @@ describe('model-link composer visibility wiring', () => {
 
 describe('ordinary Chat missing browser model notice', () => {
   beforeEach(() => {
-    resetMocks(); setupScrollToMock();
+    resetMocks();
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -4202,14 +4233,16 @@ describe('ordinary Chat missing browser model notice', () => {
     await textarea.setValue('keep writing while the model is prepared');
     const original = textarea.element;
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
-    recoveryAvailability.value = 'missing'; await flushPromises();
+    recoveryAvailability.value = 'missing';
+    await flushPromises();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(true);
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
     expect(textarea.element.value).toBe('keep writing while the model is prepared');
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
-    recoveryAvailability.value = 'available'; await flushPromises();
+    recoveryAvailability.value = 'available';
+    await flushPromises();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
@@ -4234,13 +4267,15 @@ describe('ordinary Chat missing browser model notice', () => {
 
 describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
   beforeEach(() => {
-    resetMocks(); setupScrollToMock();
+    resetMocks();
+    setupScrollToMock();
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/local-model' };
     firefoxWebGpuWarningCandidate.value = true;
   });
 
   afterEach(() => {
-    wrapper?.unmount(); wrapper = null;
+    wrapper?.unmount();
+    wrapper = null;
   });
 
   it.each(['privacy', 'model-launch'] as const)('supplements the %s welcome without replacing its primary content', async appearance => {
@@ -4256,9 +4291,14 @@ describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
     expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('relative');
     switch (appearance) {
-    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.'); break;
-    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true); break;
-    default: { const exhaustive: never = appearance; throw new Error(String(exhaustive)); }
+    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.');
+      break;
+    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true);
+      break;
+    default: {
+      const exhaustive: never = appearance;
+      throw new Error(String(exhaustive));
+    }
     }
   });
 

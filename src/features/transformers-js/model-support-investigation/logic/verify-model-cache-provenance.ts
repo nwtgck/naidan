@@ -46,7 +46,9 @@ async function openCachedFile({
   }
   const parts = cachePath.split("/");
   const fileName = parts.pop();
-  if (fileName === undefined) throw new Error(`Invalid cache path: ${cachePath}`);
+  if (fileName === undefined) {
+    throw new Error(`Invalid cache path: ${cachePath}`);
+  }
   for (const part of parts) {
     directory = await directory.getDirectoryHandle(part, { create: false });
   }
@@ -54,7 +56,9 @@ async function openCachedFile({
 }
 
 function rangesForFile({ size, rangeBytes }: { size: number, rangeBytes: number }): Array<{ offset: number, length: number }> {
-  if (size <= rangeBytes * 2) return [{ offset: 0, length: size }];
+  if (size <= rangeBytes * 2) {
+    return [{ offset: 0, length: size }];
+  }
   const middleOffset = Math.max(0, Math.floor((size - rangeBytes) / 2));
   const ranges = [
     { offset: 0, length: rangeBytes },
@@ -233,13 +237,17 @@ async function readResponseBodyWithExactLimit({ response, expectedLength }: {
   expectedLength: number,
 }): Promise<Uint8Array> {
   const reader = response.body?.getReader();
-  if (reader === undefined) return new Uint8Array();
+  if (reader === undefined) {
+    return new Uint8Array();
+  }
   const bytes = new Uint8Array(expectedLength);
   let offset = 0;
   try {
     while (true) {
       const chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) {
+        break;
+      }
       if (offset + chunk.value.byteLength > expectedLength) {
         await reader.cancel("Range response exceeded the bounded sample length");
         throw new Error(`Range response exceeded ${expectedLength} bytes`);
@@ -250,7 +258,9 @@ async function readResponseBodyWithExactLimit({ response, expectedLength }: {
   } finally {
     reader.releaseLock();
   }
-  if (offset !== expectedLength) throw new Error(`Range response returned ${offset} bytes; expected ${expectedLength}`);
+  if (offset !== expectedLength) {
+    throw new Error(`Range response returned ${offset} bytes; expected ${expectedLength}`);
+  }
   return bytes;
 }
 
@@ -260,7 +270,9 @@ function validContentRange({ value, offset, length, totalSize }: {
   length: number,
   totalSize: number,
 }): boolean {
-  if (value === null) return false;
+  if (value === null) {
+    return false;
+  }
   return value === `bytes ${offset}-${offset + length - 1}/${totalSize}`;
 }
 
@@ -366,7 +378,9 @@ function cacheCandidates({
       && repositoryPaths.has(file.repositoryPath)
     ))
     .sort((left, right) => {
-      if (left.isWeightFile !== right.isWeightFile) return left.isWeightFile ? -1 : 1;
+      if (left.isWeightFile !== right.isWeightFile) {
+        return left.isWeightFile ? -1 : 1;
+      }
       return left.path.localeCompare(right.path);
     })
     .slice(0, maximumFileCount);
@@ -510,8 +524,12 @@ export async function verifyModelCacheProvenance({
   rangeBytes: number,
   maximumFileCount: number,
 }): Promise<ModelSupportInvestigationCacheProvenance> {
-  if (!Number.isSafeInteger(rangeBytes) || rangeBytes <= 0) throw new RangeError("rangeBytes must be a positive safe integer");
-  if (!Number.isSafeInteger(maximumFileCount) || maximumFileCount <= 0) throw new RangeError("maximumFileCount must be a positive safe integer");
+  if (!Number.isSafeInteger(rangeBytes) || rangeBytes <= 0) {
+    throw new RangeError("rangeBytes must be a positive safe integer");
+  }
+  if (!Number.isSafeInteger(maximumFileCount) || maximumFileCount <= 0) {
+    throw new RangeError("maximumFileCount must be a positive safe integer");
+  }
   const candidates = cacheCandidates({ inventory, repository, maximumFileCount });
   if (candidates.length === 0) {
     return {

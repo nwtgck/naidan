@@ -5,11 +5,13 @@ import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime
 import { useAutoTitleActivity } from './useAutoTitleActivity';
 
 beforeEach(() => {
-  vi.useFakeTimers(); autoTitleScheduler.reset();
+  vi.useFakeTimers();
+  autoTitleScheduler.reset();
 });
 
 afterEach(() => {
-  autoTitleScheduler.reset(); vi.useRealTimers();
+  autoTitleScheduler.reset();
+  vi.useRealTimers();
 });
 
 describe('input activity lifetime', () => {
@@ -18,10 +20,12 @@ describe('input activity lifetime', () => {
     const activity = scope.run(useAutoTitleActivity)!;
     const run = vi.fn().mockResolvedValue(undefined);
     autoTitleScheduler.schedule({ chatId: toChatId({ raw: 'ime' }), run });
-    activity.beginComposition(); activity.beginComposition();
+    activity.beginComposition();
+    activity.beginComposition();
     await vi.advanceTimersByTimeAsync(10000);
     expect(run).not.toHaveBeenCalled();
-    activity.endComposition(); activity.endComposition();
+    activity.endComposition();
+    activity.endComposition();
     await vi.advanceTimersByTimeAsync(2499);
     expect(run).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -41,7 +45,8 @@ describe('input activity lifetime', () => {
     activity.noteActivity();
     using _cleanupResource = {
       [Symbol.dispose]() {
-        finishLateAttachment(); activity.endComposition();
+        finishLateAttachment();
+        activity.endComposition();
       },
     };
     await vi.advanceTimersByTimeAsync(100);
@@ -58,7 +63,8 @@ describe('input activity lifetime', () => {
     await vi.advanceTimersByTimeAsync(10000);
     expect(run).not.toHaveBeenCalled();
     scope.stop();
-    finishAttachment(); activity.endComposition();
+    finishAttachment();
+    activity.endComposition();
     await vi.advanceTimersByTimeAsync(2500);
     expect(run).toHaveBeenCalledTimes(1);
   });

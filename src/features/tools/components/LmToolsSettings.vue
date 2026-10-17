@@ -38,7 +38,9 @@ function lmToolNameForKey({ key }: { key: BuiltinToolKey }): LmToolName {
 
 const toolConfigs = computed(() => {
   const chat = currentChat.value;
-  if (chat === null) return undefined;
+  if (chat === null) {
+    return undefined;
+  }
   return getActiveChatToolConfigs({
     chatId: chat.id,
     persistedToolConfigs: chat.toolConfigs,
@@ -47,7 +49,9 @@ const toolConfigs = computed(() => {
 
 const effectiveToolConfigs = computed(() => {
   const chat = currentChat.value;
-  if (chat === null) return [];
+  if (chat === null) {
+    return [];
+  }
   return getEffectiveToolConfigsForChat({ chat });
 });
 

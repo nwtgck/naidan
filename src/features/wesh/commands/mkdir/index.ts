@@ -61,7 +61,9 @@ async function pathExists({
     await context.files.lstat({ path });
     return true;
   } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) return false;
+    if (isPathNotFoundError({ error })) {
+      return false;
+    }
     throw error;
   }
 }
@@ -93,7 +95,9 @@ async function createDirectoriesLexically({
 
   for (let index = 0; index < components.length; index += 1) {
     const component = components[index];
-    if (component === undefined) continue;
+    if (component === undefined) {
+      continue;
+    }
     const { segment, prefix: lexicalPath } = component;
     if (segment === '.' || segment === '..') {
       continue;

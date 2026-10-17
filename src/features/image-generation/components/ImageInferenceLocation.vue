@@ -13,12 +13,14 @@ const { settings } = useSettings();
 const enabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const configuration = ref(''), configurationError = ref('');
 watch(props.inferenceLocation.selection, value => {
-  configuration.value = value ? JSON.stringify(value, undefined, 2) : ''; configurationError.value = '';
+  configuration.value = value ? JSON.stringify(value, undefined, 2) : '';
+  configurationError.value = '';
 }, { immediate: true });
 
 function chooseKind({ value }: { value: string }): void {
   switch (value) {
-  case 'local': case 'naidan_rpc': props.inferenceLocation.setKind({ value }); break;
+  case 'local': case 'naidan_rpc': props.inferenceLocation.setKind({ value });
+    break;
   default: throw new Error('Unknown image inference location');
   }
 }
@@ -28,10 +30,15 @@ function chooseRegistration({ value }: { value: string }): void {
 }
 
 function applyConfiguration(): void {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   try {
-    if (configuration.value.length > 65536) throw new Error('The model configuration is too large');
-    props.inferenceLocation.selectModel({ value: JSON.parse(configuration.value) }); configurationError.value = '';
+    if (configuration.value.length > 65536) {
+      throw new Error('The model configuration is too large');
+    }
+    props.inferenceLocation.selectModel({ value: JSON.parse(configuration.value) });
+    configurationError.value = '';
   } catch (error) {
     configurationError.value = error instanceof Error ? error.message : String(error);
   }

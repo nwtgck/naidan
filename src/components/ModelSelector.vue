@@ -61,10 +61,14 @@ const searchableModels = computed(() => {
 
 const filteredModels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  if (!q) return availableModels.value;
+  if (!q) {
+    return availableModels.value;
+  }
 
   const keywords = q.split(/[\s\u3000]+/).filter(k => !!k);
-  if (keywords.length === 0) return availableModels.value;
+  if (keywords.length === 0) {
+    return availableModels.value;
+  }
 
   return searchableModels.value
     .filter(item => keywords.every(kw => item.lower.includes(kw)))
@@ -94,7 +98,9 @@ const combinedOptions = computed(() => {
 });
 
 const floatingStyle = computed((): CSSProperties => {
-  if (!isOpen.value || !containerRef.value) return {};
+  if (!isOpen.value || !containerRef.value) {
+    return {};
+  }
 
   const rect = triggerBounding;
   const margin = 8;
@@ -116,7 +122,9 @@ const floatingStyle = computed((): CSSProperties => {
   if (left + width > windowWidth.value - 16) {
     left = windowWidth.value - width - 16;
   }
-  if (left < 16) left = 16;
+  if (left < 16) {
+    left = 16;
+  }
 
   const verticalStyle = (() => {
     switch (preferredPosition) {
@@ -148,7 +156,9 @@ const floatingStyle = computed((): CSSProperties => {
 });
 
 function toggleDropdown() {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   if (isOpen.value) {
     isOpen.value = false;
   } else {
@@ -166,14 +176,18 @@ function toggleDropdown() {
 }
 
 function selectModel({ model }: { model: string | undefined }) {
-  if (props.disabled || (model !== undefined && !availableModels.value.includes(model))) return;
+  if (props.disabled || (model !== undefined && !availableModels.value.includes(model))) {
+    return;
+  }
   emit('update:modelValue', model);
   isOpen.value = false;
 }
 
 function scrollToHighlighted() {
   nextTick(() => {
-    if (!listContainerRef.value) return;
+    if (!listContainerRef.value) {
+      return;
+    }
     const container = listContainerRef.value;
     const highlightedEl = container.querySelector(`[data-index="${highlightedIndex.value}"]`) as HTMLElement;
     if (highlightedEl) {
@@ -190,7 +204,9 @@ function scrollToHighlighted() {
 }
 
 function handleKeydown({ event }: { event: KeyboardEvent }) {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   if (!isOpen.value) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
       event.preventDefault();
@@ -202,13 +218,17 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
   switch (event.key) {
   case 'ArrowDown':
     event.preventDefault();
-    if (!combinedOptions.value.length) return;
+    if (!combinedOptions.value.length) {
+      return;
+    }
     highlightedIndex.value = (highlightedIndex.value + 1) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
   case 'ArrowUp':
     event.preventDefault();
-    if (!combinedOptions.value.length) return;
+    if (!combinedOptions.value.length) {
+      return;
+    }
     highlightedIndex.value = (highlightedIndex.value - 1 + combinedOptions.value.length) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
@@ -230,7 +250,9 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
 
 async function handleRefresh({ event }: { event: Event }) {
   event.stopPropagation();
-  if (props.disabled || isFetchingModels.value) return;
+  if (props.disabled || isFetchingModels.value) {
+    return;
+  }
   // Check if parent has a listener for 'refresh' (onRefresh)
   const hasRefreshListener = !!(instance?.vnode.props?.onRefresh || attrs.onRefresh);
   if (hasRefreshListener) {
@@ -263,11 +285,15 @@ watch(searchQuery, () => {
 // Close on width resize to prevent floating detached dropdown (e.g. orientation change)
 // We ignore height changes to prevent closing when mobile software keyboard appears
 watch(() => props.disabled, disabled => {
-  if (disabled) isOpen.value = false;
+  if (disabled) {
+    isOpen.value = false;
+  }
 });
 
 watch(windowWidth, () => {
-  if (isOpen.value) isOpen.value = false;
+  if (isOpen.value) {
+    isOpen.value = false;
+  }
 });
 
 

@@ -4,14 +4,19 @@ import { readStreamLines } from './read-stream-lines';
 function stream({ chunks }: { chunks: readonly Uint8Array[] }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
-      for (const chunk of chunks) controller.enqueue(chunk); controller.close();
+      for (const chunk of chunks) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
     },
   });
 }
 
 async function read({ source, maxLineLength }: { source: ReadableStream<Uint8Array>, maxLineLength: number }): Promise<string[]> {
   const lines = [];
-  for await (const line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength })) lines.push(line);
+  for await (const line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength })) {
+    lines.push(line);
+  }
   return lines;
 }
 
@@ -40,8 +45,11 @@ describe('stream line reader', () => {
       },
     });
     const iterator = readStreamLines({ stream: source, signal: controller.signal, maxLineLength: 100 });
-    const next = iterator.next(); controller.abort();
-    await expect(next).rejects.toThrow(); expect(cancelled).toBe(true); expect(source.locked).toBe(false);
+    const next = iterator.next();
+    controller.abort();
+    await expect(next).rejects.toThrow();
+    expect(cancelled).toBe(true);
+    expect(source.locked).toBe(false);
   });
 
   it('cancels and releases an unread source when the consumer stops', async () => {
@@ -57,7 +65,10 @@ second
         cancelled = true;
       },
     });
-    for await (const _line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength: 100 })) break;
-    expect(cancelled).toBe(true); expect(source.locked).toBe(false);
+    for await (const _line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength: 100 })) {
+      break;
+    }
+    expect(cancelled).toBe(true);
+    expect(source.locked).toBe(false);
   });
 });

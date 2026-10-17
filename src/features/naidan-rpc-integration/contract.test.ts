@@ -20,7 +20,9 @@ it('derives a closed method vocabulary with a single explicit image entry', () =
   const names: readonly NaidanPeerMethodName[] = ['listChatModels', 'generateChat'];
   expect(peerAllowedMethodsSchema.parse(names)).toEqual(names);
   expect(peerAllowedMethodsSchema.safeParse(['generateImage', 'generateImage']).success).toBe(false);
-  for (const unknown of ['getProvidedMethods', '*', 'image', 'imageFromFiles', 'downloadModel', '__proto__', 'constructor']) expect(peerAllowedMethodsSchema.safeParse([unknown]).success).toBe(false);
+  for (const unknown of ['getProvidedMethods', '*', 'image', 'imageFromFiles', 'downloadModel', '__proto__', 'constructor']) {
+    expect(peerAllowedMethodsSchema.safeParse([unknown]).success).toBe(false);
+  }
 });
 
 it('advertises structural types from the contract while keeping grants closed', () => {
@@ -48,7 +50,9 @@ it.each(['imatrix/Q4_K_M', 'nested/custom:100%-日本語', 'literal%2F/Q4', 'mod
   expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
   expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
-  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
+    throw new Error('Expected a model item stream');
+  }
   expect(plan.node.capability.item.parse({ ref, label: ref })).toEqual({ ref, label: ref });
 });
 
@@ -74,14 +78,18 @@ it.each([
 
 it.each(['subdir/model.gguf', 'Q4_K_M', 'model.bin'])('accepts a Host selector in the listChatModels item contract: %s', selector => {
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
-  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
+    throw new Error('Expected a model item stream');
+  }
   const item = { ref: `host/Models/owner/repo:${selector}`, label: 'Model' };
   expect(plan.node.capability.item.parse(item)).toEqual(item);
 });
 
 it('preserves long Host aliases as both references and labels in the full model item contract', () => {
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
-  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
+    throw new Error('Expected a model item stream');
+  }
   const schema = plan.node.capability.item;
   const ref = `host/${encodeURIComponent('模'.repeat(255))}/owner/repo:model.gguf`;
   const item = { ref, label: ref };
@@ -130,7 +138,9 @@ it('reserves the larger reference bound for Host models and preserves remote res
 it('does not throw while validating a malformed or oversized seed', () => {
   const value = { prompt: 'tree', negativePrompt: '', width: 256, height: 256, steps: 4, guidance: 1, seed: '42', sampler: 'auto', scheduler: 'auto', distilledGuidance: 3.5 };
   expect(peerImageParametersSchema.safeParse(value).success).toBe(true);
-  for (const seed of ['x', '', '-1', '9'.repeat(100), '9223372036854775808']) expect(peerImageParametersSchema.safeParse({ ...value, seed }).success).toBe(false);
+  for (const seed of ['x', '', '-1', '9'.repeat(100), '9223372036854775808']) {
+    expect(peerImageParametersSchema.safeParse({ ...value, seed }).success).toBe(false);
+  }
   expect(peerImageParametersSchema.parse({ ...value, modelArguments: 'unknown=true' })).toEqual(value);
 });
 

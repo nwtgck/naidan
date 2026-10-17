@@ -37,12 +37,16 @@ async function devStyles({ server, entry }: { server: ViteDevServer; entry: stri
   const visited = new Set<string>();
   const styles: string[] = [];
   const visit = async ({ url }: { url: string }): Promise<void> => {
-    if (visited.has(url)) return;
+    if (visited.has(url)) {
+      return;
+    }
     visited.add(url);
     if (isCSSRequest(url)) {
       const parsed = new URL(devHref({ moduleUrl: url }), 'http://naidan-docs.invalid');
       // Keep Vue's terminal lang.css query intact: Vite recognizes it as CSS.
-      if (!parsed.searchParams.has('direct')) parsed.search = parsed.search ? `?direct&${parsed.search.slice(1)}` : '?direct';
+      if (!parsed.searchParams.has('direct')) {
+        parsed.search = parsed.search ? `?direct&${parsed.search.slice(1)}` : '?direct';
+      }
       styles.push(parsed.pathname + parsed.search);
       return;
     }
@@ -69,13 +73,19 @@ function createDocsRequestPlugin(): Plugin {
         if (method !== 'GET' && method !== 'HEAD') {
           response.statusCode = 405;
           response.setHeader('Allow', 'GET, HEAD');
-          response.end(); return;
+          response.end();
+          return;
         }
         const sendBody = ({ body }: { body: string }): void => {
           switch (method) {
-          case 'GET': response.end(body); return;
-          case 'HEAD': response.end(); return;
-          default: { const unreachable: never = method; throw new Error(`Unsupported method: ${unreachable}`); }
+          case 'GET': response.end(body);
+            return;
+          case 'HEAD': response.end();
+            return;
+          default: {
+            const unreachable: never = method;
+            throw new Error(`Unsupported method: ${unreachable}`);
+          }
           }
         };
         response.setHeader('Cache-Control', 'no-store');
@@ -84,7 +94,8 @@ function createDocsRequestPlugin(): Plugin {
           switch (route.kind) {
           case 'bootstrap':
             bootstrap ??= compileLocaleBootstrap({ root: server.config.root }).catch(error => {
-              bootstrap = undefined; throw error;
+              bootstrap = undefined;
+              throw error;
             });
             response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
             sendBody({ body: await bootstrap });
@@ -109,10 +120,12 @@ function createDocsRequestPlugin(): Plugin {
           case 'redirect':
             response.statusCode = 308;
             response.setHeader('Location', route.location);
-            response.end(); return;
+            response.end();
+            return;
           case 'invalid':
             response.statusCode = 400;
-            sendBody({ body: 'Invalid Docs request' }); return;
+            sendBody({ body: 'Invalid Docs request' });
+            return;
           case 'missing': {
             response.statusCode = 404;
             const styles = await devStyles({ server, entry: '/styles/site.css' });
@@ -136,8 +149,12 @@ function createDocsRequestPlugin(): Plugin {
             const entry = styleEntryId({ page: route.page });
             const styles = await devStyles({ server, entry });
             const scripts = findIslands({ body: rendered.body }).map(id => devHref({ moduleUrl: islandDevHref({ id }) }));
-            if (hasHomeBrand({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }));
-            if (hasAppEntryLinks({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
+            if (hasHomeBrand({ body: rendered.body })) {
+              scripts.push(devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }));
+            }
+            if (hasAppEntryLinks({ body: rendered.body })) {
+              scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
+            }
             html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts], favicon }, bootstrap: '/docs/__locale.js' });
             break;
           }
@@ -174,7 +191,9 @@ function createDocsRequestPlugin(): Plugin {
             causes.push(current.stack ?? current.message);
             current = current.cause;
           }
-          if (current !== undefined) causes.push(String(current));
+          if (current !== undefined) {
+            causes.push(String(current));
+          }
           const details = causes.join('\nCaused by: ');
           server.config.logger.error(`[Docs ${context}] ${details}`);
           response.statusCode = 500;

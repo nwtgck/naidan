@@ -34,12 +34,16 @@ function createAccess({
   return {
     async listDirectory({ path }) {
       const entries = directories.get(path);
-      if (entries === undefined) throw new Error(`Missing directory: ${path}`);
+      if (entries === undefined) {
+        throw new Error(`Missing directory: ${path}`);
+      }
       return entries.map(entry => ({ ...entry }));
     },
     async openFileStream({ path }) {
       const text = files.get(path);
-      if (text === undefined) throw new Error(`Missing file: ${path}`);
+      if (text === undefined) {
+        throw new Error(`Missing file: ${path}`);
+      }
       return createTextStream({ text });
     },
   };

@@ -29,13 +29,17 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
 
   function reservePosition({ partId, index }: { partId: string, index: number }): number {
     requireGenerating();
-    if (parts.has(partId)) throw new Error('Duplicate generated part ID.');
+    if (parts.has(partId)) {
+      throw new Error('Duplicate generated part ID.');
+    }
     if (!Number.isSafeInteger(index) || index < 0 || indices.has(index)) {
       throw new Error('Invalid or duplicate generated part position.');
     }
     const insertion = node.parts.findIndex(part => {
       const position = positions.get(part);
-      if (position === undefined) throw new Error('Generated content was changed outside its owner.');
+      if (position === undefined) {
+        throw new Error('Generated content was changed outside its owner.');
+      }
       return position > index;
     });
     indices.add(index);
@@ -45,8 +49,12 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
   function findTextPart({ partId }: { partId: string }) {
     requireGenerating();
     const part = parts.get(partId);
-    if (!part) throw new Error('Unknown generated part.');
-    if (!node.parts.includes(part)) throw new Error('Generated content was removed outside its owner.');
+    if (!part) {
+      throw new Error('Unknown generated part.');
+    }
+    if (!node.parts.includes(part)) {
+      throw new Error('Generated content was removed outside its owner.');
+    }
     switch (part.type) {
     case 'text':
     case 'reasoning': return part;
@@ -64,7 +72,9 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
     // Retain the node's own view of the inserted object, including a caller's
     // reactive wrapper. Logical positions and stream IDs stay local to this run.
     const owned = node.parts[insertion];
-    if (!owned) throw new Error('Generated content was removed outside its owner.');
+    if (!owned) {
+      throw new Error('Generated content was removed outside its owner.');
+    }
     parts.set(partId, owned);
     positions.set(owned, index);
   }
@@ -75,12 +85,16 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
     },
     appendText({ partId, text }: { partId: string, text: string }): void {
       const part = findTextPart({ partId });
-      if (closed.has(part)) throw new Error('A closed part cannot receive another delta.');
+      if (closed.has(part)) {
+        throw new Error('A closed part cannot receive another delta.');
+      }
       part.text += text;
     },
     closePart({ partId, completeness }: { partId: string, completeness: 'complete' | 'partial' }): void {
       const part = findTextPart({ partId });
-      if (closed.has(part)) throw new Error('The part was already closed.');
+      if (closed.has(part)) {
+        throw new Error('The part was already closed.');
+      }
       switch (completeness) {
       case 'complete':
       case 'partial':
@@ -94,7 +108,9 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
       }
     },
     addToolCall({ partId, index, toolCall }: { partId: string, index: number, toolCall: ToolCall }): void {
-      if (calls.has(toolCall.id)) throw new Error('Duplicate generated tool call ID.');
+      if (calls.has(toolCall.id)) {
+        throw new Error('Duplicate generated tool call ID.');
+      }
       const { id, type, function: fn, ...unhandled } = toolCall;
       unhandled satisfies Record<PropertyKey, never>;
       const { name, arguments: argumentsText, ...unhandledFunction } = fn;
@@ -124,10 +140,14 @@ export function createAssistantGeneration({ node }: { node: AssistantMessageNode
         }
         switch (result.next) {
         case 'user':
-          if (calls.size !== 0) throw new Error('Tool calls require results before the next user turn.');
+          if (calls.size !== 0) {
+            throw new Error('Tool calls require results before the next user turn.');
+          }
           break;
         case 'tool_results':
-          if (calls.size === 0) throw new Error('Tool results were requested without a completed call.');
+          if (calls.size === 0) {
+            throw new Error('Tool results were requested without a completed call.');
+          }
           break;
         default: {
           const _ex: never = result.next;

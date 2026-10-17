@@ -61,10 +61,14 @@ async function savedChat({ name, selected }: { name: string, selected: boolean }
   await storageService.updateChatContent({ id, updater: () => ({ root: chat.root, currentLeafId: messageId }) });
   await storageService.updateHierarchy({ updater: ({ current }) => ({ items: [...current.items, { type: 'chat', id }] }) });
   registerLiveInstance({ chat });
-  if (selected) currentChatRef.value = getLiveChatById({ chatId: id });
+  if (selected) {
+    currentChatRef.value = getLiveChatById({ chatId: id });
+  }
   await loadData();
   const live = getLiveChatById({ chatId: id });
-  if (live === null) throw new Error('Missing live chat');
+  if (live === null) {
+    throw new Error('Missing live chat');
+  }
   return live;
 }
 
@@ -153,7 +157,9 @@ describe('title lifecycle with real memory persistence', () => {
   it('does not overwrite a newer live chat when a background read finishes late', async () => {
     const chat = await savedChat({ name: 'late-read', selected: false });
     const stale = await storageService.loadChat({ id: chat.id });
-    if (stale === null) throw new Error('Missing persisted chat');
+    if (stale === null) {
+      throw new Error('Missing persisted chat');
+    }
     unregisterLiveInstance({ chatId: chat.id });
     const read = Promise.withResolvers<Chat | null>();
     vi.spyOn(storageService, 'loadChat').mockImplementationOnce(() => read.promise);
@@ -180,7 +186,9 @@ describe('title lifecycle with real memory persistence', () => {
     await storageService.updateChatMeta({
       id: chat.id,
       updater: ({ current }) => {
-        if (current === null) throw new Error('Missing persisted metadata');
+        if (current === null) {
+          throw new Error('Missing persisted metadata');
+        }
         return { ...current, updatedAt: newerTimestamp };
       },
     });
@@ -271,7 +279,8 @@ describe('title lifecycle with real memory persistence', () => {
     const second = generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        firstReady.resolve(); secondReady.resolve();
+        firstReady.resolve();
+        secondReady.resolve();
         await Promise.allSettled([first, second]);
       },
     };
@@ -310,8 +319,11 @@ describe('title lifecycle with real memory persistence', () => {
     ready.resolve();
     await vi.advanceTimersByTimeAsync(0);
     const persisted = await storageService.loadChat({ id: chat.id });
-    if (action === 'rename') expect(persisted?.title).toBe('Manual Title');
-    else expect(persisted).toBeNull();
+    if (action === 'rename') {
+      expect(persisted?.title).toBe('Manual Title');
+    } else {
+      expect(persisted).toBeNull();
+    }
     expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(false);
   });
 
@@ -321,8 +333,11 @@ describe('title lifecycle with real memory persistence', () => {
     chatRequest.mockImplementationOnce(() => titleItems({ text: 'Stale Title', ready: ready.promise }));
     scheduleAutoTitleForChat({ chatId: chat.id });
     await vi.advanceTimersByTimeAsync(2500);
-    if (change === 'branch') chat.currentLeafId = toMessageId({ raw: 'different-branch' });
-    else settings.value.titleGeneration = 'disabled';
+    if (change === 'branch') {
+      chat.currentLeafId = toMessageId({ raw: 'different-branch' });
+    } else {
+      settings.value.titleGeneration = 'disabled';
+    }
     ready.resolve();
     await vi.advanceTimersByTimeAsync(0);
     expect((await storageService.loadChat({ id: chat.id }))?.title).toBeNull();

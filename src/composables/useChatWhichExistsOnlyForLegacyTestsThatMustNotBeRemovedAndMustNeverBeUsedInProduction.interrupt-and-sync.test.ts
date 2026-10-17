@@ -140,8 +140,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       run: async ({ signal }) => {
         genStarted.resolve(signal);
         await new Promise<void>(resolve => {
-          if (signal.aborted) resolve();
-          else signal.addEventListener('abort', () => resolve(), { once: true });
+          if (signal.aborted) {
+            resolve();
+          } else {
+            signal.addEventListener('abort', () => resolve(), { once: true });
+          }
         });
         return { type: 'interrupted', reason: 'aborted' };
       },
@@ -261,8 +264,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       run: async ({ writer, signal }) => {
         await writer.text({ type: 'text', text: 'Partial answer' });
         await new Promise<void>(resolve => {
-          if (signal.aborted) resolve();
-          else signal.addEventListener('abort', () => resolve(), { once: true });
+          if (signal.aborted) {
+            resolve();
+          } else {
+            signal.addEventListener('abort', () => resolve(), { once: true });
+          }
         });
         return { type: 'interrupted', reason: 'aborted' };
       },

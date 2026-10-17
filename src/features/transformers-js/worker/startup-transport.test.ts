@@ -61,12 +61,16 @@ class TransportWorker extends EventTarget {
 
 function currentWorker(): TransportWorker {
   const worker = workers.at(-1);
-  if (!worker) throw new Error('No Worker was constructed');
+  if (!worker) {
+    throw new Error('No Worker was constructed');
+  }
   return worker;
 }
 
 afterEach(async () => {
-  for (const client of clients.splice(0)) await client.dispose();
+  for (const client of clients.splice(0)) {
+    await client.dispose();
+  }
   for (const worker of workers.splice(0)) {
     worker.channel.port1.close();
     worker.channel.port2.close();
@@ -285,16 +289,20 @@ describe('Production startup through real Comlink transport', () => {
     await entered.promise;
     expect(progress).toHaveBeenCalledOnce();
     switch (event) {
-    case 'dispose': await client.dispose(); break;
+    case 'dispose': await client.dispose();
+      break;
     case 'error':
-    case 'messageerror': worker.dispatchEvent(new Event(event)); break;
+    case 'messageerror': worker.dispatchEvent(new Event(event));
+      break;
     default: {
       const _ex: never = event;
       throw new Error(`Unhandled test event: ${_ex}`);
     }
     }
     await rejected;
-    if (!callback) throw new Error('Candidate never received its progress callback');
+    if (!callback) {
+      throw new Error('Candidate never received its progress callback');
+    }
     // This separate callback port can deliver after the main endpoint terminates.
     await callback({ status: 'cache-acceptance-ready' });
     expect(progress).toHaveBeenCalledOnce();
@@ -341,7 +349,9 @@ describe('Production startup through real Comlink transport', () => {
     await result;
     expect(afterTool).toHaveBeenCalledOnce();
     await client.dispose();
-    if (!chunkCallback || !toolCallback) throw new Error('Missing transferred generation callbacks');
+    if (!chunkCallback || !toolCallback) {
+      throw new Error('Missing transferred generation callbacks');
+    }
     await chunkCallback('late');
     await toolCallback([]);
     expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: 'first' });

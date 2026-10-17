@@ -10,16 +10,21 @@ import AudioReferenceClip from './AudioReferenceClip.vue';
 
 const props = defineProps<{ disabled: boolean, invalid: boolean }>();
 const emit = defineEmits<{ busy: [busy: boolean], changed: [] }>();
-const id = useId(); const fileInput = ref<HTMLInputElement>(); const dragDepth = ref(0);
+const id = useId();
+const fileInput = ref<HTMLInputElement>();
+const dragDepth = ref(0);
 const { entries, selected, sources, totalBytes, add, select, deselectAll, remove, clear } = useAudioReferences();
 const issues = ref<{ name: string, code: ReferenceAudioErrorCode }[]>([]);
 const preparationFailure = ref<ReferenceAudioErrorCode>();
 const recordingTrimmed = ref(false);
 const recording = useReferenceRecording({
   accept: async ({ blob, signal }) => {
-    const { wav, trimmed } = await normalizeReferenceAudio({ source: blob, signal, durationPolicy: 'limit-recording' }); signal.throwIfAborted();
+    const { wav, trimmed } = await normalizeReferenceAudio({ source: blob, signal, durationPolicy: 'limit-recording' });
+    signal.throwIfAborted();
     add({ file: new File([wav], `recording-${Date.now()}.wav`, { type: 'audio/wav' }) });
-    preparationFailure.value = undefined; recordingTrimmed.value = trimmed; emit('changed');
+    preparationFailure.value = undefined;
+    recordingTrimmed.value = trimmed;
+    emit('changed');
   },
 });
 const { status: recordingStatus, elapsed, supported: recordingSupported, error: recordingError } = recording;
@@ -27,15 +32,19 @@ const locked = computed(() => props.disabled || recordingStatus.value !== 'idle'
 watch(recordingStatus, status => emit('busy', status !== 'idle'), { immediate: true, flush: 'sync' });
 
 function reportChange(): void {
-  preparationFailure.value = undefined; emit('changed');
+  preparationFailure.value = undefined;
+  emit('changed');
 }
 
 function addFiles({ files }: { files: readonly File[] }): void {
-  if (locked.value) return;
+  if (locked.value) {
+    return;
+  }
   issues.value = [];
   for (const file of files) {
     try {
-      add({ file }); reportChange();
+      add({ file });
+      reportChange();
     } catch (error) {
       issues.value.push({ name: file.name, code: error instanceof ReferenceAudioError ? error.code : 'decode' });
     }
@@ -43,8 +52,11 @@ function addFiles({ files }: { files: readonly File[] }): void {
 }
 
 function choose({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
-  addFiles({ files: Array.from(event.target.files ?? []) }); event.target.value = '';
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+  addFiles({ files: Array.from(event.target.files ?? []) });
+  event.target.value = '';
 }
 
 function drop({ event }: { event: DragEvent }): void {
@@ -53,19 +65,35 @@ function drop({ event }: { event: DragEvent }): void {
 }
 
 function toggle({ id, checked }: { id: number, checked: boolean }): void {
-  if (locked.value) return; select({ id, checked }); reportChange();
+  if (locked.value) {
+    return;
+  }
+  select({ id, checked });
+  reportChange();
 }
 
 function deselect(): void {
-  if (locked.value) return; deselectAll(); reportChange();
+  if (locked.value) {
+    return;
+  }
+  deselectAll();
+  reportChange();
 }
 
 function deleteReference({ id }: { id: number }): void {
-  if (locked.value) return; remove({ id }); reportChange();
+  if (locked.value) {
+    return;
+  }
+  remove({ id });
+  reportChange();
 }
 
 function deleteAll(): void {
-  if (locked.value) return; clear(); reportChange();
+  if (locked.value) {
+    return;
+  }
+  clear();
+  reportChange();
 }
 
 async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | undefined> {
@@ -76,7 +104,9 @@ async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | unde
   try {
     return await prepareReferenceAudio({ sources: selectedSources, signal });
   } catch (error) {
-    if (!signal.aborted) preparationFailure.value = error instanceof ReferenceAudioError ? error.code : 'decode';
+    if (!signal.aborted) {
+      preparationFailure.value = error instanceof ReferenceAudioError ? error.code : 'decode';
+    }
     throw error;
   }
 }

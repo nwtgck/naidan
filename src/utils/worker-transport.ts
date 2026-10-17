@@ -102,10 +102,13 @@ export function releaseWorkerRemote<Api>({
 let readableStreamTransferSupport: Promise<'supported' | 'unsupported'> | undefined;
 
 async function detectReadableStreamTransferSupport(): Promise<'supported' | 'unsupported'> {
-  if (typeof ReadableStream === 'undefined' || typeof structuredClone === 'undefined') return 'unsupported';
+  if (typeof ReadableStream === 'undefined' || typeof structuredClone === 'undefined') {
+    return 'unsupported';
+  }
   const probe = new ReadableStream<Uint8Array<ArrayBuffer>>({
     start(controller) {
-      controller.enqueue(new Uint8Array([78])); controller.close();
+      controller.enqueue(new Uint8Array([78]));
+      controller.close();
     },
   });
   try {
@@ -140,7 +143,9 @@ export function postWorkerNotification<T>({ endpoint, schema, value }: {
 }): void {
   try {
     const parsed = schema.safeParse(value);
-    if (parsed.success) (endpoint ?? globalThis as unknown as Comlink.Endpoint).postMessage(parsed.data);
+    if (parsed.success) {
+      (endpoint ?? globalThis as unknown as Comlink.Endpoint).postMessage(parsed.data);
+    }
   } catch { /* Notification failure must not unwind native execution. */ }
 }
 
@@ -151,16 +156,21 @@ export function subscribeWorkerNotifications<T>({ endpoint, schema, listener }: 
   const target = endpoint ?? globalThis as unknown as Comlink.Endpoint;
   let active = true;
   const receive: EventListener = event => {
-    if (!active) return;
+    if (!active) {
+      return;
+    }
     try {
       const parsed = schema.safeParse((event as MessageEvent<unknown>).data);
-      if (parsed.success) listener({ value: parsed.data });
+      if (parsed.success) {
+        listener({ value: parsed.data });
+      }
     } catch { /* Neither malformed telemetry nor a renderer controls the Worker. */ }
   };
   target.addEventListener('message', receive);
   target.start?.();
   return () => {
-    active = false; target.removeEventListener('message', receive);
+    active = false;
+    target.removeEventListener('message', receive);
   };
 }
 
@@ -181,10 +191,14 @@ export function createValidatedMessagePort<Incoming extends z.ZodType, Outgoing 
 } {
   let closed = false;
   port.onmessage = (event: MessageEvent<unknown>) => {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     try {
       const result = onMessage({ message: incomingSchema.parse(event.data) });
-      if (result) void result.catch(reason => onError({ reason }));
+      if (result) {
+        void result.catch(reason => onError({ reason }));
+      }
     } catch (reason) {
       onError({ reason });
     }
@@ -193,14 +207,18 @@ export function createValidatedMessagePort<Incoming extends z.ZodType, Outgoing 
   port.start();
   return {
     send({ message, transferables }) {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       try {
         port.postMessage(outgoingSchema.parse(message), transferables);
       } catch (reason) {
         // Close before notifying: error handlers may try to tell the peer that
         // the stream failed. A broken port must not recurse through send().
         closed = true;
-        port.onmessage = null; port.onmessageerror = null; port.close();
+        port.onmessage = null;
+        port.onmessageerror = null;
+        port.close();
         onError({ reason });
       }
     },

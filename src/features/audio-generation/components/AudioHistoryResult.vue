@@ -17,22 +17,32 @@ async function copyText(): Promise<void> {
   switch (status) {
   case 'copying': return;
   case 'idle': case 'copied': case 'failed': break;
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
   copyState.value = 'copying';
   try {
     await navigator.clipboard.writeText(props.entry.settings.text);
-    if (!disposed) copyState.value = 'copied';
+    if (!disposed) {
+      copyState.value = 'copied';
+    }
   } catch {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     copyState.value = 'failed';
     // Clipboard access can be denied (including standalone environments). Keep
     // manual copying possible without deprecated execCommand or a hidden file.
     const element = fullText.value;
     if (element) {
       element.focus();
-      const range = document.createRange(); range.selectNodeContents(element);
-      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
   }
 }
@@ -43,7 +53,10 @@ const language = computed(() => {
   case 'default': return lazyStrings.audioGeneration__model_default();
   case 'en': case 'ja': case 'zh': case 'de': case 'it': case 'pt': case 'es': case 'ko': case 'fr': case 'ru':
     return audioLanguageOptions({ locale: currentLocale.value }).find(option => option.value === code)?.label;
-  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = code;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const createdAt = computed(() => new Intl.DateTimeFormat(currentLocale.value, { dateStyle: 'short', timeStyle: 'medium' }).format(props.entry.createdAt));
@@ -51,8 +64,12 @@ const createdAt = computed(() => new Intl.DateTimeFormat(currentLocale.value, { 
 // Detach its source as well when deleted or when the route is left.
 onBeforeUnmount(() => {
   disposed = true;
-  if (!player.value) return;
-  player.value.pause(); player.value.removeAttribute('src'); player.value.load();
+  if (!player.value) {
+    return;
+  }
+  player.value.pause();
+  player.value.removeAttribute('src');
+  player.value.load();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

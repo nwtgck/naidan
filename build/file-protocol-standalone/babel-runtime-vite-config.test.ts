@@ -16,7 +16,9 @@ function collectPlugins(options: readonly PluginOption[]): Plugin[] {
 
 function requirePlugin(plugins: readonly Plugin[], name: string): Plugin {
   const plugin = plugins.find(candidate => candidate.name === name);
-  if (plugin === undefined) throw new Error(`Expected plugin: ${name}`);
+  if (plugin === undefined) {
+    throw new Error(`Expected plugin: ${name}`);
+  }
   return plugin;
 }
 
@@ -26,7 +28,9 @@ async function loadStandalonePlugins(): Promise<Plugin[]> {
     undefined,
     process.cwd(),
   );
-  if (loaded === null) throw new Error('Expected Vite config to load');
+  if (loaded === null) {
+    throw new Error('Expected Vite config to load');
+  }
   return collectPlugins(loaded.config.plugins ?? []);
 }
 
@@ -48,9 +52,15 @@ async function createSystemJsOutputHarness(): Promise<Readonly<{
   const generateBundle = typeof generateBundleHook === 'function'
     ? generateBundleHook
     : generateBundleHook?.handler;
-  if (typeof pruningGenerateBundle !== 'function') throw new Error('Expected empty CSS pruning generateBundle hook');
-  if (typeof buildStart !== 'function') throw new Error('Expected SystemJS buildStart hook');
-  if (typeof generateBundle !== 'function') throw new Error('Expected SystemJS generateBundle hook');
+  if (typeof pruningGenerateBundle !== 'function') {
+    throw new Error('Expected empty CSS pruning generateBundle hook');
+  }
+  if (typeof buildStart !== 'function') {
+    throw new Error('Expected SystemJS buildStart hook');
+  }
+  if (typeof generateBundle !== 'function') {
+    throw new Error('Expected SystemJS generateBundle hook');
+  }
 
   const emittedFiles = new Map<string, string>();
   let nextReference = 0;
@@ -62,7 +72,9 @@ async function createSystemJsOutputHarness(): Promise<Readonly<{
     },
     getFileName(referenceId: string) {
       const fileName = emittedFiles.get(referenceId);
-      if (fileName === undefined) throw new Error(`Unknown emitted reference: ${referenceId}`);
+      if (fileName === undefined) {
+        throw new Error(`Unknown emitted reference: ${referenceId}`);
+      }
       return fileName;
     },
   };
@@ -82,8 +94,12 @@ describe('file protocol standalone Vite config Babel interop', () => {
       await loadStandalonePlugins(),
       'naidan-file-protocol-standalone-raw-worker-constructor-policy',
     );
-    if (typeof plugin.transform !== 'function') throw new Error('Expected Raw Worker transform hook');
-    if (typeof plugin.generateBundle !== 'function') throw new Error('Expected Raw Worker generateBundle hook');
+    if (typeof plugin.transform !== 'function') {
+      throw new Error('Expected Raw Worker transform hook');
+    }
+    if (typeof plugin.generateBundle !== 'function') {
+      throw new Error('Expected Raw Worker generateBundle hook');
+    }
 
     expect(plugin.transform.call(
       {} as never,

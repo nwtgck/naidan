@@ -80,7 +80,9 @@ beforeEach(() => {
   transformerMocks.configFromPretrained.mockResolvedValue({ model_type: 'lfm2' });
   transformerMocks.causalFromPretrained.mockImplementation(async (_modelId: string, options: { revision: string }) => {
     const runtimeFetch = transformerMocks.env.fetch;
-    if (runtimeFetch === undefined) throw new Error('worker did not configure Transformers.js fetch');
+    if (runtimeFetch === undefined) {
+      throw new Error('worker did not configure Transformers.js fetch');
+    }
 
     const base = `https://huggingface.co/LiquidAI/LFM2.5-230M-ONNX/resolve/${options.revision}/onnx`;
     const core = runtimeFetch(`${base}/model_q4f16.onnx`);

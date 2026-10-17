@@ -5,7 +5,9 @@ import { writeReadableStreamToFileHandle } from '@/utils/file-system-stream';
 
 export function getFileExtension({ name }: { name: string }): string {
   const dot = name.lastIndexOf('.');
-  if (dot <= 0) return '';
+  if (dot <= 0) {
+    return '';
+  }
   return name.slice(dot).toLowerCase();
 }
 
@@ -14,16 +16,28 @@ export function getMimeCategory({ extension }: { extension: string }): MimeCateg
 }
 
 export function formatSize({ bytes }: { bytes: number | undefined }): string {
-  if (bytes === undefined) return '—';
-  if (bytes === 0) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes === undefined) {
+    return '—';
+  }
+  if (bytes === 0) {
+    return '0 B';
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export function formatDate({ timestamp }: { timestamp: number | undefined }): string {
-  if (timestamp === undefined) return '—';
+  if (timestamp === undefined) {
+    return '—';
+  }
   return new Date(timestamp).toLocaleString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -67,7 +81,9 @@ export function sortEntries({
       break;
     case 'type':
       cmp = a.extension.localeCompare(b.extension);
-      if (cmp === 0) cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      if (cmp === 0) {
+        cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      }
       break;
     default: {
       const _ex: never = config.field;
@@ -94,7 +110,9 @@ export function filterEntries({
   query: string,
 }): FileExplorerEntry[] {
   const q = query.trim().toLowerCase();
-  if (!q) return entries;
+  if (!q) {
+    return entries;
+  }
   return entries.filter(e => e.name.toLowerCase().includes(q));
 }
 
@@ -114,7 +132,9 @@ export async function copyDirectoryHandle({
 }): Promise<void> {
   const destDir = await targetDir.subdirCreate({ name: source.name });
   for await (const entry of source.values()) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
     switch (entry.kind) {
     case 'file': {
       const fh = entry as FileSystemFileHandle;

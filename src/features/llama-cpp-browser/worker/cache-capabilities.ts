@@ -12,7 +12,9 @@ export async function probeNewContextSequenceRemoval({ core, context }: {
 }): Promise<SequenceRemoval> {
   const api = core.api;
   const memory = await api.llama_get_memory(context);
-  if (memory === 0n) return 'none';
+  if (memory === 0n) {
+    return 'none';
+  }
   let tokens = 0n;
   let batch = 0n;
   try {
@@ -23,16 +25,24 @@ export async function probeNewContextSequenceRemoval({ core, context }: {
     await api.llama_batch_get_one(batch, tokens, 2);
     // A declined probe disables advanced reuse, not ordinary generation.
     // Exceptions still propagate so the session discards an unsafe context.
-    if (await api.llama_decode(context, batch) !== 0) return 'none';
-    if (await api.llama_n_rs_seq(context) > 0) return 'bounded';
+    if (await api.llama_decode(context, batch) !== 0) {
+      return 'none';
+    }
+    if (await api.llama_n_rs_seq(context) > 0) {
+      return 'bounded';
+    }
     return await api.llama_memory_seq_rm(memory, 0, 1, -1) ? 'partial' : 'full-only';
   } finally {
     try {
       await api.llama_memory_clear(memory, 1);
       await api.llama_synchronize(context);
     } finally {
-      if (batch !== 0n) core.free({ pointer: batch });
-      if (tokens !== 0n) core.free({ pointer: tokens });
+      if (batch !== 0n) {
+        core.free({ pointer: batch });
+      }
+      if (tokens !== 0n) {
+        core.free({ pointer: tokens });
+      }
     }
   }
 }

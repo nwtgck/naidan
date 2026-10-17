@@ -186,11 +186,15 @@ function findJqEarlyExit({
 }): JqEarlyExitMatch | undefined {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
-    if (token === '--') return undefined;
+    if (token === '--') {
+      return undefined;
+    }
 
     const injectedKind = injectedArgumentKind({ token });
     if (injectedKind !== undefined) {
-      if (args[index + 1] === undefined || args[index + 2] === undefined) return undefined;
+      if (args[index + 1] === undefined || args[index + 2] === undefined) {
+        return undefined;
+      }
       index += 2;
       continue;
     }
@@ -210,29 +214,45 @@ function findJqEarlyExit({
       continue;
     }
 
-    if (token === '--help') return { kind: 'help', stopIndex: index };
-    if (token === '--version') return { kind: 'version', stopIndex: index };
+    if (token === '--help') {
+      return { kind: 'help', stopIndex: index };
+    }
+    if (token === '--version') {
+      return { kind: 'version', stopIndex: index };
+    }
 
     if (token.startsWith('--') && token.length > 2) {
-      if (token.includes('=')) return undefined;
+      if (token.includes('=')) {
+        return undefined;
+      }
       const name = token.slice(2);
-      if (!JQ_STANDARD_LONG_FLAG_NAMES.has(name)) return undefined;
+      if (!JQ_STANDARD_LONG_FLAG_NAMES.has(name)) {
+        return undefined;
+      }
       continue;
     }
 
     if (token.startsWith('-') && token.length > 1) {
-      if (/^-(?:\d|\.)/u.test(token)) continue;
+      if (/^-(?:\d|\.)/u.test(token)) {
+        continue;
+      }
       const body = token.slice(1);
 
       // jq scans a whole short-option token before acting. `-Vh` and `-hV`
       // both select help, and h/V also win over an unknown sibling character
       // inside that same token. A bad earlier argv token still blocks them.
-      if (body.includes('h')) return { kind: 'help', stopIndex: index };
-      if (body.includes('V')) return { kind: 'version', stopIndex: index };
+      if (body.includes('h')) {
+        return { kind: 'help', stopIndex: index };
+      }
+      if (body.includes('V')) {
+        return { kind: 'version', stopIndex: index };
+      }
 
       if (body.includes('f')) {
         const normalized = normalizeBundledFilterFileOption({ token });
-        if (normalized === undefined || !normalized.ok) return undefined;
+        if (normalized === undefined || !normalized.ok) {
+          return undefined;
+        }
         continue;
       }
 
@@ -280,7 +300,9 @@ function protectLeadingNegativeFilter({
       }
       continue;
     }
-    if (!foundFilter) foundFilter = true;
+    if (!foundFilter) {
+      foundFilter = true;
+    }
   }
 
   return { args: normalized, protectedFilter: undefined };
@@ -293,7 +315,9 @@ function restoreLeadingNegativeFilter({
   parsed: ParsedStandardArgv,
   protectedFilter: string | undefined,
 }): ParsedStandardArgv {
-  if (protectedFilter === undefined) return parsed;
+  if (protectedFilter === undefined) {
+    return parsed;
+  }
   return {
     ...parsed,
     positionals: parsed.positionals.map((value) => value.startsWith(JQ_NEGATIVE_FILTER_SENTINEL_PREFIX)
@@ -307,14 +331,22 @@ function normalizeBundledFilterFileOption({
 }: {
   token: string,
 }): { ok: true, args: string[] } | { ok: false } | undefined {
-  if (/^-(?:\d|\.)/u.test(token)) return undefined;
-  if (!token.startsWith('-') || token.startsWith('--') || token.length <= 2) return undefined;
+  if (/^-(?:\d|\.)/u.test(token)) {
+    return undefined;
+  }
+  if (!token.startsWith('-') || token.startsWith('--') || token.length <= 2) {
+    return undefined;
+  }
 
   const body = token.slice(1);
-  if (!body.includes('f')) return undefined;
+  if (!body.includes('f')) {
+    return undefined;
+  }
 
   const filterOptionCount = [...body].filter((character) => character === 'f').length;
-  if (filterOptionCount !== 1) return { ok: false };
+  if (filterOptionCount !== 1) {
+    return { ok: false };
+  }
 
   const flagCharacters = [...body].filter((character) => character !== 'f');
   if (flagCharacters.some((character) => !JQ_BUNDLED_SHORT_FLAG_NAMES.has(character))) {

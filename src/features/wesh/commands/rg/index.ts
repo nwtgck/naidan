@@ -30,18 +30,26 @@ interface RgCompiledPattern {
 }
 
 function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
-  if (path.startsWith('/')) return path;
+  if (path.startsWith('/')) {
+    return path;
+  }
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function joinDisplayPath({ parent, name }: { parent: string, name: string }): string {
-  if (parent === '.') return `./${name}`;
-  if (parent === '/') return `/${name}`;
+  if (parent === '.') {
+    return `./${name}`;
+  }
+  if (parent === '/') {
+    return `/${name}`;
+  }
   return `${parent.replace(/\/$/, '')}/${name}`;
 }
 
 function joinRelativePath({ parent, name }: { parent: string, name: string }): string {
-  if (parent.length === 0) return name;
+  if (parent.length === 0) {
+    return name;
+  }
   return `${parent}/${name}`;
 }
 
@@ -96,7 +104,9 @@ function applyWordBoundary({ options, line, ranges }: {
   line: string,
   ranges: readonly { readonly start: number, readonly end: number }[],
 }): readonly { readonly start: number, readonly end: number }[] {
-  if (!options.wordRegexp) return ranges;
+  if (!options.wordRegexp) {
+    return ranges;
+  }
   return ranges.filter((range) => isWordBoundaryRange({ line, start: range.start, end: range.end }));
 }
 
@@ -124,7 +134,9 @@ function compilePattern({ options }: { options: RgParsedArgv }): RgCompiledPatte
           let offset = 0;
           while (offset <= haystack.length) {
             const index = haystack.indexOf(needle, offset);
-            if (index === -1) break;
+            if (index === -1) {
+              break;
+            }
             ranges.push({ start: index, end: index + needle.length });
             offset = index + needle.length;
           }
@@ -151,11 +163,15 @@ function compilePattern({ options }: { options: RgParsedArgv }): RgCompiledPatte
       const ranges: { start: number, end: number }[] = [];
       while (true) {
         const match = regex.exec(line);
-        if (match === null) break;
+        if (match === null) {
+          break;
+        }
         ranges.push({ start: match.index, end: match.index + match[0].length });
         if (match[0].length === 0) {
           regex.lastIndex += 1;
-          if (regex.lastIndex > line.length) break;
+          if (regex.lastIndex > line.length) {
+            break;
+          }
         }
       }
       const boundedRanges = applyWordBoundary({ options, line, ranges });
@@ -168,7 +184,9 @@ function compilePattern({ options }: { options: RgParsedArgv }): RgCompiledPatte
 function findNulOffset({ bytes }: { bytes: Uint8Array }): number | undefined {
   const limit = Math.min(bytes.length, RG_BINARY_SCAN_LIMIT);
   for (let index = 0; index < limit; index += 1) {
-    if (bytes[index] === 0) return index;
+    if (bytes[index] === 0) {
+      return index;
+    }
   }
   return undefined;
 }
@@ -254,7 +272,9 @@ async function collectSearchFiles({
 
   const reportError = async ({ path, error }: { path: string, error: unknown }): Promise<void> => {
     const detail = error instanceof Error ? error.message : String(error);
-    if (!options.noMessages) await context.text().error({ text: `rg: ${path}: ${detail}\n` });
+    if (!options.noMessages) {
+      await context.text().error({ text: `rg: ${path}: ${detail}\n` });
+    }
     hadError = true;
   };
 
@@ -276,7 +296,9 @@ async function collectSearchFiles({
     let resolvedEntry: WeshEntryRef;
     switch (entry.type) {
     case 'symlink':
-      if (!options.follow && !explicit) return;
+      if (!options.follow && !explicit) {
+        return;
+      }
       try {
         resolvedEntry = await context.files.resolveEntry({
           path: entry.fullPath,
@@ -301,19 +323,37 @@ async function collectSearchFiles({
 
     switch (resolvedEntry.type) {
     case 'file':
-      if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) return;
-      if (!explicit && isIgnoredByRgRules({ relativePath, isDirectory: false, rules: explicitIgnoreRules })) return;
-      if (!explicit && !options.noIgnore && isIgnoredByRgRules({ relativePath, isDirectory: false, rules: inheritedIgnoreRules })) return;
-      if (!matchesRgGlobRules({ relativePath, rules: globs })) return;
-      if (!matchesRgGlobRules({ relativePath, rules: typeRules })) return;
+      if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) {
+        return;
+      }
+      if (!explicit && isIgnoredByRgRules({ relativePath, isDirectory: false, rules: explicitIgnoreRules })) {
+        return;
+      }
+      if (!explicit && !options.noIgnore && isIgnoredByRgRules({ relativePath, isDirectory: false, rules: inheritedIgnoreRules })) {
+        return;
+      }
+      if (!matchesRgGlobRules({ relativePath, rules: globs })) {
+        return;
+      }
+      if (!matchesRgGlobRules({ relativePath, rules: typeRules })) {
+        return;
+      }
       files.push({ fullPath: resolvedEntry.fullPath, displayPath, relativePath });
       return;
     case 'directory': {
-      if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) return;
-      if (!explicit && isIgnoredByRgRules({ relativePath, isDirectory: true, rules: explicitIgnoreRules })) return;
-      if (!explicit && !options.noIgnore && isIgnoredByRgRules({ relativePath, isDirectory: true, rules: inheritedIgnoreRules })) return;
+      if (!options.hidden && !explicit && basename({ path: displayPath }).startsWith('.')) {
+        return;
+      }
+      if (!explicit && isIgnoredByRgRules({ relativePath, isDirectory: true, rules: explicitIgnoreRules })) {
+        return;
+      }
+      if (!explicit && !options.noIgnore && isIgnoredByRgRules({ relativePath, isDirectory: true, rules: inheritedIgnoreRules })) {
+        return;
+      }
       const directory = asDirectoryEntry({ entry: resolvedEntry });
-      if (options.maxDepth !== undefined && depth >= options.maxDepth) return;
+      if (options.maxDepth !== undefined && depth >= options.maxDepth) {
+        return;
+      }
       const ancestorDisplayPath = activeDirectories.get(directory.fullPath);
       if (ancestorDisplayPath !== undefined) {
         if (!options.noMessages) {
@@ -334,7 +374,9 @@ async function collectSearchFiles({
           }
           localRules.push(...await tryReadIgnoreFile({ context, directoryPath: directory.fullPath, relativeDirectoryPath: relativePath, name: '.ignore', noMessages: options.noMessages }));
           localRules.push(...await tryReadIgnoreFile({ context, directoryPath: directory.fullPath, relativeDirectoryPath: relativePath, name: '.rgignore', noMessages: options.noMessages }));
-          if (localRules.length > 0) ignoreRules = [...ignoreRules, ...localRules];
+          if (localRules.length > 0) {
+            ignoreRules = [...ignoreRules, ...localRules];
+          }
         }
         for await (const child of context.files.readDirEntry({ entry: directory })) {
           await visit({
@@ -441,10 +483,18 @@ function formatPrefix({
 }): string {
   const separator = contextLine ? '-' : ':';
   let prefix = '';
-  if (showFilename) prefix += `${displayPath}${nullOutput ? '\0' : separator}`;
-  if (showLineNumber) prefix += `${lineNumber}${separator}`;
-  if (column !== undefined) prefix += `${column}${separator}`;
-  if (byteOffset !== undefined) prefix += `${byteOffset}${separator}`;
+  if (showFilename) {
+    prefix += `${displayPath}${nullOutput ? '\0' : separator}`;
+  }
+  if (showLineNumber) {
+    prefix += `${lineNumber}${separator}`;
+  }
+  if (column !== undefined) {
+    prefix += `${column}${separator}`;
+  }
+  if (byteOffset !== undefined) {
+    prefix += `${byteOffset}${separator}`;
+  }
   return prefix;
 }
 
@@ -459,7 +509,9 @@ function matchColumn({ line, start }: { line: string, start: number }): number {
 function lineStartByteOffsets({ bytes }: { bytes: Uint8Array }): readonly number[] {
   const offsets = [0];
   for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] === 10 && index + 1 < bytes.length) offsets.push(index + 1);
+    if (bytes[index] === 10 && index + 1 < bytes.length) {
+      offsets.push(index + 1);
+    }
   }
   return offsets;
 }
@@ -484,20 +536,28 @@ async function searchBytes({
   const nulOffset = findNulOffset({ bytes });
   const byteOffsets = lineStartByteOffsets({ bytes });
   const lines = new TextDecoder().decode(bytes).split('\n');
-  if (lines.length > 0 && lines.at(-1) === '') lines.pop();
+  if (lines.length > 0 && lines.at(-1) === '') {
+    lines.pop();
+  }
 
-  if (options.maxCount === 0) return { matched: false, hadError: false, wroteContextGroup: false };
+  if (options.maxCount === 0) {
+    return { matched: false, hadError: false, wroteContextGroup: false };
+  }
 
   let selectedLineCount = 0;
   let matchCount = 0;
   const selectedLines = new Map<number, RgLineMatch>();
   for (let index = 0; index < lines.length; index += 1) {
     const result = pattern.matchLine({ line: lines[index] ?? '' });
-    if (!result.selected) continue;
+    if (!result.selected) {
+      continue;
+    }
     selectedLineCount += 1;
     matchCount += options.invertMatch ? 1 : result.ranges.length;
     selectedLines.set(index, result);
-    if (options.maxCount !== undefined && selectedLineCount >= options.maxCount) break;
+    if (options.maxCount !== undefined && selectedLineCount >= options.maxCount) {
+      break;
+    }
   }
 
   if (options.quiet) {
@@ -505,16 +565,22 @@ async function searchBytes({
   }
   switch (options.outputMode) {
   case 'files-without-match':
-    if (selectedLineCount > 0) return { matched: false, hadError: false, wroteContextGroup: false };
+    if (selectedLineCount > 0) {
+      return { matched: false, hadError: false, wroteContextGroup: false };
+    }
     await context.text().print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
     return { matched: true, hadError: false, wroteContextGroup: false };
   case 'files-with-matches':
-    if (selectedLineCount === 0) return { matched: false, hadError: false, wroteContextGroup: false };
+    if (selectedLineCount === 0) {
+      return { matched: false, hadError: false, wroteContextGroup: false };
+    }
     await context.text().print({ text: `${displayPath}${options.nullOutput ? '\0' : '\n'}` });
     return { matched: true, hadError: false, wroteContextGroup: false };
   case 'count-lines':
   case 'count-matches': {
-    if (selectedLineCount === 0) return { matched: false, hadError: false, wroteContextGroup: false };
+    if (selectedLineCount === 0) {
+      return { matched: false, hadError: false, wroteContextGroup: false };
+    }
     const value = options.outputMode === 'count-matches' || (options.onlyMatching && !options.invertMatch)
       ? matchCount
       : selectedLineCount;
@@ -523,7 +589,9 @@ async function searchBytes({
     return { matched: true, hadError: false, wroteContextGroup: false };
   }
   case 'normal':
-    if (selectedLineCount === 0) return { matched: false, hadError: false, wroteContextGroup: false };
+    if (selectedLineCount === 0) {
+      return { matched: false, hadError: false, wroteContextGroup: false };
+    }
     break;
   default: {
     const _ex: never = options.outputMode;
@@ -562,7 +630,9 @@ async function searchBytes({
   for (const index of selectedLines.keys()) {
     const start = Math.max(0, index - options.beforeContext);
     const end = Math.min(lines.length - 1, index + options.afterContext);
-    for (let outputIndex = start; outputIndex <= end; outputIndex += 1) outputIndexes.add(outputIndex);
+    for (let outputIndex = start; outputIndex <= end; outputIndex += 1) {
+      outputIndexes.add(outputIndex);
+    }
   }
   const sortedOutputIndexes = [...outputIndexes].sort((left, right) => left - right);
   const hasContext = options.beforeContext > 0 || options.afterContext > 0;
@@ -571,7 +641,9 @@ async function searchBytes({
   for (const index of sortedOutputIndexes) {
     const startsContextGroup = hasContext && (previousIndex === undefined || index > previousIndex + 1);
     if (startsContextGroup) {
-      if (contextGroupAlreadyWritten || wroteContextGroup) await context.text().print({ text: '--\n' });
+      if (contextGroupAlreadyWritten || wroteContextGroup) {
+        await context.text().print({ text: '--\n' });
+      }
       wroteContextGroup = true;
     }
     const selectedMatch = selectedLines.get(index);
@@ -616,7 +688,9 @@ async function searchOneFile({
     bytes = await readAllFileBytes({ files: context.files, path: file.fullPath });
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
-    if (!options.noMessages) await context.text().error({ text: `rg: ${file.displayPath}: ${detail}\n` });
+    if (!options.noMessages) {
+      await context.text().error({ text: `rg: ${file.displayPath}: ${detail}\n` });
+    }
     return { matched: false, hadError: true, wroteContextGroup: false };
   }
 
@@ -722,11 +796,15 @@ export const rgCommandImplementation: WeshCommandImplementation = {
         const display = options.paths.length === 0 ? file.displayPath.replace(/^\.\//, '') : file.displayPath;
         await context.text().print({ text: `${display}${options.nullOutput ? '\0' : '\n'}` });
       }
-      if (collected.hadError) return { exitCode: 2 };
+      if (collected.hadError) {
+        return { exitCode: 2 };
+      }
       return { exitCode: stdinOperandCount + collected.files.length > 0 ? 0 : 1 };
     }
 
-    if (compiledPattern === undefined) throw new Error('rg pattern compilation invariant violated');
+    if (compiledPattern === undefined) {
+      throw new Error('rg pattern compilation invariant violated');
+    }
     const showFilename = options.withFilename ?? (operands.length > 1 || collected.hadDirectoryOperand);
     let anyMatch = false;
     let hadError = collected.hadError;
@@ -743,7 +821,9 @@ export const rgCommandImplementation: WeshCommandImplementation = {
       contextGroupAlreadyWritten ||= result.wroteContextGroup;
       if (result.matched) {
         anyMatch = true;
-        if (options.quiet) return { exitCode: 0 };
+        if (options.quiet) {
+          return { exitCode: 0 };
+        }
       }
     }
     for (const file of collected.files) {
@@ -759,10 +839,14 @@ export const rgCommandImplementation: WeshCommandImplementation = {
       contextGroupAlreadyWritten ||= result.wroteContextGroup;
       if (result.matched) {
         anyMatch = true;
-        if (options.quiet) return { exitCode: 0 };
+        if (options.quiet) {
+          return { exitCode: 0 };
+        }
       }
     }
-    if (hadError) return { exitCode: 2 };
+    if (hadError) {
+      return { exitCode: 2 };
+    }
     return { exitCode: anyMatch ? 0 : 1 };
   },
 };

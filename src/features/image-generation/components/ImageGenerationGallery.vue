@@ -18,7 +18,9 @@ const { showPrompt } = usePrompt();
 const runById = computed(() => new Map(view.runs.value.map(run => [run.id, run])));
 const groupedRuns = computed(() => {
   const grouped = new Map(view.runs.value.map(run => [run.id, { run, images: [] as ImageGenerationTile[] }]));
-  for (const tile of view.tiles.value) grouped.get(tile.runId)?.images.push(tile);
+  for (const tile of view.tiles.value) {
+    grouped.get(tile.runId)?.images.push(tile);
+  }
   return [...grouped.values()].sort((a, b) => b.run.createdAt - a.run.createdAt || String(a.run.id).localeCompare(String(b.run.id))).filter(group => group.images.length || !text.value && !onlyFavorite.value && !view.filterTagId.value && view.visibility.value !== 'archived' && !view.runsWithAssets.value.includes(group.run.id) && group.run.execution.type !== 'completed');
 });
 
@@ -30,23 +32,32 @@ function statusLabel({ execution }: { execution: ImageGenerationRunExecution }):
   case 'cancelled': return lazyStrings.imageGeneration__cancelled();
   case 'failed': return lazyStrings.imageGeneration__failed();
   case 'interrupted': return lazyStrings.imageGeneration__interrupted();
-  default: { const exhaustive: never = execution; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = execution;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 async function editTag({ tagId }: { tagId: ImageGenerationTagId | undefined }): Promise<void> {
   const storeId = view.store.value?.storeId;
-  if (!storeId) return;
+  if (!storeId) {
+    return;
+  }
   const label = await showPrompt({
     title: tagId ? await ensureStrings.imageGeneration__rename_tag() : await ensureStrings.imageGeneration__new_tag(),
     message: await ensureStrings.imageGeneration__tag_rules(),
     defaultValue: view.userTags.value.find(tag => tag.id === tagId)?.name,
   });
-  if (typeof label === 'string' && view.store.value?.storeId === storeId) await view.editTag({ tagId, name: label });
+  if (typeof label === 'string' && view.store.value?.storeId === storeId) {
+    await view.editTag({ tagId, name: label });
+  }
 }
 
 function chooseTag({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const value = event.target.value;
   view.filterTagId.value = view.userTags.value.find(tag => idToRaw({ id: tag.id }) === value)?.id;
 }
@@ -54,12 +65,16 @@ function chooseTag({ event }: { event: Event }): void {
 async function curateRun({ runId, action }: { runId: ImageGenerationRunId, action: 'archive' | 'restore' }): Promise<void> {
   const sessionId = view.selectedSessionId.value, storeId = view.store.value?.storeId;
   const items = await view.runAssets({ runId });
-  if (view.selectedSessionId.value === sessionId && view.store.value?.storeId === storeId) await view.curate({ items, action: { type: action } });
+  if (view.selectedSessionId.value === sessionId && view.store.value?.storeId === storeId) {
+    await view.curate({ items, action: { type: action } });
+  }
 }
 
 async function review(): Promise<void> {
   const tile = view.tiles.value[0];
-  if (tile) await view.inspect({ tile });
+  if (tile) {
+    await view.inspect({ tile });
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -39,10 +39,14 @@ function checkTarget({ current, accepted }: {
   current: ImageGenerationPromptTarget | undefined, accepted: ImageGenerationPromptTarget,
 }): 'current' | 'unavailable' | 'stale' {
   if (!current || current.storeId !== accepted.storeId || current.sessionId !== accepted.sessionId
-    || current.bindingId !== accepted.bindingId || current.chatId !== accepted.chatId) return 'unavailable';
+    || current.bindingId !== accepted.bindingId || current.chatId !== accepted.chatId) {
+    return 'unavailable';
+  }
   // The controller must issue a fresh revision for model/input/settings changes,
   // manual edits and undo/redo, even when the prompt happens to become identical.
-  if (current.revision !== accepted.revision || current.prompt !== accepted.prompt || current.negativePrompt !== accepted.negativePrompt) return 'stale';
+  if (current.revision !== accepted.revision || current.prompt !== accepted.prompt || current.negativePrompt !== accepted.negativePrompt) {
+    return 'stale';
+  }
   return 'current';
 }
 
@@ -65,17 +69,24 @@ export async function applyImageGenerationPromptEdit({ target, edit, signal, rea
   // before yielding, and never expose the accepted snapshot to those callbacks.
   const accepted = { ...target };
   const parsed = editSchema.safeParse(edit);
-  if (!parsed.success) return { status: 'invalid_arguments' };
+  if (!parsed.success) {
+    return { status: 'invalid_arguments' };
+  }
   const acceptedEdit = parsed.data;
   function available(): 'current' | 'unavailable' | 'stale' | 'cancelled' {
-    if (signal?.aborted) return 'cancelled';
+    if (signal?.aborted) {
+      return 'cancelled';
+    }
     return checkTarget({ current: readTarget(), accepted });
   }
   const beforeApproval = available();
   switch (beforeApproval) {
   case 'current': break;
   case 'unavailable': case 'stale': case 'cancelled': return { status: beforeApproval };
-  default: { const exhaustive: never = beforeApproval; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = beforeApproval;
+    throw new Error(String(exhaustive));
+  }
   }
   const approval = await ensureApproval({
     chatId: accepted.chatId,
@@ -92,18 +103,27 @@ export async function applyImageGenerationPromptEdit({ target, edit, signal, rea
   switch (afterApproval) {
   case 'current': break;
   case 'unavailable': case 'stale': case 'cancelled': return { status: afterApproval };
-  default: { const exhaustive: never = afterApproval; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = afterApproval;
+    throw new Error(String(exhaustive));
+  }
   }
   switch (approval.status) {
   case 'denied': return { status: 'denied' };
   case 'approved': break;
-  default: { const exhaustive: never = approval; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = approval;
+    throw new Error(String(exhaustive));
+  }
   }
   const committed = commit({ expected: { ...accepted }, edit: { ...acceptedEdit } });
   switch (committed) {
   case 'applied': return { status: 'applied' };
   case 'conflict': return { status: 'stale' };
-  default: { const exhaustive: never = committed; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = committed;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

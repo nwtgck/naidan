@@ -23,7 +23,8 @@ describe('prepared-worker activation boundary', () => {
   });
 
   it('releases its timer and listener when postMessage throws', async () => {
-    vi.useFakeTimers(); const w = worker({ state: 'installed' });
+    vi.useFakeTimers();
+    const w = worker({ state: 'installed' });
     const remove = vi.spyOn(w.handle, 'removeEventListener');
     w.handle.postMessage.mockImplementation(() => {
       throw new Error('terminated');
@@ -34,7 +35,9 @@ describe('prepared-worker activation boundary', () => {
   });
 
   it('does not send anything after cancellation', async () => {
-    const w = worker({ state: 'installed' }); const abort = new AbortController(); abort.abort();
+    const w = worker({ state: 'installed' });
+    const abort = new AbortController();
+    abort.abort();
     await expect(activateUpdate({ worker: w.native, signal: abort.signal })).rejects.toThrow('stopped');
     expect(w.handle.postMessage).not.toHaveBeenCalled();
   });

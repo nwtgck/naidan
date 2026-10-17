@@ -9,7 +9,9 @@ function toPlanningDownloadEvidence({
 }: {
   evidence: ModelSupportInvestigationRun['downloadEvidence'],
 }): DownloadVerificationProbeEvidenceInput | undefined {
-  if (evidence === undefined) return undefined;
+  if (evidence === undefined) {
+    return undefined;
+  }
   switch (evidence.mode) {
   case 'probe-only':
     break;

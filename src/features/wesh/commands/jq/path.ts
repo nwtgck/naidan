@@ -25,10 +25,14 @@ export function normalizeArrayIndex({
   array: JsonValue[],
   index: number,
 }): number | undefined {
-  if (!Number.isFinite(index)) return undefined;
+  if (!Number.isFinite(index)) {
+    return undefined;
+  }
   const integerIndex = Math.trunc(index);
   const normalized = integerIndex >= 0 ? integerIndex : array.length + integerIndex;
-  if (normalized < 0 || normalized >= array.length) return undefined;
+  if (normalized < 0 || normalized >= array.length) {
+    return undefined;
+  }
   return normalized;
 }
 
@@ -205,7 +209,9 @@ export function readJqPathValue({
 
   for (const segment of path.segments) {
     const result = readJqPathSegmentValue({ current, segment });
-    if (!result.ok || result.skipped) return result;
+    if (!result.ok || result.skipped) {
+      return result;
+    }
     current = result.value;
     numberOrigin = result.numberOrigin;
   }
@@ -318,7 +324,9 @@ function flattenMaterializedPathState({
   state: MaterializedPathState,
 }): JqPath {
   let baseState = state;
-  while (baseState.parent !== undefined) baseState = baseState.parent;
+  while (baseState.parent !== undefined) {
+    baseState = baseState.parent;
+  }
   if (baseState.basePath === undefined) {
     throw new Error('jq materialized path state is missing its base path');
   }
@@ -380,8 +388,12 @@ function appendMaterializedPathStates({
   target: MaterializedPathState[],
   source: readonly MaterializedPathState[],
 }): boolean {
-  if (source.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH - target.length) return false;
-  for (const state of source) target.push(state);
+  if (source.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH - target.length) {
+    return false;
+  }
+  for (const state of source) {
+    target.push(state);
+  }
   return true;
 }
 
@@ -454,7 +466,9 @@ export function materializeJqPathExpression({
     }
     case 'sequence_continue': {
       const itemResult = results.pop();
-      if (itemResult === undefined) throw new Error('jq path materialization result stack is empty');
+      if (itemResult === undefined) {
+        throw new Error('jq path materialization result stack is empty');
+      }
       if (!itemResult.ok) {
         results.push(itemResult);
         break;
@@ -481,7 +495,9 @@ export function materializeJqPathExpression({
     }
     case 'append': {
       const parentResult = results.pop();
-      if (parentResult === undefined) throw new Error('jq path materialization result stack is empty');
+      if (parentResult === undefined) {
+        throw new Error('jq path materialization result stack is empty');
+      }
       if (!parentResult.ok) {
         results.push(parentResult);
         break;
@@ -498,7 +514,9 @@ export function materializeJqPathExpression({
     }
     case 'dynamic_index': {
       const parentResult = results.pop();
-      if (parentResult === undefined) throw new Error('jq path materialization result stack is empty');
+      if (parentResult === undefined) {
+        throw new Error('jq path materialization result stack is empty');
+      }
       if (!parentResult.ok) {
         results.push(parentResult);
         break;
@@ -516,7 +534,9 @@ export function materializeJqPathExpression({
           failedMessage = parent.message;
           break;
         }
-        if (parent.skipped) continue;
+        if (parent.skipped) {
+          continue;
+        }
         const parentValue = parent.value;
         for (const index of indexes.outputs) {
           let segment: JqPathSegment | undefined;
@@ -559,7 +579,9 @@ export function materializeJqPathExpression({
     }
     case 'dynamic_slice': {
       const parentResult = results.pop();
-      if (parentResult === undefined) throw new Error('jq path materialization result stack is empty');
+      if (parentResult === undefined) {
+        throw new Error('jq path materialization result stack is empty');
+      }
       if (!parentResult.ok) {
         results.push(parentResult);
         break;
@@ -569,9 +591,13 @@ export function materializeJqPathExpression({
       }: {
         filter: JqFilter | undefined,
       }): { ok: true, bounds: (number | undefined)[] } | { ok: false, message: string } => {
-        if (filter === undefined) return { ok: true, bounds: [undefined] };
+        if (filter === undefined) {
+          return { ok: true, bounds: [undefined] };
+        }
         const evaluated = evaluateDynamicIndex({ filter, input: root });
-        if (!evaluated.ok) return evaluated;
+        if (!evaluated.ok) {
+          return evaluated;
+        }
         const bounds: (number | undefined)[] = [];
         for (const output of evaluated.outputs) {
           if (output === null) {
@@ -602,14 +628,18 @@ export function materializeJqPathExpression({
           failedMessage = parent.message;
           break;
         }
-        if (parent.skipped) continue;
+        if (parent.skipped) {
+          continue;
+        }
         if (
           parent.value !== undefined
           && parent.value !== null
           && !Array.isArray(parent.value)
           && typeof parent.value !== 'string'
         ) {
-          if (frame.optional) continue;
+          if (frame.optional) {
+            continue;
+          }
           failedMessage = 'cannot slice non-array/string';
           break;
         }
@@ -629,7 +659,9 @@ export function materializeJqPathExpression({
     }
     case 'iterate': {
       const parentResult = results.pop();
-      if (parentResult === undefined) throw new Error('jq path materialization result stack is empty');
+      if (parentResult === undefined) {
+        throw new Error('jq path materialization result stack is empty');
+      }
       if (!parentResult.ok) {
         results.push(parentResult);
         break;
@@ -642,7 +674,9 @@ export function materializeJqPathExpression({
           failedMessage = parent.message;
           break;
         }
-        if (parent.skipped) continue;
+        if (parent.skipped) {
+          continue;
+        }
         if (Array.isArray(parent.value)) {
           for (let index = 0; index < parent.value.length; index += 1) {
             states.push(extendMaterializedPathState({
@@ -682,7 +716,9 @@ export function materializeJqPathExpression({
     throw new Error(`jq path materialization produced ${results.length} result frames`);
   }
   const result = results[0]!;
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
   const paths = new Array<JqPath>(result.states.length);
   for (let index = 0; index < result.states.length; index += 1) {
     paths[index] = flattenMaterializedPathState({ state: result.states[index]! });
@@ -704,12 +740,16 @@ export function extractJqPath({
       reversedSegments.reverse();
       return { segments: reversedSegments };
     case 'field':
-      if (current.optional) return undefined;
+      if (current.optional) {
+        return undefined;
+      }
       reversedSegments.push({ kind: 'field', key: current.key, optional: false });
       current = current.input;
       break;
     case 'index':
-      if (current.optional) return undefined;
+      if (current.optional) {
+        return undefined;
+      }
       reversedSegments.push({ kind: 'index', index: current.index, optional: false });
       current = current.input;
       break;
@@ -915,7 +955,9 @@ function deleteAtPath({
   if (nested === undefined) {
     throw new Error('jq path deletion completed without a leaf result');
   }
-  if (!nested.ok) return nested;
+  if (!nested.ok) {
+    return nested;
+  }
 
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     const frame = frames[index]!;
@@ -946,7 +988,9 @@ function deleteAtPath({
         end: frame.end,
         replacement: nested.value,
       });
-      if (!replaced.ok) return replaced;
+      if (!replaced.ok) {
+        return replaced;
+      }
       nested = { ok: true, value: replaced.value, changed: true };
       break;
     }
@@ -1015,7 +1059,9 @@ function deleteAtPaths({
 
   while (tasks.length > 0) {
     const task = tasks.pop();
-    if (task === undefined) throw new Error('jq grouped path deletion task stack is empty');
+    if (task === undefined) {
+      throw new Error('jq grouped path deletion task stack is empty');
+    }
 
     switch (task.kind) {
     case 'visit': {
@@ -1038,7 +1084,9 @@ function deleteAtPaths({
         const grouped = new Map<string, JqPathCursor[]>();
         for (const { segments, offset } of nonEmptyPaths) {
           const head = segments[offset];
-          if (head === undefined) continue;
+          if (head === undefined) {
+            continue;
+          }
           switch (head.kind) {
           case 'field': {
             const group = grouped.get(head.key) ?? [];
@@ -1060,7 +1108,9 @@ function deleteAtPaths({
         const directDeletionKeys: string[] = [];
         const children: { readonly key: string, readonly paths: readonly JqPathCursor[] }[] = [];
         for (const [key, nestedPaths] of grouped) {
-          if (!Object.hasOwn(task.value, key)) continue;
+          if (!Object.hasOwn(task.value, key)) {
+            continue;
+          }
           if (nestedPaths.some(({ segments, offset }) => offset >= segments.length)) {
             directDeletionKeys.push(key);
           } else {
@@ -1080,7 +1130,9 @@ function deleteAtPaths({
         });
         for (let index = children.length - 1; index >= 0; index -= 1) {
           const child = children[index];
-          if (child === undefined) throw new Error('jq grouped object deletion child is missing');
+          if (child === undefined) {
+            throw new Error('jq grouped object deletion child is missing');
+          }
           tasks.push({
             kind: 'visit',
             value: task.value[child.key]!,
@@ -1094,11 +1146,15 @@ function deleteAtPaths({
         const grouped = new Map<number, JqPathCursor[]>();
         for (const { segments, offset } of nonEmptyPaths) {
           const head = segments[offset];
-          if (head === undefined) continue;
+          if (head === undefined) {
+            continue;
+          }
           switch (head.kind) {
           case 'index': {
             const normalizedIndex = normalizeArrayIndex({ array: task.value, index: head.index });
-            if (normalizedIndex === undefined) continue;
+            if (normalizedIndex === undefined) {
+              continue;
+            }
             const group = grouped.get(normalizedIndex) ?? [];
             group.push({ segments, offset: offset + 1 });
             grouped.set(normalizedIndex, group);
@@ -1124,7 +1180,9 @@ function deleteAtPaths({
         const children: { readonly index: number, readonly paths: readonly JqPathCursor[] }[] = [];
         for (let index = 0; index < task.value.length; index += 1) {
           const nestedPaths = grouped.get(index);
-          if (nestedPaths === undefined) continue;
+          if (nestedPaths === undefined) {
+            continue;
+          }
           if (nestedPaths.some(({ segments, offset }) => offset >= segments.length)) {
             directDeletionIndices.add(index);
           } else {
@@ -1140,7 +1198,9 @@ function deleteAtPaths({
         });
         for (let index = children.length - 1; index >= 0; index -= 1) {
           const child = children[index];
-          if (child === undefined) throw new Error('jq grouped array deletion child is missing');
+          if (child === undefined) {
+            throw new Error('jq grouped array deletion child is missing');
+          }
           tasks.push({
             kind: 'visit',
             value: task.value[child.index]!,
@@ -1187,11 +1247,17 @@ function deleteAtPaths({
       }
 
       const next = shallowCloneObject({ value: task.source });
-      for (const key of task.directDeletionKeys) delete next[key];
+      for (const key of task.directDeletionKeys) {
+        delete next[key];
+      }
       for (let index = 0; index < task.childKeys.length; index += 1) {
         const child = childResults[index];
-        if (child === undefined) throw new Error('jq grouped object deletion result is missing');
-        if (!child.changed) continue;
+        if (child === undefined) {
+          throw new Error('jq grouped object deletion result is missing');
+        }
+        if (!child.changed) {
+          continue;
+        }
         defineJsonProperty({ object: next, key: task.childKeys[index]!, value: child.value });
       }
       results.push({ ok: true, value: next, changed: true });
@@ -1212,12 +1278,16 @@ function deleteAtPaths({
       const childResultsByIndex = new Map<number, DeleteAtPathsSuccess>();
       for (let index = 0; index < task.childIndices.length; index += 1) {
         const child = childResults[index];
-        if (child === undefined) throw new Error('jq grouped array deletion result is missing');
+        if (child === undefined) {
+          throw new Error('jq grouped array deletion result is missing');
+        }
         childResultsByIndex.set(task.childIndices[index]!, child);
       }
       const next: JsonValue[] = [];
       for (let index = 0; index < task.source.length; index += 1) {
-        if (task.directDeletionIndices.has(index)) continue;
+        if (task.directDeletionIndices.has(index)) {
+          continue;
+        }
         const child = childResultsByIndex.get(index);
         next.push(child?.changed ? child.value : task.source[index]!);
       }
@@ -1245,7 +1315,9 @@ export function applyPathDeletion({
   path: JqPath,
 }): { ok: true, value: JsonValue } | { ok: false, message: string } {
   const result = deleteAtPath({ value: root, segments: path.segments });
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
   return { ok: true, value: result.value };
 }
 
@@ -1267,14 +1339,18 @@ export function applyPathDeletions({
       let value = root;
       for (const sequentialPath of paths) {
         const deleted = deleteAtPath({ value, segments: sequentialPath.segments });
-        if (!deleted.ok) return deleted;
+        if (!deleted.ok) {
+          return deleted;
+        }
         value = deleted.value;
       }
       return { ok: true, value };
     }
 
     const segment = path.segments[sliceIndex];
-    if (segment === undefined) throw new Error('Expected a slice segment');
+    if (segment === undefined) {
+      throw new Error('Expected a slice segment');
+    }
     const slice = (() => {
       switch (segment.kind) {
       case 'slice':
@@ -1290,13 +1366,19 @@ export function applyPathDeletions({
     })();
     const parentPath: JqPath = { segments: path.segments.slice(0, sliceIndex) };
     const parent = readJqPathValue({ root, path: parentPath });
-    if (!parent.ok) return parent;
-    if (parent.skipped || parent.value === undefined || parent.value === null) continue;
+    if (!parent.ok) {
+      return parent;
+    }
+    if (parent.skipped || parent.value === undefined || parent.value === null) {
+      continue;
+    }
     if (typeof parent.value === 'string') {
       return { ok: false, message: 'Cannot delete fields from string' };
     }
     if (!Array.isArray(parent.value)) {
-      if (slice.optional) continue;
+      if (slice.optional) {
+        continue;
+      }
       return { ok: false, message: 'cannot slice non-array' };
     }
     const range = normalizeSliceRange({
@@ -1318,7 +1400,9 @@ export function applyPathDeletions({
     let value = root;
     for (const path of concretePaths) {
       const deleted = deleteAtPath({ value, segments: path.segments });
-      if (!deleted.ok) return deleted;
+      if (!deleted.ok) {
+        return deleted;
+      }
       value = deleted.value;
     }
     return { ok: true, value };
@@ -1328,7 +1412,9 @@ export function applyPathDeletions({
     value: root,
     paths: concretePaths.map((path) => ({ segments: path.segments, offset: 0 })),
   });
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
   return { ok: true, value: result.value };
 }
 
@@ -1528,7 +1614,9 @@ function updateAtPath({
   }
 
   let nested = update({ currentValue });
-  if (!nested.ok) return nested;
+  if (!nested.ok) {
+    return nested;
+  }
 
   for (let index = frames.length - 1; index >= 0; index -= 1) {
     const frame = frames[index]!;
@@ -1586,7 +1674,9 @@ function updateAtPath({
         end: frame.end,
         replacement: nested.value,
       });
-      if (!nested.ok) return nested;
+      if (!nested.ok) {
+        return nested;
+      }
       break;
     }
     default: {

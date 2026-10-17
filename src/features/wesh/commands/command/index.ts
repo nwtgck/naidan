@@ -54,7 +54,9 @@ export const commandCommandImplementation: WeshCommandImplementation = {
     }
 
     try {
-      if (parsed.positionals.length === 0) return { exitCode: 0 };
+      if (parsed.positionals.length === 0) {
+        return { exitCode: 0 };
+      }
 
       if (parsed.optionValues.verbose === true || parsed.optionValues.describe === true) {
         let foundAny = false;

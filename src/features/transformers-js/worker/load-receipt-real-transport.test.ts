@@ -53,7 +53,9 @@ describe('ordinary Load receipt through actual Worker communication without gene
       .toStrictEqual({ device: 'webgpu', dtype: 'q4f16' });
     const first = await capture.takeGenerationCapture();
     expect(first.status).toBe('not-started');
-    if (first.status !== 'not-started') throw new Error('Generation unexpectedly started');
+    if (first.status !== 'not-started') {
+      throw new Error('Generation unexpectedly started');
+    }
     expect(first.loadObservation).toMatchObject({
       format: 'production-load-observation-v1',
       owner: { runId, workerEpoch: 1 },

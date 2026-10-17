@@ -48,7 +48,10 @@ const downloadPhaseLabel = computed(() => {
   case 'checking-runtime': return lazyStrings.TransformersJsManager__checking_runtime();
   case 'complete': return lazyStrings.TransformersJsManager__download_complete();
   case 'failed': return lazyStrings.TransformersJsManager__download_failed();
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
@@ -59,30 +62,43 @@ const downloadEstimateRevisionLabel = computed(() => {
   case 'size-updated':
   case 'size-conflict': return lazyStrings.TransformersJsManager__recalculated_after_size_update();
   case 'resource-restarted': return lazyStrings.TransformersJsManager__recalculated_after_download_restart();
-  default: { const exhaustive: never = reason; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = reason;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
 const downloadEtaLabel = computed(() => {
   const eta = downloadProgress.value?.downloadEta;
-  if (eta === undefined) return undefined;
+  if (eta === undefined) {
+    return undefined;
+  }
   switch (eta.status) {
   case 'estimating': return lazyStrings.TransformersJsManager__about_time_remaining({ seconds: eta.remainingSeconds });
   case 'warming-up': case 'stalled':
   case 'unavailable': return undefined;
-  default: { const exhaustive: never = eta; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = eta;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
 const isRetryingDownloadCandidate = computed(() => {
   const snapshot = downloadProgress.value;
-  if (snapshot?.attemptNumber === undefined || snapshot.attemptNumber <= 1) return false;
+  if (snapshot?.attemptNumber === undefined || snapshot.attemptNumber <= 1) {
+    return false;
+  }
   const phase = snapshot.phase;
   switch (phase) {
   case 'complete': case 'failed': return false;
   case 'resolving-revision': case 'checking-cache': case 'preparing-metadata':
   case 'observing-candidate': case 'transferring': case 'saving': case 'checking-runtime': return true;
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
@@ -94,7 +110,10 @@ const downloadFileStatusLabel = ({ status }: { status: DownloadFileStatus }): st
   case 'cached': return lazyStrings.TransformersJsManager__reusing_downloaded_file();
   case 'complete': return lazyStrings.TransformersJsManager__complete();
   case 'failed': return lazyStrings.TransformersJsManager__error();
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
 };
 
@@ -139,7 +158,9 @@ const refreshLocalModels = async () => {
 };
 
 const formatSize = ({ bytes }: { bytes: number }) => {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) {
+    return '0 B';
+  }
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -147,7 +168,9 @@ const formatSize = ({ bytes }: { bytes: number }) => {
 };
 
 const formatDate = ({ timestamp }: { timestamp: number }) => {
-  if (!timestamp) return lazyStrings.TransformersJsManager__unknown();
+  if (!timestamp) {
+    return lazyStrings.TransformersJsManager__unknown();
+  }
   return new Date(timestamp).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -188,7 +211,9 @@ const selectModelId = ({ id }: { id: string }) => {
 };
 
 const openModelSupportInvestigation = ({ modelId }: { modelId: string }): void => {
-  if (!isModelSupportInvestigationAvailable) return;
+  if (!isModelSupportInvestigationAvailable) {
+    return;
+  }
   emit('openModelSupportInvestigation', modelId);
 };
 
@@ -201,7 +226,9 @@ const handleClickOutside = ({ event }: { event: MouseEvent }) => {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(async () => {
-  if (isUnavailableInBuild) return;
+  if (isUnavailableInBuild) {
+    return;
+  }
   searchQuery.value = '';
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe({
@@ -225,8 +252,12 @@ onMounted(async () => {
       case 'transferring':
       case 'saving':
       case 'checking-runtime':
-      case 'complete': isDownloadFailureDismissed.value = false; break;
-      default: { const exhaustive: never = downloadPhase; throw new Error(String(exhaustive)); }
+      case 'complete': isDownloadFailureDismissed.value = false;
+        break;
+      default: {
+        const exhaustive: never = downloadPhase;
+        throw new Error(String(exhaustive));
+      }
       }
       activeModelId.value = state.activeModelId;
       device.value = state.device;
@@ -242,12 +273,18 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (unsubscribe) unsubscribe();
-  if (unsubscribeList) unsubscribeList();
+  if (unsubscribe) {
+    unsubscribe();
+  }
+  if (unsubscribeList) {
+    unsubscribeList();
+  }
 });
 
 const loadDownloadedModel = async ({ modelId }: { modelId: string }) => {
-  if (!modelId || isUnavailableInBuild) return;
+  if (!modelId || isUnavailableInBuild) {
+    return;
+  }
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
     await transformersJsService.loadDownloadedModel({ modelId });
@@ -274,7 +311,9 @@ const handleRestart = async () => {
     confirmButtonVariant: 'danger',
   });
 
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
 
   try {
     await transformersJsService.restart();
@@ -286,7 +325,9 @@ const handleRestart = async () => {
 
 const downloadModelById = async ({ modelId }: { modelId: string }) => {
   const normalizedModelId = modelId.trim();
-  if (!normalizedModelId || isUnavailableInBuild) return;
+  if (!normalizedModelId || isUnavailableInBuild) {
+    return;
+  }
 
   lastDownloadError.value = null;
   // listCachedModels().isComplete only describes the committed files currently
@@ -325,7 +366,9 @@ const deleteModel = async ({ modelId }: { modelId: string }) => {
     confirmButtonVariant: 'danger',
   });
 
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
 
   try {
     await transformersJsService.deleteModel({ modelId });
@@ -339,11 +382,15 @@ const deleteModel = async ({ modelId }: { modelId: string }) => {
 
 const handleImportLocalModel = async ({ event }: { event: Event }) => {
   const input = event.target as HTMLInputElement;
-  if (!input.files || input.files.length === 0) return;
+  if (!input.files || input.files.length === 0) {
+    return;
+  }
 
   const files = Array.from(input.files);
   const firstFile = files[0];
-  if (!firstFile) return;
+  if (!firstFile) {
+    return;
+  }
 
   const relativePath = firstFile.webkitRelativePath;
   const pathSegments = relativePath.split('/');
@@ -367,7 +414,9 @@ const handleImportLocalModel = async ({ event }: { event: Event }) => {
     let completed = 0;
     for (const file of files) {
       const fileName = file.webkitRelativePath.substring(pathSegments[0]!.length + 1);
-      if (!fileName) continue;
+      if (!fileName) {
+        continue;
+      }
       await transformersJsService.importFile({ modelName, fileName, data: file.stream() });
       completed++;
       importProgress.value = Math.round((completed / files.length) * 100);

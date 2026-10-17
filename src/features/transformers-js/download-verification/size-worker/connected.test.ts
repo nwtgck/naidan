@@ -27,7 +27,9 @@ async function installSizeWorker({ network }: { network: typeof fetch }) {
     return {
       ...actual,
       exposeWorkerRemote: ({ api }: { api: WorkerServerApi<DownloadSizeWorkerApi> }) => {
-        if (active === undefined) throw new Error('No size Worker endpoint');
+        if (active === undefined) {
+          throw new Error('No size Worker endpoint');
+        }
         actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: active.endpoint });
       },
     };
@@ -36,7 +38,8 @@ async function installSizeWorker({ network }: { network: typeof fetch }) {
   vi.stubGlobal('Worker', createProviderReplayTestWorkerConstructor({
     scriptUrl: new URL('./entry.ts', import.meta.url),
     onConstructed: ({ worker }) => {
-      active = worker; workers.push(worker);
+      active = worker;
+      workers.push(worker);
     },
     start: async () => {
       await import('./entry');
@@ -45,8 +48,13 @@ async function installSizeWorker({ network }: { network: typeof fetch }) {
 }
 
 afterEach(() => {
-  for (const worker of workers.splice(0)) worker.terminate();
-  vi.doUnmock('@/utils/worker-transport'); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks();
+  for (const worker of workers.splice(0)) {
+    worker.terminate();
+  }
+  vi.doUnmock('@/utils/worker-transport');
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.resetAllMocks();
   vi.doUnmock('@huggingface/transformers');
   vi.useRealTimers();
 });
@@ -58,22 +66,28 @@ it('connects successful exact-path size metadata without waiting to start acquis
   const headers = Promise.withResolvers<Response>();
   const requested = Promise.withResolvers<void>();
   const network = vi.fn<typeof fetch>(() => {
-    requested.resolve(); return headers.promise;
+    requested.resolve();
+    return headers.promise;
   });
   await installSizeWorker({ network });
   const transfer = Promise.withResolvers<{ status: 'ready'; prefetch: { complete: true } }>();
   const started = Promise.withResolvers<void>();
   let progress: TransformersJsProgressCallback | undefined;
   mocks.prepare.mockImplementation(({ onPlan, progressCallback }: { onPlan: ({ paths }: { paths: string[] }) => void; progressCallback: TransformersJsProgressCallback }) => {
-    onPlan({ paths: ['onnx/a', 'onnx/b'] }); progress = progressCallback; started.resolve(); return transfer.promise;
+    onPlan({ paths: ['onnx/a', 'onnx/b'] });
+    progress = progressCallback;
+    started.resolve();
+    return transfer.promise;
   });
   mocks.accept.mockResolvedValue({ status: 'accepted' });
   const tracker = createDownloadProgressTracker();
   const { runProductionDownloadPreparation } = await import('@/features/transformers-js/download-verification/logic/run-production-download-preparation');
   const running = runProductionDownloadPreparation({ modelId: 'hf.co/fixture/model', revision: 'a'.repeat(40), candidateOrder: [{ device: 'wasm', dtype: 'q4' }], onDownloadProgress: ({ event }) => tracker.observe({ event }) });
-  await started.promise; await requested.promise;
+  await started.promise;
+  await requested.promise;
   expect(tracker.snapshot().overallProgress).toBeUndefined();
-  expect(mocks.prepare).toHaveBeenCalledOnce(); expect(mocks.accept).not.toHaveBeenCalled();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(mocks.accept).not.toHaveBeenCalled();
   expect(network.mock.calls[0]?.[0]).toBe('https://huggingface.co/api/models/fixture/model/paths-info/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   headers.resolve(Response.json([{ type: 'file', path: 'onnx/a', size: 100 }, { type: 'file', path: 'onnx/b', size: 100 }]));
   await vi.waitFor(() => expect(tracker.snapshot().knownTotalBytes).toBe(200));
@@ -86,7 +100,8 @@ it('connects successful exact-path size metadata without waiting to start acquis
   transfer.resolve({ status: 'ready', prefetch: { complete: true } });
   expect(await running).toMatchObject({ status: 'accepted' });
   expect(tracker.snapshot().overallProgress).toBe(95);
-  expect(mocks.accept).toHaveBeenCalledOnce(); expect(network).toHaveBeenCalledOnce();
+  expect(mocks.accept).toHaveBeenCalledOnce();
+  expect(network).toHaveBeenCalledOnce();
 });
 
 it('finishes acquisition while size HTTP is held and discards the retired owner result', async () => {
@@ -98,7 +113,8 @@ it('finishes acquisition while size HTTP is held and discards the retired owner 
     init?.signal?.addEventListener('abort', () => {
       probeAborted = true;
     }, { once: true });
-    requested.resolve(); return response.promise;
+    requested.resolve();
+    return response.promise;
   });
   await installSizeWorker({ network });
   const transfer = Promise.withResolvers<{ status: 'ready'; prefetch: { complete: true } }>();
@@ -121,7 +137,8 @@ it('finishes acquisition while size HTTP is held and discards the retired owner 
   expect(workers[0]?.terminated).toBe(true);
   await vi.advanceTimersByTimeAsync(2_000);
   expect(tracker.snapshot()).toEqual(final);
-  expect(network).toHaveBeenCalledOnce(); expect(mocks.accept).toHaveBeenCalledOnce();
+  expect(network).toHaveBeenCalledOnce();
+  expect(mocks.accept).toHaveBeenCalledOnce();
 });
 
 it('commits real prefetch bytes and markers in original order while the independent size request is held', async () => {
@@ -129,7 +146,8 @@ it('commits real prefetch bytes and markers in original order while the independ
   // accidental await of the probe would stall, rather than pass two seconds later.
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.resetModules();
-  const fs = createMemoryFiles(); fs.enter({ nextPhase: 'prefetch-progress', mutationPolicy: 'read-write' });
+  const fs = createMemoryFiles();
+  fs.enter({ nextPhase: 'prefetch-progress', mutationPolicy: 'read-write' });
   const revision = 'a'.repeat(40);
   const urls = [`https://huggingface.co/fixture/model/resolve/${revision}/onnx/a`, `https://huggingface.co/fixture/model/resolve/${revision}/onnx/b`];
   const optionalResponse = Promise.withResolvers<Response>();
@@ -146,17 +164,23 @@ it('commits real prefetch bytes and markers in original order while the independ
       init?.signal?.addEventListener('abort', () => {
         probeAborted = true;
       }, { once: true });
-      sizeRequests.push(request.url); optionalStarted.resolve(); return optionalResponse.promise;
+      sizeRequests.push(request.url);
+      optionalStarted.resolve();
+      return optionalResponse.promise;
     }
     const index = urls.indexOf(request.url);
-    if (index < 0 || request.method !== 'GET' || request.headers.has('Range')) throw new Error('Unexpected integration request');
+    if (index < 0 || request.method !== 'GET' || request.headers.has('Range')) {
+      throw new Error('Unexpected integration request');
+    }
     artifactRequests.push(request.url);
     return new Response(new ReadableStream<Uint8Array>({
       async pull(controller) {
         if (index === 0) {
-          firstBodyStarted.resolve(); await releaseBody.promise;
+          firstBodyStarted.resolve();
+          await releaseBody.promise;
         }
-        controller.enqueue(index === 0 ? Uint8Array.of(1, 2, 3, 4) : Uint8Array.of(5, 6, 7, 8)); controller.close();
+        controller.enqueue(index === 0 ? Uint8Array.of(1, 2, 3, 4) : Uint8Array.of(5, 6, 7, 8));
+        controller.close();
       },
     }, { highWaterMark: 0 }), { headers: { 'Content-Length': '4' } });
   });
@@ -173,9 +197,13 @@ it('commits real prefetch bytes and markers in original order while the independ
       exposeWorkerRemote: ({ api }: { api: WorkerServerApi<DownloadSizeWorkerApi> | WorkerServerApi<ITransformersJsDownloadWorker> }) => {
       // Two exact entries have distinct native endpoints, not a mutable active
       // Realm selector. Unknown exposed APIs cannot borrow either endpoint.
-        if ('prefetchUrls' in api && downloadWorker !== undefined) actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: downloadWorker.endpoint });
-        else if ('collect' in api && sizeWorker !== undefined) actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: sizeWorker.endpoint });
-        else throw new Error('Unexpected integration exposure');
+        if ('prefetchUrls' in api && downloadWorker !== undefined) {
+          actual.exposeWorkerRemote<ITransformersJsDownloadWorker>({ api, endpoint: downloadWorker.endpoint });
+        } else if ('collect' in api && sizeWorker !== undefined) {
+          actual.exposeWorkerRemote<DownloadSizeWorkerApi>({ api, endpoint: sizeWorker.endpoint });
+        } else {
+          throw new Error('Unexpected integration exposure');
+        }
       },
     };
   });
@@ -184,7 +212,8 @@ it('commits real prefetch bytes and markers in original order while the independ
   const SizeWorker = createProviderReplayTestWorkerConstructor({
     scriptUrl: sizeEntry,
     onConstructed: ({ worker }) => {
-      sizeWorker = worker; workers.push(worker);
+      sizeWorker = worker;
+      workers.push(worker);
     },
     start: async () => {
       await import('./entry');
@@ -193,15 +222,20 @@ it('commits real prefetch bytes and markers in original order while the independ
   const DownloadWorker = createProviderReplayTestWorkerConstructor({
     scriptUrl: downloadEntry,
     onConstructed: ({ worker }) => {
-      downloadWorker = worker; workers.push(worker);
+      downloadWorker = worker;
+      workers.push(worker);
     },
     start: async () => {
       await import('@/features/transformers-js/download-verification/download-worker/entry');
     },
   });
   vi.stubGlobal('Worker', function Worker(url: string | URL, options: WorkerOptions | undefined) {
-    if (String(url) === sizeEntry.href) return new SizeWorker(url, options);
-    if (String(url) === downloadEntry.href) return new DownloadWorker(url, options);
+    if (String(url) === sizeEntry.href) {
+      return new SizeWorker(url, options);
+    }
+    if (String(url) === downloadEntry.href) {
+      return new DownloadWorker(url, options);
+    }
     throw new Error('Unexpected Worker entry');
   });
   vi.stubGlobal('fetch', network);
@@ -220,8 +254,10 @@ it('commits real prefetch bytes and markers in original order while the independ
   const running = runProductionDownloadPreparation({ modelId: 'fixture/model', revision, candidateOrder: [{ device: 'wasm', dtype: 'q4' }], onDownloadProgress: ({ event }) => tracker.observe({ event }) });
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      releaseBody.resolve(); optionalResponse.resolve(Response.json([]));
-      await running; await client.dispose();
+      releaseBody.resolve();
+      optionalResponse.resolve(Response.json([]));
+      await running;
+      await client.dispose();
     },
   };
   await Promise.race([Promise.all([optionalStarted.promise, firstBodyStarted.promise]), running.then(() => {

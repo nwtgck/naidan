@@ -89,7 +89,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       signal,
       run: async ({ writer, signal }) => {
         signal.addEventListener('abort', () => {
-          firstGenAborted = true; stopped.resolve();
+          firstGenAborted = true;
+          stopped.resolve();
         }, { once: true });
         await writer.text({ type: 'text', text: 'First chunk' });
         started.resolve();
@@ -147,7 +148,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       signal,
       run: async ({ writer, signal }) => {
         signal.addEventListener('abort', () => {
-          firstGenAborted = true; stopped.resolve();
+          firstGenAborted = true;
+          stopped.resolve();
         }, { once: true });
         await writer.text({ type: 'text', text: 'First chunk' });
         started.resolve();

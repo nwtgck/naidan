@@ -51,8 +51,11 @@ export function usePrint() {
         await readyPromise;
         window.print();
       };
-      if (documentMetadata === undefined) await run();
-      else await documentMetadata.withPrintTitle({ title, run });
+      if (documentMetadata === undefined) {
+        await run();
+      } else {
+        await documentMetadata.withPrintTitle({ title, run });
+      }
     } finally {
       setActivePrintMode({ mode: undefined });
     }

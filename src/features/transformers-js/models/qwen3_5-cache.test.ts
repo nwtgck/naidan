@@ -22,7 +22,8 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(() => {
-  expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
+  expect(fetch).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });
 
 function fixture() {

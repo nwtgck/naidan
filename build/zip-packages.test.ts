@@ -21,7 +21,9 @@ async function readZipEntries({ zipPath }: {
   const zip = await JSZip.loadAsync(fs.readFileSync(zipPath));
   const result = new Map<string, string>();
   for (const [fileName, entry] of Object.entries(zip.files)) {
-    if (entry.dir) continue;
+    if (entry.dir) {
+      continue;
+    }
     result.set(fileName, await entry.async('string'));
   }
   return result;

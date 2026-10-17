@@ -296,13 +296,17 @@ const UnavailableRunRecordSchemaDto = resolveMissingAsUndefined(ImageGenerationR
 
 export function unavailableDirectRpcRecord({ raw }: { raw: unknown }): { id: string } | undefined {
   const result = UnavailableDirectRecordSchemaDto.safeParse(raw);
-  if (!result.success || ExperimentalImageGenerationSchemaDto.safeParse(raw).success) return undefined;
+  if (!result.success || ExperimentalImageGenerationSchemaDto.safeParse(raw).success) {
+    return undefined;
+  }
   return { id: result.data.id };
 }
 
 export function unavailableRunRpcRecord({ raw }: { raw: unknown }): { id: string, sessionId: string } | undefined {
   const result = UnavailableRunRecordSchemaDto.safeParse(raw);
-  if (!result.success || ExperimentalImageGenerationRunSchemaDto.safeParse(raw).success) return undefined;
+  if (!result.success || ExperimentalImageGenerationRunSchemaDto.safeParse(raw).success) {
+    return undefined;
+  }
   return { id: result.data.id, sessionId: result.data.sessionId };
 }
 

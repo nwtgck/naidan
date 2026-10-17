@@ -13,8 +13,9 @@ type Entry = {
 };
 
 function copyPublication({ publication }: { publication: Publication }): Publication {
-  const { record, files, ...unhandledPublication } = publication; unhandledPublication satisfies Record<PropertyKey, never>;
-  const { id, createdAt, request, result, previews, ...rest } = record;
+  const { record, files, ...unhandledPublication } = publication;
+unhandledPublication satisfies Record<PropertyKey, never>;
+const { id, createdAt, request, result, previews, ...rest } = record;
   rest satisfies Record<PropertyKey, never>;
   const snapshot = copyImageGenerationSnapshot({ snapshot: { id, createdAt, request, inputFiles: files } });
   return { record: { id, createdAt, request: snapshot.request, result: { ...result }, previews: previews.map(image => ({ ...image })) }, files: snapshot.inputFiles };
@@ -24,7 +25,9 @@ function copyPublication({ publication }: { publication: Publication }): Publica
  * belong to a save owner, not to a gallery entry or a mounted controller.
  * Capacity limits new work; an already computed image is never silently evicted. */
 export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntries: number, byteLimit: number }) {
-  if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isSafeInteger(byteLimit) || byteLimit < 1) throw new Error('Invalid pending image limits.');
+  if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isSafeInteger(byteLimit) || byteLimit < 1) {
+    throw new Error('Invalid pending image limits.');
+  }
   const entries = new Map<ImageGenerationId, Entry>();
   const listeners = new Set<({ event }: { event: SaveEvent }) => void>();
   function changed({ event }: { event: SaveEvent }): void {
@@ -37,10 +40,14 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
   return {
     assertCapacity(): void {
       const blobs = new Set([...entries.values()].flatMap(entry => entry.publication.files.map(file => file.blob)));
-      if (entries.size >= maxEntries || [...blobs].reduce((total, blob) => total + blob.size, 0) >= byteLimit) throw new Error('Save or discard pending image history before generating again.');
+      if (entries.size >= maxEntries || [...blobs].reduce((total, blob) => total + blob.size, 0) >= byteLimit) {
+        throw new Error('Save or discard pending image history before generating again.');
+      }
     },
     retain({ record, files, save }: { record: Publication['record'], files: Publication['files'], save: Entry['save'] }): ImageGenerationId {
-      if (entries.has(record.id)) throw new Error('This image history publication is already retained.');
+      if (entries.has(record.id)) {
+        throw new Error('This image history publication is already retained.');
+      }
       entries.set(record.id, { publication: copyPublication({ publication: { record, files } }), save, phase: 'pending', failure: '', task: undefined });
       changed({ event: { type: 'changed' } });
       return record.id;
@@ -56,27 +63,42 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
     },
     retry({ id }: { id: ImageGenerationId }): Promise<void> {
       const entry = entries.get(id);
-      if (!entry) return Promise.reject(new Error('This image has already been saved or discarded.'));
-      if (entry.task) return entry.task;
-      entry.phase = 'saving'; entry.failure = '';
+      if (!entry) {
+        return Promise.reject(new Error('This image has already been saved or discarded.'));
+      }
+      if (entry.task) {
+        return entry.task;
+      }
+      entry.phase = 'saving';
+      entry.failure = '';
       // Defer the writer until task is installed; reentrant view notifications
       // cannot start a second publication. Reuse the same immutable IDs and bytes.
       let completed = false;
       const task = Promise.resolve().then(() => entry.save({ publication: entry.publication })).then(() => {
-        entries.delete(id); completed = true;
+        entries.delete(id);
+        completed = true;
       }, (cause: unknown) => {
-        entry.phase = 'failed'; entry.failure = cause instanceof Error ? cause.message : String(cause); throw cause;
+        entry.phase = 'failed';
+        entry.failure = cause instanceof Error ? cause.message : String(cause);
+        throw cause;
       }).finally(() => {
-        entry.task = undefined; changed({ event: completed ? { type: 'saved', id } : { type: 'changed' } });
+        entry.task = undefined;
+        changed({ event: completed ? { type: 'saved', id } : { type: 'changed' } });
       });
-      entry.task = task; changed({ event: { type: 'changed' } });
+      entry.task = task;
+      changed({ event: { type: 'changed' } });
       return task;
     },
     discard({ id }: { id: ImageGenerationId }): void {
       const entry = entries.get(id);
-      if (!entry) return;
-      if (entry.task) throw new Error('Wait for the current save to finish.');
-      entries.delete(id); changed({ event: { type: 'discarded', id } });
+      if (!entry) {
+        return;
+      }
+      if (entry.task) {
+        throw new Error('Wait for the current save to finish.');
+      }
+      entries.delete(id);
+      changed({ event: { type: 'discarded', id } });
     },
   };
 }

@@ -371,7 +371,9 @@ describe('LmParameters Mapping', () => {
       },
     });
     expect(domain).toBeDefined();
-    if (domain === undefined) throw new Error('Expected LM parameters');
+    if (domain === undefined) {
+      throw new Error('Expected LM parameters');
+    }
     expect(domain.temperature).toBe(0.5);
     expect(domain.reasoning).toBeDefined();
     expect(domain.reasoning.effort).toBeUndefined();
@@ -410,7 +412,9 @@ describe('LmParameters Mapping', () => {
 
     const backToDomain = lmParametersToDomain({ dto });
     expect(backToDomain).toBeDefined();
-    if (backToDomain === undefined) throw new Error('Expected LM parameters');
+    if (backToDomain === undefined) {
+      throw new Error('Expected LM parameters');
+    }
     expect(backToDomain.reasoning.effort).toBe('medium');
   });
 });

@@ -36,7 +36,9 @@ export function installRawReplay({ evidence }: { evidence: {
         expect(h.unknownRequests).toEqual(expectedUnknown);
       }
     } finally {
-      for (const { harness } of active.splice(0)) harness.restoreSessionSpy();
+      for (const { harness } of active.splice(0)) {
+        harness.restoreSessionSpy();
+      }
       vi.unstubAllGlobals();
     }
   });
@@ -55,7 +57,9 @@ export async function start({ archive, bodyPaths }: { archive: RawModel, bodyPat
 
 export function jsonBody({ archive, path }: { archive: RawModel, path: string }): Record<string, unknown> {
   const bytes = archive.files.get(path);
-  if (bytes === undefined) throw new Error(`Missing raw JSON: ${path}`);
+  if (bytes === undefined) {
+    throw new Error(`Missing raw JSON: ${path}`);
+  }
   return z.record(z.string(), z.unknown()).parse(JSON.parse(new TextDecoder().decode(bytes)));
 }
 
@@ -150,7 +154,9 @@ export async function assertRawModelSelection({ modelId, dtype, sessions, probeO
     // counterfactual: no candidate availability or runtime success is implied.
     h.gate.resolve();
     result = await outcome;
-    if (result.model !== undefined) await result.model.dispose();
+    if (result.model !== undefined) {
+      await result.model.dispose();
+    }
   }
   expect(result.error).toBeUndefined();
   expect(h.bodyReads.sort()).toEqual(expected);

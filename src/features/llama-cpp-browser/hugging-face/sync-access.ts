@@ -11,7 +11,9 @@ export type DownloadAccess = {
 
 export async function openSyncAccess({ handle }: { handle: FileSystemFileHandle }): Promise<DownloadAccess> {
   const file = handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<DownloadAccess> };
-  if (!file.createSyncAccessHandle) throw new LlamaCppBrowserError({ code: 'unavailable' });
+  if (!file.createSyncAccessHandle) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
   return file.createSyncAccessHandle();
 }
 

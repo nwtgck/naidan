@@ -623,17 +623,23 @@ class FifoHandle implements WeshFileHandle {
   private wakeReadWaiters(): void {
     const waiters = this.state.readWaiters;
     this.state.readWaiters = [];
-    for (const waiter of waiters) waiter();
+    for (const waiter of waiters) {
+      waiter();
+    }
   }
 
   private wakeWriteWaiters(): void {
     const waiters = this.state.writeWaiters;
     this.state.writeWaiters = [];
-    for (const waiter of waiters) waiter();
+    for (const waiter of waiters) {
+      waiter();
+    }
   }
 
   async read({ buffer, offset, length }: { buffer: Uint8Array, offset?: number, length?: number }): Promise<WeshIOResult> {
-    if (this.closed) return { bytesRead: 0 };
+    if (this.closed) {
+      return { bytesRead: 0 };
+    }
     switch (this.access) {
     case 'read':
     case 'read-write':
@@ -647,7 +653,9 @@ class FifoHandle implements WeshFileHandle {
     }
 
     while (this.state.bufferHeadIndex >= this.state.buffer.length) {
-      if (this.closed || this.state.writerCount === 0) return { bytesRead: 0 };
+      if (this.closed || this.state.writerCount === 0) {
+        return { bytesRead: 0 };
+      }
       await new Promise<void>(resolve => this.state.readWaiters.push(resolve));
     }
 
@@ -682,7 +690,9 @@ class FifoHandle implements WeshFileHandle {
   }
 
   async write({ buffer, offset, length: requestedLength }: { buffer: Uint8Array, offset?: number, length?: number }): Promise<WeshWriteResult> {
-    if (this.closed) throw new WeshBrokenPipeError();
+    if (this.closed) {
+      throw new WeshBrokenPipeError();
+    }
     switch (this.access) {
     case 'write':
     case 'read-write':
@@ -720,7 +730,9 @@ class FifoHandle implements WeshFileHandle {
   }
 
   async close(): Promise<void> {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
     switch (this.access) {
     case 'read':
@@ -1013,7 +1025,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async unmount({ path }: { path: string }): Promise<void> {
     const normalizedPath = this.normalizePath({ path });
-    if (normalizedPath === '/') throw new Error('Cannot unmount root');
+    if (normalizedPath === '/') {
+      throw new Error('Cannot unmount root');
+    }
     this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
   }
 
@@ -1053,13 +1067,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       pathExisted = false;
       const parts = normalized.split('/');
       const name = parts.pop();
-      if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+      if (name === undefined) {
+        throw new Error(`Invalid path: ${normalized}`);
+      }
       const parentPath = parts.join('/') || '/';
       const parent = await this.resolveExistingDirectory({
         path: parentPath,
         finalSymlinkTreatment: 'follow',
       });
-      if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
+      if (parent.readOnly) {
+        throw new Error(`Read-only file system: ${parentPath}`);
+      }
 
       const newHandle = await parent.handle.getFileHandle(name, { create: true });
       resolved = {
@@ -1826,7 +1844,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     let currentPath = '';
     for (let i = 0; i < parts.length; i++) {
       const nextPart = parts[i];
-      if (nextPart === undefined) continue;
+      if (nextPart === undefined) {
+        continue;
+      }
       const checkPath = currentPath + '/' + nextPart;
       try {
         const res = await this.resolveNode({
@@ -1858,12 +1878,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
         }
       } catch {
-        if (!recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
+        if (!recursive && i < parts.length - 1) {
+          throw new Error(`No such file or directory: ${currentPath}`);
+        }
         const parent = await this.resolveExistingDirectory({
           path: currentPath || '/',
           finalSymlinkTreatment: 'follow',
         });
-        if (parent.readOnly) throw new Error(`Read-only fs: ${currentPath || '/'}`);
+        if (parent.readOnly) {
+          throw new Error(`Read-only fs: ${currentPath || '/'}`);
+        }
         await parent.handle.getDirectoryHandle(nextPart, { create: true });
       }
       currentPath = checkPath;
@@ -1887,7 +1911,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error(`Unhandled mount entry: ${_ex}`);
     }
     }
-    if (mount.readOnly) throw new Error('Read-only filesystem');
+    if (mount.readOnly) {
+      throw new Error('Read-only filesystem');
+    }
 
     const existing = await this.tryResolveNode({
       path: normalized,
@@ -1899,13 +1925,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const parts = normalized.split('/');
     const name = parts.pop();
-    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+    if (name === undefined) {
+      throw new Error(`Invalid path: ${normalized}`);
+    }
     const parentPath = parts.join('/') || '/';
     const parent = await this.resolveExistingDirectory({
       path: parentPath,
       finalSymlinkTreatment: 'follow',
     });
-    if (parent.readOnly) throw new Error(`Read-only filesystem: ${parentPath}`);
+    if (parent.readOnly) {
+      throw new Error(`Read-only filesystem: ${parentPath}`);
+    }
 
     await parent.handle.getFileHandle(name, { create: true });
 
@@ -1965,7 +1995,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     const parts = normalized.split('/');
     const name = parts.pop();
-    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+    if (name === undefined) {
+      throw new Error(`Invalid path: ${normalized}`);
+    }
     const parentPath = parts.join('/') || '/';
     const parent = await this.resolveExistingDirectory({
       path: parentPath,
@@ -2016,7 +2048,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const parts = normalized.split('/');
     const name = parts.pop();
-    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+    if (name === undefined) {
+      throw new Error(`Invalid path: ${normalized}`);
+    }
     const parentPath = parts.join('/') || '/';
     const parent = await this.resolveExistingDirectory({
       path: parentPath,
@@ -2042,7 +2076,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error(`Unhandled mount entry: ${_ex}`);
     }
     }
-    if (mount.readOnly) throw new Error(`Read-only filesystem`);
+    if (mount.readOnly) {
+      throw new Error(`Read-only filesystem`);
+    }
 
     const relPath = this.getRelativePath({ path: normalized, mount });
     const parts = normalized.split('/');
@@ -2095,13 +2131,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const newParts = newNormalized.split('/');
     const newName = newParts.pop();
-    if (newName === undefined) throw new Error(`Invalid path: ${newNormalized}`);
+    if (newName === undefined) {
+      throw new Error(`Invalid path: ${newNormalized}`);
+    }
     const newParentPath = newParts.join('/') || '/';
     const newParentRes = await this.resolveExistingDirectory({
       path: newParentPath,
       finalSymlinkTreatment: 'follow',
     });
-    if (newParentRes.readOnly) throw new Error(`Read-only destination: ${newParentPath}`);
+    if (newParentRes.readOnly) {
+      throw new Error(`Read-only destination: ${newParentPath}`);
+    }
 
     const existingDestination = await this.tryResolveNode({
       path: newNormalized,
@@ -2180,7 +2220,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
         const oldParts = oldNormalized.split('/');
         const oldName = oldParts.pop();
-        if (oldName === undefined) throw new Error(`Invalid path: ${oldNormalized}`);
+        if (oldName === undefined) {
+          throw new Error(`Invalid path: ${oldNormalized}`);
+        }
         const oldParentPath = oldParts.join('/') || '/';
         const oldParentRes = await this.resolveExistingDirectory({
           path: oldParentPath,
@@ -2356,7 +2398,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private async saveRegistryEntry({ mount, relPath, entry }: { mount: DirectoryMountEntry, relPath: string, entry: RegistryEntry }) {
-    if (mount.readOnly) return;
+    if (mount.readOnly) {
+      return;
+    }
 
     const metaDir = await this.getMetadataRoot({ mount, create: true });
     if (metaDir === undefined) {
@@ -2365,7 +2409,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const parts = relPath.split('/');
     const fileName = parts.pop();
-    if (fileName === undefined) throw new Error(`Invalid relPath: ${relPath}`);
+    if (fileName === undefined) {
+      throw new Error(`Invalid relPath: ${relPath}`);
+    }
     let currentDir = metaDir;
     for (const part of parts) {
       currentDir = await currentDir.getDirectoryHandle(part, { create: true });
@@ -2378,13 +2424,19 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private async deleteRegistryEntry({ mount, relPath }: { mount: DirectoryMountEntry, relPath: string }) {
-    if (mount.readOnly) return;
+    if (mount.readOnly) {
+      return;
+    }
     try {
       const metaDir = await this.getMetadataRoot({ mount, create: false });
-      if (metaDir === undefined) return;
+      if (metaDir === undefined) {
+        return;
+      }
       const parts = relPath.split('/');
       const fileName = parts.pop();
-      if (fileName === undefined) throw new Error(`Invalid relPath: ${relPath}`);
+      if (fileName === undefined) {
+        throw new Error(`Invalid relPath: ${relPath}`);
+      }
       let currentDir = metaDir;
       for (const part of parts) {
         currentDir = await currentDir.getDirectoryHandle(part);
@@ -2442,19 +2494,26 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private normalizePath({ path }: { path: string }): string {
-    if (!path.startsWith('/')) path = '/' + path;
+    if (!path.startsWith('/')) {
+      path = '/' + path;
+    }
     const parts = path.split('/').filter((p) => p !== '' && p !== '.');
     const stack: string[] = [];
     for (const part of parts) {
-      if (part === '..') stack.pop();
-      else stack.push(part);
+      if (part === '..') {
+        stack.pop();
+      } else {
+        stack.push(part);
+      }
     }
     return '/' + stack.join('/');
   }
 
   private findMount({ path }: { path: string }): MountEntry | undefined {
     return this.mounts.find((m) => {
-      if (path === m.path) return true;
+      if (path === m.path) {
+        return true;
+      }
       const prefix = m.path.endsWith('/') ? m.path : m.path + '/';
       return path.startsWith(prefix);
     });
@@ -2476,7 +2535,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private getRelativePath({ path, mount }: { path: string, mount: DirectoryMountEntry | VirtualMountEntry }): string {
-    if (path === mount.path) return '.';
+    if (path === mount.path) {
+      return '.';
+    }
     const prefix = mount.path.endsWith('/') ? mount.path : mount.path + '/';
     return path.substring(prefix.length);
   }
@@ -2486,9 +2547,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const childNames = new Set<string>();
 
     for (const mount of this.mounts) {
-      if (!mount.path.startsWith(prefix)) continue;
+      if (!mount.path.startsWith(prefix)) {
+        continue;
+      }
       const remainder = mount.path.slice(prefix.length);
-      if (remainder.length === 0) continue;
+      if (remainder.length === 0) {
+        continue;
+      }
       const sep = remainder.indexOf('/');
       childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
@@ -2501,9 +2566,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const childNames = new Set<string>();
 
     for (const specialPath of this.specialFiles.keys()) {
-      if (!specialPath.startsWith(prefix)) continue;
+      if (!specialPath.startsWith(prefix)) {
+        continue;
+      }
       const remainder = specialPath.slice(prefix.length);
-      if (remainder.length === 0) continue;
+      if (remainder.length === 0) {
+        continue;
+      }
       const sep = remainder.indexOf('/');
       childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
@@ -2583,7 +2652,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     let current: FileSystemDirectoryHandle = mount.handle;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-      if (part === undefined) continue;
+      if (part === undefined) {
+        continue;
+      }
       try {
         current = await current.getDirectoryHandle(part);
       } catch (error: unknown) {
@@ -2594,7 +2665,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
     const lastPart = parts[parts.length - 1];
-    if (lastPart === undefined) return { handle: current, readOnly: mount.readOnly, fullPath: normalized };
+    if (lastPart === undefined) {
+      return { handle: current, readOnly: mount.readOnly, fullPath: normalized };
+    }
     try {
       const fileHandle = await current.getFileHandle(lastPart);
       return { handle: fileHandle, readOnly: mount.readOnly, fullPath: normalized };

@@ -210,7 +210,9 @@ function summaryMarkdown({ evidence, candidates }: {
 
 function prefetchNotRunReason({ evidence }: { evidence: DownloadVerificationEvidenceInput }): string {
   const completion = evidence.runtimeCompletion;
-  if (completion === undefined) return 'Probe-only mode does not download full Production model artifacts into OPFS.';
+  if (completion === undefined) {
+    return 'Probe-only mode does not download full Production model artifacts into OPFS.';
+  }
   switch (completion.source) {
   case 'reused-production-cache':
     return 'A Production-accepted cached revision was reused; no model download preparation was needed.';
@@ -237,7 +239,9 @@ function runtimePrefetchFileEvidence({ evidence }: { evidence: DownloadVerificat
   file: import('@/features/transformers-js/types').TransformersJsPrefetchFileResult;
 }> {
   const preparation = evidence.runtimeCompletion?.preparation;
-  if (preparation?.candidates === undefined) return [];
+  if (preparation?.candidates === undefined) {
+    return [];
+  }
   return preparation.candidates.attempts.flatMap((attempt, candidateAttemptIndex) => {
     const prepared = attempt.preparation;
     // No resource plan means no transfer: do not fabricate per-file evidence.
@@ -275,7 +279,9 @@ function packageScope({ mode }: { mode: DownloadVerificationEvidenceInput['mode'
 
 function runtimeAcceptanceLimitation({ evidence }: { evidence: DownloadVerificationEvidenceInput }): string[] {
   const completion = evidence.runtimeCompletion;
-  if (completion === undefined) return ['Repository-complete candidate evidence is not proof of runtime acceptance.'];
+  if (completion === undefined) {
+    return ['Repository-complete candidate evidence is not proof of runtime acceptance.'];
+  }
   switch (completion.status) {
   case 'accepted': {
     const identity = runtimeRevisionIdentity({ evidence });

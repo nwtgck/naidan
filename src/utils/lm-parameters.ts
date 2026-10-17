@@ -27,7 +27,9 @@ function hasReasoningOverrides({
 }: {
   reasoning: LmParameterOverrides['reasoning'],
 }): boolean {
-  if (reasoning === undefined) return false;
+  if (reasoning === undefined) {
+    return false;
+  }
 
   // Keep this key-driven exhaustive switch instead of a compact property check.
   // Adding a new Reasoning parameter must fail typechecking here until its
@@ -49,7 +51,9 @@ export function hasLmParameterOverrides({
 }: {
   lmParameters: LmParameterOverrides | undefined,
 }): boolean {
-  if (lmParameters === undefined) return false;
+  if (lmParameters === undefined) {
+    return false;
+  }
 
   // Intentionally enumerate keys from the canonical LmParameters shape and use
   // an exhaustive switch. If a new LM parameter is added, the `never` assignment
@@ -79,7 +83,9 @@ export function cloneLmParameters({
 }: {
   lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
-  if (lmParameters === undefined) return undefined;
+  if (lmParameters === undefined) {
+    return undefined;
+  }
 
   const cloned: LmParameters = {
     ...EMPTY_LM_PARAMETERS,
@@ -136,7 +142,9 @@ export function cloneLmParameters({
 function hasCompleteReasoningShape(
   reasoning: LmParameterOverrides['reasoning'],
 ): reasoning is Reasoning {
-  if (reasoning === undefined) return false;
+  if (reasoning === undefined) {
+    return false;
+  }
 
   return REASONING_PARAMETER_KEYS.every((key) => {
     switch (key) {
@@ -153,7 +161,9 @@ function hasCompleteReasoningShape(
 function hasCompleteLmParametersShape(
   lmParameters: LmParameterOverrides | undefined,
 ): lmParameters is LmParameters {
-  if (lmParameters === undefined) return false;
+  if (lmParameters === undefined) {
+    return false;
+  }
 
   return LM_PARAMETER_KEYS.every((key) => {
     switch (key) {
@@ -179,7 +189,9 @@ export function normalizeLmParameters({
 }: {
   lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
-  if (!hasLmParameterOverrides({ lmParameters })) return undefined;
+  if (!hasLmParameterOverrides({ lmParameters })) {
+    return undefined;
+  }
 
   return hasCompleteLmParametersShape(lmParameters)
     ? lmParameters

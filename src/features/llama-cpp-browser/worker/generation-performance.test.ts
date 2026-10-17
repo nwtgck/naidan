@@ -8,7 +8,10 @@ describe('bounded generation performance summaries', () => {
   it('performs no clock reads or reporting when disabled', () => {
     const now = vi.fn(() => 100);
     const metrics = createGenerationPerformance({ enabled: false, now });
-    metrics.enter({ next: 'native-sample' }); metrics.sampled(); metrics.rendered({ endOfGeneration: false }); metrics.delivered();
+    metrics.enter({ next: 'native-sample' });
+    metrics.sampled();
+    metrics.rendered({ endOfGeneration: false });
+    metrics.delivered();
     expect(metrics.finish({ outcome: 'completed', profile })).toBeUndefined();
     expect(now).not.toHaveBeenCalled();
   });
@@ -16,11 +19,20 @@ describe('bounded generation performance summaries', () => {
   it('measures exclusive stages including repeats and cleanup without keeping a token history', () => {
     let at = 10;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 15; metrics.enter({ next: 'tokenize' }); metrics.counters.tokenizeCalls++;
-    at = 19; metrics.enter({ next: 'native-sample' });
-    at = 21; metrics.sampled(); metrics.enter({ next: 'stream-emit' });
-    at = 25; metrics.delivered(); metrics.enter({ next: 'native-sample' });
-    at = 28; metrics.sampled(); metrics.enter({ next: 'cleanup' });
+    at = 15;
+    metrics.enter({ next: 'tokenize' });
+    metrics.counters.tokenizeCalls++;
+    at = 19;
+    metrics.enter({ next: 'native-sample' });
+    at = 21;
+    metrics.sampled();
+    metrics.enter({ next: 'stream-emit' });
+    at = 25;
+    metrics.delivered();
+    metrics.enter({ next: 'native-sample' });
+    at = 28;
+    metrics.sampled();
+    metrics.enter({ next: 'cleanup' });
     at = 30;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.elapsedMs).toBe(20);
@@ -66,8 +78,10 @@ describe('bounded generation performance summaries', () => {
   it('keeps one aggregate per stage even after a long generation', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     for (let i = 0; i < 10000; i++) {
-      metrics.enter({ next: 'native-sample' }); metrics.sampled();
-      metrics.enter({ next: 'generation-decode' }); metrics.counters.decodedTokens++;
+      metrics.enter({ next: 'native-sample' });
+      metrics.sampled();
+      metrics.enter({ next: 'generation-decode' });
+      metrics.counters.decodedTokens++;
     }
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.performance!.stages).toHaveLength(3);
@@ -78,7 +92,9 @@ describe('bounded generation performance summaries', () => {
   it('snapshots numeric settings without retaining a mutable sampling object', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const sampling = { temperature: 0.7, topP: 0.95, presencePenalty: -1, frequencyPenalty: 2, seed: 4294967295 };
-    metrics.counters.sampling = sampling; metrics.counters.contextTokens = 4096; metrics.counters.maximumTokens = 128;
+    metrics.counters.sampling = sampling;
+    metrics.counters.contextTokens = 4096;
+    metrics.counters.maximumTokens = 128;
     const report = metrics.finish({ outcome: 'completed', profile })!;
     sampling.seed = 0;
     expect(report.performance!.sampling!.seed).toBe(4294967295);
@@ -244,7 +260,9 @@ describe('paired delivery and decode accounting', () => {
     };
     metrics.counters.deliveryDecode = pair;
     metrics.enter({ next: 'generation-overlap' });
-    now = 30; metrics.enter({ next: 'cleanup' }); now = 35;
+    now = 30;
+    metrics.enter({ next: 'cleanup' });
+    now = 35;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.performance!.stages.reduce((sum, item) => sum + item.elapsedMs, 0)).toBe(35);
     expect(report.performance!.deliveryDecode).toEqual(pair);
@@ -273,9 +291,12 @@ describe('post-first-sample throughput', () => {
   it('requires 100 total samples and three seconds, then reports each three-second sample window', () => {
     let at = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 1000; expect(metrics.sampled()).toBeUndefined();
+    at = 1000;
+    expect(metrics.sampled()).toBeUndefined();
     at = 3999;
-    for (let i = 1; i < 100; i++) expect(metrics.sampled()).toBeUndefined();
+    for (let i = 1; i < 100; i++) {
+      expect(metrics.sampled()).toBeUndefined();
+    }
     at = 4000;
     expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
       sampledTokens: 101,
@@ -283,7 +304,8 @@ describe('post-first-sample throughput', () => {
       postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
       interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
     });
-    at = 6999; expect(metrics.sampled()).toBeUndefined();
+    at = 6999;
+    expect(metrics.sampled()).toBeUndefined();
     at = 7000;
     expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
       sampledTokens: 103,
@@ -302,7 +324,9 @@ describe('post-first-sample throughput', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
     expect(metrics.sampled()).toBeUndefined();
     at = 4000;
-    for (let i = 1; i < 99; i++) expect(metrics.sampled()).toBeUndefined();
+    for (let i = 1; i < 99; i++) {
+      expect(metrics.sampled()).toBeUndefined();
+    }
     expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
       sampledTokens: 100,
       firstSampleMs: 0,
@@ -314,10 +338,15 @@ describe('post-first-sample throughput', () => {
   it.each(['completed', 'aborted', 'failed'] as const)('keeps %s throughput separate from TTFT, delivery and cleanup', outcome => {
     let at = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 1000; metrics.sampled();
-    at = 1040; metrics.sampled();
-    at = 1100; metrics.sampled();
-    at = 2000; metrics.delivered(); metrics.enter({ next: 'cleanup' });
+    at = 1000;
+    metrics.sampled();
+    at = 1040;
+    metrics.sampled();
+    at = 1100;
+    metrics.sampled();
+    at = 2000;
+    metrics.delivered();
+    metrics.enter({ next: 'cleanup' });
     at = 3000;
     const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
     expect(report.elapsedMs).toBe(3000);
@@ -332,7 +361,9 @@ describe('post-first-sample throughput', () => {
 
   it.each([0, 1, 2])('omits an undefined rate for %s samples with no measurable interval', count => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    for (let i = 0; i < count; i++) metrics.sampled();
+    for (let i = 0; i < count; i++) {
+      metrics.sampled();
+    }
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: Math.max(0, count - 1), elapsedMs: 0 });
     expect(report.performance!.firstSampleMs).toBe(count ? 0 : undefined);
@@ -341,13 +372,19 @@ describe('post-first-sample throughput', () => {
   it('keeps interleaved requests and finished reports independent', () => {
     let at = 0;
     const first = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 100; first.sampled();
+    at = 100;
+    first.sampled();
     const second = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 200; second.sampled();
-    at = 300; first.sampled();
+    at = 200;
+    second.sampled();
+    at = 300;
+    first.sampled();
     const report = first.finish({ outcome: 'completed', profile })!;
-    at = 400; second.sampled(); first.sampled();
-    at = 500; second.sampled();
+    at = 400;
+    second.sampled();
+    first.sampled();
+    at = 500;
+    second.sampled();
     expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 1, elapsedMs: 200, tokensPerSecond: 5 });
     expect(report.performance!.sampledTokens).toBe(2);
     expect(first.finish({ outcome: 'failed', profile })).toBeUndefined();
@@ -375,19 +412,28 @@ describe('nonterminal token interval measurement', () => {
   it('does not count EOG as a displayed token or include its final wait', () => {
     let at = 100;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
-    at = 110; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-    at = 140; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-    at = 160; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+    at = 110;
+    metrics.sampled();
+    metrics.rendered({ endOfGeneration: false });
+    at = 140;
+    metrics.sampled();
+    metrics.rendered({ endOfGeneration: false });
+    at = 160;
+    metrics.sampled();
+    metrics.rendered({ endOfGeneration: true });
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.performance).toMatchObject({ sampledTokens: 3, nonEogTokens: 2, firstNonEogSampleMs: 10, lastNonEogSampleMs: 40 });
   });
 });
 
 it('uses already acquired sample timestamps for bounded windows without extra clock reads', () => {
-  let time = 0; const now = vi.fn(() => time);
+  let time = 0;
+  const now = vi.fn(() => time);
   const metrics = createGenerationPerformance({ enabled: true, now });
   for (let i = 0; i < 35; i++) {
-    time++; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+    time++;
+    metrics.sampled();
+    metrics.rendered({ endOfGeneration: false });
   }
   expect(now).toHaveBeenCalledTimes(36);
   const result = metrics.finish({ outcome: 'completed', profile: 'cpu-wasm32' });
@@ -402,9 +448,15 @@ it('uses already acquired sample timestamps for bounded windows without extra cl
 it('keeps inclusive debug throughput and nonterminal investigation intervals distinct in one summary', () => {
   let at = 0;
   const metrics = createGenerationPerformance({ enabled: true, now: () => at });
-  at = 100; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-  at = 150; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
-  at = 210; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+  at = 100;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: false });
+  at = 150;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: false });
+  at = 210;
+  metrics.sampled();
+  metrics.rendered({ endOfGeneration: true });
   at = 250;
   const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
   expect(report.performance).toMatchObject({

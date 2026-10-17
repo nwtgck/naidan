@@ -18,7 +18,8 @@ let root: MemoryDirectory;
 const scopes: ReturnType<typeof effectScope>[] = [];
 
 function library() {
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   return scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => false,
@@ -33,19 +34,22 @@ function library() {
 }
 
 beforeEach(() => {
-  root = new MemoryDirectory('root'); calls.fetch.mockReset();
+  root = new MemoryDirectory('root');
+  calls.fetch.mockReset();
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => root },
     locks: {
       request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-        options.signal?.throwIfAborted(); return run();
+        options.signal?.throwIfAborted();
+        return run();
       },
     },
   });
 });
 
 afterEach(() => {
-  scopes.splice(0).forEach(scope => scope.stop()); vi.unstubAllGlobals();
+  scopes.splice(0).forEach(scope => scope.stop());
+  vi.unstubAllGlobals();
 });
 
 async function serve({ layers, failLast }: { layers: number, failLast: boolean }): Promise<void> {
@@ -67,7 +71,8 @@ async function serve({ layers, failLast }: { layers: number, failLast: boolean }
       policyName: 'huggingface_models',
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
     };
@@ -78,7 +83,8 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   await serve({ layers: 36, failLast: false });
   const view = library();
   await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(view.downloadState.value).toBe('complete'); expect(view.ready.value).toBe(true);
+  expect(view.downloadState.value).toBe('complete');
+  expect(view.ready.value).toBe(true);
   expect(view.selectedModels()?.map(model => [model.slot, model.path])).toEqual(files.map(file => [file.role, file.path]));
   expect(view.components.value.find(component => component.slot === 'lm')?.selected).toContain(files[2]!.path);
   const inventory = await listImageRepositories({ signal: undefined });
@@ -86,27 +92,35 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   const identities = view.selectedModels()!.map(model => model.sourceId);
   expect(identities.every(id => typeof id === 'string' && id.includes('huggingface.co/'))).toBe(true);
   calls.fetch.mockClear();
-  const reopened = library(); await reopened.refresh();
+  const reopened = library();
+  await reopened.refresh();
   reopened.chooseRecipe({ recipeId: recipe.id, selections: {} });
-  expect(reopened.ready.value).toBe(true); expect(calls.fetch).not.toHaveBeenCalled();
+  expect(reopened.ready.value).toBe(true);
+  expect(calls.fetch).not.toHaveBeenCalled();
   expect(reopened.selectedModels()!.map(model => model.sourceId)).toEqual(identities);
 });
 
 it('does not call a fully downloaded but structurally wrong encoder ready; a filename cannot bypass classification', async () => {
   await serve({ layers: 32, failLast: false });
-  const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(view.downloadState.value).toBe('incomplete'); expect(view.ready.value).toBe(false);
+  const view = library();
+  await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  expect(view.downloadState.value).toBe('incomplete');
+  expect(view.ready.value).toBe(false);
   expect(view.components.value.find(component => component.slot === 'lm')?.selected).toBe('');
   expect(view.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(2);
 });
 
 it('retains earlier complete files when the third download fails and reuses them on retry', async () => {
   await serve({ layers: 36, failLast: true });
-  const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(view.downloadState.value).toBe('failed'); expect(view.ready.value).toBe(false);
+  const view = library();
+  await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  expect(view.downloadState.value).toBe('failed');
+  expect(view.ready.value).toBe(false);
   expect((await listImageRepositories({ signal: undefined })).flatMap(repo => repo.files)).toHaveLength(2);
-  await serve({ layers: 36, failLast: false }); calls.fetch.mockClear();
+  await serve({ layers: 36, failLast: false });
+  calls.fetch.mockClear();
   await view.resumeDownload();
-  expect(view.downloadState.value).toBe('complete'); expect(view.ready.value).toBe(true);
+  expect(view.downloadState.value).toBe('complete');
+  expect(view.ready.value).toBe(true);
   expect(calls.fetch.mock.calls.filter(([{ request }]) => !request.url.includes('/api/'))).toHaveLength(1);
 });

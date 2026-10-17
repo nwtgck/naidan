@@ -113,7 +113,9 @@ function isExecutableScriptType({ type }: { type: string | undefined }): boolean
 
 
 function debugCloneFileProtocolStandaloneVerificationValue<Value>({ value }: { value: Value }): Value {
-  if (value === undefined) return value;
+  if (value === undefined) {
+    return value;
+  }
   if (typeof structuredClone === 'function') {
     return structuredClone(value);
   }
@@ -363,7 +365,9 @@ async function debugWaitForVerificationCheckUntilDeadline<Result>({
       timeout,
     ]);
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -601,7 +605,9 @@ export async function debugRunFileProtocolStandaloneVerification({
 
   const failed = checks.filter((item) => item.status === 'fail').length;
   const resolvedPluginDiagnostics = (() => {
-    if (pluginDiagnosticsReadResult === undefined) return undefined;
+    if (pluginDiagnosticsReadResult === undefined) {
+      return undefined;
+    }
     switch (pluginDiagnosticsReadResult.status) {
     case 'fulfilled':
       return pluginDiagnosticsReadResult.value;

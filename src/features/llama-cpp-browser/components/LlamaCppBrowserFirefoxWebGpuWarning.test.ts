@@ -17,7 +17,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
   vi.unstubAllGlobals();
 });
 

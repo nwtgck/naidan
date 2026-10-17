@@ -54,7 +54,9 @@ describe('app permissions comparison guide', () => {
 
     const evidence = [...article?.querySelectorAll<HTMLAnchorElement>('a[href^="https://"]') ?? []];
     expect(evidence.length).toBeGreaterThanOrEqual(9);
-    for (const link of evidence) expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
+    for (const link of evidence) {
+      expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
+    }
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/browser-boundaries/`,
       `/docs/${locale}/csp-editions/`,

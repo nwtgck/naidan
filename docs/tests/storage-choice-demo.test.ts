@@ -26,7 +26,9 @@ describe('storage choice replica', () => {
         local: [s.local_storage, s.local_storage_description],
         memory: [s.ephemeral_storage, s.ephemeral_storage_description],
       }[provider];
-      for (const text of expected) expect(option?.textContent).toContain(text);
+      for (const text of expected) {
+        expect(option?.textContent).toContain(text);
+      }
     }
 
     expect(demo?.querySelector('button, input, a, script')).toBeNull();

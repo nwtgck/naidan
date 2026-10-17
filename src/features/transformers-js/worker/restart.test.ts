@@ -20,7 +20,9 @@ class MockWorker extends EventTarget {
     MockWorker.constructorCount++;
     MockWorker.latest = this;
     queueMicrotask(() => {
-      if (this.active) this.startup.start();
+      if (this.active) {
+        this.startup.start();
+      }
     });
   }
 }
@@ -28,7 +30,9 @@ class MockWorker extends EventTarget {
 vi.stubGlobal('Worker', MockWorker);
 
 afterEach(() => {
-  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+  for (const worker of workers.splice(0)) {
+    worker.dispatchEvent(new Event('error'));
+  }
 });
 
 // Mock navigator.storage

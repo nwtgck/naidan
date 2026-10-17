@@ -91,7 +91,9 @@ function isNumericLike({
 }
 
 function createInputValue({ value }: { value: string }): AwkValue {
-  if (!isNumericLike({ value })) return value;
+  if (!isNumericLike({ value })) {
+    return value;
+  }
   return {
     kind: 'numeric-string',
     text: value,
@@ -132,7 +134,9 @@ function roundAbsoluteNumberToDecimalInteger({
   if (!Number.isFinite(value) || value < 0) {
     throw new Error('awk: internal decimal rounding requires a finite non-negative value');
   }
-  if (value === 0) return 0n;
+  if (value === 0) {
+    return 0n;
+  }
 
   float64BitsView.setFloat64(0, value, false);
   const bits = float64BitsView.getBigUint64(0, false);
@@ -177,7 +181,9 @@ function formatFixedNumber({
   value: number,
   precision: number,
 }): string {
-  if (!Number.isFinite(value)) return coerceToString({ value });
+  if (!Number.isFinite(value)) {
+    return coerceToString({ value });
+  }
   const negative = value < 0 || Object.is(value, -0);
   const rounded = roundAbsoluteNumberToDecimalInteger({
     value: Math.abs(value),
@@ -201,12 +207,18 @@ function formatExponentialNumber({
   uppercase: boolean,
   alternateForm: boolean,
 }): string {
-  if (!Number.isFinite(value)) return coerceToString({ value });
+  if (!Number.isFinite(value)) {
+    return coerceToString({ value });
+  }
   const negative = value < 0 || Object.is(value, -0);
   const absolute = Math.abs(value);
   let exponent = absolute === 0 ? 0 : Math.floor(Math.log10(absolute));
-  while (absolute !== 0 && absolute < 10 ** exponent) exponent -= 1;
-  while (absolute >= 10 ** (exponent + 1)) exponent += 1;
+  while (absolute !== 0 && absolute < 10 ** exponent) {
+    exponent -= 1;
+  }
+  while (absolute >= 10 ** (exponent + 1)) {
+    exponent += 1;
+  }
 
   let rounded = roundAbsoluteNumberToDecimalInteger({
     value: absolute,
@@ -238,7 +250,9 @@ function formatGeneralNumber({
   alternateForm: boolean,
 }): string {
   if (value === 0) {
-    if (!alternateForm) return Object.is(value, -0) ? '-0' : '0';
+    if (!alternateForm) {
+      return Object.is(value, -0) ? '-0' : '0';
+    }
     return formatFixedNumber({
       value,
       precision: Math.max(0, precision - 1),
@@ -275,16 +289,24 @@ function coerceToString({
     return value.source;
   }
 
-  if (isNumericString(value)) return value.text;
+  if (isNumericString(value)) {
+    return value.text;
+  }
 
   if (typeof value === 'number') {
-    if (value === Number.POSITIVE_INFINITY) return '+inf';
-    if (value === Number.NEGATIVE_INFINITY) return '-inf';
+    if (value === Number.POSITIVE_INFINITY) {
+      return '+inf';
+    }
+    if (value === Number.NEGATIVE_INFINITY) {
+      return '-inf';
+    }
     if (Number.isNaN(value)) {
       float64BitsView.setFloat64(0, value, false);
       return (float64BitsView.getBigUint64(0, false) >> 63n) === 1n ? '-nan' : '+nan';
     }
-    if (Number.isInteger(value)) return String(value);
+    if (Number.isInteger(value)) {
+      return String(value);
+    }
     return formatGeneralNumber({ value, precision: 6, alternateForm: false });
   }
 
@@ -298,8 +320,12 @@ function formatNumberUsingAwkFormat({
   value: number,
   format: string,
 }): string {
-  if (!Number.isFinite(value)) return coerceToString({ value });
-  if (Number.isInteger(value)) return String(value);
+  if (!Number.isFinite(value)) {
+    return coerceToString({ value });
+  }
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
   return formatPrintfOutput({
     format,
     argumentsList: [value],
@@ -313,7 +339,9 @@ function coerceToPrintString({
   value: AwkValue,
   state: AwkRuntimeState,
 }): string {
-  if (typeof value !== 'number') return coerceToString({ value });
+  if (typeof value !== 'number') {
+    return coerceToString({ value });
+  }
   return formatNumberUsingAwkFormat({
     value,
     format: coerceToString({ value: getVariable({ state, name: 'OFMT' }) }),
@@ -327,7 +355,9 @@ function coerceToConcatenationString({
   value: AwkValue,
   state: AwkRuntimeState,
 }): string {
-  if (typeof value !== 'number') return coerceToString({ value });
+  if (typeof value !== 'number') {
+    return coerceToString({ value });
+  }
   return formatNumberUsingAwkFormat({
     value,
     format: coerceToString({ value: getVariable({ state, name: 'CONVFMT' }) }),
@@ -375,7 +405,9 @@ async function evaluateRegexOperand({
   state: AwkRuntimeState,
 }): Promise<RegExp> {
   // eslint-disable-next-line local-rules-switch/force-switch-for-union -- Regex literals need one fast path; all other expressions share coercion.
-  if (expression.kind === 'regex') return expression.value;
+  if (expression.kind === 'regex') {
+    return expression.value;
+  }
   return coerceToRegex({ value: await evaluateExpression({ expression, state }) });
 }
 
@@ -460,7 +492,9 @@ function getVariable({
   default: {
     const frame = state.callFrames.at(-1);
     if (frame?.locals.has(name) === true) {
-      if (frame.scalars.has(name)) return frame.scalars.get(name) ?? '';
+      if (frame.scalars.has(name)) {
+        return frame.scalars.get(name) ?? '';
+      }
       if (
         frame.arrays.has(name)
         || frame.arrayAliasTargets.get(name)?.getEntries() !== undefined
@@ -501,15 +535,21 @@ function resolveArrayAliasTarget({
 }): AwkArrayAliasTarget | undefined {
   const frame = state.callFrames.at(-1);
   if (frame?.locals.has(name) === true) {
-    if (frame.scalars.has(name)) return undefined;
+    if (frame.scalars.has(name)) {
+      return undefined;
+    }
     const inherited = frame.arrayAliasTargets.get(name);
-    if (inherited !== undefined) return inherited;
+    if (inherited !== undefined) {
+      return inherited;
+    }
     return {
       getEntries: () => frame.arrays.get(name),
       setEntries: ({ entries }) => frame.arrays.set(name, entries),
     };
   }
-  if (state.variables.has(name)) return undefined;
+  if (state.variables.has(name)) {
+    return undefined;
+  }
   return {
     getEntries: () => state.arrays.get(name),
     setEntries: ({ entries }) => state.arrays.set(name, entries),
@@ -536,7 +576,9 @@ function requireArrayEntries({
   name: string,
 }): Map<string, AwkValue> {
   const entries = getArrayEntries({ state, name });
-  if (entries !== undefined) return entries;
+  if (entries !== undefined) {
+    return entries;
+  }
 
   const frame = state.callFrames.at(-1);
   if (frame?.locals.has(name) === true) {
@@ -854,7 +896,9 @@ function replaceInText({
   switch (mode) {
   case 'first': {
     const match = findPosixLeftmostLongestMatch({ regex, source, startIndex: 0 });
-    if (match === undefined) return { text: source, count: 0 };
+    if (match === undefined) {
+      return { text: source, count: 0 };
+    }
     return {
       text: source.slice(0, match.index)
         + applyAwkReplacement({ replacement, match: match.text })
@@ -875,13 +919,17 @@ function replaceInText({
         source,
         startIndex: searchIndex,
       });
-      if (match === undefined) break;
+      if (match === undefined) {
+        break;
+      }
 
       const matched = match.text;
       const start = match.index;
       const end = start + matched.length;
       if (matched.length === 0 && start === previousNonEmptyMatchEnd) {
-        if (start >= source.length) break;
+        if (start >= source.length) {
+          break;
+        }
         const codePoint = source.codePointAt(start);
         const nextIndex = start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
         text += source.slice(cursor, nextIndex);
@@ -1293,7 +1341,9 @@ function formatPrintfOutput({
       case 'd':
       case 'i': {
         const integer = Math.trunc(coerceToNumber({ value: argument }));
-        if (precision === 0 && integer === 0) return '';
+        if (precision === 0 && integer === 0) {
+          return '';
+        }
         const sign = integer < 0 ? '-' : '';
         const digits = String(Math.abs(integer)).padStart(precision ?? 0, '0');
         return `${sign}${digits}`;
@@ -1331,29 +1381,39 @@ function formatPrintfOutput({
         }
       }
       case 'c': {
-        if (typeof argument === 'string' && argument.length > 0) return argument[0] ?? '';
+        if (typeof argument === 'string' && argument.length > 0) {
+          return argument[0] ?? '';
+        }
         return createAwkByteCharacter({
           byte: Math.trunc(coerceToNumber({ value: argument })),
         });
       }
       case 'o': {
         const integer = Math.trunc(coerceToNumber({ value: argument })) >>> 0;
-        if (precision === 0 && integer === 0) return '';
+        if (precision === 0 && integer === 0) {
+          return '';
+        }
         return integer.toString(8).padStart(precision ?? 0, '0');
       }
       case 'u': {
         const integer = Math.trunc(coerceToNumber({ value: argument })) >>> 0;
-        if (precision === 0 && integer === 0) return '';
+        if (precision === 0 && integer === 0) {
+          return '';
+        }
         return String(integer).padStart(precision ?? 0, '0');
       }
       case 'x': {
         const integer = Math.trunc(coerceToNumber({ value: argument })) >>> 0;
-        if (precision === 0 && integer === 0) return '';
+        if (precision === 0 && integer === 0) {
+          return '';
+        }
         return integer.toString(16).padStart(precision ?? 0, '0');
       }
       case 'X': {
         const integer = Math.trunc(coerceToNumber({ value: argument })) >>> 0;
-        if (precision === 0 && integer === 0) return '';
+        if (precision === 0 && integer === 0) {
+          return '';
+        }
         return integer.toString(16).toUpperCase().padStart(precision ?? 0, '0');
       }
       default: {
@@ -1382,13 +1442,19 @@ function formatPrintfOutput({
       }
       break;
     case 'o':
-      if (flags.includes('#') && rendered !== '0' && !rendered.startsWith('0')) prefix = '0';
+      if (flags.includes('#') && rendered !== '0' && !rendered.startsWith('0')) {
+        prefix = '0';
+      }
       break;
     case 'x':
-      if (flags.includes('#') && coerceToNumber({ value: argument }) !== 0) prefix = '0x';
+      if (flags.includes('#') && coerceToNumber({ value: argument }) !== 0) {
+        prefix = '0x';
+      }
       break;
     case 'X':
-      if (flags.includes('#') && coerceToNumber({ value: argument }) !== 0) prefix = '0X';
+      if (flags.includes('#') && coerceToNumber({ value: argument }) !== 0) {
+        prefix = '0X';
+      }
       break;
     case 'c':
     case 's':
@@ -1448,7 +1514,9 @@ async function executeForClausePart({
   part: Extract<AwkStatement, { kind: 'for' }>['initializer'],
   state: AwkRuntimeState,
 }): Promise<void> {
-  if (part === undefined) return;
+  if (part === undefined) {
+    return;
+  }
 
   switch (part.kind) {
   case 'assign': {
@@ -1523,7 +1591,9 @@ function assignOutputCommandSequence({
   command: string,
 }): number {
   const existing = state.outputCommandSequences.get(command);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    return existing;
+  }
   const sequence = state.nextOutputCommandSequence;
   state.nextOutputCommandSequence += 1;
   state.outputCommandSequences.set(command, sequence);
@@ -1537,10 +1607,14 @@ async function flushCompletedOutputCommands({
 }): Promise<void> {
   while (true) {
     const output = state.completedOutputCommands.get(state.nextOutputCommandSequenceToFlush);
-    if (output === undefined) return;
+    if (output === undefined) {
+      return;
+    }
     state.completedOutputCommands.delete(state.nextOutputCommandSequenceToFlush);
     state.nextOutputCommandSequenceToFlush += 1;
-    if (output.length > 0) await state.flushOutput({ output: [output] });
+    if (output.length > 0) {
+      await state.flushOutput({ output: [output] });
+    }
   }
 }
 
@@ -1549,7 +1623,9 @@ async function activateOutputCommandFlushOrdering({
 }: {
   state: AwkRuntimeState,
 }): Promise<void> {
-  if (state.outputCommandFlushOrderingActive) return;
+  if (state.outputCommandFlushOrderingActive) {
+    return;
+  }
   await state.flushOutput({ output: state.outputTarget });
   state.outputCommandFlushOrderingActive = true;
   for (const command of state.outputCommandPipes.keys()) {
@@ -1565,7 +1641,9 @@ async function closeCommandOutput({
   command: string,
 }): Promise<number | undefined> {
   const buffered = state.outputCommandPipes.get(command);
-  if (buffered === undefined) return undefined;
+  if (buffered === undefined) {
+    return undefined;
+  }
   state.outputCommandPipes.delete(command);
   await state.ioChain;
 
@@ -1576,7 +1654,9 @@ async function closeCommandOutput({
       command,
       input: buffered.join(''),
     });
-    if (result.output.length > 0) await state.flushOutput({ output: [result.output] });
+    if (result.output.length > 0) {
+      await state.flushOutput({ output: [result.output] });
+    }
     return result.exitCode;
   }
 
@@ -1609,7 +1689,9 @@ function closeOutputRedirection({
   path: string,
 }): number {
   const existing = state.outputRedirections.get(path);
-  if (existing?.open !== true) return -1;
+  if (existing?.open !== true) {
+    return -1;
+  }
   existing.open = false;
   return 0;
 }
@@ -1633,7 +1715,9 @@ async function executeUserDefinedFunction({
 
   for (const [index, parameter] of definition.parameters.entries()) {
     const argument = argumentExpressions[index];
-    if (argument === undefined) continue;
+    if (argument === undefined) {
+      continue;
+    }
     // eslint-disable-next-line local-rules-switch/force-switch-for-union -- Only identifier arguments can alias AWK arrays; every other expression is scalar.
     if (argument.kind === 'identifier') {
       const array = getArrayEntries({ state, name: argument.name });
@@ -1742,7 +1826,9 @@ async function evaluateExpression({
         switch (firstArgument.kind) {
         case 'identifier': {
           const array = getArrayEntries({ state, name: firstArgument.name });
-          if (array !== undefined) return array.size;
+          if (array !== undefined) {
+            return array.size;
+          }
           break;
         }
         default:
@@ -1850,7 +1936,9 @@ async function evaluateExpression({
     case 'index': {
       const source = coerceToString({ value: args[0] ?? '' });
       const needle = coerceToString({ value: args[1] ?? '' });
-      if (needle.length === 0) return 1;
+      if (needle.length === 0) {
+        return 1;
+      }
       const position = source.indexOf(needle);
       return position === -1 ? 0 : position + 1;
     }
@@ -1898,7 +1986,9 @@ async function evaluateExpression({
         }
         return 0;
       }
-      if (state.outputRedirections.get(target)?.open === true) return 0;
+      if (state.outputRedirections.get(target)?.open === true) {
+        return 0;
+      }
       if (state.outputCommandPipes.has(target)) {
         await activateOutputCommandFlushOrdering({ state });
         return 0;
@@ -1910,8 +2000,12 @@ async function evaluateExpression({
       const commandStatus = await closeCommandOutput({ state, command: path });
       const outputStatus = closeOutputRedirection({ state, path });
       const inputStatus = await state.closeInput({ path });
-      if (commandStatus !== undefined) return commandStatus;
-      if (outputStatus === 0) return 0;
+      if (commandStatus !== undefined) {
+        return commandStatus;
+      }
+      if (outputStatus === 0) {
+        return 0;
+      }
       return inputStatus ?? -1;
     }
     case 'system': {
@@ -2203,13 +2297,17 @@ function compareValues({
     ? right
     : isNumericString(right) ? right.numberValue : undefined;
   if (leftNumber !== undefined && rightNumber !== undefined) {
-    if (leftNumber === rightNumber) return 0;
+    if (leftNumber === rightNumber) {
+      return 0;
+    }
     return leftNumber < rightNumber ? -1 : 1;
   }
 
   const leftString = coerceToString({ value: left });
   const rightString = coerceToString({ value: right });
-  if (leftString === rightString) return 0;
+  if (leftString === rightString) {
+    return 0;
+  }
   return leftString < rightString ? -1 : 1;
 }
 
@@ -2261,7 +2359,9 @@ async function matchesPattern({
     const startsNow = wasActive || isTruthy({
       value: await evaluateExpression({ expression: pattern.start, state }),
     });
-    if (!startsNow) return false;
+    if (!startsNow) {
+      return false;
+    }
 
     const endsNow = isTruthy({
       value: await evaluateExpression({ expression: pattern.end, state }),
@@ -2370,9 +2470,13 @@ async function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
-        if (shouldContinueLoop) break;
+        if (shouldContinueLoop) {
+          break;
+        }
       }
-      if (shouldContinueLoop) continue;
+      if (shouldContinueLoop) {
+        continue;
+      }
     }
     return 'normal';
   }
@@ -2410,7 +2514,9 @@ async function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
-        if (shouldContinueLoop) break;
+        if (shouldContinueLoop) {
+          break;
+        }
       }
     } while (isTruthy({
       value: await evaluateExpression({ expression: statement.condition, state }),
@@ -2461,14 +2567,18 @@ async function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
-        if (shouldContinueLoop) break;
+        if (shouldContinueLoop) {
+          break;
+        }
       }
 
       await executeForClausePart({
         part: statement.increment,
         state,
       });
-      if (shouldContinueLoop) continue;
+      if (shouldContinueLoop) {
+        continue;
+      }
     }
     return 'normal';
   }
@@ -2510,9 +2620,13 @@ async function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
-        if (shouldContinueLoop) break;
+        if (shouldContinueLoop) {
+          break;
+        }
       }
-      if (shouldContinueLoop) continue;
+      if (shouldContinueLoop) {
+        continue;
+      }
     }
     return 'normal';
   }
@@ -2717,13 +2831,27 @@ export function createAwkRuntime({
     rangePatternStates: new Map(),
   };
 
-  if (!state.variables.has('FS')) state.variables.set('FS', ' ');
-  if (!state.variables.has('OFS')) state.variables.set('OFS', ' ');
-  if (!state.variables.has('ORS')) state.variables.set('ORS', '\n');
-  if (!state.variables.has('RS')) state.variables.set('RS', '\n');
-  if (!state.variables.has('OFMT')) state.variables.set('OFMT', '%.6g');
-  if (!state.variables.has('CONVFMT')) state.variables.set('CONVFMT', '%.6g');
-  if (!state.variables.has('SUBSEP')) state.variables.set('SUBSEP', '\u001c');
+  if (!state.variables.has('FS')) {
+    state.variables.set('FS', ' ');
+  }
+  if (!state.variables.has('OFS')) {
+    state.variables.set('OFS', ' ');
+  }
+  if (!state.variables.has('ORS')) {
+    state.variables.set('ORS', '\n');
+  }
+  if (!state.variables.has('RS')) {
+    state.variables.set('RS', '\n');
+  }
+  if (!state.variables.has('OFMT')) {
+    state.variables.set('OFMT', '%.6g');
+  }
+  if (!state.variables.has('CONVFMT')) {
+    state.variables.set('CONVFMT', '%.6g');
+  }
+  if (!state.variables.has('SUBSEP')) {
+    state.variables.set('SUBSEP', '\u001c');
+  }
   return state;
 }
 
@@ -2755,7 +2883,9 @@ export function getAwkRuntimeArrayEntryAsString({
   index: string,
 }): string | undefined {
   const entries = getArrayEntries({ state: runtime, name: arrayName });
-  if (entries?.has(index) !== true) return undefined;
+  if (entries?.has(index) !== true) {
+    return undefined;
+  }
   return coerceToString({ value: entries.get(index) ?? '' });
 }
 
@@ -2853,7 +2983,9 @@ export async function executeAwkRecord({
   };
 
   for (const rule of program.rules) {
-    if (!await matchesPattern({ pattern: rule.pattern, state: runtime })) continue;
+    if (!await matchesPattern({ pattern: rule.pattern, state: runtime })) {
+      continue;
+    }
     let nextRecord = false;
     for (const statement of rule.statements) {
       const control = await executeStatement({ statement, state: runtime, output });
@@ -2876,9 +3008,13 @@ export async function executeAwkRecord({
         throw new Error(`Unhandled awk control flow: ${_ex}`);
       }
       }
-      if (nextRecord) break;
+      if (nextRecord) {
+        break;
+      }
     }
-    if (nextRecord) break;
+    if (nextRecord) {
+      break;
+    }
   }
 }
 

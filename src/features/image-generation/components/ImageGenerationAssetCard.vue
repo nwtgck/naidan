@@ -13,7 +13,10 @@ function tagLabel({ tag }: { tag: ImageGenerationTagReference }): string | undef
   switch (tag.type) {
   case 'system': return lazyStrings.imageGeneration__favorite();
   case 'user': return props.view.catalog.value?.tags.find(value => value.id === tag.tagId)?.name ?? idToRaw({ id: tag.tagId });
-  default: { const exhaustive: never = tag; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = tag;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

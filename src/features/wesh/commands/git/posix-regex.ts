@@ -25,8 +25,9 @@ export function gitPosixCharacterClassSource({ name }: { name: string }): string
 export function encodeGitRegexBytes({ bytes }: { bytes: Uint8Array }): string {
   if (bytes.length <= BYTE_DOMAIN_CHUNK_SIZE) {
     let result = '';
-    for (const byte of bytes)
+    for (const byte of bytes) {
       result += String.fromCharCode(byte);
+    }
     return result;
   }
 
@@ -40,8 +41,9 @@ export function encodeGitRegexBytes({ bytes }: { bytes: Uint8Array }): string {
 
 export function encodeGitRegexByteDomain({ value }: { value: string }): string {
   for (let index = 0; index < value.length; index += 1) {
-    if (value.charCodeAt(index) > 0x7F)
+    if (value.charCodeAt(index) > 0x7F) {
       return encodeGitRegexBytes({ bytes: UTF8_ENCODER.encode(value) });
+    }
   }
   return value;
 }
@@ -52,8 +54,9 @@ function byteHexEscape({ character }: { character: string }): string {
 
 export function escapeGitRegexLiteral({ character }: { character: string }): string {
   const code = character.charCodeAt(0);
-  if (code < 0x20 || code >= 0x7F)
+  if (code < 0x20 || code >= 0x7F) {
     return byteHexEscape({ character });
+  }
   return /[\\^$.*+?()[\]{}|]/u.test(character) ? `\\${character}` : character;
 }
 
@@ -74,13 +77,19 @@ export function compileGitPosixBracketExpression({ pattern, start }: {
 
   while (index < pattern.length) {
     const character = pattern[index]!;
-    if (character === ']') return { source: `${source}]`, nextIndex: index + 1 };
+    if (character === ']') {
+      return { source: `${source}]`, nextIndex: index + 1 };
+    }
     if (character === '[' && pattern[index + 1] === ':') {
       const end = pattern.indexOf(':]', index + 2);
-      if (end < 0) throw new Error('unterminated POSIX character class');
+      if (end < 0) {
+        throw new Error('unterminated POSIX character class');
+      }
       const name = pattern.slice(index + 2, end);
       const translated = gitPosixCharacterClassSource({ name });
-      if (translated === undefined) throw new Error(`unsupported POSIX character class: ${name}`);
+      if (translated === undefined) {
+        throw new Error(`unsupported POSIX character class: ${name}`);
+      }
       source += translated;
       index = end + 2;
       continue;
@@ -88,10 +97,13 @@ export function compileGitPosixBracketExpression({ pattern, start }: {
     if (character === '[' && (pattern[index + 1] === '.' || pattern[index + 1] === '=')) {
       const marker = pattern[index + 1]!;
       const end = pattern.indexOf(`${marker}]`, index + 2);
-      if (end < 0) throw new Error('unterminated POSIX collating or equivalence class');
+      if (end < 0) {
+        throw new Error('unterminated POSIX collating or equivalence class');
+      }
       const value = pattern.slice(index + 2, end);
-      if (value.length !== 1)
+      if (value.length !== 1) {
         throw new Error('multi-byte POSIX collating and equivalence classes are not supported');
+      }
       source += byteHexEscape({ character: value });
       index = end + 2;
       continue;

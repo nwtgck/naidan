@@ -12,7 +12,9 @@ class MockFile {
   constructor(readonly name: string) {}
 
   async getFile() {
-    if (this.readError) throw this.readError;
+    if (this.readError) {
+      throw this.readError;
+    }
     return { text: async () => this.text };
   }
 
@@ -24,7 +26,9 @@ class MockFile {
         pending = value;
       },
       close: async () => {
-        if (failures.delete(this.name)) throw new Error(`Cannot commit ${this.name}`);
+        if (failures.delete(this.name)) {
+          throw new Error(`Cannot commit ${this.name}`);
+        }
         this.text = pending;
       },
       abort: async () => {},
@@ -46,20 +50,30 @@ class MockDirectory {
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockDirectory> {
     let child = this.children.get(name);
     if (!child && options?.create) {
-      child = new MockDirectory(name); this.children.set(name, child);
+      child = new MockDirectory(name);
+      this.children.set(name, child);
     }
-    if (!child) throw new DOMException('Missing directory', 'NotFoundError');
-    if (!(child instanceof MockDirectory)) throw new Error('Not a directory');
+    if (!child) {
+      throw new DOMException('Missing directory', 'NotFoundError');
+    }
+    if (!(child instanceof MockDirectory)) {
+      throw new Error('Not a directory');
+    }
     return child;
   }
 
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFile> {
     let child = this.children.get(name);
     if (!child && options?.create) {
-      child = new MockFile(name); this.children.set(name, child);
+      child = new MockFile(name);
+      this.children.set(name, child);
     }
-    if (!child) throw new DOMException('Missing file', 'NotFoundError');
-    if (!(child instanceof MockFile)) throw new Error('Not a file');
+    if (!child) {
+      throw new DOMException('Missing file', 'NotFoundError');
+    }
+    if (!(child instanceof MockFile)) {
+      throw new Error('Not a file');
+    }
     return child;
   }
 
@@ -68,8 +82,12 @@ class MockDirectory {
   }
 
   async removeEntry(name: string) {
-    if (failures.delete(name)) throw new Error(`Cannot remove ${name}`);
-    if (!this.children.delete(name)) throw new DOMException('Missing entry', 'NotFoundError');
+    if (failures.delete(name)) {
+      throw new Error(`Cannot remove ${name}`);
+    }
+    if (!this.children.delete(name)) {
+      throw new DOMException('Missing entry', 'NotFoundError');
+    }
   }
 }
 
@@ -113,14 +131,18 @@ function record({ id, prompt, createdAt }: { id: string, prompt: string, created
 
 async function shard() {
   let directory = root;
-  for (const name of ['naidan-storage', 'experimental', 'image-generation', 'generations', 'ab']) directory = await directory.getDirectoryHandle(name);
+  for (const name of ['naidan-storage', 'experimental', 'image-generation', 'generations', 'ab']) {
+    directory = await directory.getDirectoryHandle(name);
+  }
   return directory;
 }
 
 const query = { text: '', offset: 0, limit: 20 };
 
 beforeEach(() => {
-  root = new MockDirectory('root'); failures.clear(); getDirectory.mockReset().mockResolvedValue(root);
+  root = new MockDirectory('root');
+  failures.clear();
+  getDirectory.mockReset().mockResolvedValue(root);
   const tails = new Map<string, Promise<unknown>>();
   vi.stubGlobal('navigator', {
     storage: { getDirectory },
@@ -170,7 +192,8 @@ describe('experimental image history storage', () => {
     const first = record({ id: 'first-aB', prompt: 'cat', createdAt: 1 });
     await saveImageGenerationRecord({ storageType: 'opfs', record: first, writeImages: async () => {} });
     const directory = await shard();
-    const index = await directory.getFileHandle('index.json'); index.text = '{broken';
+    const index = await directory.getFileHandle('index.json');
+    index.text = '{broken';
     const writeImages = vi.fn();
     await expect(saveImageGenerationRecord({ storageType: 'opfs', record: record({ id: 'second-aB', prompt: 'dog', createdAt: 2 }), writeImages })).rejects.toThrow();
     expect(writeImages).not.toHaveBeenCalled();
@@ -178,7 +201,8 @@ describe('experimental image history storage', () => {
     expect(directory.children.has('second-aB.json')).toBe(false);
     const page = await queryImageGenerationHistory({ storageType: 'opfs', query });
     expect(page.items.map(item => item.id)).toEqual([first.id]);
-    expect(page.warningCount).toBeGreaterThan(0); expect(index.text).toBe('{broken');
+    expect(page.warningCount).toBeGreaterThan(0);
+    expect(index.text).toBe('{broken');
     await expect(deleteImageGenerationRecord({ storageType: 'opfs', id: first.id })).rejects.toThrow();
     expect(directory.children.has('first-aB.json')).toBe(true);
   });
@@ -194,8 +218,10 @@ describe('experimental image history storage', () => {
     const incomplete = await directory.getFileHandle(incompleteName, { create: true });
     incomplete.text = '';
     const page = await queryImageGenerationHistory({ storageType: 'opfs', query });
-    expect(page.items.map(item => item.id)).toEqual([first.id]); expect(page.total).toBe(1);
-    expect(page.warningCount).toBeGreaterThan(0); expect(page.warnings).not.toEqual([]);
+    expect(page.items.map(item => item.id)).toEqual([first.id]);
+    expect(page.total).toBe(1);
+    expect(page.warningCount).toBeGreaterThan(0);
+    expect(page.warnings).not.toEqual([]);
     expect(incomplete.text).toBe('');
     expect((await directory.getFileHandle('first-aB.json')).text).toBe(healthyText);
     expect(index.text).toBe(interrupted === 'record' ? originalIndex : '');
@@ -224,7 +250,8 @@ describe('experimental image history storage', () => {
     file.text = JSON.stringify(extended, undefined, 2);
     const source = file.text;
     const page = await queryImageGenerationHistory({ storageType: 'opfs', query });
-    expect(page.items.map(item => item.id)).toEqual([original.id]); expect(page.warningCount).toBe(0);
+    expect(page.items.map(item => item.id)).toEqual([original.id]);
+    expect(page.warningCount).toBe(0);
     expect(await loadImageGenerationRecord({ storageType: 'opfs', id: original.id })).toEqual(original);
     await saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages: async () => {} });
     expect(file.text).toBe(source);
@@ -283,7 +310,8 @@ it('does not recreate a removed or replaced captured history store', async () =>
   getDirectory.mockResolvedValue(root);
   const writeImages = vi.fn();
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages, expectedDirectory })).rejects.toThrow('changed or was removed');
-  expect(root.children.size).toBe(0); expect(writeImages).not.toHaveBeenCalled();
+  expect(root.children.size).toBe(0);
+  expect(writeImages).not.toHaveBeenCalled();
 });
 
 it('does not republish an input deleted through the workspace deletion boundary', async () => {
@@ -291,7 +319,9 @@ it('does not republish an input deleted through the workspace deletion boundary'
   const { imageGenerationRoot } = await import('./image-generation/context');
   const { markImageGenerationBinariesDeleted } = await import('./image-generation/deletions');
   const directory = await imageGenerationRoot({ create: true });
-  if (!directory) throw new Error('Missing root');
+  if (!directory) {
+    throw new Error('Missing root');
+  }
   const id = toBinaryObjectId({ raw: 'input-aa' });
   original.request.imageInputs.initImage = { binaryObjectId: id, name: 'input.png' };
   await markImageGenerationBinariesDeleted({ directory, ids: ['input-aa'] });
@@ -305,16 +335,20 @@ it('mutates readable local history while retaining an unavailable RPC sibling an
   await saveImageGenerationRecord({ storageType: 'opfs', record: local, writeImages: async () => {} });
   const directory = await shard();
   const raw = JSON.parse((await directory.getFileHandle('local-aB.json')).text);
-  raw.id = 'remote-aB'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'legacy-registration', peerId: 'B'.repeat(43), label: 'Unavailable peer' };
-  const remote = await directory.getFileHandle('remote-aB.json', { create: true }); remote.text = JSON.stringify(raw);
+  raw.id = 'remote-aB';
+  raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'legacy-registration', peerId: 'B'.repeat(43), label: 'Unavailable peer' };
+  const remote = await directory.getFileHandle('remote-aB.json', { create: true });
+  remote.text = JSON.stringify(raw);
   const preserved = remote.text;
   const storage = await root.getDirectoryHandle('naidan-storage');
   const binaries = await storage.getDirectoryHandle('binary-objects', { create: true });
   const binaryShard = await binaries.getDirectoryHandle('al', { create: true });
-  const shared = await binaryShard.getFileHandle('image-final.bin', { create: true }); shared.text = 'shared immutable bytes';
+  const shared = await binaryShard.getFileHandle('image-final.bin', { create: true });
+  shared.text = 'shared immutable bytes';
   await saveImageGenerationRecord({ storageType: 'opfs', record: record({ id: 'new-aB', prompt: 'another local', createdAt: 3 }), writeImages: async () => {} });
   await deleteImageGenerationRecord({ storageType: 'opfs', id: local.id });
-  expect(remote.text).toBe(preserved); expect(shared.text).toBe('shared immutable bytes');
+  expect(remote.text).toBe(preserved);
+  expect(shared.text).toBe('shared immutable bytes');
   expect(directory.children.has('remote-aB.json')).toBe(true);
   const page = await queryImageGenerationHistory({ storageType: 'opfs', query });
   expect(page.items.map(item => item.id)).toEqual([toImageGenerationId({ raw: 'new-aB' })]);

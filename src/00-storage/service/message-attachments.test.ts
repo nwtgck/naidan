@@ -65,7 +65,9 @@ describe('attachment parts in storage', () => {
     })();
     const leaf = user({ id: 'leaf', replies: [] });
     const attachment = leaf.parts[0];
-    if (attachment?.type !== 'attachment') throw new Error('Fixture attachment is missing');
+    if (attachment?.type !== 'attachment') {
+      throw new Error('Fixture attachment is missing');
+    }
     const blob = new Blob(['original']);
     attachment.attachment = { ...attachment.attachment, status: 'memory', blob };
     const root: MessageNode = { id: toMessageId({ raw: 'assistant' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' }, parts: [{ type: 'text', text: 'partial', completeness: 'partial' }], replies: { items: [leaf] } };
@@ -76,7 +78,8 @@ describe('attachment parts in storage', () => {
     const restored = [...iterateAttachmentParts({ nodes: loaded!.root.items })][0]!.attachment;
     expect(restored.status).toBe('memory');
     switch (restored.status) {
-    case 'memory': expect(restored.blob).toBe(blob); break;
+    case 'memory': expect(restored.blob).toBe(blob);
+      break;
     case 'missing':
     case 'persisted': throw new Error('Expected restored memory attachment');
     default: {

@@ -16,7 +16,9 @@ export function createTextExportStream({ produce }: {
       let end = Math.min(offset + 16 * 1024, text.length);
       // Do not replace one surrogate pair by two replacement characters.
       const last = text.charCodeAt(end - 1);
-      if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+      if (end < text.length && last >= 0xd800 && last <= 0xdbff) {
+        end -= 1;
+      }
       await writer.write(encoder.encode(text.slice(offset, end)));
       offset = end;
     }
@@ -32,7 +34,9 @@ export function createTextExportStream({ produce }: {
     try {
       for (;;) {
         const next = await reader.read();
-        if (next.done) break;
+        if (next.done) {
+          break;
+        }
         await writeString({ text: decoder.decode(next.value, { stream: true }) });
       }
       await writeString({ text: decoder.decode() });

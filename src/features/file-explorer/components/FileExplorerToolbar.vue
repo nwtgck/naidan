@@ -32,7 +32,9 @@ const viewModes = computed<ViewModeOption[]>(() => {
   const iconView = lazyStrings.fileExplorer__icon_view();
   const listView = lazyStrings.fileExplorer__list_view();
   const columnView = lazyStrings.fileExplorer__column_view();
-  if (iconView === undefined || listView === undefined || columnView === undefined) return [];
+  if (iconView === undefined || listView === undefined || columnView === undefined) {
+    return [];
+  }
 
   return [
     { mode: 'icon', icon: LayoutGridIcon, title: iconView },
@@ -53,7 +55,9 @@ async function handleNewFile(): Promise<void> {
     message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_file(),
     confirmButtonText: await ensureStrings.fileExplorer__create(),
   });
-  if (name) await ctx.createFile({ name });
+  if (name) {
+    await ctx.createFile({ name });
+  }
 }
 
 async function handleNewFolder(): Promise<void> {
@@ -62,7 +66,9 @@ async function handleNewFolder(): Promise<void> {
     message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_folder(),
     confirmButtonText: await ensureStrings.fileExplorer__create(),
   });
-  if (name) await ctx.createFolder({ name });
+  if (name) {
+    await ctx.createFolder({ name });
+  }
 }
 
 function toggleSearch(): void {

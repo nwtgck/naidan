@@ -65,16 +65,20 @@ function parseCheckoutBranchArguments({ args }: { args: readonly string[] }): Ch
   const detach = parsed.optionValues.detach === true;
   const operands = parsed.positionals;
   if (createBranchName !== undefined) {
-    if (detach)
+    if (detach) {
       throw new Error('options are incompatible');
-    if (operands.length > 1)
+    }
+    if (operands.length > 1) {
       throw new Error('too many arguments');
+    }
     return { createBranchName, detach: false, targetExpression: operands[0] ?? 'HEAD', missingBranchBehavior: 'resolve-revision' };
   }
-  if (detach && operands.length === 0)
+  if (detach && operands.length === 0) {
     return { createBranchName: undefined, detach: true, targetExpression: 'HEAD', missingBranchBehavior: 'resolve-revision' };
-  if (operands.length !== 1)
+  }
+  if (operands.length !== 1) {
     throw new Error('git checkout requires exactly one branch or revision');
+  }
   return { createBranchName: undefined, detach, targetExpression: operands[0]!, missingBranchBehavior: 'resolve-revision' };
 }
 
@@ -84,15 +88,19 @@ export async function runCheckout({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
-  if (args.length === 0) return { exitCode: 0 };
+  if (args.length === 0) {
+    return { exitCode: 0 };
+  }
   const separatorIndex = args.indexOf('--');
-  if (separatorIndex < 0)
+  if (separatorIndex < 0) {
     return executeCheckoutLike({ context, parsed: parseCheckoutBranchArguments({ args }) });
+  }
   const before = args.slice(0, separatorIndex);
   const paths = args.slice(separatorIndex + 1);
   if (paths.length === 0) {
-    if (before.length === 0)
+    if (before.length === 0) {
       return { exitCode: 0 };
+    }
     return executeCheckoutLike({ context, parsed: parseCheckoutBranchArguments({ args: before }) });
   }
   if (before.length === 0) {

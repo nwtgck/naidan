@@ -17,7 +17,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); scope?.stop();
+  wrapper?.unmount();
+  scope?.stop();
 });
 
 function harness() {
@@ -41,17 +42,20 @@ it('uses the normal component picker to select a remote VAE without creating loc
   const h = harness();
   h.wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-component-vae')!.vm.$emit('update:modelValue', remoteImageFileKey({ file: h.vae }));
   await flushPromises();
-  expect(h.inferenceLocation.editor.value.components).toEqual([{ slot: 'vae', file: h.vae }]); expect(h.form.files.value).toEqual({});
+  expect(h.inferenceLocation.editor.value.components).toEqual([{ slot: 'vae', file: h.vae }]);
+  expect(h.form.files.value).toEqual({});
 });
 
 it('provides the same adapter enable, strength and remove operations for remote references', async () => {
   const h = harness();
   h.wrapper.findAllComponents(ImageModelPicker).find(picker => picker.attributes('data-testid') === 'image-lora-saved')!.vm.$emit('update:modelValue', remoteImageFileKey({ file: h.lora }));
-  await flushPromises(); await h.wrapper.get('[data-testid="image-lora-add-saved"]').trigger('click');
+  await flushPromises();
+  await h.wrapper.get('[data-testid="image-lora-add-saved"]').trigger('click');
   await h.wrapper.get('[data-testid="image-lora-strength"]').setValue('0.6');
   await h.wrapper.get('[data-testid="image-lora-enabled"]').setValue(false);
   expect(h.inferenceLocation.editor.value.loras).toEqual([{ file: h.lora, strength: 0.6, enabled: 'disabled' }]);
   expect(h.inferenceLocation.selection.value?.loras).toEqual([]);
   expect(h.wrapper.get('[data-testid="image-lora-strength"]').element.matches(':disabled')).toBe(true);
-  await h.wrapper.get('[data-testid="image-lora-remove"]').trigger('click'); expect(h.inferenceLocation.editor.value.loras).toEqual([]);
+  await h.wrapper.get('[data-testid="image-lora-remove"]').trigger('click');
+  expect(h.inferenceLocation.editor.value.loras).toEqual([]);
 });

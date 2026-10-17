@@ -129,7 +129,9 @@ describe('chat data store scoped settings updates', () => {
 
     mockUpdateChatMeta.mockImplementation(async ({ updater }) => {
       callCount += 1;
-      if (callCount === 1) await firstGate;
+      if (callCount === 1) {
+        await firstGate;
+      }
       persisted = await updater({ current: persisted });
     });
 

@@ -20,7 +20,9 @@ function makeDirHandle(
     kind: 'directory',
     name,
     entries: async function* () {
-      for (const entry of children) yield entry;
+      for (const entry of children) {
+        yield entry;
+      }
     },
   } as unknown as FileSystemDirectoryHandle;
 }

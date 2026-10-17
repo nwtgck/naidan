@@ -25,8 +25,9 @@ async function readHeadIndex({ context, repository }: {
     repository: Awaited<ReturnType<typeof discoverRepository>>;
 }): Promise<GitIndexEntry[]> {
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     return [];
+  }
   const commit = await readCommit({ files: context.files, repository, objectId: head.objectId });
   return readTreeIntoIndex({ files: context.files, repository, treeObjectId: commit.treeObjectId });
 }
@@ -43,20 +44,23 @@ export async function printCheckoutConflicts({ context, conflicts }: {
   const untrackedDirectories = conflicts.filter(conflict => conflict.type === 'untracked-directory');
   if (tracked.length > 0) {
     await context.text().error({ text: 'error: Your local changes to the following files would be overwritten by checkout:\n' });
-    for (const conflict of tracked)
+    for (const conflict of tracked) {
       await context.text().error({ text: `\t${conflict.path}\n` });
+    }
     await context.text().error({ text: 'Please commit your changes or stash them before you switch branches.\n' });
   }
   if (untracked.length > 0) {
     await context.text().error({ text: 'error: The following untracked working tree files would be overwritten by checkout:\n' });
-    for (const conflict of untracked)
+    for (const conflict of untracked) {
       await context.text().error({ text: `\t${conflict.path}\n` });
+    }
     await context.text().error({ text: 'Please move or remove them before you switch branches.\n' });
   }
   if (untrackedDirectories.length > 0) {
     await context.text().error({ text: 'error: Updating the following directories would lose untracked files in them:\n' });
-    for (const conflict of untrackedDirectories)
+    for (const conflict of untrackedDirectories) {
       await context.text().error({ text: `\t${conflict.path}\n` });
+    }
     await context.text().error({ text: '\n' });
   }
   await context.text().error({ text: 'Aborting\n' });
@@ -120,8 +124,9 @@ export async function executeCheckoutLike({ context, parsed }: {
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
   const oldHead = await readHead({ files: context.files, repository });
-  if (oldHead.objectId === undefined)
+  if (oldHead.objectId === undefined) {
     throw new Error('you are on a branch yet to be born');
+  }
   const oldBranch = branchNameFromHead({ head: oldHead });
   let targetObjectId: string;
   let targetBranchName: string | undefined;

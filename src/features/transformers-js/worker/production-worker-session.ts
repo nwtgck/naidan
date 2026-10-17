@@ -31,14 +31,18 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
   const pending = new Set<{ start(): void, reject({ error }: { error: Error }): void }>();
 
   function terminate({ error, releaseIdleRemote }: { error: Error, releaseIdleRemote: boolean }): void {
-    if (terminalError) return;
+    if (terminalError) {
+      return;
+    }
     terminalError = error;
     clearTimeout(startupTimer);
     worker.removeEventListener('message', onMessage);
     worker.removeEventListener('error', onError);
     worker.removeEventListener('messageerror', onMessageError);
     const mayRelease = releaseIdleRemote && pending.size === 0 && remote !== undefined;
-    for (const operation of pending) operation.reject({ error });
+    for (const operation of pending) {
+      operation.reject({ error });
+    }
     pending.clear();
     try {
       if (mayRelease && remote) {
@@ -58,7 +62,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
         // The host created this URL and can revoke it even if Worker cleanup
         // never runs. Keep it for the entire Realm, not merely the first import.
         const objectUrl = runtimeModuleLease?.objectUrl;
-        if (runtimeModuleLease) runtimeModuleLease.objectUrl = undefined;
+        if (runtimeModuleLease) {
+          runtimeModuleLease.objectUrl = undefined;
+        }
         if (objectUrl !== undefined) {
           try {
             URL.revokeObjectURL(objectUrl);
@@ -70,7 +76,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Worker event listener boundary.
   function onMessage(event: MessageEvent<unknown>): void {
-    if (terminalError) return;
+    if (terminalError) {
+      return;
+    }
     const data = event.data;
     if (typeof data === 'object' && data !== null && 'channel' in data && data.channel === LOAD_DIAGNOSTIC_CHANNEL) {
       // Same endpoint as RPC completion: records sent before settlement are
@@ -79,13 +87,17 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
         const diagnostic = loadDiagnosticMessageSchema.safeParse(data);
         if (diagnostic.success && observeLoadDiagnostic !== undefined) {
           const result = observeLoadDiagnostic({ packet: diagnostic.data.packet });
-          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+          if (result !== undefined) {
+            void Promise.resolve(result).catch(() => undefined);
+          }
         }
       } catch { /* Optional observation cannot terminate or delay model work. */ }
       return;
     }
     if (typeof data !== 'object' || data === null || !('channel' in data)
-      || data.channel !== PRODUCTION_WORKER_READY.channel) return;
+      || data.channel !== PRODUCTION_WORKER_READY.channel) {
+      return;
+    }
     const parsed = productionWorkerStartupSchema.safeParse(data);
     if (!parsed.success) {
       terminate({ error: new ProductionWorkerLifecycleError({ reason: 'invalid-startup-message', message: 'Invalid Production Worker startup message' }), releaseIdleRemote: false });
@@ -102,7 +114,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
       // Snapshot synchronously before hashing. A late hash completion after
       // disposal must never create an unowned URL or send an acknowledgement.
       void verifiedRuntimeModuleBlob({ bytes: parsed.data.bytes, variant: parsed.data.variant }).then(blob => {
-        if (terminalError) return;
+        if (terminalError) {
+          return;
+        }
         lease.objectUrl = URL.createObjectURL(blob);
         lease.acknowledged = true;
         // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited startup-only acknowledgement of this session's validated bytes and owned Blob; the Worker validates its strict reply schema before model RPCs exist.
@@ -114,13 +128,15 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
           objectUrl: lease.objectUrl,
         });
       }).catch(error => {
-        if (!terminalError) terminate({
-          error: new ProductionWorkerLifecycleError({
-            reason: 'initialization-failed',
-            message: error instanceof Error ? error.message : String(error),
-          }),
-          releaseIdleRemote: false,
-        });
+        if (!terminalError) {
+          terminate({
+            error: new ProductionWorkerLifecycleError({
+              reason: 'initialization-failed',
+              message: error instanceof Error ? error.message : String(error),
+            }),
+            releaseIdleRemote: false,
+          });
+        }
       });
       return;
     }
@@ -139,7 +155,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
       clearTimeout(startupTimer);
       try {
         remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
-        for (const operation of [...pending]) operation.start();
+        for (const operation of [...pending]) {
+          operation.start();
+        }
       } catch (error) {
         terminate({ error: new ProductionWorkerLifecycleError({ reason: 'transport-failed', message: error instanceof Error ? error.message : String(error) }), releaseIdleRemote: false });
       }
@@ -176,7 +194,9 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
     run<T>({ operation }: {
       operation: ({ remote }: { remote: WorkerRemote<ITransformersJsWorker> }) => Promise<T>,
     }): Promise<T> {
-      if (terminalError) return Promise.reject(terminalError);
+      if (terminalError) {
+        return Promise.reject(terminalError);
+      }
       return new Promise<T>((resolve, reject) => {
         function handleFailure({ error }: { error: unknown }): void {
           // Comlink preserves Error name/message, not custom prototypes. A
@@ -198,11 +218,15 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
             reject(error);
           },
           start() {
-            if (terminalError || !remote) return;
+            if (terminalError || !remote) {
+              return;
+            }
             try {
               void Promise.resolve(operation({ remote })).then(value => {
                 pending.delete(owned);
-                if (!terminalError) resolve(value);
+                if (!terminalError) {
+                  resolve(value);
+                }
               }, error => {
                 handleFailure({ error });
               });
@@ -212,14 +236,18 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs, observ
           },
         };
         pending.add(owned);
-        if (remote) owned.start();
+        if (remote) {
+          owned.start();
+        }
       });
     },
     dispose(): void {
       terminate({ error: new ProductionWorkerLifecycleError({ reason: 'disposed', message: 'Production Worker disposed' }), releaseIdleRemote: true });
       // RPCs retain their original terminal cause, but the owning service must
       // not publish a replacement Realm after physical retirement failed.
-      if (physicalTerminationFailure !== undefined) throw physicalTerminationFailure.error;
+      if (physicalTerminationFailure !== undefined) {
+        throw physicalTerminationFailure.error;
+      }
     },
   };
 }

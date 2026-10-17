@@ -42,8 +42,12 @@ function resolveDependency({ id, base, stylesheet }: {
   base: string;
   stylesheet: boolean;
 }): string {
-  if (path.isAbsolute(id)) return id;
-  if (id.startsWith('.')) return path.resolve(base, id);
+  if (path.isAbsolute(id)) {
+    return id;
+  }
+  if (id.startsWith('.')) {
+    return path.resolve(base, id);
+  }
   const request = stylesheet && id === 'tailwindcss' ? 'tailwindcss/index.css' : id;
   return require.resolve(request, { paths: [base] });
 }
@@ -125,7 +129,9 @@ export async function compileTailwindCss({
   expectedTailwindVersion: string | undefined;
 }): Promise<{ css: string; tailwindVersion: string; stylesheetDependencies: string[] }> {
   const installedTailwindVersion = assertTailwindVersion({ expectedTailwindVersion });
-  if (typeof compile !== 'function') throw new Error('[tw-class] Tailwind compile() is unavailable.');
+  if (typeof compile !== 'function') {
+    throw new Error('[tw-class] Tailwind compile() is unavailable.');
+  }
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
   const stylesheetDependencies = new Set([absoluteCssEntryPath]);
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');

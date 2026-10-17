@@ -47,7 +47,9 @@ function countSedCapturingGroups({
       ) {
         count += 1;
       }
-      if (escaped !== undefined) index += 1;
+      if (escaped !== undefined) {
+        index += 1;
+      }
       continue;
     }
     if (
@@ -92,9 +94,13 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
 
     if (escaped === 'c') {
       const controlled = source[index + 2];
-      if (controlled === undefined) throw new Error('Trailing backslash');
+      if (controlled === undefined) {
+        throw new Error('Trailing backslash');
+      }
       const codePoint = controlled.codePointAt(0);
-      if (codePoint === undefined) throw new Error('Trailing backslash');
+      if (codePoint === undefined) {
+        throw new Error('Trailing backslash');
+      }
       const normalizedCodePoint = codePoint >= 0x61 && codePoint <= 0x7a
         ? codePoint - 0x20
         : codePoint;
@@ -152,13 +158,21 @@ function findSedPosixBracketSubexpressionEnd({
   source: string;
   index: number;
 }): number | undefined {
-  if (source[index] !== "[") return undefined;
+  if (source[index] !== "[") {
+    return undefined;
+  }
   const marker = source[index + 1];
-  if (marker !== ":" && marker !== "." && marker !== "=") return undefined;
+  if (marker !== ":" && marker !== "." && marker !== "=") {
+    return undefined;
+  }
   const closingIndex = source.indexOf(`${marker}]`, index + 2);
-  if (closingIndex < 0) return undefined;
+  if (closingIndex < 0) {
+    return undefined;
+  }
   const newlineIndex = source.indexOf("\n", index + 2);
-  if (newlineIndex >= 0 && newlineIndex < closingIndex) return undefined;
+  if (newlineIndex >= 0 && newlineIndex < closingIndex) {
+    return undefined;
+  }
   return closingIndex + 2;
 }
 
@@ -177,7 +191,9 @@ function maskSedWildcardDots({ source }: { source: string }): string {
         result += escaped;
         index += 1;
       }
-      if (inBracketExpression && !bracketCanClose) bracketCanClose = true;
+      if (inBracketExpression && !bracketCanClose) {
+        bracketCanClose = true;
+      }
       continue;
     }
 
@@ -235,7 +251,9 @@ function restoreSedWildcardDots({
   characterLocaleMode: WeshCharacterLocaleMode;
   dotMatchesNewline: boolean;
 }): RegExp {
-  if (!regex.source.includes(SED_WILDCARD_DOT_SENTINEL)) return regex;
+  if (!regex.source.includes(SED_WILDCARD_DOT_SENTINEL)) {
+    return regex;
+  }
   const wildcard = (() => {
     switch (characterLocaleMode) {
     case "ascii":
@@ -362,8 +380,12 @@ export function applySedRegexModifiers({
   state: SedRegexParseState;
 }): RegExp {
   const flags = new Set(regex.flags);
-  if (ignoreCase) flags.add("i");
-  if (multiline && !state.nullData) flags.add("m");
+  if (ignoreCase) {
+    flags.add("i");
+  }
+  if (multiline && !state.nullData) {
+    flags.add("m");
+  }
   const modified = new RegExp(regex.source, [...flags].join("") || undefined);
   state.previousRegex = cloneSedRegex({ regex: modified, global: false });
   return modified;
@@ -395,7 +417,9 @@ export function readSedRegexOperand({
       return { ok: false, message: unterminatedMessage };
     }
     const character = script[cursor];
-    if (character === undefined) break;
+    if (character === undefined) {
+      break;
+    }
 
     if (!inBracketExpression && character === delimiter) {
       return { ok: true, source, nextIndex: cursor + 1 };
@@ -553,7 +577,9 @@ export function parseRegexLiteral({
     unterminatedMessage: "unterminated regex address",
     sourceBoundaryIndices: state.sourceBoundaryIndices,
   });
-  if (!operand.ok) return operand;
+  if (!operand.ok) {
+    return operand;
+  }
 
   try {
     let nextIndex = operand.nextIndex;

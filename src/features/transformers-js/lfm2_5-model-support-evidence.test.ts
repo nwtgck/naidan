@@ -61,7 +61,9 @@ const FAILED_TOOL_HISTORY_CASE_IDS = [
 function templateCase({ caseId }: { caseId: string }): EvidenceTemplateCase {
   const cases: readonly EvidenceTemplateCase[] = evidence.templateBehavior.cases;
   const found = cases.find(testCase => testCase.caseId === caseId);
-  if (!found) throw new Error(`Missing LFM2.5 Evidence template case: ${caseId}`);
+  if (!found) {
+    throw new Error(`Missing LFM2.5 Evidence template case: ${caseId}`);
+  }
   return found;
 }
 
@@ -134,7 +136,9 @@ function normalizedPromptOpenStream({ chunks }: { chunks: readonly string[] }): 
     protocol: 'prompt-open-think',
     onOutput: ({ output: chunk }) => output.push(chunk),
   });
-  for (const chunk of chunks) normalizer.feed({ output: chunk });
+  for (const chunk of chunks) {
+    normalizer.feed({ output: chunk });
+  }
   normalizer.flush();
   return output.join('');
 }
@@ -158,10 +162,14 @@ function parseRenderedToolCalls({
   const start = rendered.indexOf('<|tool_call_start|>');
   const endMarker = '<|tool_call_end|>';
   const end = rendered.indexOf(endMarker, start);
-  if (start < 0 || end < 0) throw new Error('Rendered Evidence prompt did not contain a complete tool-call block.');
+  if (start < 0 || end < 0) {
+    throw new Error('Rendered Evidence prompt did not contain a complete tool-call block.');
+  }
   const block = rendered.slice(start, end + endMarker.length);
   if (oneCharacterAtATime) {
-    for (const character of block) parser.feed({ output: character });
+    for (const character of block) {
+      parser.feed({ output: character });
+    }
   } else {
     parser.feed({ output: block });
   }
@@ -314,7 +322,9 @@ Use the weather tool for Tokyo.`);
 
     it('round-trips the corrected recorded assistant tool call through the Production parser', () => {
       const testCase = templateCase({ caseId: 'assistant-tool-call-history' });
-      if (!testCase.tools) throw new Error('Expected tools in Evidence case.');
+      if (!testCase.tools) {
+        throw new Error('Expected tools in Evidence case.');
+      }
       const formatted = formatStandardMessagesForToolCallProtocol({
         messages: evidenceMessagesToInferenceMessages({ messages: testCase.messages }),
         protocol: 'delimited-pythonic',

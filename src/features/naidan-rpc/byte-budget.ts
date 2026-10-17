@@ -12,14 +12,18 @@ export class NaidanRpcByteBudget {
 
   reserve({ bytes }: { bytes: number }): () => void {
     check({ condition: Number.isSafeInteger(bytes) && bytes >= 0, code: 'INVALID_ARGUMENT' });
-    if (bytes > this.capacity - this.retained) throw new NaidanRpcPublicError({
-      code: 'RESOURCE_EXHAUSTED',
-      details: { scope: 'rpc-memory', constraint: 'retained-bytes', limit: this.capacity, observed: this.retained + bytes },
-    });
-    this.retained += bytes; let owned = true;
+    if (bytes > this.capacity - this.retained) {
+      throw new NaidanRpcPublicError({
+        code: 'RESOURCE_EXHAUSTED',
+        details: { scope: 'rpc-memory', constraint: 'retained-bytes', limit: this.capacity, observed: this.retained + bytes },
+      });
+    }
+    this.retained += bytes;
+    let owned = true;
     return () => {
       if (owned) {
-        owned = false; this.retained -= bytes;
+        owned = false;
+        this.retained -= bytes;
       }
     };
   }
@@ -45,44 +49,65 @@ export class RpcByteOwner {
 
   fork(): RpcByteOwner {
     check({ condition: !this.closed, code: 'CANCELLED' });
-    const child = new RpcByteOwner({ budget: this.budget }); child.parent = this;
-    this.children.add(child); return child;
+    const child = new RpcByteOwner({ budget: this.budget });
+    child.parent = this;
+    this.children.add(child);
+    return child;
   }
 
   charge({ bytes }: { bytes: number }): void {
     check({ condition: !this.closed, code: 'CANCELLED' });
-    if (bytes !== 0) this.charges.add(this.budget.reserve({ bytes }));
+    if (bytes !== 0) {
+      this.charges.add(this.budget.reserve({ bytes }));
+    }
   }
 
   allocate({ bytes }: { bytes: number }): Uint8Array<ArrayBuffer> {
     check({ condition: !this.closed, code: 'CANCELLED' });
     const release = this.budget.reserve({ bytes });
     try {
-      const value = new Uint8Array(bytes); this.buffers.set(value.buffer, release); return value;
+      const value = new Uint8Array(bytes);
+      this.buffers.set(value.buffer, release);
+      return value;
     } catch (error) {
-      release(); throw error;
+      release();
+      throw error;
     }
   }
 
   retain({ bytes }: { bytes: Uint8Array }): void {
     check({ condition: !this.closed && bytes.buffer instanceof ArrayBuffer, code: 'INVALID_ARGUMENT' });
-    if (bytes.buffer instanceof ArrayBuffer && !this.buffers.has(bytes.buffer)) this.buffers.set(bytes.buffer, this.budget.reserve({ bytes: bytes.buffer.byteLength }));
+    if (bytes.buffer instanceof ArrayBuffer && !this.buffers.has(bytes.buffer)) {
+      this.buffers.set(bytes.buffer, this.budget.reserve({ bytes: bytes.buffer.byteLength }));
+    }
   }
 
   release({ bytes }: { bytes: Uint8Array }): void {
     if (bytes.buffer instanceof ArrayBuffer) {
-      this.buffers.get(bytes.buffer)?.(); this.buffers.delete(bytes.buffer);
+      this.buffers.get(bytes.buffer)?.();
+      this.buffers.delete(bytes.buffer);
     }
   }
 
   clear(): void {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
-    for (const child of this.children) child.clear();
-    for (const release of this.buffers.values()) release();
-    for (const release of this.charges) release();
-    this.buffers.clear(); this.charges.clear(); this.children.clear();
-    this.parent?.children.delete(this); this.parent = undefined;
+    for (const child of this.children) {
+      child.clear();
+    }
+    for (const release of this.buffers.values()) {
+      release();
+    }
+    for (const release of this.charges) {
+      release();
+    }
+    this.buffers.clear();
+    this.charges.clear();
+    this.children.clear();
+    this.parent?.children.delete(this);
+    this.parent = undefined;
   }
 }
 

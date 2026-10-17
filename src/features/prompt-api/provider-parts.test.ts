@@ -19,14 +19,16 @@ function chat({ messages, controller }: { messages: ChatMessage[], controller: A
 }
 
 function browser({ stream }: { stream: ReadableStream<string> }) {
-  const destroy = vi.fn(); const promptStreaming = vi.fn((_prompt: import('./language-model').PromptApiPrompt) => stream);
+  const destroy = vi.fn();
+  const promptStreaming = vi.fn((_prompt: import('./language-model').PromptApiPrompt) => stream);
   const create = vi.fn(async () => ({ destroy, promptStreaming }));
   vi.stubGlobal('LanguageModel', { availability: vi.fn().mockResolvedValue('available'), create });
   return { create, destroy, promptStreaming };
 }
 
 afterEach(() => {
-  RUNTIME.reset(); vi.unstubAllGlobals();
+  RUNTIME.reset();
+  vi.unstubAllGlobals();
 });
 
 describe('Prompt API parts and ownership', () => {
@@ -34,14 +36,22 @@ describe('Prompt API parts and ownership', () => {
     const b = browser({
       stream: new ReadableStream({
         start(c) {
-          c.enqueue('<think>literal</think>  '); c.enqueue('  '); c.close();
+          c.enqueue('<think>literal</think>  ');
+          c.enqueue('  ');
+          c.close();
         },
       }),
     });
-    const controller = new AbortController(); const messages = history(); const items = chat({ messages, controller });
-    const first = messages[0]?.parts[0]; if (first?.type !== 'text') throw new Error('Expected text fixture.');
+    const controller = new AbortController();
+    const messages = history();
+    const items = chat({ messages, controller });
+    const first = messages[0]?.parts[0];
+    if (first?.type !== 'text') {
+      throw new Error('Expected text fixture.');
+    }
     first.text = 'mutated';
-    expect(b.create).not.toHaveBeenCalled(); const n = node();
+    expect(b.create).not.toHaveBeenCalled();
+    const n = node();
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items, abortController: controller, onChange: () => {} });
     expect(b.promptStreaming.mock.calls[0]?.[0]).toBe('original');
     expect(result).toEqual({ type: 'finished', next: 'user' });
@@ -50,7 +60,8 @@ describe('Prompt API parts and ownership', () => {
   });
 
   it('cancels an uncooperative pending browser read and keeps accepted text partial', async () => {
-    const cancel = vi.fn(); const b = browser({
+    const cancel = vi.fn();
+    const b = browser({
       stream: new ReadableStream({
         start(c) {
           c.enqueue('途中');
@@ -58,19 +69,23 @@ describe('Prompt API parts and ownership', () => {
         cancel,
       }),
     });
-    const controller = new AbortController(); const n = node();
+    const controller = new AbortController();
+    const n = node();
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node: n,
       items: chat({ messages: history(), controller }),
       abortController: controller,
       onChange: () => {
-        if (n.parts.some(p => p.type === 'text' && p.text === '途中')) controller.abort();
+        if (n.parts.some(p => p.type === 'text' && p.text === '途中')) {
+          controller.abort();
+        }
       },
     });
     expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
     expect(n.parts).toMatchObject([{ type: 'text', text: '途中', completeness: 'partial' }]);
-    expect(cancel).toHaveBeenCalledOnce(); expect(b.destroy).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(b.destroy).toHaveBeenCalledOnce();
   });
 
   it('rejects an invalid browser chunk without losing earlier text', async () => {
@@ -78,13 +93,20 @@ describe('Prompt API parts and ownership', () => {
     const b = browser({
       stream: new ReadableStream({
         pull(c) {
-          if (i++ === 0) c.enqueue('kept'); else c.enqueue(42 as never);
+          if (i++ === 0) {
+            c.enqueue('kept');
+          } else {
+            c.enqueue(42 as never);
+          }
         },
       }),
     });
-    const n = node(); const controller = new AbortController();
+    const n = node();
+    const controller = new AbortController();
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
-    expect(result.type).toBe('error'); expect(n.parts).toMatchObject([{ text: 'kept', completeness: 'partial' }]); expect(b.destroy).toHaveBeenCalledOnce();
+    expect(result.type).toBe('error');
+    expect(n.parts).toMatchObject([{ text: 'kept', completeness: 'partial' }]);
+    expect(b.destroy).toHaveBeenCalledOnce();
   });
 
   it('does not acquire a session for a signal already aborted', async () => {
@@ -95,20 +117,31 @@ describe('Prompt API parts and ownership', () => {
         },
       }),
     });
-    const controller = new AbortController(); controller.abort(); const n = node();
+    const controller = new AbortController();
+    controller.abort();
+    const n = node();
     const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
-    expect(result).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();
+    expect(result).toEqual({ type: 'interrupted', reason: 'aborted' });
+    expect(n.parts).toEqual([]);
+    expect(b.create).not.toHaveBeenCalled();
   });
 
   it('destroys a late-created session if abort happened during creation', async () => {
     const session = Promise.withResolvers<{ destroy: () => void, promptStreaming: () => ReadableStream<string> }>();
-    const destroy = vi.fn(); const promptStreaming = vi.fn();
-    const create = vi.fn(() => session.promise); vi.stubGlobal('LanguageModel', { availability: vi.fn().mockResolvedValue('available'), create });
-    const controller = new AbortController(); const n = node();
+    const destroy = vi.fn();
+    const promptStreaming = vi.fn();
+    const create = vi.fn(() => session.promise);
+    vi.stubGlobal('LanguageModel', { availability: vi.fn().mockResolvedValue('available'), create });
+    const controller = new AbortController();
+    const n = node();
     const task = consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages: history(), controller }), abortController: controller, onChange: () => {} });
-    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce()); controller.abort(); session.resolve({ destroy, promptStreaming });
-    expect(await task).toEqual({ type: 'interrupted', reason: 'aborted' }); expect(n.parts).toEqual([]);
-    expect(promptStreaming).not.toHaveBeenCalled(); expect(destroy).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    controller.abort();
+    session.resolve({ destroy, promptStreaming });
+    expect(await task).toEqual({ type: 'interrupted', reason: 'aborted' });
+    expect(n.parts).toEqual([]);
+    expect(promptStreaming).not.toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalledOnce();
   });
 
   it('rejects unsupported reasoning before creating a browser session', async () => {
@@ -118,10 +151,13 @@ describe('Prompt API parts and ownership', () => {
           c.close();
         },
       }),
-    }); const controller = new AbortController();
+    });
+    const controller = new AbortController();
     const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }] }, ...history()];
-    const n = node(); const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });
+    const n = node();
+    const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: n, items: chat({ messages, controller }), abortController: controller, onChange: () => {} });
     expect(result).toMatchObject({ type: 'error', error: { code: 'unsupported_input' } });
-    expect(n.parts).toEqual([]); expect(b.create).not.toHaveBeenCalled();
+    expect(n.parts).toEqual([]);
+    expect(b.create).not.toHaveBeenCalled();
   });
 });

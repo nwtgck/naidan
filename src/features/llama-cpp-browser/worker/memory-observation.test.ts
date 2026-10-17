@@ -15,26 +15,39 @@ describe('request-local memory evidence', () => {
       observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'graph_splits', nativeValue: i, batchTokens: 512, nativeSingleTokenValue: 2 } });
     }
     const result = observer.finish();
-    expect(result.samples).toHaveLength(128); expect(result.nativeAllocations).toHaveLength(128);
-    expect(result.droppedSamples).toBe(272); expect(result.droppedNativeAllocations).toBe(272);
-    expect(result.nativeSettings).toHaveLength(128); expect(result.droppedNativeSettings).toBe(272);
+    expect(result.samples).toHaveLength(128);
+    expect(result.nativeAllocations).toHaveLength(128);
+    expect(result.droppedSamples).toBe(272);
+    expect(result.droppedNativeAllocations).toBe(272);
+    expect(result.nativeSettings).toHaveLength(128);
+    expect(result.droppedNativeSettings).toBe(272);
     expect(result.nativeSettings.at(-1)).toEqual({ observedMs: 5, nativeMetric: 'graph_splits', nativeValue: 399, batchTokens: 512, nativeSingleTokenValue: 2 });
-    expect(result.samples[15]?.timestamp).toBe(15); expect(result.samples[16]?.timestamp).toBe(288); expect(result.samples.at(-1)?.timestamp).toBe(399);
-    expect(result.nativeAllocations[15]?.nativeValue).toBe(15); expect(result.nativeAllocations.at(-1)?.nativeValue).toBe(399);
-    expect(result.nativeAllocations[0]?.observedMs).toBe(5); expect(memoryDiagnosticsSchema.safeParse(result).success).toBe(true);
+    expect(result.samples[15]?.timestamp).toBe(15);
+    expect(result.samples[16]?.timestamp).toBe(288);
+    expect(result.samples.at(-1)?.timestamp).toBe(399);
+    expect(result.nativeAllocations[15]?.nativeValue).toBe(15);
+    expect(result.nativeAllocations.at(-1)?.nativeValue).toBe(399);
+    expect(result.nativeAllocations[0]?.observedMs).toBe(5);
+    expect(memoryDiagnosticsSchema.safeParse(result).success).toBe(true);
     worker.dispatchEvent(new MessageEvent('message', { data: sample }));
     observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 999 } });
-    expect(observer.finish()).toEqual(result); expect(result.droppedSamples).toBe(272);
+    expect(observer.finish()).toEqual(result);
+    expect(result.droppedSamples).toBe(272);
   });
 
   it('rejects malformed messages and private fields while preserving unavailable counters', () => {
     const worker = Object.assign(new EventTarget(), { postMessage() {} });
     const observer = observeMeasurementMemory({ worker, now: () => 0 });
-    for (const data of [{ ...sample, capacityBytes: -1 }, { ...sample, prompt: 'private' }, { ...sample, gpuRequests: { private: 'device' } }, { ...sample, gpuRequests: { bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0, metadata: { adapterInfo: { prompt: 'private' } } } }, { kind: 'other' }]) worker.dispatchEvent(new MessageEvent('message', { data }));
+    for (const data of [{ ...sample, capacityBytes: -1 }, { ...sample, prompt: 'private' }, { ...sample, gpuRequests: { private: 'device' } }, { ...sample, gpuRequests: { bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0, metadata: { adapterInfo: { prompt: 'private' } } } }, { kind: 'other' }]) {
+      worker.dispatchEvent(new MessageEvent('message', { data }));
+    }
     worker.dispatchEvent(new MessageEvent('message', { data: sample }));
     observer.record({ diagnostic: { event: 'native-info', nativeMetric: 'n_ctx', nativeValue: 512 } });
     const result = observer.finish();
-    expect(result.samples).toEqual([sample]); expect(result.samples[0]?.gpuRequests).toBeUndefined(); expect(result.nativeAllocations).toEqual([]); expect(result.nativeSettings).toMatchObject([{ nativeMetric: 'n_ctx', nativeValue: 512 }]);
+    expect(result.samples).toEqual([sample]);
+    expect(result.samples[0]?.gpuRequests).toBeUndefined();
+    expect(result.nativeAllocations).toEqual([]);
+    expect(result.nativeSettings).toMatchObject([{ nativeMetric: 'n_ctx', nativeValue: 512 }]);
     expect(memoryDiagnosticsSchema.safeParse({ ...result, nativeAllocations: [{ observedMs: 1, nativeMetric: 'kv_buffer_mib', nativeBackend: 'private-device', nativeValue: 4 }] }).success).toBe(false);
   });
 
@@ -47,8 +60,10 @@ describe('request-local memory evidence', () => {
     const gpuRequests = { bufferCount: 3, bufferBytes: 999, writeCount: 4, writeBytes: 1000, largestWriteBytes: 500, writesAtLeast4MiB: 0 };
     worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: 'generation-cleaned', gpuRequests } }));
     const after = second.finish();
-    expect(before.samples).toEqual([sample]); expect(after.samples).toHaveLength(1);
-    expect(after.samples[0]?.gpuRequests).toEqual(gpuRequests); expect(after.samples[0]?.checkpoint).toBe('generation-cleaned');
+    expect(before.samples).toEqual([sample]);
+    expect(after.samples).toHaveLength(1);
+    expect(after.samples[0]?.gpuRequests).toEqual(gpuRequests);
+    expect(after.samples[0]?.checkpoint).toBe('generation-cleaned');
   });
 });
 
@@ -99,9 +114,12 @@ describe('request-local Flash Attention evidence', () => {
     const observer = observeMeasurementMemory({ worker, now: () => 0 });
     const nativeFlashAttention: { kind: 'resolved', mode: 'enabled' | 'disabled' } = { kind: 'resolved', mode: 'enabled' };
     observer.record({ diagnostic: { event: 'native-info', nativeFlashAttention } });
-    for (let i = 0; i < 200; i++) observer.record({ diagnostic: { event: 'context-start' } });
+    for (let i = 0; i < 200; i++) {
+      observer.record({ diagnostic: { event: 'context-start' } });
+    }
     const result = observer.finish();
-    expect(result.nativeSettings).toHaveLength(128); expect(result.droppedNativeSettings).toBe(73);
+    expect(result.nativeSettings).toHaveLength(128);
+    expect(result.droppedNativeSettings).toBe(73);
     nativeFlashAttention.mode = 'disabled';
     expect(result.nativeSettings[0]).toEqual({ observedMs: 0, nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } });
     expect('nativeFlashAttention' in result.nativeSettings[0]! && result.nativeSettings[0].nativeFlashAttention).not.toBe(nativeFlashAttention);
@@ -115,10 +133,13 @@ it('copies loaded descriptors and retains bounded request-local history', () => 
   const worker = Object.assign(new EventTarget(), { postMessage() {} });
   const observer = observeMeasurementMemory({ worker, now: () => 1 });
   const descriptor = { source: 'loaded-model-native-api' as const, layers: 64, parameterCount: '9007199254740993' };
-  for (let i = 0; i < 400; i++) observer.record({ diagnostic: { event: 'native-info', loadedModelDescriptor: descriptor } });
+  for (let i = 0; i < 400; i++) {
+    observer.record({ diagnostic: { event: 'native-info', loadedModelDescriptor: descriptor } });
+  }
   descriptor.layers = 32;
   const result = observer.finish();
-  expect(result.nativeSettings).toHaveLength(128); expect(result.droppedNativeSettings).toBe(272);
+  expect(result.nativeSettings).toHaveLength(128);
+  expect(result.droppedNativeSettings).toBe(272);
   expect(result.nativeSettings[0]).toEqual({ observedMs: 1, loadedModelDescriptor: { ...descriptor, layers: 64 } });
   expect(memoryDiagnosticsSchema.safeParse(JSON.parse(JSON.stringify(result))).success).toBe(true);
   observer.record({ diagnostic: { event: 'native-info', loadedModelDescriptor: descriptor } });
@@ -136,7 +157,9 @@ it('validates notification payloads, snapshots attributes, and removes both subs
     { event: 'native-info', loadedModelDescriptor: { ...descriptor, prompt: 'private' } },
     { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'auto' } },
     { event: 'native-info', nativeMetric: 'n_ctx', nativeValue: 512, private: 'private' },
-  ]) worker.dispatchEvent(new MessageEvent('message', { data }));
+  ]) {
+    worker.dispatchEvent(new MessageEvent('message', { data }));
+  }
   worker.dispatchEvent(new MessageEvent('message', { data: { event: 'native-info', loadedModelDescriptor: descriptor } }));
   descriptor.layers = 32;
   const observed = observer.finish();
@@ -146,7 +169,8 @@ it('validates notification payloads, snapshots attributes, and removes both subs
   worker.dispatchEvent(new MessageEvent('message', { data: { event: 'context-start' } }));
   worker.dispatchEvent(new MessageEvent('message', { data: sample }));
   expect(observer.finish()).toEqual(observed);
-  expect(observed.nativeSettings).toHaveLength(1); expect(observed.samples).toEqual([]);
+  expect(observed.nativeSettings).toHaveLength(1);
+  expect(observed.samples).toEqual([]);
   const next = observeMeasurementMemory({ worker, now: () => 4 });
   expect(next.finish().nativeSettings).toEqual([]);
 });
@@ -156,7 +180,8 @@ it.each([false, true])('collects ordered settings before the same-endpoint RPC s
   const { diagnosticSchema } = await import('@/features/llama-cpp-browser/debug-log');
   const { exposeWorkerRemote, wrapWorkerRemote, releaseWorkerRemote, postWorkerNotification } = await import('@/utils/worker-transport');
   const { port1, port2 } = new MessageChannel();
-  const server = port1 as unknown as Worker; const client = port2 as unknown as Worker;
+  const server = port1 as unknown as Worker;
+  const client = port2 as unknown as Worker;
   type Api = { complete({ fail }: { fail: boolean }): Promise<void> };
   exposeWorkerRemote<Api>({
     endpoint: server,
@@ -169,8 +194,12 @@ it.each([false, true])('collects ordered settings before the same-endpoint RPC s
           { event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: 'auto' } },
           { event: 'native-info', nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } },
           { event: 'context-ready' },
-        ] as const) postWorkerNotification({ endpoint: server, schema: diagnosticSchema, value: diagnostic });
-        if (fail) throw new Error('initialization failed');
+        ] as const) {
+          postWorkerNotification({ endpoint: server, schema: diagnosticSchema, value: diagnostic });
+        }
+        if (fail) {
+          throw new Error('initialization failed');
+        }
       },
     },
   });
@@ -178,11 +207,17 @@ it.each([false, true])('collects ordered settings before the same-endpoint RPC s
   const remote = wrapWorkerRemote<Api>({ endpoint: client });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      observer.finish(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
+      observer.finish();
+      releaseWorkerRemote({ remote });
+      port1.close();
+      port2.close();
     },
   };
-  if (fail) await expect(remote.complete({ fail })).rejects.toThrow('initialization failed');
-  else await remote.complete({ fail });
+  if (fail) {
+    await expect(remote.complete({ fail })).rejects.toThrow('initialization failed');
+  } else {
+    await remote.complete({ fail });
+  }
   expect(observer.finish().nativeSettings).toEqual([
     { observedMs: 2, loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } },
     { observedMs: 2, contextAttempt: 1, contextEvent: 'context-start' },

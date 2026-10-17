@@ -39,7 +39,9 @@ export function createEvidenceFilesReader({ files }: {
     paths: [...owned.keys()],
     async read({ path, maximumBytes }) {
       const file = owned.get(path);
-      if (file !== undefined && maximumBytes !== undefined && file.size > maximumBytes) throw new Error('Evidence entry exceeds its read byte budget');
+      if (file !== undefined && maximumBytes !== undefined && file.size > maximumBytes) {
+        throw new Error('Evidence entry exceeds its read byte budget');
+      }
       return file;
     },
   };
@@ -56,8 +58,12 @@ export function createEvidenceArchiveStream({ files }: {
 }): ReadableStream<Uint8Array> {
   const owned = [...files.entries()];
   // ZIP64 is not supported by the existing ZIP reader/writer.
-  if (owned.length >= 0xffff) throw new Error('Evidence archive exceeds the supported entry count');
-  for (const [path] of owned) validateEvidencePath({ path });
+  if (owned.length >= 0xffff) {
+    throw new Error('Evidence archive exceeds the supported entry count');
+  }
+  for (const [path] of owned) {
+    validateEvidencePath({ path });
+  }
   const abort = new AbortController();
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
@@ -118,21 +124,31 @@ export async function openEvidenceArchive({ blob }: { blob: Blob }): Promise<{
   try {
     const entries = new Map<string, ZipArchiveEntry>();
     for await (const entry of zip.entries()) {
-      if (entry.isDirectory) continue;
+      if (entry.isDirectory) {
+        continue;
+      }
       validateEvidencePath({ path: entry.name });
-      if (entry.isSymbolicLink || entries.has(entry.name)) throw new Error('Duplicate or unsupported Evidence archive entry');
+      if (entry.isSymbolicLink || entries.has(entry.name)) {
+        throw new Error('Duplicate or unsupported Evidence archive entry');
+      }
       entries.set(entry.name, entry);
     }
     return {
       reader: {
         paths: [...entries.keys()],
         async read({ path, maximumBytes }) {
-          if (closed) throw new Error('Evidence archive reader is closed');
+          if (closed) {
+            throw new Error('Evidence archive reader is closed');
+          }
           const entry = entries.get(path);
-          if (entry === undefined) return undefined;
+          if (entry === undefined) {
+            return undefined;
+          }
           // Refuse before opening/decompressing a newly bounded sidecar. The
           // shared ZIP reader also verifies actual bytes against this size.
-          if (maximumBytes !== undefined && entry.uncompressedSize > maximumBytes) throw new Error('Evidence entry exceeds its read byte budget');
+          if (maximumBytes !== undefined && entry.uncompressedSize > maximumBytes) {
+            throw new Error('Evidence entry exceeds its read byte budget');
+          }
           const parts: Blob[] = [];
           for await (const chunk of iterateZipStreamChunks({ stream: await zip.openEntry({ entry }) })) {
             parts.push(new Blob([Uint8Array.from(chunk)]));

@@ -38,7 +38,9 @@ export function useFileExplorerOperations({
   }
 
   async function deleteEntries({ entries }: { entries: FileExplorerEntry[] }): Promise<void> {
-    if (entries.length === 0) return;
+    if (entries.length === 0) {
+      return;
+    }
 
     const isSingle = entries.length === 1;
     const label = isSingle
@@ -68,7 +70,9 @@ export function useFileExplorerOperations({
       confirmButtonText: await ensureStrings.fileExplorer__delete(),
       confirmButtonVariant: 'danger',
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       await client.deleteEntries({ paths: entries.map(entry => entry.path) });
@@ -175,7 +179,9 @@ export function useFileExplorerOperations({
       }
       }
     } catch (error) {
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted) {
+        return;
+      }
       addToast({ message: await ensureStrings.fileExplorer__failed_to_download({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     } finally {
       window.removeEventListener('pagehide', onPageHide);

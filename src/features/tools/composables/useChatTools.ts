@@ -55,7 +55,9 @@ const _currentChatId = ref<ChatId | null>(null);
 let isToolConfigPersistenceWatcherInstalled = false;
 
 function ensureToolConfigPersistenceWatcher(): void {
-  if (isToolConfigPersistenceWatcherInstalled) return;
+  if (isToolConfigPersistenceWatcherInstalled) {
+    return;
+  }
 
   const { settings } = useSettings();
   watch(
@@ -112,7 +114,9 @@ export function getChatGroupToolConfigsForChat({
   chat: Pick<Chat, 'groupId'> | null,
 }): ToolConfig[] | undefined {
   const groupId = chat?.groupId;
-  if (groupId === undefined || groupId === null) return undefined;
+  if (groupId === undefined || groupId === null) {
+    return undefined;
+  }
 
   for (const item of rootItems.value) {
     switch (item.type) {
@@ -148,8 +152,12 @@ function areToolConfigsEqual({
   first: ToolConfig | undefined,
   second: ToolConfig | undefined,
 }): boolean {
-  if (first === undefined || second === undefined) return first === second;
-  if (first.key !== second.key || first.status !== second.status) return false;
+  if (first === undefined || second === undefined) {
+    return first === second;
+  }
+  if (first.key !== second.key || first.status !== second.status) {
+    return false;
+  }
 
   switch (first.key) {
   case 'builtin.calculator':
@@ -190,7 +198,9 @@ function applyRuntimeToolConfigChanges({
 
   for (const key of BUILTIN_TOOL_KEYS) {
     const change = changes.get(key);
-    if (change === undefined) continue;
+    if (change === undefined) {
+      continue;
+    }
 
     switch (change.behavior) {
     case 'remove':
@@ -304,7 +314,9 @@ function setRuntimeToolConfigsForChat({
       toolConfigs: nextToolConfigs,
       key,
     });
-    if (areToolConfigsEqual({ first: currentConfig, second: nextConfig })) continue;
+    if (areToolConfigsEqual({ first: currentConfig, second: nextConfig })) {
+      continue;
+    }
 
     const persistedConfig = findLastToolConfigByKey({
       toolConfigs: persistedToolConfigs,
@@ -332,7 +344,9 @@ function setRuntimeToolConfigsForChat({
 }
 
 function clearRuntimeToolConfigsForChat({ chatId }: { chatId: ChatId }): void {
-  if (!_runtimeToolConfigChangesByChat.value.has(chatId)) return;
+  if (!_runtimeToolConfigChangesByChat.value.has(chatId)) {
+    return;
+  }
   const next = new Map(_runtimeToolConfigChangesByChat.value);
   next.delete(chatId);
   _runtimeToolConfigChangesByChat.value = next;
@@ -457,8 +471,12 @@ export function useChatTools(): ChatToolsApi {
     return id === null ? null : getLiveChatById({ chatId: id });
   }
   const isToolEnabled = ({ name }: { name: string }) => {
-    if (!isLmToolName(name)) return false;
-    if (activeChatId.value === null) return false;
+    if (!isLmToolName(name)) {
+      return false;
+    }
+    if (activeChatId.value === null) {
+      return false;
+    }
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
@@ -476,7 +494,9 @@ export function useChatTools(): ChatToolsApi {
   }: {
     updater: ToolConfigsUpdater,
   }): Promise<void> => {
-    if (activeChatId.value === null) return;
+    if (activeChatId.value === null) {
+      return;
+    }
     await updateToolConfigsForChat({ chatId: activeChatId.value, updater });
   };
 
@@ -489,9 +509,13 @@ export function useChatTools(): ChatToolsApi {
     wasEnabled: boolean,
     chatId: ChatId,
   }): Promise<void> => {
-    if (name !== 'shell_execute' || wasEnabled) return;
+    if (name !== 'shell_execute' || wasEnabled) {
+      return;
+    }
     const chat = getLiveChatById({ chatId });
-    if (chat === null || !isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name })) return;
+    if (chat === null || !isLmToolEnabledInToolConfigs({ toolConfigs: getEffectiveToolConfigsForChat({ chat }), name })) {
+      return;
+    }
 
     try {
       await ensureChatWorkspaceMounted({ chat });
@@ -507,7 +531,9 @@ export function useChatTools(): ChatToolsApi {
     name: LmToolName,
     status: ToolConfigStatus,
   }): Promise<void> => {
-    if (activeChatId.value === null) return;
+    if (activeChatId.value === null) {
+      return;
+    }
     const chatId = activeChatId.value;
     const key = builtinToolKeyForLmToolName({ name });
     const wasEnabled = isToolEnabled({ name });
@@ -531,7 +557,9 @@ export function useChatTools(): ChatToolsApi {
     name: string,
     enabled: boolean,
   }): Promise<void> => {
-    if (!isLmToolName(name)) return;
+    if (!isLmToolName(name)) {
+      return;
+    }
     await setToolStatus({
       name,
       status: enabled ? 'enabled' : 'disabled',
@@ -544,7 +572,9 @@ export function useChatTools(): ChatToolsApi {
     name: LmToolName,
   }): Promise<void> => {
     const chatId = activeChatId.value;
-    if (chatId === null) return;
+    if (chatId === null) {
+      return;
+    }
     const wasEnabled = isToolEnabled({ name });
     await updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => removeSingletonToolConfig({
@@ -561,7 +591,9 @@ export function useChatTools(): ChatToolsApi {
   };
 
   const getToolInheritanceLabel = ({ name }: { name: LmToolName }): ChatToolInheritanceLabel => {
-    if (activeChatId.value === null) return 'Use global';
+    if (activeChatId.value === null) {
+      return 'Use global';
+    }
     const liveChat = getCurrentLiveChat();
     const groupConfig = findLastToolConfigByKey({
       toolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
@@ -575,7 +607,9 @@ export function useChatTools(): ChatToolsApi {
   };
 
   const enabledToolNames = computed((): LmToolName[] => {
-    if (activeChatId.value === null) return [];
+    if (activeChatId.value === null) {
+      return [];
+    }
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
@@ -594,7 +628,9 @@ export function useChatTools(): ChatToolsApi {
 
   const addToolCall = ({ messageId, toolCall }: { messageId: MessageId, toolCall: ToolCallRecord }) => {
     const current = _messageToolCalls.value.get(messageId) || [];
-    if (current.some(c => c.id === toolCall.id)) return;
+    if (current.some(c => c.id === toolCall.id)) {
+      return;
+    }
 
     const nextMap = new Map(_messageToolCalls.value);
     nextMap.set(messageId, [...current, toolCall]);
@@ -607,10 +643,14 @@ export function useChatTools(): ChatToolsApi {
     update: | { status: 'success', result: { content: TextOrBinaryObject } } | { status: 'error', error: { message: TextOrBinaryObject } },
   }) => {
     const current = _messageToolCalls.value.get(messageId);
-    if (!current) return;
+    if (!current) {
+      return;
+    }
 
     const idx = current.findIndex(c => c.id === toolCallId);
-    if (idx === -1) return;
+    if (idx === -1) {
+      return;
+    }
 
     const updatedCalls = [...current];
     updatedCalls[idx] = { ...updatedCalls[idx]!, ...update };

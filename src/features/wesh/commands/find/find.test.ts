@@ -34,7 +34,9 @@ describe('wesh find', () => {
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -85,7 +87,9 @@ describe('wesh find', () => {
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) return false;
+    if (fileName === undefined) {
+      return false;
+    }
 
     let dir = rootHandle;
     try {
@@ -1521,7 +1525,9 @@ regex-root/a1
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) throw new Error(parsed.message);
+    if (!parsed.ok) {
+      throw new Error(parsed.message);
+    }
 
     const resolved = await TEST_ONLY.resolveFindExpressionReferences({
       expr: parsed.expr,
@@ -1560,7 +1566,9 @@ regex-root/a1
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) throw new Error(parsed.message);
+    if (!parsed.ok) {
+      throw new Error(parsed.message);
+    }
 
     const evaluation = await TEST_ONLY.evaluateExpression({
       expr: parsed.expr,
@@ -1589,7 +1597,9 @@ regex-root/a1
     });
 
     expect(parsed.ok).toBe(true);
-    if (!parsed.ok) throw new Error(parsed.message);
+    if (!parsed.ok) {
+      throw new Error(parsed.message);
+    }
 
     const evaluation = await TEST_ONLY.evaluateExpression({
       expr: parsed.expr,

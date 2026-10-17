@@ -27,7 +27,9 @@ export async function verifySharedStorage({ verify, signal }: {
   const probeId = crypto.randomUUID();
   const name = probeName({ probeId });
   const check = (): void => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
   };
   try {
     check();
@@ -55,19 +57,31 @@ export async function verifySharedStorage({ verify, signal }: {
           abort = () => reject(new LlamaCppBrowserError({ code: 'aborted' }));
           signal?.addEventListener('abort', abort, { once: true });
           timeout = setTimeout(() => reject(new LlamaCppBrowserError({ code: 'worker-failed' })), 10_000);
-          if (signal?.aborted) abort();
+          if (signal?.aborted) {
+            abort();
+          }
         }),
       ]);
-      if (verified !== true) throw new LlamaCppBrowserError({ code: 'unavailable' });
+      if (verified !== true) {
+        throw new LlamaCppBrowserError({ code: 'unavailable' });
+      }
     } finally {
-      if (timeout !== undefined) clearTimeout(timeout);
-      if (abort) signal?.removeEventListener('abort', abort);
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      if (abort) {
+        signal?.removeEventListener('abort', abort);
+      }
     }
   } catch (error) {
-    if (error instanceof LlamaCppBrowserError) throw error;
+    if (error instanceof LlamaCppBrowserError) {
+      throw error;
+    }
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   } finally {
-    if (created && root) await root.removeEntry(name);
+    if (created && root) {
+      await root.removeEntry(name);
+    }
   }
 }
 

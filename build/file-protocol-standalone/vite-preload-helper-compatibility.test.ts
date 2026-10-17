@@ -38,7 +38,9 @@ function createPlugin(): Plugin {
     },
   }) as Plugin[];
   const plugin = plugins.find(candidate => candidate.name === 'naidan-file-protocol-standalone-vite-preload-helper-compatibility');
-  if (plugin === undefined) throw new Error('Expected Vite preload helper compatibility plugin');
+  if (plugin === undefined) {
+    throw new Error('Expected Vite preload helper compatibility plugin');
+  }
   return plugin;
 }
 
@@ -107,9 +109,13 @@ globalThis.testPreload = preload;
 async function transformFixture(): Promise<string> {
   const plugin = createPlugin();
   const hook = plugin.transform;
-  if (typeof hook !== 'function') throw new Error('Expected transform hook');
+  if (typeof hook !== 'function') {
+    throw new Error('Expected transform hook');
+  }
   const result = await hook.call({} as never, createVitePreloadHelperFixture(), '\0vite/preload-helper.js');
-  if (typeof result === 'string') return result;
+  if (typeof result === 'string') {
+    return result;
+  }
   if (result !== null && result !== undefined && typeof result === 'object' && 'code' in result && typeof result.code === 'string') {
     return result.code;
   }
@@ -132,7 +138,9 @@ function createSystemJsVitePreloadHelperFixture(): string {
 async function transformSystemJsFixture(): Promise<string> {
   const plugin = createPlugin();
   const hook = plugin.transform;
-  if (typeof hook !== 'function') throw new Error('Expected transform hook');
+  if (typeof hook !== 'function') {
+    throw new Error('Expected transform hook');
+  }
   const compatibilityResult = await hook.call(
     {} as never,
     createSystemJsVitePreloadHelperFixture(),
@@ -147,7 +155,9 @@ async function transformSystemJsFixture(): Promise<string> {
       && typeof compatibilityResult.code === 'string'
       ? compatibilityResult.code
       : undefined;
-  if (compatibilityCode === undefined) throw new Error('Expected compatibility transform output');
+  if (compatibilityCode === undefined) {
+    throw new Error('Expected compatibility transform output');
+  }
 
   const transformed = await transformAsync(compatibilityCode, {
     filename: 'vite-preload-helper.js',
@@ -215,7 +225,9 @@ async function evaluateSystemJsPreload({
     system: TestSystem,
   ) => void;
   evaluate(document, eventConstructor, testGlobal, system);
-  if (declaration === undefined) throw new Error('System.register declaration was not captured');
+  if (declaration === undefined) {
+    throw new Error('System.register declaration was not captured');
+  }
 
   const exports = new Map<string, unknown>();
   const declared = declaration((name, value) => {
@@ -223,17 +235,23 @@ async function evaluateSystemJsPreload({
       exports.set(name, value);
       return;
     }
-    for (const [key, exportedValue] of Object.entries(name)) exports.set(key, exportedValue);
+    for (const [key, exportedValue] of Object.entries(name)) {
+      exports.set(key, exportedValue);
+    }
   }, {
     meta: {
       url: importerUrl,
       resolve,
     },
   });
-  for (const setter of declared.setters) setter({});
+  for (const setter of declared.setters) {
+    setter({});
+  }
   await declared.execute();
   const preload = exports.get('testPreload');
-  if (typeof preload !== 'function') throw new Error('Expected SystemJS preload export');
+  if (typeof preload !== 'function') {
+    throw new Error('Expected SystemJS preload export');
+  }
   return preload as TestPreload;
 }
 
@@ -261,7 +279,9 @@ function evaluatePreload({
     `${code}\nreturn globalThis.testPreload;`,
   ) as (document: Document | undefined, eventConstructor: typeof Event, testGlobal: TestGlobal) => TestPreload | undefined;
   const preload = evaluate(document, eventConstructor, testGlobal);
-  if (preload === undefined) throw new Error('Fixture did not expose preload helper');
+  if (preload === undefined) {
+    throw new Error('Fixture did not expose preload helper');
+  }
   return preload;
 }
 
@@ -277,10 +297,14 @@ function readInstalledVitePreloadFunctionSource(): string {
     throw new Error(`Expected exactly one installed Vite preload helper source; found ${matches.length}`);
   }
   const viteNodeSource = matches[0];
-  if (viteNodeSource === undefined) throw new Error('Installed Vite preload helper source disappeared');
+  if (viteNodeSource === undefined) {
+    throw new Error('Installed Vite preload helper source disappeared');
+  }
   const preloadStart = viteNodeSource.indexOf(marker);
   const preloadEnd = viteNodeSource.indexOf('function getPreloadCode(', preloadStart);
-  if (preloadEnd <= preloadStart) throw new Error('Unable to bound installed Vite preload helper source');
+  if (preloadEnd <= preloadStart) {
+    throw new Error('Unable to bound installed Vite preload helper source');
+  }
   return viteNodeSource.slice(preloadStart, preloadEnd);
 }
 
@@ -296,10 +320,14 @@ function readInstalledViteCssPostPluginSource(): string {
     throw new Error(`Expected exactly one installed Vite CSS post plugin source; found ${matches.length}`);
   }
   const viteNodeSource = matches[0];
-  if (viteNodeSource === undefined) throw new Error('Installed Vite CSS post plugin source disappeared');
+  if (viteNodeSource === undefined) {
+    throw new Error('Installed Vite CSS post plugin source disappeared');
+  }
   const functionStart = viteNodeSource.indexOf(marker);
   const functionEnd = viteNodeSource.indexOf('function injectInlinedCSS(', functionStart);
-  if (functionEnd <= functionStart) throw new Error('Unable to bound installed Vite CSS post plugin source');
+  if (functionEnd <= functionStart) {
+    throw new Error('Unable to bound installed Vite CSS post plugin source');
+  }
   return viteNodeSource.slice(functionStart, functionEnd);
 }
 
@@ -315,10 +343,14 @@ function readInstalledViteCssFilesForChunkSource(): string {
     throw new Error(`Expected exactly one installed Vite CSS traversal source; found ${matches.length}`);
   }
   const viteNodeSource = matches[0];
-  if (viteNodeSource === undefined) throw new Error('Installed Vite CSS traversal source disappeared');
+  if (viteNodeSource === undefined) {
+    throw new Error('Installed Vite CSS traversal source disappeared');
+  }
   const functionStart = viteNodeSource.indexOf(marker);
   const functionEnd = viteNodeSource.indexOf('function buildHtmlPlugin(', functionStart);
-  if (functionEnd <= functionStart) throw new Error('Unable to bound installed Vite CSS traversal source');
+  if (functionEnd <= functionStart) {
+    throw new Error('Unable to bound installed Vite CSS traversal source');
+  }
   return viteNodeSource.slice(functionStart, functionEnd);
 }
 
@@ -334,7 +366,9 @@ function readInstalledVitePluginAssemblySource(): string {
     throw new Error(`Expected exactly one installed Vite plugin assembly source; found ${matches.length}`);
   }
   const viteNodeSource = matches[0];
-  if (viteNodeSource === undefined) throw new Error('Installed Vite plugin assembly source disappeared');
+  if (viteNodeSource === undefined) {
+    throw new Error('Installed Vite plugin assembly source disappeared');
+  }
   return viteNodeSource;
 }
 
@@ -384,7 +418,9 @@ describe('Vite preload helper file-protocol compatibility', () => {
     const source = readInstalledVitePluginAssemblySource();
     const metadataStart = source.indexOf('var ChunkMetadataMap = class');
     const metadataEnd = source.indexOf('function injectEnvironmentToHooks(', metadataStart);
-    if (metadataEnd <= metadataStart) throw new Error('Unable to bound installed Vite chunk metadata source');
+    if (metadataEnd <= metadataStart) {
+      throw new Error('Unable to bound installed Vite chunk metadata source');
+    }
     const metadataSource = source.slice(metadataStart, metadataEnd);
     expect(metadataSource).toContain('importedAssets: /* @__PURE__ */ new Set()');
     expect(metadataSource).toContain('importedCss: /* @__PURE__ */ new Set()');
@@ -394,7 +430,9 @@ describe('Vite preload helper file-protocol compatibility', () => {
     const source = readInstalledVitePluginAssemblySource();
     const resolvePluginsStart = source.indexOf('async function resolvePlugins(config, prePlugins, normalPlugins, postPlugins)');
     const resolvePluginsEnd = source.indexOf('async function loadDevToolsIntegrationPlugin', resolvePluginsStart);
-    if (resolvePluginsEnd <= resolvePluginsStart) throw new Error('Unable to bound installed Vite plugin assembly');
+    if (resolvePluginsEnd <= resolvePluginsStart) {
+      throw new Error('Unable to bound installed Vite plugin assembly');
+    }
     const resolvePluginsSource = source.slice(resolvePluginsStart, resolvePluginsEnd);
     const userPostIndex = resolvePluginsSource.indexOf('...postPlugins');
     const buildPostIndex = resolvePluginsSource.indexOf('...buildPlugins.post');
@@ -403,7 +441,9 @@ describe('Vite preload helper file-protocol compatibility', () => {
 
     const resolveBuildStart = source.indexOf('function resolveBuildPlugins(config)');
     const resolveBuildEnd = source.indexOf('async function build(', resolveBuildStart);
-    if (resolveBuildEnd <= resolveBuildStart) throw new Error('Unable to bound installed Vite build plugin assembly');
+    if (resolveBuildEnd <= resolveBuildStart) {
+      throw new Error('Unable to bound installed Vite build plugin assembly');
+    }
     const resolveBuildSource = source.slice(resolveBuildStart, resolveBuildEnd);
     const postIndex = resolveBuildSource.indexOf('post: [');
     const manifestIndex = resolveBuildSource.indexOf('manifestPlugin()');
@@ -457,8 +497,12 @@ describe('Vite preload helper file-protocol compatibility', () => {
     }) as Plugin[];
     const buildConfig = plugins.find(candidate => candidate.name === 'naidan-file-protocol-standalone-build-config');
     const compatibility = plugins.find(candidate => candidate.name === 'naidan-file-protocol-standalone-vite-preload-helper-compatibility');
-    if (typeof buildConfig?.configResolved !== 'function') throw new Error('Expected build config resolved hook');
-    if (typeof compatibility?.transform !== 'function') throw new Error('Expected compatibility transform hook');
+    if (typeof buildConfig?.configResolved !== 'function') {
+      throw new Error('Expected build config resolved hook');
+    }
+    if (typeof compatibility?.transform !== 'function') {
+      throw new Error('Expected compatibility transform hook');
+    }
 
     buildConfig.configResolved.call({} as never, {
       base: './',
@@ -500,7 +544,9 @@ describe('Vite preload helper file-protocol compatibility', () => {
   it('applies the compatibility transform to the installed Vite preload implementation', async () => {
     const plugin = createPlugin();
     const hook = plugin.transform;
-    if (typeof hook !== 'function') throw new Error('Expected transform hook');
+    if (typeof hook !== 'function') {
+      throw new Error('Expected transform hook');
+    }
     const installedFixture = `\
 const __VITE_IS_MODERN__ = true;
 const scriptRel = 'modulepreload';
@@ -745,7 +791,9 @@ export { preload as testPreload };
   it('fails closed when the Vite preload helper shape changes', async () => {
     const plugin = createPlugin();
     const hook = plugin.transform;
-    if (typeof hook !== 'function') throw new Error('Expected transform hook');
+    if (typeof hook !== 'function') {
+      throw new Error('Expected transform hook');
+    }
     const incompatible = createVitePreloadHelperFixture().replace(
       'link.crossOrigin = "";',
       'link.dataset.crossOriginPolicy = "vite-changed";',
@@ -863,7 +911,9 @@ export { preload as testPreload };
   it('does not rewrite application modules that merely contain preload-like text', async () => {
     const plugin = createPlugin();
     const hook = plugin.transform;
-    if (typeof hook !== 'function') throw new Error('Expected transform hook');
+    if (typeof hook !== 'function') {
+      throw new Error('Expected transform hook');
+    }
 
     await expect(Promise.resolve(hook.call(
       {} as never,

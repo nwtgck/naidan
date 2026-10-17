@@ -17,11 +17,19 @@ it('advertises copy while idle and none while busy; drop is not controlled by tr
   };
   const zone = wrapper.get('[data-testid="image-repository-drop"]');
   const transfer = { dropEffect: 'none', types: ['Files'] };
-  await zone.trigger('dragover', { dataTransfer: transfer }); expect(transfer.dropEffect).toBe('copy');
-  downloading.value = true; await zone.trigger('dragover', { dataTransfer: transfer }); expect(transfer.dropEffect).toBe('none');
-  await zone.trigger('drop', { dataTransfer: transfer }); expect(view.dropDirectory).not.toHaveBeenCalled();
-  downloading.value = false; await zone.trigger('drop', { dataTransfer: transfer }); expect(view.dropDirectory).toHaveBeenCalledOnce();
-  importing.value = true; await zone.trigger('dragover', { dataTransfer: transfer }); expect(transfer.dropEffect).toBe('none');
+  await zone.trigger('dragover', { dataTransfer: transfer });
+  expect(transfer.dropEffect).toBe('copy');
+  downloading.value = true;
+  await zone.trigger('dragover', { dataTransfer: transfer });
+  expect(transfer.dropEffect).toBe('none');
+  await zone.trigger('drop', { dataTransfer: transfer });
+  expect(view.dropDirectory).not.toHaveBeenCalled();
+  downloading.value = false;
+  await zone.trigger('drop', { dataTransfer: transfer });
+  expect(view.dropDirectory).toHaveBeenCalledOnce();
+  importing.value = true;
+  await zone.trigger('dragover', { dataTransfer: transfer });
+  expect(transfer.dropEffect).toBe('none');
 });
 
 it('keeps an active import cancellable when an independent operation blocks new imports', async () => {

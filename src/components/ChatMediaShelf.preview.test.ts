@@ -74,7 +74,8 @@ function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; sh
       ]);
     },
   });
-  const wrapper = mount(Owner, { global: { stubs: { Teleport: true } } }); wrappers.push(wrapper);
+  const wrapper = mount(Owner, { global: { stubs: { Teleport: true } } });
+  wrappers.push(wrapper);
   return { wrapper, nodes, preview };
 }
 
@@ -82,24 +83,33 @@ async function readBytes({ blob }: { blob: Blob }): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-    reader.onerror = reject; reader.readAsArrayBuffer(blob);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(blob);
   });
 }
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-  vi.clearAllMocks(); downloads = []; urls = new Map();
+  vi.clearAllMocks();
+  downloads = [];
+  urls = new Map();
   vi.mocked(storageService.getFile).mockResolvedValue(null);
   vi.mocked(storageService.getBinaryObject).mockResolvedValue(null);
   vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
-    if (!(blob instanceof Blob)) throw new Error('Expected a Blob.');
-    const url = `blob:memory-${urls.size + 1}`; urls.set(url, blob); return url;
+    if (!(blob instanceof Blob)) {
+      throw new Error('Expected a Blob.');
+    }
+    const url = `blob:memory-${urls.size + 1}`;
+    urls.set(url, blob);
+    return url;
   });
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
     const blob = urls.get(this.href);
-    if (!blob) throw new Error('Download did not refer to an owned Blob.');
+    if (!blob) {
+      throw new Error('Download did not refer to an owned Blob.');
+    }
     downloads.push({ url: this.href, name: this.download, blob });
   });
   vi.stubGlobal('IntersectionObserver', class {
@@ -110,81 +120,122 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
-  vi.clearAllTimers(); vi.useRealTimers();
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
+  vi.clearAllTimers();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 it('opens and downloads an unsaved attachment through the real shelf, preview state, modal and action', async () => {
-  const blob = png(); const original = message({ blob }); const { wrapper, preview } = mountOwner({ messages: [original], showMessage: false });
-  await flushPromises(); await wrapper.get('[data-testid="media-preview-trigger"]').trigger('click'); await flushPromises();
+  const blob = png();
+  const original = message({ blob });
+  const { wrapper, preview } = mountOwner({ messages: [original], showMessage: false });
+  await flushPromises();
+  await wrapper.get('[data-testid="media-preview-trigger"]').trigger('click');
+  await flushPromises();
   const modal = wrapper.getComponent(BinaryObjectPreviewModal);
   expect(modal.get('[data-testid="preview-image"]').attributes('src')).toBe('blob:memory-1');
   expect(preview.state.value?.objects[0]?.memoryBlob).toBe(blob);
-  expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+  expect(storageService.getFile).not.toHaveBeenCalled();
+  expect(storageService.getBinaryObject).not.toHaveBeenCalled();
   expect(modal.get('[data-testid="preview-delete-btn"]').attributes()).toHaveProperty('disabled');
-  await modal.get('[data-testid="preview-delete-btn"]').trigger('click'); expect(modal.emitted('delete')).toBeUndefined();
-  await modal.get('[data-testid="preview-download-btn"]').trigger('click'); await flushPromises();
-  expect(downloads).toHaveLength(1); expect(downloads[0]?.blob).toBe(blob); expect(downloads[0]?.name).toBe('local.png');
+  await modal.get('[data-testid="preview-delete-btn"]').trigger('click');
+  expect(modal.emitted('delete')).toBeUndefined();
+  await modal.get('[data-testid="preview-download-btn"]').trigger('click');
+  await flushPromises();
+  expect(downloads).toHaveLength(1);
+  expect(downloads[0]?.blob).toBe(blob);
+  expect(downloads[0]?.name).toBe('local.png');
   expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(downloads[0]?.url);
   await vi.advanceTimersByTimeAsync(TEST_ONLY.DOWNLOAD_BLOB_RELEASE_DELAY_MS);
   expect(URL.revokeObjectURL).toHaveBeenCalledWith(downloads[0]?.url);
   expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:memory-1');
   expect(original.parts[1]).toMatchObject({ attachment: { status: 'memory', blob } });
-  await modal.get('[data-testid="preview-close-btn"]').trigger('click'); await flushPromises();
-  expect(preview.state.value).toBeNull(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:memory-1');
+  await modal.get('[data-testid="preview-close-btn"]').trigger('click');
+  await flushPromises();
+  expect(preview.state.value).toBeNull();
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:memory-1');
 });
 
 it('downloads the original unsaved Blob from the shelf without a storage read', async () => {
-  const blob = png(); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
-  await flushPromises(); await wrapper.get('[data-testid="download-gen-image-button"]').trigger('click'); await flushPromises();
-  expect(downloads).toHaveLength(1); expect(downloads[0]?.blob).toBe(blob); expect(downloads[0]?.name).toBe('local.png');
-  expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+  const blob = png();
+  const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
+  await flushPromises();
+  await wrapper.get('[data-testid="download-gen-image-button"]').trigger('click');
+  await flushPromises();
+  expect(downloads).toHaveLength(1);
+  expect(downloads[0]?.blob).toBe(blob);
+  expect(downloads[0]?.name).toBe('local.png');
+  expect(storageService.getFile).not.toHaveBeenCalled();
+  expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
 
 it('downloads a metadata-enabled local copy without inventing a generation prompt for an attachment', async () => {
-  const blob = png(); const before = await readBytes({ blob }); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
-  await flushPromises(); await wrapper.get('[data-testid="download-gen-image-dropdown-toggle"]').trigger('click');
+  const blob = png();
+  const before = await readBytes({ blob });
+  const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: false });
+  await flushPromises();
+  await wrapper.get('[data-testid="download-gen-image-dropdown-toggle"]').trigger('click');
   await wrapper.get('[data-testid="download-with-metadata-option"]').trigger('click');
   await vi.waitFor(() => expect(downloads).toHaveLength(1));
-  const download = downloads[0]; if (!download) throw new Error('Missing download.');
-  expect(download.name).toMatch(/\.png$/); expect(download.blob).not.toBe(blob);
+  const download = downloads[0];
+  if (!download) {
+    throw new Error('Missing download.');
+  }
+  expect(download.name).toMatch(/\.png$/);
+  expect(download.blob).not.toBe(blob);
   expect(await readBytes({ blob: download.blob })).toEqual(before);
   expect(await readBytes({ blob })).toEqual(before);
-  expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+  expect(storageService.getFile).not.toHaveBeenCalled();
+  expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
 
 it('reads persisted media from storage and does not disable its delete action', async () => {
-  const blob = png(); vi.mocked(storageService.getFile).mockResolvedValue(blob);
+  const blob = png();
+  vi.mocked(storageService.getFile).mockResolvedValue(blob);
   const { wrapper } = mountOwner({ messages: [message({ blob: undefined })], showMessage: false });
-  await flushPromises(); await wrapper.get('[data-testid="media-preview-trigger"]').trigger('click'); await flushPromises();
+  await flushPromises();
+  await wrapper.get('[data-testid="media-preview-trigger"]').trigger('click');
+  await flushPromises();
   const modal = wrapper.getComponent(BinaryObjectPreviewModal);
   expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: toBinaryObjectId({ raw: 'binary' }) });
   expect(modal.get('[data-testid="preview-delete-btn"]').attributes('disabled')).toBeUndefined();
-  await modal.get('[data-testid="preview-download-btn"]').trigger('click'); await flushPromises();
+  await modal.get('[data-testid="preview-download-btn"]').trigger('click');
+  await flushPromises();
   expect(downloads[0]?.blob).toBe(blob);
 });
 
 it('opens an unsaved image directly from its message without asking storage for metadata', async () => {
-  const blob = png(); const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: true });
+  const blob = png();
+  const { wrapper } = mountOwner({ messages: [message({ blob })], showMessage: true });
   await flushPromises();
   await vi.waitFor(() => expect(wrapper.find('[data-testid="message-attachment-image"]').exists()).toBe(true));
-  await wrapper.get('[data-testid="message-attachment-image"]').trigger('click'); await flushPromises();
+  await wrapper.get('[data-testid="message-attachment-image"]').trigger('click');
+  await flushPromises();
   expect(wrapper.getComponent(BinaryObjectPreviewModal).get('[data-testid="preview-filename"]').text()).toBe('local.png');
-  expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+  expect(storageService.getFile).not.toHaveBeenCalled();
+  expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });
 
 it('snapshots preview metadata while keeping the exact local Blob reference', async () => {
   const { preview } = mountOwner({ messages: [], showMessage: false });
-  const blob = png(); const item: BinaryObjectPreviewItem = { id: toBinaryObjectId({ raw: 'copy' }), name: 'original.png', size: blob.size, mimeType: blob.type, createdAt: 0, memoryBlob: blob };
-  const items = [item]; preview.openPreview({ objects: items, initialId: item.id });
-  item.name = 'edited.png'; items.length = 0;
-  expect(preview.state.value?.objects).toHaveLength(1); expect(preview.state.value?.objects[0]?.name).toBe('original.png');
+  const blob = png();
+  const item: BinaryObjectPreviewItem = { id: toBinaryObjectId({ raw: 'copy' }), name: 'original.png', size: blob.size, mimeType: blob.type, createdAt: 0, memoryBlob: blob };
+  const items = [item];
+  preview.openPreview({ objects: items, initialId: item.id });
+  item.name = 'edited.png';
+  items.length = 0;
+  expect(preview.state.value?.objects).toHaveLength(1);
+  expect(preview.state.value?.objects[0]?.name).toBe('original.png');
   expect(preview.state.value?.objects[0]?.memoryBlob).toBe(blob);
 });
 
 it('uses the supplied filename and local bytes when embedding explicit metadata', async () => {
-  const blob = png(); const before = await readBytes({ blob });
+  const blob = png();
+  const before = await readBytes({ blob });
   await ImageDownloadHydrator.download({
     id: toBinaryObjectId({ raw: 'not-persisted' }),
     name: 'local.PNG',
@@ -200,9 +251,13 @@ it('uses the supplied filename and local bytes when embedding explicit metadata'
     },
   });
   expect(downloads).toHaveLength(1);
-  const download = downloads[0]; if (!download) throw new Error('Missing metadata download.');
+  const download = downloads[0];
+  if (!download) {
+    throw new Error('Missing metadata download.');
+  }
   expect(download.name).toMatch(/\.PNG$/);
   expect(new TextDecoder().decode(await readBytes({ blob: download.blob }))).toContain('山の風景');
   expect(await readBytes({ blob })).toEqual(before);
-  expect(storageService.getFile).not.toHaveBeenCalled(); expect(storageService.getBinaryObject).not.toHaveBeenCalled();
+  expect(storageService.getFile).not.toHaveBeenCalled();
+  expect(storageService.getBinaryObject).not.toHaveBeenCalled();
 });

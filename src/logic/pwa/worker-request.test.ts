@@ -7,7 +7,9 @@ import { BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from 
 beforeEach(() => vi.stubGlobal('MessageChannel', MessageChannel));
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function workerWithReply(data: unknown): ServiceWorker {
@@ -48,23 +50,27 @@ describe('service worker message transport', () => {
     const close = vi.spyOn(MessagePort.prototype, 'close');
     const result = requestNetworkUpdate({ worker: { postMessage() {} } as unknown as ServiceWorker, signal: abort.signal });
     const rejected = expect(result).rejects.toThrow('stopped');
-    abort.abort(); await rejected;
+    abort.abort();
+    await rejected;
     expect(close).toHaveBeenCalledTimes(2);
   });
 
   it('does not send a command when already aborted', async () => {
-    const abort = new AbortController(); abort.abort();
+    const abort = new AbortController();
+    abort.abort();
     const postMessage = vi.fn();
     await expect(requestNetworkUpdate({ worker: { postMessage } as unknown as ServiceWorker, signal: abort.signal })).rejects.toThrow('stopped');
     expect(postMessage).not.toHaveBeenCalled();
   });
 
   it('bounds unanswered network commands and releases both ports', async () => {
-    vi.useFakeTimers(); const close = vi.spyOn(MessagePort.prototype, 'close');
+    vi.useFakeTimers();
+    const close = vi.spyOn(MessagePort.prototype, 'close');
     const worker = { postMessage() {} } as unknown as ServiceWorker;
     const result = requestNetworkUpdate({ worker, signal });
     const rejected = expect(result).rejects.toThrow('did not enable');
-    await vi.advanceTimersByTimeAsync(5000); await rejected;
+    await vi.advanceTimersByTimeAsync(5000);
+    await rejected;
     expect(close).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -88,7 +94,8 @@ describe('service worker message transport', () => {
     vi.useFakeTimers();
     const result = requestBuildId({ worker: { postMessage() {} } as unknown as ServiceWorker, signal });
     const failure = expect(result).rejects.toThrow('did not identify');
-    await vi.advanceTimersByTimeAsync(5000); await failure;
+    await vi.advanceTimersByTimeAsync(5000);
+    await failure;
     expect(vi.getTimerCount()).toBe(0);
   });
 });

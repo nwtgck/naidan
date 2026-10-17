@@ -272,7 +272,9 @@ function appendDisplayPath({
   parent: string,
   child: string,
 }): string {
-  if (parent === '/') return `/${child}`;
+  if (parent === '/') {
+    return `/${child}`;
+  }
   return `${parent.replace(/\/+$/u, '')}/${child}`;
 }
 
@@ -336,7 +338,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
     const interactiveMode = deferredState.interactiveMode;
 
     if (parsed.positionals.length === 0) {
-      if (force) return { exitCode: 0 };
+      if (force) {
+        return { exitCode: 0 };
+      }
       await writeCommandUsageError({
         context,
         command: 'rm',
@@ -414,7 +418,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
                   prompt: `rm: descend into directory '${frame.displayPath}'? `,
                 });
                 if (!descend) {
-                  if (frame.isRoot) rootRemoved = false;
+                  if (frame.isRoot) {
+                    rootRemoved = false;
+                  }
                   break;
                 }
               }
@@ -444,7 +450,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
                   prompt: `rm: remove directory '${frame.displayPath}'? `,
                 });
                 if (!removeDirectory) {
-                  if (frame.isRoot) rootRemoved = false;
+                  if (frame.isRoot) {
+                    rootRemoved = false;
+                  }
                   break;
                 }
               }
@@ -464,7 +472,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
                   prompt: `rm: remove ${describePromptType({ type: stat.type })} '${frame.displayPath}'? `,
                 });
                 if (!shouldRemove) {
-                  if (frame.isRoot) rootRemoved = false;
+                  if (frame.isRoot) {
+                    rootRemoved = false;
+                  }
                   break;
                 }
               }
@@ -505,7 +515,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
                 prompt: `rm: remove directory '${frame.displayPath}'? `,
               });
               if (!removeDirectory) {
-                if (frame.isRoot) rootRemoved = false;
+                if (frame.isRoot) {
+                  rootRemoved = false;
+                }
                 break;
               }
             }
@@ -569,7 +581,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
                   displayPath: appendDisplayPath({ parent: trimmedOperand, child: child.name }),
                 });
               }
-              if (force) continue;
+              if (force) {
+                continue;
+              }
               break;
             case 'file':
             case 'fifo':
@@ -605,7 +619,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
               }
               }
             } catch (error: unknown) {
-              if (!isPathNotFoundError({ error })) throw error;
+              if (!isPathNotFoundError({ error })) {
+                throw error;
+              }
             }
             continue;
           }
@@ -616,7 +632,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
           case 'fifo':
           case 'chardev':
           case 'symlink':
-            if (force) continue;
+            if (force) {
+              continue;
+            }
             throw new Error('Not a directory');
           default: {
             const _ex: never = stat.type;
@@ -626,7 +644,9 @@ export const rmCommandImplementation: WeshCommandImplementation = {
         }
         await removeRecursive({ entry, displayPath: trimmedOperand });
       } catch (error: unknown) {
-        if (force && isPathNotFoundError({ error })) continue;
+        if (force && isPathNotFoundError({ error })) {
+          continue;
+        }
         const message = error instanceof Error ? error.message : String(error);
         await text.error({ text: `rm: cannot remove '${operand}': ${message}\n` });
         exitCode = 1;

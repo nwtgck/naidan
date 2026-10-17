@@ -14,7 +14,8 @@ vi.mock('@/features/transformers-js', () => ({
   transformersJsService: {
     getState: () => ({ status: 'loading', progress: 12 }),
     subscribe: ({ listener }: { listener: (state: State) => void }) => {
-      listeners.add(listener); return () => {
+      listeners.add(listener);
+      return () => {
         listeners.delete(listener);
       };
     },
@@ -22,7 +23,9 @@ vi.mock('@/features/transformers-js', () => ({
 }));
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); document.head.innerHTML = ''; listeners.clear();
+  await ensureAllStringsForTest({ locale: 'en' });
+  document.head.innerHTML = '';
+  listeners.clear();
 });
 
 describe('Transformers.js title ownership', () => {
@@ -50,14 +53,23 @@ describe('Transformers.js title ownership', () => {
     await nextTick();
     expect(document.title).toBe(lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({ progress: 12 }));
     expect(document.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe('Naidan');
-    visibility.value = 'hidden'; await nextTick(); expect(document.title).toBe('Naidan');
+    visibility.value = 'hidden';
+    await nextTick();
+    expect(document.title).toBe('Naidan');
     visibility.value = 'visible';
     await router.push('/audio-generation');
-    for (const listener of listeners) listener({ status: 'loading', progress: 99 });
-    await nextTick(); expect(document.title).toBe(AUDIO_METADATA.title);
+    for (const listener of listeners) {
+      listener({ status: 'loading', progress: 99 });
+    }
+    await nextTick();
+    expect(document.title).toBe(AUDIO_METADATA.title);
     await router.push('/chat/one');
-    for (const listener of listeners) listener({ status: 'ready', progress: 100 });
-    await nextTick(); expect(document.title).toBe('Naidan');
-    wrapper.unmount(); expect(listeners.size).toBe(0);
+    for (const listener of listeners) {
+      listener({ status: 'ready', progress: 100 });
+    }
+    await nextTick();
+    expect(document.title).toBe('Naidan');
+    wrapper.unmount();
+    expect(listeners.size).toBe(0);
   });
 });

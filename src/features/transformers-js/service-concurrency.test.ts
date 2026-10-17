@@ -62,7 +62,8 @@ describe('Transformers.js service runtime serialization', () => {
     operations.push(expect(unloading).rejects.toMatchObject({ name: 'AbortError' }));
     await entered.promise;
     await owner.service.interrupt();
-    release.resolve(); await Promise.all(operations);
+    release.resolve();
+    await Promise.all(operations);
     expect(client.dispose).not.toHaveBeenCalled();
     expect(factory).toHaveBeenCalledTimes(1);
     expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
@@ -76,13 +77,15 @@ describe('Transformers.js service runtime serialization', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     firstClient.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     const operations: Promise<unknown>[] = [];
     let firstFinished = false;
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled(operations);
+        release.resolve();
+        await Promise.allSettled(operations);
         await Promise.all([first.dispose(), second.dispose()]);
       },
     };
@@ -105,12 +108,16 @@ describe('Transformers.js service runtime serialization', () => {
     const release = Promise.withResolvers<void>();
     const failure = new Error('Controlled nonfatal generation failure');
     client.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise; throw failure;
+      entered.resolve();
+      await release.promise;
+      throw failure;
     });
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
       },
     };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
@@ -119,7 +126,8 @@ describe('Transformers.js service runtime serialization', () => {
     await entered.promise;
     operations.push(owner.service.generateText({ messages: [{ role: 'user', content: 'Next request.' }], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     expect(client.generateText).toHaveBeenCalledTimes(1);
-    release.resolve(); await Promise.all(operations);
+    release.resolve();
+    await Promise.all(operations);
     expect(client.generateText).toHaveBeenCalledTimes(2);
     expect(client.dispose).not.toHaveBeenCalled();
   });
@@ -131,13 +139,16 @@ describe('Transformers.js service runtime serialization', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
       },
     };
     const first = new AbortController();
@@ -159,7 +170,8 @@ describe('Transformers.js service runtime serialization', () => {
     operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages, parameters, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: second.signal }), abortController: second }));
     body.text = 'Changed while queued.';
     parameters.stop!.push('changed-stop');
-    release.resolve(); await Promise.all(operations);
+    release.resolve();
+    await Promise.all(operations);
     expect(client.generateMessage.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted Provider input.' }]);
     expect(client.generateMessage.mock.calls[1]![0].params?.stop).toEqual(['accepted-stop']);
     expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
@@ -171,12 +183,15 @@ describe('Transformers.js service runtime serialization', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     client.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
       },
     };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
@@ -222,12 +237,15 @@ describe('Transformers.js service runtime serialization', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     client.generateText.mockImplementationOnce(async () => {
-      entered.resolve(); await release.promise;
+      entered.resolve();
+      await release.promise;
     });
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
       },
     };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/first' });
@@ -250,7 +268,8 @@ describe('Transformers.js service runtime serialization', () => {
     const abort = new AbortController();
     original.generateMessage.mockRejectedValueOnce(new Error('RuntimeError: Aborted()'));
     original.dispose.mockImplementationOnce(async () => {
-      disposalStarted.resolve(); await releaseDisposal.promise;
+      disposalStarted.resolve();
+      await releaseDisposal.promise;
     });
     const factory = vi.fn<() => TransformersJsWorkerClient>().mockReturnValueOnce(original).mockReturnValueOnce(replacement);
     const owner = createTransformersJsService({ createWorkerClient: factory });
@@ -258,7 +277,9 @@ describe('Transformers.js service runtime serialization', () => {
     const operations: Promise<unknown>[] = [];
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        releaseDisposal.resolve(); await Promise.allSettled(operations); await owner.dispose();
+        releaseDisposal.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
       },
     };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });

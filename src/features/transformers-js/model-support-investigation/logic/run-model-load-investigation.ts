@@ -249,7 +249,9 @@ export async function runModelLoadInvestigation({
         },
       });
     } catch (error) {
-      if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
+      if (isModelSupportInvestigationUserInterruptedError({ error })) {
+        throw error;
+      }
       attempt = unexpectedAttempt({
         candidate,
         autoClass,
@@ -278,7 +280,9 @@ export async function runModelLoadInvestigation({
       return _ex;
     }
     }
-    if (successfulAttempt !== undefined) break;
+    if (successfulAttempt !== undefined) {
+      break;
+    }
     if (attempt.loadedModel !== undefined && attempt.failureStage === "input-build") {
       break;
     }

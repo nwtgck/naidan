@@ -87,7 +87,9 @@ describe('PWAManager post-surface-paint startup', () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     let calls = 0;
     vi.mocked(window.requestAnimationFrame).mockImplementation(callback => {
-      if (++calls === failingFrame) throw error;
+      if (++calls === failingFrame) {
+        throw error;
+      }
       frames.push(callback);
       return calls;
     });

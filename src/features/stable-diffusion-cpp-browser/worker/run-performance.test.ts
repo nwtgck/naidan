@@ -4,50 +4,84 @@ import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fix
 import { createImageTrace, createImageDiagnosticBuffer, imageDiagnosticSchema } from '@/features/stable-diffusion-cpp-browser/diagnostics';
 
 it('uses only native sampling zero as the step start and records rounded preview time separately', () => {
-  let time = 0; const emit = vi.fn(), checkpoint = vi.fn();
-  const request = requestFixture(); request.parameters.steps = 8;
+  let time = 0;
+  const emit = vi.fn(), checkpoint = vi.fn();
+  const request = requestFixture();
+  request.parameters.steps = 8;
   const meter = createRunPerformance({ enabled: true, request, emit, checkpoint, now: () => time });
-  time = 10; meter.phase({ next: 'model-load' }); time = 50; meter.phase({ next: 'prepare' });
-  time = 60; meter.native({ signal: { kind: 'conditioning' } });
-  time = 90; meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: 8 } });
-  time = 100; meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: 8 } });
+  time = 10;
+  meter.phase({ next: 'model-load' });
+  time = 50;
+  meter.phase({ next: 'prepare' });
+  time = 60;
+  meter.native({ signal: { kind: 'conditioning' } });
+  time = 90;
+  meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: 8 } });
+  time = 100;
+  meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: 8 } });
   meter.log({ message: 'vae.hpp:319 - computing vae decode graph completed, taking 0.02s\n' });
-  time = 150; meter.native({ signal: { kind: 'sampling-progress', step: 1, steps: 8 } });
+  time = 150;
   meter.native({ signal: { kind: 'sampling-progress', step: 1, steps: 8 } });
-  time = 160; meter.phase({ next: 'decoding' });
+  meter.native({ signal: { kind: 'sampling-progress', step: 1, steps: 8 } });
+  time = 160;
+  meter.phase({ next: 'decoding' });
   meter.log({ message: 'vae.hpp:319 - computing vae decode graph completed, taking 0.01s\n' });
-  time = 180; meter.phase({ next: 'encoding' }); time = 190; meter.finish({ outcome: 'complete' });
-  const steps = emit.mock.calls.filter(([e]) => e.fields.metric === 'step-wall'); expect(steps).toHaveLength(1);
+  time = 180;
+  meter.phase({ next: 'encoding' });
+  time = 190;
+  meter.finish({ outcome: 'complete' });
+  const steps = emit.mock.calls.filter(([e]) => e.fields.metric === 'step-wall');
+  expect(steps).toHaveLength(1);
   expect(steps[0]?.[0].fields).toMatchObject({ milliseconds: 60, previewReportedMs: 20 });
   const summary = emit.mock.calls.at(-1)![0].fields;
   expect(summary).toMatchObject({ metric: 'run-wall', milliseconds: 190, conditioning: 30, sampling: 70, decoding: 20, encoding: 10, nativePreviewDecodeMs: 20, nativeFinalDecodeMs: 10 });
-  for (const [entry] of emit.mock.calls) expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
+  for (const [entry] of emit.mock.calls) {
+    expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
+  }
 });
 
 it('does not leak prompt, model arguments, native labels or raw user-agent suffixes', () => {
-  const emit = vi.fn(), request = requestFixture(); request.parameters.prompt = 'private text'; request.parameters.modelArguments = 'key=private';
-  const meter = createRunPerformance({ enabled: true, request, emit, checkpoint: vi.fn(), now: () => 0 }); meter.settings();
+  const emit = vi.fn(), request = requestFixture();
+  request.parameters.prompt = 'private text';
+  request.parameters.modelArguments = 'key=private';
+  const meter = createRunPerformance({ enabled: true, request, emit, checkpoint: vi.fn(), now: () => 0 });
+  meter.settings();
   meter.log({ message: 'user private text https://private/' });
   meter.log({ message: 'ggml_runner.cpp:970 - user_secret executing segment 1/1: graph' });
   meter.finish({ outcome: 'failed' });
-  const text = JSON.stringify(emit.mock.calls); expect(text).not.toContain('private'); expect(text).not.toContain('user_secret');
+  const text = JSON.stringify(emit.mock.calls);
+  expect(text).not.toContain('private');
+  expect(text).not.toContain('user_secret');
   expect(emit.mock.calls.at(-1)![0].fields.otherGraphStarts).toBe(1);
 });
 
 it('has no timing/parsing/logging work while disabled and emits no late measurements after close', () => {
   const now = vi.fn(() => 0), emit = vi.fn(), checkpoint = vi.fn();
   const disabled = createRunPerformance({ enabled: false, request: requestFixture(), now, emit, checkpoint });
-  disabled.settings(); disabled.phase({ next: 'sampling' }); disabled.native({ signal: { kind: 'conditioning' } }); disabled.log({ message: 'x' }); disabled.finish({ outcome: 'failed' });
-  expect(now).not.toHaveBeenCalled(); expect(emit).not.toHaveBeenCalled(); expect(checkpoint).not.toHaveBeenCalled();
-  const enabled = createRunPerformance({ enabled: true, request: requestFixture(), now, emit, checkpoint }); enabled.finish({ outcome: 'cancelled' });
-  emit.mockClear(); enabled.preview({ fields: { late: true } }); enabled.finish({ outcome: 'complete' }); expect(emit).not.toHaveBeenCalled();
+  disabled.settings();
+  disabled.phase({ next: 'sampling' });
+  disabled.native({ signal: { kind: 'conditioning' } });
+  disabled.log({ message: 'x' });
+  disabled.finish({ outcome: 'failed' });
+  expect(now).not.toHaveBeenCalled();
+  expect(emit).not.toHaveBeenCalled();
+  expect(checkpoint).not.toHaveBeenCalled();
+  const enabled = createRunPerformance({ enabled: true, request: requestFixture(), now, emit, checkpoint });
+  enabled.finish({ outcome: 'cancelled' });
+  emit.mockClear();
+  enabled.preview({ fields: { late: true } });
+  enabled.finish({ outcome: 'complete' });
+  expect(emit).not.toHaveBeenCalled();
 });
 
 it('distinguishes absent native summaries from measured zero and retains partial cancelled-step time', () => {
-  const request = requestFixture(), emit = vi.fn(); let time = 0;
+  const request = requestFixture(), emit = vi.fn();
+  let time = 0;
   const meter = createRunPerformance({ enabled: true, request, emit, checkpoint: vi.fn(), now: () => time });
-  time = 3; meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: request.parameters.steps } });
-  time = 10; meter.finish({ outcome: 'cancelled' });
+  time = 3;
+  meter.native({ signal: { kind: 'sampling-progress', step: 0, steps: request.parameters.steps } });
+  time = 10;
+  meter.finish({ outcome: 'cancelled' });
   const fields = emit.mock.calls.at(-1)![0].fields;
   expect(fields).toMatchObject({ partialStepWallMs: 7, completedStepIntervals: 0, nativeConditionReports: 0, nativeSamplingReports: 0, nativeFinalDecodeReports: 0 });
   expect(imageDiagnosticSchema.safeParse({ ...emit.mock.calls.at(-1)![0], elapsedMs: 10 }).success).toBe(true);
@@ -107,7 +141,9 @@ it('reports allocated BF16 CPU boundaries separately from measured GPU transfers
     actualTransfersMeasured: false,
     coverage: 'observed-allocations',
   });
-  for (const [entry] of emit.mock.calls) expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
+  for (const [entry] of emit.mock.calls) {
+    expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
+  }
 });
 
 it('marks bounded and malformed placement reports as partial without exporting arbitrary text', () => {
@@ -140,7 +176,9 @@ it('preserves structured placement summaries when raw native logs hit the rate l
   const buffer = createImageDiagnosticBuffer();
   const trace = createImageTrace({ debug: 'on', secrets: [], listener: buffer.append, now: () => 0 });
   const meter = createRunPerformance({ enabled: true, request: requestFixture(), emit: trace.emit, checkpoint: vi.fn(), now: () => 0 });
-  for (let index = 0; index < 100; index++) trace.native({ message: 'ordinary native log', level: 1 });
+  for (let index = 0; index < 100; index++) {
+    trace.native({ message: 'ordinary native log', level: 1 });
+  }
   const message = placementLog({ fields: {} });
   // The Worker observes structured measurements before its raw-log limiter.
   meter.log({ message });
@@ -167,6 +205,8 @@ it.each(['f32', 'f16'])('records unique BF16 conversion bytes for %s without gra
   expect(emit.mock.calls[0]![0].fields).toMatchObject({ metric: 'weight-conversion', target, tensors: 8, sourceBytes, destinationBytes, extraBytes, weightBytesMeaning: 'unique-parameter-payload-not-allocation-or-peak' });
   expect(imageDiagnosticSchema.safeParse({ ...emit.mock.calls[0]![0], elapsedMs: 0 }).success).toBe(true);
   emit.mockClear();
-  for (const invalid of [message.replace(`extra_bytes=${extraBytes}`, 'extra_bytes=1'), message.replace('tensors=8', 'tensors=9007199254740992'), message.trim() + ' tensor=private']) meter.log({ message: invalid });
+  for (const invalid of [message.replace(`extra_bytes=${extraBytes}`, 'extra_bytes=1'), message.replace('tensors=8', 'tensors=9007199254740992'), message.trim() + ' tensor=private']) {
+    meter.log({ message: invalid });
+  }
   expect(emit).not.toHaveBeenCalled();
 });

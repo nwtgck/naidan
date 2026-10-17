@@ -38,7 +38,9 @@ function isPlainLocaleMessageTs({ filename }: { filename: string }): boolean {
 }
 
 function isStaticAuthoringFile({ filename }: { filename: string }): boolean {
-  if (filename === 'server.ts' || filename.startsWith('client/')) return false;
+  if (filename === 'server.ts' || filename.startsWith('client/')) {
+    return false;
+  }
   if (filename.startsWith('islands/')) {
     return filename === 'islands/spec.ts' || filename === 'islands/registry.ts'
       || isBranchingMessageTsx({ filename }) || isBrowserAiMessageTs({ filename })
@@ -51,18 +53,24 @@ function isPublicIslandValueEdge({ filename, target }: { filename: string; targe
   if (!filename.startsWith('islands/')) {
     return /^islands\/[^/]+\/definition\.ts$/u.test(target);
   }
-  if (filename === 'islands/registry.ts') return /^islands\/[^/]+\/contracts\.ts$/u.test(target);
+  if (filename === 'islands/registry.ts') {
+    return /^islands\/[^/]+\/contracts\.ts$/u.test(target);
+  }
   if (filename === 'islands/browser-ai-availability/messages/index.ts') {
     return /^islands\/browser-ai-availability\/messages\/(?:en|ja)\.ts$/u.test(target);
   }
   const name = islandName({ file: filename });
-  if (name === undefined) return false;
+  if (name === undefined) {
+    return false;
+  }
   if (filename === `islands/${name}/definition.ts`) {
     return target === `islands/${name}/contracts.ts`
       || target === `islands/${name}/messages/index.ts`
       || target === `islands/${name}/messages.ts`;
   }
-  if (filename === `islands/${name}/contracts.ts`) return target === 'islands/spec.ts';
+  if (filename === `islands/${name}/contracts.ts`) {
+    return target === 'islands/spec.ts';
+  }
   return false;
 }
 
@@ -87,7 +95,9 @@ function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
   ast: ts.SourceFile;
   node: ts.Node;
 }): void {
-  if (!unsupportedStaticVueApis.has(name)) return;
+  if (!unsupportedStaticVueApis.has(name)) {
+    return;
+  }
   const reason = name === 'Teleport'
     ? 'Vue Teleport content is omitted from the static Docs page.'
     : name === 'useTemplateRef'
@@ -117,7 +127,9 @@ function docsRelative({ root, file }: { root: string; file: string }): string | 
 function isRepositoryRuntimeOutsideDocs({ root, file }: { root: string; file: string }): boolean {
   const resolved = file.split(/[?#]/u, 1)[0] ?? file;
   if (!path.isAbsolute(resolved) || docsRelative({ root, file: resolved }) !== undefined
-    || !/\.(?:vue|[cm]?[jt]sx?)$/u.test(resolved)) return false;
+    || !/\.(?:vue|[cm]?[jt]sx?)$/u.test(resolved)) {
+    return false;
+  }
   const relative = path.relative(path.dirname(root), resolved).split(path.sep).join('/');
   return relative !== '..' && !relative.startsWith('../') && !path.isAbsolute(relative)
     && relative !== 'node_modules' && !relative.startsWith('node_modules/');
@@ -129,7 +141,9 @@ function islandName({ file }: { file: string }): string | undefined {
 }
 
 function propertyName({ name }: { name: ts.PropertyName }): string | undefined {
-  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) {
+    return name.text;
+  }
   return undefined;
 }
 
@@ -141,13 +155,17 @@ function importedSource({ statement }: { statement: ts.ImportDeclaration | ts.Ex
 function isTypeOnlyEdge({ node }: { node: ts.Node }): boolean {
   if (ts.isImportDeclaration(node)) {
     const clause = node.importClause;
-    if (clause?.isTypeOnly) return true;
+    if (clause?.isTypeOnly) {
+      return true;
+    }
     const bindings = clause?.namedBindings;
     return Boolean(!clause?.name && bindings && ts.isNamedImports(bindings) && bindings.elements.length
       && bindings.elements.every(element => element.isTypeOnly));
   }
   if (ts.isExportDeclaration(node)) {
-    if (node.isTypeOnly) return true;
+    if (node.isTypeOnly) {
+      return true;
+    }
     const clause = node.exportClause;
     return Boolean(clause && ts.isNamedExports(clause) && clause.elements.length
       && clause.elements.every(element => element.isTypeOnly));
@@ -156,7 +174,9 @@ function isTypeOnlyEdge({ node }: { node: ts.Node }): boolean {
 }
 
 function importsOnlyCoreValue({ node, exportName }: { node: ts.Node; exportName: string }): boolean {
-  if (!ts.isImportDeclaration(node)) return false;
+  if (!ts.isImportDeclaration(node)) {
+    return false;
+  }
   const clause = node.importClause;
   const bindings = clause?.namedBindings;
   return Boolean(clause && !clause.name && bindings && ts.isNamedImports(bindings)
@@ -165,9 +185,13 @@ function importsOnlyCoreValue({ node, exportName }: { node: ts.Node; exportName:
 }
 
 function scripts({ source, filename }: { source: string; filename: string }): ScriptSource[] {
-  if (!filename.endsWith('.vue')) return [{ content: source, startLine: 1, startColumn: 1 }];
+  if (!filename.endsWith('.vue')) {
+    return [{ content: source, startLine: 1, startColumn: 1 }];
+  }
   const { descriptor, errors } = parse(source, { filename });
-  if (errors.length) throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
+  if (errors.length) {
+    throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
+  }
   return [descriptor.script, descriptor.scriptSetup]
     .filter((block): block is NonNullable<typeof block> => block !== null)
     .map(block => ({ content: block.content, startLine: block.loc.start.line, startColumn: block.loc.start.column }));
@@ -186,7 +210,9 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
   for (const statement of ast.statements) {
     if (ts.isImportDeclaration(statement)) {
       const specifier = importedSource({ statement });
-      if (specifier === undefined) continue;
+      if (specifier === undefined) {
+        continue;
+      }
       edges.push({ specifier, kind: 'static', node: statement });
       if (staticAuthoring && (specifier.startsWith('@vue/') || specifier.startsWith('vue/'))
         && !isTypeOnlyEdge({ node: statement })) {
@@ -239,7 +265,9 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
       }
     } else if (ts.isExportDeclaration(statement)) {
       const specifier = importedSource({ statement });
-      if (specifier !== undefined) edges.push({ specifier, kind: 'static', node: statement });
+      if (specifier !== undefined) {
+        edges.push({ specifier, kind: 'static', node: statement });
+      }
       if (staticAuthoring && specifier && (specifier.startsWith('@vue/') || specifier.startsWith('vue/'))
         && !isTypeOnlyEdge({ node: statement })) {
         staticScriptError({
@@ -268,12 +296,16 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
         }
         if (clause && ts.isNamedExports(clause)) {
           for (const element of clause.elements) {
-            if (statement.isTypeOnly || element.isTypeOnly) continue;
+            if (statement.isTypeOnly || element.isTypeOnly) {
+              continue;
+            }
             const exportedName = element.propertyName?.text ?? element.name.text;
             if (disallowedContextApis.has(exportedName)) {
               throw new Error(`Docs islands cannot re-export Vue context APIs in ${filename}`);
             }
-            if (staticAuthoring) rejectUnsupportedStaticVueApi({ name: exportedName, filename, script, ast, node: element });
+            if (staticAuthoring) {
+              rejectUnsupportedStaticVueApi({ name: exportedName, filename, script, ast, node: element });
+            }
           }
         }
       }
@@ -312,7 +344,9 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
             remedy: 'Use named Vue imports for server-rendered values, or a registered island for browser behavior.',
           });
         }
-        if (argument && ts.isStringLiteralLike(argument)) edges.push({ specifier: argument.text, kind: 'dynamic', node });
+        if (argument && ts.isStringLiteralLike(argument)) {
+          edges.push({ specifier: argument.text, kind: 'dynamic', node });
+        }
       }
       if (staticAuthoring && ts.isIdentifier(node.expression) && node.expression.text === 'require'
         && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])
@@ -350,14 +384,20 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
 
 function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: string }): void {
   const name = islandName({ file: filename });
-  if (name === undefined) throw new Error(`Invalid Docs island definition path: ${filename}`);
+  if (name === undefined) {
+    throw new Error(`Invalid Docs island definition path: ${filename}`);
+  }
   const componentImports = new Map<string, string>();
   const specImports = new Set<string>();
   const factoryNames = new Set<string>();
   for (const statement of ast.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isImportDeclaration(statement)) {
+      continue;
+    }
     const specifier = importedSource({ statement });
-    if (specifier === undefined) continue;
+    if (specifier === undefined) {
+      continue;
+    }
     if (specifier.endsWith('.vue')) {
       const imported = statement.importClause;
       if (!specifier.startsWith('./') || !imported?.name || imported.isTypeOnly || imported.namedBindings) {
@@ -368,14 +408,20 @@ function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: stri
     if (specifier === './contracts' || specifier === './contracts.ts') {
       const bindings = statement.importClause?.namedBindings;
       if (bindings && ts.isNamedImports(bindings)) {
-        for (const element of bindings.elements) if (!element.isTypeOnly) specImports.add(element.name.text);
+        for (const element of bindings.elements) {
+          if (!element.isTypeOnly) {
+            specImports.add(element.name.text);
+          }
+        }
       }
     }
     if (specifier === '../core' || specifier === '../core.ts') {
       const bindings = statement.importClause?.namedBindings;
       if (bindings && ts.isNamedImports(bindings)) {
         for (const element of bindings.elements) {
-          if (!element.isTypeOnly && (element.propertyName?.text ?? element.name.text) === 'defineDocsIsland') factoryNames.add(element.name.text);
+          if (!element.isTypeOnly && (element.propertyName?.text ?? element.name.text) === 'defineDocsIsland') {
+            factoryNames.add(element.name.text);
+          }
         }
       }
     }
@@ -387,7 +433,9 @@ function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: stri
   for (const statement of ast.statements) {
     if (ts.isExportDeclaration(statement)) {
       if (statement.isTypeOnly || statement.exportClause && ts.isNamedExports(statement.exportClause)
-        && statement.exportClause.elements.every(element => element.isTypeOnly)) continue;
+        && statement.exportClause.elements.every(element => element.isTypeOnly)) {
+        continue;
+      }
       throw new Error(`Docs island definition may export only its factory: ${filename}`);
     }
     if (ts.isExportAssignment(statement)) {
@@ -402,14 +450,18 @@ function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: stri
       continue;
     }
     for (const declaration of statement.declarationList.declarations) {
-      if (!exported) continue;
+      if (!exported) {
+        continue;
+      }
       const initializer = declaration.initializer;
       if (!initializer || !ts.isCallExpression(initializer) || !ts.isIdentifier(initializer.expression)
         || !factoryNames.has(initializer.expression.text) || initializer.arguments.length !== 1) {
         throw new Error(`Docs island definition may export only a direct defineDocsIsland call: ${filename}`);
       }
       const argument = initializer.arguments[0];
-      if (!argument || !ts.isObjectLiteralExpression(argument)) throw new Error(`Docs island definition must use a literal definition: ${filename}`);
+      if (!argument || !ts.isObjectLiteralExpression(argument)) {
+        throw new Error(`Docs island definition must use a literal definition: ${filename}`);
+      }
       const entries = new Map(argument.properties.filter(ts.isPropertyAssignment).map(property => [propertyName({ name: property.name }), property.initializer]));
       const component = entries.get('component');
       const spec = entries.get('spec');
@@ -421,17 +473,23 @@ function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: stri
       factoryCount++;
     }
   }
-  if (factoryCount !== 1) throw new Error(`Docs island definition must export one factory: ${filename}`);
+  if (factoryCount !== 1) {
+    throw new Error(`Docs island definition must export one factory: ${filename}`);
+  }
 }
 
 function checkSpec({ ast, filename }: { ast: ts.SourceFile; filename: string }): void {
   const name = islandName({ file: filename });
-  if (name === undefined) return;
+  if (name === undefined) {
+    return;
+  }
   let found = false;
   const visit = ({ node }: { node: ts.Node }): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'defineDocsIslandSpec') {
       const argument = node.arguments[0];
-      if (!argument || !ts.isObjectLiteralExpression(argument)) throw new Error(`Docs island spec must be a literal object: ${filename}`);
+      if (!argument || !ts.isObjectLiteralExpression(argument)) {
+        throw new Error(`Docs island spec must be a literal object: ${filename}`);
+      }
       const id = argument.properties.find(property => ts.isPropertyAssignment(property) && propertyName({ name: property.name }) === 'id');
       if (!id || !ts.isPropertyAssignment(id) || !ts.isStringLiteralLike(id.initializer) || id.initializer.text !== name) {
         throw new Error(`Docs island spec ID must match its directory ${name}: ${filename}`);
@@ -441,7 +499,9 @@ function checkSpec({ ast, filename }: { ast: ts.SourceFile; filename: string }):
     ts.forEachChild(node, child => visit({ node: child }));
   };
   visit({ node: ast });
-  if (!found) throw new Error(`Missing Docs island spec in ${filename}`);
+  if (!found) {
+    throw new Error(`Missing Docs island spec in ${filename}`);
+  }
 }
 
 export async function validateDocsAuthoringSource({ source, filename, root, resolve }: {
@@ -463,12 +523,20 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
   for (const script of scripts({ source, filename })) {
     const { ast, edges } = inspectScript({ script, filename });
     const componentImports = new Set<string>();
-    if (isPlainLocaleMessageTs({ filename })) validatePlainLocaleMessageKeys({ ast, filename });
-    if (name !== undefined && filename.endsWith('/definition.ts')) checkDefinition({ ast, filename });
-    if (name !== undefined && filename === `islands/${name}/contracts.ts`) checkSpec({ ast, filename });
+    if (isPlainLocaleMessageTs({ filename })) {
+      validatePlainLocaleMessageKeys({ ast, filename });
+    }
+    if (name !== undefined && filename.endsWith('/definition.ts')) {
+      checkDefinition({ ast, filename });
+    }
+    if (name !== undefined && filename === `islands/${name}/contracts.ts`) {
+      checkSpec({ ast, filename });
+    }
     for (const edge of edges) {
       const resolved = await resolve({ specifier: edge.specifier, importer });
-      if (resolved === undefined) continue;
+      if (resolved === undefined) {
+        continue;
+      }
       const target = docsRelative({ root, file: resolved });
       const staticAuthoring = isStaticAuthoringFile({ filename });
       if (staticAuthoring && !isTypeOnlyEdge({ node: edge.node }) && isRepositoryRuntimeOutsideDocs({ root, file: resolved })) {
@@ -494,7 +562,9 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
       if ((articleMessage || branchingMessage) && target && richTsxComponents.has(target)
         && ts.isImportDeclaration(edge.node) && !isTypeOnlyEdge({ node: edge.node })) {
         const clause = edge.node.importClause;
-        if (clause?.name && !clause.isTypeOnly) componentImports.add(clause.name.text);
+        if (clause?.name && !clause.isTypeOnly) {
+          componentImports.add(clause.name.text);
+        }
       }
       if (staticAuthoring && target?.startsWith('client/') && !isTypeOnlyEdge({ node: edge.node })) {
         staticScriptError({
@@ -526,7 +596,9 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
           remedy: 'Import the registered island definition through DocsIsland, or move shared static data into an approved static helper.',
         });
       }
-      if (target === undefined || !target.endsWith('.vue') || islandName({ file: target }) === undefined) continue;
+      if (target === undefined || !target.endsWith('.vue') || islandName({ file: target }) === undefined) {
+        continue;
+      }
       const targetIsland = islandName({ file: target });
       const withinIslandComponent = name === targetIsland && filename.endsWith('.vue');
       const definitionImport = name === targetIsland && filename === `islands/${name}/definition.ts`

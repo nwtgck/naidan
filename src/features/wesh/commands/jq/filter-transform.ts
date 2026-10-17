@@ -73,7 +73,9 @@ function pushFilterTasks<Context>({
 }): void {
   for (let index = children.length - 1; index >= 0; index -= 1) {
     const child = children[index];
-    if (child === undefined) throw new Error('jq filter transform child is missing');
+    if (child === undefined) {
+      throw new Error('jq filter transform child is missing');
+    }
     tasks.push({ kind: 'visit_filter', filter: child.filter, context: child.context });
   }
 }
@@ -90,7 +92,9 @@ function pushPathTasks<Context>({
 }): void {
   for (let index = children.length - 1; index >= 0; index -= 1) {
     const child = children[index];
-    if (child === undefined) throw new Error('jq path transform child is missing');
+    if (child === undefined) {
+      throw new Error('jq path transform child is missing');
+    }
     tasks.push({ kind: 'visit_path', expression: child.expression, context: child.context });
   }
 }
@@ -110,7 +114,9 @@ export function transformJqFilter<Context>({
 
   while (tasks.length > 0) {
     const task = tasks.pop();
-    if (task === undefined) throw new Error('jq filter transform task stack is empty');
+    if (task === undefined) {
+      throw new Error('jq filter transform task stack is empty');
+    }
 
     switch (task.kind) {
     case 'visit_filter': {
@@ -193,8 +199,12 @@ export function transformJqFilter<Context>({
       case 'slice': {
         tasks.push({ kind: 'rebuild_filter', filter: current, scopedName: undefined });
         const children = [{ filter: current.input, context: task.context }];
-        if (current.start !== undefined) children.push({ filter: current.start, context: task.context });
-        if (current.end !== undefined) children.push({ filter: current.end, context: task.context });
+        if (current.start !== undefined) {
+          children.push({ filter: current.start, context: task.context });
+        }
+        if (current.end !== undefined) {
+          children.push({ filter: current.end, context: task.context });
+        }
         pushFilterTasks({ tasks, children });
         break;
       }
@@ -348,7 +358,9 @@ export function transformJqFilter<Context>({
           case 'interpolation': {
             const replacement = transformed[nextFilter];
             nextFilter += 1;
-            if (replacement === undefined) throw new Error('jq string transform result is missing');
+            if (replacement === undefined) {
+              throw new Error('jq string transform result is missing');
+            }
             parts.push({ kind: 'interpolation', filter: replacement });
             break;
           }
@@ -395,7 +407,9 @@ export function transformJqFilter<Context>({
           case 'dynamic': {
             const filter = transformed[nextFilter];
             nextFilter += 1;
-            if (filter === undefined) throw new Error('jq object key transform result is missing');
+            if (filter === undefined) {
+              throw new Error('jq object key transform result is missing');
+            }
             key = { kind: 'dynamic', filter };
             break;
           }
@@ -406,7 +420,9 @@ export function transformJqFilter<Context>({
           }
           const value = transformed[nextFilter];
           nextFilter += 1;
-          if (value === undefined) throw new Error('jq object transform result is missing');
+          if (value === undefined) {
+            throw new Error('jq object transform result is missing');
+          }
           entries.push({ key, value });
         }
         filterResults.push({ kind: 'object', entries });
@@ -414,31 +430,41 @@ export function transformJqFilter<Context>({
       }
       case 'field': {
         const [input] = popFilterResults({ results: filterResults, count: 1 });
-        if (input === undefined) throw new Error('jq field transform result is missing');
+        if (input === undefined) {
+          throw new Error('jq field transform result is missing');
+        }
         filterResults.push({ ...current, input });
         break;
       }
       case 'index': {
         const [input] = popFilterResults({ results: filterResults, count: 1 });
-        if (input === undefined) throw new Error('jq index transform result is missing');
+        if (input === undefined) {
+          throw new Error('jq index transform result is missing');
+        }
         filterResults.push({ ...current, input });
         break;
       }
       case 'iterate': {
         const [input] = popFilterResults({ results: filterResults, count: 1 });
-        if (input === undefined) throw new Error('jq iterate transform result is missing');
+        if (input === undefined) {
+          throw new Error('jq iterate transform result is missing');
+        }
         filterResults.push({ ...current, input });
         break;
       }
       case 'recursive_descent': {
         const [input] = popFilterResults({ results: filterResults, count: 1 });
-        if (input === undefined) throw new Error('jq recursive descent transform result is missing');
+        if (input === undefined) {
+          throw new Error('jq recursive descent transform result is missing');
+        }
         filterResults.push({ ...current, input });
         break;
       }
       case 'dynamic_index': {
         const [input, index] = popFilterResults({ results: filterResults, count: 2 });
-        if (input === undefined || index === undefined) throw new Error('jq dynamic index transform result is missing');
+        if (input === undefined || index === undefined) {
+          throw new Error('jq dynamic index transform result is missing');
+        }
         filterResults.push({ ...current, input, index });
         break;
       }
@@ -447,7 +473,9 @@ export function transformJqFilter<Context>({
         const transformed = popFilterResults({ results: filterResults, count: childCount });
         let nextFilter = 0;
         const input = transformed[nextFilter++];
-        if (input === undefined) throw new Error('jq slice transform input is missing');
+        if (input === undefined) {
+          throw new Error('jq slice transform input is missing');
+        }
         const start = current.start === undefined ? undefined : transformed[nextFilter++];
         const end = current.end === undefined ? undefined : transformed[nextFilter++];
         filterResults.push({ ...current, input, start, end });
@@ -455,7 +483,9 @@ export function transformJqFilter<Context>({
       }
       case 'optional': {
         const [body] = popFilterResults({ results: filterResults, count: 1 });
-        if (body === undefined) throw new Error('jq optional transform result is missing');
+        if (body === undefined) {
+          throw new Error('jq optional transform result is missing');
+        }
         filterResults.push({ kind: 'optional', body });
         break;
       }
@@ -463,7 +493,9 @@ export function transformJqFilter<Context>({
       case 'comma':
       case 'binary': {
         const [left, right] = popFilterResults({ results: filterResults, count: 2 });
-        if (left === undefined || right === undefined) throw new Error('jq binary transform result is missing');
+        if (left === undefined || right === undefined) {
+          throw new Error('jq binary transform result is missing');
+        }
         filterResults.push({ ...current, left, right });
         break;
       }
@@ -477,7 +509,9 @@ export function transformJqFilter<Context>({
       }
       case 'trycatch': {
         const [body, catchBranch] = popFilterResults({ results: filterResults, count: 2 });
-        if (body === undefined || catchBranch === undefined) throw new Error('jq try/catch transform result is missing');
+        if (body === undefined || catchBranch === undefined) {
+          throw new Error('jq try/catch transform result is missing');
+        }
         filterResults.push({ kind: 'trycatch', body, catchBranch });
         break;
       }
@@ -501,13 +535,17 @@ export function transformJqFilter<Context>({
         break;
       case 'unary': {
         const [value] = popFilterResults({ results: filterResults, count: 1 });
-        if (value === undefined) throw new Error('jq unary transform result is missing');
+        if (value === undefined) {
+          throw new Error('jq unary transform result is missing');
+        }
         filterResults.push({ ...current, value });
         break;
       }
       case 'label': {
         const [body] = popFilterResults({ results: filterResults, count: 1 });
-        if (body === undefined) throw new Error('jq label transform result is missing');
+        if (body === undefined) {
+          throw new Error('jq label transform result is missing');
+        }
         filterResults.push({ ...current, body });
         break;
       }
@@ -545,7 +583,9 @@ export function transformJqFilter<Context>({
       case 'update': {
         const [pathExpression] = popPathResults({ results: pathResults, count: 1 });
         const [value] = popFilterResults({ results: filterResults, count: 1 });
-        if (pathExpression === undefined || value === undefined) throw new Error('jq assignment transform result is missing');
+        if (pathExpression === undefined || value === undefined) {
+          throw new Error('jq assignment transform result is missing');
+        }
         filterResults.push({ ...current, pathExpression, value });
         break;
       }
@@ -587,8 +627,12 @@ export function transformJqFilter<Context>({
       case 'dynamic_slice': {
         tasks.push({ kind: 'rebuild_path', expression: current });
         const filters: { readonly filter: JqFilter, readonly context: Context }[] = [];
-        if (current.start !== undefined) filters.push({ filter: current.start, context: task.context });
-        if (current.end !== undefined) filters.push({ filter: current.end, context: task.context });
+        if (current.start !== undefined) {
+          filters.push({ filter: current.start, context: task.context });
+        }
+        if (current.end !== undefined) {
+          filters.push({ filter: current.end, context: task.context });
+        }
         pushFilterTasks({ tasks, children: filters });
         pushPathTasks({ tasks, children: [{ expression: current.parent, context: task.context }] });
         break;
@@ -611,26 +655,34 @@ export function transformJqFilter<Context>({
         break;
       case 'append': {
         const [parent] = popPathResults({ results: pathResults, count: 1 });
-        if (parent === undefined) throw new Error('jq append path transform result is missing');
+        if (parent === undefined) {
+          throw new Error('jq append path transform result is missing');
+        }
         pathResults.push({ kind: 'append', parent, segment: current.segment });
         break;
       }
       case 'iterate': {
         const [parent] = popPathResults({ results: pathResults, count: 1 });
-        if (parent === undefined) throw new Error('jq iterate path transform result is missing');
+        if (parent === undefined) {
+          throw new Error('jq iterate path transform result is missing');
+        }
         pathResults.push({ kind: 'iterate', parent, optional: current.optional });
         break;
       }
       case 'dynamic_index': {
         const [parent] = popPathResults({ results: pathResults, count: 1 });
         const [index] = popFilterResults({ results: filterResults, count: 1 });
-        if (parent === undefined || index === undefined) throw new Error('jq dynamic path transform result is missing');
+        if (parent === undefined || index === undefined) {
+          throw new Error('jq dynamic path transform result is missing');
+        }
         pathResults.push({ ...current, parent, index });
         break;
       }
       case 'dynamic_slice': {
         const [parent] = popPathResults({ results: pathResults, count: 1 });
-        if (parent === undefined) throw new Error('jq dynamic slice path parent is missing');
+        if (parent === undefined) {
+          throw new Error('jq dynamic slice path parent is missing');
+        }
         const childCount = (current.start === undefined ? 0 : 1) + (current.end === undefined ? 0 : 1);
         const transformed = popFilterResults({ results: filterResults, count: childCount });
         let nextFilter = 0;

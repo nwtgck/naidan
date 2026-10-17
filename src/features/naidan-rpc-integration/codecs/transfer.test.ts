@@ -37,12 +37,17 @@ it('bounds byte-buffer allocation overhead independently of tiny chunk count', a
   let at = 0, allocations = 0;
   const readable = new ReadableStream<Uint8Array>({
     pull(controller) {
-      if (at++ === length) controller.close(); else controller.enqueue(chunk);
+      if (at++ === length) {
+        controller.close();
+      } else {
+        controller.enqueue(chunk);
+      }
     },
   }, { highWaterMark: 0 });
   vi.stubGlobal('Uint8Array', new Proxy(original, {
     construct(constructor, args, newTarget) {
-      allocations++; return Reflect.construct(constructor, args, newTarget);
+      allocations++;
+      return Reflect.construct(constructor, args, newTarget);
     },
   }));
   using _cleanupResource = {
@@ -59,11 +64,15 @@ it('bounds byte-buffer allocation overhead independently of tiny chunk count', a
 });
 
 it('snapshots reused mutable byte chunks without including spare buffer capacity', async () => {
-  const chunk = new Uint8Array(3); let at = 0;
+  const chunk = new Uint8Array(3);
+  let at = 0;
   const readable = new ReadableStream<Uint8Array>({
     pull(controller) {
-      if (at === 3) controller.close(); else {
-        chunk.fill(++at); controller.enqueue(chunk);
+      if (at === 3) {
+        controller.close();
+      } else {
+        chunk.fill(++at);
+        controller.enqueue(chunk);
       }
     },
   }, { highWaterMark: 0 });
@@ -79,13 +88,17 @@ it('bounded reads reject overflow and cancel producers', async () => {
     },
     cancel,
   });
-  await expect(collectBytes({ readable, limit: 32, signal: signal() })).rejects.toThrow(); expect(cancel).toHaveBeenCalledOnce();
+  await expect(collectBytes({ readable, limit: 32, signal: signal() })).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledOnce();
 });
 
 it('a waiting producer is cancelled through the lifetime signal', async () => {
   const stop = new AbortController(), cancel = vi.fn();
   const work = collectBytes({ readable: new ReadableStream({ cancel }), limit: 32, signal: stop.signal });
-  const rejected = expect(work).rejects.toBeDefined(); stop.abort(); await rejected; expect(cancel).toHaveBeenCalledOnce();
+  const rejected = expect(work).rejects.toBeDefined();
+  stop.abort();
+  await rejected;
+  expect(cancel).toHaveBeenCalledOnce();
 });
 
 for (const consumer of ['bytes', 'events'] as const) {
@@ -101,20 +114,28 @@ for (const consumer of ['bytes', 'events'] as const) {
       const observed = work.then(() => {
         settled = true;
       }, (error: unknown) => {
-        settled = true; return error;
+        settled = true;
+        return error;
       });
       await using _cleanupResource = {
         async [Symbol.asyncDispose]() {
-          cleanup.resolve(); await observed;
+          cleanup.resolve();
+          await observed;
         },
       };
       stop.abort(reason);
       await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
       // Drain the read/catch continuations while native cancellation remains held.
-      for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+      for (let turn = 0; turn < 12; turn++) {
+        await Promise.resolve();
+      }
       expect(settled).toBe(false);
       expect(readable.locked).toBe(true);
-      if (cleanupOutcome === 'resolved') cleanup.resolve(); else cleanup.reject(new Error('Cleanup failed'));
+      if (cleanupOutcome === 'resolved') {
+        cleanup.resolve();
+      } else {
+        cleanup.reject(new Error('Cleanup failed'));
+      }
       expect(await observed).toBe(reason);
       expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
       expect(readable.locked).toBe(false);
@@ -126,13 +147,19 @@ it('computation starts only when the returned output is consumed', async () => {
   const run = vi.fn(async ({ emit }: { emit: ({ value }: { value: number }) => Promise<void>; signal: AbortSignal }) => {
     await emit({ value: 7 });
   });
-  const output = computationSource({ run, signal: signal() }); await Promise.resolve(); expect(run).not.toHaveBeenCalled();
-  const reader = output.getReader(); expect((await reader.read()).value).toBe(7); expect((await reader.read()).done).toBe(true); expect(run).toHaveBeenCalledOnce();
+  const output = computationSource({ run, signal: signal() });
+  await Promise.resolve();
+  expect(run).not.toHaveBeenCalled();
+  const reader = output.getReader();
+  expect((await reader.read()).value).toBe(7);
+  expect((await reader.read()).done).toBe(true);
+  expect(run).toHaveBeenCalledOnce();
 });
 
 it('cancel before the first output read never starts inference', async () => {
   const run = vi.fn(async () => {}), output = computationSource({ run, signal: signal() });
-  await output.cancel(); expect(run).not.toHaveBeenCalled();
+  await output.cancel();
+  expect(run).not.toHaveBeenCalled();
 });
 
 it('computation errors reach the reader and do not become successful empty output', async () => {
@@ -146,14 +173,20 @@ it('computation errors reach the reader and do not become successful empty outpu
 });
 
 it('transcript projects image blobs and tools without serializing browser objects into CBOR', async () => {
-  const input = request(); input.messages[0]!.content = [{ type: 'text', text: 'image?' }, { type: 'image', blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) }];
-  input.tools = [{ type: 'function', function: { name: 'tool', description: '', parameters: { type: 'object', example: null } } }];
-  const prepared = prepareTranscript({ input });
-  const restored = await receiveTranscript({ ...prepared, model: 'provided-model', signal: signal() });
-  expect(restored.model).toBe('provided-model'); expect(restored.debug).toBe('off'); expect(restored.maxTokens).toBe(4096);
-  expect(restored.tools).toEqual(input.tools);
-  const content = restored.messages[0]!.content; if (typeof content === 'string' || content[1]?.type !== 'image') throw new Error('Missing image');
-  expect(new Uint8Array(await content[1].blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  const input = request();
+input.messages[0]!.content = [{ type: 'text', text: 'image?' }, { type: 'image', blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) }];
+input.tools = [{ type: 'function', function: { name: 'tool', description: '', parameters: { type: 'object', example: null } } }];
+const prepared = prepareTranscript({ input });
+const restored = await receiveTranscript({ ...prepared, model: 'provided-model', signal: signal() });
+expect(restored.model).toBe('provided-model');
+expect(restored.debug).toBe('off');
+expect(restored.maxTokens).toBe(4096);
+expect(restored.tools).toEqual(input.tools);
+const content = restored.messages[0]!.content;
+if (typeof content === 'string' || content[1]?.type !== 'image') {
+  throw new Error('Missing image');
+}
+expect(new Uint8Array(await content[1].blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
 });
 
 it('transcript verifies attachment length and references before invoking a native engine', async () => {
@@ -162,8 +195,9 @@ it('transcript verifies attachment length and references before invoking a nativ
 });
 
 it('transcript rejects input outside the finite metadata budget', () => {
-  const input = request(); input.messages[0]!.content = 'x'.repeat(TRANSCRIPT_LIMIT);
-  expect(() => prepareTranscript({ input })).toThrow('limit');
+  const input = request();
+input.messages[0]!.content = 'x'.repeat(TRANSCRIPT_LIMIT);
+expect(() => prepareTranscript({ input })).toThrow('limit');
 });
 
 it('events preserve reasoning, large tool arguments and terminal metadata across byte boundaries', async () => {
@@ -173,12 +207,16 @@ it('events preserve reasoning, large tool arguments and terminal metadata across
   const source = new ReadableStream<Uint8Array>({
     start(c) {
       for (const bytes of chunks) {
-        c.enqueue(bytes.slice(0, 2)); c.enqueue(bytes.slice(2));
-      } c.close();
+        c.enqueue(bytes.slice(0, 2));
+        c.enqueue(bytes.slice(2));
+      }
+      c.close();
     },
   });
-  const onEvent = vi.fn(); const result = await receiveEvents({ readable: source, onEvent, signal: signal() });
-  expect(result).toEqual({ content: 'answer', reasoningContent: 'thinking', toolCalls: [toolCall], finishReason: 'stop' }); expect(onEvent).toHaveBeenCalledTimes(3);
+  const onEvent = vi.fn();
+  const result = await receiveEvents({ readable: source, onEvent, signal: signal() });
+  expect(result).toEqual({ content: 'answer', reasoningContent: 'thinking', toolCalls: [toolCall], finishReason: 'stop' });
+  expect(onEvent).toHaveBeenCalledTimes(3);
 });
 
 for (const bytes of [new Uint8Array([0, 0]), new Uint8Array([255, 255, 255, 255]), eventBytes({ event: { type: 'text', text: 'no terminal' } })]) {
@@ -188,10 +226,16 @@ for (const bytes of [new Uint8Array([0, 0]), new Uint8Array([255, 255, 255, 255]
 }
 
 it('rejects decoded image headers with unrequested enormous dimensions', () => {
-  const bytes = new Uint8Array(33); bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); const view = new DataView(bytes.buffer);
-  view.setUint32(8, 13); view.setUint32(12, 0x49484452); view.setUint32(16, 256); view.setUint32(20, 256);
+  const bytes = new Uint8Array(33);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  view.setUint32(12, 0x49484452);
+  view.setUint32(16, 256);
+  view.setUint32(20, 256);
   expect(() => validatePng({ bytes, width: 256, height: 256 })).not.toThrow();
-  view.setUint32(16, 65536); expect(() => validatePng({ bytes, width: 256, height: 256 })).toThrow('dimensions');
+  view.setUint32(16, 65536);
+  expect(() => validatePng({ bytes, width: 256, height: 256 })).toThrow('dimensions');
 });
 
 it('finite document encoding rejects oversized serialized values', () => {

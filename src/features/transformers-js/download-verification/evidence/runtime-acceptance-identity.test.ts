@@ -104,13 +104,22 @@ describe('Download runtime acceptance identity', () => {
     const input = evidence({ loadReceipt: receipt({ cacheRevision: revision, option: revision }) });
     const completion = input.runtimeCompletion!;
     switch (mismatch) {
-    case 'model': input.run.normalizedModelId = 'fixture/other'; break;
-    case 'cache': completion.cacheRevision = 'b'.repeat(40); break;
-    case 'loader-option': completion.loaderRevisionOption = null; break;
-    case 'candidate': completion.selectedCandidate = { device: 'webgpu', dtype: 'q4f16' }; break;
-    case 'frozen-revision': completion.repositoryResolvedRevision = 'b'.repeat(40); break;
-    case 'invalid-receipt': completion.receipt!.cacheLookup.hitPaths = []; break;
-    default: { const exhaustive: never = mismatch; throw new Error('Unexpected receipt mismatch: ' + exhaustive); }
+    case 'model': input.run.normalizedModelId = 'fixture/other';
+      break;
+    case 'cache': completion.cacheRevision = 'b'.repeat(40);
+      break;
+    case 'loader-option': completion.loaderRevisionOption = null;
+      break;
+    case 'candidate': completion.selectedCandidate = { device: 'webgpu', dtype: 'q4f16' };
+      break;
+    case 'frozen-revision': completion.repositoryResolvedRevision = 'b'.repeat(40);
+      break;
+    case 'invalid-receipt': completion.receipt!.cacheLookup.hitPaths = [];
+      break;
+    default: {
+      const exhaustive: never = mismatch;
+      throw new Error('Unexpected receipt mismatch: ' + exhaustive);
+    }
     }
     expect(downloadRuntimeAcceptanceIdentity({ evidence: input })).toBe('unverified');
   });
@@ -119,14 +128,25 @@ describe('Download runtime acceptance identity', () => {
     const input = evidence({ loadReceipt: receipt({ cacheRevision: revision, option: revision }) });
     const observation = input.modelArtifactObservations[0]!;
     switch (mismatch) {
-    case 'failed': observation.status = 'failed'; observation.error = { name: 'Error', message: 'Synthetic observer failure' }; break;
-    case 'missing': input.modelArtifactObservations = []; break;
-    case 'extra-path': observation.paths.push('onnx/extra.onnx'); break;
-    case 'missing-path': observation.paths.pop(); break;
-    case 'auto-class': observation.autoClass = 'AutoModelForImageTextToText'; break;
-    case 'candidate': observation.candidate = { device: 'webgpu', dtype: 'q4f16' }; break;
-    case 'revision': observation.revision = 'b'.repeat(40); break;
-    default: { const exhaustive: never = mismatch; throw new Error('Unexpected observation mismatch: ' + exhaustive); }
+    case 'failed': observation.status = 'failed';
+      observation.error = { name: 'Error', message: 'Synthetic observer failure' };
+      break;
+    case 'missing': input.modelArtifactObservations = [];
+      break;
+    case 'extra-path': observation.paths.push('onnx/extra.onnx');
+      break;
+    case 'missing-path': observation.paths.pop();
+      break;
+    case 'auto-class': observation.autoClass = 'AutoModelForImageTextToText';
+      break;
+    case 'candidate': observation.candidate = { device: 'webgpu', dtype: 'q4f16' };
+      break;
+    case 'revision': observation.revision = 'b'.repeat(40);
+      break;
+    default: {
+      const exhaustive: never = mismatch;
+      throw new Error('Unexpected observation mismatch: ' + exhaustive);
+    }
     }
     expect(downloadRuntimeAcceptanceIdentity({ evidence: input })).toBe('unverified');
     expect(input.runtimeCompletion?.status).toBe('accepted');
@@ -135,9 +155,14 @@ describe('Download runtime acceptance identity', () => {
   it.each(['observed-with-error', 'global-observer-error'] as const)('refuses contradictory successful artifact observations: %s', contradiction => {
     const input = evidence({ loadReceipt: receipt({ cacheRevision: revision, option: revision }) });
     switch (contradiction) {
-    case 'observed-with-error': input.modelArtifactObservations[0]!.error = { name: 'Error', message: 'Observer reported an error' }; break;
-    case 'global-observer-error': input.modelArtifactObservationError = 'Partial observer failure'; break;
-    default: { const exhaustive: never = contradiction; throw new Error('Unexpected observer contradiction: ' + exhaustive); }
+    case 'observed-with-error': input.modelArtifactObservations[0]!.error = { name: 'Error', message: 'Observer reported an error' };
+      break;
+    case 'global-observer-error': input.modelArtifactObservationError = 'Partial observer failure';
+      break;
+    default: {
+      const exhaustive: never = contradiction;
+      throw new Error('Unexpected observer contradiction: ' + exhaustive);
+    }
     }
     expect(downloadRuntimeAcceptanceIdentity({ evidence: input })).toBe('unverified');
     expect(input.runtimeCompletion?.status).toBe('accepted');

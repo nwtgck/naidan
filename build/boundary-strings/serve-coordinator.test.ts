@@ -161,7 +161,9 @@ describe('Boundary Strings serve coordinator', () => {
     server.config.server.hmr = true;
     expect(catalogState.resolve()).toMatchObject({ status: 'invalid' });
     const messagePath = path.join(root, 'src/strings/messages/stableDiffusionCppBrowser__decoding_image/en.ts');
-    for (let index = 0; index < 10; index += 1) watcher.emit('change', messagePath);
+    for (let index = 0; index < 10; index += 1) {
+      watcher.emit('change', messagePath);
+    }
     await vi.advanceTimersByTimeAsync(400);
     expect(readCatalog).toHaveBeenCalledOnce();
     expect(restart).not.toHaveBeenCalled();

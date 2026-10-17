@@ -41,7 +41,10 @@ function status({ record }: { record: BenchmarkRunRecord }): string | undefined 
   case 'failed': return lazyStrings.imageBenchmark__failed();
   case 'cancelled': return lazyStrings.imageBenchmark__cancelled();
   case 'skipped': return lazyStrings.imageBenchmark__skipped();
-  default: { const exhaustive: never = record.status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = record.status;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

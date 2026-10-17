@@ -4,7 +4,9 @@ import { runCalculator } from './run-calculator';
 function getHelpText({ input }: { input: string }): string {
   const result = runCalculator({ input });
   expect(result.status).toBe('success');
-  if (result.status !== 'success') throw new Error(`Expected help success for ${input}`);
+  if (result.status !== 'success') {
+    throw new Error(`Expected help success for ${input}`);
+  }
   expect(result.output.kind).toBe('help');
   return result.output.text;
 }
@@ -39,6 +41,8 @@ describe('calculator help', () => {
 
     const multiple = runCalculator({ input: 'help mean extra' });
     expect(multiple.status).toBe('error');
-    if (multiple.status === 'error') expect(multiple.diagnostic.code).toBe('invalid_help_usage');
+    if (multiple.status === 'error') {
+      expect(multiple.diagnostic.code).toBe('invalid_help_usage');
+    }
   });
 });

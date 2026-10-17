@@ -24,7 +24,10 @@ export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
   switch (status) {
   case 'queued': case 'resolving': case 'downloading': case 'pausing': return true;
   case 'paused': case 'complete': case 'failed': case 'cancelled': case undefined: return false;
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -46,23 +49,33 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
   let running: { id: number, controller: AbortController } | undefined;
   function replace({ id, patch }: { id: number, patch: Partial<Pick<DownloadJob, 'status' | 'selection' | 'progress' | 'error'>> }): DownloadJob {
     const current = jobs.value.find(job => job.id === id);
-    if (!current) throw new Error('Unknown download job');
+    if (!current) {
+      throw new Error('Unknown download job');
+    }
     const next = { ...current, ...patch };
     jobs.value = jobs.value.map(job => job.id === id ? next : job);
     return next;
   }
   async function drain(): Promise<void> {
-    if (running) return;
+    if (running) {
+      return;
+    }
     const queued = jobs.value.find(job => job.status === 'queued');
-    if (!queued) return;
+    if (!queued) {
+      return;
+    }
     const task = tasks.get(queued.id)!;
     const controller = new AbortController();
     running = { id: queued.id, controller };
     try {
       replace({ id: queued.id, patch: { status: 'resolving' } });
       const root = await task.root;
-      if (root && 'error' in root) throw root.error;
-      if (root) boundRoots.set(queued.id, root.handle);
+      if (root && 'error' in root) {
+        throw root.error;
+      }
+      if (root) {
+        boundRoots.set(queued.id, root.handle);
+      }
       controller.signal.throwIfAborted();
       const selection = selectionSchema.parse(await task.prepare({ signal: controller.signal }));
       controller.signal.throwIfAborted();
@@ -72,7 +85,9 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
         ...(isHostDestination(queued.destination) ? { destination: queued.destination, expectedRoot: root?.handle } : {}),
         signal: controller.signal,
         onProgress: ({ progress }) => {
-          if (!controller.signal.aborted) replace({ id: queued.id, patch: { progress } });
+          if (!controller.signal.aborted) {
+            replace({ id: queued.id, patch: { progress } });
+          }
         },
       });
       // A writer may finish concurrently with a pause. A committed success must
@@ -98,16 +113,24 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
     const target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
     key = downloadJobKey({ key, destination: target });
     const existing = jobs.value.find(job => job.key === key && jobIsBusy({ job }));
-    if (existing) return { id: existing.id, done: tasks.get(existing.id)!.done };
+    if (existing) {
+      return { id: existing.id, done: tasks.get(existing.id)!.done };
+    }
     const previous = jobs.value.find(job => job.key === key);
     const boundRoot = (previous && previous.status !== 'complete' ? boundRoots.get(previous.id) : undefined) ?? expectedRoot;
-    if (previous) boundRoots.delete(previous.id);
+    if (previous) {
+      boundRoots.delete(previous.id);
+    }
     const id = ++sequence;
-    if (boundRoot) boundRoots.set(id, boundRoot);
+    if (boundRoot) {
+      boundRoots.set(id, boundRoot);
+    }
     const deferred = Promise.withResolvers<DownloadJob>();
     // Capture physical identity before the queue waits on metadata or another job.
     const root = isHostDestination(target) ? hostModelRoot({ destination: target, mode: 'readwrite' }).then(async handle => {
-      if (boundRoot && !await handle.isSameEntry(boundRoot)) return { error: new Error('Linked model folder changed during permission authorization') };
+      if (boundRoot && !await handle.isSameEntry(boundRoot)) {
+        return { error: new Error('Linked model folder changed during permission authorization') };
+      }
       return { handle: boundRoot ?? handle };
     }).catch(error => ({ error })) : undefined;
     tasks.set(id, { root, prepare, done: deferred.promise, finish: ({ job }) => deferred.resolve(job) });
@@ -121,16 +144,26 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
   }
   function cancel({ id }: { id: number }): void {
     const job = jobs.value.find(job => job.id === id);
-    if (!job) return;
+    if (!job) {
+      return;
+    }
     switch (job.status) {
     case 'queued': {
       tasks.get(id)?.finish({ job: { ...job, status: 'cancelled' } });
-      tasks.delete(id); boundRoots.delete(id); jobs.value = jobs.value.filter(entry => entry.id !== id); return;
+      tasks.delete(id);
+      boundRoots.delete(id);
+      jobs.value = jobs.value.filter(entry => entry.id !== id);
+      return;
     }
     case 'resolving': case 'downloading':
-      replace({ id, patch: { status: 'pausing' } }); running?.controller.abort(); return;
+      replace({ id, patch: { status: 'pausing' } });
+      running?.controller.abort();
+      return;
     case 'pausing': case 'paused': case 'complete': case 'failed': case 'cancelled': return;
-    default: { const exhaustive: never = job.status; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = job.status;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   function position({ id }: { id: number }): number | undefined {
@@ -139,14 +172,23 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
   }
   function forget({ id }: { id: number }): void {
     const job = jobs.value.find(entry => entry.id === id);
-    if (jobIsBusy({ job })) return;
-    boundRoots.delete(id); jobs.value = jobs.value.filter(entry => entry.id !== id);
+    if (jobIsBusy({ job })) {
+      return;
+    }
+    boundRoots.delete(id);
+    jobs.value = jobs.value.filter(entry => entry.id !== id);
   }
   async function stopDirectory({ directoryId }: { directoryId: string }): Promise<void> {
     const waiting: Promise<DownloadJob>[] = [];
     for (const job of jobs.value) {
-      if (job.destination.kind !== 'host' || job.destination.directoryId !== directoryId || !jobIsBusy({ job })) continue;
-      const task = tasks.get(job.id); if (task) waiting.push(task.done); cancel({ id: job.id });
+      if (job.destination.kind !== 'host' || job.destination.directoryId !== directoryId || !jobIsBusy({ job })) {
+        continue;
+      }
+      const task = tasks.get(job.id);
+      if (task) {
+        waiting.push(task.done);
+      }
+      cancel({ id: job.id });
     }
     await Promise.all(waiting);
   }
@@ -169,7 +211,8 @@ export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
       // Local availability follows the same validated-file contract as the UI;
       // it is not a claim about remote revision/content equality.
       if (!isHostDestination(destination) && await installedSelection({ selection })) {
-        signal.throwIfAborted(); return;
+        signal.throwIfAborted();
+        return;
       }
       signal.throwIfAborted();
       await downloadRepository({ selection, signal, onProgress, ...(isHostDestination(destination) ? { destination, expectedRoot } : {}) });

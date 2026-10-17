@@ -140,7 +140,8 @@ describe('useChatLifecycle', () => {
   it('clears every pending title and aborts title controllers when deleting all chats', async () => {
     vi.useFakeTimers();
     const other = toChatId({ raw: 'other-chat' });
-    const first = new AbortController(); const second = new AbortController();
+    const first = new AbortController();
+    const second = new AbortController();
     chatRuntimeStore.setActiveTitleGeneration({ chatId: existingChatId, controller: first });
     chatRuntimeStore.setActiveTitleGeneration({ chatId: other, controller: second });
     const run = vi.fn().mockResolvedValue(undefined);
@@ -190,19 +191,24 @@ describe('useChatLifecycle', () => {
   it('creates a grouped assistant chat without replacing the selected regular chat or group', async () => {
     const existing: Chat = { id: existingChatId, title: 'Main chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
     const group: ChatGroup = { id: groupId, name: 'Images', isCollapsed: false, updatedAt: 1, items: [] };
-    mockCurrentChatRef.value = existing; mockCurrentChatGroupRef.value = group;
+    mockCurrentChatRef.value = existing;
+    mockCurrentChatGroupRef.value = group;
     const created = await useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: 'custom-model', systemPrompt: undefined });
     expect(created).toMatchObject({ groupId, modelId: 'custom-model' });
-    expect(mockCurrentChatRef.value).toBe(existing); expect(mockCurrentChatGroupRef.value).toBe(group);
+    expect(mockCurrentChatRef.value).toBe(existing);
+    expect(mockCurrentChatGroupRef.value).toBe(group);
     expect(mockSetCurrentChatId).not.toHaveBeenCalled();
-    expect(mockUpdateHierarchy).toHaveBeenCalledOnce(); expect(mockLoadData).toHaveBeenCalledOnce();
-    expect(mockRegisterLiveInstance).toHaveBeenCalledOnce(); expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
+    expect(mockUpdateHierarchy).toHaveBeenCalledOnce();
+    expect(mockLoadData).toHaveBeenCalledOnce();
+    expect(mockRegisterLiveInstance).toHaveBeenCalledOnce();
+    expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
     expect(mockCreatingChat.value).toBe(false);
   });
 
   it('releases the creation gate on failure while preserving main-chat navigation', async () => {
     mockUpdateChatContent.mockRejectedValueOnce(new Error('save failure'));
     await expect(useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined })).rejects.toThrow('save failure');
-    expect(mockCreatingChat.value).toBe(false); expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+    expect(mockCreatingChat.value).toBe(false);
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
   });
 });

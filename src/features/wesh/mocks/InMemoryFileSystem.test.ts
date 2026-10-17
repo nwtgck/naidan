@@ -150,7 +150,9 @@ describe('InMemoryFileSystem OPFS contract', () => {
 
     const iterate = async (): Promise<string[]> => {
       const names: string[] = [];
-      for await (const [name] of directory.entries()) names.push(name);
+      for await (const [name] of directory.entries()) {
+        names.push(name);
+      }
       return names;
     };
     const iterationError = await iterate().catch((error: unknown) => error);

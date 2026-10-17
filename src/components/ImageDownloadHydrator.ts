@@ -21,7 +21,9 @@ export const ImageDownloadHydrator = {
    */
   async prepareContext({ el, storageService, blob }: { el: HTMLElement, storageService: StorageService, blob?: Blob }) {
     const id = el.dataset.id;
-    if (!id) return null;
+    if (!id) {
+      return null;
+    }
 
     // Detect format for metadata support
     let isSupported = false;
@@ -106,13 +108,17 @@ export const ImageDownloadHydrator = {
     try {
       const obj = memoryBlob === undefined ? await storageService.getBinaryObject({ binaryObjectId: id }) : undefined;
       const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: id });
-      if (!blob) throw new Error('Image blob not found');
+      if (!blob) {
+        throw new Error('Image blob not found');
+      }
 
       let suffix = '.png';
       const filenameHint = name ?? obj?.name;
       if (filenameHint) {
         const lastDot = filenameHint.lastIndexOf('.');
-        if (lastDot !== -1) suffix = filenameHint.slice(lastDot);
+        if (lastDot !== -1) {
+          suffix = filenameHint.slice(lastDot);
+        }
       }
 
       let finalBlob = blob;

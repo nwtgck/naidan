@@ -175,7 +175,9 @@ async function *readAwkRecords({
         .replace(/^\n+/, '')
         .replace(/\n+$/, '')
         .split(/\n\n+/);
-      if (records.at(-1) === '') records.pop();
+      if (records.at(-1) === '') {
+        records.pop();
+      }
       for (const record of records) {
         yield {
           text: record,
@@ -194,7 +196,9 @@ async function *readAwkRecords({
       source: input,
     });
     for (const part of parts) {
-      if (part.text === '' && !part.terminatedByMatch) continue;
+      if (part.text === '' && !part.terminatedByMatch) {
+        continue;
+      }
       yield {
         text: part.text,
         fields: [],
@@ -220,7 +224,9 @@ function createTextReadHandle({ text }: { text: string }) {
   return createReadHandleFromStream({
     source: new ReadableStream<Uint8Array>({
       start(controller) {
-        if (text.length > 0) controller.enqueue(encodeCommandDataText({ text }));
+        if (text.length > 0) {
+          controller.enqueue(encodeCommandDataText({ text }));
+        }
         controller.close();
       },
     }),
@@ -280,7 +286,9 @@ function decodeAwkAssignmentEscapes({
   let index = 0;
 
   const appendOrdinaryText = ({ end }: { end: number }): void => {
-    if (end <= ordinaryStart) return;
+    if (end <= ordinaryStart) {
+      return;
+    }
     result += encodeAwkTextToByteString({ text: value.slice(ordinaryStart, end) });
   };
 
@@ -305,7 +313,9 @@ function decodeAwkAssignmentEscapes({
       let digits = escaped;
       while (digits.length < 3) {
         const next = value[index + 1 + digits.length];
-        if (next === undefined || !/^[0-7]$/.test(next)) break;
+        if (next === undefined || !/^[0-7]$/.test(next)) {
+          break;
+        }
         digits += next;
       }
       result += createAwkByteCharacter({ byte: Number.parseInt(digits, 8) });
@@ -318,7 +328,9 @@ function decodeAwkAssignmentEscapes({
       let digits = '';
       while (digits.length < 2) {
         const next = value[index + 2 + digits.length];
-        if (next === undefined || !/^[0-9A-Fa-f]$/.test(next)) break;
+        if (next === undefined || !/^[0-9A-Fa-f]$/.test(next)) {
+          break;
+        }
         digits += next;
       }
       if (digits.length > 0) {
@@ -532,13 +544,17 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       while (true) {
         if (currentInputIterator !== undefined) {
           const next = await currentInputIterator.next();
-          if (!next.done) return { status: 1, record: next.value };
+          if (!next.done) {
+            return { status: 1, record: next.value };
+          }
           currentInputIterator = undefined;
         }
 
         const operand = operands[nextOperandIndex];
         nextOperandIndex += 1;
-        if (operand === undefined) return { status: 0, record: undefined };
+        if (operand === undefined) {
+          return { status: 0, record: undefined };
+        }
 
         const currentOperand = operand.argvIndex === undefined
           ? operand.raw
@@ -547,7 +563,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
             arrayName: 'ARGV',
             index: String(operand.argvIndex),
           });
-        if (currentOperand === undefined || currentOperand === '') continue;
+        if (currentOperand === undefined || currentOperand === '') {
+          continue;
+        }
 
         const assignment = parseAssignment({ raw: currentOperand });
         if (assignment.ok) {
@@ -622,7 +640,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
             const output = capture.readText();
-            if (output.length > 0) controller.enqueue(encodeCommandDataText({ text: output }));
+            if (output.length > 0) {
+              controller.enqueue(encodeCommandDataText({ text: output }));
+            }
             controller.close();
           },
         });
@@ -649,7 +669,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       commandInputs.delete(inputPath);
       await fileIterator?.return?.();
       await commandInput?.iterator.return?.();
-      if (commandInput !== undefined) return commandInput.exitCode;
+      if (commandInput !== undefined) {
+        return commandInput.exitCode;
+      }
       return fileIterator === undefined ? undefined : 0;
     };
 
@@ -696,7 +718,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           return result.exitCode;
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          if (!message.startsWith('Command not found:')) throw error;
+          if (!message.startsWith('Command not found:')) {
+            throw error;
+          }
           await text.error({ text: `${message}\n` });
           return 127;
         }
@@ -713,7 +737,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           return { exitCode: result.exitCode, output: capture.readText() };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          if (!message.startsWith('Command not found:')) throw error;
+          if (!message.startsWith('Command not found:')) {
+            throw error;
+          }
           await text.error({ text: `${message}\n` });
           return { exitCode: 127, output: capture.readText() };
         }
@@ -761,7 +787,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           output,
         });
       } catch (error: unknown) {
-        if (!isAwkFunctionExitControl({ error })) throw error;
+        if (!isAwkFunctionExitControl({ error })) {
+          throw error;
+        }
       }
       await flushAwkRuntimeIo({ runtime });
 
@@ -774,7 +802,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       );
       while (shouldReadRecordInput && runtime.exitCode === undefined) {
         const next = await readCurrentInput();
-        if (next.status === 0 || next.record === undefined) break;
+        if (next.status === 0 || next.record === undefined) {
+          break;
+        }
         if (next.status === -1) {
           return { exitCode: 2 };
         }
@@ -788,7 +818,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
             output: recordOutput,
           });
         } catch (error: unknown) {
-          if (!isAwkFunctionExitControl({ error })) throw error;
+          if (!isAwkFunctionExitControl({ error })) {
+            throw error;
+          }
         }
         await flushAwkRuntimeIo({ runtime });
 
@@ -810,7 +842,9 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           output: endOutput,
         });
       } catch (error: unknown) {
-        if (!isAwkFunctionExitControl({ error })) throw error;
+        if (!isAwkFunctionExitControl({ error })) {
+          throw error;
+        }
       }
       await flushAwkRuntimeCommandPipes({ runtime });
       await flushAwkRuntimeIo({ runtime });

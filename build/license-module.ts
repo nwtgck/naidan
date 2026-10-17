@@ -99,7 +99,9 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
       return id === NAIDAN_LICENSE_MODULE_ID ? resolvedLicenseModuleId : undefined;
     },
     async load(id) {
-      if (id !== resolvedLicenseModuleId) return undefined;
+      if (id !== resolvedLicenseModuleId) {
+        return undefined;
+      }
       if (resolvedConfig === undefined) {
         throw new Error(`[${pluginName}] Vite config was not resolved.`);
       }
@@ -121,12 +123,16 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
     },
     renderChunk(_code, chunk) {
       for (const [moduleId, moduleInfo] of Object.entries(chunk.modules)) {
-        if (moduleInfo.renderedLength > 0) renderedModuleIds.add(moduleId);
+        if (moduleInfo.renderedLength > 0) {
+          renderedModuleIds.add(moduleId);
+        }
       }
       return undefined;
     },
     augmentChunkHash(chunkInfo) {
-      if (!chunkInfo.moduleIds.includes(resolvedLicenseModuleId)) return undefined;
+      if (!chunkInfo.moduleIds.includes(resolvedLicenseModuleId)) {
+        return undefined;
+      }
       if (resolvedConfig === undefined) {
         throw new Error(`[${pluginName}] Vite config was not resolved.`);
       }
@@ -168,7 +174,9 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
         throw new Error(`[${pluginName}] Expected exactly one lazy license chunk, found ${licenseChunks.length}.`);
       }
       const [licenseChunk] = licenseChunks;
-      if (licenseChunk === undefined) throw new Error(`[${pluginName}] License chunk is missing.`);
+      if (licenseChunk === undefined) {
+        throw new Error(`[${pluginName}] License chunk is missing.`);
+      }
       if (!licenseChunk.isDynamicEntry || licenseChunk.isEntry) {
         throw new Error(`[${pluginName}] Generated license module must remain a lazy dynamic chunk.`);
       }

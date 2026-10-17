@@ -10,7 +10,10 @@ export function getProfileConfiguration({ profile }: { profile: z.infer<typeof p
   case 'webgpu-wasm32-asyncify': return { pointerBytes: 4, memory64: false, jspi: false, suspension: 'asyncify' };
   case 'webgpu-wasm32-jspi': return { pointerBytes: 4, memory64: false, jspi: true, suspension: 'direct' };
   case 'webgpu-wasm64-jspi': return { pointerBytes: 8, memory64: true, jspi: true, suspension: 'direct' };
-  default: { const exhaustive: never = profile; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = profile;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -109,11 +112,16 @@ export const modelFileSchema = z.object({
 }).superRefine((model, ctx) => {
   const paths = [model.path ?? model.file.name, ...(model.companions ?? []).map(file => file.path)];
   const unique = new Set(paths);
-  if (unique.size !== paths.length || paths.some(path => !validModelPath({ path }))) ctx.addIssue({ code: 'custom', message: 'Model paths must be safe and unique' });
+  if (unique.size !== paths.length || paths.some(path => !validModelPath({ path }))) {
+    ctx.addIssue({ code: 'custom', message: 'Model paths must be safe and unique' });
+  }
   for (const path of paths) {
-    const parts = path.split('/'); parts.pop();
+    const parts = path.split('/');
+    parts.pop();
     while (parts.length) {
-      if (unique.has(parts.join('/'))) ctx.addIssue({ code: 'custom', message: 'Model file/directory path conflict' });
+      if (unique.has(parts.join('/'))) {
+        ctx.addIssue({ code: 'custom', message: 'Model file/directory path conflict' });
+      }
       parts.pop();
     }
   }

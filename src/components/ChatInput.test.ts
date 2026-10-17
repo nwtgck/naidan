@@ -278,7 +278,9 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
     abortChat: mockAbortChat,
     updateChatSettings: mockUpdateChatSettings,
     getLiveChat: vi.fn().mockImplementation((c) => {
-      if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+      if (mockCurrentChat.value?.id === (c.id || c)) {
+        return mockCurrentChat.value;
+      }
       return c;
     }),
     ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
@@ -343,7 +345,9 @@ const mockChatStore = {
     }
   }),
   getLiveChat: vi.fn().mockImplementation((c) => {
-    if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+    if (mockCurrentChat.value?.id === (c.id || c)) {
+      return mockCurrentChat.value;
+    }
     return c;
   }),
   ensureChatTmpDirectory: mockEnsureChatTmpDirectory,

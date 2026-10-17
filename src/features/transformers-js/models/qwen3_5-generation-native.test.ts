@@ -52,7 +52,9 @@ describe('Qwen native tool termination framing', () => {
     const output = `<tool_call><function=lookup_weather><parameter=city>Tokyo</parameter></function>${terminal}`;
     const ids = tokenizer.encode(output, { add_special_tokens: false }).map(BigInt);
     streamer.put([tokenizer.encode(prompt, { add_special_tokens: false }).map(BigInt)]);
-    for (const batch of delivery === 'single' ? ids.map(id => [id]) : [ids]) streamer.put([batch]);
+    for (const batch of delivery === 'single' ? ids.map(id => [id]) : [ids]) {
+      streamer.put([batch]);
+    }
     streamer.end();
     codec.finish({ reason: 'unknown' });
     expect(events).toEqual([

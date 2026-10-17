@@ -17,7 +17,9 @@ async function appendDemo({ locale }: { locale: DocsLocale }): Promise<HTMLEleme
   const html = await renderToString(createSSRApp({ render: () => h(DocsIsland, { entry: branchingIsland({ locale }) }) }));
   document.body.append(document.importNode(JSDOM.fragment(html), true));
   const root = document.body.querySelector<HTMLElement>('[data-docs-island="branching"]:last-of-type');
-  if (!root) throw new Error('Missing branching island root');
+  if (!root) {
+    throw new Error('Missing branching island root');
+  }
   return root;
 }
 
@@ -28,10 +30,14 @@ describe('compiled branching island hydration', () => {
     expect(parseBranchingPayload({ serialized: root.getAttribute('data-docs-props') ?? '' })).toEqual({ locale });
     expect(Object.keys(JSON.parse(root.getAttribute('data-docs-props') ?? '') as object)).toEqual(['locale']);
     const resend = root.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
-    if (!resend) throw new Error('Missing resend section');
+    if (!resend) {
+      throw new Error('Missing resend section');
+    }
     const getButton = ({ id }: { id: string }) => {
       const element = resend.querySelector(`[data-testid="${id}"]`);
-      if (!(element instanceof HTMLButtonElement)) throw new Error(`Missing button: ${id}`);
+      if (!(element instanceof HTMLButtonElement)) {
+        throw new Error(`Missing button: ${id}`);
+      }
       return element;
     };
     expect(getButton({ id: 'branch-resend' }).disabled).toBe(true);
@@ -41,7 +47,9 @@ describe('compiled branching island hydration', () => {
     const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
-        apps.forEach(app => app.unmount()); document.body.replaceChildren(); warning.mockRestore();
+        apps.forEach(app => app.unmount());
+        document.body.replaceChildren();
+        warning.mockRestore();
       },
     };
     await nextTick();
@@ -71,7 +79,9 @@ describe('compiled branching island hydration', () => {
     const japanese = readBranchingMessages({ locale: 'ja' }).messages;
     const firstResend = first.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
     const secondResend = second.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
-    if (!firstResend || !secondResend) throw new Error('Missing resend section');
+    if (!firstResend || !secondResend) {
+      throw new Error('Missing resend section');
+    }
     expect(first.querySelector('.branch-note .ui-label')?.textContent).toBe('Replay this method');
     expect(second.querySelector('.branch-note .ui-label')?.textContent).toBe('この方法を再生');
     expect(firstResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(english.replies[1]);
@@ -79,7 +89,8 @@ describe('compiled branching island hydration', () => {
     const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
-        apps.forEach(app => app.unmount()); document.body.replaceChildren();
+        apps.forEach(app => app.unmount());
+        document.body.replaceChildren();
       },
     };
     await nextTick();
@@ -97,7 +108,9 @@ describe('compiled branching island hydration', () => {
     const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
-        apps.forEach(app => app.unmount()); document.body.replaceChildren(); error.mockRestore();
+        apps.forEach(app => app.unmount());
+        document.body.replaceChildren();
+        error.mockRestore();
       },
     };
     await nextTick();
@@ -115,7 +128,9 @@ describe('compiled branching island hydration', () => {
       start: 'interactive',
       parse: ({ serialized }) => {
         const value: unknown = JSON.parse(serialized);
-        if (typeof value !== 'object' || value === null || !('text' in value) || typeof value.text !== 'string') throw new Error('Invalid text');
+        if (typeof value !== 'object' || value === null || !('text' in value) || typeof value.text !== 'string') {
+          throw new Error('Invalid text');
+        }
         return { text: value.text };
       },
     });
@@ -123,7 +138,9 @@ describe('compiled branching island hydration', () => {
       props: { text: { type: String, required: true } },
       setup(props) {
         onMounted(() => {
-          if (props.text === 'broken') throw new Error('Mount failed');
+          if (props.text === 'broken') {
+            throw new Error('Mount failed');
+          }
         });
         return () => h('span', { 'data-testid': 'failure-probe-copy' }, props.text);
       },
@@ -134,13 +151,17 @@ describe('compiled branching island hydration', () => {
       document.body.append(document.importNode(JSDOM.fragment(html), true));
     }
     const [broken, working] = document.body.querySelectorAll<HTMLElement>('[data-docs-island="failure-probe"]');
-    if (!broken || !working) throw new Error('Missing failure probe roots');
+    if (!broken || !working) {
+      throw new Error('Missing failure probe roots');
+    }
     const staticHtml = broken.innerHTML;
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const apps = await hydrateDocsIsland({ factory, document });
     using _cleanup = {
       [Symbol.dispose]() {
-        apps.forEach(app => app.unmount()); document.body.replaceChildren(); error.mockRestore();
+        apps.forEach(app => app.unmount());
+        document.body.replaceChildren();
+        error.mockRestore();
       },
     };
     expect(apps).toHaveLength(1);

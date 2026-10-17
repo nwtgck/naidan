@@ -13,7 +13,9 @@ function remoteNames({ entries }: { entries: readonly GitConfigEntry[] }): strin
   const names = new Set<string>();
   for (const entry of entries) {
     const match = /^remote\.(.+)\.[^.]+$/u.exec(entry.key);
-    if (match !== null) names.add(match[1]!);
+    if (match !== null) {
+      names.add(match[1]!);
+    }
   }
   return sortGitUtf8Strings({ values: names });
 }
@@ -23,7 +25,9 @@ function configValues({ entries, key }: { entries: readonly GitConfigEntry[], ke
 }
 
 async function removePathRecursively({ context, path }: { context: WeshCommandContext, path: string }): Promise<void> {
-  if (!await pathExists({ files: context.files, path })) return;
+  if (!await pathExists({ files: context.files, path })) {
+    return;
+  }
   const stat = await context.files.lstat({ path });
   switch (stat.type) {
   case 'directory':
@@ -56,7 +60,9 @@ const REMOTE_GLOBAL_LONG_ARGV_CATALOG = defineArgvCatalog<RemoteGlobalLongOption
 });
 
 function resolveRemoteGlobalLongOption({ arg }: { arg: string }): boolean | undefined {
-  if (arg === '--' || !arg.startsWith('--')) return undefined;
+  if (arg === '--' || !arg.startsWith('--')) {
+    return undefined;
+  }
   if (arg === '--no-') {
     throw new GitUsageError({
       message: formatGitAmbiguousLongOption({
@@ -151,7 +157,9 @@ export async function runRemote({ context, args }: {
       continue;
     }
     const longVerbose = resolveRemoteGlobalLongOption({ arg });
-    if (longVerbose === undefined) break;
+    if (longVerbose === undefined) {
+      break;
+    }
     verbose = longVerbose;
     globalArgCount += 1;
   }
@@ -181,10 +189,14 @@ export async function runRemote({ context, args }: {
       ? remainingArgs.slice(0, -1)
       : remainingArgs;
   const subcommand = commandArgs[0]!;
-  if (subcommand.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${subcommand}` });
+  if (subcommand.startsWith('-')) {
+    throw new GitUsageError({ message: `unknown option: ${subcommand}` });
+  }
   switch (subcommand) {
   case 'add': {
-    if (commandArgs.length !== 3) throw new GitUsageError({ message: 'usage: git remote add <name> <url>', prefix: 'none' });
+    if (commandArgs.length !== 3) {
+      throw new GitUsageError({ message: 'usage: git remote add <name> <url>', prefix: 'none' });
+    }
     const name = commandArgs[1]!;
     if (localRemoteNames.includes(name)) {
       await context.text().error({ text: `error: remote ${name} already exists.\n` });
@@ -201,7 +213,9 @@ export async function runRemote({ context, args }: {
     return { exitCode: 0 };
   }
   case 'get-url': {
-    if (commandArgs.length !== 2) throw new GitUsageError({ message: 'usage: git remote get-url <name>', prefix: 'none' });
+    if (commandArgs.length !== 2) {
+      throw new GitUsageError({ message: 'usage: git remote get-url <name>', prefix: 'none' });
+    }
     const name = commandArgs[1]!;
     if (!localRemoteNames.includes(name)) {
       await context.text().error({ text: `error: No such remote '${name}'\n` });
@@ -212,7 +226,9 @@ export async function runRemote({ context, args }: {
     return { exitCode: 0 };
   }
   case 'set-url': {
-    if (commandArgs.length !== 3) throw new GitUsageError({ message: 'usage: git remote set-url <name> <newurl>', prefix: 'none' });
+    if (commandArgs.length !== 3) {
+      throw new GitUsageError({ message: 'usage: git remote set-url <name> <newurl>', prefix: 'none' });
+    }
     const name = commandArgs[1]!;
     if (!localRemoteNames.includes(name)) {
       await context.text().error({ text: `error: No such remote '${name}'\n` });
@@ -236,7 +252,9 @@ export async function runRemote({ context, args }: {
   }
   case 'remove':
   case 'rm': {
-    if (commandArgs.length !== 2) throw new GitUsageError({ message: `usage: git remote ${subcommand} <name>`, prefix: 'none' });
+    if (commandArgs.length !== 2) {
+      throw new GitUsageError({ message: `usage: git remote ${subcommand} <name>`, prefix: 'none' });
+    }
     const name = commandArgs[1]!;
     if (!await removeLocalConfigSection({ files: context.files, repository, section: 'remote', subsection: name })) {
       await context.text().error({ text: `error: No such remote: '${name}'\n` });
@@ -246,9 +264,14 @@ export async function runRemote({ context, args }: {
     const branchesUsingPushRemote = new Set<string>();
     for (const entry of localConfigEntries) {
       const match = /^branch\.(.+)\.(remote|pushremote)$/u.exec(entry.key);
-      if (match === null || getRawConfigValue({ value: entry.value }) !== name) continue;
-      if (match[2] === 'remote') branchesUsingRemote.add(match[1]!);
-      else branchesUsingPushRemote.add(match[1]!);
+      if (match === null || getRawConfigValue({ value: entry.value }) !== name) {
+        continue;
+      }
+      if (match[2] === 'remote') {
+        branchesUsingRemote.add(match[1]!);
+      } else {
+        branchesUsingPushRemote.add(match[1]!);
+      }
     }
     for (const branchName of branchesUsingRemote) {
       await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.remote`, all: true, valuePattern: undefined });

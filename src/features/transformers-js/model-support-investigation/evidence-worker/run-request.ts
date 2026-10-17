@@ -16,7 +16,9 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
   validateRuntimeControlBindings({ run });
   for (const key of ['productionProviderCapture', 'productionProviderInvestigation']) {
     const descriptor = Object.getOwnPropertyDescriptor(run, key);
-    if (descriptor !== undefined && !('value' in descriptor)) throw new Error('Invalid Provider capture in Evidence request');
+    if (descriptor !== undefined && !('value' in descriptor)) {
+      throw new Error('Invalid Provider capture in Evidence request');
+    }
   }
   const { productionProviderCapture, productionProviderInvestigation, ...body } = run;
   const providerCaptureEvidence = productionProviderCapture === undefined ? undefined : createProductionProviderCaptureEvidence({
@@ -36,8 +38,12 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
  * host-only Provider field is separately decoded and identity-validated here. */
 export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: { run: z.infer<typeof encodedEvidenceRunSchema>['run'], providerCaptureEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerCaptureEvidence'], providerInvestigationEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerInvestigationEvidence'] }): ModelSupportInvestigationRun {
   validateRuntimeControlBindings({ run });
-  if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) throw new Error('Raw Provider capture is not allowed in Evidence request JSON');
-  if (providerCaptureEvidence === undefined && providerInvestigationEvidence === undefined) return run as unknown as ModelSupportInvestigationRun;
+  if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) {
+    throw new Error('Raw Provider capture is not allowed in Evidence request JSON');
+  }
+  if (providerCaptureEvidence === undefined && providerInvestigationEvidence === undefined) {
+    return run as unknown as ModelSupportInvestigationRun;
+  }
   const identity = z.object({ runId: z.string(), modelId: z.string() }).parse(run);
   const productionProviderCapture = providerCaptureEvidence === undefined ? undefined : readProductionProviderCaptureEvidence({ json: providerCaptureEvidence, ...identity });
   const productionProviderInvestigation = providerInvestigationEvidence === undefined ? undefined : readProductionProviderInvestigationSummaryEvidence({ json: providerInvestigationEvidence, ...identity });

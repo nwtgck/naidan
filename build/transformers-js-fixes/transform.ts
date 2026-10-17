@@ -35,7 +35,9 @@ export function transformersJsFixesSha256({ code }: { code: string | Uint8Array 
 
 /** The same bounded transform is used by Vite, its optimizer and runtime replay builds. */
 export function applyTransformersJsFixes({ code, version }: { code: string; version: string }) {
-  if (version !== TRANSFORMERS_JS_FIXES_PROVENANCE.version) throw new Error('Unreviewed Transformers.js fix integration version');
+  if (version !== TRANSFORMERS_JS_FIXES_PROVENANCE.version) {
+    throw new Error('Unreviewed Transformers.js fix integration version');
+  }
   const originalSha256 = transformersJsFixesSha256({ code });
   if (originalSha256 !== TRANSFORMERS_JS_FIXES_PROVENANCE.upstreamHashes['dist/transformers.web.js']) {
     throw new Error('Unreviewed Transformers.js web bundle content');
@@ -43,7 +45,9 @@ export function applyTransformersJsFixes({ code, version }: { code: string; vers
   const transformed = new MagicString(code);
   for (const { before, after } of replacements) {
     const start = code.indexOf(before);
-    if (start < 0 || code.indexOf(before, start + before.length) >= 0) throw new Error('Ambiguous Transformers.js fix integration edit');
+    if (start < 0 || code.indexOf(before, start + before.length) >= 0) {
+      throw new Error('Ambiguous Transformers.js fix integration edit');
+    }
     transformed.overwrite(start, start + before.length, after);
   }
   const result = transformed.toString();

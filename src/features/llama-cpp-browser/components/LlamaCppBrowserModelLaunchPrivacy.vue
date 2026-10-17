@@ -8,7 +8,9 @@ const summary = ref<HTMLElement>();
 const explanationId = useId();
 
 function closeExplanation(): void {
-  if (!details.value?.open) return;
+  if (!details.value?.open) {
+    return;
+  }
   details.value.open = false;
   summary.value?.focus();
 }

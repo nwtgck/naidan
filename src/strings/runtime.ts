@@ -59,7 +59,9 @@ let localeSwitchRequest = 0;
 export function resolveBrowserLocale(): UiLocale {
   const browserLocale = typeof navigator === 'undefined' ? undefined : navigator.language;
   const normalized = browserLocale?.toLowerCase();
-  if (normalized === 'ja' || normalized?.startsWith('ja-') === true) return 'ja';
+  if (normalized === 'ja' || normalized?.startsWith('ja-') === true) {
+    return 'ja';
+  }
   if (
     normalized === 'zh'
     || normalized === 'zh-hans'
@@ -68,11 +70,21 @@ export function resolveBrowserLocale(): UiLocale {
     || normalized?.startsWith('zh-cn-') === true
     || normalized === 'zh-sg'
     || normalized?.startsWith('zh-sg-') === true
-  ) return 'zh-Hans';
-  if (normalized === 'pt' || normalized === 'pt-br' || normalized?.startsWith('pt-br-') === true) return 'pt-BR';
-  if (normalized === 'es' || normalized?.startsWith('es-') === true) return 'es';
-  if (normalized === 'ko' || normalized?.startsWith('ko-') === true) return 'ko';
-  if (normalized === 'de' || normalized?.startsWith('de-') === true) return 'de';
+  ) {
+    return 'zh-Hans';
+  }
+  if (normalized === 'pt' || normalized === 'pt-br' || normalized?.startsWith('pt-br-') === true) {
+    return 'pt-BR';
+  }
+  if (normalized === 'es' || normalized?.startsWith('es-') === true) {
+    return 'es';
+  }
+  if (normalized === 'ko' || normalized?.startsWith('ko-') === true) {
+    return 'ko';
+  }
+  if (normalized === 'de' || normalized?.startsWith('de-') === true) {
+    return 'de';
+  }
   return 'en';
 }
 

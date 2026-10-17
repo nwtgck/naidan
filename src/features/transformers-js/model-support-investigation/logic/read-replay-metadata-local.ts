@@ -15,7 +15,9 @@ export async function readReplayMetadataLocal({ storageRoot, modelId, revision, 
     // getFile obtains a snapshot/size; bytes are streamed only after the collector's budget check.
     return await (await directory.getFileHandle(path, { create: false })).getFile();
   } catch (error) {
-    if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+    if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+      return undefined;
+    }
     throw error;
   }
 }

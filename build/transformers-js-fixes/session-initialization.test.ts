@@ -12,7 +12,9 @@ function fixture({ code, create, isWeb = true }: { code: string; create: () => P
   const end = code.indexOf('\nvar webInferenceChain', start);
   const constructorStart = code.indexOf('async function constructSessions(');
   const constructorEnd = code.indexOf('function replaceTensors(', constructorStart);
-  if (start < 0 || end <= start || constructorStart < 0 || constructorEnd <= constructorStart) throw new Error('Missing pinned session boundaries');
+  if (start < 0 || end <= start || constructorStart < 0 || constructorEnd <= constructorStart) {
+    throw new Error('Missing pinned session boundaries');
+  }
   // Execute the real two browser functions together. Only metadata, diagnostic
   // availability and native ORT entry are controlled, without model allocation.
   return new Function('InferenceSession', 'getSession', `

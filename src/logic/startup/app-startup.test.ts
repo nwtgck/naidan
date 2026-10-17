@@ -129,7 +129,8 @@ describe('app startup', () => {
   beforeEach(() => {
     loadChatsForAppStartup.mockClear();
     activateChatBootstrap.mockClear();
-    startRpcAutomaticConnections.mockClear(); disposeRpcAutomaticConnections.mockClear();
+    startRpcAutomaticConnections.mockClear();
+    disposeRpcAutomaticConnections.mockClear();
   });
 
   it('uses the normal main startup path for an already configured user', async () => {

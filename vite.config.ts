@@ -126,7 +126,9 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
     console.log('  \u231B Compressing WASM files to .gz...');
     const distDir = path.resolve(__dirname, outDir);
 
-    if (!fs.existsSync(distDir)) return;
+    if (!fs.existsSync(distDir)) {
+      return;
+    }
 
     const processDirectory = async (dir: string) => {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -299,7 +301,9 @@ export default defineConfig(({ mode, command }) => {
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
-          if (isStandalone) standaloneCollectedLicenseDependencies = dependencies;
+          if (isStandalone) {
+            standaloneCollectedLicenseDependencies = dependencies;
+          }
         },
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),

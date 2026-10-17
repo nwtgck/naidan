@@ -26,16 +26,28 @@ function normalizeTrapCondition({ value }: { value: string }): string | undefine
   }
 
   const signal = parseLinuxSignal({ value, allowZero: true });
-  if (signal === 0) return 'EXIT';
+  if (signal === 0) {
+    return 'EXIT';
+  }
   return signal === undefined ? undefined : linuxSignalByNumber({ number: signal })?.name;
 }
 
 function trapConditionOrder({ condition }: { condition: string }): number {
-  if (condition === 'EXIT') return 0;
-  if (condition === 'DEBUG') return 65;
-  if (condition === 'ERR') return 66;
-  if (condition === 'RETURN') return 67;
-  if (/^\d+$/u.test(condition)) return Number.parseInt(condition, 10);
+  if (condition === 'EXIT') {
+    return 0;
+  }
+  if (condition === 'DEBUG') {
+    return 65;
+  }
+  if (condition === 'ERR') {
+    return 66;
+  }
+  if (condition === 'RETURN') {
+    return 67;
+  }
+  if (/^\d+$/u.test(condition)) {
+    return Number.parseInt(condition, 10);
+  }
   const definition = LINUX_SIGNAL_DEFINITIONS.find(candidate => candidate.name === condition);
   return definition?.number ?? Number.MAX_SAFE_INTEGER;
 }
@@ -92,7 +104,9 @@ export const trapCommandImplementation: WeshCommandImplementation = {
     let index = 0;
     while (index < context.args.length) {
       const argument = context.args[index];
-      if (argument === undefined) break;
+      if (argument === undefined) {
+        break;
+      }
       if (argument === '--') {
         index += 1;
         break;
@@ -106,8 +120,12 @@ export const trapCommandImplementation: WeshCommandImplementation = {
         return { exitCode: 2 };
       }
       for (const option of argument.slice(1)) {
-        if (option === 'p') print = true;
-        if (option === 'l') list = true;
+        if (option === 'p') {
+          print = true;
+        }
+        if (option === 'l') {
+          list = true;
+        }
       }
       index += 1;
     }

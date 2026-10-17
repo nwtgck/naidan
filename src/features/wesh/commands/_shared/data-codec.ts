@@ -166,25 +166,46 @@ function isPotentialIncompleteUtf8Sequence({
   start: number;
 }): boolean {
   const first = bytes[start];
-  if (first === undefined) return false;
+  if (first === undefined) {
+    return false;
+  }
   const available = bytes.byteLength - start;
   let expected: number;
-  if (first >= 0xc2 && first <= 0xdf) expected = 2;
-  else if (first >= 0xe0 && first <= 0xef) expected = 3;
-  else if (first >= 0xf0 && first <= 0xf4) expected = 4;
-  else return false;
-  if (available >= expected) return false;
+  if (first >= 0xc2 && first <= 0xdf) {
+    expected = 2;
+  } else if (first >= 0xe0 && first <= 0xef) {
+    expected = 3;
+  } else if (first >= 0xf0 && first <= 0xf4) {
+    expected = 4;
+  } else {
+    return false;
+  }
+  if (available >= expected) {
+    return false;
+  }
 
   const second = bytes[start + 1];
   if (second !== undefined) {
-    if (!isContinuationByte({ byte: second })) return false;
-    if (first === 0xe0 && second < 0xa0) return false;
-    if (first === 0xed && second > 0x9f) return false;
-    if (first === 0xf0 && second < 0x90) return false;
-    if (first === 0xf4 && second > 0x8f) return false;
+    if (!isContinuationByte({ byte: second })) {
+      return false;
+    }
+    if (first === 0xe0 && second < 0xa0) {
+      return false;
+    }
+    if (first === 0xed && second > 0x9f) {
+      return false;
+    }
+    if (first === 0xf0 && second < 0x90) {
+      return false;
+    }
+    if (first === 0xf4 && second > 0x8f) {
+      return false;
+    }
   }
   for (let index = start + 2; index < bytes.byteLength; index += 1) {
-    if (!isContinuationByte({ byte: bytes[index] })) return false;
+    if (!isContinuationByte({ byte: bytes[index] })) {
+      return false;
+    }
   }
   return true;
 }

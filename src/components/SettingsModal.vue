@@ -71,11 +71,15 @@ const { isFeatureEnabled } = useFeatureFlags();
 provideHuggingFaceSession();
 const modelPresetState = useModelPreset();
 const modelPreset = computed(() => {
-  const preset = modelPresetState?.value; const target = preset?.target;
+  const preset = modelPresetState?.value;
+  const target = preset?.target;
   switch (target) {
   case 'settings': return preset;
   case undefined: case 'onboarding': return undefined;
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const route = useRoute();
@@ -112,7 +116,10 @@ const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) =>
     break;
   }
   case 'changed': break;
-  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(String(exhaustive));
+  }
   }
   return result;
 };
@@ -161,21 +168,45 @@ const activeTab = computed({
   get: () => {
     const queryTab = route.query.settings as string;
     if (queryTab) {
-      if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
-      if (queryTab === 'provider-profiles') return 'profiles';
-      if (queryTab === 'transformers-js') return 'transformers_js';
-      if (queryTab === 'llama-cpp-browser') return 'llama_cpp_browser';
-      if (queryTab === 'binary-objects') return 'binary_objects';
-      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
+      if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') {
+        return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
+      }
+      if (queryTab === 'provider-profiles') {
+        return 'profiles';
+      }
+      if (queryTab === 'transformers-js') {
+        return 'transformers_js';
+      }
+      if (queryTab === 'llama-cpp-browser') {
+        return 'llama_cpp_browser';
+      }
+      if (queryTab === 'binary-objects') {
+        return 'binary_objects';
+      }
+      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) {
+        return 'connection';
+      }
       return (queryTab as Tab);
     }
     const tab = (route.params as { tab?: string }).tab;
-    if (tab === 'naidan-rpc' || tab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
-    if (tab === 'provider-profiles') return 'profiles';
-    if (tab === 'transformers-js') return 'transformers_js';
-    if (tab === 'llama-cpp-browser') return 'llama_cpp_browser';
-    if (tab === 'binary-objects') return 'binary_objects';
-    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
+    if (tab === 'naidan-rpc' || tab === 'naidan_rpc') {
+      return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
+    }
+    if (tab === 'provider-profiles') {
+      return 'profiles';
+    }
+    if (tab === 'transformers-js') {
+      return 'transformers_js';
+    }
+    if (tab === 'llama-cpp-browser') {
+      return 'llama_cpp_browser';
+    }
+    if (tab === 'binary-objects') {
+      return 'binary_objects';
+    }
+    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) {
+      return 'connection';
+    }
     return (tab as Tab) || 'connection';
   },
   set: (val) => {

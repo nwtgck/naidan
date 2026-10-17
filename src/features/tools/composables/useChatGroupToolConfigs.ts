@@ -61,7 +61,9 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
   }: {
     updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined,
   }): Promise<void> {
-    if (!isEditable.value || currentChatGroup.value === null) return;
+    if (!isEditable.value || currentChatGroup.value === null) {
+      return;
+    }
     await chatGroups.updateToolConfigs({
       chatGroupId: currentChatGroup.value.id,
       updater,

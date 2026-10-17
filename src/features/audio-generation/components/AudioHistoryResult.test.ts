@@ -23,15 +23,21 @@ let wrapper: VueWrapper | undefined;
 const copy = vi.fn<(text: string) => Promise<void>>();
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); copy.mockReset(); copy.mockResolvedValue();
+  await ensureAllStringsForTest({ locale: 'en' });
+  copy.mockReset();
+  copy.mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } });
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
-  Reflect.deleteProperty(navigator, 'clipboard'); window.getSelection()?.removeAllRanges(); document.body.innerHTML = ''; vi.restoreAllMocks();
+  wrapper?.unmount();
+  wrapper = undefined;
+  Reflect.deleteProperty(navigator, 'clipboard');
+  window.getSelection()?.removeAllRanges();
+  document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
 
 describe('compact history controls', () => {
@@ -49,7 +55,8 @@ describe('compact history controls', () => {
 
   it('copies the original text including whitespace without changing the result', async () => {
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() } });
-    await wrapper.get('[data-testid="audio-copy-text"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="audio-copy-text"]').trigger('click');
+    await flushPromises();
     expect(copy).toHaveBeenCalledExactlyOnceWith(text);
     expect(wrapper.get('[data-testid="audio-copy-text"]').text()).toContain('copied');
     expect(wrapper.get('[data-testid="audio-result-text"]').element.textContent).toBe(text);
@@ -57,10 +64,14 @@ describe('compact history controls', () => {
   });
 
   it.each(['denied', 'unavailable'])('offers a selected-text fallback when clipboard is %s', async reason => {
-    if (reason === 'denied') copy.mockRejectedValueOnce(new Error('denied'));
-    else Reflect.deleteProperty(navigator, 'clipboard');
+    if (reason === 'denied') {
+      copy.mockRejectedValueOnce(new Error('denied'));
+    } else {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() }, attachTo: document.body });
-    await wrapper.get('[data-testid="audio-copy-text"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="audio-copy-text"]').trigger('click');
+    await flushPromises();
     expect(wrapper.get('[data-testid="audio-copy-error"]').attributes('role')).toBe('status');
     expect(window.getSelection()?.toString()).toBe(text);
     expect(document.activeElement).toBe(wrapper.get('[data-testid="audio-result-text"]').element);
@@ -68,11 +79,15 @@ describe('compact history controls', () => {
   });
 
   it('does not select another page or update state when a delayed copy fails after deletion', async () => {
-    const gate = Promise.withResolvers<void>(); copy.mockReturnValueOnce(gate.promise);
+    const gate = Promise.withResolvers<void>();
+    copy.mockReturnValueOnce(gate.promise);
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() }, attachTo: document.body });
     await wrapper.get('[data-testid="audio-copy-text"]').trigger('click');
     expect(wrapper.get('[data-testid="audio-copy-text"]').attributes('disabled')).toBeDefined();
-    wrapper.unmount(); wrapper = undefined; gate.reject(new Error('late')); await flushPromises();
+    wrapper.unmount();
+    wrapper = undefined;
+    gate.reject(new Error('late'));
+    await flushPromises();
     expect(window.getSelection()?.toString()).toBe('');
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
   });

@@ -175,7 +175,9 @@ function parseEnvArguments({ args }: { args: string[] }): ParsedEnvArguments {
   while (index < args.length) {
     const argument = args[index]!;
     const equalsIndex = argument.indexOf('=');
-    if (equalsIndex < 0) break;
+    if (equalsIndex < 0) {
+      break;
+    }
     assignments.push({
       name: argument.slice(0, equalsIndex),
       value: argument.slice(equalsIndex + 1),
@@ -325,7 +327,9 @@ export const envCommandImplementation: WeshCommandImplementation = {
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        if (message !== `Command not found: ${commandForExecution}`) throw error;
+        if (message !== `Command not found: ${commandForExecution}`) {
+          throw error;
+        }
         await text.error({
           text: `env: '${parsed.command}': No such file or directory\n`,
         });

@@ -27,9 +27,13 @@ const pathDecoder = new TextDecoder('utf-8', { fatal: true });
 const encoder = new TextEncoder();
 
 function bytesEqual({ left, right }: { left: Uint8Array, right: Uint8Array }): boolean {
-  if (left.byteLength !== right.byteLength) return false;
+  if (left.byteLength !== right.byteLength) {
+    return false;
+  }
   for (let index = 0; index < left.byteLength; index++) {
-    if (left[index] !== right[index]) return false;
+    if (left[index] !== right[index]) {
+      return false;
+    }
   }
   return true;
 }
@@ -54,7 +58,9 @@ function splitInputLines({
   let strippedCarriageReturns = false;
 
   for (let index = 0; index < bytes.byteLength; index++) {
-    if (bytes[index] !== 0x0a) continue;
+    if (bytes[index] !== 0x0a) {
+      continue;
+    }
 
     let end = index;
     if (stripCarriageReturns && end > start && bytes[end - 1] === 0x0d) {
@@ -127,15 +133,21 @@ function parseMode({ value }: { value: string }): { mode: number, kind: PatchFil
 }
 
 function decodeGitQuotedPath({ value }: { value: string }): string {
-  if (!value.startsWith('"')) return value;
-  if (!value.endsWith('"')) throw new Error(`unterminated quoted path ${value}`);
+  if (!value.startsWith('"')) {
+    return value;
+  }
+  if (!value.endsWith('"')) {
+    throw new Error(`unterminated quoted path ${value}`);
+  }
 
   const bytes: number[] = [];
   for (let index = 1; index < value.length - 1; index++) {
     const character = value[index];
     if (character !== '\\') {
       const codePoint = value.codePointAt(index);
-      if (codePoint === undefined) throw new Error(`invalid character in path ${value}`);
+      if (codePoint === undefined) {
+        throw new Error(`invalid character in path ${value}`);
+      }
       const decodedCharacter = String.fromCodePoint(codePoint);
       bytes.push(...encoder.encode(decodedCharacter));
       index += decodedCharacter.length - 1;
@@ -144,7 +156,9 @@ function decodeGitQuotedPath({ value }: { value: string }): string {
 
     index += 1;
     const escaped = value[index];
-    if (escaped === undefined) throw new Error(`unterminated escape in path ${value}`);
+    if (escaped === undefined) {
+      throw new Error(`unterminated escape in path ${value}`);
+    }
 
     switch (escaped) {
     case '\\':
@@ -169,7 +183,9 @@ function decodeGitQuotedPath({ value }: { value: string }): string {
       let octal = escaped;
       for (let count = 0; count < 2; count++) {
         const next = value[index + 1];
-        if (next === undefined || !/[0-7]/u.test(next)) break;
+        if (next === undefined || !/[0-7]/u.test(next)) {
+          break;
+        }
         index += 1;
         octal += next;
       }
@@ -179,7 +195,9 @@ function decodeGitQuotedPath({ value }: { value: string }): string {
     }
   }
 
-  if (bytes.includes(0)) throw new Error('patch path contains a NUL byte');
+  if (bytes.includes(0)) {
+    throw new Error('patch path contains a NUL byte');
+  }
   try {
     return pathDecoder.decode(new Uint8Array(bytes));
   } catch {
@@ -192,8 +210,12 @@ function parseGitTokens({ value }: { value: string }): string[] {
   let index = 0;
 
   while (index < value.length) {
-    while (value[index] === ' ') index += 1;
-    if (index >= value.length) break;
+    while (value[index] === ' ') {
+      index += 1;
+    }
+    if (index >= value.length) {
+      break;
+    }
 
     if (value[index] === '"') {
       const start = index;
@@ -217,7 +239,9 @@ function parseGitTokens({ value }: { value: string }): string[] {
     }
 
     const start = index;
-    while (index < value.length && value[index] !== ' ') index += 1;
+    while (index < value.length && value[index] !== ' ') {
+      index += 1;
+    }
     tokens.push(value.slice(start, index));
   }
 
@@ -238,8 +262,11 @@ function parseHeaderPath({ value }: { value: string }): string {
       if (!escaped && character === '"') {
         return decodeGitQuotedPath({ value: trimmed.slice(0, index + 1) });
       }
-      if (!escaped && character === '\\') escaped = true;
-      else escaped = false;
+      if (!escaped && character === '\\') {
+        escaped = true;
+      } else {
+        escaped = false;
+      }
       index += 1;
     }
     throw new Error(`unterminated quoted path ${trimmed}`);
@@ -268,10 +295,14 @@ function parseUnifiedHunk({
   startIndex: number,
 }): { hunk: TextHunk, nextIndex: number } {
   const headerLine = lines[startIndex];
-  if (headerLine === undefined) throw new Error('missing unified hunk header');
+  if (headerLine === undefined) {
+    throw new Error('missing unified hunk header');
+  }
   const headerText = decodeLine({ line: headerLine });
   const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: (.*))?$/u.exec(headerText);
-  if (match === null) throw new Error(`malformed unified hunk header at line ${headerLine.lineNumber}`);
+  if (match === null) {
+    throw new Error(`malformed unified hunk header at line ${headerLine.lineNumber}`);
+  }
 
   const oldRange = parseRange({ startText: match[1]!, countText: match[2] });
   const newRange = parseRange({ startText: match[3]!, countText: match[4] });
@@ -327,7 +358,9 @@ function parseUnifiedHunk({
     const markerLine = lines[index];
     if (markerLine !== undefined && decodeLine({ line: markerLine }) === '\\ No newline at end of file') {
       const previous = hunkLines[hunkLines.length - 1];
-      if (previous === undefined) throw new Error(`orphan no-newline marker at line ${markerLine.lineNumber}`);
+      if (previous === undefined) {
+        throw new Error(`orphan no-newline marker at line ${markerLine.lineNumber}`);
+      }
       previous.terminator = 'none';
       index += 1;
     }
@@ -378,7 +411,9 @@ function parseUnifiedSection({
     const line = lines[index]!;
     const text = decodeLine({ line });
 
-    if (text.startsWith('diff --git ') && index !== startIndex) break;
+    if (text.startsWith('diff --git ') && index !== startIndex) {
+      break;
+    }
     if (text.startsWith('Index: ')) {
       header.indexPath = trimAsciiHorizontalWhitespace({
         value: text.slice('Index: '.length),
@@ -443,7 +478,9 @@ function parseUnifiedSection({
     if (text === 'GIT binary patch' || text.startsWith('Binary files ')) {
       header.gitBinary = true;
       index += 1;
-      while (index < lines.length && !decodeLine({ line: lines[index]! }).startsWith('diff --git ')) index += 1;
+      while (index < lines.length && !decodeLine({ line: lines[index]! }).startsWith('diff --git ')) {
+        index += 1;
+      }
       break;
     }
     if (text.startsWith('--- ')) {
@@ -453,23 +490,35 @@ function parseUnifiedSection({
         throw new Error(`missing +++ header after line ${line.lineNumber}`);
       }
       header.newPath = parseHeaderPath({ value: decodeLine({ line: newHeaderLine }).slice(4) });
-      if (header.oldPath === '/dev/null') header.operation = 'create';
-      if (header.newPath === '/dev/null') header.operation = 'delete';
+      if (header.oldPath === '/dev/null') {
+        header.operation = 'create';
+      }
+      if (header.newPath === '/dev/null') {
+        header.operation = 'delete';
+      }
       sawTraditionalHeader = true;
       index += 2;
       break;
     }
-    if (text.startsWith('@@ ')) break;
+    if (text.startsWith('@@ ')) {
+      break;
+    }
     index += 1;
   }
 
   const hunks: TextHunk[] = [];
   while (index < lines.length) {
     const text = decodeLine({ line: lines[index]! });
-    if (text.startsWith('diff --git ')) break;
-    if (text.startsWith('--- ') && hunks.length > 0) break;
+    if (text.startsWith('diff --git ')) {
+      break;
+    }
+    if (text.startsWith('--- ') && hunks.length > 0) {
+      break;
+    }
     if (!text.startsWith('@@ ')) {
-      if (sawTraditionalHeader && (text.startsWith('*** ') || /^\d+(?:,\d+)?[acd]\d/u.test(text))) break;
+      if (sawTraditionalHeader && (text.startsWith('*** ') || /^\d+(?:,\d+)?[acd]\d/u.test(text))) {
+        break;
+      }
       index += 1;
       continue;
     }
@@ -513,13 +562,17 @@ function parseContextRange({ text, marker }: { text: string, marker: 'old' | 'ne
     }
   })();
   const match = expression.exec(text);
-  if (match === null) throw new Error(`malformed context ${marker} range '${text}'`);
+  if (match === null) {
+    throw new Error(`malformed context ${marker} range '${text}'`);
+  }
   const start = Number(match[1]);
   const end = match[2] === undefined ? start : Number(match[2]);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start) {
     throw new Error(`invalid context ${marker} range '${text}'`);
   }
-  if (start === 0 && end === 0) return { start: 0, count: 0 };
+  if (start === 0 && end === 0) {
+    return { start: 0, count: 0 };
+  }
   return { start, count: end - start + 1 };
 }
 
@@ -594,8 +647,12 @@ function parseContextSection({
   const header = createEmptyHeader();
   header.oldPath = parseHeaderPath({ value: decodeLine({ line: oldHeaderLine }).slice(4) });
   header.newPath = parseHeaderPath({ value: decodeLine({ line: newHeaderLine }).slice(4) });
-  if (header.oldPath === '/dev/null') header.operation = 'create';
-  if (header.newPath === '/dev/null') header.operation = 'delete';
+  if (header.oldPath === '/dev/null') {
+    header.operation = 'create';
+  }
+  if (header.newPath === '/dev/null') {
+    header.operation = 'delete';
+  }
 
   let index = startIndex + 2;
   const hunks: TextHunk[] = [];
@@ -603,7 +660,9 @@ function parseContextSection({
   while (index < lines.length && decodeLine({ line: lines[index]! }) === '***************') {
     const separatorLine = lines[index]!;
     const oldRangeLine = lines[index + 1];
-    if (oldRangeLine === undefined) throw new Error(`truncated context hunk at line ${separatorLine.lineNumber}`);
+    if (oldRangeLine === undefined) {
+      throw new Error(`truncated context hunk at line ${separatorLine.lineNumber}`);
+    }
     const oldRange = parseContextRange({ text: decodeLine({ line: oldRangeLine }), marker: 'old' });
     index += 2;
 
@@ -611,7 +670,9 @@ function parseContextSection({
     while (index < lines.length) {
       const line = lines[index]!;
       const text = decodeLine({ line });
-      if (/^--- \d/u.test(text)) break;
+      if (/^--- \d/u.test(text)) {
+        break;
+      }
       const prefix = text.slice(0, 2);
       const kind = (() => {
         switch (prefix) {
@@ -631,7 +692,9 @@ function parseContextSection({
     }
 
     const newRangeLine = lines[index];
-    if (newRangeLine === undefined) throw new Error(`missing context new range after line ${oldRangeLine.lineNumber}`);
+    if (newRangeLine === undefined) {
+      throw new Error(`missing context new range after line ${oldRangeLine.lineNumber}`);
+    }
     const newRange = parseContextRange({ text: decodeLine({ line: newRangeLine }), marker: 'new' });
     index += 1;
 
@@ -639,7 +702,9 @@ function parseContextSection({
     while (index < lines.length) {
       const line = lines[index]!;
       const text = decodeLine({ line });
-      if (text === '***************' || text.startsWith('diff --git ') || (text.startsWith('*** ') && lines[index + 1] !== undefined && decodeLine({ line: lines[index + 1]! }).startsWith('--- '))) break;
+      if (text === '***************' || text.startsWith('diff --git ') || (text.startsWith('*** ') && lines[index + 1] !== undefined && decodeLine({ line: lines[index + 1]! }).startsWith('--- '))) {
+        break;
+      }
       const prefix = text.slice(0, 2);
       const kind = (() => {
         switch (prefix) {
@@ -671,7 +736,9 @@ function parseContextSection({
     });
   }
 
-  if (hunks.length === 0) throw new Error(`context patch at line ${oldHeaderLine.lineNumber} has no hunks`);
+  if (hunks.length === 0) {
+    throw new Error(`context patch at line ${oldHeaderLine.lineNumber} has no hunks`);
+  }
 
   return {
     section: {
@@ -699,7 +766,9 @@ function parseNormalSection({
   while (index < lines.length) {
     const commandLine = lines[index]!;
     const match = /^(\d+)(?:,(\d+))?([acd])(\d+)(?:,(\d+))?$/u.exec(decodeLine({ line: commandLine }));
-    if (match === null) break;
+    if (match === null) {
+      break;
+    }
 
     const leftStart = Number(match[1]);
     const leftEnd = match[2] === undefined ? leftStart : Number(match[2]);
@@ -770,7 +839,9 @@ function parseNormalSection({
     });
   }
 
-  if (hunks.length === 0) throw new Error(`normal diff expected at line ${lines[startIndex]?.lineNumber ?? 1}`);
+  if (hunks.length === 0) {
+    throw new Error(`normal diff expected at line ${lines[startIndex]?.lineNumber ?? 1}`);
+  }
 
   return {
     section: {
@@ -797,7 +868,9 @@ function parseEdSection({
   while (index < lines.length) {
     const commandLine = lines[index]!;
     const match = /^(\d+)(?:,(\d+))?([acd])$/u.exec(decodeLine({ line: commandLine }));
-    if (match === null) break;
+    if (match === null) {
+      break;
+    }
 
     const start = Number(match[1]);
     const end = match[2] === undefined ? start : Number(match[2]);
@@ -827,7 +900,9 @@ function parseEdSection({
         commandLines.push({ content: lines[index]!.content, terminator: 'lf' });
         index += 1;
       }
-      if (index >= lines.length) throw new Error(`unterminated ed text block at line ${commandLine.lineNumber}`);
+      if (index >= lines.length) {
+        throw new Error(`unterminated ed text block at line ${commandLine.lineNumber}`);
+      }
       index += 1;
       const dotEscapeLine = lines[index];
       if (dotEscapeLine !== undefined && decodeLine({ line: dotEscapeLine }) === 's/.//') {
@@ -851,7 +926,9 @@ function parseEdSection({
     commands.push({ start, end, operation, lines: commandLines, sourceLineNumber: commandLine.lineNumber });
   }
 
-  if (commands.length === 0) throw new Error(`ed script expected at line ${lines[startIndex]?.lineNumber ?? 1}`);
+  if (commands.length === 0) {
+    throw new Error(`ed script expected at line ${lines[startIndex]?.lineNumber ?? 1}`);
+  }
 
   return {
     section: {
@@ -868,14 +945,18 @@ function parseEdSection({
 function looksLikeContextHeader({ lines, index }: { lines: InputLine[], index: number }): boolean {
   const first = lines[index];
   const second = lines[index + 1];
-  if (first === undefined || second === undefined) return false;
+  if (first === undefined || second === undefined) {
+    return false;
+  }
   return decodeLine({ line: first }).startsWith('*** ') && decodeLine({ line: second }).startsWith('--- ');
 }
 
 function looksLikeUnifiedHeader({ lines, index }: { lines: InputLine[], index: number }): boolean {
   const first = lines[index];
   const second = lines[index + 1];
-  if (first === undefined || second === undefined) return false;
+  if (first === undefined || second === undefined) {
+    return false;
+  }
   return decodeLine({ line: first }).startsWith('--- ') && decodeLine({ line: second }).startsWith('+++ ');
 }
 
@@ -887,16 +968,22 @@ function findIndexedSection({
   index: number,
 }): { format: PatchFormat, startIndex: number, indexPath: string } | undefined {
   const indexLine = lines[index];
-  if (indexLine === undefined) return undefined;
+  if (indexLine === undefined) {
+    return undefined;
+  }
   const indexText = decodeLine({ line: indexLine });
-  if (!indexText.startsWith('Index: ')) return undefined;
+  if (!indexText.startsWith('Index: ')) {
+    return undefined;
+  }
 
   const indexPath = trimAsciiHorizontalWhitespace({
     value: indexText.slice('Index: '.length),
   });
   for (let cursor = index + 1; cursor < lines.length; cursor++) {
     const text = decodeLine({ line: lines[cursor]! });
-    if (text.startsWith('Index: ')) return undefined;
+    if (text.startsWith('Index: ')) {
+      return undefined;
+    }
     if (text.startsWith('diff --git ') || looksLikeUnifiedHeader({ lines, index: cursor })) {
       return { format: 'unified', startIndex: cursor, indexPath };
     }
@@ -1066,7 +1153,9 @@ export function parsePatchDocument({
     }
 
     if (text.startsWith('--- ')) {
-      if (sections.length > 0) break;
+      if (sections.length > 0) {
+        break;
+      }
       throw new Error(`missing +++ header after line ${lines[index]!.lineNumber}`);
     }
     if (text.startsWith('*** ')) {

@@ -14,7 +14,8 @@ const chatId = toChatId({ raw: 'chat-aa' });
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationChatPicker>> | undefined;
 
 beforeEach(async () => {
-  vi.resetAllMocks(); await ensureAllStringsForTest({ locale: 'en' });
+  vi.resetAllMocks();
+  await ensureAllStringsForTest({ locale: 'en' });
   items.value = [
     { type: 'chat', id: 'chat-bb', chat: { id: toChatId({ raw: 'chat-bb' }), title: 'Photo assistant', updatedAt: 1 } },
     {
@@ -47,7 +48,10 @@ it('uses the existing grouped order and expands the attached chat without changi
   expect(view.get('[data-testid="workspace-chat-choice-chat-bb"]').text()).toBe('Photo assistant');
   await view.get('[data-testid="workspace-chat-choice-chat-aa"]').trigger('click');
   expect(view.emitted('select')).toEqual([[chatId]]);
-  const group = items.value[1]; if (group?.type !== 'chat_group') throw new Error('Missing group.');
+  const group = items.value[1];
+  if (group?.type !== 'chat_group') {
+    throw new Error('Missing group.');
+  }
   expect(group.chatGroup.isCollapsed).toBe(true);
 });
 
@@ -67,23 +71,31 @@ it.each([undefined, groupId])('creates in the selected destination without reque
   const created: Chat = { id: toChatId({ raw: 'new-chat' }), groupId, title: null, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
   mocks.create.mockResolvedValue(created);
   const view = open({ selected: undefined });
-  await view.get(groupId ? '[data-testid="workspace-chat-create-group-aa"]' : '[data-testid="workspace-chat-create"]').trigger('click'); await flushPromises();
+  await view.get(groupId ? '[data-testid="workspace-chat-create-group-aa"]' : '[data-testid="workspace-chat-create"]').trigger('click');
+  await flushPromises();
   expect(mocks.create).toHaveBeenCalledWith({ groupId, modelId: undefined, systemPrompt: undefined });
   expect(view.emitted('select')).toEqual([[created.id]]);
 });
 
 it('prevents duplicate creation and does not attach a chat after its picker has been disposed', async () => {
-  const pending = Promise.withResolvers<Chat>(); mocks.create.mockReturnValue(pending.promise);
+  const pending = Promise.withResolvers<Chat>();
+  mocks.create.mockReturnValue(pending.promise);
   const view = open({ selected: undefined });
   await view.get('[data-testid="workspace-chat-create"]').trigger('click');
   expect(view.get<HTMLButtonElement>('[data-testid="workspace-chat-create"]').element.disabled).toBe(true);
-  view.unmount(); wrapper = undefined;
-  pending.resolve({ id: chatId, title: null, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false }); await flushPromises();
-  expect(view.emitted('select')).toBeUndefined(); expect(mocks.create).toHaveBeenCalledOnce();
+  view.unmount();
+  wrapper = undefined;
+  pending.resolve({ id: chatId, title: null, createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false });
+  await flushPromises();
+  expect(view.emitted('select')).toBeUndefined();
+  expect(mocks.create).toHaveBeenCalledOnce();
 });
 
 it('displays creation failures and does not change selection', async () => {
-  mocks.create.mockRejectedValue(new Error('storage failure')); const view = open({ selected: chatId });
-  await view.get('[data-testid="workspace-chat-create"]').trigger('click'); await flushPromises();
-  expect(view.get('[role="alert"]').text()).toBe('storage failure'); expect(view.emitted('select')).toBeUndefined();
+  mocks.create.mockRejectedValue(new Error('storage failure'));
+  const view = open({ selected: chatId });
+  await view.get('[data-testid="workspace-chat-create"]').trigger('click');
+  await flushPromises();
+  expect(view.get('[role="alert"]').text()).toBe('storage failure');
+  expect(view.emitted('select')).toBeUndefined();
 });

@@ -79,13 +79,17 @@ describe('chat model fetch endpoint races', () => {
     { endpoint: { type: 'llama_cpp_browser' }, selected: 'local-GGUF', listed: ['local-GGUF'], expected: 'local-GGUF' },
   ] satisfies { endpoint: Endpoint, selected: string, listed: string[], expected: string }[])('resolves only a listed browser-model directory for $selected on $endpoint.type', async ({ endpoint, selected, listed, expected }) => {
     mocks.endpoint.value = endpoint;
-    const chat = mocks.currentChatRef.value!; chat.modelId = selected;
+    const chat = mocks.currentChatRef.value!;
+    chat.modelId = selected;
     mocks.listModels.mockResolvedValue(listed);
     await fetchModelsForChat({ chatId: chat.id, errorSource: 'test' });
     expect(chat.modelId).toBe(expected);
     expect(mocks.availableModels.value).toEqual(listed);
-    if (selected === expected) expect(mocks.triggerCurrentChat).not.toHaveBeenCalled();
-    else expect(mocks.triggerCurrentChat).toHaveBeenCalledWith({ chatId: chat.id });
+    if (selected === expected) {
+      expect(mocks.triggerCurrentChat).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.triggerCurrentChat).toHaveBeenCalledWith({ chatId: chat.id });
+    }
   });
 
   it('does not publish a global model list fetched for an endpoint that is no longer active', async () => {

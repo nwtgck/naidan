@@ -61,8 +61,12 @@ function readAssetText({ asset }: Readonly<{asset: OutputAsset}>): string {
 function requireRolldownOutput({ result }: Readonly<{
   result: RolldownOutput | readonly RolldownOutput[];
 }>): RolldownOutput {
-  if ('output' in result) return result;
-  if (result.length !== 1) throw new Error(`Expected one CSS artifact build output; found ${result.length}`);
+  if ('output' in result) {
+    return result;
+  }
+  if (result.length !== 1) {
+    throw new Error(`Expected one CSS artifact build output; found ${result.length}`);
+  }
   return result[0];
 }
 
@@ -75,7 +79,9 @@ function findCssAssetByMarker({ output, marker }: Readonly<{
     && item.fileName.endsWith('.css')
     && readAssetText({ asset: item }).includes(marker)
   ));
-  if (asset === undefined) throw new Error(`Expected CSS asset containing ${marker}`);
+  if (asset === undefined) {
+    throw new Error(`Expected CSS asset containing ${marker}`);
+  }
   return asset.fileName;
 }
 
@@ -115,7 +121,9 @@ describe('file-protocol standalone CSS loading artifact contract', () => {
     const initialCssFileName = findCssAssetByMarker({ output, marker: 'initial-css-probe' });
     const lazyCssFileName = findCssAssetByMarker({ output, marker: 'lazy-css-probe' });
     const htmlAsset = output.output.find((item): item is OutputAsset => item.type === 'asset' && item.fileName === 'index.html');
-    if (htmlAsset === undefined) throw new Error('Expected standalone index.html asset');
+    if (htmlAsset === undefined) {
+      throw new Error('Expected standalone index.html asset');
+    }
     const html = readAssetText({ asset: htmlAsset });
     expect(html).toContain(initialCssFileName);
     expect(html).not.toContain(lazyCssFileName);
@@ -125,7 +133,9 @@ describe('file-protocol standalone CSS loading artifact contract', () => {
       && item.fileName.startsWith('assets/index-systemjs-')
       && item.fileName.endsWith('.js')
     ));
-    if (entryChunk === undefined) throw new Error('Expected standalone entry JavaScript chunk');
+    if (entryChunk === undefined) {
+      throw new Error('Expected standalone entry JavaScript chunk');
+    }
     const entryJavaScript = entryChunk.code;
     expect(entryJavaScript).toContain('__vitePreload');
     expect(entryJavaScript).toContain(path.posix.basename(lazyCssFileName));

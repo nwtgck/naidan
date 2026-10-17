@@ -111,7 +111,9 @@ async function handleVolumeCreated({
   readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
-  if (chatGroupId === undefined) return;
+  if (chatGroupId === undefined) {
+    return;
+  }
   await chatGroupMountsActions.addMount({
     chatGroupId,
     mount: { type: 'volume', volumeId, mountPath, readOnly },
@@ -120,7 +122,9 @@ async function handleVolumeCreated({
 
 async function handleChatGroupMountRemove({ volumeId }: { volumeId: VolumeId }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
-  if (chatGroupId === undefined) return;
+  if (chatGroupId === undefined) {
+    return;
+  }
   await chatGroupMountsActions.removeMount({ chatGroupId, volumeId });
 }
 
@@ -132,9 +136,13 @@ async function handleChatGroupMountToggleReadOnly({
   readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
-  if (chatGroupId === undefined) return;
+  if (chatGroupId === undefined) {
+    return;
+  }
   const mount = chatGroupMounts.value.find(candidate => candidate.volumeId === volumeId);
-  if (mount === undefined) return;
+  if (mount === undefined) {
+    return;
+  }
   await chatGroupMountsActions.updateMount({
     chatGroupId,
     volumeId,
@@ -145,12 +153,16 @@ async function handleChatGroupMountToggleReadOnly({
 
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: VolumeId }): Promise<void> {
   const mounts = chatGroupMounts.value;
-  if (mounts.length === 0) return;
+  if (mounts.length === 0) {
+    return;
+  }
 
   const workerMounts: WeshMount[] = [];
   for (const mount of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (handle === null) continue;
+    if (handle === null) {
+      continue;
+    }
     workerMounts.push({
       type: 'directory',
       path: mount.mountPath,
@@ -205,7 +217,9 @@ function cloneDraft({ draft }: { draft: GroupSettingsDraft }): GroupSettingsDraf
 
 function draftFromCurrent(): GroupSettingsDraft | undefined {
   const group = currentChatGroup.value;
-  if (group === null || group === undefined) return undefined;
+  if (group === null || group === undefined) {
+    return undefined;
+  }
   return {
     endpoint: cloneOptionalEndpoint({ endpoint: group.endpoint }),
     modelId: group.modelId,
@@ -230,8 +244,12 @@ function cloneScopedTitleGeneration({
 }: {
   titleGeneration: ScopedTitleGeneration | undefined,
 }): ScopedTitleGeneration | undefined {
-  if (titleGeneration === undefined) return undefined;
-  if (typeof titleGeneration === 'string') return titleGeneration;
+  if (titleGeneration === undefined) {
+    return undefined;
+  }
+  if (typeof titleGeneration === 'string') {
+    return titleGeneration;
+  }
 
   return titleGeneration.endpoint === 'same_scope'
     ? {
@@ -253,14 +271,26 @@ function areScopedTitleGenerationsEqual({
   left: ScopedTitleGeneration | undefined,
   right: ScopedTitleGeneration | undefined,
 }): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined) return false;
-  if (typeof left === 'string' || typeof right === 'string') return left === right;
-  if (left.model !== right.model) {
-    if (left.model === 'same_scope' || right.model === 'same_scope') return false;
-    if (left.model.id !== right.model.id) return false;
+  if (left === right) {
+    return true;
   }
-  if (!areLmParametersEqual({ left: left.lmParameters, right: right.lmParameters })) return false;
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+  if (typeof left === 'string' || typeof right === 'string') {
+    return left === right;
+  }
+  if (left.model !== right.model) {
+    if (left.model === 'same_scope' || right.model === 'same_scope') {
+      return false;
+    }
+    if (left.model.id !== right.model.id) {
+      return false;
+    }
+  }
+  if (!areLmParametersEqual({ left: left.lmParameters, right: right.lmParameters })) {
+    return false;
+  }
   if (left.endpoint === 'same_scope' || right.endpoint === 'same_scope') {
     return left.endpoint === right.endpoint;
   }
@@ -317,7 +347,9 @@ function titleModelIdFromScopedTitleGeneration({
 }: {
   titleGeneration: ScopedTitleGeneration,
 }): string | undefined {
-  if (typeof titleGeneration === 'string' || titleGeneration.model === 'same_scope') return undefined;
+  if (typeof titleGeneration === 'string' || titleGeneration.model === 'same_scope') {
+    return undefined;
+  }
   return titleGeneration.model.id;
 }
 
@@ -335,8 +367,12 @@ function cloneTitleLmParameters({
 }: {
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters | undefined {
-  if (lmParameters === undefined) return undefined;
-  if (lmParameters === 'same_scope') return 'same_scope';
+  if (lmParameters === undefined) {
+    return undefined;
+  }
+  if (lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
 }
 
@@ -347,7 +383,9 @@ function titleLmParametersForEndpoint({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
 }
 
@@ -366,7 +404,9 @@ function titleGenerationWithLmParameters({
 }: {
   titleGeneration: ScopedTitleGenerationDraft,
 }): ScopedTitleGeneration {
-  if (typeof titleGeneration === 'string') return titleGeneration;
+  if (typeof titleGeneration === 'string') {
+    return titleGeneration;
+  }
 
   const current = localTitleGeneration.value;
   const currentLmParameters = current === 'inherit'
@@ -390,7 +430,9 @@ function titleReasoningSelectValueFromLmParameters({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): TitleReasoningSelectValue {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
     ? lmParameters.reasoning.effort
     : undefined;
@@ -473,8 +515,12 @@ const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
 };
 
 function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType | undefined {
-  if (value === 'global') return undefined;
-  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
+  if (value === 'global') {
+    return undefined;
+  }
+  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) {
+    return value as EndpointType;
+  }
   throw new Error(`Unhandled endpoint type value: ${value}`);
 }
 
@@ -482,16 +528,26 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
 type TitleEndpointTypeSelectValue = 'inherit' | 'same_scope' | Endpoint['type'];
 
 function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEndpointTypeSelectValue {
-  if (value === 'inherit') return 'inherit';
-  if (value === 'same_scope') return 'same_scope';
-  if (value === 'unsupported_experimental_endpoint') return 'unsupported_experimental_endpoint';
-  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
+  if (value === 'inherit') {
+    return 'inherit';
+  }
+  if (value === 'same_scope') {
+    return 'same_scope';
+  }
+  if (value === 'unsupported_experimental_endpoint') {
+    return 'unsupported_experimental_endpoint';
+  }
+  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) {
+    return value as EndpointType;
+  }
   throw new Error(`Unhandled title endpoint type value: ${value}`);
 }
 
 function globalEndpointTypeLabel(): string | undefined {
   const endpointType = endpointTypeLabel({ endpointType: settings.value.endpoint.type });
-  if (endpointType === undefined) return undefined;
+  if (endpointType === undefined) {
+    return undefined;
+  }
   return lazyStrings.ChatGroupSettingsPanel__global_endpoint_type({ endpointType });
 }
 
@@ -509,7 +565,9 @@ function endpointTypeValueLabel({ endpoint }: { endpoint: Endpoint }): string | 
 
 function globalTitleEndpoint(): Endpoint | undefined {
   const titleGeneration = settings.value.titleGeneration;
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleGeneration.endpoint === 'same_scope'
     ? settings.value.endpoint
     : titleGeneration.endpoint;
@@ -517,7 +575,9 @@ function globalTitleEndpoint(): Endpoint | undefined {
 
 function globalTitleModelId(): string | undefined {
   const titleGeneration = settings.value.titleGeneration;
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleGeneration.model === 'same_scope'
     ? settings.value.defaultModelId
     : titleGeneration.model.id;
@@ -525,13 +585,17 @@ function globalTitleModelId(): string | undefined {
 
 function globalLmParameters(): 'same_scope' | LmParameters | undefined {
   const titleGeneration = settings.value.titleGeneration;
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleGeneration.lmParameters;
 }
 
 function materializedGlobalLmParameters(): LmParameters | undefined {
   const titleGeneration = settings.value.titleGeneration;
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   if (titleGeneration.lmParameters === 'same_scope') {
     return clonePlainLmParameters({ lmParameters: settings.value.lmParameters });
   }
@@ -546,15 +610,31 @@ function mergedLmParameters({
   overrides: LmParameters | undefined,
 }): LmParameters | undefined {
   const lmParameters = clonePlainLmParameters({ lmParameters: base }) ?? emptyLmParameters();
-  if (overrides === undefined) return normalizeLmParameters({ lmParameters });
+  if (overrides === undefined) {
+    return normalizeLmParameters({ lmParameters });
+  }
 
-  if (overrides.temperature !== undefined) lmParameters.temperature = overrides.temperature;
-  if (overrides.topP !== undefined) lmParameters.topP = overrides.topP;
-  if (overrides.maxCompletionTokens !== undefined) lmParameters.maxCompletionTokens = overrides.maxCompletionTokens;
-  if (overrides.presencePenalty !== undefined) lmParameters.presencePenalty = overrides.presencePenalty;
-  if (overrides.frequencyPenalty !== undefined) lmParameters.frequencyPenalty = overrides.frequencyPenalty;
-  if (overrides.stop !== undefined) lmParameters.stop = [...overrides.stop];
-  if (overrides.reasoning?.effort !== undefined) lmParameters.reasoning.effort = overrides.reasoning.effort;
+  if (overrides.temperature !== undefined) {
+    lmParameters.temperature = overrides.temperature;
+  }
+  if (overrides.topP !== undefined) {
+    lmParameters.topP = overrides.topP;
+  }
+  if (overrides.maxCompletionTokens !== undefined) {
+    lmParameters.maxCompletionTokens = overrides.maxCompletionTokens;
+  }
+  if (overrides.presencePenalty !== undefined) {
+    lmParameters.presencePenalty = overrides.presencePenalty;
+  }
+  if (overrides.frequencyPenalty !== undefined) {
+    lmParameters.frequencyPenalty = overrides.frequencyPenalty;
+  }
+  if (overrides.stop !== undefined) {
+    lmParameters.stop = [...overrides.stop];
+  }
+  if (overrides.reasoning?.effort !== undefined) {
+    lmParameters.reasoning.effort = overrides.reasoning.effort;
+  }
 
   return normalizeLmParameters({ lmParameters });
 }
@@ -568,9 +648,15 @@ function localSameScopeLmParameters(): LmParameters | undefined {
 
 function materializedLocalLmParameters(): LmParameters | undefined {
   const titleGeneration = localTitleGeneration.value;
-  if (titleGeneration === 'disabled') return undefined;
-  if (titleGeneration === 'inherit') return clonePlainLmParameters({ lmParameters: materializedGlobalLmParameters() });
-  if (titleGeneration.lmParameters === 'same_scope') return localSameScopeLmParameters();
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
+  if (titleGeneration === 'inherit') {
+    return clonePlainLmParameters({ lmParameters: materializedGlobalLmParameters() });
+  }
+  if (titleGeneration.lmParameters === 'same_scope') {
+    return localSameScopeLmParameters();
+  }
   return clonePlainLmParameters({ lmParameters: titleGeneration.lmParameters });
 }
 
@@ -752,7 +838,9 @@ function createChanges({
     case 'lm_param_stop':
     case 'lm_param_reasoning_effort': {
       const change = lmChanges.get(field);
-      if (change !== undefined) changes.push(change);
+      if (change !== undefined) {
+        changes.push(change);
+      }
       break;
     }
     default: {
@@ -781,20 +869,30 @@ const localTitleModelId = computed(() => titleModelIdFromScopedTitleGeneration({
 
 const localTitleEndpoint = computed(() => {
   const titleGeneration = localTitleGeneration.value;
-  if (titleGeneration === 'inherit') return 'inherit';
-  if (titleGeneration === 'disabled') return 'same_scope';
+  if (titleGeneration === 'inherit') {
+    return 'inherit';
+  }
+  if (titleGeneration === 'disabled') {
+    return 'same_scope';
+  }
   return titleGeneration.endpoint;
 });
 const localTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() => {
   const endpoint = localTitleEndpoint.value;
-  if (endpoint === 'inherit' || endpoint === 'same_scope') return endpoint;
+  if (endpoint === 'inherit' || endpoint === 'same_scope') {
+    return endpoint;
+  }
   return endpoint.type;
 });
 const localTitleEndpointUsesInheritance = computed(() => localTitleEndpoint.value === 'inherit');
 const localTitleEndpointUsesSameScope = computed(() => localTitleEndpoint.value === 'same_scope');
 const activeTitleEndpoint = computed<Endpoint | undefined>(() => {
-  if (localTitleEndpoint.value === 'inherit') return globalTitleEndpoint();
-  if (localTitleEndpoint.value === 'same_scope') return effectiveEndpoint.value;
+  if (localTitleEndpoint.value === 'inherit') {
+    return globalTitleEndpoint();
+  }
+  if (localTitleEndpoint.value === 'same_scope') {
+    return effectiveEndpoint.value;
+  }
   return localTitleEndpoint.value;
 });
 const effectiveTitleEndpoint = computed<Endpoint>(() => activeTitleEndpoint.value ?? effectiveEndpoint.value);
@@ -803,7 +901,9 @@ const localTitleEndpointUrl = computed({
   get: () => (activeTitleEndpoint.value !== undefined && isHttpEndpoint(activeTitleEndpoint.value) ? activeTitleEndpoint.value.url : ''),
   set: (url: string) => {
     const endpoint = activeTitleEndpoint.value;
-    if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
+    if (endpoint === undefined || !isHttpEndpoint(endpoint)) {
+      return;
+    }
     updateLocalTitleGenerationDraft({
       titleGeneration: {
         endpoint: {
@@ -829,7 +929,9 @@ function setLocalTitleEndpointHttpHeaders({
   httpHeaders: [string, string][],
 }): void {
   const endpoint = activeTitleEndpoint.value;
-  if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
+  if (endpoint === undefined || !isHttpEndpoint(endpoint)) {
+    return;
+  }
   updateLocalTitleGenerationDraft({
     titleGeneration: {
       endpoint: {
@@ -844,7 +946,9 @@ function setLocalTitleEndpointHttpHeaders({
 
 function addLocalTitleHeader(): void {
   const headers = localTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   setLocalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
 }
 
@@ -858,7 +962,9 @@ function updateLocalTitleHeader({
   value: string,
 }): void {
   const headers = localTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
+  if (headers === undefined) {
+    return;
+  }
   setLocalTitleEndpointHttpHeaders({
     httpHeaders: headers.map((header, headerIndex) => headerIndex === index
       ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
@@ -885,15 +991,23 @@ const titleModelLoading = computed(() => {
     : isFetchingTitleEndpointModels.value;
 });
 const effectiveTitleModelId = computed(() => {
-  if (localTitleEndpointUsesInheritance.value) return globalTitleModelId();
-  if (localTitleEndpointUsesSameScope.value) return effectiveModelId.value;
+  if (localTitleEndpointUsesInheritance.value) {
+    return globalTitleModelId();
+  }
+  if (localTitleEndpointUsesSameScope.value) {
+    return effectiveModelId.value;
+  }
   return localTitleModelId.value;
 });
 
 const localTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
   const titleGeneration = localTitleGeneration.value;
-  if (titleGeneration === 'inherit') return 'inherit';
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'inherit') {
+    return 'inherit';
+  }
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleReasoningSelectValueFromLmParameters({
     endpoint: titleGeneration.endpoint,
     lmParameters: titleGeneration.lmParameters,
@@ -923,14 +1037,18 @@ function setLocalTitleReasoningSelectValue({
   }
 
   const current = localTitleGeneration.value;
-  if (current === 'disabled') return;
+  if (current === 'disabled') {
+    return;
+  }
 
   switch (value) {
   case 'same_scope': {
     const base = current === 'inherit'
       ? materializedLocalTitleGenerationOverride()
       : current;
-    if (typeof base === 'string') return;
+    if (typeof base === 'string') {
+      return;
+    }
     setLocalTitleGeneration({
       titleGeneration: {
         ...base,
@@ -1078,10 +1196,14 @@ async function fetchTitleEndpointModels(): Promise<void> {
   isFetchingTitleEndpointModels.value = true;
   try {
     const models = await chatModels.fetchForEndpoint({ endpoint });
-    if (!areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value })) return;
+    if (!areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value })) {
+      return;
+    }
     titleEndpointModels.value = models ?? [];
     const titleGeneration = localTitleGeneration.value;
-    if (typeof titleGeneration === 'string' || titleGeneration.endpoint === 'same_scope') return;
+    if (typeof titleGeneration === 'string' || titleGeneration.endpoint === 'same_scope') {
+      return;
+    }
     if (!titleEndpointModels.value.includes(titleGeneration.model.id) && titleEndpointModels.value[0] !== undefined) {
       setLocalTitleGeneration({
         titleGeneration: {
@@ -1202,7 +1324,9 @@ const localEndpointUrl = computed({
   set: (url: string) => {
     const previousEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
     const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     localSettings.value.endpoint = {
       type: endpoint.type,
       url,
@@ -1221,7 +1345,9 @@ const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
   },
   set: (httpHeaders) => {
     const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     localSettings.value.endpoint = {
       type: endpoint.type,
       url: endpoint.url,
@@ -1331,7 +1457,9 @@ function applyFieldFromDraft({
 function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): void {
   const current = draftFromCurrent();
   const groupId = currentChatGroup.value?.id;
-  if (current === undefined || groupId === undefined) return;
+  if (current === undefined || groupId === undefined) {
+    return;
+  }
 
   if (!preserveDirty || editingChatGroupId.value !== groupId) {
     pendingFieldRevisions.clear();
@@ -1350,7 +1478,9 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     ...pendingFieldRevisions.keys(),
   ]);
   for (const field of SCOPED_SETTING_FIELDS) {
-    if (dirtyFields.has(field)) continue;
+    if (dirtyFields.has(field)) {
+      continue;
+    }
     applyFieldFromDraft({ field, target: localSettings.value, source: current });
     applyFieldFromDraft({ field, target: baselineSettings.value, source: current });
   }
@@ -1367,7 +1497,9 @@ function saveChangesForGroup({
   chatGroupId: ChatGroupId | undefined,
   toolConfigUpdate: SaveToolConfigUpdate,
 }): Promise<void> {
-  if (chatGroupId === undefined) return Promise.resolve();
+  if (chatGroupId === undefined) {
+    return Promise.resolve();
+  }
 
   const snapshot = cloneDraft({ draft: localSettings.value });
   const previous = saveQueues.get(chatGroupId) ?? Promise.resolve();
@@ -1391,7 +1523,9 @@ function saveChangesForGroup({
         }
         }
       })();
-      if (changes.length === 0 && !hasToolConfigUpdate) return;
+      if (changes.length === 0 && !hasToolConfigUpdate) {
+        return;
+      }
 
       const revision = ++nextSaveRevision;
       for (const change of changes) {
@@ -1426,7 +1560,9 @@ function saveChangesForGroup({
         }
       } catch (cause: unknown) {
         for (const change of changes) {
-          if (pendingFieldRevisions.get(change.field) !== revision) continue;
+          if (pendingFieldRevisions.get(change.field) !== revision) {
+            continue;
+          }
           pendingFieldRevisions.delete(change.field);
           applyFieldFromDraft({
             field: change.field,
@@ -1483,7 +1619,9 @@ onMounted(() => {
     const endpoint = effectiveEndpoint.value;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
-    if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || isLocalhost({ url })) void fetchModels();
+    if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || isLocalhost({ url })) {
+      void fetchModels();
+    }
   }
   setActiveFocusArea({ area: 'chat-settings' });
 });
@@ -1526,7 +1664,9 @@ watch(
 );
 
 function isLocalhost({ url }: { url: string | undefined }) {
-  if (!url) return false;
+  if (!url) {
+    return false;
+  }
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
@@ -1547,9 +1687,13 @@ function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
   previousEndpoint: Endpoint,
   nextEndpoint: Endpoint,
 }): void {
-  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) {
+    return;
+  }
   const titleGeneration = localSettings.value.titleGeneration;
-  if (titleGeneration === undefined || typeof titleGeneration === 'string' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  if (titleGeneration === undefined || typeof titleGeneration === 'string' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') {
+    return;
+  }
   setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
@@ -1560,7 +1704,9 @@ function resetLocalModelsWhenEndpointNamespaceChanges({
   previousEndpoint: Endpoint,
   nextEndpoint: Endpoint,
 }): void {
-  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) {
+    return;
+  }
   localSettings.value.modelId = undefined;
   resetSameScopeTitleModelWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint });
 }
@@ -1660,7 +1806,9 @@ async function handleQuickProviderProfileChange() {
 
 function addHeader() {
   const endpoint = effectiveEndpoint.value;
-  if (!isHttpEndpoint(endpoint)) return;
+  if (!isHttpEndpoint(endpoint)) {
+    return;
+  }
   localEndpointHttpHeaders.value = [
     ...(endpoint.httpHeaders ?? []),
     ['', ''],
@@ -1677,7 +1825,9 @@ async function removeHeader({ index }: { index: number }) {
 
 async function fetchModels() {
   const chatGroupId = currentChatGroup.value?.id;
-  if (!chatGroupId) return;
+  if (!chatGroupId) {
+    return;
+  }
   error.value = null;
   const endpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
@@ -1690,9 +1840,13 @@ async function fetchModels() {
     if (
       currentChatGroup.value?.id !== chatGroupId
       || !areEndpointsEqual({ left: endpoint, right: effectiveEndpoint.value })
-    ) return;
+    ) {
+      return;
+    }
     groupModels.value = models;
-    if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
+    if (models.length === 0) {
+      error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
+    }
     let changed = false;
     if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
       localSettings.value.modelId = undefined;
@@ -1720,7 +1874,9 @@ async function fetchModels() {
 
 watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
-  if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
+  if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) {
+    void fetchModels();
+  }
 });
 
 watch(
@@ -1728,7 +1884,9 @@ watch(
   ([url, type]) => {
     error.value = null;
     if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
-      if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
+      if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) {
+        void fetchTitleEndpointModels();
+      }
     }
   },
   { immediate: true },
@@ -1787,7 +1945,9 @@ async function restoreDefaults(): Promise<void> {
 async function setGroupNameFromModelId() {
   const modelId = localSettings.value.modelId;
   const chatGroupId = editingChatGroupId.value;
-  if (!modelId || !chatGroupId) return;
+  if (!modelId || !chatGroupId) {
+    return;
+  }
   const newName = modelId.split('/').pop() || modelId;
   await chatGroups.updateChatGroupMetadata({
     chatGroupId,

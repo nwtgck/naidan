@@ -35,7 +35,9 @@ vi.mock('@/composables/chat/useChatModels', () => ({
 }));
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); setupScrollToMock(); document.head.innerHTML = '';
+  await ensureAllStringsForTest({ locale: 'en' });
+  setupScrollToMock();
+  document.head.innerHTML = '';
 });
 
 describe('ChatPane print document metadata', () => {

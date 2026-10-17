@@ -40,19 +40,25 @@ export async function runProviderConversationForTest({ provider, messages, model
       const converted: Extract<MessageNode, { role: 'user' }>['parts'] = [];
       for (const [position, part] of parts.entries()) {
         switch (part.type) {
-        case 'text': converted.push({ type: 'text', text: part.text, completeness: 'complete' }); break;
+        case 'text': converted.push({ type: 'text', text: part.text, completeness: 'complete' });
+          break;
         case 'image_url': {
           const encoded = part.image_url.url.split(',');
           const bytes = Uint8Array.from(atob(encoded.at(-1)!), c => c.charCodeAt(0));
           converted.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: `a_${position}` }), binaryObjectId: toBinaryObjectId({ raw: `b_${position}` }), originalName: 'image', mimeType: 'image/png', size: bytes.length, uploadedAt: 1, status: 'memory', blob: new Blob([bytes], { type: 'image/png' }) } });
           break;
         }
-        default: { const _ex: never = part; throw new Error(`Unexpected fixture content: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unexpected fixture content: ${_ex}`);
+        }
         }
       }
-      history.push({ ...common, role: 'user', parts: converted }); break;
+      history.push({ ...common, role: 'user', parts: converted });
+      break;
     }
-    case 'system': history.push({ ...common, role: 'system', parts: [{ type: 'text', text: String(content), completeness: 'complete' }] }); break;
+    case 'system': history.push({ ...common, role: 'system', parts: [{ type: 'text', text: String(content), completeness: 'complete' }] });
+      break;
     case 'assistant': history.push({
       ...common,
       role: 'assistant',
@@ -61,10 +67,14 @@ export async function runProviderConversationForTest({ provider, messages, model
         { type: 'text', text: String(content), completeness: 'complete' },
         ...(message.tool_calls ?? []).map(toolCall => ({ type: 'tool_call' as const, toolCall })),
       ],
-    }); break;
+    });
+      break;
     case 'tool': {
-      if (!message.tool_call_id) throw new Error('Fixture tool call ID is required.');
-      history.push({ ...common, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: message.tool_call_id, status: 'success', content: { type: 'text', text: String(content) } } }] }); break;
+      if (!message.tool_call_id) {
+        throw new Error('Fixture tool call ID is required.');
+      }
+      history.push({ ...common, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: message.tool_call_id, status: 'success', content: { type: 'text', text: String(content) } } }] });
+      break;
     }
     default: throw new Error('Unknown fixture role.');
     }
@@ -72,7 +82,9 @@ export async function runProviderConversationForTest({ provider, messages, model
   const controller = new AbortController();
   const relay = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', relay, { once: true });
-  if (signal?.aborted) relay();
+  if (signal?.aborted) {
+    relay();
+  }
   const starting = history.length;
   const deliveredText = new Map<AssistantMessageNode['parts'][number], number>();
   const deliveredCalls = new Set<ToolCallId>();
@@ -90,11 +102,14 @@ export async function runProviderConversationForTest({ provider, messages, model
       approvalContext: toolApprovalContext,
       createAssistantMessage: () => {
         const node: AssistantMessageNode = { id: toMessageId({ raw: `generated_${history.length}` }), role: 'assistant', parts: [], createdAt: 1, interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
-        history.push(node); onAssistantMessageStart?.(); return node;
+        history.push(node);
+        onAssistantMessageStart?.();
+        return node;
       },
       createToolMessage: () => {
         const node: Extract<MessageNode, { role: 'tool' }> = { id: toMessageId({ raw: `tool_${history.length}` }), role: 'tool', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
-        history.push(node); return node;
+        history.push(node);
+        return node;
       },
       buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
       onChange: () => {
@@ -106,12 +121,18 @@ export async function runProviderConversationForTest({ provider, messages, model
               case 'text':
               case 'reasoning': {
                 const used = deliveredText.get(part) ?? 0;
-                const chunk = part.text.slice(used); deliveredText.set(part, part.text.length);
+                const chunk = part.text.slice(used);
+                deliveredText.set(part, part.text.length);
                 if (chunk) {
                   switch (part.type) {
-                  case 'text': onChunk({ chunk }); break;
-                  case 'reasoning': onReasoning?.({ chunk }); break;
-                  default: { const _ex: never = part; throw new Error(`Unknown fixture part: ${_ex}`); }
+                  case 'text': onChunk({ chunk });
+                    break;
+                  case 'reasoning': onReasoning?.({ chunk });
+                    break;
+                  default: {
+                    const _ex: never = part;
+                    throw new Error(`Unknown fixture part: ${_ex}`);
+                  }
                   }
                 }
                 break;
@@ -122,38 +143,57 @@ export async function runProviderConversationForTest({ provider, messages, model
                   onToolCall?.({ id: part.toolCall.id, toolName: part.toolCall.function.name, modelVisibleArguments: part.toolCall.function.arguments });
                 }
                 break;
-              default: { const _ex: never = part; throw new Error(`Unknown fixture part: ${_ex}`); }
+              default: {
+                const _ex: never = part;
+                throw new Error(`Unknown fixture part: ${_ex}`);
+              }
               }
             }
             break;
           case 'tool':
             for (const part of node.parts) {
-              if (deliveredResults.has(part.result.toolCallId)) continue;
+              if (deliveredResults.has(part.result.toolCallId)) {
+                continue;
+              }
               switch (part.result.status) {
               case 'executing': break;
               case 'success':
                 switch (part.result.content.type) {
                 case 'text': break;
                 case 'binary_object': throw new Error('Unexpected binary result in fixture.');
-                default: { const _ex: never = part.result.content; throw new Error(`Unexpected fixture content: ${_ex}`); }
+                default: {
+                  const _ex: never = part.result.content;
+                  throw new Error(`Unexpected fixture content: ${_ex}`);
+                }
                 }
                 onToolResult?.({ id: part.result.toolCallId, result: { status: 'success', content: part.result.content.text } });
-                deliveredResults.add(part.result.toolCallId); break;
+                deliveredResults.add(part.result.toolCallId);
+                break;
               case 'error':
                 switch (part.result.error.message.type) {
                 case 'text': break;
                 case 'binary_object': throw new Error('Unexpected binary error in fixture.');
-                default: { const _ex: never = part.result.error.message; throw new Error(`Unexpected fixture content: ${_ex}`); }
+                default: {
+                  const _ex: never = part.result.error.message;
+                  throw new Error(`Unexpected fixture content: ${_ex}`);
+                }
                 }
                 onToolResult?.({ id: part.result.toolCallId, result: { status: 'error', code: part.result.error.code, message: part.result.error.message.text } });
-                deliveredResults.add(part.result.toolCallId); break;
-              default: { const _ex: never = part.result; throw new Error(`Unknown fixture result: ${_ex}`); }
+                deliveredResults.add(part.result.toolCallId);
+                break;
+              default: {
+                const _ex: never = part.result;
+                throw new Error(`Unknown fixture result: ${_ex}`);
+              }
               }
             }
             break;
           case 'user':
           case 'system': break;
-          default: { const _ex: never = node; throw new Error(`Unknown fixture message: ${_ex}`); }
+          default: {
+            const _ex: never = node;
+            throw new Error(`Unknown fixture message: ${_ex}`);
+          }
           }
         }
       },
@@ -165,7 +205,10 @@ export async function runProviderConversationForTest({ provider, messages, model
     case 'finished': return history;
     case 'error': throw result.error;
     case 'interrupted': throw new Error(`Generation ${result.reason}`);
-    default: { const _ex: never = result; throw new Error(`Unknown generation result: ${_ex}`); }
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unknown generation result: ${_ex}`);
+    }
     }
   } finally {
     signal?.removeEventListener('abort', relay);
@@ -190,7 +233,9 @@ export async function consumeProviderGenerationForTest({ provider, request }: {
   const abortController = new AbortController();
   const relay = () => abortController.abort(request.signal?.reason);
   request.signal?.addEventListener('abort', relay, { once: true });
-  if (request.signal?.aborted) relay();
+  if (request.signal?.aborted) {
+    relay();
+  }
   try {
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,

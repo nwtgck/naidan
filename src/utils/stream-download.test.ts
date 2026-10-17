@@ -35,8 +35,12 @@ beforeEach(() => {
       registration: { scope: 'https://example.test/app/' },
       clients: { get: async () => ({ id: 'page' }) },
       addEventListener(type: string, listener: unknown) {
-        if (type === 'message') onMessage = listener as typeof onMessage;
-        if (type === 'fetch') onFetch = listener as typeof onFetch;
+        if (type === 'message') {
+          onMessage = listener as typeof onMessage;
+        }
+        if (type === 'fetch') {
+          onFetch = listener as typeof onFetch;
+        }
       },
     } as DownloadWorkerScope,
   });
@@ -63,7 +67,9 @@ beforeEach(() => {
     createElement: (tag: string) => ({ tag, src: '', href: '', download: '', click, remove: tag === 'iframe' ? removeFrame : vi.fn() }),
     body: {
       append: vi.fn((element: { tag: string, src: string }) => {
-        if (element.tag === 'iframe') navigate.call(element);
+        if (element.tag === 'iframe') {
+          navigate.call(element);
+        }
       }),
     },
   });
@@ -86,8 +92,12 @@ beforeEach(() => {
 afterEach(async () => {
   page.dispatchEvent(new Event('pagehide'));
   await Promise.all(lifetimes);
-  for (const port of otherPorts) port.close();
-  if (vi.isFakeTimers()) vi.clearAllTimers();
+  for (const port of otherPorts) {
+    port.close();
+  }
+  if (vi.isFakeTimers()) {
+    vi.clearAllTimers();
+  }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -96,7 +106,8 @@ afterEach(async () => {
 function smallStream(): ReadableStream<Uint8Array> {
   return new ReadableStream({
     start(controller) {
-      controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+      controller.enqueue(new Uint8Array([1, 2, 3]));
+      controller.close();
     },
   });
 }
@@ -117,9 +128,11 @@ function claimFrame({ src, consume }: { src: string, consume: boolean }): void {
     },
     respondWith(response) {
       void Promise.resolve(response).then(value => responseHeaders.push(value.headers));
-      if (consume) void Promise.resolve(response).then(async value => {
-        consumed.push([...new Uint8Array(await value.arrayBuffer())]);
-      }).catch(() => undefined);
+      if (consume) {
+        void Promise.resolve(response).then(async value => {
+          consumed.push([...new Uint8Array(await value.arrayBuffer())]);
+        }).catch(() => undefined);
+      }
     },
   });
 }
@@ -127,7 +140,9 @@ function claimFrame({ src, consume }: { src: string, consume: boolean }): void {
 function savedBlob(): Blob {
   expect(createObjectURL).toHaveBeenCalledOnce();
   const blob = createObjectURL.mock.calls[0]![0];
-  if (!(blob instanceof Blob)) throw new Error('Expected a saved Blob');
+  if (!(blob instanceof Blob)) {
+    throw new Error('Expected a saved Blob');
+  }
   return blob;
 }
 
@@ -292,28 +307,45 @@ describe('download feature detection and fallback', () => {
     'missing-message-channel', 'missing-random-uuid', 'registration-rejected', 'registration-throws',
   ] as const)('uses the former Blob save for %s', async condition => {
     switch (condition) {
-    case 'file': vi.stubGlobal('location', { protocol: 'file:' }); break;
-    case 'insecure': vi.stubGlobal('isSecureContext', false); break;
-    case 'missing-service-worker': vi.stubGlobal('navigator', {}); break;
-    case 'missing-registration-api': vi.stubGlobal('navigator', { serviceWorker: {} }); break;
+    case 'file': vi.stubGlobal('location', { protocol: 'file:' });
+      break;
+    case 'insecure': vi.stubGlobal('isSecureContext', false);
+      break;
+    case 'missing-service-worker': vi.stubGlobal('navigator', {});
+      break;
+    case 'missing-registration-api': vi.stubGlobal('navigator', { serviceWorker: {} });
+      break;
     case 'throwing-service-worker-getter':
       vi.stubGlobal('navigator', {
         get serviceWorker() {
           throw new DOMException('blocked', 'SecurityError');
         },
-      }); break;
-    case 'no-active-worker': registration.active = null; break;
-    case 'activating-worker': worker.state = 'activating'; break;
-    case 'redundant-worker': worker.state = 'redundant'; break;
-    case 'wrong-scope': registration.scope = 'https://example.test/other/'; break;
-    case 'foreign-origin': registration.scope = 'https://other.test/app/'; break;
-    case 'missing-message-channel': vi.stubGlobal('MessageChannel', undefined); break;
-    case 'missing-random-uuid': vi.stubGlobal('crypto', {}); break;
-    case 'registration-rejected': getRegistration.mockRejectedValue(new DOMException('denied', 'SecurityError')); break;
+      });
+      break;
+    case 'no-active-worker': registration.active = null;
+      break;
+    case 'activating-worker': worker.state = 'activating';
+      break;
+    case 'redundant-worker': worker.state = 'redundant';
+      break;
+    case 'wrong-scope': registration.scope = 'https://example.test/other/';
+      break;
+    case 'foreign-origin': registration.scope = 'https://other.test/app/';
+      break;
+    case 'missing-message-channel': vi.stubGlobal('MessageChannel', undefined);
+      break;
+    case 'missing-random-uuid': vi.stubGlobal('crypto', {});
+      break;
+    case 'registration-rejected': getRegistration.mockRejectedValue(new DOMException('denied', 'SecurityError'));
+      break;
     case 'registration-throws': getRegistration.mockImplementation(() => {
       throw new Error('unavailable');
-    }); break;
-    default: { const exhaustive: never = condition; throw new Error(exhaustive); }
+    });
+      break;
+    default: {
+      const exhaustive: never = condition;
+      throw new Error(exhaustive);
+    }
     }
     await downloadReadableStream({ stream: smallStream(), filename: 'compatible.zip', size: 3, signal: undefined });
     await expectBufferedBytes({ bytes: [1, 2, 3] });
@@ -378,7 +410,9 @@ describe('download feature detection and fallback', () => {
     const closed: ReturnType<typeof vi.spyOn>[] = [];
     vi.stubGlobal('MessageChannel', class extends NativeChannel {
       constructor() {
-        if (channels.length === 1) throw new Error('channel unavailable');
+        if (channels.length === 1) {
+          throw new Error('channel unavailable');
+        }
         super();
         channels.push(this);
         closed.push(vi.spyOn(this.port1, 'close'), vi.spyOn(this.port2, 'close'));
@@ -386,7 +420,9 @@ describe('download feature detection and fallback', () => {
     });
     await downloadReadableStream({ stream: smallStream(), filename: 'channel', size: undefined, signal: undefined });
     expect(channels).toHaveLength(1);
-    for (const close of closed) expect(close).toHaveBeenCalled();
+    for (const close of closed) {
+      expect(close).toHaveBeenCalled();
+    }
     await expectBufferedBytes({ bytes: [1, 2, 3] });
   });
 
@@ -485,8 +521,11 @@ describe('no fallback for cancellation or already-started downloads', () => {
     const pending = downloadStream({ openStream, filename: 'wait', size: undefined, signal: abort.signal });
     const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(getRegistration).toHaveBeenCalledOnce());
-    if (action === 'abort') abort.abort();
-    else page.dispatchEvent(new Event('pagehide'));
+    if (action === 'abort') {
+      abort.abort();
+    } else {
+      page.dispatchEvent(new Event('pagehide'));
+    }
     await rejected;
     expect(openStream).not.toHaveBeenCalled();
     expect(createObjectURL).not.toHaveBeenCalled();
@@ -569,7 +608,8 @@ describe('buffered compatibility data and ownership', () => {
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
         if (produced === 3) {
-          controller.close(); return;
+          controller.close();
+          return;
         }
         bytes.fill(++produced);
         controller.enqueue(bytes);
@@ -602,9 +642,11 @@ describe('buffered compatibility data and ownership', () => {
     let produced = false;
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
-        if (produced) controller.error(new Error('read failed'));
-        else {
-          produced = true; controller.enqueue(new Uint8Array([1]));
+        if (produced) {
+          controller.error(new Error('read failed'));
+        } else {
+          produced = true;
+          controller.enqueue(new Uint8Array([1]));
         }
       },
     }, { highWaterMark: 0 });
@@ -639,8 +681,11 @@ describe('buffered compatibility data and ownership', () => {
     });
     const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(pull).toHaveBeenCalledOnce());
-    if (action === 'abort') abort.abort();
-    else page.dispatchEvent(new Event('pagehide'));
+    if (action === 'abort') {
+      abort.abort();
+    } else {
+      page.dispatchEvent(new Event('pagehide'));
+    }
     await rejected;
     expect(cancel).toHaveBeenCalledOnce();
     expect(createObjectURL).not.toHaveBeenCalled();
@@ -658,7 +703,9 @@ describe('buffered compatibility data and ownership', () => {
     const directory = createMemoryZipCentralDirectoryStore();
     const writer = new StreamingZipWriter({ output: output.sink, centralDirectoryStore: directory, compressionCodec: createWebZipCompressionCodec() });
     const bytes = new Uint8Array(128 * 1024);
-    for (let start = 0; start < bytes.length; start += 64 * 1024) crypto.getRandomValues(bytes.subarray(start, start + 64 * 1024));
+    for (let start = 0; start < bytes.length; start += 64 * 1024) {
+      crypto.getRandomValues(bytes.subarray(start, start + 64 * 1024));
+    }
     const produced = (async () => {
       await writer.addFile({ name: 'テスト/data.bin', stream: new Blob([bytes]).stream(), modifiedAt: new Date(2020, 0, 1), compression: 'deflate' });
       await writer.finalize();
@@ -690,7 +737,8 @@ describe('buffered compatibility data and ownership', () => {
   it('rejects non-byte output without starting a download', async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue('not bytes' as unknown as Uint8Array); controller.close();
+        controller.enqueue('not bytes' as unknown as Uint8Array);
+        controller.close();
       },
     });
     await expect(downloadReadableStream({ stream, filename: 'invalid', size: undefined, signal: undefined })).rejects.toThrow('byte stream');
@@ -745,7 +793,9 @@ describe('buffered factory ownership races', () => {
     const reason = new DOMException('Cancelled while opening', 'AbortError');
     const openStream = vi.fn(async () => {
       void (async () => {
-        for (let i = 0; i < ticks; i++) await Promise.resolve();
+        for (let i = 0; i < ticks; i++) {
+          await Promise.resolve();
+        }
         abort.abort(reason);
       })();
       return source;

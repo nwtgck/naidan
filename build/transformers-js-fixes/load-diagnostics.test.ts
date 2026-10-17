@@ -9,7 +9,9 @@ const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' 
 function reader({ observer, allocator }: { observer: unknown; allocator: typeof Uint8Array }) {
   const from = transformed.indexOf('function naidanCreateModelLoadObserver(');
   const to = transformed.indexOf('\nfunction isBlobURL(', from);
-  if (from < 0 || to < from) throw new Error('Missing reviewed allocation observer');
+  if (from < 0 || to < from) {
+    throw new Error('Missing reviewed allocation observer');
+  }
   return new Function('env', 'logger', 'Uint8Array', `${transformed.slice(from, to)}\nreturn readResponse;`)(
     { naidanModelLoadObserver: observer }, { warn() {} }, allocator,
   ) as (response: Response, progress: () => void, expectedSize: number | undefined, resource: string) => Promise<Uint8Array>;
@@ -42,11 +44,14 @@ it.each(['absent', 'throwing', 'rejecting'] as const)('preserves bytes and alloc
   const values: number[] = [];
   const allocator = new Proxy(Uint8Array, {
     construct(target, args) {
-      values.push(args[0] as number); return Reflect.construct(target, args);
+      values.push(args[0] as number);
+      return Reflect.construct(target, args);
     },
   });
   const observer = mode === 'absent' ? undefined : () => {
-    if (mode === 'throwing') throw new Error('Observer throw');
+    if (mode === 'throwing') {
+      throw new Error('Observer throw');
+    }
     return Promise.reject(new Error('Observer rejection'));
   };
   const result = await reader({ observer, allocator })(new Response(Uint8Array.of(4, 9, 16), { headers: { 'Content-Length': '3' } }), () => {}, undefined, 'onnx/model.onnx');

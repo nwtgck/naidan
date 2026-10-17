@@ -18,7 +18,9 @@ const globalDraft = reactive<ChatDraft>({
 
 export function useChatDraft() {
   const getDraft = ({ chatId }: { chatId: ChatId | undefined }): ChatDraft => {
-    if (!chatId) return globalDraft;
+    if (!chatId) {
+      return globalDraft;
+    }
 
     if (!drafts.has(chatId)) {
       drafts.set(chatId, { input: '', attachments: [], attachmentUrls: new Map<AttachmentId, string>() });
@@ -43,7 +45,9 @@ export function useChatDraft() {
       d.input = '';
       d.attachments = [];
       d.attachmentUrls = new Map<AttachmentId, string>();
-      if (chatId) drafts.delete(chatId);
+      if (chatId) {
+        drafts.delete(chatId);
+      }
     }
   };
 

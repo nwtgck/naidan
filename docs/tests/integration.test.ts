@@ -15,7 +15,9 @@ describe('Docs development and static output', () => {
     await using dev = await startSiteDev({ root: fixture.root });
     using page = parsePage({ html: await (await dev.request({ url: '/docs/en/chat-branching/' })).text() });
     const src = page.document.querySelector<HTMLScriptElement>('script[src*="virtual:naidan-docs/island/branching"]')?.getAttribute('src');
-    if (!src) throw new Error('Missing branching client entry');
+    if (!src) {
+      throw new Error('Missing branching client entry');
+    }
     const response = await dev.request({ url: src });
     expect(response.status).toBe(200);
     const code = await response.text();
@@ -85,7 +87,9 @@ describe('Docs development and static output', () => {
           const css = await dev.request({ url: asset ?? '' });
           expect(css.status, asset ?? '').toBe(200);
           expect(css.headers.get('content-type'), asset ?? '').toContain('text/css');
-          if (richStyleTarget) developmentCss += await css.text();
+          if (richStyleTarget) {
+            developmentCss += await css.text();
+          }
         }
         expect(development.document.querySelectorAll('link[rel="stylesheet"]').length).toBeGreaterThan(0);
         for (const element of production.document.querySelectorAll('link[rel="stylesheet"], script[src], img[src]')) {
@@ -93,8 +97,12 @@ describe('Docs development and static output', () => {
           expect(href.startsWith('/docs/assets/'), href).toBe(true);
           const content = await readFile(path.join(fixture.docs, 'dist', href.slice('/docs/'.length)), 'utf8');
           expect(content.length, href).toBeGreaterThan(20);
-          if (richStyleTarget && element.tagName === 'LINK') productionCss += content;
-          if (href.endsWith('.svg')) expect(content).toContain('<svg');
+          if (richStyleTarget && element.tagName === 'LINK') {
+            productionCss += content;
+          }
+          if (href.endsWith('.svg')) {
+            expect(content).toContain('<svg');
+          }
         }
         if (richStyleTarget) {
           for (const css of [developmentCss, productionCss]) {
@@ -119,7 +127,9 @@ describe('Docs adversarial lifecycle behavior', () => {
       const response = await dev.request({ url: pathname });
       expect(response.status, pathname).toBe(status);
       expect(await response.text()).not.toContain('APP-ONLY');
-      if (status === 308) expect(response.headers.get('location')).toMatch(/^\/docs\//);
+      if (status === 308) {
+        expect(response.headers.get('location')).toMatch(/^\/docs\//);
+      }
     }
     const head = await dev.request({ url: '/docs/ja/', method: 'HEAD' });
     expect(head.status).toBe(200);
@@ -139,8 +149,11 @@ describe('Docs adversarial lifecycle behavior', () => {
       using parsed = parsePage({ html: await response.text() });
       expect(parsed.document.documentElement.lang).toBe(locale);
       const heading = parsed.document.querySelector('h1')?.textContent;
-      if (locale === 'ja') expect(heading).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
-      else expect(heading).toBe('An easy-to-use AI environment, built around privacy.');
+      if (locale === 'ja') {
+        expect(heading).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
+      } else {
+        expect(heading).toBe('An easy-to-use AI environment, built around privacy.');
+      }
     }));
     const file = path.join(fixture.docs, 'pages/index/messages/ja.tsx');
     const source = await readFile(file, 'utf8');
@@ -170,7 +183,9 @@ describe('Docs adversarial lifecycle behavior', () => {
     expect(await readdir(path.join(fixture.docs, '.cache'))).not.toContain(expect.stringMatching(/^render-/));
     expect(await readdir(path.join(fixture.docs, 'dist'))).not.toContain('.vite');
     for (const file of await readdir(path.join(fixture.docs, 'dist/assets'))) {
-      if (!file.endsWith('.js')) continue;
+      if (!file.endsWith('.js')) {
+        continue;
+      }
       const code = await readFile(path.join(fixture.docs, 'dist/assets', file), 'utf8');
       expect(code).not.toContain('Updated production heading');
       expect(code).not.toContain('Server-only article heading in en.');

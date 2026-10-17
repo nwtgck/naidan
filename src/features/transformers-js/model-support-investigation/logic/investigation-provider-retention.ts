@@ -46,7 +46,9 @@ export function measureInvestigationProviderRetention({ runs, nativeEvidence }: 
     }
   }
   for (const [target, evidence] of nativeEvidence) {
-    if (runs.get(target)?.productionProviderCapture === undefined) throw new Error('Native recording requires its Provider anchor');
+    if (runs.get(target)?.productionProviderCapture === undefined) {
+      throw new Error('Native recording requires its Provider anchor');
+    }
     const measured = measureProductionProviderNativeEvidenceSidecar({ evidence });
     nativeBinaryBytes += measured.binaryBytes;
     nativeJsonCharacters += measured.jsonCharacters;
@@ -64,7 +66,9 @@ export function createInvestigationProviderRetentionBudget({ limits: rawLimits, 
   const limits = usageSchema.parse(rawLimits);
   const retained = usageSchema.parse(rawRetained);
   const reserved = { ...emptyInvestigationProviderRetentionUsage() };
-  if (keys.some(key => retained[key] > limits[key])) throw new Error('Investigation recording capacity is exhausted');
+  if (keys.some(key => retained[key] > limits[key])) {
+    throw new Error('Investigation recording capacity is exhausted');
+  }
   return {
     snapshot() {
       return Object.freeze({ retained: Object.freeze({ ...retained }), reserved: Object.freeze({ ...reserved }) });
@@ -74,17 +78,24 @@ export function createInvestigationProviderRetentionBudget({ limits: rawLimits, 
       if (keys.some(key => maximum[key] > limits[key] - retained[key] - reserved[key])) {
         throw new Error('Investigation recording capacity is exhausted');
       }
-      for (const key of keys) reserved[key] += maximum[key];
+      for (const key of keys) {
+        reserved[key] += maximum[key];
+      }
       let state: 'reserved' | 'released' = 'reserved';
       return {
         release({ retained: rawActual }: { retained: InvestigationProviderRetentionUsage }): void {
           switch (state) {
           case 'released': throw new Error('Investigation reservation was already released');
           case 'reserved': break;
-          default: { const exhaustive: never = state; throw new Error('Unhandled reservation state: ' + exhaustive); }
+          default: {
+            const exhaustive: never = state;
+            throw new Error('Unhandled reservation state: ' + exhaustive);
+          }
           }
           const actual = usageSchema.parse(rawActual);
-          if (keys.some(key => actual[key] > maximum[key])) throw new Error('Investigation recording exceeded its reservation');
+          if (keys.some(key => actual[key] > maximum[key])) {
+            throw new Error('Investigation recording exceeded its reservation');
+          }
           for (const key of keys) {
             reserved[key] -= maximum[key];
             retained[key] += actual[key];

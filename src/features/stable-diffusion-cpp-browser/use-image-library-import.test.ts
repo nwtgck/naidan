@@ -20,10 +20,14 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
   const pending = Promise.withResolvers<LocalImageRepository[]>();
   const list = vi.fn(async () => entries);
   const importing = vi.fn(async () => {
-    if (timing === 'before inspection') blocked.value = true;
+    if (timing === 'before inspection') {
+      blocked.value = true;
+    }
     return 'user/imported';
   });
-  if (timing === 'during inspection') list.mockReturnValueOnce(pending.promise);
+  if (timing === 'during inspection') {
+    list.mockReturnValueOnce(pending.promise);
+  }
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
   using _cleanupResource = {
@@ -34,12 +38,14 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
   const operation = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
   if (timing === 'during inspection') {
     await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
-    blocked.value = true; pending.resolve(entries);
+    blocked.value = true;
+    pending.resolve(entries);
   }
   await new Promise(resolve => setImmediate(resolve));
   expect(library.importing.value).toBe(true);
   expect(library.models.value).toEqual([]);
-  blocked.value = false; await operation;
+  blocked.value = false;
+  await operation;
   expect(library.models.value).toHaveLength(1);
   expect(library.importing.value).toBe(false);
   expect(importing).toHaveBeenCalledTimes(2);
@@ -49,7 +55,8 @@ it('settles a cancelled import publication and permits a later import without st
   const blocked = ref(false), entries = [importedRepository()];
   const list = vi.fn(async () => entries);
   const importing = vi.fn(async () => {
-    blocked.value = true; return 'user/imported';
+    blocked.value = true;
+    return 'user/imported';
   });
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
@@ -61,7 +68,8 @@ it('settles a cancelled import publication and permits a later import without st
   const first = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
   await new Promise(resolve => setImmediate(resolve));
   expect(library.importing.value).toBe(true);
-  library.cancelImport(); await first;
+  library.cancelImport();
+  await first;
   expect(library.importing.value).toBe(false);
   blocked.value = false;
   importing.mockImplementation(async () => 'user/imported');
@@ -81,7 +89,8 @@ it('refreshes successfully imported folders while preserving a later import erro
     },
   };
   await library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
-  expect(importRepo).toHaveBeenCalledTimes(2); expect(list).toHaveBeenCalledOnce();
+  expect(importRepo).toHaveBeenCalledTimes(2);
+  expect(list).toHaveBeenCalledOnce();
   expect(library.failure.value).toBe('second folder already exists');
   expect(library.importing.value).toBe(false);
 });
@@ -105,8 +114,11 @@ it('waits for an import to publish before a queued transfer starts after host op
   library.hostDirectories.busy.value = false;
   await new Promise(resolve => setImmediate(resolve));
   expect(download).not.toHaveBeenCalled();
-  importing.resolve('user/imported'); await operation; await transfer;
-  expect(download).toHaveBeenCalledOnce(); expect(list).toHaveBeenCalledTimes(2);
+  importing.resolve('user/imported');
+  await operation;
+  await transfer;
+  expect(download).toHaveBeenCalledOnce();
+  expect(list).toHaveBeenCalledTimes(2);
   expect(library.importing.value).toBe(false);
 });
 
@@ -141,6 +153,7 @@ it('removes a queued transfer during import without starting its download or tou
   expect(library.downloadQueue.value).toEqual([]);
   expect(download).not.toHaveBeenCalled();
   library.hostDirectories.busy.value = false;
-  importing.resolve('user/imported'); await operation;
+  importing.resolve('user/imported');
+  await operation;
   expect(download).not.toHaveBeenCalled();
 });

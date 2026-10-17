@@ -18,7 +18,9 @@ function textIsland({ prepare, onSetup }: {
     start: 'interactive',
     parse: ({ serialized }) => {
       const value: unknown = JSON.parse(serialized);
-      if (typeof value !== 'object' || value === null || !('text' in value) || typeof value.text !== 'string') throw new Error('Invalid text');
+      if (typeof value !== 'object' || value === null || !('text' in value) || typeof value.text !== 'string') {
+        throw new Error('Invalid text');
+      }
       return { text: value.text };
     },
   });
@@ -47,7 +49,9 @@ describe('Docs island async preparation', () => {
     let attempts = 0;
     const ja = vi.fn(async () => {
       attempts++;
-      if (attempts === 1) throw new Error('Temporary load failure');
+      if (attempts === 1) {
+        throw new Error('Temporary load failure');
+      }
       return { label: '日本語' };
     });
     const loader = createDocsLocaleMessagesLoader<{ label: string }>({ loaders: { en, ja } });
@@ -114,7 +118,9 @@ describe('Docs island async preparation', () => {
   it('preserves a failed root and starts another root', async () => {
     const factory = textIsland({
       prepare: async ({ payload }) => {
-        if (payload.text === 'unavailable') throw new Error('No messages');
+        if (payload.text === 'unavailable') {
+          throw new Error('No messages');
+        }
       },
       onSetup: () => {},
     });
@@ -124,7 +130,8 @@ describe('Docs island async preparation', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     using _cleanup = {
       [Symbol.dispose]() {
-        document.body.replaceChildren(); error.mockRestore();
+        document.body.replaceChildren();
+        error.mockRestore();
       },
     };
     const apps = await hydrateDocsIsland({ factory, document });

@@ -4,8 +4,9 @@ export function requireValue({ condition, message }: {
     condition: unknown;
     message: string;
 }): void {
-  if (!condition)
+  if (!condition) {
     throw new Error(message);
+  }
 }
 
 export function ownBytes({ bytes, maxBytes }: {
@@ -80,32 +81,40 @@ export class Pulse {
   }
 
   fire(): void {
-    this.internalRevision++; for (const wake of [...this.internalListeners])
+    this.internalRevision++;
+    for (const wake of [...this.internalListeners]) {
       wake();
+    }
   }
 
   wait({ revision, signal }: {
         revision: number;
         signal: AbortSignal | undefined;
     }): Promise<void> {
-    if (signal?.aborted)
+    if (signal?.aborted) {
       return Promise.reject(signal.reason);
-    if (revision !== this.internalRevision)
+    }
+    if (revision !== this.internalRevision) {
       return Promise.resolve();
+    }
     return new Promise<void>((resolve, reject) => {
       const finish = () => {
-        this.internalListeners.delete(wake); signal?.removeEventListener('abort', abort);
+        this.internalListeners.delete(wake);
+        signal?.removeEventListener('abort', abort);
       };
       const wake = () => {
-        finish(); resolve();
+        finish();
+        resolve();
       };
       const abort = () => {
-        finish(); reject(signal?.reason);
+        finish();
+        reject(signal?.reason);
       };
       this.internalListeners.add(wake);
       signal?.addEventListener('abort', abort, { once: true });
-      if (revision !== this.internalRevision)
+      if (revision !== this.internalRevision) {
         wake();
+      }
     });
   }
 }

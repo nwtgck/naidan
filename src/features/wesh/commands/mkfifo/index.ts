@@ -44,7 +44,9 @@ async function pathExists({
     await context.files.lstat({ path });
     return true;
   } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) return false;
+    if (isPathNotFoundError({ error })) {
+      return false;
+    }
     throw error;
   }
 }

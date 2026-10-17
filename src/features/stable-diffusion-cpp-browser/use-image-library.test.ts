@@ -12,7 +12,9 @@ import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTex
 const scopes: ReturnType<typeof effectScope>[] = [];
 
 afterEach(() => {
-  for (const scope of scopes.splice(0)) scope.stop();
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
 });
 
 function repositories(): LocalImageRepository[] {
@@ -29,7 +31,8 @@ function harness({ entries, scan }: { entries: LocalImageRepository[], scan: typ
   let current = entries;
   const list = vi.fn(async () => current);
   const onSelection = vi.fn();
-  const scope = effectScope(); scopes.push(scope);
+  const scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked, onSelection, dependencies: { list, scan: scan ?? scanImageRepositories, import: vi.fn(async () => 'user/imported'), download: vi.fn() } }))!;
   return {
     library,
@@ -62,7 +65,8 @@ it('resolves required components across repositories and keeps the original file
 
 it('resolves history weights only by their local location and matching file metadata', async () => {
   const entries = repositories();
-  const h = harness({ entries, scan: undefined }); await h.library.refresh();
+  const h = harness({ entries, scan: undefined });
+  await h.library.refresh();
   const file = entries[0]!.files[0]!.file;
   const location = h.library.historyFileLocation({ file });
   expect(location).toMatchObject({ type: 'opfs', path: 'models/user/0/original/z_image_turbo.gguf' });
@@ -80,10 +84,13 @@ it('resolves history weights only by their local location and matching file meta
 it('keeps the registered host directory identity separate from OPFS history paths', async () => {
   const entries = repositories();
   entries[0]!.hostSource = { directoryId: 'host-models', directoryName: 'Shared weights', repository: 'org/model' };
-  const h = harness({ entries, scan: undefined }); await h.library.refresh();
+  const h = harness({ entries, scan: undefined });
+  await h.library.refresh();
   const file = entries[0]!.files[0]!.file;
   const location = h.library.historyFileLocation({ file });
-  if (location.type !== 'host') throw new Error('Expected host model location');
+  if (location.type !== 'host') {
+    throw new Error('Expected host model location');
+  }
   expect(idToRaw({ id: location.directoryId })).toBe('host-models');
   expect(location.path).toBe('org/model/original/z_image_turbo.gguf');
   expect(h.library.findHistoryFile({ location })).toBe(file);
@@ -91,7 +98,8 @@ it('keeps the registered host directory identity separate from OPFS history path
 });
 
 it('does not replace a deliberate empty component, even after refresh; generation stays blocked', async () => {
-  const h = harness({ entries: repositories(), scan: undefined }); await h.library.refresh();
+  const h = harness({ entries: repositories(), scan: undefined });
+  await h.library.refresh();
   h.library.chooseComponent({ slot: 'vae', id: '' });
   expect(h.library.ready.value).toBe(false);
   await h.library.refresh();
@@ -103,26 +111,38 @@ it('does not replace a deliberate empty component, even after refresh; generatio
 });
 
 it('preserves a manual component selection when another same-class file appears', async () => {
-  const entries = repositories(); const h = harness({ entries, scan: undefined }); await h.library.refresh();
+  const entries = repositories();
+  const h = harness({ entries, scan: undefined });
+  await h.library.refresh();
   const selected = h.library.components.value.find(component => component.slot === 'lm')!.selected;
   h.library.chooseComponent({ slot: 'lm', id: selected });
   const alternative = { ...entries[2]!, id: 'user/alternative' };
-  h.entries({ next: [alternative, ...entries] }); await h.library.refresh();
+  h.entries({ next: [alternative, ...entries] });
+  await h.library.refresh();
   expect(h.library.components.value.find(component => component.slot === 'lm')!.selected).toBe(selected);
 });
 
 it('does not auto-select a different primary after the user clears it or switches to manual files', async () => {
-  const h = harness({ entries: repositories(), scan: undefined }); await h.library.refresh();
-  h.library.chooseMain({ id: '' }); await h.library.refresh(); expect(h.library.main.value).toBe('');
-  const id = h.library.models.value[0]!.id; h.library.chooseMain({ id });
-  h.library.useManualFiles(); await h.library.refresh(); expect(h.library.main.value).toBe(''); expect(h.library.ready.value).toBe(false);
+  const h = harness({ entries: repositories(), scan: undefined });
+  await h.library.refresh();
+  h.library.chooseMain({ id: '' });
+  await h.library.refresh();
+  expect(h.library.main.value).toBe('');
+  const id = h.library.models.value[0]!.id;
+  h.library.chooseMain({ id });
+  h.library.useManualFiles();
+  await h.library.refresh();
+  expect(h.library.main.value).toBe('');
+  expect(h.library.ready.value).toBe(false);
 });
 
 it('rejects known incompatible candidates instead of trusting an advanced selection', async () => {
   const entries = repositories();
   const bad = ggufFixture({ name: 'qwen3-4b.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'gemma' }, extraBytes: 0 }).file;
   entries.push({ id: 'user/gemma', name: 'Gemma', files: [{ path: bad.name, file: bad }] });
-  const h = harness({ entries, scan: undefined }); await h.library.refresh(); h.library.showAll.value = true;
+  const h = harness({ entries, scan: undefined });
+  await h.library.refresh();
+  h.library.showAll.value = true;
   const component = h.library.components.value.find(item => item.slot === 'lm')!;
   const gemma = component.choices.find(choice => choice.detail.includes('user/gemma'))!;
   expect(gemma.status).toBe('incompatible');
@@ -131,18 +151,26 @@ it('rejects known incompatible candidates instead of trusting an advanced select
 });
 
 it('discards a stale asynchronous inventory rather than overwriting a newer result', async () => {
-  const entries = repositories(); const actual = await scanImageRepositories({ repositories: entries, signal: undefined });
+  const entries = repositories();
+  const actual = await scanImageRepositories({ repositories: entries, signal: undefined });
   let finish: ((value: ModelInventory) => void) | undefined;
   let calls = 0;
   const scan: typeof scanImageRepositories = async () => ++calls === 1 ? new Promise<ModelInventory>(resolve => {
     finish = resolve;
   }) : actual;
   const h = harness({ entries, scan });
-  const first = h.library.refresh(); for (let i = 0; i < 12; i++) await Promise.resolve();
-  h.library.cancelScan(); await first;
-  await h.library.refresh(); const main = h.library.main.value;
-  finish?.({ candidates: [], issues: [] }); await first;
-  expect(h.library.main.value).toBe(main); expect(h.library.ready.value).toBe(true);
+  const first = h.library.refresh();
+  for (let i = 0; i < 12; i++) {
+    await Promise.resolve();
+  }
+  h.library.cancelScan();
+  await first;
+  await h.library.refresh();
+  const main = h.library.main.value;
+  finish?.({ candidates: [], issues: [] });
+  await first;
+  expect(h.library.main.value).toBe(main);
+  expect(h.library.ready.value).toBe(true);
 });
 
 it('stops scanning on dispose and does not publish results while generation is locked', async () => {
@@ -154,23 +182,36 @@ it('stops scanning on dispose and does not publish results while generation is l
       finish = resolve;
     }),
   });
-  const pending = h.library.refresh(); for (let i = 0; i < 12; i++) await Promise.resolve(); h.block();
-  finish?.(actual); await pending; expect(h.library.models.value).toEqual([]);
-  await h.library.refresh(); expect(h.list).toHaveBeenCalledTimes(1);
-  h.scope.stop(); await h.library.refresh(); expect(h.list).toHaveBeenCalledTimes(1);
+  const pending = h.library.refresh();
+  for (let i = 0; i < 12; i++) {
+    await Promise.resolve();
+  }
+  h.block();
+  finish?.(actual);
+  await pending;
+  expect(h.library.models.value).toEqual([]);
+  await h.library.refresh();
+  expect(h.list).toHaveBeenCalledTimes(1);
+  h.scope.stop();
+  await h.library.refresh();
+  expect(h.list).toHaveBeenCalledTimes(1);
 });
 
 it('coalesces repeated focus/refresh calls instead of starving a long scan', async () => {
   const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<ModelInventory>();
   const scan = vi.fn(async () => {
-    entered.resolve(); return gate.promise;
+    entered.resolve();
+    return gate.promise;
   });
   const h = harness({ entries: [], scan });
-  const first = h.library.refresh(); await entered.promise;
+  const first = h.library.refresh();
+  await entered.promise;
   const others = Array.from({ length: 25 }, () => h.library.refresh());
-  expect(scan).toHaveBeenCalledTimes(1); expect(h.list).toHaveBeenCalledTimes(1);
+  expect(scan).toHaveBeenCalledTimes(1);
+  expect(h.list).toHaveBeenCalledTimes(1);
   expect(h.library.scanState.value).toBe('scanning');
-  gate.resolve({ candidates: [], issues: [] }); await Promise.all([first, ...others]);
+  gate.resolve({ candidates: [], issues: [] });
+  await Promise.all([first, ...others]);
   expect(h.library.scanState.value).toBe('idle');
 });
 
@@ -179,15 +220,19 @@ it('lets explicit history reuse await the initial scan without applying automati
   const actual = await scanImageRepositories({ repositories: entries, signal: undefined });
   const entered = Promise.withResolvers<void>(), gate = Promise.withResolvers<ModelInventory>();
   const scan = vi.fn(async () => {
-    entered.resolve(); return gate.promise;
+    entered.resolve();
+    return gate.promise;
   });
   const h = harness({ entries, scan });
-  const initial = h.library.refresh(); await entered.promise;
+  const initial = h.library.refresh();
+  await entered.promise;
   h.block();
   const preparing = h.library.prepareHistoryFiles({ requiredFiles: [] });
   expect(scan).toHaveBeenCalledOnce();
-  gate.resolve(actual); await Promise.all([initial, preparing]);
-  expect(h.onSelection).not.toHaveBeenCalled(); expect(h.library.main.value).toBe('');
+  gate.resolve(actual);
+  await Promise.all([initial, preparing]);
+  expect(h.onSelection).not.toHaveBeenCalled();
+  expect(h.library.main.value).toBe('');
   const file = entries[0]!.files[0]!.file;
   const location = h.library.historyFileLocation({ file });
   expect(h.library.findHistoryFile({ location })).toBe(file);
@@ -197,9 +242,11 @@ it('starts a local history preparation scan when needed and rejects read failure
   const scan = vi.fn(async () => {
     throw new Error('Local directory cannot be read');
   });
-  const h = harness({ entries: [], scan }); h.block();
+  const h = harness({ entries: [], scan });
+  h.block();
   await expect(h.library.prepareHistoryFiles({ requiredFiles: [] })).rejects.toThrow('Local directory cannot be read');
-  expect(h.list).toHaveBeenCalledOnce(); expect(h.onSelection).not.toHaveBeenCalled();
+  expect(h.list).toHaveBeenCalledOnce();
+  expect(h.onSelection).not.toHaveBeenCalled();
 });
 
 it('cancels an unresponsive injected read immediately and ignores its late rejection', async () => {
@@ -207,13 +254,17 @@ it('cancels an unresponsive injected read immediately and ignores its late rejec
   const h = harness({
     entries: [],
     scan: async () => {
-      entered.resolve(); return gate.promise;
+      entered.resolve();
+      return gate.promise;
     },
   });
-  const first = h.library.refresh(); await entered.promise;
-  h.library.cancelScan(); await first;
+  const first = h.library.refresh();
+  await entered.promise;
+  h.library.cancelScan();
+  await first;
   expect(h.library.scanState.value).toBe('idle');
-  gate.reject(new Error('old failure')); await Promise.resolve();
+  gate.reject(new Error('old failure'));
+  await Promise.resolve();
   expect(h.library.failure.value).toBe('');
 });
 
@@ -222,31 +273,40 @@ it('finishes all waiters when disposed during a stalled read', async () => {
   const h = harness({
     entries: [],
     scan: async () => {
-      entered.resolve(); return new Promise<ModelInventory>(() => undefined);
+      entered.resolve();
+      return new Promise<ModelInventory>(() => undefined);
     },
   });
-  const first = h.library.refresh(); await entered.promise;
-  const second = h.library.refresh(); h.scope.stop();
-  await Promise.all([first, second]); expect(h.library.scanState.value).toBe('idle');
+  const first = h.library.refresh();
+  await entered.promise;
+  const second = h.library.refresh();
+  h.scope.stop();
+  await Promise.all([first, second]);
+  expect(h.library.scanState.value).toBe('idle');
 });
 
 it('enumerates benchmark targets with the same companion choices, without switching the primary selection', async () => {
-  const h = harness({ entries: repositories(), scan: undefined }); await h.library.refresh();
+  const h = harness({ entries: repositories(), scan: undefined });
+  await h.library.refresh();
   const before = h.library.main.value;
   expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(1);
   expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toEqual(h.library.selectedModels());
-  expect(h.library.benchmarkTargets({ selections: {} })[0]?.composition).toBe('selected'); expect(h.library.main.value).toBe(before);
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.composition).toBe('selected');
+  expect(h.library.main.value).toBe(before);
   h.library.chooseComponent({ slot: 'vae', id: '' });
-  expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toBeUndefined(); expect(h.library.benchmarkTargets({ selections: {} })[0]?.missing).toContain('vae');
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toBeUndefined();
+  expect(h.library.benchmarkTargets({ selections: {} })[0]?.missing).toContain('vae');
 });
 
 it('enumerates every complete primary independently, excludes text/VAE-only and records missing components', async () => {
   const entries = repositories();
   const main = entries[0]!;
-  const h = harness({ entries: [...entries, { ...main, id: 'user/second-diffusion' }], scan: undefined }); await h.library.refresh();
+  const h = harness({ entries: [...entries, { ...main, id: 'user/second-diffusion' }], scan: undefined });
+  await h.library.refresh();
   expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(2);
   expect(h.library.benchmarkTargets({ selections: {} }).every(target => target.models?.map(model => model.slot).join(',') === 'diffusion,vae,lm')).toBe(true);
-  h.entries({ next: [entries[0]!] }); await h.library.refresh();
+  h.entries({ next: [entries[0]!] });
+  await h.library.refresh();
   expect(h.library.benchmarkTargets({ selections: {} })[0]).toMatchObject({ models: undefined, missing: ['vae', 'lm'] });
 });
 
@@ -265,34 +325,43 @@ it('resolves benchmark component overrides independently and never replaces a mi
   expect(changed[1]!.components).toEqual(second.components);
   expect(h.library.selectedModels()).toEqual(before);
   const incomplete = h.library.benchmarkTargets({ selections: { [first.id]: { vae: '' } } })[0]!;
-  expect(incomplete.models).toBeUndefined(); expect(incomplete.missing).toContain('vae');
+  expect(incomplete.models).toBeUndefined();
+  expect(incomplete.missing).toContain('vae');
   const textId = first.components.find(component => component.slot === 'lm')!.selected;
   expect(h.library.benchmarkTargets({ selections: { [first.id]: { vae: textId } } })[0]!.models).toBeUndefined();
-  h.entries({ next: entries }); await h.library.refresh();
+  h.entries({ next: entries });
+  await h.library.refresh();
   const stale = h.library.benchmarkTargets({ selections }).find(target => target.id === first.id)!;
   expect(stale.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
-  expect(stale.missing).toContain('vae'); expect(stale.models).toBeUndefined();
+  expect(stale.missing).toContain('vae');
+  expect(stale.models).toBeUndefined();
 });
 
 it('reuses resolved files across session restorations and only retries a missing reference once per inventory', async () => {
   const entries = repositories(), h = harness({ entries, scan: undefined });
-  await h.library.refresh(); const file = entries[0]!.files[0]!.file;
+  await h.library.refresh();
+  const file = entries[0]!.files[0]!.file;
   const location = h.library.historyFileLocation({ file });
   h.onSelection.mockClear();
-  for (let i = 0; i < 3; i++) await h.library.prepareHistoryFiles({ requiredFiles: [location] });
-  expect(h.list).toHaveBeenCalledOnce(); expect(h.onSelection).not.toHaveBeenCalled();
+  for (let i = 0; i < 3; i++) {
+    await h.library.prepareHistoryFiles({ requiredFiles: [location] });
+  }
+  expect(h.list).toHaveBeenCalledOnce();
+  expect(h.onSelection).not.toHaveBeenCalled();
   expect(h.library.findHistoryFile({ location })).toBe(file);
   const missing = { ...location, size: location.size + 1 };
   await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
   await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
   expect(h.list).toHaveBeenCalledTimes(2);
-  await h.library.refresh(); await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
+  await h.library.refresh();
+  await h.library.prepareHistoryFiles({ requiredFiles: [missing] });
   expect(h.list).toHaveBeenCalledTimes(4);
 });
 
 it('keeps the exact main and component Files after an unrelated import, but refreshes them on explicit rescan', async () => {
   const entries = repositories(), scan = vi.fn(scanImageRepositories);
-  const h = harness({ entries, scan }); await h.library.refresh();
+  const h = harness({ entries, scan });
+  await h.library.refresh();
   const before = h.library.selectedModels()!;
   // These are sparse fixture Files: copying their Blob bytes would lose the mocked tensor data.
   const fresh = repositories();
@@ -306,7 +375,8 @@ it('keeps the exact main and component Files after an unrelated import, but refr
   }
   vi.stubGlobal('HTMLInputElement', TestInput);
   try {
-    const event = new Event('change'); Object.defineProperty(event, 'target', { value: new TestInput() });
+    const event = new Event('change');
+    Object.defineProperty(event, 'target', { value: new TestInput() });
     await h.library.importDirectory({ event });
   } finally {
     vi.unstubAllGlobals();
@@ -338,7 +408,9 @@ it.each(['models/user/0/original/../z_image_turbo.gguf', '/models/user/0/origina
     },
   });
   const selection = (await provider.loadSettings())?.experimental?.browserImageGeneration?.modelSelection;
-  if (!selection) throw new Error('Missing restored model selection');
+  if (!selection) {
+    throw new Error('Missing restored model selection');
+  }
   const result = h.library.restoreModelSelection({ selection });
   expect(result.missing).toContain(path);
   expect(h.library.selectedModels()).toBeUndefined();

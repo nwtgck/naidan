@@ -31,8 +31,11 @@ describe('transient tool call drafts', () => {
         persisted.push(structuredClone(node.parts));
       },
       onToolCallDraftsChange: ({ drafts }) => {
-        if (drafts.length !== 0) expect(node.parts).toEqual([]);
-        else expect(node.parts).toEqual([{ type: 'tool_call', toolCall: completed }]);
+        if (drafts.length !== 0) {
+          expect(node.parts).toEqual([]);
+        } else {
+          expect(node.parts).toEqual([{ type: 'tool_call', toolCall: completed }]);
+        }
         snapshots.push(drafts);
       },
       items: createChatGenerationStream({
@@ -59,7 +62,9 @@ describe('transient tool call drafts', () => {
       abortController: new AbortController(),
       onChange,
       onToolCallDraftsChange: ({ drafts }) => {
-        if (drafts[0]) snapshots.push(drafts[0].arguments);
+        if (drafts[0]) {
+          snapshots.push(drafts[0].arguments);
+        }
       },
       items: sequence({
         items: [
@@ -161,7 +166,9 @@ describe('transient tool call drafts', () => {
       onChange: () => {},
       onToolCallDraftsChange: ({ drafts }) => {
         snapshots.push(drafts);
-        if (drafts.length !== 0) controller.abort();
+        if (drafts.length !== 0) {
+          controller.abort();
+        }
       },
       items: sequence({
         items: [
@@ -184,10 +191,14 @@ describe('transient tool call drafts', () => {
     const items = (async function* (): AsyncGenerator<ChatGenerationItem> {
       yield { type: 'tool_call_draft', partId: 'd', index: 0, name: 'shell', arguments: { offset: 0, text: '{' } };
       switch (ending) {
-      case 'error-result': yield { type: 'result', result: { type: 'error', error: fault } }; return;
+      case 'error-result': yield { type: 'result', result: { type: 'error', error: fault } };
+        return;
       case 'missing-result': return;
       case 'iterator-error': throw fault;
-      default: { const _ex: never = ending; throw new Error(`Unhandled ending: ${_ex}`); }
+      default: {
+        const _ex: never = ending;
+        throw new Error(`Unhandled ending: ${_ex}`);
+      }
       }
     })();
     const pending = consumeChatGeneration({
@@ -200,10 +211,16 @@ describe('transient tool call drafts', () => {
       },
     });
     switch (ending) {
-    case 'error-result': await expect(pending).resolves.toEqual({ type: 'error', error: fault }); break;
-    case 'missing-result': await expect(pending).rejects.toThrow('without a result'); break;
-    case 'iterator-error': await expect(pending).rejects.toBe(fault); break;
-    default: { const _ex: never = ending; throw new Error(`Unhandled ending: ${_ex}`); }
+    case 'error-result': await expect(pending).resolves.toEqual({ type: 'error', error: fault });
+      break;
+    case 'missing-result': await expect(pending).rejects.toThrow('without a result');
+      break;
+    case 'iterator-error': await expect(pending).rejects.toBe(fault);
+      break;
+    default: {
+      const _ex: never = ending;
+      throw new Error(`Unhandled ending: ${_ex}`);
+    }
     }
     expect(snapshots).toHaveLength(2);
     expect(snapshots.at(-1)).toEqual([]);
@@ -225,7 +242,9 @@ describe('transient tool call drafts', () => {
     for (let index = 0; index < 2; index++) {
       const item = (await iterator.next()).value;
       expect(item).toMatchObject({ type: 'tool_call_draft', arguments: { offset: index * 8192 } });
-      if (item?.type !== 'tool_call_draft') throw new Error('Expected draft');
+      if (item?.type !== 'tool_call_draft') {
+        throw new Error('Expected draft');
+      }
       expect(item.arguments?.text).toHaveLength(8192);
     }
     await iterator.return?.();

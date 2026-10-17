@@ -16,9 +16,13 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: async (data: any) => {
-        if (data instanceof Blob) this.blob = data;
-        else if (typeof data === 'string') this.blob = new Blob([data], { type: 'text/plain' });
-        else this.blob = new Blob([data]);
+        if (data instanceof Blob) {
+          this.blob = data;
+        } else if (typeof data === 'string') {
+          this.blob = new Blob([data], { type: 'text/plain' });
+        } else {
+          this.blob = new Blob([data]);
+        }
       },
       close: () => Promise.resolve(),
     });
@@ -33,25 +37,35 @@ class MockFileSystemDirectoryHandle {
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemDirectoryHandle> {
     if (!this.entries.has(name)) {
-      if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
-      else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemDirectoryHandle(name));
+      } else {
+        const err = new Error('Not found');
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
     const entry = this.entries.get(name);
-    if (entry instanceof MockFileSystemFileHandle) throw new Error('Not a directory');
+    if (entry instanceof MockFileSystemFileHandle) {
+      throw new Error('Not a directory');
+    }
     return entry as MockFileSystemDirectoryHandle;
   }
 
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemFileHandle> {
     if (!this.entries.has(name)) {
-      if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
-      else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemFileHandle(name));
+      } else {
+        const err = new Error('Not found');
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
     const entry = this.entries.get(name);
-    if (entry instanceof MockFileSystemDirectoryHandle) throw new Error('Not a file');
+    if (entry instanceof MockFileSystemDirectoryHandle) {
+      throw new Error('Not a file');
+    }
     return entry as MockFileSystemFileHandle;
   }
 
@@ -60,11 +74,15 @@ class MockFileSystemDirectoryHandle {
   }
 
   async *values() {
-    for (const entry of this.entries.values()) yield entry;
+    for (const entry of this.entries.values()) {
+      yield entry;
+    }
   }
 
   async *keys() {
-    for (const key of this.entries.keys()) yield key;
+    for (const key of this.entries.keys()) {
+      yield key;
+    }
   }
 }
 
@@ -110,15 +128,23 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     const before = await (await index.getFile()).text();
     const target = failure === 'file' ? `${raw}.bin` : `.${raw}.bin.complete`;
     const remove = vi.spyOn(shard, 'removeEntry').mockImplementation(async name => {
-      if (name === target) throw new DOMException('Permission denied', 'NotAllowedError');
-      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+      if (name === target) {
+        throw new DOMException('Permission denied', 'NotAllowedError');
+      }
+      if (!shard.entries.delete(name)) {
+        throw new DOMException('Missing', 'NotFoundError');
+      }
     });
     await expect(provider.deleteBinaryObject({ binaryObjectId })).rejects.toThrow('Permission denied');
     expect(await (await index.getFile()).text()).toBe(before);
     expect(shard.entries.has(`.${raw}.bin.complete`)).toBe(true);
-    if (failure === 'file') expect(shard.entries.has(`${raw}.bin`)).toBe(true);
+    if (failure === 'file') {
+      expect(shard.entries.has(`${raw}.bin`)).toBe(true);
+    }
     remove.mockImplementation(async name => {
-      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+      if (!shard.entries.delete(name)) {
+        throw new DOMException('Missing', 'NotFoundError');
+      }
     });
     await provider.deleteBinaryObject({ binaryObjectId });
     expect(await provider.getBinaryObject({ binaryObjectId })).toBeNull();
@@ -128,13 +154,18 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
   it('allows missing binary files while removing only their own index entry', async () => {
     const removed = toBinaryObjectId({ raw: 'missing-a1' }), retained = toBinaryObjectId({ raw: 'retained-a1' });
     await provider.init();
-    for (const binaryObjectId of [removed, retained]) await provider.saveFile({ binaryObjectId, blob: new Blob(['PNG']), name: 'image.png', mimeType: 'image/png' });
+    for (const binaryObjectId of [removed, retained]) {
+      await provider.saveFile({ binaryObjectId, blob: new Blob(['PNG']), name: 'image.png', mimeType: 'image/png' });
+    }
     const root = await mockRoot.getDirectoryHandle('naidan-storage');
     const binaries = await root.getDirectoryHandle('binary-objects');
     const shard = await binaries.getDirectoryHandle('a1');
-    shard.entries.delete('missing-a1.bin'); shard.entries.delete('.missing-a1.bin.complete');
+    shard.entries.delete('missing-a1.bin');
+    shard.entries.delete('.missing-a1.bin.complete');
     const remove = vi.spyOn(shard, 'removeEntry').mockImplementation(async name => {
-      if (!shard.entries.delete(name)) throw new DOMException('Missing', 'NotFoundError');
+      if (!shard.entries.delete(name)) {
+        throw new DOMException('Missing', 'NotFoundError');
+      }
     });
     await provider.deleteBinaryObject({ binaryObjectId: removed });
     expect(await provider.getBinaryObject({ binaryObjectId: removed })).toBeNull();

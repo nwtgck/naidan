@@ -1,7 +1,8 @@
 /** Local cleanup evidence; never a wire error or an application failure code. */
 export class RpcRetirementError extends Error {
   constructor({ cause }: { cause: unknown }) {
-    super('RPC resource retirement failed', { cause }); this.name = 'RpcRetirementError';
+    super('RPC resource retirement failed', { cause });
+    this.name = 'RpcRetirementError';
   }
 }
 /** Commits the first cleanup failure before joining the remaining owners. */
@@ -14,7 +15,9 @@ export class RetirementFailures {
   }
 
   add({ error }: { error: unknown }): void {
-    if (this.first) return;
+    if (this.first) {
+      return;
+    }
     this.first = error instanceof RpcRetirementError ? error : new RpcRetirementError({ cause: error });
     // A notification is advisory. Its failure cannot skip cleanup or replace
     // the already committed retirement cause.
@@ -32,7 +35,9 @@ export class RetirementFailures {
   }
 
   check(): void {
-    if (this.first) throw this.first;
+    if (this.first) {
+      throw this.first;
+    }
   }
 }
 export type ReaderLease = Pick<ReadableStreamDefaultReader<unknown>, 'closed' | 'cancel' | 'releaseLock'>;
@@ -40,7 +45,8 @@ export type WriterLease = Pick<WritableStreamDefaultWriter<unknown>, 'closed' | 
 
 export async function cancelReader({ reader, reason }: { reader: ReaderLease; reason: unknown }): Promise<void> {
   try {
-    const terminal = reader.closed; void terminal.catch(() => {});
+    const terminal = reader.closed;
+    void terminal.catch(() => {});
     const [operation, closed] = await Promise.allSettled([reader.cancel(reason), terminal]);
     // Native cancel on an already-errored readable rejects its stored logical
     // error without invoking the underlying cancel algorithm. A real cancel
@@ -62,7 +68,8 @@ export async function abortWriter({ writer, reason, ownedClose }: { writer: Writ
     // sink. Public APIs cannot distinguish that case from a failed abort
     // algorithm: conservatively leave retirement unconfirmed on rejection.
     const alreadyErroring = writer.desiredSize === null;
-    const terminal = writer.closed; void terminal.catch(() => {});
+    const terminal = writer.closed;
+    void terminal.catch(() => {});
     // Invoke abort before joining close: the sink may need controller.signal
     // to settle its in-flight close. ownedClose is only valid for this sole
     // writer's own close, with no other pending abort request.
@@ -91,7 +98,9 @@ export function releaseLocks({ reader, writer }: { reader: ReaderLease | undefin
   } catch (error) {
     failures.push(error);
   }
-  if (failures.length) throw new RpcRetirementError({ cause: failures[0] });
+  if (failures.length) {
+    throw new RpcRetirementError({ cause: failures[0] });
+  }
 }
 
 /** Discard owns only leases it can acquire. Preexisting locks belong to another
@@ -104,12 +113,16 @@ export async function retireUnadoptedStreams({ readable, writable, reason, onFai
   let reader: ReaderLease | undefined, writer: WriterLease | undefined;
   const failures = new RetirementFailures({ onFailure });
   try {
-    if (!readable.locked) reader = readable.getReader();
+    if (!readable.locked) {
+      reader = readable.getReader();
+    }
   } catch (error) {
     failures.add({ error });
   }
   try {
-    if (!writable.locked) writer = writable.getWriter();
+    if (!writable.locked) {
+      writer = writable.getWriter();
+    }
   } catch (error) {
     failures.add({ error });
   }

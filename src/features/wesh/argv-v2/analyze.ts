@@ -205,7 +205,9 @@ function haveEquivalentLongValueSyntax({
   left: ArgvLongValueSyntax,
   right: ArgvLongValueSyntax,
 }): boolean {
-  if (left.kind !== right.kind) return false;
+  if (left.kind !== right.kind) {
+    return false;
+  }
   switch (left.kind) {
   case 'none':
   case 'optional-inline':
@@ -232,21 +234,30 @@ export function resolveUniqueLongPrefix<TSemantic>({
 }): LongFormResolution<TSemantic> {
   const matches: FlatLongArgvForm<TSemantic>[] = [];
   for (const flat of data.long.values()) {
-    if (flat.form.name.startsWith(name)) matches.push(flat);
+    if (flat.form.name.startsWith(name)) {
+      matches.push(flat);
+    }
   }
 
   // An exact real-but-unimplemented name still wins over longer prefixes, just as an
   // exact executable name does. Wesh cannot execute it, so leave it unresolved here.
-  if (data.nonExecutableLongGroupByName.has(name)) return { kind: 'none' };
+  if (data.nonExecutableLongGroupByName.has(name)) {
+    return { kind: 'none' };
+  }
 
   const nonExecutableMatches: string[] = [];
   let nonExecutableGroup: number | undefined;
   let multipleNonExecutableGroups = false;
   for (const [nonExecutableName, group] of data.nonExecutableLongGroupByName) {
-    if (!nonExecutableName.startsWith(name)) continue;
+    if (!nonExecutableName.startsWith(name)) {
+      continue;
+    }
     nonExecutableMatches.push(nonExecutableName);
-    if (nonExecutableGroup === undefined) nonExecutableGroup = group;
-    else if (nonExecutableGroup !== group) multipleNonExecutableGroups = true;
+    if (nonExecutableGroup === undefined) {
+      nonExecutableGroup = group;
+    } else if (nonExecutableGroup !== group) {
+      multipleNonExecutableGroups = true;
+    }
   }
   if (nonExecutableMatches.length > 0) {
     if (matches.length > 0 || multipleNonExecutableGroups) {
@@ -263,14 +274,20 @@ export function resolveUniqueLongPrefix<TSemantic>({
     // rather than a false ambiguity.
     return { kind: 'none' };
   }
-  if (matches.length === 0) return { kind: 'none' };
+  if (matches.length === 0) {
+    return { kind: 'none' };
+  }
 
   const first = matches[0];
-  if (first === undefined) return { kind: 'none' };
+  if (first === undefined) {
+    return { kind: 'none' };
+  }
   const firstValue = first.form.value;
   const equivalent = matches.every(candidate => candidate.definitionIndex === first.definitionIndex
     && haveEquivalentLongValueSyntax({ left: candidate.form.value, right: firstValue }));
-  if (equivalent) return { kind: 'matched', flat: first };
+  if (equivalent) {
+    return { kind: 'matched', flat: first };
+  }
   return {
     kind: 'ambiguous',
     names: matches.map(candidate => candidate.form.name).sort(),

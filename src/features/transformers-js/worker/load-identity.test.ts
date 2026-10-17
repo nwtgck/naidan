@@ -11,7 +11,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
+  expect(fetch).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });
 
 function route() {
@@ -61,7 +62,9 @@ describe('Worker-local completed Production Load identity', () => {
     const snapshot = tracker.snapshot();
     expect(snapshot).toMatchObject({ selectedCandidate: { dtype: 'q4' } });
     expect(Object.isFrozen(snapshot)).toBe(true);
-    if (snapshot.status !== 'ready') throw new Error('Expected ready');
+    if (snapshot.status !== 'ready') {
+      throw new Error('Expected ready');
+    }
     expect(Object.isFrozen(snapshot.selectedCandidate)).toBe(true);
     expect(Object.isFrozen(snapshot.requestedRevision)).toBe(true);
     expect(secret).not.toHaveBeenCalled();
@@ -135,7 +138,8 @@ describe('Worker-local completed Production Load identity', () => {
     const first = tracker.beginLoad({ source: 'ordinary', modelId: 'synthetic/model', revision: 'first' });
     first.finish({ route: route() });
     tracker.beginLoad({ source: 'ordinary', modelId: 'synthetic/model', revision: 'second' }).finish({ route: route() });
-    first.clear(); first.finish({ route: undefined });
+    first.clear();
+    first.finish({ route: undefined });
     expect(tracker.snapshot()).toMatchObject({ status: 'ready', workerLoadOrdinal: 2, requestedRevision: { value: 'second' } });
   });
 

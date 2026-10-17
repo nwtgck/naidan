@@ -27,8 +27,9 @@ describe("wesh sed", () => {
   async function writeFile({ path, data }: { path: string; data: string | Uint8Array }) {
     const segments = path.split("/").filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined)
+    if (fileName === undefined) {
       throw new Error("path must include a file name");
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -54,8 +55,9 @@ describe("wesh sed", () => {
   async function getFile({ path }: { path: string }) {
     const segments = path.split("/").filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined)
+    if (fileName === undefined) {
       throw new Error("path must include a file name");
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {
@@ -4731,8 +4733,9 @@ three
       stdout,
       stderr: stderr.handle,
     });
-    if (inputController === undefined)
+    if (inputController === undefined) {
       throw new Error("stdin controller not initialized");
+    }
     inputController.enqueue(new TextEncoder().encode("one\n"));
 
     await Promise.race([

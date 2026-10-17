@@ -17,7 +17,9 @@ function packageNameFromModuleId(moduleId: string): string | undefined {
   const normalized = moduleId.replaceAll('\\', '/').split('?', 1)[0] ?? moduleId;
   const marker = '/node_modules/';
   const markerIndex = normalized.lastIndexOf(marker);
-  if (markerIndex < 0) return undefined;
+  if (markerIndex < 0) {
+    return undefined;
+  }
   const remainder = normalized.slice(markerIndex + marker.length);
   const segments = remainder.split('/');
   return remainder.startsWith('@')
@@ -38,23 +40,35 @@ async function findOwningPackageJson({ moduleId, expectedName }: {
         return { packageJsonPath, packageJson };
       }
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+        throw error;
+      }
     }
     const parent = path.dirname(current);
-    if (parent === current) return undefined;
+    if (parent === current) {
+      return undefined;
+    }
     current = parent;
   }
 }
 
 function normalizeLicense(packageJson: PackageJson): string | null {
   const normalizeOne = (value: unknown): string | undefined => {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string') return value.type;
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string') {
+      return value.type;
+    }
     return undefined;
   };
   const direct = normalizeOne(packageJson.license);
-  if (direct !== undefined) return direct;
-  if (!Array.isArray(packageJson.licenses)) return null;
+  if (direct !== undefined) {
+    return direct;
+  }
+  if (!Array.isArray(packageJson.licenses)) {
+    return null;
+  }
   const values = packageJson.licenses.map(normalizeOne).filter((value): value is string => value !== undefined);
   return values.length === 0 ? null : `(${values.join(' OR ')})`;
 }
@@ -82,14 +96,20 @@ export async function collectRenderedModuleLicenseDependencies({ moduleIds }: {
   const byPackageJson = new Map<string, BuildLicenseDependency>();
   for (const moduleId of moduleIds) {
     const packageName = packageNameFromModuleId(moduleId);
-    if (packageName === undefined) continue;
+    if (packageName === undefined) {
+      continue;
+    }
     const found = await findOwningPackageJson({ moduleId, expectedName: packageName });
-    if (found === undefined) throw new Error(`Unable to locate package.json for rendered module: ${moduleId}`);
+    if (found === undefined) {
+      throw new Error(`Unable to locate package.json for rendered module: ${moduleId}`);
+    }
     const canonicalPackageJsonPath = await fs.realpath(found.packageJsonPath);
     // "private" prevents npm publication; it does not remove an installed
     // dependency from the shipped code. Only rendered IDs reach this collector;
     // the node_modules filter above excludes the application's own package.
-    if (byPackageJson.has(canonicalPackageJsonPath)) continue;
+    if (byPackageJson.has(canonicalPackageJsonPath)) {
+      continue;
+    }
     if (typeof found.packageJson.name !== 'string' || typeof found.packageJson.version !== 'string') {
       throw new Error(`Rendered package has an incomplete identity: ${canonicalPackageJsonPath}`);
     }

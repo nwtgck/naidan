@@ -11,7 +11,9 @@ export async function writeImageInputs({ core, params, inputs, keep, checkCancel
   checkCancelled: () => void,
   onDecoded: ({ metadata }: { metadata: InputImageMetadata }) => void,
 }): Promise<void> {
-  if (!inputs.initImage && inputs.referenceImages.length === 0) return;
+  if (!inputs.initImage && inputs.referenceImages.length === 0) {
+    return;
+  }
   async function write({ file, pointer, role, index }: { file: File, pointer: bigint, role: InputImageMetadata['role'], index: number }): Promise<void> {
     checkCancelled();
     const bitmap = await createImageBitmap(file);
@@ -26,19 +28,26 @@ export async function writeImageInputs({ core, params, inputs, keep, checkCancel
       }
       canvas = new OffscreenCanvas(width, height);
       const context = canvas.getContext('2d');
-      if (!context) throw new Error('Cannot decode input image pixels');
+      if (!context) {
+        throw new Error('Cannot decode input image pixels');
+      }
       // Native RGB inputs have no alpha. Composite transparency against white
       // explicitly; resizing remains the native model's responsibility.
-      context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height);
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, width, height);
       context.drawImage(bitmap, 0, 0);
       const rgba = context.getImageData(0, 0, width, height).data;
       checkCancelled();
       const data = core.alloc(pixels * 3);
-      if (!data) throw new Error('Could not allocate input image pixels');
+      if (!data) {
+        throw new Error('Could not allocate input image pixels');
+      }
       keep({ pointer: data });
       const rgb = core.bytes(data, pixels * 3);
       for (let source = 0, target = 0; source < rgba.length; source += 4, target += 3) {
-        rgb[target] = rgba[source]!; rgb[target + 1] = rgba[source + 1]!; rgb[target + 2] = rgba[source + 2]!;
+        rgb[target] = rgba[source]!;
+        rgb[target + 1] = rgba[source + 1]!;
+        rgb[target + 2] = rgba[source + 2]!;
       }
       core.setField('sd_image_t', pointer, 'width', width);
       core.setField('sd_image_t', pointer, 'height', height);
@@ -48,7 +57,8 @@ export async function writeImageInputs({ core, params, inputs, keep, checkCancel
     } finally {
       bitmap.close();
       if (canvas) {
-        canvas.width = 0; canvas.height = 0;
+        canvas.width = 0;
+        canvas.height = 0;
       }
     }
   }
@@ -59,9 +69,13 @@ export async function writeImageInputs({ core, params, inputs, keep, checkCancel
   if (inputs.referenceImages.length) {
     const recordBytes = core.recordSize('sd_image_t');
     const bytes = recordBytes * inputs.referenceImages.length;
-    if (!Number.isSafeInteger(bytes) || bytes < 1 || (core.pointerBytes === 4 && bytes > 4294967295)) throw new Error('Reference image records exceed the native addressable range');
+    if (!Number.isSafeInteger(bytes) || bytes < 1 || (core.pointerBytes === 4 && bytes > 4294967295)) {
+      throw new Error('Reference image records exceed the native addressable range');
+    }
     const records = core.alloc(bytes);
-    if (!records) throw new Error('Could not allocate reference image records');
+    if (!records) {
+      throw new Error('Could not allocate reference image records');
+    }
     keep({ pointer: records });
     core.bytes(records, recordBytes * inputs.referenceImages.length).fill(0);
     for (const [index, file] of inputs.referenceImages.entries()) {

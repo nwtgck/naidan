@@ -17,10 +17,13 @@ const mockCurrentChatGroup = ref<ChatGroup | null>(null);
 const mockCurrentChat = ref<{ id: string, groupId?: string | null } | null>(null);
 const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   if (id === null) {
-    mockCurrentChatGroup.value = null; return;
+    mockCurrentChatGroup.value = null;
+    return;
   }
   const group = mockChatGroups.value.find(g => idToRaw({ id: g.id }) === id);
-  if (group) mockCurrentChatGroup.value = group;
+  if (group) {
+    mockCurrentChatGroup.value = group;
+  }
 });
 const mockOpenChat = vi.fn(() => {
   mockCurrentChatGroup.value = null;

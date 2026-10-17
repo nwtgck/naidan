@@ -4,11 +4,17 @@ import { ref, computed } from 'vue';
 import { CopyIcon, CheckIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 
 const detectOS = () => {
-  if (typeof window === 'undefined' || !window.navigator) return 'windows';
+  if (typeof window === 'undefined' || !window.navigator) {
+    return 'windows';
+  }
   const platform = (window.navigator.platform || '').toLowerCase();
   const ua = (window.navigator.userAgent || '').toLowerCase();
-  if (platform.includes('mac') || ua.includes('mac')) return 'mac';
-  if (platform.includes('linux') || ua.includes('linux')) return 'linux';
+  if (platform.includes('mac') || ua.includes('mac')) {
+    return 'mac';
+  }
+  if (platform.includes('linux') || ua.includes('linux')) {
+    return 'linux';
+  }
   return 'windows';
 };
 
@@ -44,7 +50,9 @@ const copyToClipboard = async ({ text, id }: { text: string, id: string }) => {
   await navigator.clipboard.writeText(text);
   copiedCommand.value = id;
   setTimeout(() => {
-    if (copiedCommand.value === id) copiedCommand.value = null;
+    if (copiedCommand.value === id) {
+      copiedCommand.value = null;
+    }
   }, 2000);
 };
 
@@ -71,7 +79,9 @@ const guides = computed<Guides | undefined>(() => {
     macInstall === undefined ||
     linuxInstall === undefined ||
     llamaServerInstall === undefined
-  ) return undefined;
+  ) {
+    return undefined;
+  }
 
   return {
     ollama: {

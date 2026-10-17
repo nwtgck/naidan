@@ -20,17 +20,30 @@ const isMenuOpen = ref(false);
 const selectedTab = ref<'events' | 'llama'>('events');
 
 function navigateTabs({ event }: { event: KeyboardEvent }): void {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    return;
+  }
   event.preventDefault();
-  if (event.key === 'Home') selectedTab.value = 'events';
-  else if (event.key === 'End') selectedTab.value = 'llama';
-  else switch (selectedTab.value) {
-  case 'events': selectedTab.value = 'llama'; break;
-  case 'llama': selectedTab.value = 'events'; break;
-  default: { const exhaustive: never = selectedTab.value; throw new Error(String(exhaustive)); }
+  if (event.key === 'Home') {
+    selectedTab.value = 'events';
+  } else if (event.key === 'End') {
+    selectedTab.value = 'llama';
+  } else {
+    switch (selectedTab.value) {
+    case 'events': selectedTab.value = 'llama';
+      break;
+    case 'llama': selectedTab.value = 'events';
+      break;
+    default: {
+      const exhaustive: never = selectedTab.value;
+      throw new Error(String(exhaustive));
+    }
+    }
   }
   const target = event.currentTarget;
-  if (target instanceof HTMLElement) target.querySelector<HTMLButtonElement>(`[data-tab="${selectedTab.value}"]`)?.focus();
+  if (target instanceof HTMLElement) {
+    target.querySelector<HTMLButtonElement>(`[data-tab="${selectedTab.value}"]`)?.focus();
+  }
 }
 
 const menuRef = ref<HTMLElement | null>(null);
@@ -64,7 +77,9 @@ function formatTime({ timestamp }: { timestamp: number }) {
 }
 
 function stringifyDetails({ details }: { details: unknown }): string {
-  if (details === undefined || details === null) return '';
+  if (details === undefined || details === null) {
+    return '';
+  }
   try {
     return JSON.stringify(details, (_key, value) => {
       if (value instanceof Error) {

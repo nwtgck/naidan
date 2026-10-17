@@ -31,27 +31,37 @@ export function hostModelDirectoryAliases({ directories }: { directories: Direct
 }
 
 export function hostModelPublicName({ name, directories }: { name: string, directories: Directories }): string {
-  if (!name.startsWith('host/')) return name;
+  if (!name.startsWith('host/')) {
+    return name;
+  }
   const { destination, repository, selector } = parseHostModelSelector({ name });
   const alias = hostModelDirectoryAliases({ directories }).get(destination.directoryId);
-  if (alias === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  if (alias === undefined) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   return `host/${encodeURIComponent(alias)}/${repository}${selector === undefined ? '' : `:${selector}`}`;
 }
 
 export function resolveHostModelName({ name, directories }: { name: string, directories: Directories }): string {
-  if (!name.startsWith('host/')) return name;
+  if (!name.startsWith('host/')) {
+    return name;
+  }
   try {
     const aliases = hostModelDirectoryAliases({ directories });
     // Registered IDs are reserved from public aliases. Preserve an existing
     // internal reference without interpreting its encoded selector as raw text.
     const root = /^host\/([^/]+)\//.exec(name)?.[1];
     if (root !== undefined && aliases.has(decodeURIComponent(root))) {
-      if (parseHostModelSelector({ name }).selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+      if (parseHostModelSelector({ name }).selector === undefined) {
+        throw new LlamaCppBrowserError({ code: 'missing-model' });
+      }
       return name;
     }
     const { alias, repository, selector } = parsePublicHostModelReference({ name });
     const directoryId = [...aliases].find(([, value]) => value === alias)?.[0];
-    if (directoryId === undefined || selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    if (directoryId === undefined || selector === undefined) {
+      throw new LlamaCppBrowserError({ code: 'missing-model' });
+    }
     return hostModelSelector({ directoryId, repository, selector });
   } catch {
     // Never guess a root, fall back to OPFS, or resolve an unregistered ID.

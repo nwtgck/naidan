@@ -57,7 +57,8 @@ describe('worker transport', () => {
     await api.consume({
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([7])); controller.close();
+          controller.enqueue(new Uint8Array([7]));
+          controller.close();
         },
       }),
     });
@@ -192,7 +193,8 @@ it('accepts only schema-checked controls on the implicit worker endpoint and rem
   const remove = vi.spyOn(globalThis, 'removeEventListener').mockImplementation((type, callback, options) => target.removeEventListener(type, callback, options));
   using _cleanupResource = {
     [Symbol.dispose]() {
-      add.mockRestore(); remove.mockRestore();
+      add.mockRestore();
+      remove.mockRestore();
     },
   };
   const stop = subscribeWorkerNotifications({ endpoint: undefined, schema: z.object({ type: z.literal('control'), enabled: z.boolean() }).strict(), listener });
@@ -200,6 +202,7 @@ it('accepts only schema-checked controls on the implicit worker endpoint and rem
   target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: 'bad' } }));
   target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true, injection: 1 } }));
   expect(listener).toHaveBeenCalledExactlyOnceWith({ value: { type: 'control', enabled: true } });
-  stop(); target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: false } }));
+  stop();
+  target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: false } }));
   expect(listener).toHaveBeenCalledTimes(1);
 });

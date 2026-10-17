@@ -14,11 +14,13 @@ const fetchMock = vi.fn<LmFetch>();
 const { events, errorCount, clearEvents } = useGlobalEvents();
 
 beforeEach(() => {
-  fetchMock.mockReset(); clearEvents();
+  fetchMock.mockReset();
+  clearEvents();
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); expect(errorCount.value).toBe(0);
+  vi.unstubAllGlobals();
+  expect(errorCount.value).toBe(0);
 });
 
 describe('OpenAIProvider', () => {
@@ -60,7 +62,8 @@ describe('OllamaProvider', () => {
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ model: 'llama3' }) });
     expect(node.parts).toMatchObject([{ type: 'text', text: 'Hi there', completeness: 'complete' }]);
-    expect(node.parts).toHaveLength(1); expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(node.parts).toHaveLength(1);
+    expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 
   it('keeps accepted content but stops and reports malformed JSON instead of skipping it', async () => {
@@ -72,7 +75,8 @@ describe('OllamaProvider', () => {
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ model: 'llama3' }) });
     expect(node.parts).toMatchObject([{ type: 'text', text: 'accepted', completeness: 'partial' }]);
-    expect(node.parts).toHaveLength(1); expect(result.type).toBe('error');
+    expect(node.parts).toHaveLength(1);
+    expect(result.type).toBe('error');
     expect(errorCount.value).toBe(1);
     expect(events.value[0]?.source).toBe('OllamaProvider');
     expect(events.value[0]?.message).toContain('Failed to read or validate Ollama JSON');
@@ -88,7 +92,8 @@ describe('OllamaProvider', () => {
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ model: 'llama3' }) });
     expect(node.parts).toMatchObject([{ type: 'reasoning', text: 'I am thinking more', completeness: 'complete' }, { type: 'text', text: 'Final answer', completeness: 'complete' }]);
-    expect(node.parts).toHaveLength(2); expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(node.parts).toHaveLength(2);
+    expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 
   it('finishes a thinking-only response without adding a synthetic closing tag', async () => {
@@ -96,7 +101,8 @@ describe('OllamaProvider', () => {
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     const { node, result } = await consumeProviderGenerationForTest({ provider, request: request({ model: 'llama3' }) });
     expect(node.parts).toMatchObject([{ type: 'reasoning', text: 'thought', completeness: 'complete' }]);
-    expect(node.parts).toHaveLength(1); expect(result).toEqual({ type: 'finished', next: 'user' });
+    expect(node.parts).toHaveLength(1);
+    expect(result).toEqual({ type: 'finished', next: 'user' });
   });
 
   it('should include custom headers in chat request', async () => {
@@ -120,13 +126,17 @@ describe('OllamaProvider', () => {
     fetchMock.mockRejectedValueOnce(new Error('Failed to fetch'));
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     await expect(provider.listModels({ signal: undefined })).rejects.toThrow(/OLLAMA_ORIGINS='\*' ollama serve/);
-    expect(errorCount.value).toBe(1); expect(events.value[0]?.message).toContain("OLLAMA_ORIGINS='*'"); clearEvents();
+    expect(errorCount.value).toBe(1);
+    expect(events.value[0]?.message).toContain("OLLAMA_ORIGINS='*'");
+    clearEvents();
   });
 
   it('should extract detailed error message from response JSON', async () => {
     fetchMock.mockResolvedValueOnce(Response.json({ error: 'Specific API Error Message' }, { status: 400, statusText: 'Bad Request' }));
     const provider = new OllamaProvider({ endpoint: 'http://localhost:11434', fetcher: fetchMock });
     await expect(provider.listModels({ signal: undefined })).rejects.toThrow(/Failed to fetch models \(400\): Specific API Error Message/);
-    expect(errorCount.value).toBe(1); expect(events.value[0]?.message).toContain('Specific API Error Message'); clearEvents();
+    expect(errorCount.value).toBe(1);
+    expect(events.value[0]?.message).toContain('Specific API Error Message');
+    clearEvents();
   });
 });

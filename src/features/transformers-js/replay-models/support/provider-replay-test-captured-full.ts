@@ -88,7 +88,9 @@ function hash({ bytes }: { bytes: Uint8Array }): string {
 }
 
 function exact({ label, actual, expected }: { label: string; actual: unknown; expected: unknown }) {
-  if (!isDeepStrictEqual(actual, expected)) throw new Error(`Captured Full causal mismatch: ${label}`);
+  if (!isDeepStrictEqual(actual, expected)) {
+    throw new Error(`Captured Full causal mismatch: ${label}`);
+  }
 }
 
 const controlKeys = new Set(['past_key_values', 'max_new_tokens', 'temperature', 'top_p', 'do_sample', 'streamer', 'stopping_criteria', 'return_dict_in_generate']);
@@ -96,7 +98,9 @@ const controlKeys = new Set(['past_key_values', 'max_new_tokens', 'temperature',
 function verifyInvocationEvidence({ invocation }: { invocation: Invocation }) {
   const keys = invocation.settings.kwargs.keys.values;
   for (const names of [keys, invocation.inputs.map(input => input.name), invocation.preInputs.map(input => input.name)]) {
-    if (new Set(names).size !== names.length) throw new Error('Duplicate captured native key');
+    if (new Set(names).size !== names.length) {
+      throw new Error('Duplicate captured native key');
+    }
   }
   exact({ label: 'complete input evidence', actual: invocation.inputs.map(input => input.name).sort(), expected: keys.filter(key => !controlKeys.has(key)).sort() });
   // These zero-cache and explicitly owned full-prefix captures have no
@@ -107,16 +111,23 @@ function verifyInvocationEvidence({ invocation }: { invocation: Invocation }) {
   exact({ label: 'recorded sequence dimensions', actual: invocation.sequence.dims, expected: [1, invocation.sequence.tokens.length] });
   exact({ label: 'recorded sequence digest', actual: hash({ bytes: new Uint8Array(BigInt64Array.from(invocation.sequence.tokens, BigInt).buffer) }), expected: invocation.sequence.sha256 });
   exact({ label: 'recorded kwargs count', actual: keys.length, expected: invocation.settings.kwargs.keys.totalCount });
-  if (invocation.stream.at(-1)?.operation !== 'end' || invocation.stream.filter(event => event.operation === 'end').length !== 1) throw new Error('Incomplete captured stream');
+  if (invocation.stream.at(-1)?.operation !== 'end' || invocation.stream.filter(event => event.operation === 'end').length !== 1) {
+    throw new Error('Incomplete captured stream');
+  }
   const streamed: string[] = [];
   for (const event of invocation.stream) {
     switch (event.operation) {
     case 'put':
-      if (event.groups.length !== 1) throw new Error('Unrecorded replay batch shape');
+      if (event.groups.length !== 1) {
+        throw new Error('Unrecorded replay batch shape');
+      }
       streamed.push(...event.groups[0]!);
       break;
     case 'end': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   exact({ label: 'stream/returned sequence identity', actual: streamed, expected: invocation.sequence.tokens });
@@ -128,10 +139,14 @@ export function parseCapturedFullReplay({ value }: { value: unknown }): Captured
   // observed metadata hits. This is a fixture correlation, not a general
   // assertion that every locally present file must be used by Production.
   exact({ label: 'observed local metadata inventory', actual: [...evidence.localMetadataPaths].sort(), expected: evidence.loadReceipt.cacheLookup.hitPaths.filter(path => !path.startsWith('onnx/')).sort() });
-  if (new Set(evidence.requests.map(request => request.scenario)).size !== evidence.requests.length) throw new Error('Duplicate captured scenario');
+  if (new Set(evidence.requests.map(request => request.scenario)).size !== evidence.requests.length) {
+    throw new Error('Duplicate captured scenario');
+  }
   for (const [index, invocation] of evidence.invocations.entries()) {
     exact({ label: 'recorded invocation order', actual: invocation.callOrdinal, expected: index + 1 });
-    if (!evidence.requests.some(request => request.scenario === invocation.scenario)) throw new Error('Unowned captured invocation');
+    if (!evidence.requests.some(request => request.scenario === invocation.scenario)) {
+      throw new Error('Unowned captured invocation');
+    }
     verifyInvocationEvidence({ invocation });
   }
   return evidence;
@@ -174,14 +189,20 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     const actual: unknown = options[input.name];
     switch (input.value.kind) {
     case 'tensor': {
-      if (!(actual instanceof runtime.Tensor) || actual.location !== 'cpu' || !ArrayBuffer.isView(actual.data)) throw new Error(`Captured Full requires actual CPU Tensor: ${label}/${input.name}`);
+      if (!(actual instanceof runtime.Tensor) || actual.location !== 'cpu' || !ArrayBuffer.isView(actual.data)) {
+        throw new Error(`Captured Full requires actual CPU Tensor: ${label}/${input.name}`);
+      }
       const bytes = new Uint8Array(actual.data.buffer, actual.data.byteOffset, actual.data.byteLength);
       const { kind: _kind, ...fact } = input.value;
       exact({ label: `${label}/${input.name}`, actual: { dtype: actual.type, dims: actual.dims, byteLength: bytes.byteLength, sha256: hash({ bytes }) }, expected: fact });
       break;
     }
-    case 'scalar': case 'image-sizes': exact({ label: `${label}/${input.name}`, actual, expected: input.value.value }); break;
-    default: { const exhaustive: never = input.value; throw new Error(String(exhaustive)); }
+    case 'scalar': case 'image-sizes': exact({ label: `${label}/${input.name}`, actual, expected: input.value.value });
+      break;
+    default: {
+      const exhaustive: never = input.value;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   exact({
@@ -192,14 +213,22 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
   let pastTokenCount = 0;
   if (cacheControl === undefined) {
     exact({ label: `${label}/past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: 0 });
-    if (options.past_key_values !== null && options.past_key_values !== undefined) throw new Error(`Captured Full has no KV control: ${label}`);
+    if (options.past_key_values !== null && options.past_key_values !== undefined) {
+      throw new Error(`Captured Full has no KV control: ${label}`);
+    }
   } else {
-    if (options.past_key_values !== cacheControl.pastKeyValues || !(options.past_key_values instanceof runtime.DynamicCache)) throw new Error(`Captured Full causal mismatch: ${label}/owned cache identity`);
+    if (options.past_key_values !== cacheControl.pastKeyValues || !(options.past_key_values instanceof runtime.DynamicCache)) {
+      throw new Error(`Captured Full causal mismatch: ${label}/owned cache identity`);
+    }
     const previous = cacheControl.previousSequence;
     if (!(previous instanceof runtime.Tensor) || previous.type !== 'int64' || previous.location !== 'cpu'
       || previous.dims.length !== 2 || previous.dims[0] !== 1 || previous.data.length !== previous.dims[1]
-      || previous.data.length < 2) throw new Error(`Captured Full causal mismatch: ${label}/previous sequence control`);
-    if (!(options.input_ids instanceof runtime.Tensor) || options.input_ids.data.length <= previous.data.length) throw new Error(`Captured Full causal mismatch: ${label}/owned full-prefix input`);
+      || previous.data.length < 2) {
+      throw new Error(`Captured Full causal mismatch: ${label}/previous sequence control`);
+    }
+    if (!(options.input_ids instanceof runtime.Tensor) || options.input_ids.data.length <= previous.data.length) {
+      throw new Error(`Captured Full causal mismatch: ${label}/owned full-prefix input`);
+    }
     exact({ label: `${label}/previous returned sequence prefix`, actual: Array.from(options.input_ids.data, String).slice(0, previous.data.length), expected: Array.from(previous.data, String) });
     pastTokenCount = options.past_key_values.get_seq_length();
     exact({ label: `${label}/owned cache length`, actual: pastTokenCount, expected: previous.data.length - 1 });
@@ -216,9 +245,13 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     },
   });
   const config = z.object({ is_encoder_decoder: z.boolean().optional(), max_position_embeddings: z.number().int().positive().optional(), text_config: z.object({ max_position_embeddings: z.number().int().positive().optional() }).optional() }).parse(modelConfig);
-  if (config.is_encoder_decoder === true) throw new Error('Encoder-decoder replay requires an explicit budget lane');
+  if (config.is_encoder_decoder === true) {
+    throw new Error('Encoder-decoder replay requires an explicit budget lane');
+  }
   const contextLimit = config.max_position_embeddings ?? config.text_config?.max_position_embeddings;
-  if (contextLimit === undefined || !(options.input_ids instanceof runtime.Tensor)) throw new Error('Missing actual replay context');
+  if (contextLimit === undefined || !(options.input_ids instanceof runtime.Tensor)) {
+    throw new Error('Missing actual replay context');
+  }
   const promptTokenCount = options.input_ids.dims.at(-1)!;
   exact({
     label: `${label}/independent budget`,
@@ -236,18 +269,31 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
   });
   exact({ label: `${label}/sampling derivation`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample], expected: [checked.settings.budget.maxNewTokens, requested.temperature, requested.topP, requested.temperature > 0] });
   const first = checked.stream[0];
-  if (first === undefined) throw new Error('Missing prompt stream');
-  switch (first.operation) {
-  case 'put': exact({ label: `${label}/stream prompt`, actual: first.groups, expected: [Array.from(options.input_ids.data, String)] }); break;
-  case 'end': throw new Error('Stream ended before prompt');
-  default: { const exhaustive: never = first; throw new Error(String(exhaustive)); }
+  if (first === undefined) {
+    throw new Error('Missing prompt stream');
   }
-  if (!(options.streamer instanceof runtime.TextStreamer) || typeof options.stopping_criteria !== 'function') throw new Error(`Captured Full requires actual stream/stopping controls: ${label}`);
+  switch (first.operation) {
+  case 'put': exact({ label: `${label}/stream prompt`, actual: first.groups, expected: [Array.from(options.input_ids.data, String)] });
+    break;
+  case 'end': throw new Error('Stream ended before prompt');
+  default: {
+    const exhaustive: never = first;
+    throw new Error(String(exhaustive));
+  }
+  }
+  if (!(options.streamer instanceof runtime.TextStreamer) || typeof options.stopping_criteria !== 'function') {
+    throw new Error(`Captured Full requires actual stream/stopping controls: ${label}`);
+  }
   for (const action of checked.stream) {
     switch (action.operation) {
-    case 'put': options.streamer.put(action.groups.map(group => group.map(BigInt))); break;
-    case 'end': options.streamer.end(); break;
-    default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
+    case 'put': options.streamer.put(action.groups.map(group => group.map(BigInt)));
+      break;
+    case 'end': options.streamer.end();
+      break;
+    default: {
+      const exhaustive: never = action;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   return { sequences: new runtime.Tensor('int64', BigInt64Array.from(checked.sequence.tokens, BigInt), checked.sequence.dims), past_key_values: null };
@@ -260,18 +306,27 @@ function jsonProjection({ value }: { value: unknown }) {
 function providerEvents({ events }: { events: readonly ProductionProviderTraceEvent[] }) {
   const ids = new Map<string, string>();
   return events.map(event => {
-    if (!('toolCallId' in event)) return event;
+    if (!('toolCallId' in event)) {
+      return event;
+    }
     switch (event.kind) {
     case 'tool-call':
     case 'part_call':
-      if (ids.has(event.toolCallId)) throw new Error('Duplicate actual tool ID');
+      if (ids.has(event.toolCallId)) {
+        throw new Error('Duplicate actual tool ID');
+      }
       ids.set(event.toolCallId, `tool-${ids.size + 1}`);
       break;
     case 'tool-started': case 'tool-output': case 'tool-exit': case 'tool-success': case 'tool-error': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
     const id = ids.get(event.toolCallId);
-    if (id === undefined) throw new Error('Unowned actual tool result');
+    if (id === undefined) {
+      throw new Error('Unowned actual tool result');
+    }
     return { ...event, toolCallId: id };
   });
 }
@@ -290,13 +345,18 @@ export function verifyCapturedGapInputs({ events, expected }: {
   exact({ label: 'gap captured settings', actual: settings.map(event => event.value), expected: [expected.settings] });
   for (const phase of ['pre-budget', 'native-kwargs'] as const) {
     const snapshots = events.filter(event => event.kind === 'inputs' && event.phase === phase);
-    if (snapshots.length !== 1 || snapshots[0]?.kind !== 'inputs') throw new Error(`Missing gap captured ${phase} inputs`);
+    if (snapshots.length !== 1 || snapshots[0]?.kind !== 'inputs') {
+      throw new Error(`Missing gap captured ${phase} inputs`);
+    }
     const values = snapshots[0].values;
     const { inputs, keys } = (() => {
       switch (phase) {
       case 'pre-budget': return { inputs: expected.preInputs, keys: expected.preInputs.map(input => input.name) };
       case 'native-kwargs': return { inputs: expected.inputs, keys: expected.settings.kwargs.keys.values };
-      default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(String(exhaustive));
+      }
       }
     })();
     exact({ label: `gap captured ${phase} keys`, actual: values.map(value => value.name).sort(), expected: [...keys].sort() });
@@ -304,11 +364,16 @@ export function verifyCapturedGapInputs({ events, expected }: {
       const actual = values.find(value => value.name === input.name)?.snapshot;
       switch (input.value.kind) {
       case 'tensor': {
-        if (actual === undefined) throw new Error(`Missing gap captured ${phase}/${input.name} tensor`);
+        if (actual === undefined) {
+          throw new Error(`Missing gap captured ${phase}/${input.name} tensor`);
+        }
         switch (actual.status) {
         case 'captured': break;
         case 'scalar': case 'image-sizes': case 'not-recorded': throw new Error(`Missing gap captured ${phase}/${input.name} tensor`);
-        default: { const exhaustive: never = actual; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = actual;
+          throw new Error(String(exhaustive));
+        }
         }
         const { kind: _kind, ...fact } = input.value;
         exact({ label: `gap captured ${phase}/${input.name}`, actual: { dtype: actual.dtype, dims: actual.dims, byteLength: actual.byteLength, sha256: hash({ bytes: actual.bytes }) }, expected: fact });
@@ -317,7 +382,10 @@ export function verifyCapturedGapInputs({ events, expected }: {
       case 'scalar': case 'image-sizes':
         exact({ label: `gap captured ${phase}/${input.name}`, actual, expected: { status: input.value.kind, values: input.value.value } });
         break;
-      default: { const exhaustive: never = input.value; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = input.value;
+        throw new Error(String(exhaustive));
+      }
       }
     }
   }
@@ -383,34 +451,57 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
     }
   }
   for (const gap of invalidated) {
-    if (gap.reason.trim().length === 0) throw new Error('Missing reviewed output-invalidation reason');
-    if (gapOrdinals.has(gap.callOrdinal) || gapScenarios.has(gap.scenario)) throw new Error('Duplicate reviewed output gap');
+    if (gap.reason.trim().length === 0) {
+      throw new Error('Missing reviewed output-invalidation reason');
+    }
+    if (gapOrdinals.has(gap.callOrdinal) || gapScenarios.has(gap.scenario)) {
+      throw new Error('Duplicate reviewed output gap');
+    }
     const recorded = evidence.invocations.filter(invocation => invocation.callOrdinal === gap.callOrdinal && invocation.scenario === gap.scenario);
-    if (recorded.length !== 1 || evidence.unavailableRecordedCalls?.includes(gap.callOrdinal)) throw new Error('Invalidated output must identify one originally replayable native invocation');
+    if (recorded.length !== 1 || evidence.unavailableRecordedCalls?.includes(gap.callOrdinal)) {
+      throw new Error('Invalidated output must identify one originally replayable native invocation');
+    }
     const request = evidence.requests.find(candidate => candidate.scenario === gap.scenario);
     if (request === undefined || isDeepStrictEqual(jsonProjection({ value: gap.requestInput }), request.input)) {
       throw new Error('Output invalidation requires a changed public input, not a replay waiver');
     }
-    gapOrdinals.add(gap.callOrdinal); gapScenarios.add(gap.scenario);
+    gapOrdinals.add(gap.callOrdinal);
+    gapScenarios.add(gap.scenario);
   }
   for (const correction of reviewedPublicContract?.correctedEvents ?? []) {
-    if (correction.reason.trim().length === 0) throw new Error('Missing reviewed public-contract reason');
-    if (correctedEvents.has(correction.scenario) || gapScenarios.has(correction.scenario)) throw new Error('Duplicate or gap-owned public-contract correction');
-    if (evidence.requests.filter(request => request.scenario === correction.scenario).length !== 1) throw new Error('Public-contract correction must identify one recorded request');
+    if (correction.reason.trim().length === 0) {
+      throw new Error('Missing reviewed public-contract reason');
+    }
+    if (correctedEvents.has(correction.scenario) || gapScenarios.has(correction.scenario)) {
+      throw new Error('Duplicate or gap-owned public-contract correction');
+    }
+    if (evidence.requests.filter(request => request.scenario === correction.scenario).length !== 1) {
+      throw new Error('Public-contract correction must identify one recorded request');
+    }
     // Detach model-local expected data before Production can run. No function
     // transforms current callbacks or silently normalizes historical evidence.
     correctedEvents.set(correction.scenario, z.array(z.json()).parse(correction.expectedEvents));
   }
   for (const correction of reviewedPublicContract?.correctedFinalizedStreams ?? []) {
-    if (correction.reason.trim().length === 0) throw new Error('Missing reviewed finalized-stream reason');
-    if (correctedFinalizedStreams.has(correction.callOrdinal) || gapOrdinals.has(correction.callOrdinal)) throw new Error('Duplicate or gap-owned finalized-stream correction');
+    if (correction.reason.trim().length === 0) {
+      throw new Error('Missing reviewed finalized-stream reason');
+    }
+    if (correctedFinalizedStreams.has(correction.callOrdinal) || gapOrdinals.has(correction.callOrdinal)) {
+      throw new Error('Duplicate or gap-owned finalized-stream correction');
+    }
     if (evidence.invocations.filter(invocation => invocation.callOrdinal === correction.callOrdinal && invocation.scenario === correction.scenario).length !== 1
-      || evidence.unavailableRecordedCalls?.includes(correction.callOrdinal)) throw new Error('Finalized-stream correction must identify one replayable native invocation');
+      || evidence.unavailableRecordedCalls?.includes(correction.callOrdinal)) {
+      throw new Error('Finalized-stream correction must identify one replayable native invocation');
+    }
     correctedFinalizedStreams.set(correction.callOrdinal, z.array(z.object({ text: z.string(), streamEnd: z.boolean() }).strict()).parse(correction.expectedFinalized));
   }
   for (const rejection of reviewedPublicContract?.preNativeRejections ?? []) {
-    if (rejection.reason.trim().length === 0) throw new Error('Missing reviewed pre-native rejection reason');
-    if (reviewedPublicContract?.singleTextParts === undefined && reviewedPublicContract?.structuredParts === undefined) throw new Error('Pre-native rejection requires the structured parts contract');
+    if (rejection.reason.trim().length === 0) {
+      throw new Error('Missing reviewed pre-native rejection reason');
+    }
+    if (reviewedPublicContract?.singleTextParts === undefined && reviewedPublicContract?.structuredParts === undefined) {
+      throw new Error('Pre-native rejection requires the structured parts contract');
+    }
     if (preNativeRejections.has(rejection.scenario) || gapScenarios.has(rejection.scenario)
       || correctedEvents.has(rejection.scenario)
       || evidence.invocations.some(call => call.scenario === rejection.scenario && correctedFinalizedStreams.has(call.callOrdinal))) {
@@ -441,7 +532,10 @@ function readCapturedFinalized({ events, label }: { events: Parameters<typeof ve
       switch (detail.kind) {
       case 'finalized-text': return { text: detail.text, streamEnd: detail.streamEnd };
       case 'tokens': case 'none': case 'not-recorded': throw new Error(`Missing finalized callback: ${label}`);
-      default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = detail;
+        throw new Error(String(exhaustive));
+      }
       }
     });
 }
@@ -494,7 +588,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const active = owner.snapshotProvider().requests.filter(request => request.status === 'awaiting-settlement');
       expect(active, 'one active request before stream release').toHaveLength(1);
       const request = active[0];
-      if (request === undefined) throw new Error('Missing active Provider request');
+      if (request === undefined) {
+        throw new Error('Missing active Provider request');
+      }
       expect(preNativeRejections.has(request.scenario), 'rejected input must never reach native generation').toBe(false);
       const localOrdinal = (requestOrdinals.get(request.scenario) ?? 0) + 1;
       requestOrdinals.set(request.scenario, localOrdinal);
@@ -504,9 +600,13 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const recordedCalls = [...evidence.invocations, ...(evidence.nativeInputGaps ?? [])]
         .filter(item => item.scenario === request.scenario).sort((a, b) => a.callOrdinal - b.callOrdinal);
       const recordedCall = recordedCalls[localOrdinal - 1];
-      if (recordedCall === undefined) throw new Error('Unrecorded extra native invocation');
+      if (recordedCall === undefined) {
+        throw new Error('Unrecorded extra native invocation');
+      }
       const sourceCallOrdinal = recordedCall.callOrdinal;
-      if (runtimeOrdinals.has(sourceCallOrdinal)) throw new Error('Duplicate replayed source invocation');
+      if (runtimeOrdinals.has(sourceCallOrdinal)) {
+        throw new Error('Duplicate replayed source invocation');
+      }
       runtimeOrdinals.set(sourceCallOrdinal, callOrdinal);
       const gap = unavailableOutputs.find(item => item.callOrdinal === sourceCallOrdinal);
       if (gap !== undefined) {
@@ -524,7 +624,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         throw error;
       }
       const invocation = evidence.invocations.find(item => item.callOrdinal === sourceCallOrdinal);
-      if (invocation === undefined) throw new Error('Unrecorded extra native invocation');
+      if (invocation === undefined) {
+        throw new Error('Unrecorded extra native invocation');
+      }
       expect(request?.scenario, 'active request before stream release').toBe(invocation.scenario);
       const recorded = evidence.requests.find(item => item.scenario === invocation.scenario)!;
       const comparableInput = jsonProjection({ value: request.input });
@@ -550,10 +652,14 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const result = replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: request?.input?.parameters });
       if (structuredParts !== undefined) {
         const expected = structuredParts.invocations.find(item => item.callOrdinal === sourceCallOrdinal);
-        if (expected === undefined) throw new Error('Missing structured-parts invocation declaration');
+        if (expected === undefined) {
+          throw new Error('Missing structured-parts invocation declaration');
+        }
         verifyStructuredInvocationTermination({ invocation, expected, contract: structuredParts });
       }
-      if (completeResult === undefined) return result;
+      if (completeResult === undefined) {
+        return result;
+      }
       const completed = completeResult({ ...args, callOrdinal: sourceCallOrdinal, result });
       const dictionary = z.object({ sequences: z.instanceof(runtime.Tensor) }).parse(completed);
       expect(dictionary.sequences, 'KV shape control must preserve the recorded sequence object').toBe(result.sequences);
@@ -586,7 +692,8 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
           maxTotalStreamTokenBytes: 8388608,
         },
       });
-      const take = vi.fn(capture.takeGenerationCapture); takes.push(take);
+      const take = vi.fn(capture.takeGenerationCapture);
+      takes.push(take);
       return { ...capture, takeGenerationCapture: take };
     },
     createUnrecordedWorkerClient: () => {
@@ -598,21 +705,30 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     expect(provider.run).toEqual({ status: 'completed' });
     expect(new Set(provider.requests.map(request => request.scenario))).toEqual(new Set([...evidence.requests.map(request => request.scenario), ...unavailableOutputs.map(gap => gap.scenario)]));
     expect(provider.requests.map(request => request.scenario), 'original whole-sequence request order').toEqual([...new Set([...evidence.requests.map(request => request.scenario), ...unavailableOutputs.map(gap => gap.scenario)])]);
-    expect(takes).toHaveLength(1); expect(takes[0]).not.toHaveBeenCalled();
-    await owner.collectNative(); expect(takes[0]).toHaveBeenCalledOnce();
+    expect(takes).toHaveLength(1);
+    expect(takes[0]).not.toHaveBeenCalled();
+    await owner.collectNative();
+    expect(takes[0]).toHaveBeenCalledOnce();
     const snapshot = owner.snapshot();
     switch (snapshot.native.status) {
     case 'retained': break;
     case 'released': throw new Error('Missing real native collection');
-    default: { const exhaustive: never = snapshot.native; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = snapshot.native;
+      throw new Error(String(exhaustive));
+    }
     }
     expect(snapshot.native.capture.epochs).toHaveLength(1);
     const epoch = snapshot.native.capture.epochs[0]!;
-    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Missing real native capture');
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') {
+      throw new Error('Missing real native capture');
+    }
     const capture = epoch.collection.result.capture;
     const captureOrdinals = new Map<number, number>();
     for (const request of provider.requests) {
-      if (preNativeRejections.has(request.scenario)) continue;
+      if (preNativeRejections.has(request.scenario)) {
+        continue;
+      }
       const sourceCalls = [...evidence.invocations, ...(evidence.nativeInputGaps ?? [])]
         .filter(item => item.scenario === request.scenario).sort((left, right) => left.callOrdinal - right.callOrdinal);
       expect(new Set(sourceCalls.map(item => item.callOrdinal)).size, `${request.scenario}/distinct captured source calls`).toBe(sourceCalls.length);
@@ -652,7 +768,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
           && (event.kind === 'native-stream' || event.kind === 'sequence')), `${request.scenario}/no native output`).toEqual([]);
         if (structuredParts !== undefined) {
           const expected = structuredParts.requests.find(item => item.scenario === request.scenario);
-          if (expected === undefined) throw new Error('Missing rejected structured-parts request declaration');
+          if (expected === undefined) {
+            throw new Error('Missing rejected structured-parts request declaration');
+          }
           verifyStructuredPartsObservation({ events: request.trace.settled?.events ?? [], expected, settlement: 'rejected' });
           precedingEvents = request.trace.settled?.events;
         }
@@ -667,7 +785,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
           verifyCapturedProviderPrefix({ events: request.trace.settled!.events, expected: gap.expectedEventsBeforeGap });
         } else {
           const expected = structuredParts.requests.find(item => item.scenario === request.scenario);
-          if (expected === undefined) throw new Error('Missing output-gap structured-parts request declaration');
+          if (expected === undefined) {
+            throw new Error('Missing output-gap structured-parts request declaration');
+          }
           verifyStructuredPartsObservation({ events: request.trace.settled!.events, expected, settlement: 'rejected' });
           precedingEvents = request.trace.settled!.events;
         }
@@ -696,7 +816,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         expect(comparableInput, `${request.scenario}/Provider input`).toEqual(recorded.input);
       }
       const corrected = correctedEvents.get(request.scenario);
-      if (corrected !== undefined) usedCorrections.push(request.scenario);
+      if (corrected !== undefined) {
+        usedCorrections.push(request.scenario);
+      }
       if (singleTextParts === undefined && structuredParts === undefined) {
         expect(providerEvents({ events: request.trace.settled!.events }), `${request.scenario}/settled callbacks`).toEqual(corrected ?? recorded.events);
       } else if (singleTextParts !== undefined) {
@@ -714,7 +836,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         precedingEvents = request.trace.settled!.events;
       } else {
         const expected = structuredParts!.requests.find(item => item.scenario === request.scenario);
-        if (expected === undefined) throw new Error('Missing structured-parts request declaration');
+        if (expected === undefined) {
+          throw new Error('Missing structured-parts request declaration');
+        }
         verifyStructuredPartsObservation({ events: request.trace.settled!.events, expected, settlement: 'fulfilled' });
         precedingEvents = request.trace.settled!.events;
       }
@@ -727,11 +851,16 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     expect(callOrdinal).toBe(expectedCallCount);
     expect(verifiedGaps, gapFailures.join('\n')).toEqual(unavailableOutputs.map(item => item.callOrdinal));
     const load = epoch.collection.result.loadObservation;
-    if (load === undefined) throw new Error('Missing actual ordinary Load receipt');
+    if (load === undefined) {
+      throw new Error('Missing actual ordinary Load receipt');
+    }
     switch (load.outcome.status) {
     case 'accepted': break;
     case 'loading': case 'failed': case 'cleared': case 'not-recorded': throw new Error('Missing actual ordinary Load receipt');
-    default: { const exhaustive: never = load.outcome; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = load.outcome;
+      throw new Error(String(exhaustive));
+    }
     }
     expect(load.owner).toEqual({ runId: 'captured-full-replay', workerEpoch: 1 });
     expect(load.loadOrdinal).toBe(1);
@@ -757,11 +886,17 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       expect(capture.calls.find(call => call.context.generationCallId === runtimeOrdinal)?.outcome, `${gap.scenario}/native gap settlement`).toBe('rejected');
       expect(capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal && event.kind === 'native-stream'), `${gap.scenario}/no invented output`).toEqual([]);
       const recordedInputs = evidence.nativeInputGaps?.find(input => input.callOrdinal === gap.callOrdinal);
-      if (recordedInputs !== undefined) verifyCapturedGapInputs({ events: capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal), expected: recordedInputs });
+      if (recordedInputs !== undefined) {
+        verifyCapturedGapInputs({ events: capture.events.filter(event => event.identity.generationCallId === runtimeOrdinal), expected: recordedInputs });
+      }
     }
     for (const invocation of evidence.invocations) {
-      if (preNativeRejections.has(invocation.scenario)) continue;
-      if (unavailableOutputs.some(gap => gap.callOrdinal === invocation.callOrdinal)) continue;
+      if (preNativeRejections.has(invocation.scenario)) {
+        continue;
+      }
+      if (unavailableOutputs.some(gap => gap.callOrdinal === invocation.callOrdinal)) {
+        continue;
+      }
       const label = `${invocation.scenario}/call-${invocation.callOrdinal}`;
       const runtimeOrdinal = captureOrdinals.get(invocation.callOrdinal);
       expect(runtimeOrdinal, `${label}/actual capture identity`).toBeDefined();
@@ -770,9 +905,13 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       const stream = events.filter(event => event.kind === 'native-stream').filter(event => event.phase === 'entering' && event.operation !== 'on_finalized_text').map(event => {
         switch (event.operation) {
         case 'put': return { operation: 'put', groups: z.object({ kind: z.literal('tokens'), tokenType: z.literal('bigint'), groups: z.array(z.array(token)) }).parse(event.detail).groups };
-        case 'end': expect(event.detail).toEqual({ kind: 'none' }); return { operation: 'end' };
+        case 'end': expect(event.detail).toEqual({ kind: 'none' });
+          return { operation: 'end' };
         case 'on_finalized_text': throw new Error('Unexpected finalized callback in native action list');
-        default: { const exhaustive: never = event.operation; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = event.operation;
+          throw new Error(String(exhaustive));
+        }
         }
       });
       expect(stream, `${label}/captured put grouping and end order`).toEqual(invocation.stream);
@@ -784,22 +923,33 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       expect({ dtype: sequence.dtype, dims: sequence.dims, byteLength: sequence.byteLength, sha256: hash({ bytes: sequence.bytes }) }, `${label}/captured sequence bytes`).toEqual(sequenceFact);
       const finalized = readCapturedFinalized({ events, label });
       const correctedFinalized = correctedFinalizedStreams.get(invocation.callOrdinal);
-      if (correctedFinalized !== undefined) usedFinalizedCorrections.push(invocation.callOrdinal);
+      if (correctedFinalized !== undefined) {
+        usedFinalizedCorrections.push(invocation.callOrdinal);
+      }
       // Parts-mode callbacks were checked against the unchanged old text and
       // every actual applied revision above. Legacy mode still checks exact
       // callback segmentation, including explicitly reviewed corrections.
-      if (singleTextParts === undefined && structuredParts === undefined) expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
+      if (singleTextParts === undefined && structuredParts === undefined) {
+        expect(finalized, `${label}/actual finalized stream`).toEqual(correctedFinalized ?? invocation.finalized);
+      }
       const pre = events.filter(event => event.kind === 'inputs').find(event => event.phase === 'pre-budget');
-      if (pre === undefined) throw new Error(`Missing pre-budget inputs: ${label}`);
+      if (pre === undefined) {
+        throw new Error(`Missing pre-budget inputs: ${label}`);
+      }
       for (const input of invocation.preInputs) {
         const actual = pre.values.find(value => value.name === input.name)?.snapshot;
         switch (input.value.kind) {
         case 'tensor': {
-          if (actual === undefined) throw new Error(`Missing captured tensor: ${label}/${input.name}`);
+          if (actual === undefined) {
+            throw new Error(`Missing captured tensor: ${label}/${input.name}`);
+          }
           switch (actual.status) {
           case 'captured': break;
           case 'scalar': case 'image-sizes': case 'not-recorded': throw new Error(`Missing captured tensor: ${label}/${input.name}`);
-          default: { const exhaustive: never = actual; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = actual;
+            throw new Error(String(exhaustive));
+          }
           }
           const { kind: _kind, ...fact } = input.value;
           expect({ dtype: actual.dtype, dims: actual.dims, byteLength: actual.byteLength, sha256: hash({ bytes: actual.bytes }) }, `${label}/${input.name}/pre-budget`).toEqual(fact);
@@ -808,16 +958,23 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         case 'scalar': case 'image-sizes':
           expect(actual, `${label}/${input.name}/pre-budget`).toEqual({ status: input.value.kind, values: input.value.value });
           break;
-        default: { const exhaustive: never = input.value; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = input.value;
+          throw new Error(String(exhaustive));
+        }
         }
       }
     }
     expect(harness.observations.workers).toHaveLength(1);
     expect(epoch.lifetime.status).toBe('observed');
     switch (epoch.lifetime.status) {
-    case 'observed': expect(epoch.lifetime.value.loadRequests).toHaveLength(1); break;
+    case 'observed': expect(epoch.lifetime.value.loadRequests).toHaveLength(1);
+      break;
     case 'unavailable': throw new Error('Missing observed Worker lifetime');
-    default: { const exhaustive: never = epoch.lifetime; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = epoch.lifetime;
+      throw new Error(String(exhaustive));
+    }
     }
     verifyFinalizedCorrectionsUsed({ expected: [...correctedFinalizedStreams.keys()], used: usedFinalizedCorrections });
     expect(harness.observations.forbiddenTransport).toEqual([]);

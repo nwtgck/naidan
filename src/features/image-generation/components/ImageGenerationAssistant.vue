@@ -21,23 +21,35 @@ const docked = computed(() => props.presentation === 'docked');
 const helpOpen = ref(false);
 let previousFocus: HTMLElement | undefined;
 watch(() => props.active, async (active, _previous, onCleanup) => {
-  let current = true; onCleanup(() => {
+  let current = true;
+  onCleanup(() => {
     current = false;
   });
   if (!active) {
-    if (previousFocus?.isConnected && panel.value?.contains(document.activeElement)) previousFocus.focus({ preventScroll: true });
+    if (previousFocus?.isConnected && panel.value?.contains(document.activeElement)) {
+      previousFocus.focus({ preventScroll: true });
+    }
     return;
   }
-  if (document.activeElement instanceof HTMLElement) previousFocus = document.activeElement;
+  if (document.activeElement instanceof HTMLElement) {
+    previousFocus = document.activeElement;
+  }
   await nextTick();
-  if (current) panel.value?.focus({ preventScroll: true });
+  if (current) {
+    panel.value?.focus({ preventScroll: true });
+  }
 }, { immediate: true });
 
 function keydown({ event }: { event: KeyboardEvent }): void {
-  if (event.defaultPrevented || event.isComposing) return;
-  if (!docked.value) trapImageDialogFocus({ root: panel.value, event });
+  if (event.defaultPrevented || event.isComposing) {
+    return;
+  }
+  if (!docked.value) {
+    trapImageDialogFocus({ root: panel.value, event });
+  }
   if (event.key === 'Escape' && !docked.value) {
-    event.preventDefault(); emit('close');
+    event.preventDefault();
+    emit('close');
   }
 }
 
@@ -57,33 +69,50 @@ let disposed = false, loadingEpoch = 0;
 const identity = computed(() => [props.active, loaded.value, props.workspace.store.value?.storeId, props.workspace.selectedSessionId.value] as const);
 watch([selected, () => chats.value.some(chat => chat.id === selected.value)], async ([chatId, listed]) => {
   const token = ++loadingEpoch;
-  loaded.value = undefined; failure.value = ''; loading.value = false;
-  if (!chatId) return;
+  loaded.value = undefined;
+  failure.value = '';
+  loading.value = false;
+  if (!chatId) {
+    return;
+  }
   if (!listed) {
-    failure.value = 'The selected chat is unavailable.'; return;
+    failure.value = 'The selected chat is unavailable.';
+    return;
   }
   loading.value = true;
   try {
     const existing = chatDataStore.getLiveChatById({ chatId });
     const chat = existing ?? await storageService.loadChat({ id: chatId });
-    if (disposed || token !== loadingEpoch) return;
-    if (!chat || !chats.value.some(choice => choice.id === chatId)) throw new Error('The selected chat is unavailable.');
+    if (disposed || token !== loadingEpoch) {
+      return;
+    }
+    if (!chat || !chats.value.some(choice => choice.id === chatId)) {
+      throw new Error('The selected chat is unavailable.');
+    }
     chatDataStore.getLiveChat({ chat });
     loaded.value = chatId;
   } catch (error) {
-    if (token === loadingEpoch) failure.value = error instanceof Error ? error.message : String(error);
+    if (token === loadingEpoch) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
-    if (token === loadingEpoch) loading.value = false;
+    if (token === loadingEpoch) {
+      loading.value = false;
+    }
   }
 }, { immediate: true });
 watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => {
-  if (!active || !chatId || !storeId || !sessionId) return;
+  if (!active || !chatId || !storeId || !sessionId) {
+    return;
+  }
   const bound = { chatId, storeId, sessionId };
   const bindingId = generateId<ImageGenerationBindingId>(), lifetime = new AbortController();
   function readTarget(): ImageGenerationPromptTarget | undefined {
     const view = props.workspace;
     if (lifetime.signal.aborted || !props.active || loaded.value !== chatId || view.store.value?.storeId !== storeId
-      || view.selectedSessionId.value !== sessionId || !view.editorReady.value || view.editor.draftDisabled.value) return undefined;
+      || view.selectedSessionId.value !== sessionId || !view.editorReady.value || view.editor.draftDisabled.value) {
+      return undefined;
+    }
     return {
       ...bound,
       bindingId,
@@ -114,30 +143,43 @@ watch(identity, ([active, chatId, storeId, sessionId], _previous, onCleanup) => 
         },
         commit({ expected, edit }) {
           const current = readTarget();
-          if (!current || current.bindingId !== expected.bindingId || current.revision !== expected.revision || current.prompt !== expected.prompt || current.negativePrompt !== expected.negativePrompt) return 'conflict';
+          if (!current || current.bindingId !== expected.bindingId || current.revision !== expected.revision || current.prompt !== expected.prompt || current.negativePrompt !== expected.negativePrompt) {
+            return 'conflict';
+          }
           return props.workspace.setPromptDraft(edit) ? 'applied' : 'conflict';
         },
       }),
     });
     onCleanup(() => {
-      lifetime.abort(); unregister();
+      lifetime.abort();
+      unregister();
     });
   } catch (error) {
-    failure.value = error instanceof Error ? error.message : String(error); lifetime.abort();
+    failure.value = error instanceof Error ? error.message : String(error);
+    lifetime.abort();
   }
 }, { immediate: true, flush: 'sync' });
 const unsubscribe = storageService.subscribeToChanges({
   listener: ({ event }) => {
     switch (event.type) {
-    case 'migration': loadingEpoch++; loaded.value = undefined; break;
+    case 'migration': loadingEpoch++;
+      loaded.value = undefined;
+      break;
     case 'chat_meta_and_chat_group': case 'chat_content': case 'chat_content_generation': case 'settings': case 'naidan_rpc_registry': case 'binary_objects': break;
-    default: { const exhaustive: never = event; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
     }
   },
 });
 onScopeDispose(() => {
-  disposed = true; loadingEpoch++; unsubscribe();
-  if (props.active && panel.value?.contains(document.activeElement) && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+  disposed = true;
+  loadingEpoch++;
+  unsubscribe();
+  if (props.active && panel.value?.contains(document.activeElement) && previousFocus?.isConnected) {
+    previousFocus.focus({ preventScroll: true });
+  }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { selected } }) || {}) });
 </script>

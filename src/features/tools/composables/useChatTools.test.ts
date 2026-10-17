@@ -234,7 +234,9 @@ describe('useChatTools', () => {
     let persisted: ChatMeta = { ...chat };
     vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
       const updated = await updater({ current: persisted });
-      if (updated !== undefined) persisted = updated;
+      if (updated !== undefined) {
+        persisted = updated;
+      }
     });
 
     const first = setToolEnabled({ name: 'calculator', enabled: true });
@@ -259,7 +261,9 @@ describe('useChatTools', () => {
     let unrelatedUpdatedAt: number | undefined;
     vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
       const updated = await updater({ current: persisted });
-      if (updated !== undefined) persisted = updated;
+      if (updated !== undefined) {
+        persisted = updated;
+      }
       unrelatedUpdatedAt = persisted.updatedAt + 1;
       chat.updatedAt = unrelatedUpdatedAt;
     });

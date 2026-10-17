@@ -29,7 +29,9 @@ export function observeProductionToolParser({ strategy, inputChunks, tools }: {
     const parser = new ToolCallStreamParser({
       onText: ({ text }) => visibleChunks.push(text),
     });
-    for (const output of inputChunks) parser.feed({ output });
+    for (const output of inputChunks) {
+      parser.feed({ output });
+    }
     parser.flush();
     const toolCalls = normalizeToolCalls({ toolCalls: parser.drainToolCalls() });
     return {
@@ -53,10 +55,14 @@ export function observeProductionToolParser({ strategy, inputChunks, tools }: {
       }).strict()).parse(tools),
       onText: ({ text }) => {
         const sanitized = sanitizeQwen3_5VisibleText({ text });
-        if (sanitized.length > 0) visibleChunks.push(sanitized);
+        if (sanitized.length > 0) {
+          visibleChunks.push(sanitized);
+        }
       },
     });
-    for (const output of inputChunks) parser.feed({ output });
+    for (const output of inputChunks) {
+      parser.feed({ output });
+    }
     parser.flush();
     const toolCalls = normalizeToolCalls({ toolCalls: parser.drainToolCalls() });
     return {
@@ -80,7 +86,9 @@ export function observeProductionToolParser({ strategy, inputChunks, tools }: {
         callBoundaryCount += 1;
       },
     });
-    for (const output of inputChunks) interpreter.feed({ output });
+    for (const output of inputChunks) {
+      interpreter.feed({ output });
+    }
     const toolCalls = normalizeToolCalls({ toolCalls: interpreter.drainToolCalls() });
     return {
       status: "observed",

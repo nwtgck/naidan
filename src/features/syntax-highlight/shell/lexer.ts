@@ -49,7 +49,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
   function take({ span }: { span: number }) {
     cursor++;
     spans[span]!.end = cursor;
-    if (__BUILD_MODE_IS_TEST__) examinedCharacters++;
+    if (__BUILD_MODE_IS_TEST__) {
+      examinedCharacters++;
+    }
   }
 
   function character({ kind }: { kind: SyntaxTokenKind }) {
@@ -60,7 +62,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
 
   function retag({ span, kind }: { span: number, kind: SyntaxTokenKind }) {
     const token = spans[span]!;
-    if (token.kind === kind) return;
+    if (token.kind === kind) {
+      return;
+    }
     token.kind = kind;
     changedFrom = Math.min(changedFrom, token.start);
   }
@@ -73,7 +77,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
   }
 
   function wordKind({ mode }: { mode: Extract<Mode, { type: 'word' }> }): SyntaxTokenKind {
-    if (!mode.eligible) return 'plain';
+    if (!mode.eligible) {
+      return 'plain';
+    }
     switch (mode.assignment) {
     case 'assigned': return 'variable';
     case 'name':
@@ -119,7 +125,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
           const span = begin({ kind: 'string' });
           take({ span });
           context.mode = { type: 'quote', quote: char, escaped: false, span };
-          if (!context.redirectTarget) context.commandPosition = false;
+          if (!context.redirectTarget) {
+            context.commandPosition = false;
+          }
           context.redirectTarget = false;
           break;
         }
@@ -127,7 +135,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
           const span = begin({ kind: 'plain' });
           take({ span });
           context.mode = { type: 'variable-start', span, resume: { type: 'normal' } };
-          if (!context.redirectTarget) context.commandPosition = false;
+          if (!context.redirectTarget) {
+            context.commandPosition = false;
+          }
           context.redirectTarget = false;
           break;
         }
@@ -137,8 +147,12 @@ export function createShellHighlighter(): SyntaxHighlighter {
           break;
         }
         if (/[;|&()<>{}]/.test(char)) {
-          if (char === '(') context.parentheses++;
-          if (char === ')') context.parentheses = Math.max(0, context.parentheses - 1);
+          if (char === '(') {
+            context.parentheses++;
+          }
+          if (char === ')') {
+            context.parentheses = Math.max(0, context.parentheses - 1);
+          }
           const span = begin({ kind: 'operator' });
           take({ span });
           context.mode = { type: 'operator', span, text: char };
@@ -150,7 +164,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
       case 'word': {
         if (!mode.escaped && /[\s'"`$;|&()<>{}]/.test(char)) {
           const kind = wordKind({ mode });
-          if (mode.eligible) context.commandPosition = kind === 'variable' || (kind === 'keyword' && commandKeywords.has(mode.candidate!));
+          if (mode.eligible) {
+            context.commandPosition = kind === 'variable' || (kind === 'keyword' && commandKeywords.has(mode.candidate!));
+          }
           context.redirectTarget = false;
           context.mode = { type: 'normal' };
           break;
@@ -162,13 +178,19 @@ export function createShellHighlighter(): SyntaxHighlighter {
         switch (mode.assignment) {
         case 'name': {
           const first = cursor === spans[mode.span]!.start;
-          if (!first && char === '=') mode.assignment = 'assigned';
-          else if (!(first ? /[A-Za-z_]/ : /[A-Za-z0-9_]/).test(char)) mode.assignment = 'other';
+          if (!first && char === '=') {
+            mode.assignment = 'assigned';
+          } else if (!(first ? /[A-Za-z_]/ : /[A-Za-z0-9_]/).test(char)) {
+            mode.assignment = 'other';
+          }
           break;
         }
         case 'assigned':
         case 'other': break;
-        default: { const _ex: never = mode.assignment; throw new Error('Unhandled assignment state: ' + _ex); }
+        default: {
+          const _ex: never = mode.assignment;
+          throw new Error('Unhandled assignment state: ' + _ex);
+        }
         }
         mode.escaped = !mode.escaped && char === '\\';
         take({ span: mode.span });
@@ -176,8 +198,11 @@ export function createShellHighlighter(): SyntaxHighlighter {
         break;
       }
       case 'comment':
-        if (char === '\n') context.mode = { type: 'normal' };
-        else take({ span: mode.span });
+        if (char === '\n') {
+          context.mode = { type: 'normal' };
+        } else {
+          take({ span: mode.span });
+        }
         break;
       case 'quote': {
         if (!mode.escaped && mode.quote === '"' && char === '$') {
@@ -188,9 +213,13 @@ export function createShellHighlighter(): SyntaxHighlighter {
         }
         mode.span ??= begin({ kind: 'string' });
         take({ span: mode.span });
-        if (mode.escaped) mode.escaped = false;
-        else if (char === '\\' && mode.quote !== "'") mode.escaped = true;
-        else if (char === mode.quote) context.mode = { type: 'normal' };
+        if (mode.escaped) {
+          mode.escaped = false;
+        } else if (char === '\\' && mode.quote !== "'") {
+          mode.escaped = true;
+        } else if (char === mode.quote) {
+          context.mode = { type: 'normal' };
+        }
         break;
       }
       case 'operator': {
@@ -203,7 +232,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
         }
         if (mode.text.startsWith('<') || mode.text.startsWith('>')) {
           context.redirectTarget = true;
-          if (mode.text === '<<' || mode.text === '<<-') context.pendingHeredoc = { stripTabs: mode.text === '<<-' };
+          if (mode.text === '<<' || mode.text === '<<-') {
+            context.pendingHeredoc = { stripTabs: mode.text === '<<-' };
+          }
         } else {
           context.commandPosition = true;
           context.redirectTarget = false;
@@ -230,24 +261,37 @@ export function createShellHighlighter(): SyntaxHighlighter {
           retag({ span: mode.span, kind: 'variable' });
           take({ span: mode.span });
           context.mode = mode.resume;
-        } else context.mode = mode.resume;
+        } else {
+          context.mode = mode.resume;
+        }
         break;
       }
       case 'variable-name':
-        if (/[A-Za-z0-9_]/.test(char)) take({ span: mode.span });
-        else context.mode = mode.resume;
+        if (/[A-Za-z0-9_]/.test(char)) {
+          take({ span: mode.span });
+        } else {
+          context.mode = mode.resume;
+        }
         break;
       case 'parameter': {
         // Parameter expansion stays opaque; command substitutions have their own
         // shell context above, rather than coloring their entire body as a variable.
         take({ span: mode.span });
-        if (mode.escaped) mode.escaped = false;
-        else if (char === '\\' && mode.quote !== "'") mode.escaped = true;
-        else if (mode.quote) {
-          if (char === mode.quote) mode.quote = undefined;
-        } else if (char === "'" || char === '"') mode.quote = char;
-        else if (char === '{') mode.depth++;
-        else if (char === '}' && --mode.depth === 0) context.mode = mode.resume;
+        if (mode.escaped) {
+          mode.escaped = false;
+        } else if (char === '\\' && mode.quote !== "'") {
+          mode.escaped = true;
+        } else if (mode.quote) {
+          if (char === mode.quote) {
+            mode.quote = undefined;
+          }
+        } else if (char === "'" || char === '"') {
+          mode.quote = char;
+        } else if (char === '{') {
+          mode.depth++;
+        } else if (char === '}' && --mode.depth === 0) {
+          context.mode = mode.resume;
+        }
         break;
       }
       case 'delimiter': {
@@ -259,13 +303,21 @@ export function createShellHighlighter(): SyntaxHighlighter {
         }
         take({ span: mode.span });
         if (mode.escaped) {
-          mode.value.push(char); mode.escaped = false;
-        } else if (char === '\\' && mode.quote !== "'") mode.escaped = true;
-        else if (mode.quote) {
-          if (char === mode.quote) mode.quote = undefined;
-          else mode.value.push(char);
-        } else if (char === "'" || char === '"') mode.quote = char;
-        else mode.value.push(char);
+          mode.value.push(char);
+          mode.escaped = false;
+        } else if (char === '\\' && mode.quote !== "'") {
+          mode.escaped = true;
+        } else if (mode.quote) {
+          if (char === mode.quote) {
+            mode.quote = undefined;
+          } else {
+            mode.value.push(char);
+          }
+        } else if (char === "'" || char === '"') {
+          mode.quote = char;
+        } else {
+          mode.value.push(char);
+        }
         break;
       }
       case 'heredoc': {
@@ -274,14 +326,24 @@ export function createShellHighlighter(): SyntaxHighlighter {
         take({ span: mode.span });
         if (char === '\n') {
           let line = source.slice(mode.lineStart, cursor - 1).replace(/\r$/, '');
-          if (mode.document.stripTabs) line = line.replace(/^\t+/, '');
-          if (__BUILD_MODE_IS_TEST__) examinedCharacters += cursor - 1 - mode.lineStart;
-          if (line === mode.document.delimiter) enterHeredoc({ context });
-          else mode.lineStart = cursor;
+          if (mode.document.stripTabs) {
+            line = line.replace(/^\t+/, '');
+          }
+          if (__BUILD_MODE_IS_TEST__) {
+            examinedCharacters += cursor - 1 - mode.lineStart;
+          }
+          if (line === mode.document.delimiter) {
+            enterHeredoc({ context });
+          } else {
+            mode.lineStart = cursor;
+          }
         }
         break;
       }
-      default: { const _ex: never = mode; throw new Error('Unhandled shell mode: ' + _ex); }
+      default: {
+        const _ex: never = mode;
+        throw new Error('Unhandled shell mode: ' + _ex);
+      }
       }
     }
   }
@@ -290,7 +352,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
     update({ edit }) {
       const { offset, text, ...unhandled } = edit;
       unhandled satisfies Record<PropertyKey, never>;
-      if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.length) throw new Error('Invalid code edit offset');
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.length) {
+        throw new Error('Invalid code edit offset');
+      }
       changedFrom = offset;
       if (offset !== source.length) {
         cursor = 0;
@@ -302,12 +366,16 @@ export function createShellHighlighter(): SyntaxHighlighter {
       scan();
       // Find the changed suffix without revisiting all earlier tokens per append.
       let first = spans.length;
-      while (first > 0 && spans[first - 1]!.end > changedFrom) first--;
+      while (first > 0 && spans[first - 1]!.end > changedFrom) {
+        first--;
+      }
       const tokens = spans.slice(first).filter(span => span.end > span.start).map(({ kind, start, end }) => ({ kind, text: source.slice(Math.max(changedFrom, start), end) }));
       return { offset: changedFrom, tokens };
     },
   };
-  if (__BUILD_MODE_IS_TEST__) testCounters.set(highlighter, () => examinedCharacters);
+  if (__BUILD_MODE_IS_TEST__) {
+    testCounters.set(highlighter, () => examinedCharacters);
+  }
   return highlighter;
 }
 
@@ -315,7 +383,9 @@ export function createShellHighlighter(): SyntaxHighlighter {
 export const TEST_ONLY = {
   examinedCharacters({ highlighter }: { highlighter: SyntaxHighlighter }): number {
     const count = testCounters.get(highlighter);
-    if (!count) throw new Error('Highlighter instrumentation is unavailable');
+    if (!count) {
+      throw new Error('Highlighter instrumentation is unavailable');
+    }
     return count();
   },
 };

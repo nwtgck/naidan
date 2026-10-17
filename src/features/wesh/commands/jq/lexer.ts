@@ -24,7 +24,9 @@ function appendTextPart({
   parts: JqStringTokenPart[],
   value: string,
 }): void {
-  if (value.length === 0) return;
+  if (value.length === 0) {
+    return;
+  }
   const previous = parts.at(-1);
   if (previous !== undefined) {
     switch (previous.kind) {
@@ -119,7 +121,9 @@ function scanInterpolation({
 
   while (index < source.length) {
     const char = source[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (inString) {
       if (!escaped && char === '"') {
@@ -140,7 +144,9 @@ function scanInterpolation({
       continue;
     }
     if (char === '#') {
-      while (index < source.length && source[index] !== '\n') index += 1;
+      while (index < source.length && source[index] !== '\n') {
+        index += 1;
+      }
       continue;
     }
     if (char === '(') {
@@ -179,7 +185,9 @@ function scanString({
 
   while (index < source.length) {
     const char = source[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (char === '"') {
       appendTextPart({ parts, value: text });
@@ -201,7 +209,9 @@ function scanString({
       appendTextPart({ parts, value: text });
       text = '';
       const interpolation = scanInterpolation({ source, start: index + 2 });
-      if (!interpolation.ok) return interpolation;
+      if (!interpolation.ok) {
+        return interpolation;
+      }
       parts.push({ kind: 'interpolation', source: interpolation.body });
       index = interpolation.nextIndex;
       continue;
@@ -209,7 +219,9 @@ function scanString({
 
     if (escaped === 'u') {
       const unicode = decodeUnicodeEscape({ source, index: index + 2 });
-      if (!unicode.ok) return unicode;
+      if (!unicode.ok) {
+        return unicode;
+      }
       text += unicode.value;
       index = unicode.nextIndex;
       continue;
@@ -236,7 +248,9 @@ export function lexJq({
 
   while (index < source.length) {
     const char = source[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (/\s/.test(char)) {
       index += 1;
@@ -244,7 +258,9 @@ export function lexJq({
     }
 
     if (char === '#') {
-      while (index < source.length && source[index] !== '\n') index += 1;
+      while (index < source.length && source[index] !== '\n') {
+        index += 1;
+      }
       continue;
     }
 
@@ -284,7 +300,9 @@ export function lexJq({
       const decimal = source.slice(index).match(/^\.\d+(?:[eE][+-]?\d+)?/u);
       if (decimal?.[0] !== undefined) {
         const origin = createJqNumberOrigin({ lexeme: decimal[0] });
-        if (origin === undefined) return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+        if (origin === undefined) {
+          return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+        }
         tokens.push({ kind: 'number', value: Number(decimal[0]), origin });
         index += decimal[0].length;
         continue;
@@ -317,7 +335,9 @@ export function lexJq({
       index += 2;
       while (index < source.length) {
         const current = source[index];
-        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        if (current === undefined || !isIdentifierPart({ char: current })) {
+          break;
+        }
         value += current;
         index += 1;
       }
@@ -333,7 +353,9 @@ export function lexJq({
       index += 2;
       while (index < source.length) {
         const current = source[index];
-        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        if (current === undefined || !isIdentifierPart({ char: current })) {
+          break;
+        }
         value += current;
         index += 1;
       }
@@ -352,7 +374,9 @@ export function lexJq({
       continue;
     case '"': {
       const string = scanString({ source, start: index });
-      if (!string.ok) return string;
+      if (!string.ok) {
+        return string;
+      }
       tokens.push({ kind: 'string', parts: string.parts });
       index = string.nextIndex;
       continue;
@@ -367,7 +391,9 @@ export function lexJq({
         return { ok: false, message: `invalid number near '${source.slice(index)}'` };
       }
       const origin = createJqNumberOrigin({ lexeme: match[0] });
-      if (origin === undefined) return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+      if (origin === undefined) {
+        return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+      }
       tokens.push({ kind: 'number', value: Number(match[0]), origin });
       index += match[0].length;
       continue;
@@ -378,7 +404,9 @@ export function lexJq({
       index += 1;
       while (index < source.length) {
         const current = source[index];
-        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        if (current === undefined || !isIdentifierPart({ char: current })) {
+          break;
+        }
         value += current;
         index += 1;
       }

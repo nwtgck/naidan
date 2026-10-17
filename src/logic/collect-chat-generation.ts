@@ -28,7 +28,9 @@ export async function collectChatGeneration({ items, abortController, onText }: 
     abortController,
     onChange: () => {
       try {
-        if (onText) void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
+        if (onText) {
+          void Promise.resolve(onText({ text: getMessageText({ message: node }) })).catch(() => undefined);
+        }
       } catch { /* Presentation cannot own stream consumption. */ }
     },
   });

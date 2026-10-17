@@ -10,7 +10,9 @@ import { promiseAllKeyed } from '@/utils/promise';
 
 const restorations: Array<() => void> = [];
 afterEach(() => {
-  for (const restore of restorations.splice(0).reverse()) restore();
+  for (const restore of restorations.splice(0).reverse()) {
+    restore();
+  }
 });
 
 /** Native Blob/WebCrypto and explicit browser object-URL platform simulation. */
@@ -22,8 +24,11 @@ export function installProductionRuntimeStartupPlatform({ origin }: { origin: st
     const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
     Object.defineProperty(globalThis, name, { configurable: true, value });
     restorations.push(() => {
-      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-      else Reflect.deleteProperty(globalThis, name);
+      if (descriptor) {
+        Object.defineProperty(globalThis, name, descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, name);
+      }
     });
   }
   const blobs = new Map<string, Blob>();
@@ -39,8 +44,11 @@ export function installProductionRuntimeStartupPlatform({ origin }: { origin: st
     const descriptor = Object.getOwnPropertyDescriptor(URL, name);
     Object.defineProperty(URL, name, { configurable: true, value });
     restorations.push(() => {
-      if (descriptor) Object.defineProperty(URL, name, descriptor);
-      else Reflect.deleteProperty(URL, name);
+      if (descriptor) {
+        Object.defineProperty(URL, name, descriptor);
+      } else {
+        Reflect.deleteProperty(URL, name);
+      }
     });
   }
   return { blobs, createObjectURL, revokeObjectURL };
@@ -69,7 +77,9 @@ export function createProductionRuntimeStartupFixture({ emitFromWorker }: {
     ready: completion.promise,
     readyMessage,
     start() {
-      if (started) throw new Error('Fixture startup already started');
+      if (started) {
+        throw new Error('Fixture startup already started');
+      }
       started = true;
       emitFromWorker({
         message: {
@@ -83,8 +93,12 @@ export function createProductionRuntimeStartupFixture({ emitFromWorker }: {
     },
     acceptHostMessage({ message }: { message: unknown }): boolean {
       const parsed = productionRuntimeModuleReplySchema.safeParse(message);
-      if (!parsed.success) return false;
-      if (!started || parsed.data.requestId !== requestId) throw new Error('Fixture received a foreign module lease');
+      if (!parsed.success) {
+        return false;
+      }
+      if (!started || parsed.data.requestId !== requestId) {
+        throw new Error('Fixture received a foreign module lease');
+      }
       emitFromWorker({ message: readyMessage });
       completion.resolve();
       return true;

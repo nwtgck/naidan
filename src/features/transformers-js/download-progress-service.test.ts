@@ -38,7 +38,9 @@ it('bounds a held Download subscriber and retains terminal state without waiting
   transfer.prepare.mockImplementation(async ({ onDownloadProgress }: { onDownloadProgress: DownloadProgressCallback }) => {
     onDownloadProgress({ event: { kind: 'candidate', candidate: { device: 'wasm', dtype: 'q4' }, index: 0, count: 1 } });
     onDownloadProgress({ event: { kind: 'plan', index: 0, paths: ['onnx/model.onnx'] } });
-    for (let loaded = 1; loaded <= 1000; loaded++) onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/model.onnx', loaded, total: 1000 } } });
+    for (let loaded = 1; loaded <= 1000; loaded++) {
+      onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/model.onnx', loaded, total: 1000 } } });
+    }
     onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'onnx/model.onnx', loaded: 1000, total: 1000 } } });
     return { status: 'accepted' };
   });
@@ -168,7 +170,9 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   const healthy = vi.fn();
   owner.service.subscribe({
     listener: ({ status }) => {
-      if (status === 'loading') throw new Error('Synthetic failed progress renderer');
+      if (status === 'loading') {
+        throw new Error('Synthetic failed progress renderer');
+      }
     },
   });
   owner.service.subscribe({ listener: healthy });
@@ -219,12 +223,15 @@ it('shows cached model-session acceptance at 95 without starting size discovery 
   const createWorkerClient = vi.fn<() => TransformersJsWorkerClient>(() => {
     throw new Error('Unexpected runtime');
   });
-  const owner = createTransformersJsService({ createWorkerClient }); owners.push(owner);
+  const owner = createTransformersJsService({ createWorkerClient });
+  owners.push(owner);
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let reuseProgress: RuntimeAcceptanceProgressCallback | undefined;
   transfer.reuse.mockImplementationOnce(async ({ onProgress }: { onProgress: RuntimeAcceptanceProgressCallback }) => {
-    reuseProgress = onProgress; entered.resolve(); await release.promise;
+    reuseProgress = onProgress;
+    entered.resolve();
+    await release.promise;
     return { reused: true, loadRevision: 'a'.repeat(40), acceptance: {} };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });
@@ -240,7 +247,8 @@ it('shows cached model-session acceptance at 95 without starting size discovery 
     expect(createWorkerClient).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   } finally {
-    release.resolve(); await running;
+    release.resolve();
+    await running;
   }
   expect(owner.service.getState().downloadProgress).toMatchObject({ phase: 'complete', overallProgress: 100 });
 });
@@ -300,7 +308,9 @@ it('drops the old buffered snapshot when the same listener is unsubscribed and r
   const listener = vi.fn(({ status }: { status: string }) => status === 'loading' ? held.promise : undefined);
   const unsubscribe = owner.service.subscribe({ listener });
   transfer.resolve.mockImplementationOnce(async () => {
-    entered.resolve(); await release.promise; return { resolvedRevision: 'a'.repeat(40) };
+    entered.resolve();
+    await release.promise;
+    return { resolvedRevision: 'a'.repeat(40) };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });
   await entered.promise;
@@ -323,12 +333,14 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
     createWorkerClient: () => {
       throw new Error('No runtime expected');
     },
-  }); owners.push(owner);
+  });
+  owners.push(owner);
   // The existing subscriber is an invalidation signal; Manager reads getState.
   const snapshots: ReturnType<typeof owner.service.getState>[] = [];
   const notifications = vi.fn(() => {
     snapshots.push(owner.service.getState());
-  }); owner.service.subscribe({ listener: notifications });
+  });
+  owner.service.subscribe({ listener: notifications });
   transfer.reuse.mockResolvedValue({ reused: false });
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -338,7 +350,9 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
     onDownloadProgress({ event: { kind: 'sizes', index: 0, sizes: [{ path: 'onnx/a', bytes: 600 }] } });
     onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'download', file: 'onnx/a', loaded: 0, downloadCumulativeTiming: { clockId: 'source', sequence: 1, firstFetchStartedAtMs: 20_000, observedAtMs: 20_000, receivedBytes: 0 } } } });
     onDownloadProgress({ event: { kind: 'file', index: 0, info: { status: 'progress', file: 'onnx/a', loaded: 300, downloadCumulativeTiming: { clockId: 'source', sequence: 2, firstFetchStartedAtMs: 20_000, observedAtMs: 23_000, receivedBytes: 300 } } } });
-    started.resolve(); await release.promise; return { status: 'accepted' };
+    started.resolve();
+    await release.promise;
+    return { status: 'accepted' };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });
   await Promise.race([started.promise, running.then(() => {
@@ -351,7 +365,8 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
     await vi.advanceTimersByTimeAsync(10_000);
     expect(snapshots.at(-1)).toMatchObject({ downloadProgress: { downloadEta: { status: 'stalled' }, overallProgress: 50 } });
   } finally {
-    release.resolve(); await running;
+    release.resolve();
+    await running;
   }
   expect(vi.getTimerCount()).toBe(0);
   const completed = owner.service.getState();

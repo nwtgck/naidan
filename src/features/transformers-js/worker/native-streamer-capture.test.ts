@@ -43,15 +43,18 @@ function syntheticStreamer() {
   const calls: { receiver: unknown; args: unknown[] }[] = [];
   class Streamer {
     put(...args: unknown[]) {
-      calls.push({ receiver: this, args }); return returned;
+      calls.push({ receiver: this, args });
+      return returned;
     }
 
     end(...args: unknown[]) {
-      calls.push({ receiver: this, args }); return returned;
+      calls.push({ receiver: this, args });
+      return returned;
     }
 
     on_finalized_text(...args: unknown[]) {
-      calls.push({ receiver: this, args }); return returned;
+      calls.push({ receiver: this, args });
+      return returned;
     }
   }
   return { streamer: new Streamer(), prototype: Streamer.prototype, calls, returned };
@@ -68,7 +71,8 @@ describe('native streamer instance call-through', () => {
     ordinary.end();
     const originalDecodeCalls = structuredClone(decode.mock.calls);
     const originalOutputs = structuredClone(output.mock.calls);
-    decode.mockClear(); output.mockClear();
+    decode.mockClear();
+    output.mockClear();
     const observed = new runtime.TextStreamer(tokenizer, { skip_prompt: true, callback_function: output });
     const capture = recorder();
     const hook = observeNativeStreamer({ streamer: observed, streamerPrototype: runtime.TextStreamer.prototype, capture });
@@ -129,7 +133,8 @@ describe('native streamer instance call-through', () => {
 
       on_finalized_text() {}
     }
-    const streamer = new ThrowingStreamer(); const capture = recorder();
+    const streamer = new ThrowingStreamer();
+    const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: ThrowingStreamer.prototype, capture });
     let thrown: unknown;
     try {
@@ -179,7 +184,8 @@ describe('native streamer instance call-through', () => {
 
       on_finalized_text() {}
     }
-    const streamer = new Streamer(); const capture = recorder();
+    const streamer = new Streamer();
+    const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: Streamer.prototype, capture });
     expect(streamer.put()).toBe(returned);
     expect(then).not.toHaveBeenCalled();
@@ -188,18 +194,21 @@ describe('native streamer instance call-through', () => {
   });
 
   it('restores all three original inherited descriptors and reports restoration once', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     const descriptors = Object.getOwnPropertyDescriptors(fixture.prototype);
     const hook = observeNativeStreamer({ streamer: fixture.streamer, streamerPrototype: fixture.prototype, capture });
     expect(Object.hasOwn(fixture.streamer, 'put')).toBe(true);
-    hook.restore(); hook.restore();
+    hook.restore();
+    hook.restore();
     expect(Object.getOwnPropertyDescriptors(fixture.streamer)).toEqual({});
     expect(Object.getOwnPropertyDescriptors(fixture.prototype)).toEqual(descriptors);
     expect(capture.setNativeStreamAvailability.mock.calls.map(([value]) => value.availability)).toEqual([{ status: 'available', restoration: 'pending' }, { status: 'available', restoration: 'restored' }]);
   });
 
   it('does not evaluate an accessor-valued method or replace it', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     const getter = vi.fn(() => {
       throw new Error('Do not evaluate getter');
     });
@@ -212,7 +221,9 @@ describe('native streamer instance call-through', () => {
   });
 
   it('does not steal an existing instance owner and lets that owner restore its methods', () => {
-    const fixture = syntheticStreamer(); const first = recorder(); const second = recorder();
+    const fixture = syntheticStreamer();
+    const first = recorder();
+    const second = recorder();
     const owner = observeNativeStreamer({ streamer: fixture.streamer, streamerPrototype: fixture.prototype, capture: first });
     const methods = Object.getOwnPropertyDescriptors(fixture.streamer);
     observeNativeStreamer({ streamer: fixture.streamer, streamerPrototype: fixture.prototype, capture: second }).restore();
@@ -225,7 +236,8 @@ describe('native streamer instance call-through', () => {
   });
 
   it('reports a non-extensible instance unavailable without changing its methods', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     Object.preventExtensions(fixture.streamer);
     observeNativeStreamer({ streamer: fixture.streamer, streamerPrototype: fixture.prototype, capture }).restore();
     expect(fixture.streamer.put()).toBe(fixture.returned);
@@ -242,7 +254,8 @@ describe('native streamer instance call-through', () => {
   });
 
   it('contains recording failures without changing the original invocation', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     capture.recordNativeStream.mockImplementation(() => {
       throw new Error('Recorder failed');
     });
@@ -257,7 +270,8 @@ describe('native streamer instance call-through', () => {
   });
 
   it('does not delete a replacement method installed by another owner during restoration', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     const hook = observeNativeStreamer({ streamer: fixture.streamer, streamerPrototype: fixture.prototype, capture });
     const replacement = vi.fn();
     Object.defineProperty(fixture.streamer, 'put', { configurable: true, value: replacement });
@@ -267,10 +281,13 @@ describe('native streamer instance call-through', () => {
   });
 
   it('rolls back a partial installation without leaving earlier method hooks behind', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     const streamer = new Proxy(fixture.streamer, {
       defineProperty(target, key, descriptor) {
-        if (key === 'on_finalized_text') throw new Error('Synthetic install failure');
+        if (key === 'on_finalized_text') {
+          throw new Error('Synthetic install failure');
+        }
         return Reflect.defineProperty(target, key, descriptor);
       },
     });
@@ -280,7 +297,8 @@ describe('native streamer instance call-through', () => {
   });
 
   it('contains restoration failure and reports it without throwing over a native result', () => {
-    const fixture = syntheticStreamer(); const capture = recorder();
+    const fixture = syntheticStreamer();
+    const capture = recorder();
     const streamer = new Proxy(fixture.streamer, {
       deleteProperty() {
         return false;

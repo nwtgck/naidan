@@ -28,7 +28,9 @@ function parseJqSpecialNumber({
   lexeme: string,
 }): JqSpecialNumber | undefined {
   const match = jqSpecialNumberPattern.exec(lexeme);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   if (match[2]!.toLowerCase().startsWith('nan')) {
     return { normalizedJson: '0', value: Number.NaN };
@@ -59,7 +61,9 @@ function normalizeJqFiniteNumberLexemeForJson({
   lexeme: string,
 }): string | undefined {
   const match = jqFiniteNumberPattern.exec(lexeme);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const sign = match[1] === '-' ? '-' : '';
   const integer = match[2];
@@ -107,7 +111,9 @@ function normalizeJqFiniteNumbersForJsonParse({
     let end = index + 1;
     while (end < text.length) {
       const candidate = text[end]!;
-      if (candidate === '"' || isWhitespace({ char: candidate }) || /[{}[\],:]/u.test(candidate)) break;
+      if (candidate === '"' || isWhitespace({ char: candidate }) || /[{}[\],:]/u.test(candidate)) {
+        break;
+      }
       end += 1;
     }
 
@@ -122,7 +128,9 @@ function normalizeJqFiniteNumbersForJsonParse({
     index = end;
   }
 
-  if (rewritten === undefined) return text;
+  if (rewritten === undefined) {
+    return text;
+  }
   rewritten.push(text.slice(copiedThrough));
   return rewritten.join('');
 }
@@ -139,8 +147,12 @@ function scanStringEnd({
 
   while (index < text.length) {
     const char = text[index];
-    if (char === undefined) break;
-    if (!escaped && char === '"') return index + 1;
+    if (char === undefined) {
+      break;
+    }
+    if (!escaped && char === '"') {
+      return index + 1;
+    }
     if (!escaped && char === '\\') {
       escaped = true;
       index += 1;
@@ -167,7 +179,9 @@ function scanStructuredEnd({
 
   while (index < text.length) {
     const char = text[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (inString) {
       if (!escaped && char === '"') {
@@ -196,16 +210,24 @@ function scanStructuredEnd({
       index += 1;
       continue;
     case '}':
-      if (stack[stack.length - 1] !== '{') return undefined;
+      if (stack[stack.length - 1] !== '{') {
+        return undefined;
+      }
       stack.pop();
       index += 1;
-      if (stack.length === 0) return index;
+      if (stack.length === 0) {
+        return index;
+      }
       continue;
     case ']':
-      if (stack[stack.length - 1] !== '[') return undefined;
+      if (stack[stack.length - 1] !== '[') {
+        return undefined;
+      }
       stack.pop();
       index += 1;
-      if (stack.length === 0) return index;
+      if (stack.length === 0) {
+        return index;
+      }
       continue;
     default:
       index += 1;
@@ -257,7 +279,9 @@ function scanStructuredPrimitiveToken({
   let end = start;
   while (end < text.length) {
     const char = text[end]!;
-    if (isWhitespace({ char }) || /[{}[\],:"]/u.test(char)) break;
+    if (isWhitespace({ char }) || /[{}[\],:"]/u.test(char)) {
+      break;
+    }
     end += 1;
   }
   return { end, boundaryKnown: end < text.length };
@@ -279,9 +303,13 @@ function parseHexCodeUnit({
   start: number,
 }): number | undefined {
   const end = start + 4;
-  if (end > text.length) return undefined;
+  if (end > text.length) {
+    return undefined;
+  }
   for (let index = start; index < end; index += 1) {
-    if (!isHexDigit({ char: text[index]! })) return undefined;
+    if (!isHexDigit({ char: text[index]! })) {
+      return undefined;
+    }
   }
   return Number.parseInt(text.slice(start, end), 16);
 }
@@ -309,13 +337,17 @@ function isJqStructuredStringLexemeValid({
     const char = text[index]!;
     if (char !== '\\') {
       const code = char.charCodeAt(0);
-      if (code > 0 && code < 0x001f) return false;
+      if (code > 0 && code < 0x001f) {
+        return false;
+      }
       index += 1;
       continue;
     }
 
     const escape = text[index + 1];
-    if (escape === undefined || index + 1 >= contentEnd) return false;
+    if (escape === undefined || index + 1 >= contentEnd) {
+      return false;
+    }
     switch (escape) {
     case '\\':
     case '"':
@@ -329,12 +361,20 @@ function isJqStructuredStringLexemeValid({
       continue;
     case 'u': {
       const codePoint = parseHexCodeUnit({ text, start: index + 2 });
-      if (codePoint === undefined || index + 6 > contentEnd) return false;
+      if (codePoint === undefined || index + 6 > contentEnd) {
+        return false;
+      }
       index += 6;
-      if (codePoint < 0xd800 || codePoint > 0xdbff) continue;
-      if (index + 6 > contentEnd || text[index] !== '\\' || text[index + 1] !== 'u') return false;
+      if (codePoint < 0xd800 || codePoint > 0xdbff) {
+        continue;
+      }
+      if (index + 6 > contentEnd || text[index] !== '\\' || text[index + 1] !== 'u') {
+        return false;
+      }
       const lowSurrogate = parseHexCodeUnit({ text, start: index + 2 });
-      if (lowSurrogate === undefined || lowSurrogate < 0xdc00 || lowSurrogate > 0xdfff) return false;
+      if (lowSurrogate === undefined || lowSurrogate < 0xdc00 || lowSurrogate > 0xdfff) {
+        return false;
+      }
       index += 6;
       continue;
     }
@@ -381,7 +421,9 @@ function scanStructuredIncrementally({
     kind: JqStructuredParserValueKind,
     offset: number,
   }): IncrementalStructuredScan | undefined => {
-    if (nextValueKind !== undefined) return invalid({ offset });
+    if (nextValueKind !== undefined) {
+      return invalid({ offset });
+    }
     nextValueKind = kind;
     return undefined;
   };
@@ -395,44 +437,60 @@ function scanStructuredIncrementally({
 
     if (char === '"') {
       const end = scanStringEnd({ text, start: index });
-      if (end === undefined) return { kind: 'incomplete' };
+      if (end === undefined) {
+        return { kind: 'incomplete' };
+      }
       if (!isJqStructuredStringLexemeValid({ text, start: index, end })) {
         return invalid({ offset: end - 1 });
       }
       const rejected = acceptValue({ kind: 'string', offset: end - 1 });
-      if (rejected !== undefined) return rejected;
+      if (rejected !== undefined) {
+        return rejected;
+      }
       index = end;
       continue;
     }
 
     if (char !== '[' && char !== '{' && char !== ':' && char !== ',' && char !== ']' && char !== '}') {
       const primitive = scanStructuredPrimitiveToken({ text, start: index });
-      if (!primitive.boundaryKnown) return { kind: 'incomplete' };
+      if (!primitive.boundaryKnown) {
+        return { kind: 'incomplete' };
+      }
       const lexeme = text.slice(index, primitive.end);
       if (!isJqPrimitiveLexeme({ lexeme })) {
         return invalid({ offset: Math.min(text.length - 1, primitive.end) });
       }
       const rejected = acceptValue({ kind: 'value', offset: Math.min(text.length - 1, primitive.end) });
-      if (rejected !== undefined) return rejected;
+      if (rejected !== undefined) {
+        return rejected;
+      }
       index = primitive.end;
       continue;
     }
 
     switch (char) {
     case '[':
-      if (nextValueKind !== undefined) return invalid({ offset: index });
+      if (nextValueKind !== undefined) {
+        return invalid({ offset: index });
+      }
       frames.push({ kind: 'array', hasEntries: false });
       index += 1;
       continue;
     case '{':
-      if (nextValueKind !== undefined) return invalid({ offset: index });
+      if (nextValueKind !== undefined) {
+        return invalid({ offset: index });
+      }
       frames.push({ kind: 'object', hasEntries: false });
       index += 1;
       continue;
     case ':': {
-      if (nextValueKind === undefined) return invalid({ offset: index });
+      if (nextValueKind === undefined) {
+        return invalid({ offset: index });
+      }
       const frame = frames[frames.length - 1];
-      if (frame === undefined || frame.kind !== 'object') return invalid({ offset: index });
+      if (frame === undefined || frame.kind !== 'object') {
+        return invalid({ offset: index });
+      }
       switch (nextValueKind) {
       case 'string':
         break;
@@ -449,9 +507,13 @@ function scanStructuredIncrementally({
       continue;
     }
     case ',': {
-      if (nextValueKind === undefined) return invalid({ offset: index });
+      if (nextValueKind === undefined) {
+        return invalid({ offset: index });
+      }
       const frame = frames[frames.length - 1];
-      if (frame === undefined) return invalid({ offset: index });
+      if (frame === undefined) {
+        return invalid({ offset: index });
+      }
       switch (frame.kind) {
       case 'array':
         frame.hasEntries = true;
@@ -479,7 +541,9 @@ function scanStructuredIncrementally({
     }
     case ']': {
       const frame = frames[frames.length - 1];
-      if (frame === undefined || frame.kind !== 'array') return invalid({ offset: index });
+      if (frame === undefined || frame.kind !== 'array') {
+        return invalid({ offset: index });
+      }
       if (nextValueKind !== undefined) {
         frame.hasEntries = true;
         nextValueKind = undefined;
@@ -489,12 +553,16 @@ function scanStructuredIncrementally({
       frames.pop();
       nextValueKind = 'value';
       index += 1;
-      if (frames.length === 0) return { kind: 'complete', end: index };
+      if (frames.length === 0) {
+        return { kind: 'complete', end: index };
+      }
       continue;
     }
     case '}': {
       let frame = frames[frames.length - 1];
-      if (frame === undefined) return invalid({ offset: index });
+      if (frame === undefined) {
+        return invalid({ offset: index });
+      }
       if (nextValueKind !== undefined) {
         switch (frame.kind) {
         case 'object_key':
@@ -517,7 +585,9 @@ function scanStructuredIncrementally({
       } else {
         switch (frame.kind) {
         case 'object':
-          if (frame.hasEntries) return invalid({ offset: index });
+          if (frame.hasEntries) {
+            return invalid({ offset: index });
+          }
           break;
         case 'array':
         case 'object_key':
@@ -531,7 +601,9 @@ function scanStructuredIncrementally({
       frames.pop();
       nextValueKind = 'value';
       index += 1;
-      if (frames.length === 0) return { kind: 'complete', end: index };
+      if (frames.length === 0) {
+        return { kind: 'complete', end: index };
+      }
       continue;
     }
     default: {
@@ -612,7 +684,9 @@ function scanPrimitiveEnd({
 
   while (index < text.length) {
     const char = text[index];
-    if (char === undefined || isWhitespace({ char })) break;
+    if (char === undefined || isWhitespace({ char })) {
+      break;
+    }
 
     if (char === ',' || char === ']' || char === '}' || char === ':') {
       malformed = true;
@@ -622,7 +696,9 @@ function scanPrimitiveEnd({
 
     if (char === '"' || char === '[' || char === '{') {
       const prefix = text.slice(start, index);
-      if (!malformed && isJqPrimitiveLexeme({ lexeme: prefix })) break;
+      if (!malformed && isJqPrimitiveLexeme({ lexeme: prefix })) {
+        break;
+      }
 
       // Once a primitive prefix is already malformed, a quoted/structured
       // fragment before the next whitespace belongs to the same jq parse
@@ -660,7 +736,9 @@ type JsonNumberOriginTree =
 
 function skipJsonWhitespace({ text, start }: { text: string, start: number }): number {
   let index = start;
-  while (index < text.length && /[\t\n\r ]/u.test(text[index]!)) index += 1;
+  while (index < text.length && /[\t\n\r ]/u.test(text[index]!)) {
+    index += 1;
+  }
   return index;
 }
 
@@ -673,7 +751,9 @@ function parseJsonNumberOriginTree({
 }): { readonly end: number, readonly tree: JsonNumberOriginTree | undefined } | undefined {
   const index = skipJsonWhitespace({ text, start });
   const char = text[index];
-  if (char === undefined) return undefined;
+  if (char === undefined) {
+    return undefined;
+  }
   if (char === '"') {
     const end = scanStringEnd({ text, start: index });
     return end === undefined ? undefined : { end, tree: undefined };
@@ -682,15 +762,25 @@ function parseJsonNumberOriginTree({
     let cursor = skipJsonWhitespace({ text, start: index + 1 });
     const items = new Map<number, JsonNumberOriginTree>();
     let itemIndex = 0;
-    if (text[cursor] === ']') return { end: cursor + 1, tree: { kind: 'array', items } };
+    if (text[cursor] === ']') {
+      return { end: cursor + 1, tree: { kind: 'array', items } };
+    }
     while (cursor < text.length) {
       const parsed = parseJsonNumberOriginTree({ text, start: cursor });
-      if (parsed === undefined) return undefined;
-      if (parsed.tree !== undefined) items.set(itemIndex, parsed.tree);
+      if (parsed === undefined) {
+        return undefined;
+      }
+      if (parsed.tree !== undefined) {
+        items.set(itemIndex, parsed.tree);
+      }
       itemIndex += 1;
       cursor = skipJsonWhitespace({ text, start: parsed.end });
-      if (text[cursor] === ']') return { end: cursor + 1, tree: { kind: 'array', items } };
-      if (text[cursor] !== ',') return undefined;
+      if (text[cursor] === ']') {
+        return { end: cursor + 1, tree: { kind: 'array', items } };
+      }
+      if (text[cursor] !== ',') {
+        return undefined;
+      }
       cursor = skipJsonWhitespace({ text, start: cursor + 1 });
     }
     return undefined;
@@ -698,27 +788,46 @@ function parseJsonNumberOriginTree({
   if (char === '{') {
     let cursor = skipJsonWhitespace({ text, start: index + 1 });
     const entries = new Map<string, JsonNumberOriginTree>();
-    if (text[cursor] === '}') return { end: cursor + 1, tree: { kind: 'object', entries } };
+    if (text[cursor] === '}') {
+      return { end: cursor + 1, tree: { kind: 'object', entries } };
+    }
     while (cursor < text.length) {
-      if (text[cursor] !== '"') return undefined;
+      if (text[cursor] !== '"') {
+        return undefined;
+      }
       const keyEnd = scanStringEnd({ text, start: cursor });
-      if (keyEnd === undefined) return undefined;
+      if (keyEnd === undefined) {
+        return undefined;
+      }
       const key = JSON.parse(text.slice(cursor, keyEnd)) as string;
       cursor = skipJsonWhitespace({ text, start: keyEnd });
-      if (text[cursor] !== ':') return undefined;
+      if (text[cursor] !== ':') {
+        return undefined;
+      }
       const parsed = parseJsonNumberOriginTree({ text, start: cursor + 1 });
-      if (parsed === undefined) return undefined;
-      if (parsed.tree === undefined) entries.delete(key);
-      else entries.set(key, parsed.tree);
+      if (parsed === undefined) {
+        return undefined;
+      }
+      if (parsed.tree === undefined) {
+        entries.delete(key);
+      } else {
+        entries.set(key, parsed.tree);
+      }
       cursor = skipJsonWhitespace({ text, start: parsed.end });
-      if (text[cursor] === '}') return { end: cursor + 1, tree: { kind: 'object', entries } };
-      if (text[cursor] !== ',') return undefined;
+      if (text[cursor] === '}') {
+        return { end: cursor + 1, tree: { kind: 'object', entries } };
+      }
+      if (text[cursor] !== ',') {
+        return undefined;
+      }
       cursor = skipJsonWhitespace({ text, start: cursor + 1 });
     }
     return undefined;
   }
   for (const literal of ['true', 'false', 'null'] as const) {
-    if (text.startsWith(literal, index)) return { end: index + literal.length, tree: undefined };
+    if (text.startsWith(literal, index)) {
+      return { end: index + literal.length, tree: undefined };
+    }
   }
   const specialMatch = text.slice(index).match(/^[+-]?(?:nan\d*|inf(?:inity)?)/iu);
   const specialLexeme = specialMatch?.[0];
@@ -733,7 +842,9 @@ function parseJsonNumberOriginTree({
   }
   const match = text.slice(index).match(/^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?/u);
   const lexeme = match?.[0];
-  if (lexeme === undefined) return undefined;
+  if (lexeme === undefined) {
+    return undefined;
+  }
   const origin = createJqNumberOrigin({ lexeme });
   return origin === undefined
     ? undefined
@@ -747,22 +858,32 @@ function applyJsonSpecialNumberTree({
   value: JsonValue,
   tree: JsonNumberOriginTree | undefined,
 }): JsonValue {
-  if (tree === undefined || tree.kind === 'number') return value;
+  if (tree === undefined || tree.kind === 'number') {
+    return value;
+  }
   switch (tree.kind) {
   case 'special_number':
     return tree.value;
   case 'array':
-    if (!Array.isArray(value)) return value;
+    if (!Array.isArray(value)) {
+      return value;
+    }
     for (const [index, childTree] of tree.items) {
       const child = value[index];
-      if (child === undefined) continue;
+      if (child === undefined) {
+        continue;
+      }
       value[index] = applyJsonSpecialNumberTree({ value: child, tree: childTree });
     }
     return value;
   case 'object':
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return value;
+    }
     for (const [key, childTree] of tree.entries) {
-      if (!Object.hasOwn(value, key)) continue;
+      if (!Object.hasOwn(value, key)) {
+        continue;
+      }
       value[key] = applyJsonSpecialNumberTree({ value: value[key]!, tree: childTree });
     }
     return value;
@@ -780,25 +901,35 @@ function applyJsonNumberOriginTree({
   value: JsonValue,
   tree: JsonNumberOriginTree | undefined,
 }): JqNumberOrigin | undefined {
-  if (tree === undefined) return undefined;
+  if (tree === undefined) {
+    return undefined;
+  }
   switch (tree.kind) {
   case 'number':
     return tree.origin;
   case 'special_number':
     return undefined;
   case 'array':
-    if (!Array.isArray(value)) return undefined;
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
     for (const [index, childTree] of tree.items) {
       const child = value[index];
-      if (child === undefined) continue;
+      if (child === undefined) {
+        continue;
+      }
       const origin = applyJsonNumberOriginTree({ value: child, tree: childTree });
       setJsonChildNumberOrigin({ container: value, key: index, origin });
     }
     return undefined;
   case 'object':
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
     for (const [key, childTree] of tree.entries) {
-      if (!Object.hasOwn(value, key)) continue;
+      if (!Object.hasOwn(value, key)) {
+        continue;
+      }
       const origin = applyJsonNumberOriginTree({ value: value[key]!, tree: childTree });
       setJsonChildNumberOrigin({ container: value, key, origin });
     }
@@ -898,7 +1029,9 @@ export function scanJsonSequenceIncrementally({
   let index = start;
   while (index < text.length) {
     const char = text[index];
-    if (char === undefined || !isWhitespace({ char })) break;
+    if (char === undefined || !isWhitespace({ char })) {
+      break;
+    }
     index += 1;
   }
 
@@ -1030,14 +1163,22 @@ export function* iterateJsonSequence({
   while (index < text.length) {
     while (index < text.length) {
       const char = text[index];
-      if (char === undefined || !isWhitespace({ char })) break;
-      if (char === '\n') lineNumber += 1;
+      if (char === undefined || !isWhitespace({ char })) {
+        break;
+      }
+      if (char === '\n') {
+        lineNumber += 1;
+      }
       index += 1;
     }
-    if (index >= text.length) return;
+    if (index >= text.length) {
+      return;
+    }
 
     const char = text[index];
-    if (char === undefined) return;
+    if (char === undefined) {
+      return;
+    }
 
     let end: number | undefined;
     switch (char) {
@@ -1065,7 +1206,9 @@ export function* iterateJsonSequence({
     const slice = text.slice(index, end);
     let entryLineNumber = lineNumber;
     for (const character of slice) {
-      if (character === '\n') entryLineNumber += 1;
+      if (character === '\n') {
+        entryLineNumber += 1;
+      }
     }
     try {
       const normalizedSlice = normalizeJqFiniteNumbersForJsonParse({ text: slice });
@@ -1105,7 +1248,9 @@ export function parseJsonSequence({
 }): { ok: true, values: JsonValue[] } | { ok: false, message: string } {
   const values: JsonValue[] = [];
   for (const entry of iterateJsonSequence({ text })) {
-    if (!entry.ok) return entry;
+    if (!entry.ok) {
+      return entry;
+    }
     values.push(entry.value);
   }
   return { ok: true, values };

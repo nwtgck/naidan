@@ -74,7 +74,9 @@ const textEvidenceSchema = z.object({
 export type ProviderReplayTextEvidence = z.infer<typeof textEvidenceSchema>;
 
 function requireExact({ label, actual, expected }: { label: string, actual: unknown, expected: unknown }): void {
-  if (!isDeepStrictEqual(actual, expected)) throw new Error(`Replay causal mismatch: ${label}`);
+  if (!isDeepStrictEqual(actual, expected)) {
+    throw new Error(`Replay causal mismatch: ${label}`);
+  }
 }
 
 export function parseProviderReplayTextEvidence({ value }: { value: unknown }): ProviderReplayTextEvidence {
@@ -169,11 +171,15 @@ export function replayRecordedText({ evidence, options }: {
     },
     expected: checked.inputContract.effectiveGenerationConfig,
   });
-  if (options['past_key_values'] !== undefined && options['past_key_values'] !== null) throw new Error('Replay evidence gap: KV-cache input');
+  if (options['past_key_values'] !== undefined && options['past_key_values'] !== null) {
+    throw new Error('Replay evidence gap: KV-cache input');
+  }
   requireExact({ label: 'dictionary generate return contract', actual: options['return_dict_in_generate'], expected: true });
   const streamer = z.object({ put: z.custom<TextStreamer['put']>(value => typeof value === 'function'), end: z.custom<TextStreamer['end']>(value => typeof value === 'function') }).parse(options['streamer']);
   const stopping = options['stopping_criteria'];
-  if (typeof stopping !== 'function') throw new Error('Replay requires actual callable stopping criteria');
+  if (typeof stopping !== 'function') {
+    throw new Error('Replay requires actual callable stopping criteria');
+  }
   const sequenceTokenIds = [...sourceIds];
   let releasedTokenCount = 0;
   // Preserve the actual streamer receiver; Zod's parsed object is not the
@@ -184,7 +190,9 @@ export function replayRecordedText({ evidence, options }: {
     Reflect.apply(streamer.put, options['streamer'], [[[BigInt(tokenId)]]]);
     releasedTokenCount += 1;
     const stopped = z.tuple([z.boolean()]).parse(Reflect.apply(stopping, undefined, [[sequenceTokenIds], undefined]));
-    if (stopped[0]) break;
+    if (stopped[0]) {
+      break;
+    }
   }
   Reflect.apply(streamer.end, options['streamer'], []);
   return { sequenceTokenIds, releasedTokenCount };

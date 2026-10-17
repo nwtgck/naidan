@@ -57,7 +57,9 @@ describe('planDownloadedModelCandidates', () => {
     const cancel = vi.fn(async () => {});
     const match = vi.fn(async (request: string | Request) => {
       const url = typeof request === 'string' ? request : request.url;
-      if (url.endsWith('/onnx/model_q4f16.onnx_data')) return undefined;
+      if (url.endsWith('/onnx/model_q4f16.onnx_data')) {
+        return undefined;
+      }
       return { body: { cancel } } as unknown as Response;
     });
 

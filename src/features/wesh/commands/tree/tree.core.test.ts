@@ -20,7 +20,9 @@ describe('wesh tree core', () => {
   async function writeFile({ path, data }: { path: string, data: string }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
     let dir = rootHandle;
     for (const segment of segments) {
       dir = await dir.getDirectoryHandle(segment, { create: true });

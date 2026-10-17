@@ -67,7 +67,9 @@ const isHoveringResults = ref(false);
 let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const handlePreviewMouseEnter = () => {
-  if (previewHoverTimeout) clearTimeout(previewHoverTimeout);
+  if (previewHoverTimeout) {
+    clearTimeout(previewHoverTimeout);
+  }
 };
 
 const handlePreviewMouseLeave = () => {
@@ -126,7 +128,9 @@ let highlightTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const updateHighlightState = () => {
   isHighlightingEnabled.value = false;
-  if (highlightTimeout) clearTimeout(highlightTimeout);
+  if (highlightTimeout) {
+    clearTimeout(highlightTimeout);
+  }
   highlightTimeout = setTimeout(() => {
     isHighlightingEnabled.value = true;
   }, 50);
@@ -167,9 +171,13 @@ const selectedGroups = computed(() => {
 });
 
 const targetChatTitle = computed(() => {
-  if (!chatId.value) return undefined;
+  if (!chatId.value) {
+    return undefined;
+  }
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || lazyStrings.SHARED__new_chat();
+  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) {
+    return currentChat.value.title || lazyStrings.SHARED__new_chat();
+  }
   // Otherwise we'd need to fetch it or rely on a generic name
   return lazyStrings.GlobalSearchModal__filtered_chat();
 });
@@ -180,7 +188,10 @@ function searchScopeLabel({ scope }: { scope: SearchScope }): string | undefined
   case 'all': return lazyStrings.GlobalSearchModal__all();
   case 'current_thread': return lazyStrings.GlobalSearchModal__current_thread();
   case 'title_only': return lazyStrings.GlobalSearchModal__title_only();
-  default: { const _ex: never = scope; return _ex; }
+  default: {
+    const _ex: never = scope;
+    return _ex;
+  }
   }
 }
 
@@ -189,7 +200,10 @@ function searchRoleLabel({ role }: { role: SearchRoleFilter }): string | undefin
   case 'all': return lazyStrings.GlobalSearchModal__all();
   case 'user': return lazyStrings.GlobalSearchModal__user();
   case 'assistant': return lazyStrings.GlobalSearchModal__assistant();
-  default: { const _ex: never = role; return _ex; }
+  default: {
+    const _ex: never = role;
+    return _ex;
+  }
   }
 }
 
@@ -207,7 +221,10 @@ function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): s
   case 'always': return lazyStrings.GlobalSearchModal__on();
   case 'peek': return lazyStrings.GlobalSearchModal__peek();
   case 'disabled': return lazyStrings.GlobalSearchModal__off();
-  default: { const _ex: never = mode; return _ex; }
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
   }
 }
 
@@ -258,12 +275,16 @@ function highlight({ text, query, color }: {
 }): AllowedHtml {
   const cacheKey = `${color}:${query}:${text}`;
   const cached = highlightCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const result = highlightSearchTextAsHtml({ text, query, color });
 
   // Limit cache size to prevent memory leaks
-  if (highlightCache.size > 1000) highlightCache.clear();
+  if (highlightCache.size > 1000) {
+    highlightCache.clear();
+  }
   highlightCache.set(cacheKey, result);
   return result;
 }
@@ -295,7 +316,9 @@ const handleInput = ({ event }: { event: Event }) => {
   // the input field from jumping or losing characters during rapid typing.
   query.value = val;
 
-  if (debounceTimeout) clearTimeout(debounceTimeout);
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+  }
 
   const delay = (() => {
     const scope = searchScope.value;
@@ -419,10 +442,18 @@ const deferredSelectedItem = ref(currentSelectedItem.value);
 let previewDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function clearModalTimers(): void {
-  if (previewHoverTimeout !== null) clearTimeout(previewHoverTimeout);
-  if (highlightTimeout !== null) clearTimeout(highlightTimeout);
-  if (debounceTimeout !== null) clearTimeout(debounceTimeout);
-  if (previewDebounceTimeout !== null) clearTimeout(previewDebounceTimeout);
+  if (previewHoverTimeout !== null) {
+    clearTimeout(previewHoverTimeout);
+  }
+  if (highlightTimeout !== null) {
+    clearTimeout(highlightTimeout);
+  }
+  if (debounceTimeout !== null) {
+    clearTimeout(debounceTimeout);
+  }
+  if (previewDebounceTimeout !== null) {
+    clearTimeout(previewDebounceTimeout);
+  }
 
   previewHoverTimeout = null;
   highlightTimeout = null;
@@ -431,7 +462,9 @@ function clearModalTimers(): void {
 }
 
 watch(currentSelectedItem, (newItem) => {
-  if (previewDebounceTimeout) clearTimeout(previewDebounceTimeout);
+  if (previewDebounceTimeout) {
+    clearTimeout(previewDebounceTimeout);
+  }
   previewDebounceTimeout = setTimeout(() => {
     deferredSelectedItem.value = newItem;
   }, 120);
@@ -445,7 +478,9 @@ function scrollToSelected() {
 
 async function selectItem({ index }: { index: number }) {
   const target = results.value[index];
-  if (!target) return;
+  if (!target) {
+    return;
+  }
 
   documentMetadata?.finishHomeIntroduction();
   const type = target.type;
@@ -487,7 +522,9 @@ const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | unde
 
 function restorePreviousFocusArea(): void {
   const area = previousFocusArea.value;
-  if (area === undefined) return;
+  if (area === undefined) {
+    return;
+  }
 
   setActiveFocusArea({ area });
   previousFocusArea.value = undefined;

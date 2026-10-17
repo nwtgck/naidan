@@ -92,7 +92,9 @@ function appendPendingRecord({
   pending: PendingSplitRecord,
   fragment: Uint8Array,
 }): void {
-  if (fragment.byteLength === 0) return;
+  if (fragment.byteLength === 0) {
+    return;
+  }
   pending.fragments.push(fragment);
   pending.byteLength += fragment.byteLength;
 }
@@ -163,7 +165,9 @@ async function splitByLineBytes({
   };
 
   const writePending = async ({ byteLength }: { byteLength: number }): Promise<void> => {
-    if (byteLength === 0) return;
+    if (byteLength === 0) {
+      return;
+    }
     await output.write({
       chunk: takePendingRecordBytes({ pending, byteLength }),
     });
@@ -197,7 +201,9 @@ async function splitByLineBytes({
   for await (const chunk of iterateReadableStreamChunks({ stream })) {
     let recordStart = 0;
     for (let index = 0; index < chunk.byteLength; index += 1) {
-      if (chunk[index] !== 0x0a) continue;
+      if (chunk[index] !== 0x0a) {
+        continue;
+      }
       appendPendingRecord({
         pending,
         fragment: chunk.subarray(recordStart, index + 1),

@@ -56,7 +56,9 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
   }: {
     updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined,
   }): Promise<void> {
-    if (!isEditable.value) return;
+    if (!isEditable.value) {
+      return;
+    }
     await updateExperimental({
       updater: ({ experimental }) => ({
         ...experimental,

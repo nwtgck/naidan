@@ -201,7 +201,9 @@ describe("inspectModelFilePlan", () => {
       declarations: declarations(),
       cache: cache(),
       getModelFiles: async ({ device, dtype }) => {
-        if (device === "webgpu" && dtype === "q4f16") throw new Error("unsupported session layout");
+        if (device === "webgpu" && dtype === "q4f16") {
+          throw new Error("unsupported session layout");
+        }
         return registryFiles({ dtype });
       },
     });

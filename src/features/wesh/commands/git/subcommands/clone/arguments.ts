@@ -95,10 +95,12 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
   const depthValue = parsed.optionValues.depthOption;
   const depthOption = typeof depthValue === 'number' ? depthValue : undefined;
   const operands = [...parsed.positionals];
-  if (operands.length < 1)
+  if (operands.length < 1) {
     throw new GitUsageError({ message: 'You must specify a repository to clone.', prefix: 'fatal' });
-  if (operands.length > 2)
+  }
+  if (operands.length > 2) {
     throw new GitUsageError({ message: 'Too many arguments.', prefix: 'fatal' });
+  }
   return { quiet: parsed.optionValues.quiet === true, branchOption, depthOption, operands };
 }
 

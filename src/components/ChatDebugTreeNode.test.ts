@@ -12,7 +12,8 @@ const wrappers: ReturnType<typeof mount>[] = [];
 
 function render({ node }: { node: MessageNode }) {
   const wrapper = mount(ChatDebugTreeNode, { props: { node, activeIds: new Set([node.id]), highlight: false, mode: 'active' } });
-  wrappers.push(wrapper); return wrapper;
+  wrappers.push(wrapper);
+  return wrapper;
 }
 
 function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
@@ -29,7 +30,8 @@ function user({ status }: { status: 'memory' | 'persisted' }): UserMessageNode {
 }
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks();
+  await ensureAllStringsForTest({ locale: 'en' });
+  vi.clearAllMocks();
   getFile.mockResolvedValue(new Blob(['image']));
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:debug');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
@@ -37,7 +39,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrappers.splice(0).forEach(w => w.unmount()); vi.restoreAllMocks();
+  wrappers.splice(0).forEach(w => w.unmount());
+  vi.restoreAllMocks();
 });
 
 it('renders raw body and reasoning in part order including explicit empty parts', async () => {
@@ -56,7 +59,8 @@ it('renders raw body and reasoning in part order including explicit empty parts'
       { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } },
     ],
   };
-  const snapshot = structuredClone(node); const w = render({ node });
+  const snapshot = structuredClone(node);
+  const w = render({ node });
   expect(w.findAll('[data-testid="debug-part"]').map(part => part.attributes('data-part-type'))).toEqual(['reasoning', 'text', 'text', 'tool_call']);
   expect(w.findAll('[data-testid="debug-part-text"]').map(p => p.element.textContent)).toEqual(['  考える\n', '', '<think>literal</think>  🙂\n']);
   expect(w.get('[data-testid="debug-interruption"]').text()).toContain('保存済みの日本語エラー');
@@ -83,10 +87,14 @@ it('renders tool results without flattening them into body text', () => {
 });
 
 it('uses a memory Blob and releases the thumbnail when the part is removed', async () => {
-  const node = user({ status: 'memory' }); const w = render({ node }); await flushPromises();
-  expect(getFile).not.toHaveBeenCalled(); expect(URL.createObjectURL).toHaveBeenCalledWith(node.parts[0]?.type === 'attachment' && node.parts[0].attachment.status === 'memory' ? node.parts[0].attachment.blob : undefined);
+  const node = user({ status: 'memory' });
+  const w = render({ node });
+  await flushPromises();
+  expect(getFile).not.toHaveBeenCalled();
+  expect(URL.createObjectURL).toHaveBeenCalledWith(node.parts[0]?.type === 'attachment' && node.parts[0].attachment.status === 'memory' ? node.parts[0].attachment.blob : undefined);
   expect(w.find('img').attributes('src')).toBe('blob:debug');
-  await w.setProps({ node: { ...node, parts: [] } }); await flushPromises();
+  await w.setProps({ node: { ...node, parts: [] } });
+  await flushPromises();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:debug');
 });
 
@@ -97,9 +105,16 @@ it('does not publish thumbnails that arrive after removal or unmount', async () 
   getFile.mockImplementation(() => new Promise<Blob>(done => {
     resolve = done;
   }));
-  const node = user({ status: 'persisted' }); const w = render({ node });
-  await w.setProps({ node: { ...node, parts: [] } }); resolve(new Blob(['late'])); await flushPromises();
+  const node = user({ status: 'persisted' });
+  const w = render({ node });
+  await w.setProps({ node: { ...node, parts: [] } });
+  resolve(new Blob(['late']));
+  await flushPromises();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
-  await w.setProps({ node }); w.unmount(); wrappers.splice(wrappers.indexOf(w), 1);
-  resolve(new Blob(['late'])); await flushPromises(); expect(URL.createObjectURL).not.toHaveBeenCalled();
+  await w.setProps({ node });
+  w.unmount();
+  wrappers.splice(wrappers.indexOf(w), 1);
+  resolve(new Blob(['late']));
+  await flushPromises();
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
 });

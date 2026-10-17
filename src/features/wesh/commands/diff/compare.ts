@@ -50,7 +50,9 @@ function groupEveryLineMatches({
       characterLocaleMode,
     });
     pattern.lastIndex = 0;
-    if (!pattern.test(value)) return false;
+    if (!pattern.test(value)) {
+      return false;
+    }
   }
   return true;
 }
@@ -126,9 +128,11 @@ function partitionChangeGroups({
   const changeGroups: DiffChangeGroup[] = [];
   const ignoredGroups: DiffChangeGroup[] = [];
   for (const group of groups) {
-    if (shouldIgnoreGroup({ group, left, right, settings }))
+    if (shouldIgnoreGroup({ group, left, right, settings })) {
       ignoredGroups.push(group);
-    else changeGroups.push(group);
+    } else {
+      changeGroups.push(group);
+    }
   }
   return { changeGroups, ignoredGroups };
 }

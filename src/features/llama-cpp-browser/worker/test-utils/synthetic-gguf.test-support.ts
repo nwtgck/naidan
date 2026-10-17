@@ -11,22 +11,31 @@ export function createInputSensitiveGguf({ chatTemplate }: { chatTemplate: strin
 function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, weights: 'constant-output' | 'input-sensitive' }): Uint8Array {
   function join({ parts }: { parts: Uint8Array[] }): Uint8Array {
     const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
-    let offset = 0; for (const part of parts) {
-      result.set(part, offset); offset += part.length;
+    let offset = 0;
+    for (const part of parts) {
+      result.set(part, offset);
+      offset += part.length;
     }
     return result;
   }
   function u32({ value }: { value: number }): Uint8Array {
-    const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, value, true); return b;
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0, value, true);
+    return b;
   }
   function u64({ value }: { value: number }): Uint8Array {
-    const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(value), true); return b;
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setBigUint64(0, BigInt(value), true);
+    return b;
   }
   function f32({ value }: { value: number }): Uint8Array {
-    const b = new Uint8Array(4); new DataView(b.buffer).setFloat32(0, value, true); return b;
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setFloat32(0, value, true);
+    return b;
   }
   function text({ value }: { value: string }): Uint8Array {
-    const b = new TextEncoder().encode(value); return join({ parts: [u64({ value: b.length }), b] });
+    const b = new TextEncoder().encode(value);
+    return join({ parts: [u64({ value: b.length }), b] });
   }
   function entry({ name, type, data }: { name: string, type: number, data: Uint8Array }): Uint8Array {
     return join({ parts: [text({ value: name }), u32({ value: type }), data] });
@@ -51,20 +60,31 @@ function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, we
     ['blk.0.attn_v.weight', [32, 32]], ['blk.0.attn_output.weight', [32, 32]], ['blk.0.ffn_norm.weight', [32]],
     ['blk.0.ffn_gate.weight', [32, 64]], ['blk.0.ffn_down.weight', [64, 32]], ['blk.0.ffn_up.weight', [32, 64]],
   ];
-  const descriptors: Uint8Array[] = []; const payload: Uint8Array[] = []; let offset = 0;
+  const descriptors: Uint8Array[] = [];
+  const payload: Uint8Array[] = [];
+  let offset = 0;
   for (const [name, shape] of shapes) {
-    const aligned = Math.ceil(offset / 32) * 32; payload.push(new Uint8Array(aligned - offset)); offset = aligned;
+    const aligned = Math.ceil(offset / 32) * 32;
+    payload.push(new Uint8Array(aligned - offset));
+    offset = aligned;
     descriptors.push(join({ parts: [text({ value: name }), u32({ value: shape.length }), ...shape.map(value => u64({ value })), u32({ value: 0 }), u64({ value: offset })] }));
     const data = new Uint8Array(shape.reduce((a, b) => a * b, 1) * 4);
     if (name.includes('norm.weight')) {
-      const view = new DataView(data.buffer); for (let i = 0; i < data.length; i += 4) view.setFloat32(i, 1, true);
+      const view = new DataView(data.buffer);
+      for (let i = 0; i < data.length; i += 4) {
+        view.setFloat32(i, 1, true);
+      }
     }
     // Keep the original fixture's constant ordinary byte token ('A').
     if (name === 'token_embd.weight') {
       const view = new DataView(data.buffer);
-      for (let offset = 0; offset < data.length; offset += 32 * 4) view.setFloat32(offset, 1, true);
+      for (let offset = 0; offset < data.length; offset += 32 * 4) {
+        view.setFloat32(offset, 1, true);
+      }
     }
-    if (name === 'output.weight') new DataView(data.buffer).setFloat32((3 + 65) * 32 * 4, 1, true);
+    if (name === 'output.weight') {
+      new DataView(data.buffer).setFloat32((3 + 65) * 32 * 4, 1, true);
+    }
     switch (weights) {
     case 'constant-output': break;
     case 'input-sensitive': {
@@ -72,7 +92,9 @@ function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, we
       // carries earlier values into the final-token logits for A and B.
       const view = new DataView(data.buffer);
       if (name === 'token_embd.weight') {
-        for (let token = 3; token < vocab.length; token++) view.setFloat32((token * 32 + 1) * 4, (token - 3) % 2 === 1 ? 0.5 : -0.5, true);
+        for (let token = 3; token < vocab.length; token++) {
+          view.setFloat32((token * 32 + 1) * 4, (token - 3) % 2 === 1 ? 0.5 : -0.5, true);
+        }
       }
       if (name === 'output.weight') {
         view.setFloat32(((3 + 65) * 32 + 1) * 4, 1, true);
@@ -80,13 +102,19 @@ function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, we
         view.setFloat32(((3 + 66) * 32 + 1) * 4, -1, true);
       }
       if (name === 'blk.0.attn_v.weight' || name === 'blk.0.attn_output.weight') {
-        for (let i = 0; i < 32; i++) view.setFloat32((i * 32 + i) * 4, 1, true);
+        for (let i = 0; i < 32; i++) {
+          view.setFloat32((i * 32 + i) * 4, 1, true);
+        }
       }
       break;
     }
-    default: { const exhaustive: never = weights; throw new Error(`Unknown fixture weights: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = weights;
+      throw new Error(`Unknown fixture weights: ${exhaustive}`);
     }
-    payload.push(data); offset += data.length;
+    }
+    payload.push(data);
+    offset += data.length;
   }
   const header = join({ parts: [new TextEncoder().encode('GGUF'), u32({ value: 3 }), u64({ value: shapes.length }), u64({ value: metadata.length }), ...metadata, ...descriptors] });
   return join({ parts: [header, new Uint8Array((32 - header.length % 32) % 32), ...payload] });

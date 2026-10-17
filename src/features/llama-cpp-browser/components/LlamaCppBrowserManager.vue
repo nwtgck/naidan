@@ -23,7 +23,9 @@ const props = defineProps<{ suspended?: boolean, suggestions?: 'chat' | 'none', 
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();
 
 async function inspectRepository({ input }: { input: string }): Promise<void> {
-  if (unavailable.value || active.value || importing.value || refreshing.value) return;
+  if (unavailable.value || active.value || importing.value || refreshing.value) {
+    return;
+  }
   await repositoryManager.value?.inspectRepository({ input });
 }
 
@@ -47,7 +49,9 @@ const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => 
   // This check must not contact Hugging Face or initialize the model runtime.
   await refresh();
   const available = models.value.find(entry => entry.id === model.id);
-  if (listError.value || !available || !props.applyDefaultModel) throw new Error('Local model unavailable');
+  if (listError.value || !available || !props.applyDefaultModel) {
+    throw new Error('Local model unavailable');
+  }
   return props.applyDefaultModel({ model: available, previous });
 };
 
@@ -71,25 +75,38 @@ let refreshRequested = false;
 let disposed = false;
 
 function refresh(): Promise<void> {
-  if (unavailable.value || disposed || props.suspended) return Promise.resolve();
+  if (unavailable.value || disposed || props.suspended) {
+    return Promise.resolve();
+  }
   refreshRequested = true;
-  if (refreshPromise) return refreshPromise;
-  const controller = new AbortController(); refreshController = controller; refreshing.value = true;
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  const controller = new AbortController();
+  refreshController = controller;
+  refreshing.value = true;
   // Defer execution until refreshPromise is assigned, including synchronous failures.
   refreshPromise = Promise.resolve().then(async () => {
     while (refreshRequested && !disposed && !props.suspended && !controller.signal.aborted) {
-      refreshRequested = false; listError.value = undefined;
+      refreshRequested = false;
+      listError.value = undefined;
       try {
         const found = await llamaCppBrowserService.listModels({ signal: controller.signal });
         if (!disposed && !props.suspended && !controller.signal.aborted && !refreshRequested) {
-          models.value = found; hostIssues.value = [...getHostModelInventoryIssues()]; emit('modelsChanged', found);
+          models.value = found;
+          hostIssues.value = [...getHostModelInventoryIssues()];
+          emit('modelsChanged', found);
         }
       } catch (error) {
-        if (!disposed && !props.suspended && !controller.signal.aborted) listError.value = errorCode({ error });
+        if (!disposed && !props.suspended && !controller.signal.aborted) {
+          listError.value = errorCode({ error });
+        }
       }
     }
   }).finally(() => {
-    refreshing.value = false; refreshController = undefined; refreshPromise = undefined;
+    refreshing.value = false;
+    refreshController = undefined;
+    refreshPromise = undefined;
     // A list notification or resume can arrive before this cleanup. Resume must
     // drain its queued refresh even if the previous controller was aborted.
     return refreshRequested && !disposed && !props.suspended ? refresh() : undefined;
@@ -102,28 +119,46 @@ let modelSelectionVersion = 0;
 async function selectReadyModel({ model }: { model: LocalModel }): Promise<void> {
   const version = ++modelSelectionVersion;
   await refresh();
-  if (disposed || props.suspended || version !== modelSelectionVersion) return;
+  if (disposed || props.suspended || version !== modelSelectionVersion) {
+    return;
+  }
   const available = models.value.find(entry => entry.id === model.id);
-  if (available) emit('modelSelected', available.name);
+  if (available) {
+    emit('modelSelected', available.name);
+  }
 }
 
 async function remove({ id }: { id: string }): Promise<void> {
-  if (disposed || unavailable.value || active.value || importing.value || downloading.value || queuedDownloadBusy.value || refreshing.value) return;
-  const controller = new AbortController(); active.value = controller; localError.value = undefined; removalChanged.value = false;
+  if (disposed || unavailable.value || active.value || importing.value || downloading.value || queuedDownloadBusy.value || refreshing.value) {
+    return;
+  }
+  const controller = new AbortController();
+  active.value = controller;
+  localError.value = undefined;
+  removalChanged.value = false;
   try {
     const plan = await confirmRemoval({ id });
-    if (!plan || disposed || controller.signal.aborted) return;
-    removalChanged.value = await llamaCppBrowserService.removeModel({ plan, signal: controller.signal }) === 'changed'; await refresh();
+    if (!plan || disposed || controller.signal.aborted) {
+      return;
+    }
+    removalChanged.value = await llamaCppBrowserService.removeModel({ plan, signal: controller.signal }) === 'changed';
+    await refresh();
   } catch (error) {
-    if (!controller.signal.aborted) localError.value = errorCode({ error });
+    if (!controller.signal.aborted) {
+      localError.value = errorCode({ error });
+    }
   } finally {
     active.value = undefined;
   }
 }
 
 function formatSize({ bytes }: { bytes: number }): string {
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  if (bytes < 1024 ** 2) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  if (bytes < 1024 ** 3) {
+    return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
+  }
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
 
@@ -161,7 +196,12 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener('focus', refreshOnFocus);
-  disposed = true; emit('runtimeReady', false); active.value?.abort(); refreshController?.abort(); unsubscribe?.(); unsubscribeModels?.();
+  disposed = true;
+  emit('runtimeReady', false);
+  active.value?.abort();
+  refreshController?.abort();
+  unsubscribe?.();
+  unsubscribeModels?.();
 });
 defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

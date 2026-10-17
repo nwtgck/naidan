@@ -28,7 +28,10 @@ export function benchmarkParameters({ common, target, strategy, overrides }: {
     break;
   }
   case 'shared': break;
-  default: { const exhaustive: never = strategy; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = strategy;
+    throw new Error(String(exhaustive));
+  }
   }
   return { parameters: { ...common, ...modelValues, ...overrides }, preset };
 }
@@ -42,23 +45,36 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
   weightResidency: WeightResidency, gpuBudgetMiB: number | undefined,
 }): BenchmarkPlan {
   const settings = protocolSchema.parse(protocol);
-  if (!targets.length || targets.length * settings.repeats > MAX_BENCHMARK_RUNS) throw new Error('Select models and keep the plan within 100 runs');
-  if (notes.length > 2048) throw new Error('Environment notes exceed 2048 characters');
-  if (new Set(targets.map(target => target.id)).size !== targets.length) throw new Error('Duplicate benchmark target');
+  if (!targets.length || targets.length * settings.repeats > MAX_BENCHMARK_RUNS) {
+    throw new Error('Select models and keep the plan within 100 runs');
+  }
+  if (notes.length > 2048) {
+    throw new Error('Environment notes exceed 2048 characters');
+  }
+  if (new Set(targets.map(target => target.id)).size !== targets.length) {
+    throw new Error('Duplicate benchmark target');
+  }
   const ordered = (() => {
     switch (settings.order) {
     case 'reverse': return [...targets].reverse();
     case 'listed': return [...targets];
-    default: { const exhaustive: never = settings.order; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = settings.order;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const models = ordered.map(target => {
-    if (!target.models || target.issue || target.missing.length) throw new Error(`Incomplete model: ${target.label}`);
+    if (!target.models || target.issue || target.missing.length) {
+      throw new Error(`Incomplete model: ${target.label}`);
+    }
     const changes = { ...overrides[target.id] };
     const resolved = benchmarkParameters({ common, target, strategy, overrides: changes });
     const request = requestSchema.parse({ artifact, baseUrl, models: target.models, loras: imageLoraRequests({ selections: loras[target.id] ?? [] }), imageInputs: imageInputs[target.id] ?? emptyImageInputs(), parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
     // -1 would resolve to different random seeds; never silently substitute one.
-    if (request.parameters.seed === '-1') throw new Error('Benchmark requires an explicit, non-random seed');
+    if (request.parameters.seed === '-1') {
+      throw new Error('Benchmark requires an explicit, non-random seed');
+    }
     return { target: { ...target, facts: { ...target.facts, evidence: [...target.facts.evidence] }, components: structuredClone(target.components), missing: [...target.missing], models: request.models }, request, overrides: changes, preset: resolved.preset };
   });
   // All requests are validated and detached before creating/releasing any worker.

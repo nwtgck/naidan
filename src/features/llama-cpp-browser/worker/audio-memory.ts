@@ -8,7 +8,10 @@ function scalarSize({ core, kind }: { core: Core, kind: AudioScalarKind }): numb
   case 'i32': return 4;
   case 'i64': return 8;
   case 'bool': return 1;
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -25,7 +28,10 @@ export function readAudioScalar({ core, pointer, kind }: {
   case 'i32': return BigInt(view.getInt32(0, true));
   case 'i64': return view.getBigInt64(0, true);
   case 'bool': return BigInt(view.getUint8(0));
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -33,7 +39,9 @@ export function readAudioField({ core, pointer, name, field, kind }: {
   core: Core, pointer: bigint, name: string, field: string, kind: 'pointer' | 'i32',
 }): bigint {
   const layout = core.fieldLayout({ name, field });
-  if (layout.size !== scalarSize({ core, kind })) throw new Error('Unexpected audio record field width');
+  if (layout.size !== scalarSize({ core, kind })) {
+    throw new Error('Unexpected audio record field width');
+  }
   return readAudioScalar({ core, pointer: pointer + layout.offset, kind });
 }
 

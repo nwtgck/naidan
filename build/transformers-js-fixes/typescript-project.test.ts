@@ -14,7 +14,9 @@ function readAppProject() {
       throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
     },
   });
-  if (parsed === undefined) throw new Error('Could not read the application TypeScript project');
+  if (parsed === undefined) {
+    throw new Error('Could not read the application TypeScript project');
+  }
   expect(parsed.errors).toEqual([]);
   return parsed;
 }
@@ -29,11 +31,15 @@ function importedFixFiles({ options }: { options: ts.CompilerOptions }) {
   const found = new Set<string>();
   while (pending.length > 0) {
     const file = pending.pop();
-    if (file === undefined) throw new Error('Missing import traversal entry');
+    if (file === undefined) {
+      throw new Error('Missing import traversal entry');
+    }
     for (const imported of ts.preProcessFile(readFileSync(file, 'utf8')).importedFiles) {
       const resolved = ts.resolveModuleName(imported.fileName, file, options, ts.sys).resolvedModule;
       if (resolved === undefined || !resolved.resolvedFileName.startsWith(`${fixesRoot}${path.sep}`)
-        || !resolved.resolvedFileName.endsWith('.ts') || found.has(resolved.resolvedFileName)) continue;
+        || !resolved.resolvedFileName.endsWith('.ts') || found.has(resolved.resolvedFileName)) {
+        continue;
+      }
       found.add(resolved.resolvedFileName);
       pending.push(resolved.resolvedFileName);
     }

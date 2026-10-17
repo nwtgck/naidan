@@ -8,7 +8,9 @@ import { transportPair } from './test-transport';
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
-  for (const close of cleanups.splice(0)) await close();
+  for (const close of cleanups.splice(0)) {
+    await close();
+  }
 });
 
 const api = contract({ name: 'header.test', methods: { ping: procedure({ input: z.object({}), result: z.number(), notifications: {} }) } });
@@ -22,8 +24,11 @@ function fixture() {
     signal: new AbortController().signal,
   });
   cleanups.push(async () => {
-    peer.dispose(); pair.close(); await peer.retire();
-  }); return { pair, peer, handler };
+    peer.dispose();
+    pair.close();
+    await peer.retire();
+  });
+  return { pair, peer, handler };
 }
 
 async function writePrefix({ pair, bytes, close }: { pair: ReturnType<typeof transportPair>; bytes: Uint8Array; close: boolean }): Promise<void> {
@@ -34,37 +39,59 @@ async function writePrefix({ pair, bytes, close }: { pair: ReturnType<typeof tra
     } catch { /* Peer abort is expected. */ }
   })();
   try {
-    if (bytes.length) await writer.write(bytes); if (close) await writer.close();
+    if (bytes.length) {
+      await writer.write(bytes);
+    }
+    if (close) {
+      await writer.close();
+    }
   } catch { /* A rejected header can abort the in-flight write. */ }
-  await reading; reader.releaseLock(); writer.releaseLock();
+  await reading;
+  reader.releaseLock();
+  writer.releaseLock();
 }
 
 it.each(['magic', 'invalid', 'stable', 'experimental'] as const)('%s failure commits the exact parser-origin outcome and never dispatches a handler', async variant => {
   const { pair, peer, handler } = fixture(), bytes = encodeProtocolHeader();
   switch (variant) {
-  case 'magic': bytes[0] = 255; break;
-  case 'invalid': new DataView(bytes.buffer).setUint32(9, 0, true); break;
-  case 'stable': new DataView(bytes.buffer).setUint32(9, 1, true); break;
-  case 'experimental': new DataView(bytes.buffer).setUint32(9, 0x80000002, true); break;
+  case 'magic': bytes[0] = 255;
+    break;
+  case 'invalid': new DataView(bytes.buffer).setUint32(9, 0, true);
+    break;
+  case 'stable': new DataView(bytes.buffer).setUint32(9, 1, true);
+    break;
+  case 'experimental': new DataView(bytes.buffer).setUint32(9, 0x80000002, true);
+    break;
   }
   const sending = writePrefix({ pair, bytes, close: false });
-  const outcome = await peer.ended; expect(outcome.protocolError).toBeInstanceOf(NaidanRpcProtocolError);
-  expect(outcome.error).toBe(outcome.protocolError); expect(Object.isFrozen(outcome)).toBe(true); expect(handler).not.toHaveBeenCalled();
-  await sending; await peer.retire();
+  const outcome = await peer.ended;
+  expect(outcome.protocolError).toBeInstanceOf(NaidanRpcProtocolError);
+  expect(outcome.error).toBe(outcome.protocolError);
+  expect(Object.isFrozen(outcome)).toBe(true);
+  expect(handler).not.toHaveBeenCalled();
+  await sending;
+  await peer.retire();
 });
 
 it.each([0, 1, 12])('interruption after %s header bytes stays stream-local and later RPC discovery still works', async length => {
-  const { pair, peer, handler } = fixture(); let ended = false; void peer.ended.then(() => {
+  const { pair, peer, handler } = fixture();
+  let ended = false;
+  void peer.ended.then(() => {
     ended = true;
   });
   await writePrefix({ pair, bytes: encodeProtocolHeader().slice(0, length), close: true });
-  expect(ended).toBe(false); expect(handler).not.toHaveBeenCalled();
+  expect(ended).toBe(false);
+  expect(handler).not.toHaveBeenCalled();
   const remote = new NaidanRpcPeer({ transport: pair.b, exports: [], limits: { maxCalls: 4, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
   cleanups.push(async () => {
-    remote.dispose(); await remote.retire();
+    remote.dispose();
+    await remote.retire();
   });
   const call = remote.client({ contract: api }).ping({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  await expect(call.result).resolves.toBe(7); await call.closed; expect(handler).toHaveBeenCalledOnce(); expect(ended).toBe(false);
+  await expect(call.result).resolves.toBe(7);
+  await call.closed;
+  expect(handler).toHaveBeenCalledOnce();
+  expect(ended).toBe(false);
 });
 
 it('a handler-thrown header error does not terminate the peer or acquire parser provenance', async () => {
@@ -85,14 +112,21 @@ it('a handler-thrown header error does not terminate the peer or acquire parser 
     signal: new AbortController().signal,
   });
   cleanups.push(async () => {
-    left.dispose(); right.dispose(); pair.close(); await Promise.all([left.retire(), right.retire()]);
+    left.dispose();
+    right.dispose();
+    pair.close();
+    await Promise.all([left.retire(), right.retire()]);
   });
-  let ended = false; void right.ended.then(() => {
+  let ended = false;
+  void right.ended.then(() => {
     ended = true;
   });
   const call = left.client({ contract: api }).ping({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  await expect(call.result).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' }); await call.closed.catch(() => {}); expect(ended).toBe(false);
-  right.dispose(); expect((await right.ended).protocolError).toBeUndefined();
+  await expect(call.result).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });
+  await call.closed.catch(() => {});
+  expect(ended).toBe(false);
+  right.dispose();
+  expect((await right.ended).protocolError).toBeUndefined();
 });
 
 it('transport ended cannot spoof parser provenance with a class or an extra outcome field', async () => {
@@ -104,6 +138,9 @@ it('transport ended cannot spoof parser provenance with a class or an extra outc
     limits: { maxCalls: 1, maxCallTimeoutMs: undefined },
     signal: new AbortController().signal,
   });
-  const outcome = await peer.ended; expect(outcome.error).toBe(lookalike); expect(outcome.protocolError).toBeUndefined();
-  pair.close(); await peer.retire();
+  const outcome = await peer.ended;
+  expect(outcome.error).toBe(lookalike);
+  expect(outcome.protocolError).toBeUndefined();
+  pair.close();
+  await peer.retire();
 });

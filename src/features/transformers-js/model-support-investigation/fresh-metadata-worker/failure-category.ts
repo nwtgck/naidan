@@ -5,10 +5,18 @@ export function classifyFreshMetadataFailure({ error }: { error: unknown }):
   // A hostile Proxy can throw during instanceof; even classification must not
   // prevent the owner from returning its existing partial HTTP evidence.
   try {
-    if (error instanceof SyntaxError) return 'syntax-error';
-    if (error instanceof TypeError) return 'type-error';
-    if (error instanceof RangeError) return 'range-error';
-    if (error instanceof Error) return 'error';
+    if (error instanceof SyntaxError) {
+      return 'syntax-error';
+    }
+    if (error instanceof TypeError) {
+      return 'type-error';
+    }
+    if (error instanceof RangeError) {
+      return 'range-error';
+    }
+    if (error instanceof Error) {
+      return 'error';
+    }
   } catch {
     return 'unknown';
   }

@@ -13,9 +13,12 @@ const createWorkerClient = vi.fn(() => {
 });
 
 async function file({ path, content }: { path: string; content: Uint8Array }): Promise<void> {
-  const parts = path.split('/'); const name = parts.pop()!;
+  const parts = path.split('/');
+  const name = parts.pop()!;
   let folder = root;
-  for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
+  for (const part of parts) {
+    folder = await folder.getDirectoryHandle(part, { create: true });
+  }
   const access = await (await folder.getFileHandle(name, { create: true })).createSyncAccessHandle();
   using _cleanupResource = {
     [Symbol.dispose]() {
@@ -30,12 +33,16 @@ async function textFile({ path }: { path: string }): Promise<void> {
 }
 
 async function onnxModel({ path }: { path: string }): Promise<void> {
-  for (const name of ['model.onnx', '.model.onnx.complete', 'config.json', '.config.json.complete']) await textFile({ path: `${path}/${name}` });
+  for (const name of ['model.onnx', '.model.onnx.complete', 'config.json', '.config.json.complete']) {
+    await textFile({ path: `${path}/${name}` });
+  }
 }
 
 async function folderAt({ path }: { path: string }): Promise<FileSystemDirectoryHandle> {
   let folder = root;
-  for (const part of path.split('/')) folder = await folder.getDirectoryHandle(part);
+  for (const part of path.split('/')) {
+    folder = await folder.getDirectoryHandle(part);
+  }
   return folder as unknown as FileSystemDirectoryHandle;
 }
 
@@ -72,7 +79,9 @@ describe('shared OPFS model storage', () => {
     expect((await service.service.listCachedModels()).every(model => model.size === 4 && model.fileCount === 2)).toBe(true);
     const llamaModels = await listStoredModels();
     expect(llamaModels.map(model => model.name)).toEqual(['hf.co/org/gguf:model-Q4_K_M', 'hf.co/org/mixed:model-Q4_K_M', 'user/gguf', 'user/mixed']);
-    for (const model of llamaModels) expect((await storedModelDirectory({ name: model.id })).files.every(entry => entry.path.endsWith('.gguf'))).toBe(true);
+    for (const model of llamaModels) {
+      expect((await storedModelDirectory({ name: model.id })).files.every(entry => entry.path.endsWith('.gguf'))).toBe(true);
+    }
   });
 
   it('keeps incomplete ONNX visible and does not treat tokenizer-only directories as models', async () => {
@@ -91,7 +100,9 @@ describe('shared OPFS model storage', () => {
   it.each(['user/mixed', 'hf.co/org/mixed'])('deleting TJS %s preserves GGUF files and llama pending state', async id => {
     const path = id.startsWith('user/') ? `models/${id}` : 'models/huggingface.co/org/mixed/resolve/main';
     await onnxModel({ path });
-    for (const name of ['model-00001-of-00002.gguf', 'model-00002-of-00002.gguf', 'mmproj.gguf']) await file({ path: `${path}/${name}`, content: ggufBytes() });
+    for (const name of ['model-00001-of-00002.gguf', 'model-00002-of-00002.gguf', 'mmproj.gguf']) {
+      await file({ path: `${path}/${name}`, content: ggufBytes() });
+    }
     await textFile({ path: `${path}/.llama-cpp-import-pending` });
     await textFile({ path: `${path}/notes.txt` });
     await textFile({ path: `${path}/.model-00001-of-00002.gguf.complete` });
@@ -107,7 +118,9 @@ describe('shared OPFS model storage', () => {
   it('removes completed external tensors with arbitrary names but preserves unmarked unknown files', async () => {
     const path = 'models/user/external';
     await onnxModel({ path });
-    for (const name of ['tensor-chunk', '.tensor-chunk.complete', 'unknown-chunk', 'model.onnx_data', 'model.onnx_data_1']) await textFile({ path: `${path}/${name}` });
+    for (const name of ['tensor-chunk', '.tensor-chunk.complete', 'unknown-chunk', 'model.onnx_data', 'model.onnx_data_1']) {
+      await textFile({ path: `${path}/${name}` });
+    }
     await service.service.deleteModel({ modelId: 'user/external' });
     expect((await scanDeletionTree({ folder: await folderAt({ path }) })).files.map(entry => entry.path)).toEqual(['unknown-chunk']);
   });
@@ -123,7 +136,8 @@ describe('shared OPFS model storage', () => {
     expect(await listStoredModels()).toEqual([]);
     await writer.open({ fileIndex: 0, start: 0 });
     await writer.append({ bytes: ggufBytes() });
-    await writer.finishFile(); await writer.finish();
+    await writer.finishFile();
+    await writer.finish();
     expect(await service.service.listCachedModels()).toEqual(before);
     expect(await listStoredModels()).toEqual([expect.objectContaining({ id: 'hf.co/org/mixed:model.gguf', size: 128 })]);
     expect(root.children.has('llama-cpp-browser-models')).toBe(false);

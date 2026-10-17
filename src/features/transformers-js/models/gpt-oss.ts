@@ -39,7 +39,9 @@ function emitGptOssInputPrepared({
   onInputPrepared: GptOssInputPreparedObserver | undefined,
   prepare: () => GptOssInputPreparedObservation,
 }): void {
-  if (onInputPrepared === undefined) return;
+  if (onInputPrepared === undefined) {
+    return;
+  }
   try {
     onInputPrepared({ observation: prepare() });
   } catch {
@@ -132,7 +134,8 @@ export async function generateGptOss({
   let currentChannel = '';
   let emittedContent = '';
   const emitChunk = ({ chunk }: { chunk: string }) => {
-    emittedContent += chunk; onChunk({ chunk });
+    emittedContent += chunk;
+    onChunk({ chunk });
   };
   let pendingAnalysisClose = false;
   const parser = new GptOssHarmonyStreamParser();
@@ -141,9 +144,13 @@ export async function generateGptOss({
     emit: ({ event }) => {
       onGenerationEvent({ event });
       switch (event.type) {
-      case 'tool_call': stoppingCriteria.interrupt(); break;
+      case 'tool_call': stoppingCriteria.interrupt();
+        break;
       case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'result': break;
-      default: { const exhaustive: never = event; throw new Error(`Unhandled generation event: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = event;
+        throw new Error(`Unhandled generation event: ${exhaustive}`);
+      }
       }
     },
   });
@@ -152,7 +159,9 @@ export async function generateGptOss({
     skip_special_tokens: false,
     callback_function: (output: string) => {
       const delta = parser.push({ token: output });
-      if (!delta) return;
+      if (!delta) {
+        return;
+      }
 
       switch (delta.type) {
       case 'content': {
@@ -170,8 +179,12 @@ export async function generateGptOss({
         }
 
         if (visibleChannel !== currentChannel) {
-          if (currentChannel === 'analysis') emitChunk({ chunk: '</think>' });
-          if (visibleChannel === 'analysis') emitChunk({ chunk: '<think>' });
+          if (currentChannel === 'analysis') {
+            emitChunk({ chunk: '</think>' });
+          }
+          if (visibleChannel === 'analysis') {
+            emitChunk({ chunk: '<think>' });
+          }
           currentChannel = visibleChannel;
         }
 
@@ -265,7 +278,9 @@ export async function generateGptOss({
     // Absence of a native terminator is not success, even when generate() fulfilled.
     structured.finish({ reason: 'unknown' });
     const assistant = structured.assistant();
-    if (assistant === undefined) return undefined;
+    if (assistant === undefined) {
+      return undefined;
+    }
     return retainGptOssContinuation({
       owner: continuationOwner,
       model,
@@ -279,7 +294,9 @@ export async function generateGptOss({
       tensorClass: Tensor,
     });
   }
-  if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
+  if (pendingToolCalls.length > 0) {
+    onToolCalls({ toolCalls: pendingToolCalls });
+  }
   return retainGptOssContinuation({
     owner: continuationOwner,
     model,
@@ -320,7 +337,9 @@ function buildGptOssToolResultTokens({
 }): Record<string, unknown> {
   const idToName = new Map<ToolCallId, string>();
   for (const message of messages) {
-    if (!message.tool_calls) continue;
+    if (!message.tool_calls) {
+      continue;
+    }
     for (const toolCall of message.tool_calls) {
       idToName.set(toolCall.id, toolCall.function.name);
     }
@@ -341,14 +360,18 @@ function isGptOssToolContinuationRequest({ messages }: { messages: InferenceMess
 }
 
 function isToolContinuationRequest({ messages }: { messages: InferenceMessage[] }): boolean {
-  if (messages.length < 2) return false;
+  if (messages.length < 2) {
+    return false;
+  }
 
   let assistantIndex = messages.length - 1;
   while (assistantIndex >= 0 && messages[assistantIndex]?.tool_call_id) {
     assistantIndex -= 1;
   }
 
-  if (assistantIndex === messages.length - 1) return false;
+  if (assistantIndex === messages.length - 1) {
+    return false;
+  }
 
   const assistantMessage = messages[assistantIndex];
   if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.tool_calls?.length) {
