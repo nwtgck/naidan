@@ -1,11 +1,11 @@
 // @vitest-environment node
-// !!! ALLOW-TEST-COMMAND git init:* !!! -- Create temporary checkout fixtures.
-// !!! ALLOW-TEST-COMMAND git add:* !!! -- Stage fixture files.
-// !!! ALLOW-TEST-COMMAND git commit:* !!! -- Create fixture commits.
-// !!! ALLOW-TEST-COMMAND git rev-parse:* !!! -- Read fixture commit identities.
-// !!! ALLOW-TEST-COMMAND git status:* !!! -- Observe fixture working trees.
-// !!! ALLOW-TEST-COMMAND git update-index:* !!! -- Prepare an alternate fixture index.
-// !!! ALLOW-TEST-COMMAND git worktree add:* !!! -- Verify a detached temporary fixture worktree.
+// !!! ALLOW-EXTERNAL-COMMAND git init:* !!! -- Create temporary checkout fixtures.
+// !!! ALLOW-EXTERNAL-COMMAND git add:* !!! -- Stage fixture files.
+// !!! ALLOW-EXTERNAL-COMMAND git commit:* !!! -- Create fixture commits.
+// !!! ALLOW-EXTERNAL-COMMAND git rev-parse:* !!! -- Read fixture commit identities.
+// !!! ALLOW-EXTERNAL-COMMAND git status:* !!! -- Observe fixture working trees.
+// !!! ALLOW-EXTERNAL-COMMAND git update-index:* !!! -- Prepare an alternate fixture index.
+// !!! ALLOW-EXTERNAL-COMMAND git worktree add:* !!! -- Verify a detached temporary fixture worktree.
 import type { SpawnSyncOptionsWithStringEncoding, SpawnSyncReturns } from 'node:child_process';
 import { copyFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

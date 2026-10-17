@@ -1,5 +1,5 @@
 // @vitest-environment node
-// !!! ALLOW-TEST-COMMAND fixture-tool inspect:* !!! -- Exercise command wrappers with mocked Node process APIs.
+// !!! ALLOW-EXTERNAL-COMMAND fixture-tool inspect:* !!! -- Exercise command wrappers with mocked Node process APIs.
 import type { ChildProcess, SpawnSyncReturns } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough, type Readable, type Writable } from 'node:stream';

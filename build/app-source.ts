@@ -1,5 +1,5 @@
-// !!! ALLOW-TEST-COMMAND git rev-parse:* !!! -- Observe this checkout's source identity during builds.
-// !!! ALLOW-TEST-COMMAND git status:* !!! -- Observe this checkout's working tree during builds.
+// !!! ALLOW-EXTERNAL-COMMAND git rev-parse:* !!! -- Observe this checkout's source identity during builds.
+// !!! ALLOW-EXTERNAL-COMMAND git status:* !!! -- Observe this checkout's working tree during builds.
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { runCommandSync } from './command';

@@ -4,10 +4,10 @@ import { Linter } from 'eslint';
 import * as tsParser from '@typescript-eslint/parser';
 import vueParser from 'vue-eslint-parser';
 import path from 'node:path';
-import policy from './test-command-policy.js';
+import policy from './external-command-policy.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..');
-const permission = '// !!! ALLOW-TEST-COMMAND git diff:* !!! -- Verify generated output.';
+const permission = '// !!! ALLOW-EXTERNAL-COMMAND git diff:* !!! -- Verify generated output.';
 const runnerImport = "import { runCommand, runCommandSync } from '../build/command';";
 const call = "runCommand({ argv: ['git', 'diff', ...paths], options: { cwd: fixture } })";
 
@@ -60,8 +60,15 @@ describe('common command runner permission', () => {
     expect(ids({ code: permitted({ body: `${call}; ${call}; type Runner = typeof runCommand` }) })).toEqual([]);
   });
 
+  it('requires the general external-command marker in tests and ordinary source files', () => {
+    const code = permitted({ body: call }).replace('ALLOW-EXTERNAL-COMMAND', 'ALLOW-TEST-COMMAND');
+    for (const filename of ['src/example.test.ts', 'scripts/example.ts', 'build/example.ts']) {
+      expect(ids({ code, filename })).toContain('missingPermission');
+    }
+  });
+
   it('requires a broad permission to be independently used when a narrower one matches', () => {
-    const broad = '// !!! ALLOW-TEST-COMMAND git:* !!! -- Permit fixture commands.';
+    const broad = '// !!! ALLOW-EXTERNAL-COMMAND git:* !!! -- Permit fixture commands.';
     const code = `${broad}\n${permitted({ body: call })}`;
     expect(ids({ code })).toEqual(['unusedPermission']);
     const other = "runCommandSync({ argv: ['git', 'status'], options: undefined });";

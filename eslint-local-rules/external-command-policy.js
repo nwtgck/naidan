@@ -1,14 +1,14 @@
 import { findVariable, propertyName, unwrap } from './test-resource-ast.js';
 import path from 'node:path';
-import { commandPath, createResolver, hasRuntimeImport, isCommandModule, isRawModule, physicalPath, repoRoot } from './test-command-ast.js';
+import { commandPath, createResolver, hasRuntimeImport, isCommandModule, isRawModule, physicalPath, repoRoot } from './external-command-ast.js';
 
 const messages = {
   rawCommandEntry: 'Use the common command runner. Raw host command modules, execution APIs, and known launchers are forbidden outside build/command.ts.',
-  malformedPermission: 'Use // !!! ALLOW-TEST-COMMAND <literal command prefix>:* !!! -- <reason> as a standalone leading comment.',
+  malformedPermission: 'Use // !!! ALLOW-EXTERNAL-COMMAND <literal command prefix>:* !!! -- <reason> as a standalone leading comment.',
   misplacedPermission: 'Command permissions must precede the first code or import in the file.',
   duplicatePermission: 'This command prefix is already permitted in this file.',
   unusedPermission: 'This command permission has no matching direct runner call in this file.',
-  missingPermission: 'Declare the command prefix in a leading ALLOW-TEST-COMMAND comment with a reason.',
+  missingPermission: 'Declare the command prefix in a leading ALLOW-EXTERNAL-COMMAND comment with a reason.',
   mismatchedPermission: 'The literal argv prefix does not match a command permission in this file. Dynamic values and spreads may follow the permitted prefix.',
   invalidRunnerCall: 'Call the runner directly with one literal object containing argv and options. argv must be a nonempty array literal with a literal command prefix.',
   runnerEscape: 'Import runCommand/runCommandSync by name and call that binding directly. Do not re-export, alias, store, or pass the runner as a value.',
@@ -160,7 +160,7 @@ function makeRule({ mode }) {
           const firstCode = node.body[0]?.range[0] ?? Infinity;
           const keys = new Set();
           for (const comment of sourceCode.getAllComments()) {
-            if (comment.type !== 'Line' || !comment.value.includes('ALLOW-TEST-COMMAND')) {
+            if (comment.type !== 'Line' || !comment.value.includes('ALLOW-EXTERNAL-COMMAND')) {
               continue;
             }
             if (comment.range[0] >= firstCode) {
@@ -169,7 +169,7 @@ function makeRule({ mode }) {
             }
             const raw = sourceCode.text.slice(...comment.range);
             const lineStart = Math.max(...['\n', '\r', '\u2028', '\u2029'].map(newline => sourceCode.text.lastIndexOf(newline, comment.range[0] - 1))) + 1;
-            const match = /^\/\/ !!! ALLOW-TEST-COMMAND ([^\s*]+(?: [^\s*]+)*):\* !!! -- (\S[^\n\r\u2028\u2029]*)$/u.exec(raw);
+            const match = /^\/\/ !!! ALLOW-EXTERNAL-COMMAND ([^\s*]+(?: [^\s*]+)*):\* !!! -- (\S[^\n\r\u2028\u2029]*)$/u.exec(raw);
             if (!match || sourceCode.text.slice(lineStart, comment.range[0]).trim()) {
               report(comment, 'malformedPermission');
               continue;
@@ -333,21 +333,21 @@ function makeRule({ mode }) {
 }
 
 export const noUnapprovedCommandEntry = makeRule({ mode: 'raw' });
-export const requireTestCommandPermission = makeRule({ mode: 'permission' });
+export const requireCommandPermission = makeRule({ mode: 'permission' });
 
 export default {
-  name: 'naidan/test-command-policy',
+  name: 'naidan/external-command-policy',
   files: ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue}'],
   plugins: {
-    'local-rules-test-command': {
+    'local-rules-external-command': {
       rules: {
         'no-unapproved-command-entry': noUnapprovedCommandEntry,
-        'require-test-command-permission': requireTestCommandPermission,
+        'require-command-permission': requireCommandPermission,
       },
     },
   },
   rules: {
-    'local-rules-test-command/no-unapproved-command-entry': 'error',
-    'local-rules-test-command/require-test-command-permission': 'error',
+    'local-rules-external-command/no-unapproved-command-entry': 'error',
+    'local-rules-external-command/require-command-permission': 'error',
   },
 };
