@@ -56,6 +56,7 @@ import { ChatAttachMenu__what_is_folder_link } from '@/strings/messages/ChatAtta
 import { ChatAttachMenu__why_is_folder_link_unavailable } from '@/strings/messages/ChatAttachMenu__why_is_folder_link_unavailable/ja';
 import { ChatDebugInspector__active } from '@/strings/messages/ChatDebugInspector__active/ja';
 import { ChatDebugInspector__chat_inspector } from '@/strings/messages/ChatDebugInspector__chat_inspector/ja';
+import { ChatDebugInspector__close_inspector } from '@/strings/messages/ChatDebugInspector__close_inspector/ja';
 import { ChatDebugInspector__collapse_tree } from '@/strings/messages/ChatDebugInspector__collapse_tree/ja';
 import { ChatDebugInspector__context_path } from '@/strings/messages/ChatDebugInspector__context_path/ja';
 import { ChatDebugInspector__copy_json } from '@/strings/messages/ChatDebugInspector__copy_json/ja';
@@ -2790,6 +2791,7 @@ export const catalog = {
   ChatAttachMenu__why_is_folder_link_unavailable,
   ChatDebugInspector__active,
   ChatDebugInspector__chat_inspector,
+  ChatDebugInspector__close_inspector,
   ChatDebugInspector__collapse_tree,
   ChatDebugInspector__context_path,
   ChatDebugInspector__copy_json,
