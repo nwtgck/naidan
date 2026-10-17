@@ -1224,8 +1224,8 @@ defineExpose({
 }
 .connection-footer-primary:disabled {
   cursor: default;
-  background: #e2eaf5;
-  color: #526985;
+  background: var(--color-gray-200);
+  color: var(--color-gray-400);
 }
 .dark .connection-label {
   color: #e5e7eb;
@@ -1257,8 +1257,8 @@ defineExpose({
   background: #3b82f6;
 }
 .dark .connection-footer-primary:disabled {
-  background: #253750;
-  color: #a5bfdf;
+  background: var(--color-gray-700);
+  color: var(--color-gray-500);
 }
 @container (min-width: 42rem) {
   .connection-setup {
