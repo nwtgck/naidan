@@ -1161,7 +1161,7 @@ defineExpose({
                     >
                       <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" tw-class="w-3 h-3 flex-shrink-0" />
                     </button>
-                    <FolderIcon tw-class="w-4 h-4 text-blue-500/60" />
+                    <FolderIcon tw-class="w-4 h-4 shrink-0 text-blue-500/60" />
 
                     <input
                       v-if="editingChatGroupId === element.chatGroup.id"
