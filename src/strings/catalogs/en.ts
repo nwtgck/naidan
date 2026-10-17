@@ -1982,6 +1982,7 @@ import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_k
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/en';
 import { dataDeletion__advanced_mode } from '@/strings/messages/dataDeletion__advanced_mode/en';
 import { dataDeletion__checked_selectors_matching_entries } from '@/strings/messages/dataDeletion__checked_selectors_matching_entries/en';
+import { dataDeletion__clear_all_selections } from '@/strings/messages/dataDeletion__clear_all_selections/en';
 import { dataDeletion__delete_application_data } from '@/strings/messages/dataDeletion__delete_application_data/en';
 import { dataDeletion__delete_data_matched_by_selected_selectors } from '@/strings/messages/dataDeletion__delete_data_matched_by_selected_selectors/en';
 import { dataDeletion__delete_selected_data } from '@/strings/messages/dataDeletion__delete_selected_data/en';
@@ -4770,6 +4771,7 @@ export const catalog = {
   contextCompact__waiting_for_the_model,
   dataDeletion__advanced_mode,
   dataDeletion__checked_selectors_matching_entries,
+  dataDeletion__clear_all_selections,
   dataDeletion__delete_application_data,
   dataDeletion__delete_data_matched_by_selected_selectors,
   dataDeletion__delete_selected_data,

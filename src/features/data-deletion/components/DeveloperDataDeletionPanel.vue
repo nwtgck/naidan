@@ -128,6 +128,10 @@ function applyFactoryResetPreset(): void {
   selectedOptionIds.value = new Set(FACTORY_RESET_OPTION_IDS);
 }
 
+function clearAllSelections(): void {
+  selectedOptionIds.value = new Set();
+}
+
 async function refreshPreview(): Promise<void> {
   const requestToken = previewRequestToken + 1;
   previewRequestToken = requestToken;
@@ -234,22 +238,32 @@ defineExpose({
 
       <div tw-class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] gap-4">
         <div tw-class="space-y-4 min-w-0">
-          <div tw-class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 rounded-2xl border border-red-100 dark:border-red-900/20 bg-white/70 dark:bg-gray-900/40">
+          <div tw-class="flex flex-wrap items-center gap-3 p-3 rounded-2xl border border-red-100 dark:border-red-900/20 bg-white/70 dark:bg-gray-900/40">
             <button
               type="button"
               @click="applyFactoryResetPreset"
-              tw-class="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 shadow-sm transition-all hover:bg-red-50 active:scale-95 dark:border-red-900/30 dark:bg-gray-800 dark:text-red-300 dark:hover:bg-red-900/10"
+              tw-class="inline-flex max-w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 shadow-sm transition-all hover:bg-red-50 active:scale-95 dark:border-red-900/30 dark:bg-gray-800 dark:text-red-300 dark:hover:bg-red-900/10"
               data-testid="data-deletion-factory-reset-preset-button"
             >
-              <Trash2Icon tw-class="w-4 h-4" />
+              <Trash2Icon tw-class="w-4 h-4 shrink-0" />
               {{ lazyStrings.dataDeletion__factory_reset() }}
             </button>
 
-            <label tw-class="inline-flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300 select-none">
+            <button
+              type="button"
+              :disabled="!canDeleteSelectedData"
+              @click="clearAllSelections"
+              tw-class="inline-flex max-w-full shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600 shadow-sm transition-all hover:bg-gray-50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              data-testid="data-deletion-clear-all-selections-button"
+            >
+              {{ lazyStrings.dataDeletion__clear_all_selections() }}
+            </button>
+
+            <label tw-class="inline-flex items-center gap-2 text-xs font-bold text-gray-600 dark:text-gray-300 select-none sm:ml-auto">
               <input
                 v-model="advancedMode"
                 type="checkbox"
-                tw-class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                tw-class="w-4 h-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 data-testid="data-deletion-advanced-mode-checkbox"
               >
               <span>{{ lazyStrings.dataDeletion__advanced_mode() }}</span>
