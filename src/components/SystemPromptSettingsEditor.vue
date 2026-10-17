@@ -183,11 +183,11 @@ defineExpose({
         {{ title }}
       </label>
 
-      <div tw-class="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-slate-100/80 p-0.5 dark:bg-[#131e2e]">
+      <div tw-class="inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800 inset-ring-1 inset-ring-gray-200/50 dark:inset-ring-gray-700/50">
         <button
           @click="updateMode({ nextMode: 'parent' })"
           :aria-pressed="mode === 'parent'"
-          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'parent' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'parent' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/40 hover:text-gray-700 dark:hover:text-gray-200']"
           :data-testid="`${testIdPrefix}-parent-button`"
         >
           {{ parentModeLabel }}
@@ -195,7 +195,7 @@ defineExpose({
         <button
           @click="updateMode({ nextMode: 'no_prompt' })"
           :aria-pressed="mode === 'no_prompt'"
-          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'no_prompt' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'no_prompt' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/40 hover:text-gray-700 dark:hover:text-gray-200']"
           :data-testid="`${testIdPrefix}-no-prompt-button`"
         >
           {{ noPromptModeLabel }}
@@ -203,7 +203,7 @@ defineExpose({
         <button
           @click="updateMode({ nextMode: 'replace' })"
           :aria-pressed="mode === 'replace'"
-          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'replace' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'replace' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/40 hover:text-gray-700 dark:hover:text-gray-200']"
           :data-testid="`${testIdPrefix}-replace-button`"
         >
           {{ replaceModeLabel }}
@@ -211,7 +211,7 @@ defineExpose({
         <button
           @click="updateMode({ nextMode: 'append' })"
           :aria-pressed="mode === 'append'"
-          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'append' ? 'bg-blue-400/10 text-blue-600 inset-ring-1 inset-ring-blue-400/25 dark:text-blue-400 hover:bg-blue-400/15' : 'text-slate-600 dark:text-slate-300 hover:bg-blue-100/60 hover:text-blue-700 dark:hover:bg-[#1c2b42] dark:hover:text-blue-300']"
+          :tw-class="['min-h-8 px-3 text-xs font-medium rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', mode === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/40 hover:text-gray-700 dark:hover:text-gray-200']"
           :data-testid="`${testIdPrefix}-append-button`"
         >
           {{ appendModeLabel }}
