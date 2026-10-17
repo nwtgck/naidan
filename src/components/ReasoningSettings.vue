@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { computed, ref, onMounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
 import type { Reasoning } from '@/01-models/types';
 
@@ -84,7 +84,11 @@ const effortOptions = computed<EffortOption[]>(() => {
 });
 
 const buttonRefs = ref<(HTMLElement | null)[]>([]);
+const containerRef = ref<HTMLElement>();
 const isInitialized = ref(false);
+let resizeObserver: ResizeObserver | undefined;
+let initializationTimer: ReturnType<typeof setTimeout> | undefined;
+let isUnmounted = false;
 const sliderStyle = ref({
   left: '0px',
   width: '0px',
@@ -93,6 +97,9 @@ const sliderStyle = ref({
 });
 
 function updateSlider({ immediate }: { immediate?: boolean }) {
+  if (isUnmounted) {
+    return;
+  }
   const index = effortOptions.value.findIndex(o => o.value === selectedValue.value);
   const el = buttonRefs.value[index];
   if (el) {
@@ -119,13 +126,26 @@ onMounted(() => {
   // First measurement: immediate without animation
   updateSlider({ immediate: true });
 
+  if (typeof ResizeObserver !== 'undefined' && containerRef.value) {
+    resizeObserver = new ResizeObserver(() => updateSlider({ immediate: true }));
+    resizeObserver.observe(containerRef.value);
+  }
+
   // Mark as initialized after a short delay to ensure next changes are animated
-  setTimeout(() => {
+  initializationTimer = setTimeout(() => {
     isInitialized.value = true;
   }, 50);
 });
 
-// Monitor for selection changes or potential layout updates (e.g., resizing)
+onBeforeUnmount(() => {
+  isUnmounted = true;
+  resizeObserver?.disconnect();
+  if (initializationTimer !== undefined) {
+    clearTimeout(initializationTimer);
+  }
+});
+
+// Measure after selection or label changes have updated the buttons.
 watch([selectedValue, effortOptions], () => {
   nextTick(() => updateSlider({}));
 });
@@ -155,10 +175,11 @@ defineExpose({
     </div>
 
     <!-- Segmented Control Container -->
-    <div tw-class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div ref="containerRef" data-testid="reasoning-effort-options" tw-class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
 
       <!-- Animated Slider Background -->
       <div
+        data-testid="reasoning-effort-slider"
         tw-class="absolute top-0.5 bottom-0.5 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
         :style="sliderStyle"
       ></div>
