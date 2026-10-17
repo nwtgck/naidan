@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range = (): string => "Gib einen gültigen Parameterbereich mit nicht negativen Zahlen ein. Das Minimum darf nicht größer als das Maximum sein.";

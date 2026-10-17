@@ -1,11 +1,135 @@
 import { modelGroups } from './model-variants';
 import { z } from 'zod';
 import { privacyFetchStream } from '@/features/privacy-fetch';
+import { validatePrivacyFetchUrl } from '@/features/privacy-fetch/validate-url';
+import { normalizeHuggingFaceParameterFilter } from '@/features/privacy-fetch/policies/huggingface';
 import { resolveModelFiles } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { repositoryFileSchema, repositorySchema, repositoryUrlPath, revisionSchema, type RepositoryFile } from './types';
 
 export type ModelCandidate = { label: string, files: RepositoryFile[], size: number };
 export type RepositoryCatalog = { repository: string, revision: string, models: ModelCandidate[], projectors: RepositoryFile[] };
+
+// Validate only fields rendered by repository search. Other API fields may
+// evolve without changing this workflow.
+const optionalSearchCountSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().catch(undefined);
+const optionalSearchTotalSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional().catch(undefined);
+const optionalSearchTextSchema = z.string().trim().min(1).max(200).regex(/^[^\p{Cc}]+$/u).optional().catch(undefined);
+const modelSearchResultSchema = z.object({
+  id: repositorySchema,
+  downloads: optionalSearchCountSchema,
+  likes: optionalSearchCountSchema,
+  pipeline_tag: optionalSearchTextSchema,
+  gguf: z.object({ total: optionalSearchTotalSchema, architecture: optionalSearchTextSchema }).optional().catch(undefined),
+  safetensors: z.object({ total: optionalSearchTotalSchema }).optional().catch(undefined),
+  lastModified: z.iso.datetime({ offset: true }).optional().catch(undefined),
+});
+export type ModelSearchResult = z.infer<typeof modelSearchResultSchema>;
+export type ModelSearchPage = { results: ModelSearchResult[], nextCursor: string | undefined };
+const searchExpandedFields = ['pipeline_tag', 'gguf', 'safetensors', 'downloads', 'likes', 'lastModified'];
+const searchCursorSchema = z.string().min(1).max(8192).regex(/^[^\p{Cc}]+$/u);
+
+export function createSearchParameterFilter({ minimumBillions, maximumBillions }: { minimumBillions: string, maximumBillions: string }): string | undefined {
+  if ([minimumBillions, maximumBillions].some(value => value.trim() && !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()))) {
+    throw new Error('Invalid parameter range');
+  }
+  const minimum = minimumBillions.trim().replace(/^\./, '0.').replace(/\.$/, '');
+  const maximum = maximumBillions.trim().replace(/^\./, '0.').replace(/\.$/, '');
+  if (!minimum && !maximum) {
+    return undefined;
+  }
+  const raw = [minimum ? `min:${minimum}B` : undefined, maximum ? `max:${maximum}B` : undefined].filter(bound => bound !== undefined).join(',');
+  const normalized = normalizeHuggingFaceParameterFilter({ value: raw });
+  if (normalized === undefined) {
+    throw new Error('Invalid parameter range');
+  }
+  return normalized;
+}
+
+function searchUrl({ query, cursor, numParameters }: { query: string, cursor: string | undefined, numParameters: string | undefined }): URL {
+  const url = new URL('https://huggingface.co/api/models');
+  url.searchParams.set('apps', 'llama.cpp');
+  url.searchParams.set('sort', 'trendingScore');
+  if (query) {
+    url.searchParams.set('search', query);
+  }
+  url.searchParams.set('limit', '20');
+  for (const field of searchExpandedFields) {
+    url.searchParams.append('expand[]', field);
+  }
+  if (cursor !== undefined) {
+    url.searchParams.set('cursor', searchCursorSchema.parse(cursor));
+  }
+  if (numParameters !== undefined) {
+    const normalized = normalizeHuggingFaceParameterFilter({ value: numParameters });
+    if (normalized === undefined) {
+      throw new Error('Invalid parameter range');
+    }
+    url.searchParams.set('num_parameters', normalized);
+  }
+  return url;
+}
+
+function nextSearchCursor({ link, requestUrl, cursor }: { link: string | undefined, requestUrl: URL, cursor: string | undefined }): string | undefined {
+  const nextLinks = (link ?? '').split(/,(?=\s*<)/).flatMap(part => {
+    const target = part.match(/^\s*<([^>]+)>\s*;\s*(.*)$/);
+    const relation = target?.[2]?.match(/(?:^|;)\s*rel\s*=\s*(?:"([^"]*)"|([^;\s]+))/i);
+    return target && relation && (relation[1] ?? relation[2] ?? '').toLowerCase().split(/\s+/).includes('next') ? [target[1]!] : [];
+  });
+  if (nextLinks.length !== 1) {
+    return undefined;
+  }
+  try {
+    const next = new URL(nextLinks[0]!, requestUrl);
+    if (next.origin !== requestUrl.origin || next.pathname !== '/api/models' || next.username || next.password || next.hash) {
+      return undefined;
+    }
+    // Accept either documented array spelling in Link headers, then rebuild
+    // our own request URL from the cursor instead of fetching the supplied URL.
+    const expanded = [...next.searchParams.getAll('expand[]'), ...next.searchParams.getAll('expand')];
+    if (new Set(expanded).size !== expanded.length || expanded.some(field => !searchExpandedFields.includes(field))) {
+      return undefined;
+    }
+    next.searchParams.delete('expand');
+    next.searchParams.delete('expand[]');
+    for (const field of expanded) {
+      next.searchParams.append('expand[]', field);
+    }
+    if (next.searchParams.has('num_parameters')) {
+      const normalized = normalizeHuggingFaceParameterFilter({ value: next.searchParams.get('num_parameters')! });
+      if (next.searchParams.getAll('num_parameters').length !== 1 || normalized === undefined || normalized !== requestUrl.searchParams.get('num_parameters')) {
+        return undefined;
+      }
+      next.searchParams.set('num_parameters', normalized);
+    }
+    for (const key of ['apps', 'sort', 'limit', 'search', 'num_parameters']) {
+      if (next.searchParams.has(key) && (next.searchParams.get(key) ?? '') !== (requestUrl.searchParams.get(key) ?? '')) {
+        return undefined;
+      }
+      const original = requestUrl.searchParams.get(key);
+      if (!next.searchParams.has(key) && original !== null) {
+        next.searchParams.set(key, original);
+      }
+    }
+    if (!validatePrivacyFetchUrl({ urlText: next.href }).ok) {
+      return undefined;
+    }
+    const candidate = searchCursorSchema.safeParse(next.searchParams.get('cursor'));
+    return candidate.success && candidate.data !== cursor ? candidate.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Calling this function requires an explicit search or trending-list request.
+export async function searchModels({ query, cursor, numParameters, signal }: { query: string, cursor: string | undefined, numParameters: string | undefined, signal: AbortSignal }): Promise<ModelSearchPage> {
+  const search = z.string().max(200).regex(/^[^\p{Cc}]*$/u).parse(query.trim());
+  signal.throwIfAborted();
+  const url = searchUrl({ query: search, cursor, numParameters });
+  const response = await fetchJson({ url: url.href, signal });
+  signal.throwIfAborted();
+  const results = z.array(modelSearchResultSchema).parse(response.value);
+  return { results: [...new Map(results.map(result => [result.id, result])).values()].slice(0, 20), nextCursor: nextSearchCursor({ link: response.headers.get('link') ?? undefined, requestUrl: url, cursor }) };
+}
 
 export function parseRepository({ input }: { input: string }): { repository: string, requestedVariant: string | undefined } {
   let value = input.trim();

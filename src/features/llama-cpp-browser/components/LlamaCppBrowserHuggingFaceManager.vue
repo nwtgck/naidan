@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
+import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { destinationKey, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
@@ -12,7 +13,7 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, SearchIcon, Trash2Icon } from 'lucide-vue-next';
+import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
 import { quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
@@ -29,6 +30,8 @@ const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = use
 const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, candidate, projector, multimodal } = useHuggingFaceSession();
 const id = useId();
 const details = ref<HTMLDetailsElement>();
+const repositorySearch = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceSearch>>();
+const searching = ref(false);
 const active = ref<AbortController>();
 let inspectionPreset: ModelPreset | undefined;
 let inspecting = false;
@@ -106,6 +109,7 @@ function recheckLocalFiles(): void {
 }
 
 const total = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0));
+const downloadSizeDescription = computed(() => selected.value && needsProjector.value ? lazyStrings.LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total() : lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size());
 let disposed = false;
 const deleting = ref(false);
 const authorizing = ref(false);
@@ -156,6 +160,7 @@ async function inspect(): Promise<void> {
   if (active.value || props.disabled || deleting.value) {
     return;
   }
+  repositorySearch.value?.cancelPending();
   inspecting = true;
   const controller = new AbortController();
   active.value = controller;
@@ -362,8 +367,8 @@ watch(queue.changed, () => {
   void refresh();
   emit('changed');
 });
-watch([active, queuedDownloadBusy, deleting], ([operation, downloading, removing]) => {
-  emit('busy', operation !== undefined || downloading || removing);
+watch([active, queuedDownloadBusy, deleting, searching], ([operation, downloading, removing, finding]) => {
+  emit('busy', operation !== undefined || downloading || removing || finding);
 }, { immediate: true });
 onMounted(() => {
   window.addEventListener('focus', recheckLocalFiles);
@@ -389,15 +394,17 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
   <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="llama-hf-manager">
     <div tw-class="flex flex-wrap items-center gap-x-2 gap-y-1">
       <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><DownloadIcon tw-class="w-4 h-4 text-blue-500" />Hugging Face</h3>
-      <label :for="`${id}-repository`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</label>
+      <span tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</span>
       <LlamaCppBrowserDownloadDestination tw-class="ml-auto" :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
     </div>
     <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
-    <fieldset :disabled="disabled || active !== undefined || deleting" tw-class="space-y-3 disabled:opacity-50">
+    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
+    <fieldset :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
       <div tw-class="space-y-2">
+        <label :for="`${id}-repository`" tw-class="block text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository_url_or_id() }}</label>
         <div tw-class="flex flex-col sm:flex-row gap-2">
           <input :id="`${id}-repository`" v-model="input" data-testid="llama-hf-repository" placeholder="owner/repository" tw-class="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" @keydown.enter.prevent="inspect" />
-          <button type="button" data-testid="llama-hf-inspect" :disabled="!input.trim()" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="inspect"><SearchIcon tw-class="w-4 h-4" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
+          <button type="button" data-testid="llama-hf-inspect" :disabled="!input.trim()" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="inspect"><FolderSearchIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
         </div>
       </div>
       <template v-if="catalog">
@@ -433,7 +440,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
             </div>
           </div>
           <div tw-class="flex flex-wrap items-center gap-2 ml-auto">
-            <div data-testid="llama-hf-total" :title="lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size()" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5" aria-hidden="true" /><span tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size() }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected && !needsProjector ? size({ bytes: total }) : '—' }}</span></div>
+            <div data-testid="llama-hf-total" :title="downloadSizeDescription" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span tw-class="sr-only">{{ downloadSizeDescription }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected ? needsProjector ? lazyStrings.LlamaCppBrowserHuggingFaceManager__model_size({ size: size({ bytes: selected.size }) }) : size({ bytes: total }) : '—' }}</span></div>
             <button type="button" data-testid="llama-hf-download" :disabled="!selected || needsProjector || !catalogCurrent || localAvailability !== 'missing' || destinationUnavailable || authorizing" tw-class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="start"><Loader2Icon v-if="localAvailability === 'checking'" tw-class="w-4 h-4 animate-spin" /><DownloadIcon v-else tw-class="w-4 h-4" />{{ downloadLabel }}</button>
           </div>
         </div>

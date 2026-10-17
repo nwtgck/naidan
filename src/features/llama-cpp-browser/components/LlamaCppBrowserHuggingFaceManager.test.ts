@@ -6,13 +6,13 @@ import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { discoverRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
+import { discoverRepository, searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository, cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
 import { defineComponent, ref } from 'vue';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { installedSelection, listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
 import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
-vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
+vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn(), searchModels: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn(), cancelDownload: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(), installedSelection: vi.fn() }));
 const confirm = vi.hoisted(() => vi.fn());
@@ -37,6 +37,7 @@ beforeEach(async () => {
   vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 });
   vi.mocked(cancelDownload).mockResolvedValue('deleted');
   vi.mocked(listPendingDownloads).mockResolvedValue([]);
+  vi.mocked(searchModels).mockResolvedValue({ results: [], nextCursor: undefined });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -52,6 +53,114 @@ afterEach(async () => {
 });
 
 describe('Hugging Face download controls', () => {
+  it('shows the known model size until a companion is selected and then shows the complete total', async () => {
+    const modelFile = { path: 'model-Q4_K_M.gguf', size: 1024 ** 3 };
+    const companion = { path: 'vision-a/mmproj-F16.gguf', size: 256 * 1024 ** 2 };
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: 'owner/repo', revision: selection.revision, models: [{ label: modelFile.path, files: [modelFile], size: modelFile.size }], projectors: [companion, { path: 'vision-b/mmproj-F16.gguf', size: 512 * 1024 ** 2 }] });
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-multimodal"]').attributes('aria-checked')).toBe('true');
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-projector"]').element.value).toBe('');
+    expect(wrapper.get('[data-testid="llama-hf-total"]').text()).toContain('Model 1.00 GiB');
+    expect(wrapper.get('[data-testid="llama-hf-total"]').attributes('title')).toContain('choose an additional file');
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="llama-hf-download"]').trigger('click');
+    expect(downloadRepository).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-hf-projector"]').setValue(companion.path);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-total"]').text()).toContain('1.25 GiB');
+    expect(wrapper.get('[data-testid="llama-hf-total"]').text()).not.toContain('Model 1.00 GiB');
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
+    await wrapper.get('[data-testid="llama-hf-multimodal"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-total"]').text()).toContain('1.00 GiB');
+    expect(wrapper.get('[data-testid="llama-hf-total"]').attributes('title')).not.toContain('choose an additional file');
+  });
+
+  it('keeps search results while inspecting one repository and allows choosing another afterward', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof discoverRepository>>>();
+    vi.mocked(searchModels).mockResolvedValue({ results: [{ id: 'owner/first' }, { id: 'owner/second' }], nextCursor: undefined });
+    vi.mocked(discoverRepository).mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ repository: 'owner/second', revision: selection.revision, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [] });
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    await wrapper.findAll('[data-testid="llama-hf-search-result"]')[0]!.trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="llama-hf-search-result"]')).toHaveLength(2);
+    expect(wrapper.get('[data-testid="llama-hf-search-result"]').attributes('disabled')).toBeDefined();
+    pending.resolve({ repository: 'owner/first', revision: selection.revision, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [] });
+    await flushPromises();
+    await wrapper.findAll('[data-testid="llama-hf-search-result"]')[1]!.trigger('click');
+    await flushPromises();
+    expect(vi.mocked(discoverRepository).mock.calls.map(call => call[0].input)).toEqual(['owner/first', 'owner/second']);
+    expect(wrapper.findAll('[data-testid="llama-hf-search-result"]')).toHaveLength(2);
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe('owner/second');
+    expect(searchModels).toHaveBeenCalledOnce();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('does not search or inspect when the manager is displayed, focused, or edited', async () => {
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('');
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/repo');
+    window.dispatchEvent(new Event('focus'));
+    await flushPromises();
+    expect(searchModels).not.toHaveBeenCalled();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('checks the exact chosen search result through the existing metadata flow without downloading', async () => {
+    vi.mocked(searchModels).mockResolvedValue({ results: [{ id: 'owner/repo', downloads: 12, likes: 3 }], nextCursor: undefined });
+    vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [] });
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('gemma');
+    expect(searchModels).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="llama-hf-search-result-query"]').text()).toBe('Results for “qwen”');
+    await wrapper.get('[data-testid="llama-hf-search-result"]').trigger('click');
+    await flushPromises();
+    expect(discoverRepository).toHaveBeenCalledOnce();
+    expect(vi.mocked(discoverRepository).mock.calls[0]?.[0].input).toBe('owner/repo');
+    expect(wrapper.get<HTMLInputElement>('[data-testid="llama-hf-repository"]').element.value).toBe('owner/repo');
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-hf-model"]').element.value).toBe('model-Q4_K_M.gguf');
+    expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
+    expect(downloadRepository).not.toHaveBeenCalled();
+    expect(wrapper.emitted('modelReady')).toBeUndefined();
+  });
+
+  it('keeps search pending until explicit cancellation and blocks concurrent repository inspection in the UI', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
+    vi.mocked(searchModels).mockReturnValue(pending.promise);
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="llama-hf-search-query"]').attributes('disabled')).toBeUndefined();
+    expect(wrapper.emitted('busy')?.at(-1)).toEqual([true]);
+    await wrapper.get('[data-testid="llama-hf-search-cancel"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
+    expect(wrapper.emitted('busy')?.at(-1)).toEqual([false]);
+    pending.resolve({ results: [{ id: 'old/repo' }], nextCursor: undefined });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-search-result"]').exists()).toBe(false);
+    expect(discoverRepository).not.toHaveBeenCalled();
+  });
+
   it('marks existing selections downloaded and publishes the exact local model without downloading', async () => {
     const model = { id: 'hf-model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
     vi.mocked(installedSelection).mockResolvedValue(model);

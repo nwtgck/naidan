@@ -7,6 +7,9 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
 import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
+
+vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 
 const notifications = vi.hoisted(() => ({
   capabilities: new Set<(event: { state: ProfileState }) => void>(),
@@ -127,6 +130,7 @@ beforeEach(async () => {
   vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValue('deleted');
   vi.mocked(prepareModelRemoval).mockResolvedValue({ plan: { id: storedModel.id, files: [{ path: 'local.gguf', size: 16384, lastModified: 1 }] }, sharedPlan: undefined, affectedVariants: 0 });
   await ensureAllStringsForTest({ locale: 'en' });
+  vi.mocked(searchModels).mockReset().mockResolvedValue({ results: [], nextCursor: undefined });
 });
 
 afterEach(() => {
@@ -137,6 +141,30 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('keeps search active without a busy feedback loop and aborts it when suspended', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
+    vi.mocked(searchModels).mockReturnValueOnce(pending.promise);
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    const signal = vi.mocked(searchModels).mock.calls[0]![0].signal;
+    expect(signal.aborted).toBe(false);
+    expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-import"] fieldset').attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ suspended: true });
+    expect(signal.aborted).toBe(true);
+    expect(wrapper.get('[data-testid="llama-hf-search-query"]').attributes('disabled')).toBeDefined();
+    pending.resolve({ results: [{ id: 'old/model' }], nextCursor: undefined });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-search-result"]').exists()).toBe(false);
+    await wrapper.setProps({ suspended: false });
+    await flushPromises();
+    expect(searchModels).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('false');
+  });
+
   it('loads models with suspension omitted and leaves normal model operations enabled', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     const wrapper = render();

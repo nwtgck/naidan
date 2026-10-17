@@ -950,6 +950,8 @@ import { LlamaCppBrowserHuggingFaceManager__downloaded } from '@/strings/message
 import { LlamaCppBrowserHuggingFaceManager__downloading_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloading_model/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__estimating_remaining_time } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__estimating_remaining_time/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_size/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__model_variant } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_variant/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__multimodal_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_quantization/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__multimodal_support } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_support/zh-Hans';
@@ -959,11 +961,45 @@ import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/Lla
 import { LlamaCppBrowserHuggingFaceManager__performing_final_checks } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__performing_final_checks/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/zh-Hans';
+import { LlamaCppBrowserHuggingFaceManager__repository_url_or_id } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository_url_or_id/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/zh-Hans';
 import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__architecture } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__architecture/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__at_least } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__at_least_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_least_parameters/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__at_most } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__at_most/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__downloads } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__downloads/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__filters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__filters/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__likes } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__likes/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__loading_more_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__loading_more_models/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__new_results_start_here } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__new_results_start_here/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__no_maximum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_maximum/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__no_minimum } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_minimum/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__no_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_models_found/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__no_parameter_limit } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__no_parameter_limit/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__parameters_between } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__parameters_between/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__results_for } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__results_for/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__search } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__searching_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__searching_models/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__show_more } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_more/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__show_trending_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__show_trending_models/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__task } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__task/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__up_to_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__up_to_parameters/zh-Hans';
+import { LlamaCppBrowserHuggingFaceSearch__updated } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__updated/zh-Hans';
 import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserManager__could_not_create_or_open_chat_group/zh-Hans';
 import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/zh-Hans';
 import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/zh-Hans';
@@ -3695,6 +3731,8 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__downloading_model,
   LlamaCppBrowserHuggingFaceManager__estimating_remaining_time,
   LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
+  LlamaCppBrowserHuggingFaceManager__model_size,
+  LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total,
   LlamaCppBrowserHuggingFaceManager__model_variant,
   LlamaCppBrowserHuggingFaceManager__multimodal_quantization,
   LlamaCppBrowserHuggingFaceManager__multimodal_support,
@@ -3704,11 +3742,45 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceManager__performing_final_checks,
   LlamaCppBrowserHuggingFaceManager__quantization,
   LlamaCppBrowserHuggingFaceManager__repository,
+  LlamaCppBrowserHuggingFaceManager__repository_url_or_id,
   LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection,
   LlamaCppBrowserHuggingFaceManager__resume,
   LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
   LlamaCppBrowserHuggingFaceManager__total_download_size,
   LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserHuggingFaceSearch__architecture,
+  LlamaCppBrowserHuggingFaceSearch__at_least,
+  LlamaCppBrowserHuggingFaceSearch__at_least_parameters,
+  LlamaCppBrowserHuggingFaceSearch__at_most,
+  LlamaCppBrowserHuggingFaceSearch__could_not_load_more_models_try_again,
+  LlamaCppBrowserHuggingFaceSearch__could_not_search_models_try_again,
+  LlamaCppBrowserHuggingFaceSearch__downloads,
+  LlamaCppBrowserHuggingFaceSearch__enter_a_valid_parameter_range,
+  LlamaCppBrowserHuggingFaceSearch__filters,
+  LlamaCppBrowserHuggingFaceSearch__find_models_on_hugging_face,
+  LlamaCppBrowserHuggingFaceSearch__likes,
+  LlamaCppBrowserHuggingFaceSearch__loading_more_models,
+  LlamaCppBrowserHuggingFaceSearch__maximum_parameters_in_billions,
+  LlamaCppBrowserHuggingFaceSearch__minimum_parameters_in_billions,
+  LlamaCppBrowserHuggingFaceSearch__new_results_start_here,
+  LlamaCppBrowserHuggingFaceSearch__no_maximum,
+  LlamaCppBrowserHuggingFaceSearch__no_minimum,
+  LlamaCppBrowserHuggingFaceSearch__no_models_found,
+  LlamaCppBrowserHuggingFaceSearch__no_parameter_limit,
+  LlamaCppBrowserHuggingFaceSearch__open_repository_on_hugging_face,
+  LlamaCppBrowserHuggingFaceSearch__parameter_count_in_billions,
+  LlamaCppBrowserHuggingFaceSearch__parameters,
+  LlamaCppBrowserHuggingFaceSearch__parameters_between,
+  LlamaCppBrowserHuggingFaceSearch__results_for,
+  LlamaCppBrowserHuggingFaceSearch__search,
+  LlamaCppBrowserHuggingFaceSearch__search_by_model_name_or_leave_blank_for_trends,
+  LlamaCppBrowserHuggingFaceSearch__searching_models,
+  LlamaCppBrowserHuggingFaceSearch__select_a_repository_to_check_model_files,
+  LlamaCppBrowserHuggingFaceSearch__show_more,
+  LlamaCppBrowserHuggingFaceSearch__show_trending_models,
+  LlamaCppBrowserHuggingFaceSearch__task,
+  LlamaCppBrowserHuggingFaceSearch__up_to_parameters,
+  LlamaCppBrowserHuggingFaceSearch__updated,
   LlamaCppBrowserManager__could_not_create_or_open_chat_group,
   LlamaCppBrowserManager__details,
   LlamaCppBrowserManager__file,

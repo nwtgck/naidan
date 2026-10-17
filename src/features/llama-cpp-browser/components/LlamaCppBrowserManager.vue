@@ -235,7 +235,7 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
       <p>{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     </div>
     <slot name="catalog" :disabled="unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing || downloading" :inspect="inspectRepository" />
-    <LlamaCppBrowserHuggingFaceManager ref="repositoryManager" :model-preset="props.modelPreset" :disabled="unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" @model-ready="selectReadyModel({ model: $event })" @selection-changed="modelSelectionVersion++" />
+    <LlamaCppBrowserHuggingFaceManager ref="repositoryManager" :model-preset="props.modelPreset" :disabled="props.suspended || unavailable || importing || active !== undefined || creatingChatGroup !== undefined || refreshing" @busy="downloading = $event" @changed="refresh" @model-ready="selectReadyModel({ model: $event })" @selection-changed="modelSelectionVersion++" />
     <LlamaCppBrowserModelImport :disabled="unavailable || busy" @busy="importing = $event" @changed="refresh" />
     <p v-if="removalChanged" role="alert" data-testid="llama-removal-changed" tw-class="text-xs text-red-500">{{ lazyStrings.llamaCppBrowser__files_changed_review_before_deleting() }}</p>
     <div v-if="displayedError" role="alert" tw-class="flex items-start gap-3 rounded-2xl p-4 border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400">
