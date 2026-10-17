@@ -7,7 +7,7 @@ export default defineConfig({
   root: fileURLToPath(new URL('../..', import.meta.url)),
   test: {
     environment: 'node',
-    include: ['build/boundary-strings/generate-catalogs.test.ts', 'build/boundary-strings/message-catalog.test.ts'],
+    include: ['build/boundary-strings/generate-catalogs.test.ts', 'build/boundary-strings/message-catalog.test.ts', 'build/boundary-strings/string-catalog-cli.test.ts'],
     maxWorkers: 1,
   },
 });
