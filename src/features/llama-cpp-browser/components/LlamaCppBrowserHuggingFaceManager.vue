@@ -12,7 +12,7 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
+import { AlertCircleIcon, CheckIcon, ChevronDownIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
 import { matchesQuantizationChoice, quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
@@ -23,6 +23,7 @@ import { repositoryUrlPath, type DownloadConflict, type DownloadJournal, type Do
 import { useHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
+import { modelLaunchShareUrl } from '@/features/llama-cpp-browser/model-launch/share-url';
 const props = defineProps<{ disabled: boolean, modelPreset?: ModelPreset }>();
 const emit = defineEmits<{ changed: [], busy: [value: boolean], modelReady: [model: LocalModel], selectionChanged: [] }>();
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
@@ -66,6 +67,38 @@ const selected = computed(() => {
   const variants = selectedChoice.value?.models ?? [];
   return variants.find(model => model.label === candidate.value) ?? (variants.length === 1 ? variants[0] : undefined);
 });
+const modelLaunchUrl = computed(() => {
+  const current = catalog.value;
+  const mainFilePath = selected.value?.files[0]?.path;
+  return current && mainFilePath && catalogCurrent.value && !active.value
+    ? modelLaunchShareUrl({ baseUrl: window.location.href, catalog: current, mainFilePath }) : undefined;
+});
+const copyState = ref<'copied' | 'failed'>();
+let copyGeneration = 0;
+watch(modelLaunchUrl, () => {
+  copyGeneration++;
+  copyState.value = undefined;
+}, { flush: 'sync' });
+
+async function copyModelLaunchUrl(): Promise<void> {
+  const url = modelLaunchUrl.value;
+  if (url === undefined || disposed) {
+    return;
+  }
+  const generation = ++copyGeneration;
+  copyState.value = undefined;
+  try {
+    await navigator.clipboard.writeText(url);
+    if (generation === copyGeneration && !disposed) {
+      copyState.value = 'copied';
+    }
+  } catch {
+    if (generation === copyGeneration && !disposed) {
+      copyState.value = 'failed';
+    }
+  }
+}
+
 const projectorOptions = computed(() => projectorChoices({ files: catalog.value?.projectors ?? [] }));
 const selectedProjector = computed(() => {
   switch (multimodal.value) {
@@ -375,6 +408,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   disposed = true;
+  copyGeneration++;
   active.value?.abort();
   window.removeEventListener('focus', recheckLocalFiles);
 });
@@ -466,6 +500,17 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
       <summary tw-class="cursor-pointer font-semibold py-1 hover:text-blue-600 dark:hover:text-blue-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_details() }}</summary>
       <div tw-class="mt-3 space-y-4">
         <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
+        <div v-if="modelLaunchUrl" tw-class="min-w-0 space-y-1">
+          <p :id="`${id}-model-launch-link`" tw-class="font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__link_to_open_in_naidan() }}</p>
+          <div tw-class="flex items-start gap-2">
+            <a :href="modelLaunchUrl" :aria-labelledby="`${id}-model-launch-link`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-model-launch-url" tw-class="min-w-0 flex-1 break-all select-text font-mono text-[11px] leading-relaxed text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-2 focus-visible:outline-blue-500">{{ modelLaunchUrl }}</a>
+            <button type="button" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_url()" :title="lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_url()" data-testid="llama-hf-model-launch-copy" tw-class="min-w-11 min-h-11 shrink-0 -mt-2 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="copyModelLaunchUrl">
+              <CheckIcon v-if="copyState === 'copied'" aria-hidden="true" tw-class="w-3.5 h-3.5" />
+              <CopyIcon v-else aria-hidden="true" tw-class="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p v-if="copyState" role="status" data-testid="llama-hf-model-launch-copy-status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ copyState === 'copied' ? lazyStrings.LlamaCppBrowserHuggingFaceManager__url_copied() : lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_failed() }}</p>
+        </div>
         <p :id="`${id}-multimodal-help`" tw-class="leading-relaxed">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models() }}</p>
         <div v-if="(selectedChoice?.models.length ?? 0) > 1" tw-class="space-y-2">
           <label :for="`${id}-variant`" tw-class="block font-bold">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__model_variant() }}</label>

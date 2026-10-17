@@ -1,6 +1,8 @@
 import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
+import { MODEL_LAUNCH_QUERY } from '@/features/llama-cpp-browser/model-launch/entry-state';
+import { resolveModelLaunchTarget } from '@/features/llama-cpp-browser/model-launch/target';
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +52,137 @@ afterEach(async () => {
   }
   await flushPromises();
   vi.useRealTimers();
+});
+
+describe('model launch sharing in download details', () => {
+  const copy = vi.fn();
+  let clipboardDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } });
+    copy.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    if (clipboardDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+    } else {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  async function inspectModels({ paths }: { paths: string[] }): Promise<VueWrapper> {
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: 'owner/Model-GGUF', revision: selection.revision, ...groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }) });
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-url"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/Model-GGUF');
+    await wrapper.get('[data-testid="llama-hf-inspect"]').trigger('click');
+    await flushPromises();
+    return wrapper;
+  }
+
+  it('shows and copies the complete URL for the selected split UD model without any extra operations', async () => {
+    const paths = ['UD-IQ4_NL/Model-UD-IQ4_NL-00001-of-00002.gguf', 'UD-IQ4_NL/Model-UD-IQ4_NL-00002-of-00002.gguf'];
+    const wrapper = await inspectModels({ paths });
+    const localChecks = vi.mocked(installedSelection).mock.calls.length;
+    const pendingChecks = vi.mocked(listPendingDownloads).mock.calls.length;
+    const location = window.location.href;
+    const details = wrapper.get<HTMLDetailsElement>('[data-testid="llama-hf-details"]');
+    details.element.open = true;
+    await details.trigger('toggle');
+    const link = wrapper.get('[data-testid="llama-hf-model-launch-url"]');
+    expect(link.text()).toBe(link.attributes('href'));
+    const input = new URLSearchParams(new URL(link.text()).hash.slice('#/?'.length)).get(MODEL_LAUNCH_QUERY)!;
+    expect(input).toBe('hf.co/owner/Model-GGUF:UD-IQ4_NL');
+    const { target } = resolveModelLaunchTarget({ input, catalog: { repository: 'owner/Model-GGUF', revision: selection.revision, ...groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }) } });
+    expect(target.selection.files.map(file => file.path)).toEqual(paths);
+    const copyButton = wrapper.get('[data-testid="llama-hf-model-launch-copy"]');
+    expect(copyButton.attributes('aria-label')).toBe('Copy URL');
+    await copyButton.trigger('click');
+    await flushPromises();
+    expect(copy).toHaveBeenCalledExactlyOnceWith(link.attributes('href'));
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-copy-status"]').attributes('role')).toBe('status');
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-copy-status"]').text()).toBe('URL copied.');
+    expect(discoverRepository).toHaveBeenCalledOnce();
+    expect(searchModels).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+    expect(getDownloadQueue().jobs.value).toEqual([]);
+    expect(installedSelection).toHaveBeenCalledTimes(localChecks);
+    expect(listPendingDownloads).toHaveBeenCalledTimes(pendingChecks);
+    expect(window.location.href).toBe(location);
+    expect(wrapper.emitted('modelReady')).toBeUndefined();
+  });
+
+  it('resets copy feedback on selection changes and hides stale repository links', async () => {
+    const wrapper = await inspectModels({ paths: ['Model-Q4_K_M.gguf', 'Model-UD-IQ4_NL.gguf'] });
+    const firstUrl = wrapper.get('[data-testid="llama-hf-model-launch-url"]').text();
+    await wrapper.get('[data-testid="llama-hf-model-launch-copy"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy-status"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('Model-UD-IQ4_NL.gguf');
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-url"]').text()).not.toBe(firstUrl);
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy-status"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/other');
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-url"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="llama-hf-repository"]').setValue('owner/Model-GGUF');
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-url"]').text()).toContain('UD-IQ4_NL');
+    expect(discoverRepository).toHaveBeenCalledOnce();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('reports clipboard failure, keeps the full URL available, and allows retrying', async () => {
+    copy.mockRejectedValueOnce(new Error('permission denied'));
+    const wrapper = await inspectModels({ paths: ['Model-Q4_K_M.gguf'] });
+    const url = wrapper.get('[data-testid="llama-hf-model-launch-url"]').text();
+    await wrapper.get('[data-testid="llama-hf-model-launch-copy"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-copy-status"]').text()).toBe('Could not copy. Select the URL to copy it manually.');
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-url"]').text()).toBe(url);
+    await wrapper.get('[data-testid="llama-hf-model-launch-copy"]').trigger('click');
+    await flushPromises();
+    expect(copy).toHaveBeenNthCalledWith(2, url);
+    expect(wrapper.get('[data-testid="llama-hf-model-launch-copy-status"]').text()).toBe('URL copied.');
+  });
+
+  it.each(['resolve', 'reject'] as const)('ignores a late clipboard %s after switching away and back to the same model', async outcome => {
+    const pending = Promise.withResolvers<void>();
+    copy.mockReturnValueOnce(pending.promise);
+    const wrapper = await inspectModels({ paths: ['Model-Q4_K_M.gguf', 'Model-Q8_0.gguf'] });
+    await wrapper.get('[data-testid="llama-hf-model-launch-copy"]').trigger('click');
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('Model-Q8_0.gguf');
+    await wrapper.get('[data-testid="llama-hf-model"]').setValue('Model-Q4_K_M.gguf');
+    if (outcome === 'resolve') {
+      pending.resolve();
+    } else {
+      pending.reject(new Error('permission denied'));
+    }
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy-status"]').exists()).toBe(false);
+  });
+
+  it('does not publish clipboard feedback after unmounting', async () => {
+    const pending = Promise.withResolvers<void>();
+    copy.mockReturnValueOnce(pending.promise);
+    const wrapper = await inspectModels({ paths: ['Model-Q4_K_M.gguf'] });
+    await wrapper.get('[data-testid="llama-hf-model-launch-copy"]').trigger('click');
+    wrapper.unmount();
+    pending.reject(new Error('permission denied'));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy-status"]').exists()).toBe(false);
+  });
+
+  it.each([
+    ['Model-Q4_K_M.gguf', 'Model_Q4_K_M.gguf'],
+    ['Model-Q4_K_M.gguf', 'first/mmproj-F16.gguf', 'other/mmproj-F16.gguf'],
+    ['mtp/Model-Q4_K_M.gguf'],
+  ])('does not expose a link that cannot reopen the selected main model: %j', async (...paths) => {
+    const wrapper = await inspectModels({ paths });
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-url"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-hf-model-launch-copy"]').exists()).toBe(false);
+  });
 });
 
 describe('Hugging Face download controls', () => {
