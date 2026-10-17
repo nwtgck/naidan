@@ -1,6 +1,6 @@
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
-import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
+import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
@@ -388,7 +388,7 @@ function mountChatPane({
     targetMessageId?: MessageId,
   },
   attachTo?: Element | string,
-  global?: Record<string, unknown>,
+  global?: GlobalMountOptions,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -397,7 +397,18 @@ function mountChatPane({
       targetMessageId: props?.targetMessageId,
     },
     attachTo,
-    global,
+    global: {
+      ...global,
+      stubs: {
+        MessageActionsMenu: {
+          props: ['isOpen'],
+          template: '<div v-if="isOpen"><slot /></div>',
+        },
+        ...(Array.isArray(global?.stubs)
+          ? Object.fromEntries(global.stubs.map(name => [name, true]))
+          : global?.stubs),
+      },
+    },
   });
 }
 

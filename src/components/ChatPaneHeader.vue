@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import {
   XIcon, GitForkIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon, PencilIcon,
@@ -7,8 +7,8 @@ import {
   PrinterIcon, LinkIcon, TerminalIcon, ListIcon, Trash2Icon,
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
-import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
+import MessageActionsMenu from './MessageActionsMenu.vue';
 import type { ChatPaneHeaderMoreAction } from '@/logic/context-compact';
 import { idToRaw } from '@/01-models/ids';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
@@ -27,7 +27,7 @@ type HeaderChatGroup = {
   readonly name: string,
 };
 
-defineProps<{
+const props = defineProps<{
   chat: HeaderChat | null,
   chatGroups: readonly HeaderChatGroup[],
   chatGroupBadge: HeaderChatGroup | undefined,
@@ -64,28 +64,55 @@ const emit = defineEmits<{
 
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
-const actionsMenuRoot = ref<HTMLElement | null>(null);
+const moreTriggerRef = ref<HTMLElement | null>(null);
+const moveTriggerRef = ref<HTMLElement | null>(null);
+const moreMenuRef = ref<HTMLElement | null>(null);
+const moveMenuRef = ref<HTMLElement | null>(null);
 
 function closeFloatingMenus() {
   showMoreMenu.value = false;
   showMoveMenu.value = false;
 }
 
-function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
-  if (!showMoreMenu.value && !showMoveMenu.value) {
-    return;
-  }
-  const target = event.target;
-  if (!(target instanceof Node)) {
-    return;
-  }
-  if (actionsMenuRoot.value?.contains(target)) {
-    return;
-  }
+function toggleMoreMenu() {
+  const isOpening = !showMoreMenu.value;
   closeFloatingMenus();
+  showMoreMenu.value = isOpening;
 }
 
-useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointerDown({ event }));
+function toggleMoveMenu() {
+  const isOpening = !showMoveMenu.value;
+  closeFloatingMenus();
+  showMoveMenu.value = isOpening;
+}
+
+watch(() => props.chat?.id, closeFloatingMenus);
+
+function handleMenuTab({ event, menuEl, triggerEl, isOpen }: {
+  event: KeyboardEvent,
+  menuEl: HTMLElement | null,
+  triggerEl: HTMLElement | null,
+  isOpen: boolean,
+}) {
+  if (!isOpen || !menuEl || !triggerEl) {
+    return;
+  }
+  const buttons = menuEl.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+  const firstButton = buttons[0];
+  const lastButton = buttons[buttons.length - 1];
+  // Teleport changes DOM order; retain the tab stops beside the header trigger.
+  if (event.currentTarget === triggerEl && !event.shiftKey && firstButton) {
+    event.preventDefault();
+    firstButton.focus();
+  } else if (event.shiftKey && event.target === firstButton) {
+    event.preventDefault();
+    triggerEl.focus();
+  } else if (!event.shiftKey && event.target === lastButton) {
+    // Native Tab can now continue from the trigger to the next header/page control.
+    triggerEl.focus();
+    closeFloatingMenus();
+  }
+}
 
 function emitMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   emit('move-to-group', groupId);
@@ -240,7 +267,7 @@ defineExpose({
       </div>
     </div>
 
-    <div ref="actionsMenuRoot" tw-class="shrink-0 flex items-center gap-0.5 relative">
+    <div tw-class="shrink-0 flex items-center gap-0.5">
       <div v-if="chat" tw-class="flex items-center gap-0.5">
         <button
           v-if="activeMessageCount > 0"
@@ -254,25 +281,36 @@ defineExpose({
 
         <div tw-class="relative">
           <button
-            @click="showMoveMenu = !showMoveMenu"
+            ref="moveTriggerRef"
+            @click="toggleMoveMenu"
+            @keydown.tab="handleMenuTab({ event: $event, menuEl: moveMenuRef, triggerEl: moveTriggerRef, isOpen: showMoveMenu })"
             :tw-class="['p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800', showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400']"
             :title="lazyStrings.ChatPaneHeader__move_to_group()"
+            :aria-expanded="showMoveMenu"
             data-testid="move-to-group-button"
           >
             <FolderInputIcon tw-class="w-4.5 h-4.5" />
           </button>
 
-          <Transition name="dropdown">
+          <MessageActionsMenu
+            :is-open="showMoveMenu"
+            :trigger-el="moveTriggerRef"
+            :width="256"
+            @close="showMoveMenu = false"
+          >
             <div
-              v-if="showMoveMenu"
-              tw-class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
+              ref="moveMenuRef"
+              tw-class="py-0.5"
+              data-testid="chat-header-move-menu"
+              @keydown.tab="handleMenuTab({ event: $event, menuEl: moveMenuRef, triggerEl: moveTriggerRef, isOpen: showMoveMenu })"
             >
               <div tw-class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
                 {{ lazyStrings.ChatPaneHeader__move_to_group() }}
               </div>
-              <div tw-class="max-h-64 overflow-y-auto">
+              <div>
                 <button
                   @click="emitMoveToGroup({ groupId: null })"
+                  data-testid="move-to-top-level-button"
                   :tw-class="['w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors', !chat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
                 >
                   <div tw-class="flex items-center gap-2">
@@ -286,6 +324,7 @@ defineExpose({
                   v-for="group in chatGroups"
                   :key="idToRaw({ id: group.id })"
                   @click="emitMoveToGroup({ groupId: group.id })"
+                  data-testid="move-to-group-option"
                   :tw-class="['w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors', chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
                 >
                   <div tw-class="flex items-center gap-2 overflow-hidden">
@@ -296,7 +335,7 @@ defineExpose({
                 </button>
               </div>
             </div>
-          </Transition>
+          </MessageActionsMenu>
         </div>
 
         <button
@@ -310,19 +349,30 @@ defineExpose({
         </button>
 
         <button
-          @click="showMoreMenu = !showMoreMenu"
+          ref="moreTriggerRef"
+          @click="toggleMoreMenu"
+          @keydown.tab="handleMenuTab({ event: $event, menuEl: moreMenuRef, triggerEl: moreTriggerRef, isOpen: showMoreMenu })"
           tw-class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           :title="lazyStrings.ChatPaneHeader__more_actions()"
+          :aria-expanded="showMoreMenu"
           data-testid="more-actions-button"
         >
           <MoreVerticalIcon tw-class="w-4.5 h-4.5" />
         </button>
       </div>
 
-      <Transition name="dropdown">
+      <MessageActionsMenu
+        v-if="chat"
+        :is-open="showMoreMenu"
+        :trigger-el="moreTriggerRef"
+        :width="224"
+        @close="showMoreMenu = false"
+      >
         <div
-          v-if="showMoreMenu"
-          tw-class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
+          ref="moreMenuRef"
+          tw-class="py-0.5"
+          data-testid="chat-header-more-menu"
+          @keydown.tab="handleMenuTab({ event: $event, menuEl: moreMenuRef, triggerEl: moreTriggerRef, isOpen: showMoreMenu })"
         >
           <button
             @click="emitMoreAction({ action: 'print' })"
@@ -437,7 +487,7 @@ defineExpose({
             <span>{{ lazyStrings.ChatPaneHeader__delete_chat() }}</span>
           </button>
         </div>
-      </Transition>
+      </MessageActionsMenu>
     </div>
   </div>
 </template>
