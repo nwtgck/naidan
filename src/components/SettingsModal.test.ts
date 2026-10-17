@@ -338,9 +338,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const closeBtn = wrapper.find('[data-testid="setting-close-x"]');
       expect(wrapper.findAll('[data-testid="setting-close-x"]')).toHaveLength(1);
-      expect(closeBtn.element.parentElement).toBe(wrapper.get('[data-testid="language-selector"]').element.parentElement);
-      expect(closeBtn.classes()).not.toContain('absolute');
-      expect(closeBtn.classes()).toContain('md:absolute');
+      const header = wrapper.get('[data-testid="settings-navigation-header"]');
+      expect(header.find('[data-testid="language-selector"]').exists()).toBe(true);
+      expect(header.classes()).toContain('pr-14');
+      expect(closeBtn.element.parentElement).toBe(header.element);
+      expect(wrapper.get('aside').classes()).not.toContain('relative');
+      expect(header.classes()).not.toContain('relative');
+      expect(closeBtn.element.compareDocumentPosition(wrapper.get('nav').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(closeBtn.classes()).toContain('absolute');
+      expect(closeBtn.classes()).toContain('right-3');
+      expect(closeBtn.classes()).toContain('h-10');
+      expect(closeBtn.classes()).toContain('w-10');
       expect(closeBtn.classes()).toContain('md:top-4');
       expect(closeBtn.classes()).toContain('md:right-4');
     });

@@ -200,7 +200,7 @@ describe('SettingsModal Design Specifications', () => {
       await profilesTab?.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
-      expect(profilesTab?.classes()).toContain('border-gray-100');
+      expect(profilesTab?.classes()).toContain('border-gray-200');
       expect(profilesTab?.classes()).not.toContain('border-transparent');
     });
   });
@@ -233,7 +233,7 @@ describe('SettingsModal Design Specifications', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
       // Use a more resilient selector that doesn't depend on the specific padding class
-      const header = wrapper.find('aside > div:first-child');
+      const header = wrapper.get('[data-testid="settings-navigation-header"]');
       expect(header.classes()).toContain('shrink-0');
     });
   });
