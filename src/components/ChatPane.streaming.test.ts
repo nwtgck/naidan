@@ -87,7 +87,9 @@ vi.mock('../00-storage/service', () => ({
     saveChat: vi.fn(),
     updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      if (!chats.has(id)) chats.set(id, existing);
+      if (!chats.has(id)) {
+        chats.set(id, existing);
+      }
       const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();
@@ -95,7 +97,9 @@ vi.mock('../00-storage/service', () => ({
     loadChatMeta: vi.fn().mockImplementation(({ id }) => Promise.resolve(chats.get(id))),
     updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      if (!chats.has(id)) chats.set(id, existing);
+      if (!chats.has(id)) {
+        chats.set(id, existing);
+      }
       const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();

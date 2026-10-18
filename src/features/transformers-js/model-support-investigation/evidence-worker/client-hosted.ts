@@ -53,9 +53,13 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   const activeOperationRejectors = new Set<ReturnType<typeof Promise.withResolvers<never>>['reject']>();
 
   function terminateWorker(): void {
-    if (workerTerminated) return;
+    if (workerTerminated) {
+      return;
+    }
     workerTerminated = true;
-    for (const stream of activeStreams) stream.abort({ reason: new ModelSupportInvestigationEvidenceExportDisposedError() });
+    for (const stream of activeStreams) {
+      stream.abort({ reason: new ModelSupportInvestigationEvidenceExportDisposedError() });
+    }
     activeStreams.clear();
     worker.removeEventListener('error', handleWorkerFailure);
     worker.removeEventListener('messageerror', handleWorkerFailure);
@@ -64,7 +68,9 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
 
   function handleWorkerFailure(): void {
     const error = new Error('Evidence Worker stopped responding');
-    for (const reject of activeOperationRejectors) reject(error);
+    for (const reject of activeOperationRejectors) {
+      reject(error);
+    }
     terminateWorker();
   }
   worker.addEventListener('error', handleWorkerFailure);
@@ -73,7 +79,9 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   function releaseRemoteBestEffort(): void {
     try {
       const release = releaseWorkerRemote({ remote });
-      if (release instanceof Promise) void release.catch(() => undefined);
+      if (release instanceof Promise) {
+        void release.catch(() => undefined);
+      }
     } catch {
       // The dedicated Worker is terminated below. A failed Comlink release must not stall Evidence recovery.
     }
@@ -99,13 +107,17 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       throw error;
     } finally {
       activeOperationRejectors.delete(cancelled.reject);
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
     }
   }
 
   return {
     async openEvidenceStream({ input }) {
-      if (disposed || workerTerminated) throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      if (disposed || workerTerminated) {
+        throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      }
       // Snapshot before the first await, exactly as for the inspection APIs.
       const request = createEvidenceStreamRequest({ input });
       const channel = new MessageChannel();
@@ -164,7 +176,9 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       });
     },
     async createRetainedDownloadTimingEvidence({ snapshot, exportId }) {
-      if (disposed || workerTerminated) throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      if (disposed || workerTerminated) {
+        throw new Error('Model Support Investigation Evidence Worker client is disposed');
+      }
       return await runExportOperation({
         operation: remote.createRetainedDownloadTimingEvidence({
           request: createOrdinaryDownloadTimingEvidenceFile({ snapshot, association: { kind: 'retained-export', exportId, investigation: 'not-run' } }),
@@ -172,13 +186,17 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       });
     },
     async dispose() {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
       disposed = true;
       for (const reject of activeOperationRejectors) {
         reject(new ModelSupportInvestigationEvidenceExportDisposedError());
       }
       activeOperationRejectors.clear();
-      if (workerTerminated) return;
+      if (workerTerminated) {
+        return;
+      }
       // Disposal is deliberately non-blocking. Evidence export is a recovery path, so a hung
       // Comlink release must never keep the UI spinner alive after the archive itself completed.
       releaseRemoteBestEffort();

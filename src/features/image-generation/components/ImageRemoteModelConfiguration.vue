@@ -9,20 +9,33 @@ const props = defineProps<{ inferenceLocation: ImageInferenceLocationView, disab
 const lora = ref('');
 
 function addLora(): void {
-  if (props.disabled) return;
-  props.inferenceLocation.addLora({ id: lora.value }); lora.value = '';
+  if (props.disabled) {
+    return;
+  }
+  props.inferenceLocation.addLora({ id: lora.value });
+  lora.value = '';
 }
 
 function changeLora({ index, event, field }: { index: number, event: Event, field: 'strength' | 'enabled' }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
+  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   const item = props.inferenceLocation.editor.value.loras[index];
-  if (!item) return;
+  if (!item) {
+    return;
+  }
   switch (field) {
-  case 'enabled': props.inferenceLocation.changeLora({ index, strength: item.strength, enabled: event.target.checked ? 'enabled' : 'disabled' }); break;
-  case 'strength':
-    if (Number.isFinite(event.target.valueAsNumber) && event.target.valueAsNumber >= -10 && event.target.valueAsNumber <= 10) props.inferenceLocation.changeLora({ index, strength: event.target.valueAsNumber, enabled: item.enabled });
+  case 'enabled': props.inferenceLocation.changeLora({ index, strength: item.strength, enabled: event.target.checked ? 'enabled' : 'disabled' });
     break;
-  default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
+  case 'strength':
+    if (Number.isFinite(event.target.valueAsNumber) && event.target.valueAsNumber >= -10 && event.target.valueAsNumber <= 10) {
+      props.inferenceLocation.changeLora({ index, strength: event.target.valueAsNumber, enabled: item.enabled });
+    }
+    break;
+  default: {
+    const exhaustive: never = field;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

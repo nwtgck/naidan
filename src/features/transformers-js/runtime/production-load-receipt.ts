@@ -13,7 +13,10 @@ export function productionLoadReceiptRevisionOption({ option }: { option: z.infe
   switch (option.status) {
   case 'provided': return option.value;
   case 'omitted': return undefined;
-  default: { const exhaustive: never = option; throw new Error('Unknown Load revision option: ' + exhaustive); }
+  default: {
+    const exhaustive: never = option;
+    throw new Error('Unknown Load revision option: ' + exhaustive);
+  }
   }
 }
 
@@ -45,23 +48,39 @@ export const productionLoadReceiptSchema = z.object({
 export type ProductionLoadReceipt = z.infer<typeof productionLoadReceiptSchema>;
 
 function receiptDataSnapshot({ value, depth, budget }: { value: unknown; depth: number; budget: { remaining: number } }): unknown {
-  if (--budget.remaining < 0 || depth > 8) throw new Error('Load receipt exceeds its observation budget');
-  if (value === undefined || value === null || typeof value === 'number' || typeof value === 'boolean') return value;
-  if (typeof value === 'string' && value.length <= 512) return value;
-  if (typeof value !== 'object' || value === null) throw new Error('Invalid Load receipt value');
+  if (--budget.remaining < 0 || depth > 8) {
+    throw new Error('Load receipt exceeds its observation budget');
+  }
+  if (value === undefined || value === null || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string' && value.length <= 512) {
+    return value;
+  }
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Invalid Load receipt value');
+  }
   const descriptors = Object.getOwnPropertyDescriptors(value);
   if (Array.isArray(value)) {
     const length: unknown = descriptors.length?.value;
-    if (typeof length !== 'number' || length > 256 || Object.keys(descriptors).length !== length + 1) throw new Error('Invalid Load receipt array');
+    if (typeof length !== 'number' || length > 256 || Object.keys(descriptors).length !== length + 1) {
+      throw new Error('Invalid Load receipt array');
+    }
     return Array.from({ length }, (_, index) => {
       const descriptor = descriptors[String(index)];
-      if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) throw new Error('Invalid Load receipt array member');
+      if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
+        throw new Error('Invalid Load receipt array member');
+      }
       return receiptDataSnapshot({ value: descriptor.value, depth: depth + 1, budget });
     });
   }
-  if (Reflect.ownKeys(descriptors).length > 20 || Reflect.ownKeys(descriptors).some(key => typeof key !== 'string')) throw new Error('Invalid Load receipt object');
+  if (Reflect.ownKeys(descriptors).length > 20 || Reflect.ownKeys(descriptors).some(key => typeof key !== 'string')) {
+    throw new Error('Invalid Load receipt object');
+  }
   return Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => {
-    if (!Object.hasOwn(descriptor, 'value')) throw new Error('Load receipt accessors are not observed');
+    if (!Object.hasOwn(descriptor, 'value')) {
+      throw new Error('Load receipt accessors are not observed');
+    }
     return [key, receiptDataSnapshot({ value: descriptor.value, depth: depth + 1, budget })];
   }));
 }
@@ -75,11 +94,15 @@ export function readProductionLoadResultReceipt({ value, modelId, revision }: { 
     return undefined;
   }
   const parsed = z.object({ device: z.string(), dtype: z.enum(['q4', 'q4f16']).optional(), receipt: productionLoadReceiptSchema.optional() }).strict().safeParse(snapshot);
-  if (!parsed.success || parsed.data.receipt === undefined) return undefined;
+  if (!parsed.success || parsed.data.receipt === undefined) {
+    return undefined;
+  }
   const { receipt, device, dtype } = parsed.data;
   const receiptRevision = productionLoadReceiptRevisionOption({ option: receipt.loaderRevisionOption });
   if (receipt.modelId !== normalizeTransformersJsProductionModelId({ modelId }) || receiptRevision !== revision
-    || receipt.candidate.device !== device || receipt.candidate.dtype !== dtype) return undefined;
+    || receipt.candidate.device !== device || receipt.candidate.dtype !== dtype) {
+    return undefined;
+  }
   return receipt;
 }
 
@@ -92,10 +115,13 @@ export function createProductionLoadReceiptRecorder({ modelId, revision }: { mod
   let refused = cleanModelId.startsWith('user/') || cleanModelId.startsWith('local/');
   return {
     observe({ resourceKey, result }: { resourceKey: string; result: 'hit' | 'miss' }) {
-      if (refused || result === 'miss') return;
+      if (refused || result === 'miss') {
+        return;
+      }
       try {
         if (!resourceKey.startsWith(prefix)) {
-          refused = true; return;
+          refused = true;
+          return;
         }
         const remainder = resourceKey.slice(prefix.length);
         const separator = remainder.indexOf('/');
@@ -103,7 +129,8 @@ export function createProductionLoadReceiptRecorder({ modelId, revision }: { mod
         const path = remainder.slice(separator + 1);
         if (separator < 1 || actualRevision.length > 128 || !repositoryPathSchema.safeParse(path).success
           || (observedRevision !== undefined && observedRevision !== actualRevision) || hits.size >= 256 && !hits.has(path)) {
-          refused = true; return;
+          refused = true;
+          return;
         }
         observedRevision = actualRevision;
         hits.add(path);
@@ -112,7 +139,9 @@ export function createProductionLoadReceiptRecorder({ modelId, revision }: { mod
       }
     },
     finish({ autoClass, processor, candidate, plannedRequiredPaths }: { autoClass: ProductionLoadReceipt['autoClass'], processor: ProductionLoadReceipt['processor'], candidate: ProductionLoadReceipt['candidate'], plannedRequiredPaths: ProductionLoadReceipt['plannedRequiredPaths'] }): ProductionLoadReceipt | undefined {
-      if (refused || observedRevision === undefined) return undefined;
+      if (refused || observedRevision === undefined) {
+        return undefined;
+      }
       const parsed = productionLoadReceiptSchema.safeParse({
         format: 'production-offline-load-receipt-v1',
         modelId: cleanModelId,

@@ -61,7 +61,9 @@ async function handleCopyRaw() {
 }
 
 async function handleCopyLink() {
-  if (!props.chatId) return;
+  if (!props.chatId) {
+    return;
+  }
 
   try {
     const url = generateMessageLink({ chatId: props.chatId, messageId: props.message.id });

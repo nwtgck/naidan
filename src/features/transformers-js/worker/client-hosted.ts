@@ -112,7 +112,9 @@ export function createTransformersJsGenerationCaptureClient({ runId, workerEpoch
       // The coordinator calls this after all Provider requests, not between
       // turns or before propagating a generation error. Never drain or retry.
       const parsed = generationCaptureReadResultSchema.safeParse(await core.takeGenerationCapture({ identity }));
-      if (!parsed.success) throw new Error('Invalid generation capture response');
+      if (!parsed.success) {
+        throw new Error('Invalid generation capture response');
+      }
       switch (parsed.data.status) {
       case 'captured': {
         const { capture } = parsed.data;
@@ -211,7 +213,9 @@ function createWorkerClientCore({ capture }: {
           workerProxy({
             // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
             value: (info: ProgressInfo) => {
-              if (session.isActive()) return progressCallback({ info });
+              if (session.isActive()) {
+                return progressCallback({ info });
+              }
             },
           }),
           ...(capture === undefined ? [] as const : [capture.loadReceiptOwner] as const),
@@ -251,13 +255,17 @@ function createWorkerClientCore({ capture }: {
             workerProxy({
               // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
               value: (chunk: string) => {
-                if (acceptingCallbacks && session.isActive()) return onChunk({ chunk });
+                if (acceptingCallbacks && session.isActive()) {
+                  return onChunk({ chunk });
+                }
               },
             }),
             workerProxy({
               // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
               value: (toolCalls: ToolCall[]) => {
-                if (acceptingCallbacks && session.isActive()) return onToolCalls({ toolCalls });
+                if (acceptingCallbacks && session.isActive()) {
+                  return onToolCalls({ toolCalls });
+                }
               },
             }),
             accepted.params,

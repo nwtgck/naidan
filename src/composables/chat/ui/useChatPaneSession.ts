@@ -32,7 +32,9 @@ export function useChatPaneSession({
   const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
 
   function clearNeuralSyncEffectTimer() {
-    if (hideNeuralSyncEffectTimer.value === undefined) return;
+    if (hideNeuralSyncEffectTimer.value === undefined) {
+      return;
+    }
     window.clearTimeout(hideNeuralSyncEffectTimer.value);
     hideNeuralSyncEffectTimer.value = undefined;
   }

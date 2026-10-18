@@ -17,7 +17,8 @@ async function writeTree({ folder, tree }: { folder: MemoryDirectory, tree: File
   for (const [name, entry] of Object.entries(tree)) {
     if (entry instanceof Uint8Array) {
       const writer = await (await folder.getFileHandle(name, { create: true })).createWritable();
-      await writer.write(entry); await writer.close();
+      await writer.write(entry);
+      await writer.close();
     } else {
       await writeTree({ folder: await folder.getDirectoryHandle(name, { create: true }), tree: entry });
     }
@@ -26,14 +27,17 @@ async function writeTree({ folder, tree }: { folder: MemoryDirectory, tree: File
 
 async function directoryAt({ root, path }: { root: MemoryDirectory, path: string }): Promise<MemoryDirectory> {
   let folder = root;
-  for (const name of path.split('/')) folder = await folder.getDirectoryHandle(name);
+  for (const name of path.split('/')) {
+    folder = await folder.getDirectoryHandle(name);
+  }
   return folder;
 }
 
 let opfs: MemoryDirectory, host: MemoryDirectory;
 
 beforeEach(() => {
-  opfs = new MemoryDirectory('opfs'); host = new MemoryDirectory('Models');
+  opfs = new MemoryDirectory('opfs');
+  host = new MemoryDirectory('Models');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(host as unknown as HostModelDirectoryHandle);
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
 });
@@ -115,7 +119,8 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
       // Check the physical handles as well: matching filenames in another
       // owner's directory must never satisfy this selection.
       for (const file of selected.files) {
-        const parts = `${model.directory}/${file.path}`.split('/'); const filename = parts.pop()!;
+        const parts = `${model.directory}/${file.path}`.split('/');
+        const filename = parts.pop()!;
         const folder = await directoryAt({ root, path: parts.join('/') });
         expect(file.handle).toBe(await folder.getFileHandle(filename));
       }
@@ -127,6 +132,8 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
     const unchanged = expected.slice(1);
     expect((await listModels()).map(model => model.name).sort()).toEqual(unchanged.map(model => model.name).sort());
     await expect(resolve({ name: `${namespace}/alice/Model-GGUF:Q4_K_M` })).rejects.toThrow('unsupported-input');
-    for (const model of unchanged) expect((await resolve({ name: model.name })).files.map(file => file.path)).toEqual(model.files);
+    for (const model of unchanged) {
+      expect((await resolve({ name: model.name })).files.map(file => file.path)).toEqual(model.files);
+    }
   });
 });

@@ -68,7 +68,9 @@ class BufferedStdout {
   }
 
   public async flush(): Promise<void> {
-    if (this.pending.length === 0) return;
+    if (this.pending.length === 0) {
+      return;
+    }
     const text = this.pending;
     this.pending = '';
     await this.context.text().print({ text });
@@ -92,7 +94,9 @@ function resolvePath({
   cwd: string,
   path: string,
 }): string {
-  if (path.startsWith('/')) return path;
+  if (path.startsWith('/')) {
+    return path;
+  }
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
@@ -108,8 +112,12 @@ async function readTextStream({
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      if (value === undefined) continue;
+      if (done) {
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
       fragments.push(decoder.decode(value, { stream: true }));
     }
     fragments.push(decoder.decode());
@@ -169,8 +177,12 @@ async function readInputText({
   path: string,
   stdinState: { consumed: boolean },
 }): Promise<{ ok: true, text: string } | { ok: false, message: string }> {
-  if (path !== '-') return readPathText({ context, path });
-  if (stdinState.consumed) return { ok: true, text: '' };
+  if (path !== '-') {
+    return readPathText({ context, path });
+  }
+  if (stdinState.consumed) {
+    return { ok: true, text: '' };
+  }
 
   stdinState.consumed = true;
   try {
@@ -287,8 +299,12 @@ function utf8CodePointByteLength({
   index: number,
 }): { readonly byteLength: number, readonly textEnd: number } {
   const first = text.charCodeAt(index);
-  if (first <= 0x7f) return { byteLength: 1, textEnd: index + 1 };
-  if (first <= 0x7ff) return { byteLength: 2, textEnd: index + 1 };
+  if (first <= 0x7f) {
+    return { byteLength: 1, textEnd: index + 1 };
+  }
+  if (first <= 0x7ff) {
+    return { byteLength: 2, textEnd: index + 1 };
+  }
   if (first >= 0xd800 && first <= 0xdbff && index + 1 < text.length) {
     const second = text.charCodeAt(index + 1);
     if (second >= 0xdc00 && second <= 0xdfff) {
@@ -372,7 +388,9 @@ function countNewlines({
   let index = 0;
   while (true) {
     const newlineIndex = text.indexOf('\n', index);
-    if (newlineIndex < 0 || newlineIndex >= end) return count;
+    if (newlineIndex < 0 || newlineIndex >= end) {
+      return count;
+    }
     count += 1;
     index = newlineIndex + 1;
   }
@@ -429,7 +447,9 @@ class JqInputCursor {
   }: {
     maximumValues: number,
   }): readonly JqCursorValueResult[] {
-    if (this.options.slurp || maximumValues <= 0) return [];
+    if (this.options.slurp || maximumValues <= 0) {
+      return [];
+    }
 
     const values: JqCursorValueResult[] = [];
     let bufferedIndex = this.bufferedResultIndex;
@@ -512,7 +532,9 @@ class JqInputCursor {
   }
 
   private compactBufferedResults(): void {
-    if (this.bufferedResultIndex === 0) return;
+    if (this.bufferedResultIndex === 0) {
+      return;
+    }
     if (this.bufferedResultIndex === this.bufferedResults.length) {
       this.bufferedResults = [];
       this.bufferedResultIndex = 0;
@@ -533,7 +555,9 @@ class JqInputCursor {
     | { kind: 'exhausted' }
     > {
     const path = this.paths[this.pathIndex];
-    if (path === undefined) return { kind: 'exhausted' };
+    if (path === undefined) {
+      return { kind: 'exhausted' };
+    }
     this.pathIndex += 1;
     const loaded = await readInputText({
       context: this.context,
@@ -579,7 +603,9 @@ class JqInputCursor {
   }: {
     index: number,
   }): void {
-    if (index <= 0) return;
+    if (index <= 0) {
+      return;
+    }
     if (index > this.sourceText.length) {
       throw new Error(`Invalid jq input buffer compaction index: ${index}`);
     }
@@ -588,7 +614,9 @@ class JqInputCursor {
     this.sourceIndex = Math.max(0, this.sourceIndex - index);
     const compacted: JqInputBufferSegment[] = [];
     for (const segment of this.sourceSegments) {
-      if (segment.end <= index) continue;
+      if (segment.end <= index) {
+        continue;
+      }
       const removedFromSegment = Math.max(0, index - segment.start);
       compacted.push({
         path: segment.path,
@@ -636,10 +664,14 @@ class JqInputCursor {
     completionOffset: number,
     boundaryMetadata: { readonly filename: string, readonly lineNumber: number } | undefined,
   }): { readonly filename: string, readonly lineNumber: number } {
-    if (boundaryMetadata !== undefined) return boundaryMetadata;
+    if (boundaryMetadata !== undefined) {
+      return boundaryMetadata;
+    }
 
     for (const segment of this.sourceSegments) {
-      if (completionOffset < segment.start || completionOffset >= segment.end) continue;
+      if (completionOffset < segment.start || completionOffset >= segment.end) {
+        continue;
+      }
       return {
         filename: segment.path,
         lineNumber: this.lineNumberForCompletion({ segment, completionOffset }),
@@ -723,7 +755,9 @@ class JqInputCursor {
     offset: number,
   }): number {
     for (const segment of this.sourceSegments) {
-      if (offset < segment.start || offset >= segment.end) continue;
+      if (offset < segment.start || offset >= segment.end) {
+        continue;
+      }
       const originalOffset = segment.textOffset + (offset - segment.start);
       const boundaryIndex = segment.parserBufferBoundaries.findIndex(
         boundary => boundary.coveredTextEnd > originalOffset,
@@ -754,7 +788,9 @@ class JqInputCursor {
     boundaryMetadata: { readonly filename: string, readonly lineNumber: number } | undefined,
   }): JqAvailableInputResult | undefined {
     const pending = this.pendingUtf8RecoveryToken;
-    if (pending === undefined) return undefined;
+    if (pending === undefined) {
+      return undefined;
+    }
 
     if (pending.initialTextEnd !== undefined) {
       if (pending.initialTextEnd <= this.sourceIndex || pending.initialTextEnd > this.sourceText.length) {
@@ -775,7 +811,9 @@ class JqInputCursor {
     let whitespaceIndex = this.sourceIndex;
     while (whitespaceIndex < this.sourceText.length) {
       const character = this.sourceText[whitespaceIndex];
-      if (character === undefined || /[\t\n\r ]/u.test(character)) break;
+      if (character === undefined || /[\t\n\r ]/u.test(character)) {
+        break;
+      }
       whitespaceIndex += 1;
     }
     const tokenSuffix = this.sourceText.slice(this.sourceIndex, whitespaceIndex);
@@ -846,7 +884,9 @@ class JqInputCursor {
       endOfInput,
       boundaryMetadata,
     });
-    if (utf8Recovery !== undefined) return utf8Recovery;
+    if (utf8Recovery !== undefined) {
+      return utf8Recovery;
+    }
 
     const scanned = scanJsonSequenceIncrementally({
       text: this.sourceText,
@@ -957,7 +997,9 @@ class JqInputCursor {
       }
 
       const queued = this.queuedResults.shift();
-      if (queued !== undefined) return queued;
+      if (queued !== undefined) {
+        return queued;
+      }
 
       const available = this.parseAvailableInput({
         endOfInput: this.sourceExhausted,
@@ -967,7 +1009,9 @@ class JqInputCursor {
       case 'result':
         return available.result;
       case 'exhausted':
-        if (this.sourceExhausted) return { kind: 'exhausted' };
+        if (this.sourceExhausted) {
+          return { kind: 'exhausted' };
+        }
         break;
       case 'need_more_input':
         if (this.sourceExhausted) {
@@ -994,7 +1038,9 @@ class JqInputCursor {
             filename: loaded.path,
             lineNumber: 0,
           });
-          if (finalized !== undefined) this.queuedResults.push(finalized);
+          if (finalized !== undefined) {
+            this.queuedResults.push(finalized);
+          }
         }
         return { kind: 'diagnostic', message: loaded.message };
       }
@@ -1010,7 +1056,9 @@ class JqInputCursor {
   }
 
   private async nextSlurped(): Promise<JqCursorResult> {
-    if (this.slurpEmitted) return { kind: 'exhausted' };
+    if (this.slurpEmitted) {
+      return { kind: 'exhausted' };
+    }
     if (!this.slurpComplete) {
       if (this.options.rawInput) {
         while (true) {
@@ -1103,18 +1151,26 @@ function replayOutputValueMatches({
     const pair = pending.pop()!;
     if (typeof pair.left === 'number' && typeof pair.right === 'number') {
       if (Number.isNaN(pair.left) || Number.isNaN(pair.right)) {
-        if (!(Number.isNaN(pair.left) && Number.isNaN(pair.right))) return false;
+        if (!(Number.isNaN(pair.left) && Number.isNaN(pair.right))) {
+          return false;
+        }
       } else if (!Object.is(pair.left, pair.right)) {
         return false;
       }
 
-      if (pair.leftOrigin?.canonical !== pair.rightOrigin?.canonical) return false;
+      if (pair.leftOrigin?.canonical !== pair.rightOrigin?.canonical) {
+        return false;
+      }
       continue;
     }
 
-    if (pair.left === pair.right) continue;
+    if (pair.left === pair.right) {
+      continue;
+    }
     if (Array.isArray(pair.left) && Array.isArray(pair.right)) {
-      if (pair.left.length !== pair.right.length) return false;
+      if (pair.left.length !== pair.right.length) {
+        return false;
+      }
       for (let index = 0; index < pair.left.length; index += 1) {
         pending.push({
           left: pair.left[index]!,
@@ -1136,11 +1192,15 @@ function replayOutputValueMatches({
     ) {
       const leftKeys = jsonObjectKeys({ object: pair.left });
       const rightKeys = jsonObjectKeys({ object: pair.right });
-      if (leftKeys.length !== rightKeys.length) return false;
+      if (leftKeys.length !== rightKeys.length) {
+        return false;
+      }
       for (let index = 0; index < leftKeys.length; index += 1) {
         const leftKey = leftKeys[index]!;
         const rightKey = rightKeys[index]!;
-        if (leftKey !== rightKey) return false;
+        if (leftKey !== rightKey) {
+          return false;
+        }
         pending.push({
           left: pair.left[leftKey]!,
           right: pair.right[rightKey]!,
@@ -1168,7 +1228,9 @@ function replayOutputPrefixMatches({
   previousMetadata: readonly JqRuntimeInputMetadata[] | undefined,
   currentMetadata: readonly JqRuntimeInputMetadata[] | undefined,
 }): boolean {
-  if (previous.length > current.length) return false;
+  if (previous.length > current.length) {
+    return false;
+  }
   return previous.every((value, index) => (
     current[index] !== undefined
     && replayOutputValueMatches({
@@ -1187,7 +1249,9 @@ function replayTextPrefixMatches({
   previous: readonly string[],
   current: readonly string[],
 }): boolean {
-  if (previous.length > current.length) return false;
+  if (previous.length > current.length) {
+    return false;
+  }
   return previous.every((value, index) => current[index] === value);
 }
 
@@ -1199,7 +1263,9 @@ function parseSingleJson({
   label: string,
 }): { ok: true, value: JsonValue } | { ok: false, message: string } {
   const parsed = parseJsonSequence({ text: source });
-  if (!parsed.ok) return { ok: false, message: `${label}: ${parsed.message}` };
+  if (!parsed.ok) {
+    return { ok: false, message: `${label}: ${parsed.message}` };
+  }
   if (parsed.values.length !== 1) {
     return { ok: false, message: `${label}: expected exactly one JSON value` };
   }
@@ -1247,19 +1313,25 @@ async function resolveVariables({
         source: argument.value,
         label: `jq: invalid JSON text passed to --argjson ${argument.name}`,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       value = parsed.value;
       break;
     }
     case 'rawfile': {
       const loaded = await readPathText({ context, path: argument.value });
-      if (!loaded.ok) return loaded;
+      if (!loaded.ok) {
+        return loaded;
+      }
       value = loaded.text;
       break;
     }
     case 'slurpfile': {
       const loaded = await readPathText({ context, path: argument.value });
-      if (!loaded.ok) return loaded;
+      if (!loaded.ok) {
+        return loaded;
+      }
       const parsed = parseJsonSequence({ text: loaded.text });
       if (!parsed.ok) {
         return { ok: false, message: `jq: ${argument.value}: ${parsed.message}` };
@@ -1284,7 +1356,9 @@ async function resolveVariables({
       continue;
     }
     const parsed = parseSingleJson({ source: argument, label: 'jq: invalid JSON text passed to --jsonargs' });
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     positional.push(parsed.value);
   }
 
@@ -1310,7 +1384,9 @@ function resolveOutputIndentation({
 }): number | '\t' {
   let indentation: number | '\t' = 2;
   for (const occurrence of occurrences) {
-    if (occurrence.option === '--tab') indentation = '\t';
+    if (occurrence.option === '--tab') {
+      indentation = '\t';
+    }
     if (occurrence.option === '--indent' && typeof indentValue === 'number') {
       indentation = indentValue === -1 ? '\t' : indentValue;
     }
@@ -1327,8 +1403,12 @@ function resolveArgumentMode({
 }): JqArgumentMode {
   let mode: JqArgumentMode = 'files';
   for (const occurrence of occurrences) {
-    if (occurrence.option === '--args') mode = 'strings';
-    if (occurrence.option === '--jsonargs') mode = 'json';
+    if (occurrence.option === '--args') {
+      mode = 'strings';
+    }
+    if (occurrence.option === '--jsonargs') {
+      mode = 'json';
+    }
   }
   return mode;
 }
@@ -1392,7 +1472,9 @@ function filterUsesInputs({
       case 'path':
         break;
       case 'sequence':
-        for (const item of task.value.items) pending.push({ kind: 'path', value: item });
+        for (const item of task.value.items) {
+          pending.push({ kind: 'path', value: item });
+        }
         break;
       case 'append':
       case 'iterate':
@@ -1404,8 +1486,12 @@ function filterUsesInputs({
         break;
       case 'dynamic_slice':
         pending.push({ kind: 'path', value: task.value.parent });
-        if (task.value.start !== undefined) pending.push({ kind: 'filter', value: task.value.start });
-        if (task.value.end !== undefined) pending.push({ kind: 'filter', value: task.value.end });
+        if (task.value.start !== undefined) {
+          pending.push({ kind: 'filter', value: task.value.start });
+        }
+        if (task.value.end !== undefined) {
+          pending.push({ kind: 'filter', value: task.value.end });
+        }
         break;
       default: {
         const _ex: never = task.value;
@@ -1435,7 +1521,9 @@ function filterUsesInputs({
         }
         break;
       case 'array':
-        for (const item of task.value.items) pending.push({ kind: 'filter', value: item });
+        for (const item of task.value.items) {
+          pending.push({ kind: 'filter', value: item });
+        }
         break;
       case 'object':
         for (const entry of task.value.entries) {
@@ -1465,8 +1553,12 @@ function filterUsesInputs({
         break;
       case 'slice':
         pending.push({ kind: 'filter', value: task.value.input });
-        if (task.value.start !== undefined) pending.push({ kind: 'filter', value: task.value.start });
-        if (task.value.end !== undefined) pending.push({ kind: 'filter', value: task.value.end });
+        if (task.value.start !== undefined) {
+          pending.push({ kind: 'filter', value: task.value.start });
+        }
+        if (task.value.end !== undefined) {
+          pending.push({ kind: 'filter', value: task.value.end });
+        }
         break;
       case 'optional':
         pending.push({ kind: 'filter', value: task.value.body });
@@ -1487,19 +1579,31 @@ function filterUsesInputs({
         pending.push({ kind: 'filter', value: task.value.catchBranch });
         break;
       case 'call':
-        if (task.value.name === 'input' || task.value.name === 'inputs') return true;
-        for (const argument of task.value.args) pending.push({ kind: 'filter', value: argument });
+        if (task.value.name === 'input' || task.value.name === 'inputs') {
+          return true;
+        }
+        for (const argument of task.value.args) {
+          pending.push({ kind: 'filter', value: argument });
+        }
         break;
       case 'user_call': {
-        for (const argument of task.value.args) pending.push({ kind: 'filter', value: argument });
-        if (visitedDefinitionIds.has(task.value.definitionId)) break;
+        for (const argument of task.value.args) {
+          pending.push({ kind: 'filter', value: argument });
+        }
+        if (visitedDefinitionIds.has(task.value.definitionId)) {
+          break;
+        }
         visitedDefinitionIds.add(task.value.definitionId);
         const definition = definitionsById.get(task.value.definitionId);
-        if (definition !== undefined) pending.push({ kind: 'filter', value: definition.body });
+        if (definition !== undefined) {
+          pending.push({ kind: 'filter', value: definition.body });
+        }
         break;
       }
       case 'unresolved_user_call':
-        for (const argument of task.value.args) pending.push({ kind: 'filter', value: argument });
+        for (const argument of task.value.args) {
+          pending.push({ kind: 'filter', value: argument });
+        }
         break;
       case 'unary':
         pending.push({ kind: 'filter', value: task.value.value });
@@ -1554,7 +1658,9 @@ async function finishRuntimeHalt({
   halt: NonNullable<JqRuntimeError['halt']>,
 }): Promise<WeshCommandResult> {
   await stdout.flush();
-  if (halt.stderr.length > 0) await context.text().error({ text: halt.stderr });
+  if (halt.stderr.length > 0) {
+    await context.text().error({ text: halt.stderr });
+  }
   return { exitCode: halt.exitCode };
 }
 
@@ -1805,7 +1911,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         userDefinitions: program.program.userDefinitions,
       });
       const stderr = result.stderr ?? [];
-      for (const text of stderr) await context.text().error({ text });
+      for (const text of stderr) {
+        await context.text().error({ text });
+      }
       const outputs = result.ok ? result.outputs : failureOutputs({ result });
       await writeOutputs({ outputs, outputMetadata: result.outputMetadata, startIndex: 0 });
       if (result.ok) {
@@ -2018,7 +2126,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
               throw new Error(`Unhandled jq cursor result: ${JSON.stringify(_ex)}`);
             }
             }
-            if (sourceExhausted || next.kind === 'terminal_error') break;
+            if (sourceExhausted || next.kind === 'terminal_error') {
+              break;
+            }
           }
 
           if (!sourceStateChanged) {
@@ -2036,7 +2146,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         const failed = await evaluateWithDemand({
           entry: { value: null, filename: null, lineNumber: 0 },
         });
-        if (failed !== undefined) return failed;
+        if (failed !== undefined) {
+          return failed;
+        }
       } else {
         while (true) {
           const next = await cursor.next();
@@ -2051,7 +2163,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
                 ...(next.numberOrigin === undefined ? {} : { numberOrigin: next.numberOrigin }),
               },
             });
-            if (failed !== undefined) return failed;
+            if (failed !== undefined) {
+              return failed;
+            }
             break;
           }
           case 'diagnostic':
@@ -2078,7 +2192,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
             throw new Error(`Unhandled jq top-level cursor result: ${JSON.stringify(_ex)}`);
           }
           }
-          if (exhausted) break;
+          if (exhausted) {
+            break;
+          }
         }
       }
 
@@ -2091,7 +2207,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         value: null,
         metadata: { filename: null, lineNumber: 0 },
       });
-      if (failed !== undefined) return failed;
+      if (failed !== undefined) {
+        return failed;
+      }
     } else {
       const cursor = new JqInputCursor({
         context,
@@ -2113,7 +2231,9 @@ export const jqCommandImplementation: WeshCommandImplementation = {
               ...(next.numberOrigin === undefined ? {} : { numberOrigin: next.numberOrigin }),
             },
           });
-          if (failed !== undefined) return failed;
+          if (failed !== undefined) {
+            return failed;
+          }
           break;
         }
         case 'diagnostic':
@@ -2142,16 +2262,22 @@ export const jqCommandImplementation: WeshCommandImplementation = {
           throw new Error(`Unhandled jq top-level input result: ${JSON.stringify(_ex)}`);
         }
         }
-        if (exhausted) break;
+        if (exhausted) {
+          break;
+        }
       }
     }
 
     await stdout.flush();
-    if (lastRuntimeExitCode === 5) return { exitCode: 5 };
+    if (lastRuntimeExitCode === 5) {
+      return { exitCode: 5 };
+    }
     if (!optionBoolean({ optionValues: parsed.optionValues, key: 'exitStatus' })) {
       return { exitCode: 0 };
     }
-    if (!hadOutput) return { exitCode: 4 };
+    if (!hadOutput) {
+      return { exitCode: 4 };
+    }
     return { exitCode: lastOutput === false || lastOutput === null ? 1 : 0 };
   },
 };

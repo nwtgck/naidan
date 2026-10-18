@@ -180,7 +180,9 @@ describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
     'isolates an unreadable experimental payload: %j', experimental => {
       const parsed = EndpointSchemaDto.parse({ type: 'experimental_type', experimental });
       expect(parsed.type).toBe('experimental_type');
-      if (parsed.type !== 'experimental_type') throw new Error('Unexpected endpoint type');
+      if (parsed.type !== 'experimental_type') {
+        throw new Error('Unexpected endpoint type');
+      }
       expect(parsed.experimental?.endpoint).toBeUndefined();
     },
   );
@@ -196,7 +198,9 @@ describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
       experimental: { endpoint: { type: 'future_browser_ai' } },
     });
     expect(parsed).toStrictEqual({ type: 'experimental_type', experimental: { endpoint: undefined } });
-    if (parsed.type !== 'experimental_type') throw new Error('Unexpected endpoint type');
+    if (parsed.type !== 'experimental_type') {
+      throw new Error('Unexpected endpoint type');
+    }
     expect(parsed.experimental?.unreadable).toEqual({ endpoint: { type: 'future_browser_ai' } });
   });
 });

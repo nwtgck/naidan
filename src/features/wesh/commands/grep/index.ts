@@ -245,7 +245,9 @@ function parseColorMode({
 }
 
 const parseOptionalColorToken: ArgvSpecialTokenParser = ({ token }) => {
-  if (token !== "--color" && token !== "--colour") return undefined;
+  if (token !== "--color" && token !== "--colour") {
+    return undefined;
+  }
   return {
     kind: "matched",
     consumeCount: 1,
@@ -300,7 +302,9 @@ function asDirectoryEntryRef({
 }
 
 function basename({ path }: { path: string }): string {
-  if (path === "/") return "/";
+  if (path === "/") {
+    return "/";
+  }
   const end = path.endsWith("/") ? path.length - 1 : path.length;
   const separatorIndex = path.lastIndexOf("/", end - 1);
   return path.slice(separatorIndex + 1, end);
@@ -358,8 +362,12 @@ function consumeGlobCharacterClass({
   startIndex: number;
 }): { source: string; endIndex: number } | undefined {
   let index = startIndex + 1;
-  if (pattern[index] === "!" || pattern[index] === "^") index += 1;
-  if (pattern[index] === "]") index += 1;
+  if (pattern[index] === "!" || pattern[index] === "^") {
+    index += 1;
+  }
+  if (pattern[index] === "]") {
+    index += 1;
+  }
 
   while (index < pattern.length) {
     const marker = pattern[index + 1];
@@ -402,7 +410,9 @@ function globToRegExp({
 
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index];
-    if (char === undefined) continue;
+    if (char === undefined) {
+      continue;
+    }
 
     switch (char) {
     case "*":
@@ -521,7 +531,9 @@ function splitTopLevelPerlAlternatives({
     const character = source[index]!;
     if (character === "\\") {
       current += character;
-      if (index + 1 < source.length) current += source[++index]!;
+      if (index + 1 < source.length) {
+        current += source[++index]!;
+      }
       continue;
     }
     if (character === "[" && !inBracket) {
@@ -535,8 +547,12 @@ function splitTopLevelPerlAlternatives({
       continue;
     }
     if (!inBracket) {
-      if (character === "(") groupDepth += 1;
-      if (character === ")") groupDepth = Math.max(0, groupDepth - 1);
+      if (character === "(") {
+        groupDepth += 1;
+      }
+      if (character === ")") {
+        groupDepth = Math.max(0, groupDepth - 1);
+      }
       if (character === "|" && groupDepth === 0) {
         alternatives.push(current);
         current = "";
@@ -596,12 +612,18 @@ function translatePerlResetMatchStart({ source }: { source: string }): string {
           continue;
         }
         if (!inBracket) {
-          if (character === '(') groupDepth += 1;
-          if (character === ')') groupDepth = Math.max(0, groupDepth - 1);
+          if (character === '(') {
+            groupDepth += 1;
+          }
+          if (character === ')') {
+            groupDepth = Math.max(0, groupDepth - 1);
+          }
         }
       }
 
-      if (markerIndices.length === 0) return alternative;
+      if (markerIndices.length === 0) {
+        return alternative;
+      }
       const finalMarkerIndex = markerIndices.at(-1)!;
       let prefix = '';
       let markerSegmentStart = 0;
@@ -656,10 +678,14 @@ function unwrapWholePerlModifierGroup({ source }: { source: string }):
     }
   | undefined {
   const prefixMatch = /^\(\?([isx]*)(?:-([isx]+))?:/.exec(source);
-  if (prefixMatch === null) return undefined;
+  if (prefixMatch === null) {
+    return undefined;
+  }
   const enabled = prefixMatch[1] ?? "";
   const disabled = prefixMatch[2] ?? "";
-  if (enabled.length === 0 && disabled.length === 0) return undefined;
+  if (enabled.length === 0 && disabled.length === 0) {
+    return undefined;
+  }
 
   const prefixLength = prefixMatch[0].length;
   let groupDepth = 1;
@@ -678,15 +704,23 @@ function unwrapWholePerlModifierGroup({ source }: { source: string }):
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
+    if (inBracket) {
+      continue;
+    }
     if (character === "(") {
       groupDepth += 1;
       continue;
     }
-    if (character !== ")") continue;
+    if (character !== ")") {
+      continue;
+    }
     groupDepth -= 1;
-    if (groupDepth !== 0) continue;
-    if (index !== source.length - 1) return undefined;
+    if (groupDepth !== 0) {
+      continue;
+    }
+    if (index !== source.length - 1) {
+      return undefined;
+    }
     return {
       source: source.slice(prefixLength, index),
       ...resolvePerlModifiers({ enabled, disabled }),
@@ -705,10 +739,14 @@ function consumeLeadingPerlModifiers({ source }: { source: string }):
     }
   | undefined {
   const match = /^\(\?([isx]*)(?:-([isx]+))?\)/.exec(source);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const enabled = match[1] ?? "";
   const disabled = match[2] ?? "";
-  if (enabled.length === 0 && disabled.length === 0) return undefined;
+  if (enabled.length === 0 && disabled.length === 0) {
+    return undefined;
+  }
   return {
     source: source.slice(match[0].length),
     ...resolvePerlModifiers({ enabled, disabled }),
@@ -729,21 +767,31 @@ function consumePerlModifierHeader({
   source: string,
   startIndex: number,
 }): PerlModifierHeader | undefined {
-  if (source[startIndex] !== '(' || source[startIndex + 1] !== '?') return undefined;
+  if (source[startIndex] !== '(' || source[startIndex + 1] !== '?') {
+    return undefined;
+  }
   let index = startIndex + 2;
   const enabledStart = index;
-  while (source[index] === 'i' || source[index] === 's' || source[index] === 'x') index += 1;
+  while (source[index] === 'i' || source[index] === 's' || source[index] === 'x') {
+    index += 1;
+  }
   const enabled = source.slice(enabledStart, index);
   let disabled = '';
   if (source[index] === '-') {
     index += 1;
     const disabledStart = index;
-    while (source[index] === 'i' || source[index] === 's' || source[index] === 'x') index += 1;
-    if (index === disabledStart) return undefined;
+    while (source[index] === 'i' || source[index] === 's' || source[index] === 'x') {
+      index += 1;
+    }
+    if (index === disabledStart) {
+      return undefined;
+    }
     disabled = source.slice(disabledStart, index);
   }
   const marker = source[index];
-  if (marker !== ':' && marker !== ')') return undefined;
+  if (marker !== ':' && marker !== ')') {
+    return undefined;
+  }
   return { enabled, disabled, marker, endIndex: index + 1 };
 }
 
@@ -765,14 +813,20 @@ function mapPerlGroupEndIndexes({ source }: { source: string }): ReadonlyMap<num
       inBracket = false;
       continue;
     }
-    if (inBracket) continue;
+    if (inBracket) {
+      continue;
+    }
     if (character === '(') {
       groupStarts.push(index);
       continue;
     }
-    if (character !== ')') continue;
+    if (character !== ')') {
+      continue;
+    }
     const groupStart = groupStarts.pop();
-    if (groupStart !== undefined) groupEnds.set(groupStart, index);
+    if (groupStart !== undefined) {
+      groupEnds.set(groupStart, index);
+    }
   }
   return groupEnds;
 }
@@ -793,10 +847,16 @@ function containsPerlLocalModifier({ source }: { source: string }): boolean {
       inBracket = false;
       continue;
     }
-    if (inBracket || character !== '(' || source[index + 1] !== '?') continue;
+    if (inBracket || character !== '(' || source[index + 1] !== '?') {
+      continue;
+    }
     const modifier = consumePerlModifierHeader({ source, startIndex: index });
-    if (modifier === undefined) continue;
-    if (`${modifier.enabled}${modifier.disabled}`.length > 0) return true;
+    if (modifier === undefined) {
+      continue;
+    }
+    if (`${modifier.enabled}${modifier.disabled}`.length > 0) {
+      return true;
+    }
     index = modifier.endIndex - 1;
   }
   return false;
@@ -810,7 +870,9 @@ function findPerlEscapeEnd({
   startIndex: number;
 }): number {
   const escaped = source[startIndex + 1];
-  if (escaped === undefined) return startIndex;
+  if (escaped === undefined) {
+    return startIndex;
+  }
   const delimiter = source[startIndex + 2];
   if (
     (escaped === "p" ||
@@ -847,8 +909,9 @@ function findPerlEscapeEnd({
   if (escaped === "x" && /^[0-9A-Fa-f]{2}/.test(source.slice(startIndex + 2))) {
     return startIndex + 3;
   }
-  if (escaped === "c" && source[startIndex + 2] !== undefined)
+  if (escaped === "c" && source[startIndex + 2] !== undefined) {
     return startIndex + 2;
+  }
   return startIndex + 1;
 }
 
@@ -860,8 +923,12 @@ function findPerlCharacterClassEnd({
   startIndex: number;
 }): number {
   let index = startIndex + 1;
-  if (source[index] === "^") index += 1;
-  if (source[index] === "]") index += 1;
+  if (source[index] === "^") {
+    index += 1;
+  }
+  if (source[index] === "]") {
+    index += 1;
+  }
   for (; index < source.length; index += 1) {
     if (source[index] === "\\") {
       index = findPerlEscapeEnd({ source, startIndex: index });
@@ -878,7 +945,9 @@ function findPerlCharacterClassEnd({
         continue;
       }
     }
-    if (source[index] === "]") return index;
+    if (source[index] === "]") {
+      return index;
+    }
   }
   throw new Error("unterminated PCRE character class");
 }
@@ -892,7 +961,9 @@ function appendAsciiCaseFoldedCharacter({
   character: string;
   ignoreCase: boolean;
 }): string {
-  if (!ignoreCase) return target + character;
+  if (!ignoreCase) {
+    return target + character;
+  }
   if (!/[A-Za-z]/.test(character)) {
     if (character.toLocaleLowerCase() !== character.toLocaleUpperCase()) {
       throw new Error("non-ASCII scoped PCRE case folding is unsupported");
@@ -914,8 +985,12 @@ function translateAsciiCaseInsensitiveBracket({
   const classEnd = findPerlCharacterClassEnd({ source, startIndex });
   let translated = "[";
   let index = startIndex + 1;
-  if (source[index] === "^") translated += source[index++]!;
-  if (source[index] === "]") translated += source[index++]!;
+  if (source[index] === "^") {
+    translated += source[index++]!;
+  }
+  if (source[index] === "]") {
+    translated += source[index++]!;
+  }
 
   for (; index < classEnd; index += 1) {
     const character = source[index]!;
@@ -950,10 +1025,12 @@ function translateAsciiCaseInsensitiveBracket({
     ) {
       const range = `${character}-${rangeEnd}`;
       translated += range;
-      if (/^[a-z]-[a-z]$/.test(range))
+      if (/^[a-z]-[a-z]$/.test(range)) {
         translated += `${character.toUpperCase()}-${rangeEnd.toUpperCase()}`;
-      if (/^[A-Z]-[A-Z]$/.test(range))
+      }
+      if (/^[A-Z]-[A-Z]$/.test(range)) {
         translated += `${character.toLowerCase()}-${rangeEnd.toLowerCase()}`;
+      }
       if (
         !/^[A-Za-z]-[A-Za-z]$/.test(range) &&
         (character.toLocaleLowerCase() !== character.toLocaleUpperCase() ||
@@ -1019,7 +1096,9 @@ function translatePerlLocalModifiers({
         break;
       }
       const parent = frames.at(-1);
-      if (parent === undefined) throw new Error('PCRE modifier translation parent frame is missing');
+      if (parent === undefined) {
+        throw new Error('PCRE modifier translation parent frame is missing');
+      }
       parent.parts.push(['(?:', completed, ')']);
       parent.index = continuation.groupEndIndex + 1;
       continue;
@@ -1044,7 +1123,9 @@ function translatePerlLocalModifiers({
     if (character === '[') {
       if (!frame.ignoreCase) {
         const bracketEnd = findPerlCharacterClassEnd({ source, startIndex: frame.index });
-        if (bracketEnd >= frame.endIndex) throw new Error('unterminated PCRE character class');
+        if (bracketEnd >= frame.endIndex) {
+          throw new Error('unterminated PCRE character class');
+        }
         frame.parts.push(source.slice(frame.index, bracketEnd + 1));
         frame.index = bracketEnd + 1;
         continue;
@@ -1053,7 +1134,9 @@ function translatePerlLocalModifiers({
         source,
         startIndex: frame.index,
       });
-      if (bracket.endIndex >= frame.endIndex) throw new Error('unterminated PCRE character class');
+      if (bracket.endIndex >= frame.endIndex) {
+        throw new Error('unterminated PCRE character class');
+      }
       frame.parts.push(bracket.source);
       frame.index = bracket.endIndex + 1;
       continue;
@@ -1124,7 +1207,9 @@ function translatePerlLocalModifiers({
 
       if (/^[A-Za-z]$/u.test(source[frame.index + 3] ?? '')) {
         let index = frame.index + 4;
-        while (/^[A-Za-z0-9_]$/u.test(source[index] ?? '')) index += 1;
+        while (/^[A-Za-z0-9_]$/u.test(source[index] ?? '')) {
+          index += 1;
+        }
         if (source[index] === '>') {
           frame.parts.push(source.slice(frame.index, index + 1));
           frame.index = index + 1;
@@ -1140,7 +1225,9 @@ function translatePerlLocalModifiers({
     frame.index += 1;
   }
 
-  if (root === undefined) throw new Error('PCRE modifier translation did not produce output');
+  if (root === undefined) {
+    throw new Error('PCRE modifier translation did not produce output');
+  }
   const flattened: string[] = [];
   const pending: PerlTranslationRope[] = [root];
   while (pending.length > 0) {
@@ -1187,8 +1274,9 @@ function translatePerlCharacterEscapes({
       continue;
     }
     if (extendedMode && !inBracket && character === "#") {
-      while (index + 1 < source.length && source[index + 1] !== "\n")
+      while (index + 1 < source.length && source[index + 1] !== "\n") {
         index += 1;
+      }
       continue;
     }
     if (character !== "\\") {
@@ -1347,8 +1435,12 @@ function findBasicBracketExpressionEnd({
   startIndex: number;
 }): number | undefined {
   let index = startIndex + 1;
-  if (source[index] === "^") index += 1;
-  if (source[index] === "]") index += 1;
+  if (source[index] === "^") {
+    index += 1;
+  }
+  if (source[index] === "]") {
+    index += 1;
+  }
 
   while (index < source.length) {
     const marker = source[index + 1];
@@ -1366,7 +1458,9 @@ function findBasicBracketExpressionEnd({
       index += 2;
       continue;
     }
-    if (source[index] === "]") return index;
+    if (source[index] === "]") {
+      return index;
+    }
     index += 1;
   }
 
@@ -2425,14 +2519,18 @@ export const grepCommandImplementation: WeshCommandImplementation = {
       parsed,
       findSemanticIssue: ({ parsed: candidate }) => {
         for (const occurrence of candidate.occurrences) {
-          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
+          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
+            continue;
+          }
           if (
             (occurrence.key === 'maxCount'
               || occurrence.key === 'beforeContext'
               || occurrence.key === 'afterContext'
               || occurrence.key === 'context')
             && parseNonNegativeInteger({ value: occurrence.value }) === undefined
-          ) return occurrence.value;
+          ) {
+            return occurrence.value;
+          }
         }
         return undefined;
       },
@@ -2449,7 +2547,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
     }
 
     for (const occurrence of parsed.occurrences) {
-      if (occurrence.kind !== "value" || typeof occurrence.value !== "string") continue;
+      if (occurrence.kind !== "value" || typeof occurrence.value !== "string") {
+        continue;
+      }
       switch (occurrence.key) {
       case "maxCount":
         if (parseNonNegativeInteger({ value: occurrence.value }) === undefined) {
@@ -2717,7 +2817,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
             source: matchLine,
             startIndex: searchIndex,
           });
-          if (match === undefined) return;
+          if (match === undefined) {
+            return;
+          }
           if (match.text.length > 0) {
             yield {
               index: match.index,
@@ -2726,7 +2828,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
             searchIndex = match.index + match.text.length;
             continue;
           }
-          if (match.index >= line.length) return;
+          if (match.index >= line.length) {
+            return;
+          }
           const codePoint = line.codePointAt(match.index);
           searchIndex =
               match.index +
@@ -2839,14 +2943,24 @@ export const grepCommandImplementation: WeshCommandImplementation = {
       }
       }
       for (const effect of occurrence.effects) {
-        if (effect.key === "countOnly") countOnly = true;
-        if (effect.key === "filesWithMatches")
+        if (effect.key === "countOnly") {
+          countOnly = true;
+        }
+        if (effect.key === "filesWithMatches") {
           fileListOutputMode = "files-with-matches";
-        if (effect.key === "filesWithoutMatches")
+        }
+        if (effect.key === "filesWithoutMatches") {
           fileListOutputMode = "files-without-match";
-        if (effect.key === "onlyMatching") onlyMatching = true;
-        if (effect.key === "noFilename") filenameMode = "never";
-        if (effect.key === "withFilename") filenameMode = "always";
+        }
+        if (effect.key === "onlyMatching") {
+          onlyMatching = true;
+        }
+        if (effect.key === "noFilename") {
+          filenameMode = "never";
+        }
+        if (effect.key === "withFilename") {
+          filenameMode = "always";
+        }
       }
     }
     const outputMode: GrepOutputMode =
@@ -2957,7 +3071,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
       if (parsed.optionValues.byteOffset === true) {
         appendNumber({ value: byteOffset, capability: "byteOffset" });
       }
-      if (initialTab && output.length > 0 && hasContent) output += "\t";
+      if (initialTab && output.length > 0 && hasContent) {
+        output += "\t";
+      }
       return output;
     };
 
@@ -3669,7 +3785,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
         }
 
         rememberLine({ contextLine });
-        if (stop) break;
+        if (stop) {
+          break;
+        }
       }
 
       if (!quiet) {
@@ -3922,7 +4040,9 @@ export const grepCommandImplementation: WeshCommandImplementation = {
               displayName,
               isCommandLineArgument: true,
             });
-        if (stop) break;
+        if (stop) {
+          break;
+        }
       } catch (error: unknown) {
         await reportSearchError({ displayName: file, error });
       }

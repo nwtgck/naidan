@@ -18,7 +18,9 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
   for (const name of [
     'future-format.arbitrary', 'runtime.wasm.gz', 'naidan-standalone.zip', 'favicon.svg', 'ignored.map',
     ...UI_LOCALES.map(locale => `naidan-standalone-${locale}.zip`),
-  ]) await writeFile(path.join(root, 'public', name), `${buildId}:${name}`);
+  ]) {
+    await writeFile(path.join(root, 'public', name), `${buildId}:${name}`);
+  }
   await writeFile(path.join(root, 'public', 'worker.js'), `// ${buildId}: fixed-name script fixture`);
   const { options, define } = createPWABuild({ buildId });
   const outDir = path.join(root, 'dist');
@@ -35,13 +37,18 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
   async function collect({ directory }: { directory: string }): Promise<void> {
     for (const item of await readdir(directory, { withFileTypes: true })) {
       const absolute = path.join(directory, item.name);
-      if (item.isDirectory()) await collect({ directory: absolute });
-      else files.set(path.relative(outDir, absolute).replaceAll('\\', '/'), await readFile(absolute));
+      if (item.isDirectory()) {
+        await collect({ directory: absolute });
+      } else {
+        files.set(path.relative(outDir, absolute).replaceAll('\\', '/'), await readFile(absolute));
+      }
     }
   }
   await collect({ directory: outDir });
   const entry = [...files].find(([name]) => name.startsWith('assets/') && name.endsWith('.js'))?.[1];
-  if (!entry) throw new Error('Missing compiled page entry');
+  if (!entry) {
+    throw new Error('Missing compiled page entry');
+  }
   let pageBuildId: unknown;
   vm.runInNewContext(entry.toString(), {
     console: {
@@ -50,7 +57,9 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
       },
     },
   });
-  if (typeof pageBuildId !== 'string') throw new Error('Page build identity was not injected');
+  if (typeof pageBuildId !== 'string') {
+    throw new Error('Page build identity was not injected');
+  }
   return { outDir, files, pageBuildId, script: (await readFile(path.join(outDir, 'sw.js'), 'utf8')) };
 }
 

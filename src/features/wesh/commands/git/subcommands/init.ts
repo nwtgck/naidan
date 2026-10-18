@@ -53,7 +53,9 @@ async function preflightTargetConfig({ context, targetPath, bare }: {
     base: targetPath,
     child: bare ? 'config' : '.git/config',
   });
-  if (!await pathExists({ files: context.files, path: configPath })) return;
+  if (!await pathExists({ files: context.files, path: configPath })) {
+    return;
+  }
   parseConfig({ text: await readFileText({ files: context.files, path: configPath }) });
 }
 
@@ -93,7 +95,9 @@ export async function runInit({ context, args }: {
   const quiet = parsed.optionValues.quiet === true;
   const bare = parsed.optionValues.bare === true;
   const operands = parsed.positionals;
-  if (operands.length > 1) throw new GitUsageError({ message: 'usage: git init [-q | --quiet] [--bare] [<directory>]', prefix: 'none' });
+  if (operands.length > 1) {
+    throw new GitUsageError({ message: 'usage: git init [-q | --quiet] [--bare] [<directory>]', prefix: 'none' });
+  }
   const targetPath = normalizePath({ cwd: context.cwd, path: operands[0] ?? '.' });
   await preflightTargetConfig({ context, targetPath, bare });
   const { repository, reinitialized } = bare

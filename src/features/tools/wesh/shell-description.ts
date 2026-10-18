@@ -11,8 +11,12 @@ export const FILE_TYPE_HINTS: Record<string, FileTypeHint> = {
 };
 
 function formatExtList({ exts }: { exts: string[] }): string {
-  if (exts.length === 1) return exts[0]!;
-  if (exts.length === 2) return `${exts[0]} and ${exts[1]}`;
+  if (exts.length === 1) {
+    return exts[0]!;
+  }
+  if (exts.length === 2) {
+    return `${exts[0]} and ${exts[1]}`;
+  }
   return `${exts.slice(0, -1).join(', ')}, and ${exts.at(-1)}`;
 }
 

@@ -40,7 +40,9 @@ export function createTypeScriptSourceFile({ source, filename }: {
   if (parseDiagnostics.length > 0) {
     const details = parseDiagnostics.map((diagnostic) => {
       const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
-      if (diagnostic.start === undefined) return message;
+      if (diagnostic.start === undefined) {
+        return message;
+      }
       const position = sourceFile.getLineAndCharacterOfPosition(diagnostic.start);
       return `${position.line + 1}:${position.character + 1} ${message}`;
     });
@@ -118,7 +120,9 @@ export function unwrapTypeScriptExpression({ node }: {
     || ts.isNonNullExpression(current)
     || ts.isSatisfiesExpression(current)
     || ts.isPartiallyEmittedExpression(current)
-  ) current = current.expression;
+  ) {
+    current = current.expression;
+  }
   return current;
 }
 
@@ -173,7 +177,9 @@ export function staticStringValue({ node }: {
   node: ts.Expression;
 }): string | undefined {
   const value = unwrapTypeScriptExpression({ node });
-  if (ts.isStringLiteralLike(value)) return value.text;
+  if (ts.isStringLiteralLike(value)) {
+    return value.text;
+  }
   return undefined;
 }
 
@@ -181,13 +187,17 @@ export function propertyNameText({ name, sourceFile }: {
   name: ts.PropertyName | undefined;
   sourceFile: ts.SourceFile;
 }): string | undefined {
-  if (name === undefined || ts.isComputedPropertyName(name)) return undefined;
+  if (name === undefined || ts.isComputedPropertyName(name)) {
+    return undefined;
+  }
   if (
     ts.isIdentifier(name)
     || ts.isPrivateIdentifier(name)
     || ts.isStringLiteralLike(name)
     || ts.isNumericLiteral(name)
-  ) return name.text;
+  ) {
+    return name.text;
+  }
   return name.getText(sourceFile);
 }
 

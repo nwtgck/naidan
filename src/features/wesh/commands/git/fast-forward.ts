@@ -23,7 +23,9 @@ export async function fastForwardHead({ files, repository, targetObjectId, reflo
   objectReadCache?: GitObjectReadCache,
 }): Promise<GitFastForwardResult> {
   const head = await readHead({ files, repository });
-  if (head.objectId === undefined) throw new Error('cannot fast-forward an unborn HEAD');
+  if (head.objectId === undefined) {
+    throw new Error('cannot fast-forward an unborn HEAD');
+  }
   const currentCommit = await readCommit({ files, repository, objectId: head.objectId, objectReadCache });
   const targetCommit = await readCommit({ files, repository, objectId: targetObjectId, objectReadCache });
   const currentHeadEntries = await readTreeIntoIndex({
@@ -47,7 +49,9 @@ export async function fastForwardHead({ files, repository, targetObjectId, reflo
     targetEntries,
     contentConfig,
   });
-  if (plan.conflicts.length > 0) return { type: 'checkout-conflict', conflicts: plan.conflicts };
+  if (plan.conflicts.length > 0) {
+    return { type: 'checkout-conflict', conflicts: plan.conflicts };
+  }
   await writeOrigHead({ files, repository, objectId: head.objectId });
   await applyCheckoutTreePlan({ files, repository, currentIndexEntries, plan, contentConfig });
   await writeIndex({ files, repository, entries: plan.nextIndexEntries });

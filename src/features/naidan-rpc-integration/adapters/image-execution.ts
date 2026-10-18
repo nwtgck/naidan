@@ -45,7 +45,10 @@ function progress({ value }: { value: PeerProgress }): ImageExecutionProgress {
     case 'computing': return 'sampling' as const;
     case 'decoding': return 'decoding' as const;
     case 'encoding': return 'encoding' as const;
-    default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return { phase: mapped, step: completed, steps: total };
@@ -79,7 +82,10 @@ export function preparePeerImageExecution({ binding, input }: {
           switch (outcome.status) {
           case 'completed': return { status: 'completed', output: outcome.output };
           case 'interrupted': case 'cancelled': case 'failed': return outcome;
-          default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = outcome;
+            throw new Error(String(exhaustive));
+          }
           }
         }),
       };

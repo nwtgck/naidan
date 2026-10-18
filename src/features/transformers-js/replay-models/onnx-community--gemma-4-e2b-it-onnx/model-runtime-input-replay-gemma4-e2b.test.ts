@@ -89,7 +89,9 @@ describe('Gemma literal text at the native template boundary', () => {
     const nativeMessages = mapped.templateMessages.map(message => {
       // This control intentionally covers string-only messages; images have
       // their own processor regression and are not flattened in this fixture.
-      if (typeof message.content !== 'string') throw new Error('Expected the unchanged string input');
+      if (typeof message.content !== 'string') {
+        throw new Error('Expected the unchanged string input');
+      }
       return { ...message, content: message.content };
     });
     const prompt = processor.apply_chat_template(nativeMessages, { tokenize: false, add_generation_prompt: true });
@@ -130,7 +132,9 @@ describe('Gemma structured reasoning in native model inputs', () => {
     ];
     const mapped = await buildGemma4TemplateInput({ messages });
     const stringMessages = mapped.templateMessages.map(message => {
-      if (typeof message.content !== 'string') throw new Error('Expected this string-only fixture');
+      if (typeof message.content !== 'string') {
+        throw new Error('Expected this string-only fixture');
+      }
       return { ...message, content: message.content };
     });
     const prompt = processor.apply_chat_template(stringMessages, { tokenize: false, add_generation_prompt: true });
@@ -196,11 +200,14 @@ describe('Gemma structured history after persistence', () => {
       replies: { items: [assistant] },
     };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: result.id };
-    const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'memory-history' });
+    const store = new MemoryStorageProvider();
+    const chatId = toChatId({ raw: 'memory-history' });
     const before = buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] });
     await store.saveChatContent({ id: chatId, content: chat });
     const loaded = await store.loadChatContent({ id: chatId });
-    if (!loaded) throw new Error('Expected the saved message history');
+    if (!loaded) {
+      throw new Error('Expected the saved message history');
+    }
     const after = buildChatGenerationMessages({ chat: loaded, excludedMessageId: undefined, systemPromptMessages: [] });
     expect(after).toEqual(before);
     const requests = await Promise.all([before, after].map(messages => prepareInferenceRequest({ messages, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined })));
@@ -220,13 +227,17 @@ Question.<turn|>
       const { templateMessages, images } = await buildGemma4TemplateInput({ messages: request.messages });
       expect(images).toEqual([]);
       const stringMessages = templateMessages.map(message => {
-        if (typeof message.content !== 'string') throw new Error('Expected a string-only saved history');
+        if (typeof message.content !== 'string') {
+          throw new Error('Expected a string-only saved history');
+        }
         return { ...message, content: message.content };
       });
       const prompt = processor.apply_chat_template(stringMessages, { tokenize: false, add_generation_prompt: true });
       expect(prompt).toBe(expected);
       expect(processor.tokenizer.encode(prompt, { add_special_tokens: false })).toEqual(processor.tokenizer.encode(expected, { add_special_tokens: false }));
     }
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]); expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
+    expect(harness.transport).not.toHaveBeenCalled();
   });
 });

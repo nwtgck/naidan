@@ -20,9 +20,13 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: async (data: any) => {
-        if (data instanceof Blob) this.blob = data;
-        else if (typeof data === 'string') this.blob = new Blob([data], { type: 'text/plain' });
-        else this.blob = new Blob([data]);
+        if (data instanceof Blob) {
+          this.blob = data;
+        } else if (typeof data === 'string') {
+          this.blob = new Blob([data], { type: 'text/plain' });
+        } else {
+          this.blob = new Blob([data]);
+        }
       },
       close: () => Promise.resolve(),
     });
@@ -41,17 +45,21 @@ class MockFileSystemDirectoryHandle {
 
     if (!this.entries.has(name)) {
 
-      if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
-
-      else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemDirectoryHandle(name));
+      } else {
+        const err = new Error('Not found');
+        err.name = 'NotFoundError';
+        throw err;
       }
 
     }
 
     const entry = this.entries.get(name);
 
-    if (entry instanceof MockFileSystemFileHandle) throw new Error('Not a directory');
+    if (entry instanceof MockFileSystemFileHandle) {
+      throw new Error('Not a directory');
+    }
 
     return entry as MockFileSystemDirectoryHandle;
 
@@ -61,17 +69,21 @@ class MockFileSystemDirectoryHandle {
 
     if (!this.entries.has(name)) {
 
-      if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
-
-      else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemFileHandle(name));
+      } else {
+        const err = new Error('Not found');
+        err.name = 'NotFoundError';
+        throw err;
       }
 
     }
 
     const entry = this.entries.get(name);
 
-    if (entry instanceof MockFileSystemDirectoryHandle) throw new Error('Not a file');
+    if (entry instanceof MockFileSystemDirectoryHandle) {
+      throw new Error('Not a file');
+    }
 
     return entry as MockFileSystemFileHandle;
 
@@ -82,7 +94,9 @@ class MockFileSystemDirectoryHandle {
   }
 
   async *values() {
-    for (const entry of this.entries.values()) yield entry;
+    for (const entry of this.entries.values()) {
+      yield entry;
+    }
   }
 
 }
@@ -380,7 +394,9 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     for await (const shardDir of binDir.values()) {
       if (shardDir instanceof MockFileSystemDirectoryHandle) {
         for await (const entry of shardDir.values()) {
-          if (entry.name.endsWith('.bin')) binaryCount++;
+          if (entry.name.endsWith('.bin')) {
+            binaryCount++;
+          }
         }
       }
     }
@@ -412,7 +428,8 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const contents = await dir.getDirectoryHandle('chat-contents');
     const broken = await contents.getFileHandle('broken.json', { create: true });
     const writer = await broken.createWritable();
-    await writer.write('{broken'); await writer.close();
+    await writer.write('{broken');
+    await writer.close();
     const provider = new OPFSStorageProvider();
     await provider.init();
     expect(await broken.getFile().then(file => file.text())).toBe('{broken');
@@ -448,7 +465,8 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const legacy = await dir.getDirectoryHandle('uploaded-files');
     const folder = await legacy.getDirectoryHandle(VALID_UUID_1);
     const source = await folder.getFileHandle('img.png');
-    const failure = new Error('Source disappeared after enumeration'); failure.name = 'NotFoundError';
+    const failure = new Error('Source disappeared after enumeration');
+    failure.name = 'NotFoundError';
     const stub = vi.spyOn(source, 'getFile').mockRejectedValueOnce(failure);
     const provider = new OPFSStorageProvider();
     await expect(provider.init()).rejects.toBe(failure);
@@ -469,8 +487,11 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     original.root.items[0].content = '  <think>literal</think>\r\n';
     original.root.items[0].extra_message = ['keep'];
     original.root.items[0].experimental = { future: { content: 'preserve' } };
-    const writer = await file.createWritable(); await writer.write(JSON.stringify(original)); await writer.close();
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const writer = await file.createWritable();
+    await writer.write(JSON.stringify(original));
+    await writer.close();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     const rewritten = JSON.parse(await (await file.getFile()).text());
     const attachment = rewritten.root.items[0].attachments[0];
     expect(typeof attachment.binaryObjectId).toBe('string');
@@ -484,15 +505,22 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const dir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     await setupLegacyFile(dir, VALID_UUID_1, 'img.png', 'DATA');
     await setupLegacyChat(dir, CHAT_ID_1, [{ id: VALID_UUID_1, originalName: 'img.png', status: 'persisted', mimeType: 'image/custom', size: 4, uploadedAt: 0 }]);
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     const id = toChatId({ raw: CHAT_ID_1 });
     const first = await provider.loadChatContent({ id });
-    if (!first) throw new Error('Expected the migrated chat content');
+    if (!first) {
+      throw new Error('Expected the migrated chat content');
+    }
     const node = first.root.items[0];
-    if (node?.role !== 'user') throw new Error('Expected the migrated user message');
+    if (node?.role !== 'user') {
+      throw new Error('Expected the migrated user message');
+    }
     const attachmentPart = node.parts[1];
     expect(attachmentPart).toMatchObject({ type: 'attachment', attachment: { mimeType: 'image/custom', size: 4, uploadedAt: 0 } });
-    if (attachmentPart?.type !== 'attachment') throw new Error('Expected the migrated attachment');
+    if (attachmentPart?.type !== 'attachment') {
+      throw new Error('Expected the migrated attachment');
+    }
 
     await provider.saveChatContent({ id, content: first });
     const contents = await dir.getDirectoryHandle('chat-contents');
@@ -533,12 +561,15 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     await setupLegacyFile(dir, VALID_UUID_1, 'second.png', 'SECOND');
     await setupLegacyChat(dir, CHAT_ID_1, [{ id: VALID_UUID_1, originalName: 'first.png', status: 'persisted', mimeType: 'image/png', size: 5, uploadedAt: 7 }]);
     await setupLegacyChat(dir, CHAT_ID_2, [{ id: VALID_UUID_1, originalName: 'second.png', status: 'persisted', mimeType: 'image/png', size: 6, uploadedAt: 9 }]);
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     for (const [raw, expected, time] of [[CHAT_ID_1, 'FIRST', 7], [CHAT_ID_2, 'SECOND', 9]] as const) {
       const chat = await provider.loadChatContent({ id: toChatId({ raw }) });
       const part = chat?.root.items[0]?.parts[1];
       expect(part?.type).toBe('attachment');
-      if (part?.type !== 'attachment') throw new Error('Missing attachment fixture');
+      if (part?.type !== 'attachment') {
+        throw new Error('Missing attachment fixture');
+      }
       expect(await (await provider.getFile({ binaryObjectId: part.attachment.binaryObjectId }))?.text()).toBe(expected);
       expect(part.attachment.uploadedAt).toBe(time);
     }
@@ -551,7 +582,8 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const contents = await dir.getDirectoryHandle('chat-contents');
     const file = await contents.getFileHandle(`${CHAT_ID_1}.json`);
     const before = await (await file.getFile()).text();
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     expect(await (await file.getFile()).text()).toBe(before);
     expect(dir.entries.has('uploaded-files')).toBe(true);
     expect(dir.entries.has('migration-state.json')).toBe(false);
@@ -563,16 +595,24 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     await setupLegacyChat(dir, CHAT_ID_1, [{ id: VALID_UUID_1, originalName: 'img.png', status: 'persisted', mimeType: 'image/png', size: 4, uploadedAt: 0 }]);
     const contents = await dir.getDirectoryHandle('chat-contents');
     const broken = await contents.getFileHandle('broken.json', { create: true });
-    const writer = await broken.createWritable(); await writer.write('{broken'); await writer.close();
-    const first = new OPFSStorageProvider(); await first.init();
+    const writer = await broken.createWritable();
+    await writer.write('{broken');
+    await writer.close();
+    const first = new OPFSStorageProvider();
+    await first.init();
     const firstObjects = [];
-    for await (const object of first.listBinaryObjects()) firstObjects.push(object);
+    for await (const object of first.listBinaryObjects()) {
+      firstObjects.push(object);
+    }
     expect(firstObjects).toHaveLength(1);
     const chatFile = await contents.getFileHandle(`${CHAT_ID_1}.json`);
     const once = await (await chatFile.getFile()).text();
-    const second = new OPFSStorageProvider(); await second.init();
+    const second = new OPFSStorageProvider();
+    await second.init();
     const secondObjects = [];
-    for await (const object of second.listBinaryObjects()) secondObjects.push(object);
+    for await (const object of second.listBinaryObjects()) {
+      secondObjects.push(object);
+    }
     expect(secondObjects).toEqual(firstObjects);
     expect(await (await chatFile.getFile()).text()).toBe(once);
     await contents.removeEntry('broken.json');
@@ -587,10 +627,14 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     for (const [id, uploadedAt] of [[CHAT_ID_1, 0], [CHAT_ID_2, 7]] as const) {
       await setupLegacyChat(dir, id, [{ id: VALID_UUID_1, originalName: 'img.png', status: 'persisted', mimeType: 'image/png', size: 4, uploadedAt }]);
     }
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     expect(dir.entries.has('uploaded-files')).toBe(true);
     expect(dir.entries.has('migration-state.json')).toBe(false);
-    const objects = []; for await (const item of provider.listBinaryObjects()) objects.push(item);
+    const objects = [];
+    for await (const item of provider.listBinaryObjects()) {
+      objects.push(item);
+    }
     expect(objects).toEqual([]);
     const contents = await dir.getDirectoryHandle('chat-contents');
     for (const id of [CHAT_ID_1, CHAT_ID_2]) {
@@ -606,9 +650,13 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const binaries = await dir.getDirectoryHandle('binary-objects', { create: true });
     const shard = await binaries.getDirectoryHandle(id.slice(-2), { create: true });
     const index = await shard.getFileHandle('index.json', { create: true });
-    const writer = await index.createWritable(); await writer.write('{retained-corrupt-index'); await writer.close();
+    const writer = await index.createWritable();
+    await writer.write('{retained-corrupt-index');
+    await writer.close();
     const body = await shard.getFileHandle(`${id}.bin`, { create: true });
-    const bodyWriter = await body.createWritable(); await bodyWriter.write('EXISTING BODY'); await bodyWriter.close();
+    const bodyWriter = await body.createWritable();
+    await bodyWriter.write('EXISTING BODY');
+    await bodyWriter.close();
     const provider = new OPFSStorageProvider();
     await expect(provider.init()).rejects.toThrow();
     expect(await (await index.getFile()).text()).toBe('{retained-corrupt-index');
@@ -621,8 +669,11 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const dir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     const legacy = await dir.getDirectoryHandle('uploaded-files', { create: true });
     const unknown = await legacy.getFileHandle('unrecognized.bin', { create: true });
-    const writer = await unknown.createWritable(); await writer.write('KEEP'); await writer.close();
-    const provider = new OPFSStorageProvider(); await provider.init();
+    const writer = await unknown.createWritable();
+    await writer.write('KEEP');
+    await writer.close();
+    const provider = new OPFSStorageProvider();
+    await provider.init();
     expect(dir.entries.has('uploaded-files')).toBe(true);
     expect(await (await unknown.getFile()).text()).toBe('KEEP');
     expect(dir.entries.has('migration-state.json')).toBe(false);

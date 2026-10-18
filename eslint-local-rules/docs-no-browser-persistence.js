@@ -36,13 +36,19 @@ for (const { root, properties } of [
   const boundObjects = [`[init.name=${root}]`, `[init.object.name=/${host}/][init.property.name=${root}]`];
   const assignedObjects = [`[right.name=${root}]`, `[right.object.name=/${host}/][right.property.name=${root}]`];
   for (const object of memberObjects) {
-    for (const property of staticProperties({ field: 'property', pattern: properties })) selectors.push(`MemberExpression${object}${property}`);
+    for (const property of staticProperties({ field: 'property', pattern: properties })) {
+      selectors.push(`MemberExpression${object}${property}`);
+    }
   }
   for (const object of boundObjects) {
-    for (const property of staticProperties({ field: 'key', pattern: properties })) selectors.push(`VariableDeclarator${object} > ObjectPattern > Property${property}`);
+    for (const property of staticProperties({ field: 'key', pattern: properties })) {
+      selectors.push(`VariableDeclarator${object} > ObjectPattern > Property${property}`);
+    }
   }
   for (const object of assignedObjects) {
-    for (const property of staticProperties({ field: 'key', pattern: properties })) selectors.push(`AssignmentExpression${object} > ObjectPattern > Property${property}`);
+    for (const property of staticProperties({ field: 'key', pattern: properties })) {
+      selectors.push(`AssignmentExpression${object} > ObjectPattern > Property${property}`);
+    }
   }
 }
 

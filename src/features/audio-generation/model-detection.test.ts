@@ -38,18 +38,22 @@ describe('audio candidate metadata', () => {
   });
 
   it('inspects the selected companion rather than finding another matching file', async () => {
-    const files = directory(); files.files.push({ path: 'wrong.gguf', file: ggufFixture({ entries: [] }) }); files.projectorPath = 'wrong.gguf';
+    const files = directory();
+    files.files.push({ path: 'wrong.gguf', file: ggufFixture({ entries: [] }) });
+    files.projectorPath = 'wrong.gguf';
     expect(await detectAudioModelFiles({ directory: files, signal: undefined })).toEqual({ status: 'unverified', reason: 'companion' });
     files.projectorPath = undefined;
     expect(await detectAudioModelFiles({ directory: files, signal: undefined })).toEqual({ status: 'unverified', reason: 'companion' });
   });
 
   it('returns unverified on read failure and does not convert cancellation to an ordinary result', async () => {
-    const files = directory(); vi.spyOn(files.files[0]!.file, 'slice').mockImplementation(() => {
+    const files = directory();
+    vi.spyOn(files.files[0]!.file, 'slice').mockImplementation(() => {
       throw new Error('deleted file');
     });
     expect(await detectAudioModelFiles({ directory: files, signal: undefined })).toEqual({ status: 'unverified', reason: 'metadata' });
-    const controller = new AbortController(); controller.abort();
+    const controller = new AbortController();
+    controller.abort();
     await expect(detectAudioModelFiles({ directory: files, signal: controller.signal })).rejects.toThrow();
   });
 

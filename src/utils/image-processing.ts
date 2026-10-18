@@ -15,7 +15,9 @@ export async function reencodeImage({ blob, format }: {
   canvas.height = img.height;
 
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Failed to get canvas context');
+  if (!ctx) {
+    throw new Error('Failed to get canvas context');
+  }
 
   ctx.drawImage(img, 0, 0);
 

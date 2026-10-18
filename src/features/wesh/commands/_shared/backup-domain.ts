@@ -61,9 +61,13 @@ function parseNumberedBackupVersion({
   name: string,
   prefix: string,
 }): bigint | undefined {
-  if (!name.startsWith(prefix) || !name.endsWith('~')) return undefined;
+  if (!name.startsWith(prefix) || !name.endsWith('~')) {
+    return undefined;
+  }
   const digits = name.slice(prefix.length, -1);
-  if (!/^[1-9][0-9]*$/u.test(digits)) return undefined;
+  if (!/^[1-9][0-9]*$/u.test(digits)) {
+    return undefined;
+  }
   return BigInt(digits);
 }
 

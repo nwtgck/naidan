@@ -18,7 +18,8 @@ vi.mock('@/components/ToastContainer.vue', () => ({ default: { template: '<div /
 vi.mock('@/components/startup/StartupErrorView.vue', () => ({ default: { template: '<div />' } }));
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); isOnboardingDismissed.value = false;
+  await ensureAllStringsForTest({ locale: 'en' });
+  isOnboardingDismissed.value = false;
 });
 
 describe('first-use embedded model launcher', () => {

@@ -86,22 +86,29 @@ export async function runProductionDownloadPreparation({
         kind: 'sizes',
         index,
         sizes: paths.flatMap(path => {
-          const bytes = knownSizes.get(path); return bytes === undefined ? [] : [{ path, bytes }];
+          const bytes = knownSizes.get(path);
+          return bytes === undefined ? [] : [{ path, bytes }];
         }),
       },
     });
     const missing = paths.filter(path => !knownSizes.has(path)).slice(0, 256);
-    if (quotaLimited || missing.length === 0 || signal?.aborted) return;
+    if (quotaLimited || missing.length === 0 || signal?.aborted) {
+      return;
+    }
     const client = createDownloadSizeClient();
     sizeClient = client;
     // Observation is a sibling, never an acquisition prerequisite. Its owner
     // supplies the timeout/physical retirement even if RPC never becomes ready.
     void client.collect({ request: { modelId: normalizeTransformersJsProductionModelId({ modelId }), revision, paths: missing } }).then(result => {
-      if (sizeClosed || attemptIndex !== index || signal?.aborted) return;
+      if (sizeClosed || attemptIndex !== index || signal?.aborted) {
+        return;
+      }
       quotaLimited ||= result.quotaLimited;
       const allowed = new Set(paths);
       const sizes = result.sizes.filter(size => allowed.has(size.path));
-      for (const { path, bytes } of sizes) knownSizes.set(path, bytes);
+      for (const { path, bytes } of sizes) {
+        knownSizes.set(path, bytes);
+      }
       publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'sizes', index, sizes } });
     }).catch(() => undefined);
   }
@@ -112,7 +119,9 @@ export async function runProductionDownloadPreparation({
         publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'candidate', candidate, index, count: order.length } });
         const key = candidateKey({ candidate });
         const plan = runtimeArtifacts.resourcePlansByCandidate[key];
-        if (plan === undefined) return { status: 'failed', error: { name: 'MissingProductionResourcePlan', message: `No resource plan was returned for ${key}` }, prefetch: undefined };
+        if (plan === undefined) {
+          return { status: 'failed', error: { name: 'MissingProductionResourcePlan', message: `No resource plan was returned for ${key}` }, prefetch: undefined };
+        }
         switch (plan.status) {
         case 'planning-failed': return { status: 'planning-failed', error: plan.error, prefetch: undefined };
         case 'ready': {
@@ -132,7 +141,9 @@ export async function runProductionDownloadPreparation({
               observeSizes({ index, paths });
             },
           });
-          if (prepared.status === 'ready' && prepared.prefetch?.complete) publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'prefetch-complete', index } });
+          if (prepared.status === 'ready' && prepared.prefetch?.complete) {
+            publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'prefetch-complete', index } });
+          }
           return prepared;
         }
         default: {

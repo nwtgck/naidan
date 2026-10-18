@@ -54,7 +54,9 @@ async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: Vol
   try {
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     const vol = volumes.value.find(v => v.id === volumeId);
-    if (vol) addToast({ message: await ensureStrings.volumes__folder_is_now_in_use({ name: vol.name }) });
+    if (vol) {
+      addToast({ message: await ensureStrings.volumes__folder_is_now_in_use({ name: vol.name }) });
+    }
     await loadData();
   } catch (e) {
     addToast({ message: await ensureStrings.volumes__failed_to_add_folder() });
@@ -65,7 +67,9 @@ async function handleMountRemove({ volumeId }: { volumeId: VolumeId }) {
   try {
     const vol = volumes.value.find(v => v.id === volumeId);
     await storageService.unmountVolume({ volumeId: volumeId });
-    if (vol) addToast({ message: await ensureStrings.volumes__folder_is_no_longer_in_use({ name: vol.name }) });
+    if (vol) {
+      addToast({ message: await ensureStrings.volumes__folder_is_no_longer_in_use({ name: vol.name }) });
+    }
     await loadData();
   } catch (e) {
     addToast({ message: await ensureStrings.volumes__failed_to_remove_folder() });
@@ -131,7 +135,9 @@ async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId, name
 
 async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
   const volume = volumes.value.find(v => v.id === volumeId);
-  if (!volume) return;
+  if (!volume) {
+    return;
+  }
 
   let title: string;
   let message: string;
@@ -166,7 +172,9 @@ async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
     confirmButtonText,
     confirmButtonVariant: 'danger',
   });
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
 
   try {
     await storageService.unmountVolume({ volumeId: volumeId });

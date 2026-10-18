@@ -27,9 +27,15 @@ function couldResolveToEarlyExit({
   token: string,
   canonicalToken: string,
 }): boolean {
-  if (token === canonicalToken) return true;
-  if (!canonicalToken.startsWith('--') || !token.startsWith('--')) return false;
-  if (token.length <= 2 || token.includes('=')) return false;
+  if (token === canonicalToken) {
+    return true;
+  }
+  if (!canonicalToken.startsWith('--') || !token.startsWith('--')) {
+    return false;
+  }
+  if (token.length <= 2 || token.includes('=')) {
+    return false;
+  }
   return canonicalToken.startsWith(token);
 }
 
@@ -46,10 +52,14 @@ export function stopArgvAtFirstEarlyExit<TDeferred>({
 }): readonly string[] {
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) break;
+    if (token === undefined) {
+      break;
+    }
 
     for (const earlyExitOption of earlyExitOptions) {
-      if (!couldResolveToEarlyExit({ token, canonicalToken: earlyExitOption.token })) continue;
+      if (!couldResolveToEarlyExit({ token, canonicalToken: earlyExitOption.token })) {
+        continue;
+      }
 
       // A raw abbreviation is only a cheap candidate test. Exact configured tokens go
       // straight to the established prefix parse; there is nothing for the resolver to prove
@@ -85,14 +95,18 @@ export function stopArgvAtFirstEarlyExit<TDeferred>({
       // become a successful terminal option, so stop reparsing ever-growing doomed prefixes.
       const hasPersistentDiagnostic = parsedPrefix.diagnostics.some(diagnostic =>
         diagnostic.kind !== 'missing_option_value' || diagnostic.argvIndex !== index);
-      if (hasPersistentDiagnostic) return args;
+      if (hasPersistentDiagnostic) {
+        return args;
+      }
       if (parsedPrefix.optionValues[earlyExitOption.optionKey] === true) {
         return prefix;
       }
 
       const hasRepairableCandidateMissingValue = parsedPrefix.diagnostics.some(diagnostic =>
         diagnostic.kind === 'missing_option_value' && diagnostic.argvIndex === index);
-      if (hasRepairableCandidateMissingValue) continue;
+      if (hasRepairableCandidateMissingValue) {
+        continue;
+      }
 
       // On this rare non-terminal/no-diagnostic path, ask the same parser whether adding the
       // candidate increased positional output. This distinguishes an actual positional from an

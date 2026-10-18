@@ -19,7 +19,9 @@ export const historicalObservationPaths: Record<string, string> = {
 
 export function historicalRepositoryPath({ name }: { name: string }): string {
   const file = historicalRepositoryPaths[name];
-  if (file === undefined) throw new Error(`No historical repository evidence: ${name}`);
+  if (file === undefined) {
+    throw new Error(`No historical repository evidence: ${name}`);
+  }
   return file;
 }
 

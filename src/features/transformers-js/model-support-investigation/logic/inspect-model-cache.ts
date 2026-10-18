@@ -14,13 +14,17 @@ function isNotFoundError({ error }: { error: unknown }): boolean {
 
 function repositoryPathFromCachePath({ path }: { path: string }): string | undefined {
   const parts = path.split('/');
-  if (parts[0] !== 'resolve' || parts.length < 3) return undefined;
+  if (parts[0] !== 'resolve' || parts.length < 3) {
+    return undefined;
+  }
   return parts.slice(2).join('/');
 }
 
 function cacheRevisionFromCachePath({ path }: { path: string }): string | undefined {
   const parts = path.split('/');
-  if (parts[0] !== 'resolve' || parts.length < 3) return undefined;
+  if (parts[0] !== 'resolve' || parts.length < 3) {
+    return undefined;
+  }
   return parts[1];
 }
 
@@ -31,7 +35,9 @@ function dataPathForCompletionMarker({ markerPath }: { markerPath: string }): st
     return undefined;
   }
   const fileName = markerName.slice(1, -'.complete'.length);
-  if (fileName.length === 0) return undefined;
+  if (fileName.length === 0) {
+    return undefined;
+  }
   return parts.length === 0 ? fileName : `${parts.join('/')}/${fileName}`;
 }
 
@@ -50,7 +56,9 @@ async function getModelDirectory({
     }
     return directory;
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -121,7 +129,9 @@ export async function inspectModelCache({
   for (const file of files) {
     const parts = file.path.split('/');
     const fileName = parts.pop();
-    if (fileName === undefined) continue;
+    if (fileName === undefined) {
+      continue;
+    }
     const directoryPath = parts.join('/');
     const markerPath = directoryPath.length === 0
       ? `.${fileName}.complete`

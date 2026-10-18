@@ -37,7 +37,9 @@ const pendingRoots = new WeakSet<HTMLElement>();
 
 export function readDocsIslandEntry({ entry }: { entry: DocsIslandEntry }): EntryData {
   const data = entries.get(entry);
-  if (!data) throw new Error('Invalid Docs island entry');
+  if (!data) {
+    throw new Error('Invalid Docs island entry');
+  }
   return data;
 }
 
@@ -53,7 +55,9 @@ export function defineDocsIsland<Payload extends JsonObject, C extends ConcreteC
   // eslint-disable-next-line local-rules-named-args/require-named-args
   const factory: DocsIslandFactory<Payload> = (input): DocsIslandEntry => {
     const serialized = JSON.stringify(input);
-    if (typeof serialized !== 'string') throw new Error(`Docs island ${spec.id} props must serialize to JSON`);
+    if (typeof serialized !== 'string') {
+      throw new Error(`Docs island ${spec.id} props must serialize to JSON`);
+    }
     const canonical = spec.parse({ serialized });
     const entry = { [entryBrand]: true } as const;
     entries.set(entry, { id: spec.id, serialized, canonical, component, prepare: () => prepare({ payload: canonical }) });
@@ -77,20 +81,28 @@ export async function hydrateDocsIsland<Payload extends JsonObject>({ factory, d
   document: Document;
 }): Promise<App<Element>[]> {
   const definition = definitions.get(factory);
-  if (!definition) throw new Error('Invalid Docs island factory');
+  if (!definition) {
+    throw new Error('Invalid Docs island factory');
+  }
   const roots = [...document.querySelectorAll<HTMLElement>('[data-docs-island]')];
   const results = await Promise.all(roots.map(async root => {
-    if (root.dataset.docsIsland !== definition.id || root.dataset.docsHydrated === 'ready' || pendingRoots.has(root)) return undefined;
+    if (root.dataset.docsIsland !== definition.id || root.dataset.docsHydrated === 'ready' || pendingRoots.has(root)) {
+      return undefined;
+    }
     pendingRoots.add(root);
     let app: App<Element> | undefined;
     let staticHtml: string | undefined;
     let mountStarted = false;
     try {
       const serialized = root.getAttribute('data-docs-props');
-      if (!serialized) throw new Error(`Missing Docs island ${definition.id} props`);
+      if (!serialized) {
+        throw new Error(`Missing Docs island ${definition.id} props`);
+      }
       const canonical = await definition.parseAndPrepare({ serialized });
       if (!root.isConnected || root.ownerDocument !== document || root.dataset.docsIsland !== definition.id
-        || root.dataset.docsHydrated === 'ready' || root.getAttribute('data-docs-props') !== serialized) return undefined;
+        || root.dataset.docsHydrated === 'ready' || root.getAttribute('data-docs-props') !== serialized) {
+        return undefined;
+      }
       staticHtml = root.innerHTML;
       app = createSSRApp(definition.component, canonical);
       let hydrationError: unknown;
@@ -101,7 +113,9 @@ export async function hydrateDocsIsland<Payload extends JsonObject>({ factory, d
       };
       mountStarted = true;
       app.mount(root);
-      if (hydrationFailed) throw hydrationError;
+      if (hydrationFailed) {
+        throw hydrationError;
+      }
       app.config.errorHandler = error => console.error(`[Docs ${definition.id}]`, error);
       root.dataset.docsHydrated = 'ready';
       return app;
@@ -112,7 +126,9 @@ export async function hydrateDocsIsland<Payload extends JsonObject>({ factory, d
         } catch (cleanupError) {
           console.error(`[Docs ${definition.id}] Could not stop failed island.`, cleanupError);
         }
-        if (staticHtml !== undefined) root.innerHTML = staticHtml;
+        if (staticHtml !== undefined) {
+          root.innerHTML = staticHtml;
+        }
         delete root.dataset.docsHydrated;
       }
       console.error(`[Docs ${definition.id}] Could not start island.`, error);
@@ -129,7 +145,9 @@ export function startDocsIslandHydration<Payload extends JsonObject>({ factory, 
   document: Document;
 }): void {
   const definition = definitions.get(factory);
-  if (!definition) throw new Error('Invalid Docs island factory');
+  if (!definition) {
+    throw new Error('Invalid Docs island factory');
+  }
   const start = (): void => {
     void hydrateDocsIsland({ factory, document }).catch(error => {
       console.error(`[Docs ${definition.id}] Could not start hydration.`, error);

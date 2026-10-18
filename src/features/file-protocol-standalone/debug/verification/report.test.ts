@@ -153,7 +153,9 @@ type MutableStandaloneNamespace = {
 
 function readMutableNamespace(): MutableStandaloneNamespace {
   const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__;
-  if (namespace === undefined) throw new Error('Expected standalone namespace.');
+  if (namespace === undefined) {
+    throw new Error('Expected standalone namespace.');
+  }
   return namespace as unknown as MutableStandaloneNamespace;
 }
 
@@ -519,7 +521,9 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
 
     const internal = readMutableNamespace().internal;
     const startup = internal.debug?.startup;
-    if (startup === undefined) throw new Error('Expected standalone startup diagnostics.');
+    if (startup === undefined) {
+      throw new Error('Expected standalone startup diagnostics.');
+    }
     startup.checkpoint = 'bootstrap-failed';
     startup.checkpointHistory.push({
       source: 'naidan-app',

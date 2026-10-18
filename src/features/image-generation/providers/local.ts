@@ -50,10 +50,14 @@ export function prepareLocalImageExecution({ request, snapshot, client, onDiagno
           notifyResident({ resident: true });
           // Cancellation can race a native success reply. Keep real cache
           // bookkeeping, but never publish that cancelled job as a success.
-          if (signal.aborted) return { status: 'cancelled' };
+          if (signal.aborted) {
+            return { status: 'cancelled' };
+          }
           return { status: 'completed', output };
         } catch (error) {
-          if (signal.aborted) return { status: 'cancelled' };
+          if (signal.aborted) {
+            return { status: 'cancelled' };
+          }
           return { status: 'failed', message: (error instanceof Error ? error.message : String(error)).slice(-32768) };
         }
       })();

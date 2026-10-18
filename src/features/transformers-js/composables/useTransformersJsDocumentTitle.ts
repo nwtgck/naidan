@@ -20,7 +20,9 @@ export function useTransformersJsDocumentTitle({ routePath, visibility }: {
   useDocumentTitleOverride({
     kind: 'model-loading',
     source: computed(() => {
-      if (visibility.value !== 'visible' || status.value !== 'loading') return undefined;
+      if (visibility.value !== 'visible' || status.value !== 'loading') {
+        return undefined;
+      }
       const title = lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({ progress: progress.value });
       return title === undefined ? undefined : { routePath: routePath.value, title };
     }),

@@ -9,25 +9,32 @@ describe('bounded async channel', () => {
     const pending = channel.send({ value: 'B' }).then(() => {
       sent = true;
     });
-    await Promise.resolve(); expect(sent).toBe(false);
+    await Promise.resolve();
+    expect(sent).toBe(false);
     const iterator = channel.values[Symbol.asyncIterator]();
     expect(await iterator.next()).toEqual({ value: 'A', done: false });
-    await pending; channel.close();
+    await pending;
+    channel.close();
     expect(await iterator.next()).toEqual({ value: 'B', done: false });
     expect((await iterator.next()).done).toBe(true);
   });
 
   it('cancellation settles pending reads and writers without preserving unread values', async () => {
-    const cancelled = vi.fn(); const channel = createAsyncChannel<string>({ capacity: 1, onCancel: cancelled });
+    const cancelled = vi.fn();
+    const channel = createAsyncChannel<string>({ capacity: 1, onCancel: cancelled });
     await channel.send({ value: 'A' });
     const write = channel.send({ value: 'B' });
     const failure = expect(write).rejects.toThrow('closed');
     const iterator = channel.values[Symbol.asyncIterator]();
-    await iterator.return?.(); await failure;
-    expect((await iterator.next()).done).toBe(true); expect(cancelled).toHaveBeenCalledOnce();
+    await iterator.return?.();
+    await failure;
+    expect((await iterator.next()).done).toBe(true);
+    expect(cancelled).toHaveBeenCalledOnce();
     const empty = createAsyncChannel<string>({ capacity: 1, onCancel: () => {} });
-    const reader = empty.values[Symbol.asyncIterator](); const read = reader.next();
-    empty.cancel(); expect((await read).done).toBe(true);
+    const reader = empty.values[Symbol.asyncIterator]();
+    const read = reader.next();
+    empty.cancel();
+    expect((await read).done).toBe(true);
   });
 
   it('rejects a second reader and invalid capacities', () => {

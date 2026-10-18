@@ -303,20 +303,21 @@ describe('ChatPane Group Inheritance UI', () => {
     };
   });
 
-  it('displays the global model with a source prefix when inheriting from global settings', async () => {
+  it('displays the global model with its separate source when inheriting from global settings', async () => {
     const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
-    expect(modelBadge.text()).toContain('Global: global-model');
+    expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('global-model');
+    expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Global');
 
     const selector = wrapper.getComponent(ModelSelector);
     expect(selector.props('placeholder')).toBe('Global: global-model');
   });
 
-  it('displays the chat group model with a source prefix when inheriting from a chat group', async () => {
+  it('displays the chat group model with its separate source when inheriting from a chat group', async () => {
     mockCurrentChat.value.groupId = 'group-1';
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost:1234' },
@@ -334,7 +335,8 @@ describe('ChatPane Group Inheritance UI', () => {
     await nextTick();
 
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
-    expect(modelBadge.text()).toContain('Chat Group: group-model');
+    expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('group-model');
+    expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Chat group');
   });
 
   it('displays only the model name when a chat-specific override is set', async () => {
@@ -355,12 +357,12 @@ describe('ChatPane Group Inheritance UI', () => {
     });
     await nextTick();
 
-    // Header badge should show the specific model without suffix
+    // A direct model has no inheritance badge.
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
-    expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('Chat: specific-model');
+    expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('specific-model');
     expect(modelBadge.attributes('aria-label')).toBe('Model and chat settings');
-    expect(modelBadge.text()).not.toContain('Global:');
-    expect(modelBadge.text()).not.toContain('Chat Group:');
+    expect(modelBadge.find('[data-testid="chat-model-source"]').exists()).toBe(false);
+    expect(modelBadge.attributes('aria-description')).toBe('specific-model');
 
     // BUT the ModelSelector placeholder (the "Inherit" preview) should show what it reverts to
     const selector = wrapper.getComponent(ModelSelector);
@@ -374,7 +376,8 @@ describe('ChatPane Group Inheritance UI', () => {
     await nextTick();
 
     // 1. Initially Global
-    expect(wrapper.find('[data-testid="model-trigger"]').text()).toContain('Global: global-model');
+    expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe('global-model');
+    expect(wrapper.get('[data-testid="chat-model-source"]').text()).toBe('Global');
 
     // 2. Simulate moving to a group with a different model
     mockResolvedSettings.value = {
@@ -389,8 +392,29 @@ describe('ChatPane Group Inheritance UI', () => {
 
     await nextTick();
 
-    expect(wrapper.find('[data-testid="model-trigger"]').text()).toContain('Chat Group: new-group-model');
-    expect(wrapper.find('[data-testid="model-trigger"]').text()).not.toContain('Global:');
+    expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe('new-group-model');
+    expect(wrapper.get('[data-testid="chat-model-source"]').text()).toBe('Chat group');
+  });
+
+  it.each([
+    { modelId: undefined, source: 'global', label: 'None', sourceLabel: 'Global' },
+    { modelId: 'unscoped-model', source: undefined, label: 'unscoped-model', sourceLabel: undefined },
+  ])('keeps the model fallback and optional source for $label', async ({ modelId, source, label, sourceLabel }) => {
+    mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
+      modelId,
+      sources: { modelId: source },
+    };
+    const wrapper = mountChatPane({
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+    });
+    await nextTick();
+    expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe(label);
+    const badge = wrapper.find('[data-testid="chat-model-source"]');
+    expect(badge.exists()).toBe(sourceLabel !== undefined);
+    if (sourceLabel !== undefined) {
+      expect(badge.text()).toBe(sourceLabel);
+    }
   });
 
   it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {

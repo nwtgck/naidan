@@ -36,8 +36,11 @@ vi.mock('@/utils/worker-transport', async importOriginal => {
     api: WorkerServerApi<IModelSupportInvestigationWorker>;
     endpoint: Parameters<typeof transport.exposeWorkerRemote>[0]['endpoint'];
   }) => {
-      if (endpoint === undefined) observed.planningApi = api;
-      else original.exposeWorkerRemote({ api, endpoint });
+      if (endpoint === undefined) {
+        observed.planningApi = api;
+      } else {
+        original.exposeWorkerRemote({ api, endpoint });
+      }
     },
   };
 });
@@ -120,17 +123,25 @@ class InvestigationTestWorker extends ProviderReplayTestWorker {
     const pathname = new NodeUrl(String(url)).pathname;
     const kind = pathname.endsWith('/model-support-investigation/worker/entry.ts') ? 'planning'
       : pathname.endsWith('/model-support-investigation/evidence-worker/entry.ts') ? 'evidence' : undefined;
-    if (kind === undefined) throw new Error(`Unexpected Worker entry: ${pathname}`);
+    if (kind === undefined) {
+      throw new Error(`Unexpected Worker entry: ${pathname}`);
+    }
     expect(options?.type).toBe('module');
     super({
       start: async ({ worker }) => {
         switch (kind) {
         case 'planning':
-          if (observed.planningApi === undefined) throw new Error('Real planning entry was not loaded');
+          if (observed.planningApi === undefined) {
+            throw new Error('Real planning entry was not loaded');
+          }
           transport.exposeWorkerRemote({ api: observed.planningApi, endpoint: worker.endpoint });
           break;
-        case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint }); break;
-        default: { const exhaustive: never = kind; throw new Error('Unexpected Worker kind: ' + exhaustive); }
+        case 'evidence': transport.exposeWorkerRemote({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: worker.endpoint });
+          break;
+        default: {
+          const exhaustive: never = kind;
+          throw new Error('Unexpected Worker kind: ' + exhaustive);
+        }
         }
       },
     });
@@ -158,17 +169,24 @@ let exported: Blob[];
 let adapter: ReturnType<typeof vi.fn<() => Promise<{ features: string[]; limits: object }>>>;
 
 beforeEach(async () => {
-  sessions.clear(); workers.length = 0; firstRequestIdentity = 'original'; exported = [];
+  sessions.clear();
+  workers.length = 0;
+  firstRequestIdentity = 'original';
+  exported = [];
   observed.runtimeFetch.mockClear();
-  files = createMemoryFiles(); files.enter({ nextPhase: 'investigation', mutationPolicy: 'read-only' });
+  files = createMemoryFiles();
+  files.enter({ nextPhase: 'investigation', mutationPolicy: 'read-only' });
   adapter = vi.fn(async () => ({ features: [], limits: {} }));
-  vi.stubGlobal('crypto', webcrypto); vi.stubGlobal('Blob', NodeBlob);
-  vi.stubGlobal('MessageChannel', MessageChannel); vi.stubGlobal('Worker', InvestigationTestWorker);
+  vi.stubGlobal('crypto', webcrypto);
+  vi.stubGlobal('Blob', NodeBlob);
+  vi.stubGlobal('MessageChannel', MessageChannel);
+  vi.stubGlobal('Worker', InvestigationTestWorker);
   vi.stubGlobal('self', { fetch: observed.runtimeFetch, location: new NodeUrl('https://naidan.example/investigation-worker.js') });
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: { requestAdapter: adapter }, storage: { getDirectory: async () => files.root } });
   vi.stubGlobal('fetch', observed.runtimeFetch);
   vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
-    exported.push(blob as Blob); return 'blob:fixture-export';
+    exported.push(blob as Blob);
+    return 'blob:fixture-export';
   });
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
@@ -177,11 +195,16 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
   await vi.waitFor(() => expect(sessions.retiringViewCount()).toBe(0));
-  for (const worker of workers) worker.terminate();
+  for (const worker of workers) {
+    worker.terminate();
+  }
   expect(files.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  vi.restoreAllMocks(); vi.unstubAllGlobals(); sessions.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  sessions.clear();
   vi.useRealTimers();
 });
 
@@ -198,7 +221,9 @@ async function startBatch() {
 
 function retainedResults() {
   const snapshot = recallInvestigationSession({ seededTarget: 'fixture/first' });
-  if (snapshot?.view !== 'results') throw new Error('Expected retained batch results');
+  if (snapshot?.view !== 'results') {
+    throw new Error('Expected retained batch results');
+  }
   return snapshot;
 }
 
@@ -208,7 +233,9 @@ async function finishBatch() {
 }
 
 async function exportBatch() {
-  if (wrapper === undefined) throw new Error('Missing mounted Session');
+  if (wrapper === undefined) {
+    throw new Error('Missing mounted Session');
+  }
   const retained = retainedResults();
   for (const [, run] of retained.runs) {
     expect.soft(run.steps.filter(step => step.status === 'running'), `Terminal steps for ${run.modelId}`).toEqual([]);
@@ -216,7 +243,9 @@ async function exportBatch() {
     for (const step of run.steps) {
       const row = wrapper.get(`[data-testid="model-support-step-${step.id}"]`);
       expect.soft(row.text(), `Terminal UI step ${run.modelId}/${step.id}`).not.toContain(lazyStrings.ModelSupportInvestigationModal__running());
-      if (step.detail !== undefined) expect(row.text()).toContain(step.detail);
+      if (step.detail !== undefined) {
+        expect(row.text()).toContain(step.detail);
+      }
     }
   }
   await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
@@ -246,7 +275,9 @@ async function readArchivedJson<Schema extends z.ZodType>({ zip, path, schema }:
   zip: JSZip, path: string, schema: Schema,
 }): Promise<z.output<Schema>> {
   const file = zip.file(path);
-  if (file === null) throw new Error(`Missing archived outcome: ${path}`);
+  if (file === null) {
+    throw new Error(`Missing archived outcome: ${path}`);
+  }
   const value: unknown = JSON.parse(await file.async('string'));
   return schema.parse(value);
 }
@@ -254,7 +285,9 @@ async function readArchivedJson<Schema extends z.ZodType>({ zip, path, schema }:
 async function readArchivedTarget({ zip, target }: {
   zip: JSZip, target: z.infer<typeof batchOutcomeSchema>['targets'][number],
 }) {
-  if (target.evidencePath === undefined) throw new Error(`Missing target dossier: ${target.target}`);
+  if (target.evidencePath === undefined) {
+    throw new Error(`Missing target dossier: ${target.target}`);
+  }
   const run = await readArchivedJson({ zip, path: `${target.evidencePath}run.json`, schema: archivedRunOutcomeSchema });
   const recovery = await readArchivedJson({ zip, path: `${target.evidencePath}recovery/checkpoint.json`, schema: archivedRecoveryOutcomeSchema });
   expect(run.runId).toBe(target.runId);
@@ -267,7 +300,9 @@ function firstPlanningIdentity() {
   // Retained Session snapshots are only committed after the target settles.
   const first = workers.find(worker => worker.kind === 'planning');
   const request = first?.hostMessages.map(message => planningRequestEnvelope.safeParse(message)).find(result => result.success);
-  if (request?.success !== true) throw new Error('Missing actual first-target planning RPC');
+  if (request?.success !== true) {
+    throw new Error('Missing actual first-target planning RPC');
+  }
   const argument = z.object({ type: z.literal('RAW'), value: z.object({ runId: z.string(), modelId: z.string() }) }).parse(request.data.argumentList[0]);
   expect(argument.value.modelId).toBe('fixture/first');
   return argument.value;
@@ -336,7 +371,9 @@ describe('real Session, planning Worker communication and Evidence export', () =
     const zip = await exportBatch();
     const summaries = await Promise.all(Object.keys(zip.files).filter(path => path.endsWith('run.json')).map(path => zip.file(path)!.async('string')));
     expect(summaries).toHaveLength(2);
-    for (const [, run] of snapshot.runs) expect(summaries.some(json => json.includes(run.runId))).toBe(true);
+    for (const [, run] of snapshot.runs) {
+      expect(summaries.some(json => json.includes(run.runId))).toBe(true);
+    }
     expect(summaries.join('')).not.toContain('stopped by the user');
   });
 
@@ -368,7 +405,9 @@ describe('real Session, planning Worker communication and Evidence export', () =
     const accepted = firstPlanningIdentity();
     await mounted.get(`[data-testid="model-support-investigation-${action === 'stop' ? 'stop' : 'skip-current'}"]`).trigger('click');
     await vi.waitFor(() => expect(retainedResults().executions[0]?.status).toBe(action === 'stop' ? 'interrupted' : 'skipped'));
-    if (action === 'skip') await finishBatch();
+    if (action === 'skip') {
+      await finishBatch();
+    }
     const cutoff = retainedResults();
     expect(cutoff.executions[1]?.status).toBe(action === 'stop' ? 'pending' : 'failed');
     expect(workers.filter(worker => worker.kind === 'planning')).toHaveLength(action === 'stop' ? 1 : 2);
@@ -406,7 +445,10 @@ describe('real Session, planning Worker communication and Evidence export', () =
       expect(firstDossier.run.runId).not.toBe(secondDossier.run.runId);
       break;
     }
-    default: { const exhaustive: never = action; throw new Error('Unexpected user action: ' + exhaustive); }
+    default: {
+      const exhaustive: never = action;
+      throw new Error('Unexpected user action: ' + exhaustive);
+    }
     }
     expect(JSON.stringify(retainedResults().executions)).toBe(JSON.stringify(cutoff.executions));
     expect(JSON.stringify(retainedResults())).not.toContain('late-fixture-feature');

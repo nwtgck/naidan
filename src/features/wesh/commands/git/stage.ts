@@ -9,7 +9,9 @@ import { hashWorktreeEntry, worktreeAbsolutePath } from './worktree';
 function regularFileModeFromEntry({ entry }: {
   entry: GitIndexEntry | undefined,
 }): 0o100644 | 0o100755 | undefined {
-  if (entry === undefined) return undefined;
+  if (entry === undefined) {
+    return undefined;
+  }
   switch (entry.mode) {
   case 0o100644:
   case 0o100755:
@@ -43,9 +45,13 @@ export async function stageWorktreePaths({ files, repository, currentEntries, pa
   const attributes = await loadWorktreeAttributes({ files, repository, contentConfig });
   for (const path of selectedPaths) {
     const existing = existingByPath.get(path);
-    if (trackedOnly && existing === undefined) continue;
+    if (trackedOnly && existing === undefined) {
+      continue;
+    }
     const absolutePath = worktreeAbsolutePath({ repository, path });
-    if (!await pathExists({ files, path: absolutePath })) continue;
+    if (!await pathExists({ files, path: absolutePath })) {
+      continue;
+    }
     const worktreeEntry = await hashWorktreeEntry({
       files,
       repository,

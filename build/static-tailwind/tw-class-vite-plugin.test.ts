@@ -12,7 +12,9 @@ function getHookHandler<TArguments extends unknown[], TResult>({ hook, name }: {
   hook: unknown,
   name: string,
 }): HookHandler<TArguments, TResult> {
-  if (typeof hook === 'function') return hook as HookHandler<TArguments, TResult>;
+  if (typeof hook === 'function') {
+    return hook as HookHandler<TArguments, TResult>;
+  }
   if (typeof hook === 'object' && hook !== null && 'handler' in hook && typeof hook.handler === 'function') {
     return hook.handler as HookHandler<TArguments, TResult>;
   }
@@ -520,7 +522,9 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       && (beforeImports.get(featureB) ?? []).includes(id)
     ));
     expect(sharedId).toBeDefined();
-    if (sharedId === undefined) throw new TypeError('Expected one shared CSS registration.');
+    if (sharedId === undefined) {
+      throw new TypeError('Expected one shared CSS registration.');
+    }
 
     const customMessages: unknown[] = [];
     const context = {
@@ -565,7 +569,9 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       data: { moduleIds: expect.arrayContaining([`\0${sharedId}`]) },
     });
 
-    if (privateA === undefined) throw new TypeError('Expected one private Feature A CSS registration.');
+    if (privateA === undefined) {
+      throw new TypeError('Expected one private Feature A CSS registration.');
+    }
     fs.writeFileSync(featureA, '<template><div>A</div></template>\n');
     await hotUpdate.call(context as never, {
       file: featureA,
@@ -641,7 +647,9 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       && (plugin.api.getImportsByModule().get(featureB) ?? []).includes(id)
     ));
     expect(activeSharedId).toBeDefined();
-    if (activeSharedId === undefined) throw new TypeError('Expected a reactivated shared registration.');
+    if (activeSharedId === undefined) {
+      throw new TypeError('Expected a reactivated shared registration.');
+    }
 
     customMessages.length = 0;
     await hotUpdate.call(context as never, { file: featureA, timestamp: 5000, modules: [] });
@@ -1313,8 +1321,12 @@ describe('static Tailwind production bundle integrity', () => {
   }) {
     const entryModules: Record<string, unknown> = { [entryModule]: {} };
     const lazyModules: Record<string, unknown> = { [lazyModule]: {} };
-    if (includeRegistration) lazyModules[registrationResolvedId] = {};
-    if (includeRuntime) lazyModules[runtimeResolvedId] = {};
+    if (includeRegistration) {
+      lazyModules[registrationResolvedId] = {};
+    }
+    if (includeRuntime) {
+      lazyModules[runtimeResolvedId] = {};
+    }
     const bundle: Record<string, {
       type: string,
       fileName: string,

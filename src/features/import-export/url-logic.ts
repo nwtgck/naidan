@@ -38,8 +38,12 @@ export class URLImportExportLogic {
     const streamReader = stream.getReader();
     while (true) {
       const { done, value } = await streamReader.read();
-      if (done) break;
-      if (value) chunks.push(value);
+      if (done) {
+        break;
+      }
+      if (value) {
+        chunks.push(value);
+      }
     }
     const blob = new Blob(chunks as unknown as BlobPart[], { type: 'application/zip' });
 

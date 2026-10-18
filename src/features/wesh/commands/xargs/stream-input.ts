@@ -138,7 +138,9 @@ export async function* iterateXargsInputLines({
   let sawData = false;
   let endedWithLineFeed = false;
   for await (const text of textChunks) {
-    if (text.length === 0) continue;
+    if (text.length === 0) {
+      continue;
+    }
     sawData = true;
     let start = 0;
     while (true) {
@@ -153,7 +155,9 @@ export async function* iterateXargsInputLines({
       fragments = [];
       start = separator + 1;
       endedWithLineFeed = start === text.length;
-      if (start === text.length) break;
+      if (start === text.length) {
+        break;
+      }
     }
   }
   if (fragments.length > 0 || (sawData && !endedWithLineFeed)) {

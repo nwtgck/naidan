@@ -20,8 +20,11 @@ function harness() {
   const binding = new AbortController(), signal = new AbortController();
   const ensureApproval = vi.fn<EnsureApproval>().mockResolvedValue({ status: 'approved' });
   const commit = vi.fn(({ edit }: { expected: ImageGenerationPromptTarget, edit: ImageGenerationPromptEdit }): 'applied' | 'conflict' => {
-    if (!target) return 'conflict';
-    target = { ...target, [edit.field]: edit.value, revision: toImageGenerationDraftRevisionId({ raw: 'revision-new' }) }; return 'applied';
+    if (!target) {
+      return 'conflict';
+    }
+    target = { ...target, [edit.field]: edit.value, revision: toImageGenerationDraftRevisionId({ raw: 'revision-new' }) };
+    return 'applied';
   });
   const create = () => createImageGenerationAssistantTools({
     chatId: initial.chatId,
@@ -32,7 +35,9 @@ function harness() {
   });
   const tools = create();
   const read = tools.find(tool => tool.name === 'image_generation_get_context'), write = tools.find(tool => tool.name === 'image_generation_set_prompt');
-  if (!read || !write) throw new Error('Expected prompt tools');
+  if (!read || !write) {
+    throw new Error('Expected prompt tools');
+  }
   const context = { signal: signal.signal, approvalContext: { chatId: initial.chatId, ensureApproval } };
   const args = { expectedRevision: idToRaw({ id: initial.revision }), field: 'prompt', value: 'An English prompt' };
   return {
@@ -59,7 +64,9 @@ describe('ephemeral Workspace tool protocol', () => {
     expect(h.tools.map(tool => tool.name)).toEqual(['image_generation_get_context', 'image_generation_set_prompt']);
     const outcome = await h.read.execute({ ...h.context, args: {} });
     expect(outcome.status).toBe('success');
-    if (outcome.status !== 'success') throw new Error('Read failed');
+    if (outcome.status !== 'success') {
+      throw new Error('Read failed');
+    }
     expect(JSON.parse(outcome.content)).toMatchObject({ prompt: '日本語で入力', model: 'Custom model', revision: 'revision-aa', count: 4 });
     expect(h.ensureApproval).not.toHaveBeenCalled();
     expect(await h.write.execute({ ...h.context, args: h.args })).toMatchObject({ status: 'success' });
@@ -75,22 +82,32 @@ describe('ephemeral Workspace tool protocol', () => {
     const h = harness();
     let args: unknown = h.args, approvalContext = h.context.approvalContext as Parameters<Tool['execute']>[0]['approvalContext'];
     switch (cause) {
-    case 'wrong revision': args = { ...h.args, expectedRevision: 'outdated' }; break;
-    case 'wrong chat': approvalContext = { ...h.context.approvalContext, chatId: toChatId({ raw: 'another-chat' }) }; break;
-    case 'missing chat': approvalContext = undefined; break;
-    case 'unknown field': args = { ...h.args, generate: true }; break;
-    case 'legacy protocol': args = { prompt: 'old shape' }; break;
-    case 'detached': h.binding.abort(); break;
-    case 'turn aborted': h.signal.abort(); break;
+    case 'wrong revision': args = { ...h.args, expectedRevision: 'outdated' };
+      break;
+    case 'wrong chat': approvalContext = { ...h.context.approvalContext, chatId: toChatId({ raw: 'another-chat' }) };
+      break;
+    case 'missing chat': approvalContext = undefined;
+      break;
+    case 'unknown field': args = { ...h.args, generate: true };
+      break;
+    case 'legacy protocol': args = { prompt: 'old shape' };
+      break;
+    case 'detached': h.binding.abort();
+      break;
+    case 'turn aborted': h.signal.abort();
+      break;
     }
     expect(await h.write.execute({ ...h.context, approvalContext, args })).toMatchObject({ status: 'error' });
-    expect(h.ensureApproval).not.toHaveBeenCalled(); expect(h.commit).not.toHaveBeenCalled();
+    expect(h.ensureApproval).not.toHaveBeenCalled();
+    expect(h.commit).not.toHaveBeenCalled();
   });
 
   it('denial remains a normal transcript error and does not retry the edit', async () => {
-    const h = harness(); h.ensureApproval.mockResolvedValue({ status: 'denied' });
+    const h = harness();
+    h.ensureApproval.mockResolvedValue({ status: 'denied' });
     expect(await h.write.execute({ ...h.context, args: h.args })).toMatchObject({ status: 'error', code: 'execution_failed' });
-    expect(h.commit).not.toHaveBeenCalled(); expect(h.ensureApproval).toHaveBeenCalledOnce();
+    expect(h.commit).not.toHaveBeenCalled();
+    expect(h.ensureApproval).toHaveBeenCalledOnce();
   });
 
   it('rejects a remembered grant after the context changed while awaiting approval', async () => {
@@ -99,7 +116,8 @@ describe('ephemeral Workspace tool protocol', () => {
     const operation = h.write.execute({ ...h.context, args: h.args });
     h.replace({ value: { ...h.initial, revision: toImageGenerationDraftRevisionId({ raw: 'manually-edited' }) } });
     permission.resolve({ status: 'approved' });
-    expect(await operation).toMatchObject({ status: 'error' }); expect(h.commit).not.toHaveBeenCalled();
+    expect(await operation).toMatchObject({ status: 'error' });
+    expect(h.commit).not.toHaveBeenCalled();
   });
 
   it('disposes turn-local capabilities without revoking a newly created turn', async () => {
@@ -123,7 +141,8 @@ describe('ephemeral Workspace tool protocol', () => {
     }
     const detachNext = registerImageGenerationAssistant({ chatId: h.initial.chatId, create: h.create });
     try {
-      detach(); expect(getImageGenerationToolsForChat({ chatId: h.initial.chatId })).toHaveLength(2);
+      detach();
+      expect(getImageGenerationToolsForChat({ chatId: h.initial.chatId })).toHaveLength(2);
     } finally {
       detachNext();
     }

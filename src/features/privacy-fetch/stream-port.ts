@@ -32,7 +32,9 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
   let finished = false;
   let released = false;
   const release = () => {
-    if (released) return;
+    if (released) {
+      return;
+    }
     released = true;
     releaseWorkerRemote({ remote });
     port.close();
@@ -45,7 +47,9 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
     onFinish();
   };
   const fail = ({ code }: { code: 'aborted' | 'broker_disposed' | 'fetch_failed' | 'rejected' }) => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     const error = createPrivacyFetchError({ code, message: `Privacy fetch stream failed: ${code}` });
     rejectResponse(error);
     controller.error(error);
@@ -59,11 +63,14 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
     async pull() {
       try {
         const message = streamResponseSchema.parse(await remote.read());
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         switch (message.type) {
         case 'chunk':
           if (message.body.byteLength === 0 || message.body.byteLength > MAX_CHUNK_BYTES) {
-            fail({ code: 'fetch_failed' }); return;
+            fail({ code: 'fetch_failed' });
+            return;
           }
           controller.enqueue(new Uint8Array(message.body));
           return;
@@ -71,8 +78,10 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
           controller.close();
           cleanup();
           return;
-        case 'error': fail({ code: message.code }); return;
-        case 'headers': fail({ code: 'fetch_failed' }); return;
+        case 'error': fail({ code: message.code });
+          return;
+        case 'headers': fail({ code: 'fetch_failed' });
+          return;
         default: {
           const exhaustive: never = message;
           throw new Error(`Unhandled stream reply: ${String(exhaustive)}`);
@@ -83,11 +92,15 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
       }
     },
     cancel() {
-      if (!finished) cleanup();
+      if (!finished) {
+        cleanup();
+      }
     },
   }, { highWaterMark: 0 });
   void remote.headers().then(async value => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     const message = streamResponseSchema.parse(value);
     switch (message.type) {
     case 'headers': {
@@ -95,14 +108,19 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
       const responseHeaders = new Headers(headers);
       if (await getReadableStreamTransferSupport() === 'supported'
           && z.enum(['supported', 'unsupported']).parse(await remote.transferSupport()) === 'supported') {
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         const transferred = z.custom<ReadableStream<Uint8Array<ArrayBuffer>>>(value => value instanceof ReadableStream)
           .parse(await remote.transferBody());
         if (finished) {
-          await transferred.cancel().catch(() => undefined); return;
+          await transferred.cancel().catch(() => undefined);
+          return;
         }
         void remote.completed().then(() => {
-          if (!finished) cleanup();
+          if (!finished) {
+            cleanup();
+          }
         }).catch(() => fail({ code: 'fetch_failed' }));
         resolveResponse({ ...metadata, headers: responseHeaders, body: transferred });
       } else if (!finished) {
@@ -110,9 +128,11 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
       }
       return;
     }
-    case 'error': fail({ code: message.code }); return;
+    case 'error': fail({ code: message.code });
+      return;
     case 'chunk':
-    case 'end': fail({ code: 'fetch_failed' }); return;
+    case 'end': fail({ code: 'fetch_failed' });
+      return;
     default: {
       const exhaustive: never = message;
       throw new Error(`Unhandled stream headers: ${String(exhaustive)}`);
@@ -120,7 +140,9 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
     }
   }).catch(() => fail({ code: 'fetch_failed' }));
   signal?.addEventListener('abort', abort, { once: true });
-  if (signal?.aborted) abort();
+  if (signal?.aborted) {
+    abort();
+  }
   return {
     response,
     dispose: () => {
@@ -151,7 +173,9 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
     resolveCompleted = resolve;
   });
   const cancel = async () => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     finished = true;
     abort.abort();
     remainder = undefined;
@@ -191,8 +215,11 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
             try {
               const result = await sourceReader.read();
               if (result.done) {
-                controller.close(); await cancel();
-              } else controller.enqueue(result.value);
+                controller.close();
+                await cancel();
+              } else {
+                controller.enqueue(result.value);
+              }
             } catch {
               controller.error(createPrivacyFetchError({ code: 'fetch_failed', message: 'Privacy fetch stream failed' }));
               await cancel();
@@ -203,7 +230,9 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
         return workerTransfer({ value: workerCapability({ value: stream, capability: 'readable-stream-transfer' }), transferables: [stream] });
       },
       async read(): Promise<StreamReply> {
-        if (pulling || mode === 'stream') return errorReply({ error: new Error('Overlapping stream reads') });
+        if (pulling || mode === 'stream') {
+          return errorReply({ error: new Error('Overlapping stream reads') });
+        }
         mode = 'chunks';
         pulling = true;
         try {
@@ -218,11 +247,14 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
             throw new Error(`Unhandled stream readiness: ${String(exhaustive)}`);
           }
           }
-          if (finished || reader === undefined) return { type: 'end' };
+          if (finished || reader === undefined) {
+            return { type: 'end' };
+          }
           while (remainder === undefined || remainder.byteLength === 0) {
             const result = await reader.read();
             if (finished || result.done) {
-              await cancel(); return { type: 'end' };
+              await cancel();
+              return { type: 'end' };
             }
             remainder = result.value;
           }

@@ -20,11 +20,17 @@ const pathText = computed(() => {
     case 'folders-settings':
     case 'image-generation':
     case 'audio-generation': return path.value;
-    default: { const unreachable: never = destination.screen; throw new Error(`Unknown app screen: ${String(unreachable)}`); }
+    default: {
+      const unreachable: never = destination.screen;
+      throw new Error(`Unknown app screen: ${String(unreachable)}`);
+    }
     }
   }
   case 'model': return path.value;
-  default: { const unreachable: never = destination; throw new Error(`Unknown app destination: ${String(unreachable)}`); }
+  default: {
+    const unreachable: never = destination;
+    throw new Error(`Unknown app destination: ${String(unreachable)}`);
+  }
   }
 });
 
@@ -39,5 +45,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-[data-docs-app-entry-path-text] { overflow-wrap:anywhere; }
+[data-docs-app-entry-path-text] {
+  overflow-wrap: anywhere;
+}
 </style>

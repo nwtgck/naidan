@@ -13,14 +13,16 @@ export class HandshakeResponseUnconfirmedError extends Error {
 
   constructor({ stage }: { stage: HandshakeResponseStage }) {
     super(`Handshake response unconfirmed: ${stage}`);
-    this.name = 'HandshakeResponseUnconfirmedError'; this.stage = stage;
+    this.name = 'HandshakeResponseUnconfirmedError';
+    this.stage = stage;
   }
 }
 
 /** Private authenticated challenge echo was not committed within its local window. */
 export class ResponseUnconfirmedError extends Error {
   constructor() {
-    super('Authenticated response unconfirmed'); this.name = 'ResponseUnconfirmedError';
+    super('Authenticated response unconfirmed');
+    this.name = 'ResponseUnconfirmedError';
   }
 }
 
@@ -62,7 +64,9 @@ export class ConnectionLifetime {
   }
 
   commit({ kind, error }: { kind: NaidanPipingConnectionEndKind; error: unknown }): NaidanPipingConnectionEnd {
-    if (this.outcome !== undefined) return this.outcome;
+    if (this.outcome !== undefined) {
+      return this.outcome;
+    }
     this.outcome = Object.freeze({ kind, error: error instanceof Error ? error : new Error('Piping connection ended', { cause: error }) });
     this.completion.resolve(this.outcome);
     return this.outcome;

@@ -10,7 +10,8 @@ function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
   const promise = new Promise<T>((onResolve, onReject) => {
-    resolve = onResolve; reject = onReject;
+    resolve = onResolve;
+    reject = onReject;
   });
   return { promise, resolve, reject };
 }
@@ -25,7 +26,9 @@ function modelFixture({ names, read, select, create }: {
   const end = code.indexOf('    return new this(config, ...info);', from) + '    return new this(config, ...info);'.length;
   const optionalFrom = code.indexOf('async function get_optional_configs(');
   const optionalEnd = code.indexOf('// src/models/models.js', optionalFrom);
-  if (from < 0 || end <= from || optionalFrom < 0 || optionalEnd <= optionalFrom) throw new Error('Upstream preparation sections were not found');
+  if (from < 0 || end <= from || optionalFrom < 0 || optionalEnd <= optionalFrom) {
+    throw new Error('Upstream preparation sections were not found');
+  }
   // Execute the same transformed source as Vite. Only the JSON reader, session
   // selector and backend are fixtures; no test-only source replacement exists.
   const execute = new Function('getModelJSON', 'constructSessions', 'resolveTypeConfig', `\

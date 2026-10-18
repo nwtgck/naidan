@@ -20,14 +20,22 @@ export function chatRequest(): Parameters<LmProvider['chat']>[0] {
 }
 
 export async function deliverNativeResult({ result, onEvent }: { result: GenerationResult, onEvent: GenerationCallback }): Promise<GenerationResult> {
-  if (result.reasoningContent) await onEvent({ event: { type: 'reasoning', text: result.reasoningContent } });
-  if (result.content) await onEvent({ event: { type: 'text', text: result.content } });
+  if (result.reasoningContent) {
+    await onEvent({ event: { type: 'reasoning', text: result.reasoningContent } });
+  }
+  if (result.content) {
+    await onEvent({ event: { type: 'text', text: result.content } });
+  }
   for (const [index, toolCall] of result.toolCalls.entries()) {
     await onEvent({ event: { type: 'tool_call_start', index } });
     switch (result.finishReason) {
-    case 'stop': await onEvent({ event: { type: 'tool_call', index, toolCall } }); break;
+    case 'stop': await onEvent({ event: { type: 'tool_call', index, toolCall } });
+      break;
     case 'length': case 'stop_sequence': break;
-    default: { const exhaustive: never = result.finishReason; throw new Error(`Unknown fixture completion: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = result.finishReason;
+      throw new Error(`Unknown fixture completion: ${exhaustive}`);
+    }
     }
   }
   return result;
@@ -64,7 +72,8 @@ export function createChatFixture({ provider, request, tools, controller, onTool
         parts: [],
         replies: { items: [] },
       };
-      nodes.push(node); return node;
+      nodes.push(node);
+      return node;
     },
     createToolMessage: () => {
       const node: ToolMessageNode = {
@@ -76,7 +85,8 @@ export function createChatFixture({ provider, request, tools, controller, onTool
         parts: [],
         replies: { items: [] },
       };
-      nodes.push(node); return node;
+      nodes.push(node);
+      return node;
     },
     buildMessages: ({ excludedMessageId }) => [...request.messages, ...nodes.filter(n => n.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node }))],
     onChange: () => {},

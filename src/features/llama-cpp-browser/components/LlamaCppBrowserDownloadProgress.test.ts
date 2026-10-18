@@ -23,7 +23,8 @@ describe('download progress appearance', () => {
     }
     expect(welcome.get('[role="progressbar"]').classes()).toContain('h-2.5');
     expect(manager.get('[role="progressbar"]').classes()).toContain('h-1.5');
-    welcome.unmount(); manager.unmount();
+    welcome.unmount();
+    manager.unmount();
   });
 
   it('does not render NaN or an invalid aria value for an unknown total', () => {

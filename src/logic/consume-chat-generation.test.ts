@@ -60,21 +60,28 @@ describe('consume nested chat generation', () => {
     const node = fresh();
     const first = part({ id: 'first', index: 0, type: 'reasoning', text: [], completeness: 'complete' });
     first.chunks = (async function* () {
-      yield 'A'; await nextChild.promise; yield 'C';
+      yield 'A';
+      await nextChild.promise;
+      yield 'C';
     })();
     const second = part({ id: 'second', index: 1, type: 'text', text: [], completeness: 'complete' });
     second.chunks = (async function* () {
-      yield 'B'; nextChild.resolve();
+      yield 'B';
+      nextChild.resolve();
     })();
     await consume({ node, items: sequence({ items: [first, second, completed()] }), abortController: new AbortController(), onChange: () => {} });
     expect(node.parts).toMatchObject([{ text: 'AC' }, { text: 'B' }]);
   });
 
   it('waits for pending child contents and acknowledgments even after the outer result', async () => {
-    const release = Promise.withResolvers<void>(); const started = Promise.withResolvers<void>();
-    const node = fresh(); const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
+    const release = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const node = fresh();
+    const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = (async function* () {
-      yield 'A'; await release.promise; yield 'B';
+      yield 'A';
+      await release.promise;
+      yield 'B';
     })();
     let completedRun = false;
     const running = consume({
@@ -82,29 +89,41 @@ describe('consume nested chat generation', () => {
       items: sequence({ items: [item, completed()] }),
       abortController: new AbortController(),
       onChange: () => {
-        if (JSON.stringify(node.parts).includes('"A"')) started.resolve();
+        if (JSON.stringify(node.parts).includes('"A"')) {
+          started.resolve();
+        }
       },
     }).then(value => {
-      completedRun = true; return value;
+      completedRun = true;
+      return value;
     });
     await started.promise;
-    expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' }); expect(completedRun).toBe(false);
-    release.resolve(); await running;
+    expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
+    expect(completedRun).toBe(false);
+    release.resolve();
+    await running;
     expect(node.parts[0]).toMatchObject({ text: 'AB', completeness: 'complete' });
   });
 
   it('serializes async history notifications from parallel children', async () => {
-    const node = fresh(); let active = 0; let maximum = 0;
+    const node = fresh();
+    let active = 0;
+    let maximum = 0;
     const onChange = async () => {
-      active++; maximum = Math.max(maximum, active); await Promise.resolve(); active--;
+      active++;
+      maximum = Math.max(maximum, active);
+      await Promise.resolve();
+      active--;
     };
     const items = Array.from({ length: 6 }, (_, index) => part({ id: String(index), index, type: 'text', text: ['A', 'B'], completeness: 'complete' }));
     await consume({ node, items: sequence({ items: [...items, completed()] }), abortController: new AbortController(), onChange });
-    expect(maximum).toBe(1); expect(node.parts).toHaveLength(6);
+    expect(maximum).toBe(1);
+    expect(node.parts).toHaveLength(6);
   });
 
   it('drains accepted content and completed calls after an ordinary user stop', async () => {
-    const node = fresh(); const controller = new AbortController();
+    const node = fresh();
+    const controller = new AbortController();
     const cancelled: ChatGenerationItem = { type: 'result', result: { type: 'interrupted', reason: 'aborted' } };
     const result = await consume({
       node,
@@ -128,11 +147,13 @@ describe('consume nested chat generation', () => {
   ])('preserves partial text for a normal non-success result $type', async result => {
     const node = fresh();
     const value = await consume({ node, items: sequence({ items: [part({ id: 'p', index: 0, type: 'text', text: ['partial'], completeness: 'partial' }), { type: 'result', result }] }), abortController: new AbortController(), onChange: () => {} });
-    expect(value).toEqual(result); expect(node.parts[0]).toMatchObject({ text: 'partial', completeness: 'partial' });
+    expect(value).toEqual(result);
+    expect(node.parts[0]).toMatchObject({ text: 'partial', completeness: 'partial' });
   });
 
   it('keeps no parts when cancellation occurs before the first content', async () => {
-    const node = fresh(); const result: ChatGenerationResult = { type: 'interrupted', reason: 'aborted' };
+    const node = fresh();
+    const result: ChatGenerationResult = { type: 'interrupted', reason: 'aborted' };
     expect(await consume({ node, items: sequence({ items: [{ type: 'result', result }] }), abortController: new AbortController(), onChange: () => {} })).toEqual(result);
     expect(node.parts).toEqual([]);
   });
@@ -153,7 +174,8 @@ describe('consume nested chat generation', () => {
   it('copies result metadata before the producer reuses it', async () => {
     const result = completed();
     const items = (async function* () {
-      yield result; result.result = { type: 'error', error: new Error('later') };
+      yield result;
+      result.result = { type: 'error', error: new Error('later') };
     })();
     expect(await consume({ node: fresh(), items, abortController: new AbortController(), onChange: () => {} })).toEqual({ type: 'finished', next: 'user' });
   });
@@ -167,7 +189,9 @@ describe('consume nested chat generation', () => {
   });
 
   it('fails a duplicate part and stops cooperative producers', async () => {
-    const controller = new AbortController(); const node = fresh(); let outerClosed = false;
+    const controller = new AbortController();
+    const node = fresh();
+    let outerClosed = false;
     const items = (async function* () {
       using _cleanupResource = {
         [Symbol.dispose]() {
@@ -177,15 +201,23 @@ describe('consume nested chat generation', () => {
       yield part({ id: 'p', index: 0, type: 'text', text: ['A'], completeness: 'complete' });
       yield part({ id: 'p', index: 1, type: 'text', text: ['B'], completeness: 'complete' });
       await new Promise<void>(resolve => {
-        if (controller.signal.aborted) resolve(); else controller.signal.addEventListener('abort', () => resolve(), { once: true });
+        if (controller.signal.aborted) {
+          resolve();
+        } else {
+          controller.signal.addEventListener('abort', () => resolve(), { once: true });
+        }
       });
     })();
     await expect(consume({ node, items, abortController: controller, onChange: () => {} })).rejects.toThrow('Duplicate');
-    expect(outerClosed).toBe(true); expect(node.parts).toHaveLength(1);
+    expect(outerClosed).toBe(true);
+    expect(node.parts).toHaveLength(1);
   });
 
   it('does not turn an observer exception into a model error result', async () => {
-    const fault = new Error('render failed'); const node = fresh(); const controller = new AbortController(); let childClosed = false;
+    const fault = new Error('render failed');
+    const node = fresh();
+    const controller = new AbortController();
+    let childClosed = false;
     const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = (async function* () {
       using _cleanupResource = {
@@ -193,36 +225,50 @@ describe('consume nested chat generation', () => {
           childClosed = true;
         },
       };
-      yield 'A'; yield 'B';
+      yield 'A';
+      yield 'B';
     })();
     await expect(consume({
       node,
       items: sequence({ items: [item, completed()] }),
       abortController: controller,
       onChange: () => {
-        if (JSON.stringify(node.parts).includes('"A"')) throw fault;
+        if (JSON.stringify(node.parts).includes('"A"')) {
+          throw fault;
+        }
       },
     })).rejects.toBe(fault);
-    expect(controller.signal.aborted).toBe(true); expect(childClosed).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
+    expect(childClosed).toBe(true);
     expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
   });
 
   it('owns early completeness rejection and unblocks a pending cooperative child', async () => {
-    const fault = new Error('worker gone'); const controller = new AbortController(); const completion = Promise.withResolvers<'complete' | 'partial'>();
-    const node = fresh(); const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
+    const fault = new Error('worker gone');
+    const controller = new AbortController();
+    const completion = Promise.withResolvers<'complete' | 'partial'>();
+    const node = fresh();
+    const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.completeness = completion.promise;
     item.chunks = (async function* () {
-      yield 'A'; completion.reject(fault);
+      yield 'A';
+      completion.reject(fault);
       await new Promise<void>(resolve => {
-        if (controller.signal.aborted) resolve(); else controller.signal.addEventListener('abort', () => resolve(), { once: true });
+        if (controller.signal.aborted) {
+          resolve();
+        } else {
+          controller.signal.addEventListener('abort', () => resolve(), { once: true });
+        }
       });
     })();
     await expect(consume({ node, items: sequence({ items: [item, completed()] }), abortController: controller, onChange: () => {} })).rejects.toBe(fault);
-    expect(controller.signal.aborted).toBe(true); expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
+    expect(controller.signal.aborted).toBe(true);
+    expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'partial' });
   });
 
   it('preserves consumer and cleanup failures separately', async () => {
-    const fault = new Error('apply'); const cleanup = new Error('close');
+    const fault = new Error('apply');
+    const cleanup = new Error('close');
     const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = {
       [Symbol.asyncIterator]() {
@@ -249,9 +295,13 @@ describe('consume nested chat generation', () => {
   it('captures child routing at receipt rather than later after asynchronous updates', async () => {
     const item = part({ id: 'p', index: 0, type: 'text', text: ['A'], completeness: 'complete' });
     const items = (async function* () {
-      yield item; item.partId = 'mutated'; item.index = 99; yield completed();
+      yield item;
+      item.partId = 'mutated';
+      item.index = 99;
+      yield completed();
     })();
-    const node = fresh(); await consume({ node, items, abortController: new AbortController(), onChange: vi.fn() });
+    const node = fresh();
+    await consume({ node, items, abortController: new AbortController(), onChange: vi.fn() });
     expect(node.parts).toEqual([{ type: 'text', text: 'A', completeness: 'complete' }]);
   });
 });

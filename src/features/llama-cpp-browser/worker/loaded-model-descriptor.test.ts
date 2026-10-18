@@ -4,7 +4,8 @@ import { loadedModelDescriptorSchema } from '@/features/llama-cpp-browser/loaded
 import { readLoadedModelDescriptor } from './loaded-model-descriptor';
 
 function fixture() {
-  let key = ''; const heap = new Uint8Array(65);
+  let key = '';
+  const heap = new Uint8Array(65);
   const core = {
     api: {
       llama_model_ftype: vi.fn(async () => 15),
@@ -18,11 +19,13 @@ function fixture() {
       llama_model_size: vi.fn(async () => 18446744073709551615n),
       llama_model_meta_val_str: vi.fn(async () => {
         const value = key === 'general.architecture' ? 'qwen35' : '15';
-        heap.set(new TextEncoder().encode(value)); return value.length;
+        heap.set(new TextEncoder().encode(value));
+        return value.length;
       }),
     },
     utf8: vi.fn(({ text }: { text: string }) => {
-      key = text; return 1n;
+      key = text;
+      return 1n;
     }),
     alloc: vi.fn(() => 2n),
     bytes: vi.fn(({ length }: { length: number }) => heap.subarray(0, length)),
@@ -33,7 +36,8 @@ function fixture() {
 
 describe('loaded model descriptor', () => {
   it('preserves uint64 values across strict JSON serialization without collecting arbitrary metadata', async () => {
-    const { core, read } = fixture(); const value = await read();
+    const { core, read } = fixture();
+    const value = await read();
     expect(value).toEqual({ source: 'loaded-model-native-api', architecture: 'qwen35', fileType: 15, trainingContextTokens: 131072, embeddingDimensions: 4096, layers: 64, attentionHeads: 32, keyValueHeads: 8, slidingWindowTokens: 0, parameterCount: '9007199254740993', tensorBytes: '18446744073709551615' });
     expect(loadedModelDescriptorSchema.parse(JSON.parse(JSON.stringify(value)))).toEqual(value);
     expect(core.utf8.mock.calls.map(([value]) => value.text)).toEqual(['general.architecture']);
@@ -54,8 +58,11 @@ describe('loaded model descriptor', () => {
   });
 
   it.each([65, 1000000, Infinity, 1.5])('rejects truncated metadata length %s without allocating larger buffers', async length => {
-    const { core, read } = fixture(); core.api.llama_model_meta_val_str.mockResolvedValue(length);
-    const result = await read(); expect(result.architecture).toBeUndefined(); expect(result.fileType).toBe(15);
+    const { core, read } = fixture();
+    core.api.llama_model_meta_val_str.mockResolvedValue(length);
+    const result = await read();
+    expect(result.architecture).toBeUndefined();
+    expect(result.fileType).toBe(15);
     expect(core.alloc.mock.calls).toEqual([[{ bytes: 65 }]]);
   });
 
@@ -65,7 +72,8 @@ describe('loaded model descriptor', () => {
 });
 
 it('attempts both cleanup releases without replacing inference with a diagnostic error', async () => {
-  const { core, read } = fixture(); core.free.mockImplementation(() => {
+  const { core, read } = fixture();
+  core.free.mockImplementation(() => {
     throw new Error('release failure');
   });
   expect((await read()).architecture).toBe('qwen35');

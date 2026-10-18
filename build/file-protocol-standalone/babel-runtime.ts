@@ -10,10 +10,14 @@ type BabelTraverse = typeof import('@babel/traverse').default;
 // object instead of the callable default export. Normalize that boundary here so
 // AST policy and SystemJS transforms behave the same under config loading and tests.
 function resolveCallableCommonJsDefault<T>(value: unknown, moduleId: string): T {
-  if (typeof value === 'function') return value as T;
+  if (typeof value === 'function') {
+    return value as T;
+  }
   if (typeof value === 'object' && value !== null && 'default' in value) {
     const nestedDefault = value.default;
-    if (typeof nestedDefault === 'function') return nestedDefault as T;
+    if (typeof nestedDefault === 'function') {
+      return nestedDefault as T;
+    }
   }
   throw new TypeError(`Expected callable CommonJS default export from ${moduleId}`);
 }

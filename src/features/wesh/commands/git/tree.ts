@@ -33,7 +33,9 @@ function createTreeNode(): TreeNode {
 function insertIndexEntry({ root, entry }: { root: TreeNode, entry: GitIndexEntry }): void {
   assertSafeGitRepositoryPath({ path: entry.path, source: 'index' });
   const segments = entry.path.split('/');
-  if (segments.some(segment => segment.length === 0)) throw new Error(`invalid index path: ${entry.path}`);
+  if (segments.some(segment => segment.length === 0)) {
+    throw new Error(`invalid index path: ${entry.path}`);
+  }
   let node = root;
   for (let index = 0; index < segments.length - 1; index += 1) {
     const segment = segments[index]!;
@@ -125,7 +127,9 @@ export async function writeTreeFromIndex({ files, repository, entries }: {
 }): Promise<string> {
   const root = createTreeNode();
   for (const entry of entries) {
-    if (entry.stage !== 0) throw new Error(`cannot write tree with unmerged index entry: ${entry.path}`);
+    if (entry.stage !== 0) {
+      throw new Error(`cannot write tree with unmerged index entry: ${entry.path}`);
+    }
     insertIndexEntry({ root, entry });
   }
   return writeTreeNode({ files, repository, node: root });
@@ -155,13 +159,18 @@ async function readTreeObjectEntries({ files, repository, treeObjectId, objectRe
   let offset = 0;
   while (offset < object.body.byteLength) {
     const spaceOffset = object.body.indexOf(0x20, offset);
-    if (spaceOffset < 0) throw new Error(`corrupt tree ${treeObjectId}: missing mode separator`);
+    if (spaceOffset < 0) {
+      throw new Error(`corrupt tree ${treeObjectId}: missing mode separator`);
+    }
     const nulOffset = object.body.indexOf(0, spaceOffset + 1);
-    if (nulOffset < 0 || nulOffset + 21 > object.body.byteLength)
+    if (nulOffset < 0 || nulOffset + 21 > object.body.byteLength) {
       throw new Error(`corrupt tree ${treeObjectId}: truncated entry`);
+    }
     const modeText = textDecoder.decode(object.body.subarray(offset, spaceOffset));
     const mode = Number.parseInt(modeText, 8);
-    if (!Number.isFinite(mode)) throw new Error(`corrupt tree ${treeObjectId}: invalid mode`);
+    if (!Number.isFinite(mode)) {
+      throw new Error(`corrupt tree ${treeObjectId}: invalid mode`);
+    }
     const name = decodeGitPathBytes({ bytes: object.body.subarray(spaceOffset + 1, nulOffset), source: 'tree' });
     assertSafeGitTreeEntryName({ name });
     entries.push({
@@ -194,14 +203,18 @@ export async function readTreePath({ files, repository, treeObjectId, path, obje
       objectReadCache,
     });
     const entry = entries.find(candidate => candidate.name === segment);
-    if (entry === undefined) return undefined;
+    if (entry === undefined) {
+      return undefined;
+    }
 
     currentPath = currentPath.length === 0 ? segment : `${currentPath}/${segment}`;
     assertSafeGitRepositoryPath({ path: currentPath, source: 'tree' });
     if (index === segments.length - 1) {
       return { path: currentPath, objectId: entry.objectId, mode: entry.mode };
     }
-    if (entry.mode !== 0o40000) return undefined;
+    if (entry.mode !== 0o40000) {
+      return undefined;
+    }
     currentTreeObjectId = entry.objectId;
   }
 

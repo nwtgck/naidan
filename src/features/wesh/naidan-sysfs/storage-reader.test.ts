@@ -75,14 +75,18 @@ describe('Naidan sysfs current-format transfer boundary', () => {
       [`${STORAGE_KEY_PREFIX}lsp:chat_content:chat-legacy`, JSON.stringify(legacyContent)],
       [`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify({ items: [{ type: 'chat_group', id: 'group-legacy', chat_ids: ['chat-legacy'] }] })],
     ]);
-    for (const [key, text] of saved) localStorage.setItem(key, text);
+    for (const [key, text] of saved) {
+      localStorage.setItem(key, text);
+    }
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
     const remote = createNaidanSysfsRemoteReader({ storageType: 'local' });
 
     const payload = await remote.loadChat({ chatId: 'chat-legacy' });
     expect(payload).toBeDefined();
-    if (payload === undefined) throw new Error('Expected the legacy chat to remain readable');
+    if (payload === undefined) {
+      throw new Error('Expected the legacy chat to remain readable');
+    }
     const transferred = naidanSysfsRemoteChatContentPayloadSchema.parse(structuredClone(payload.content));
     const user = transferred.root.items[0];
     const assistant = user?.replies.items[0];
@@ -102,7 +106,9 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     for (const node of [user, assistant, tool]) {
       expect(node).not.toHaveProperty('timestamp');
       expect(node).not.toHaveProperty('content');
-      for (const part of node?.parts ?? []) expect(part).not.toHaveProperty('id');
+      for (const part of node?.parts ?? []) {
+        expect(part).not.toHaveProperty('id');
+      }
     }
     expect(await remote.loadChatContent({ chatId: 'chat-legacy' })).toEqual(payload.content);
     expect(await remote.loadChatMeta({ chatId: 'chat-legacy' })).toEqual(payload.metadata);
@@ -153,7 +159,9 @@ describe('Naidan sysfs current-format transfer boundary', () => {
     expect(rendered).not.toHaveProperty('interruption');
     expect(setItem).not.toHaveBeenCalled();
     expect(removeItem).not.toHaveBeenCalled();
-    for (const [key, text] of saved) expect(localStorage.getItem(key)).toBe(text);
+    for (const [key, text] of saved) {
+      expect(localStorage.getItem(key)).toBe(text);
+    }
   });
 
   it('rejects legacy wire payloads even though the persistence reader accepts them', () => {

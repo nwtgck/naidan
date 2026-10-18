@@ -13,9 +13,14 @@ const mode = computed(() => props.workspace.monitorPresentation.value);
 function togglePresentation(): void {
   const current = mode.value;
   switch (current) {
-  case 'visual': void props.workspace.setMonitorPresentation({ presentation: 'compact-progress' }); break;
-  case 'compact-progress': void props.workspace.setMonitorPresentation({ presentation: 'visual' }); break;
-  default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+  case 'visual': void props.workspace.setMonitorPresentation({ presentation: 'compact-progress' });
+    break;
+  case 'compact-progress': void props.workspace.setMonitorPresentation({ presentation: 'visual' });
+    break;
+  default: {
+    const exhaustive: never = current;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -27,7 +32,9 @@ const selectedRun = computed(() => props.workspace.runState.value?.run?.sessionI
 const dimensions = computed(() => display.value.latestRun.value ?? selectedRun.value?.run?.request.parameters ?? props.generation.parameters.value);
 const image = computed(() => {
   const latest = display.value.latestRun.value;
-  if (!latest) return undefined;
+  if (!latest) {
+    return undefined;
+  }
   const status = latest.status;
   switch (status) {
   case 'running': return display.value.livePreview.value;
@@ -36,7 +43,10 @@ const image = computed(() => {
     return result && { url: result.url, width: result.parameters.width, height: result.parameters.height };
   }
   case 'cancelled': case 'failed': return undefined;
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -114,7 +114,9 @@ class FsExplorerDirectory implements ExplorerDirectory {
   }
 
   async isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean> {
-    if (!(other instanceof FsExplorerDirectory)) return false;
+    if (!(other instanceof FsExplorerDirectory)) {
+      return false;
+    }
     return this._handle.isSameEntry(other._handle);
   }
 }
@@ -182,7 +184,9 @@ class VfsExplorerDirectory implements ExplorerDirectory {
   async subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
     const childPath = joinVfsPath({ base: this._path, name });
     const stat = await this._vfs.stat({ path: childPath }).catch(() => null);
-    if (stat === null || stat.type !== 'directory') return null;
+    if (stat === null || stat.type !== 'directory') {
+      return null;
+    }
     const native = await this._vfs.getNativeHandle({ path: childPath });
     if (native !== null && native.kind === 'directory') {
       const ro = this._vfs.getReadOnlyForPath({ path: childPath });

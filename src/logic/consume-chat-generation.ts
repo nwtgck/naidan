@@ -26,19 +26,25 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
   const drafts = new Map<string, ToolCallDraft>();
 
   function register({ partId, index, type }: { partId: string, index: number, type: 'text' | 'reasoning' | 'tool_call_draft' | 'tool_call' }): void {
-    if (!Number.isSafeInteger(index) || index < 0) throw new Error('Invalid generated part position.');
+    if (!Number.isSafeInteger(index) || index < 0) {
+      throw new Error('Invalid generated part position.');
+    }
     const previous = positions.get(partId);
     if (previous !== undefined) {
       if (previous.index !== index || previous.type !== 'tool_call_draft' || (type !== 'tool_call_draft' && type !== 'tool_call')) {
         throw new Error('Duplicate or inconsistent generated part.');
       }
-    } else if (indices.has(index)) throw new Error('Invalid or duplicate generated part position.');
+    } else if (indices.has(index)) {
+      throw new Error('Invalid or duplicate generated part position.');
+    }
     positions.set(partId, { index, type });
     indices.set(index, partId);
   }
 
   function publishDrafts(): void {
-    if (onToolCallDraftsChange === undefined) return;
+    if (onToolCallDraftsChange === undefined) {
+      return;
+    }
     const materialized = [...positions.values()].filter(position => position.type !== 'tool_call_draft');
     onToolCallDraftsChange({
       drafts: [...drafts.values()].sort((left, right) => left.index - right.index).map(draft => ({
@@ -49,7 +55,9 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
   }
 
   function clearDrafts(): void {
-    if (drafts.size === 0) return;
+    if (drafts.size === 0) {
+      return;
+    }
     drafts.clear();
     publishDrafts();
   }
@@ -63,12 +71,18 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
   }
 
   function fail({ error }: { error: unknown }): void {
-    if (!failures.includes(error)) failures.push(error);
-    for (const reject of waiting) reject(error);
+    if (!failures.includes(error)) {
+      failures.push(error);
+    }
+    for (const reject of waiting) {
+      reject(error);
+    }
     waiting.clear();
     // Callback failures and protocol violations abandon this run. A user stop
     // alone does not enter this path: its accepted contents still need draining.
-    if (!abortController.signal.aborted) abortController.abort(error);
+    if (!abortController.signal.aborted) {
+      abortController.abort(error);
+    }
   }
 
   // Unlike racing every token against one never-settled Promise, this retains
@@ -78,10 +92,12 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
       waiting.add(reject);
       Promise.resolve(pending).then(
         value => {
-          waiting.delete(reject); resolve(value);
+          waiting.delete(reject);
+          resolve(value);
         },
         error => {
-          waiting.delete(reject); reject(error);
+          waiting.delete(reject);
+          reject(error);
         },
       );
       if (failures.length !== 0) {
@@ -93,12 +109,18 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
 
   function apply({ change, persistence }: { change: () => void, persistence: 'history' | 'transient' }): Promise<void> {
     const pending = mutations.then(async () => {
-      if (failures.length !== 0) throw failures[0];
+      if (failures.length !== 0) {
+        throw failures[0];
+      }
       change();
       switch (persistence) {
-      case 'history': await waitFor({ pending: Promise.resolve(onChange()) }); break;
+      case 'history': await waitFor({ pending: Promise.resolve(onChange()) });
+        break;
       case 'transient': break;
-      default: { const _ex: never = persistence; throw new Error(`Unhandled persistence mode: ${_ex}`); }
+      default: {
+        const _ex: never = persistence;
+        throw new Error(`Unhandled persistence mode: ${_ex}`);
+      }
       }
     });
     mutations = pending.catch(error => {
@@ -113,7 +135,8 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
     const finalState = completeness.then(
       value => ({ type: 'value' as const, value }),
       error => {
-        fail({ error }); return { type: 'failure' as const, error };
+        fail({ error });
+        return { type: 'failure' as const, error };
       },
     );
     const iterator = chunks[Symbol.asyncIterator]();
@@ -124,13 +147,16 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
         change: () => {
           register({ partId, index, type });
           state.beginPart({ partId, index, type });
-          if (drafts.size !== 0) publishDrafts();
+          if (drafts.size !== 0) {
+            publishDrafts();
+          }
         },
       });
       while (true) {
         const next = await waitFor({ pending: iterator.next() });
         if (next.done) {
-          exhausted = true; break;
+          exhausted = true;
+          break;
         }
         const text = next.value;
         await apply({ persistence: 'history', change: () => state.appendText({ partId, text }) });
@@ -166,7 +192,8 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
     while (true) {
       const next = await waitFor({ pending: iterator.next() });
       if (next.done) {
-        exhausted = true; break;
+        exhausted = true;
+        break;
       }
       const item = next.value;
       // Claim a child's completeness even when its descriptor violates the order.
@@ -175,7 +202,8 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
         case 'text':
         case 'reasoning': void item.completeness.catch(error => {
           fail({ error });
-        }); break;
+        });
+          break;
         case 'tool_call_draft':
         case 'tool_call':
         case 'result': break;
@@ -211,7 +239,9 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
             register({ partId, index, type: 'tool_call' });
             state.addToolCall({ partId, index, toolCall: copy });
             const removed = drafts.delete(partId);
-            if (removed || drafts.size !== 0) publishDrafts();
+            if (removed || drafts.size !== 0) {
+              publishDrafts();
+            }
           },
         });
         break;
@@ -226,7 +256,9 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
             register({ partId, index, type });
             // An ordinary stop still drains accepted completed content, but a
             // retired draft must never reappear while that drain is in progress.
-            if (abortController.signal.aborted) return;
+            if (abortController.signal.aborted) {
+              return;
+            }
             const previous = drafts.get(partId);
             let argumentsText = previous?.arguments ?? '';
             if (patch !== undefined) {
@@ -245,9 +277,12 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
         const { type: _type, result: value, ...unhandled } = item;
         unhandled satisfies Record<PropertyKey, never>;
         switch (value.type) {
-        case 'finished': result = { type: value.type, next: value.next }; break;
-        case 'interrupted': result = { type: value.type, reason: value.reason }; break;
-        case 'error': result = { type: value.type, error: value.error }; break;
+        case 'finished': result = { type: value.type, next: value.next };
+          break;
+        case 'interrupted': result = { type: value.type, reason: value.reason };
+          break;
+        case 'error': result = { type: value.type, error: value.error };
+          break;
         default: {
           const _ex: never = value;
           throw new Error(`Unhandled generation result: ${_ex}`);
@@ -265,7 +300,9 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
       }
       }
     }
-    if (result === undefined) throw new Error('The generation closed without a result.');
+    if (result === undefined) {
+      throw new Error('The generation closed without a result.');
+    }
   } catch (error) {
     fail({ error });
   } finally {
@@ -285,9 +322,15 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
       fail({ error });
     }
   }
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) throw new AggregateError(failures, 'Generation consumption and cleanup failed.');
-  if (result === undefined) throw new Error('The generation closed without a result.');
+  if (failures.length === 1) {
+    throw failures[0];
+  }
+  if (failures.length > 1) {
+    throw new AggregateError(failures, 'Generation consumption and cleanup failed.');
+  }
+  if (result === undefined) {
+    throw new Error('The generation closed without a result.');
+  }
   state.finish({ result });
   return result;
 }

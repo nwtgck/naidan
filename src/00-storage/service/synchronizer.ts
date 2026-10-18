@@ -186,7 +186,9 @@ export class StorageSynchronizer {
         return await fn();
       } finally {
         released.resolve();
-        if (fallbackLocks.get(lockKey) === tail) fallbackLocks.delete(lockKey);
+        if (fallbackLocks.get(lockKey) === tail) {
+          fallbackLocks.delete(lockKey);
+        }
       }
     }
   }

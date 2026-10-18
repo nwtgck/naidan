@@ -15,40 +15,61 @@ const choices = computed(() => props.saved.map(candidate => ({ id: candidate.id,
 
 
 function addSaved(): void {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   const candidate = props.saved.find(candidate => candidate.id === savedId.value);
-  if (!candidate) return;
+  if (!candidate) {
+    return;
+  }
   invalidFiles.value = props.modelValue.length >= 16;
-  if (invalidFiles.value) return;
+  if (invalidFiles.value) {
+    return;
+  }
   emit('update:modelValue', [...props.modelValue, { file: candidate.file, path: candidate.path, sourceLabel: candidate.detail, strength: 1, enabled: true }]);
   savedId.value = '';
 }
 
 function add({ event }: { event: Event }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
+  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   const files = Array.from(event.target.files ?? []);
   event.target.value = '';
-  if (!files.length) return;
+  if (!files.length) {
+    return;
+  }
   invalidFiles.value = props.modelValue.length + files.length > 16 || files.some(file => !/\.(gguf|safetensors)$/i.test(file.name) || file.size < 8);
-  if (invalidFiles.value) return;
+  if (invalidFiles.value) {
+    return;
+  }
   emit('update:modelValue', [...props.modelValue, ...files.map(file => ({ file, strength: 1, enabled: true }))]);
 }
 
 function change({ index, event, field }: { index: number, event: Event, field: 'enabled' | 'strength' }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
+  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   const input = event.target;
   emit('update:modelValue', props.modelValue.map((selection, position) => {
-    if (index !== position) return selection;
+    if (index !== position) {
+      return selection;
+    }
     switch (field) {
     case 'enabled': return { ...selection, enabled: input.checked };
     case 'strength': return { ...selection, strength: input.valueAsNumber };
-    default: { const exhaustive: never = field; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = field;
+      throw new Error(String(exhaustive));
+    }
     }
   }));
 }
 
 function remove({ index }: { index: number }): void {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   invalidFiles.value = false;
   emit('update:modelValue', props.modelValue.filter((_selection, position) => index !== position));
 }

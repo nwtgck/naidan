@@ -20,7 +20,9 @@ it('keeps an unreadable image destination unavailable through normal provider sa
   const provider = new LocalStorageProvider();
   const first = await provider.loadSettings();
   expect(first?.experimental?.browserImageGeneration?.inferenceLocation).toEqual({ kind: 'unavailable' });
-  if (!first) throw new Error('Missing settings');
+  if (!first) {
+    throw new Error('Missing settings');
+  }
   await provider.saveSettings({ settings: { ...first, systemPrompt: 'unrelated edit' } });
   expect(localStorage.getItem(key)).not.toContain('not retained');
   const second = await provider.loadSettings();
@@ -53,7 +55,9 @@ it('permits explicit reselection without resurrecting unknown values', async () 
     },
   });
   const loaded = await provider.loadSettings();
-  if (!loaded) throw new Error('Missing settings');
+  if (!loaded) {
+    throw new Error('Missing settings');
+  }
   await provider.saveSettings({
     settings: {
       ...loaded,

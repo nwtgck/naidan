@@ -118,13 +118,17 @@ function normalizeRemoveEmptyDeletionSection({
   section: PatchSection,
   options: PatchOptions,
 }): PatchSection {
-  if (!options.removeEmptyFiles || section.header.operation !== 'modify') return section;
+  if (!options.removeEmptyFiles || section.header.operation !== 'modify') {
+    return section;
+  }
 
   switch (section.kind) {
   case 'ed':
     return section;
   case 'text': {
-    if (section.hunks.length !== 1) return section;
+    if (section.hunks.length !== 1) {
+      return section;
+    }
     const hunk = section.hunks[0]!;
     if (
       hunk.oldRange.start !== 1
@@ -159,7 +163,9 @@ function shouldDeleteTarget({
   resultByteLength: number,
   options: PatchOptions,
 }): boolean {
-  if (resultByteLength !== 0) return false;
+  if (resultByteLength !== 0) {
+    return false;
+  }
   switch (section.header.operation) {
   case 'delete':
     return !options.posix || options.removeEmptyFiles;
@@ -188,7 +194,9 @@ function shouldCreateBackup({
   rejectedCount: number,
   usedReverse: boolean,
 }): boolean {
-  if (options.backupAlways) return true;
+  if (options.backupAlways) {
+    return true;
+  }
 
   const mismatchRequiresBackup = usedOffset || usedFuzz || rejectedCount > 0 || usedReverse;
   switch (options.backupMismatchMode) {
@@ -216,7 +224,9 @@ async function writeStatus({
   text: string,
   always: boolean,
 }): Promise<void> {
-  if (!always && options.quietMode === 'quiet') return;
+  if (!always && options.quietMode === 'quiet') {
+    return;
+  }
   if (options.outputPath === '-') {
     await context.text().error({ text });
   } else {
@@ -225,7 +235,9 @@ async function writeStatus({
 }
 
 function quoteDiagnosticPath({ path }: { path: string }): string {
-  if (!/[\s']/u.test(path)) return path;
+  if (!/[\s']/u.test(path)) {
+    return path;
+  }
   return `'${path.replaceAll("'", "'\\''")}'`;
 }
 
@@ -245,7 +257,9 @@ function formatPatchStatusTarget({
   options: PatchOptions,
 }): string {
   const displayPath = quoteDiagnosticPath({ path: target.displayPath });
-  if (options.outputPath === undefined) return displayPath;
+  if (options.outputPath === undefined) {
+    return displayPath;
+  }
   return `${quoteDiagnosticPath({ path: options.outputPath })} (read from ${displayPath})`;
 }
 
@@ -345,11 +359,15 @@ async function writeRejects({
   initializedRejectPaths: Set<string>,
   effectiveDirectory: string,
 }): Promise<void> {
-  if (rejectedHunks.length === 0 || options.dryRun) return;
+  if (rejectedHunks.length === 0 || options.dryRun) {
+    return;
+  }
 
   const bytes = rejectBytesForHunks({ section, hunks: rejectedHunks, target, options });
   const rawPath = rejectStoragePath({ target, options });
-  if (rawPath === '-') return;
+  if (rawPath === '-') {
+    return;
+  }
 
   const fullPath = rawPath.startsWith('/')
     ? rawPath
@@ -382,10 +400,14 @@ async function assertDestinationAvailable({
   target: PatchTarget,
   allowExistingEmptyCreateDestination: boolean,
 }): Promise<void> {
-  if (target.sourcePath === target.destinationPath) return;
+  if (target.sourcePath === target.destinationPath) {
+    return;
+  }
   switch (target.operation) {
   case 'create':
-    if (allowExistingEmptyCreateDestination) return;
+    if (allowExistingEmptyCreateDestination) {
+      return;
+    }
     if (await pathExists({ context, path: target.destinationPath })) {
       throw new Error(`create destination already exists: '${target.destinationPath}'`);
     }
@@ -418,7 +440,9 @@ async function isExistingEmptyRegularFile({
   context: WeshCommandContext,
   path: string,
 }): Promise<boolean> {
-  if (!await pathExists({ context, path })) return false;
+  if (!await pathExists({ context, path })) {
+    return false;
+  }
   const stat = await context.files.lstat({ path });
   return stat.type === 'file' && stat.size === 0;
 }
@@ -434,7 +458,9 @@ async function getPatchStructuralConflict({
 }): Promise<PatchStructuralConflict | undefined> {
   switch (section.header.operation) {
   case 'create':
-    if (!await pathExists({ context, path: target.destinationPath })) return undefined;
+    if (!await pathExists({ context, path: target.destinationPath })) {
+      return undefined;
+    }
     return await isExistingEmptyRegularFile({ context, path: target.destinationPath })
       ? undefined
       : 'create-destination-exists';
@@ -444,7 +470,9 @@ async function getPatchStructuralConflict({
       ? 'delete-source-missing'
       : undefined;
   case 'rename': {
-    if (target.sourcePath === undefined) return undefined;
+    if (target.sourcePath === undefined) {
+      return undefined;
+    }
     const sourceExists = await pathExists({ context, path: target.sourcePath });
     const destinationExists = await pathExists({ context, path: target.destinationPath });
     return !sourceExists && destinationExists
@@ -466,9 +494,15 @@ function structuralDirectionFallbackAction({
 }: {
   options: PatchOptions,
 }): 'apply-opposite' | 'skip-opposite' | 'apply-initial' {
-  if (options.force) return 'apply-initial';
-  if (options.forwardOnly) return 'skip-opposite';
-  if (options.batch) return 'apply-opposite';
+  if (options.force) {
+    return 'apply-initial';
+  }
+  if (options.forwardOnly) {
+    return 'skip-opposite';
+  }
+  if (options.batch) {
+    return 'apply-opposite';
+  }
   return 'skip-opposite';
 }
 
@@ -923,7 +957,9 @@ async function applySection({
     break;
   }
   case 'ed':
-    if (options.explicitReverse) throw new Error('ed patches cannot be reversed');
+    if (options.explicitReverse) {
+      throw new Error('ed patches cannot be reversed');
+    }
     resultContent = {
       kind: 'line-plan',
       source: source.source,
@@ -1071,11 +1107,15 @@ async function applyPatchSections({
         backedUpPaths,
       });
       outputs.push(result.output);
-      if (result.exitCode !== 0) exitCode = 1;
+      if (result.exitCode !== 0) {
+        exitCode = 1;
+      }
     } catch (error: unknown) {
       const isMissingTarget = error instanceof PatchTargetResolutionError
         || isPathNotFoundError({ error });
-      if (!isMissingTarget) throw error;
+      if (!isMissingTarget) {
+        throw error;
+      }
       const advice = error instanceof PatchTargetResolutionError || options.stripCount !== undefined
         ? 'Perhaps you used the wrong -p or --strip option?\n'
         : 'Perhaps you should have used the -p or --strip option?\n';

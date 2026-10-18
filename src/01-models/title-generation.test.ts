@@ -18,7 +18,9 @@ describe('new title defaults versus existing preferences', () => {
     };
     const result = retargetTitleGenerationToSameScope({ source, model: { id: 'new' } });
     expect(result).toEqual({ endpoint: 'same_scope', model: { id: 'new' }, lmParameters: source.lmParameters });
-    if (result === 'disabled' || result.lmParameters === 'same_scope') throw new Error('Expected explicit parameters');
+    if (result === 'disabled' || result.lmParameters === 'same_scope') {
+      throw new Error('Expected explicit parameters');
+    }
     result.lmParameters.reasoning.effort = 'high';
     result.lmParameters.stop?.push('another');
     expect(source.lmParameters.reasoning.effort).toBe(effort);

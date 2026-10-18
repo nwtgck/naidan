@@ -20,7 +20,7 @@
     -webkit-user-select: text;
     user-select: text;
   }
-  
+
   /* Disable selection for UI buttons by default to feel more like an app */
   button, .no-select {
     -webkit-user-select: none;
@@ -32,7 +32,7 @@
     touch-action: manipulation;
   }
 
-  
+
   html.dark, html.dark body {
     @apply bg-gray-950 text-gray-100;
   }
@@ -121,7 +121,7 @@
   --grid-size: 20px;
   --grid-color: #2a2a2a;
   --bg-color: #1f1f1f;
-  
+
   background-image:
     linear-gradient(45deg, var(--grid-color) 25%, transparent 25%),
     linear-gradient(-45deg, var(--grid-color) 25%, transparent 25%),

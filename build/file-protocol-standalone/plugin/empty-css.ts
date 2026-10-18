@@ -22,9 +22,13 @@ export function createEffectFreeEmptyCssPruningPlugin({
       const stylesheetReferencedCss = new Set<string>();
       for (const output of chunkOutputs) {
         const importedCss = output.viteMetadata?.importedCss;
-        if (!(importedCss instanceof Set)) continue;
+        if (!(importedCss instanceof Set)) {
+          continue;
+        }
         for (const fileName of importedCss) {
-          if (typeof fileName === 'string') stylesheetReferencedCss.add(fileName);
+          if (typeof fileName === 'string') {
+            stylesheetReferencedCss.add(fileName);
+          }
         }
       }
 
@@ -34,11 +38,15 @@ export function createEffectFreeEmptyCssPruningPlugin({
           output.type !== 'asset'
         || !/\.css$/iu.test(output.fileName)
         || !stylesheetReferencedCss.has(output.fileName)
-        ) continue;
+        ) {
+          continue;
+        }
         const source = typeof output.source === 'string'
           ? output.source
           : Buffer.from(output.source).toString('utf8');
-        if (source.trim() === '') effectFreeEmptyCssFileNames.add(output.fileName);
+        if (source.trim() === '') {
+          effectFreeEmptyCssFileNames.add(output.fileName);
+        }
       }
       if (effectFreeEmptyCssFileNames.size > 0) {
       // importedAssets only matters when deciding whether an effect-free CSS
@@ -50,7 +58,9 @@ export function createEffectFreeEmptyCssPruningPlugin({
           if (importedAssets !== undefined && !(importedAssets instanceof Set)) {
             throw new Error(`Unexpected Vite importedAssets metadata shape for ${output.fileName}`);
           }
-          if (!(importedAssets instanceof Set)) continue;
+          if (!(importedAssets instanceof Set)) {
+            continue;
+          }
           for (const fileName of importedAssets) {
             if (typeof fileName !== 'string') {
               throw new Error(`Unexpected Vite importedAssets metadata entry for ${output.fileName}: ${String(fileName)}`);
@@ -63,7 +73,9 @@ export function createEffectFreeEmptyCssPruningPlugin({
             output.type === 'asset'
           && effectFreeEmptyCssFileNames.has(output.fileName)
           && !dataReferencedAssets.has(output.fileName)
-          ) delete bundle[bundleKey];
+          ) {
+            delete bundle[bundleKey];
+          }
         }
         for (const output of Object.values(bundle)) {
           switch (output.type) {
@@ -71,8 +83,12 @@ export function createEffectFreeEmptyCssPruningPlugin({
             continue;
           case 'chunk': {
             const importedCss = output.viteMetadata?.importedCss;
-            if (!(importedCss instanceof Set)) continue;
-            for (const fileName of effectFreeEmptyCssFileNames) importedCss.delete(fileName);
+            if (!(importedCss instanceof Set)) {
+              continue;
+            }
+            for (const fileName of effectFreeEmptyCssFileNames) {
+              importedCss.delete(fileName);
+            }
             break;
           }
           default: {

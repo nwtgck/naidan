@@ -23,7 +23,9 @@ it.each([
   expect(requirements.map(item => item.slot)).toEqual(['vae', 'lm']);
   for (const [index, requirement] of requirements.entries()) {
     expect(defaultCompanion({ main, candidates: inventory.candidates, requirement })).toBe(inventory.candidates[index + 1]!.id);
-    for (const wrong of inventory.candidates.slice(3)) expect(componentMatch({ candidate: wrong, requirement })).toBe('incompatible');
+    for (const wrong of inventory.candidates.slice(3)) {
+      expect(componentMatch({ candidate: wrong, requirement })).toBe('incompatible');
+    }
   }
 });
 

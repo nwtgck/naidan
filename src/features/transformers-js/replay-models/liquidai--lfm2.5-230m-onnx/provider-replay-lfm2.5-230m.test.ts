@@ -187,7 +187,9 @@ function verifyLfm230NativeInput({ replay, expectedMessages, expectedTemplateOpt
   const calls = replay.templateSpy.mock.calls.slice(priorCalls).filter(([, options]) => options?.tokenize !== false);
   expect(calls).toHaveLength(1);
   const call = calls[0];
-  if (!call || !replay.seen.inference) throw new Error('Expected actual LFM230 tokenizer and inference entry');
+  if (!call || !replay.seen.inference) {
+    throw new Error('Expected actual LFM230 tokenizer and inference entry');
+  }
   expect(semanticMessages({ messages: call[0] })).toStrictEqual(semanticMessages({ messages: expectedMessages }));
   expect(call[1]).toStrictEqual(expectedTemplateOptions);
   const { tokenizer, runtime, input, mask, past } = replay.seen.inference;
@@ -195,7 +197,9 @@ function verifyLfm230NativeInput({ replay, expectedMessages, expectedTemplateOpt
   const currentNative = tokenizer(expectedPrompt, { add_special_tokens: false });
   expect(currentNative.input_ids).toBeInstanceOf(runtime.Tensor);
   const ids = Array.from(currentNative.input_ids.data, Number);
-  if (!input || !mask) throw new Error('Expected actual input tensors');
+  if (!input || !mask) {
+    throw new Error('Expected actual input tensors');
+  }
   expect(input.type).toBe('int64');
   expect(input.location).toBe('cpu');
   expect(input.dims).toEqual([1, ids.length]);
@@ -281,7 +285,9 @@ Template probe user message.<|im_end|>
     })).toBe(expectedPrompt);
     const changed = scenario.messages.map(message => ({ ...message }));
     const last = changed.at(-1);
-    if (!last) throw new Error('Expected source final user message');
+    if (!last) {
+      throw new Error('Expected source final user message');
+    }
     const original = last.content;
     expect(original).not.toBe('');
     expect(expectedPrompt.split(original)).toHaveLength(2);
@@ -386,7 +392,9 @@ Template probe user message.<|im_end|>
     })).toBe(expectedPrompt);
     const changed = scenario.messages.map(message => ({ ...message }));
     const last = changed.at(-1);
-    if (!last) throw new Error('Expected source final user message');
+    if (!last) {
+      throw new Error('Expected source final user message');
+    }
     const original = last.content;
     expect(original).not.toBe('');
     expect(expectedPrompt.split(original)).toHaveLength(2);
@@ -493,7 +501,9 @@ Template probe second user message.<|im_end|>
     })).toBe(expectedPrompt);
     const changed = scenario.messages.map(message => ({ ...message }));
     const last = changed.at(-1);
-    if (!last) throw new Error('Expected source final user message');
+    if (!last) {
+      throw new Error('Expected source final user message');
+    }
     const original = last.content;
     expect(original).not.toBe('');
     expect(expectedPrompt.split(original)).toHaveLength(2);
@@ -671,7 +681,9 @@ describe('LFM2.5 230M Provider / history', () => {
     const captures: ProviderChatCapture[] = [];
     const metadata = readModelFixture({ modelId: MODEL_ID });
     const configBytes = metadata.files.get('tokenizer_config.json');
-    if (!configBytes) throw new Error('Missing original tokenizer config');
+    if (!configBytes) {
+      throw new Error('Missing original tokenizer config');
+    }
     expect(createHash('sha256').update(configBytes).digest('hex'))
       .toBe('c46e3f5715c73f7ae9beeeebad8f7187fd647d2de352c3cd01fe250c88d2f960');
     const config = z.object({ chat_template: z.string() }).parse(JSON.parse(new TextDecoder().decode(configBytes)));
@@ -917,7 +929,9 @@ describe('LFM2.5 230M Provider / independent', () => {
 
       const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
       unhandled satisfies Record<PropertyKey, never>;
-      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      if (completeness === 'pending') {
+        throw new Error('Expected a drained first text part');
+      }
       firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',
@@ -1728,7 +1742,9 @@ describe('LFM2.5 230M Provider / tools', () => {
       expect(execution.signal?.aborted).toBe(false);
       // The caller records an executing result after the completed call and before the follow-up.
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -1816,7 +1832,9 @@ describe('LFM2.5 230M Provider / tools', () => {
       expect(execution.signal?.aborted).toBe(false);
       // The caller records an executing result after the completed call and before the follow-up.
       const toolNode = turn.generated[1];
-      if (toolNode?.role !== 'tool') throw new Error('Expected the caller-owned tool node');
+      if (toolNode?.role !== 'tool') {
+        throw new Error('Expected the caller-owned tool node');
+      }
       expect(execution.prefix).toEqual([
         createChatMessageSnapshot({ node: turn.generated[0]! }),
         { id: toolNode.id, role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: calls[0]!.id, status: 'executing' } }] },
@@ -2184,7 +2202,9 @@ describe('LFM2.5 230M Provider / sequences', () => {
 
       const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
       unhandled satisfies Record<PropertyKey, never>;
-      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      if (completeness === 'pending') {
+        throw new Error('Expected a drained first text part');
+      }
       firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
         id: toMessageId({ raw: 'message_1' }),
         role: 'assistant',

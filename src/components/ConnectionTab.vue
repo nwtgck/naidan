@@ -2,7 +2,7 @@
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { generateId } from '@/01-models/id';
-import { ref, watch, computed, h } from 'vue';
+import { ref, watch, computed, h, useId } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, Settings, SettingsTitleGeneration } from '@/01-models/types';
@@ -11,24 +11,26 @@ import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHt
 import { naturalSort } from '@/utils/string';
 import { cloneLmParameters as clonePlainLmParameters } from '@/utils/lm-parameters';
 import {
-  Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
-  CheckCircle2Icon, BookmarkPlusIcon,
-  CheckIcon, ActivityIcon, MessageSquareQuoteIcon, PlusIcon, LinkIcon,
+  Loader2Icon, SaveIcon, CheckCircle2Icon, BookmarkPlusIcon,
+  CheckIcon, ActivityIcon, LinkIcon, FolderOpenIcon, ChevronDownIcon, SlidersHorizontalIcon, TypeIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
-import { endpointTypeLabel } from './endpoint-type-label';
+import SettingsSelect from './SettingsSelect.vue';
+import EndpointPresetButtons from './EndpointPresetButtons.vue';
+import SettingsCollapse from './SettingsCollapse.vue';
+import SettingsDisclosure from './SettingsDisclosure.vue';
+import HttpHeadersEditor from './HttpHeadersEditor.vue';
+import type { SettingsSourcePresentation } from './SettingsSourceBadge.vue';
+import { endpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load previews that are only shown during specific actions
 const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
-// Lazily load upsell UI
-const LlamaCppBrowserUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserUpsell.vue') });
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 const OllamaManagementView = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./OllamaManagementView.vue') });
 
 import { useConfirm } from '@/composables/useConfirm';
@@ -40,6 +42,7 @@ import { lazyStrings, ensureStrings } from '@/strings';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 
 const props = defineProps<{
   modelValue: Settings,
@@ -129,7 +132,9 @@ const endpointUrl = computed({
   get: () => isHttpEndpoint(form.value.endpoint) ? form.value.endpoint.url : '',
   set: (url: string) => {
     const endpoint = form.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     const previousEndpoint = cloneEndpoint({ endpoint });
     form.value.endpoint = {
       ...endpoint,
@@ -145,7 +150,9 @@ const endpointHttpHeaders = computed<[string, string][] | undefined>({
     : undefined,
   set: (httpHeaders) => {
     const endpoint = form.value.endpoint;
-    if (!isHttpEndpoint(endpoint)) return;
+    if (!isHttpEndpoint(endpoint)) {
+      return;
+    }
     form.value.endpoint = {
       ...endpoint,
       httpHeaders,
@@ -191,8 +198,12 @@ function cloneTitleLmParameters({
 }: {
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters | undefined {
-  if (lmParameters === undefined) return undefined;
-  if (lmParameters === 'same_scope') return 'same_scope';
+  if (lmParameters === undefined) {
+    return undefined;
+  }
+  if (lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
 }
 
@@ -203,7 +214,9 @@ function titleLmParametersForEndpoint({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
 }
 
@@ -212,7 +225,9 @@ function titleGenerationWithLmParameters({
 }: {
   titleGeneration: SettingsTitleGenerationDraft,
 }): SettingsTitleGeneration {
-  if (titleGeneration === 'disabled') return 'disabled';
+  if (titleGeneration === 'disabled') {
+    return 'disabled';
+  }
 
   const current = currentSettingsTitleGeneration();
   const currentLmParameters = current === 'disabled' ? undefined : current.lmParameters;
@@ -232,7 +247,9 @@ function titleReasoningSelectValueFromLmParameters({
   endpoint: Endpoint | 'same_scope',
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): TitleReasoningSelectValue {
-  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
     ? lmParameters.reasoning.effort
     : undefined;
@@ -295,7 +312,7 @@ function reasoningEffortFromTitleReasoningValue({
 
 const globalTitleReasoningLeadingOptions = computed(() => {
   const label = globalTitleEndpointUsesSameScope.value
-    ? lazyStrings.ConnectionTab__use_current_chat_reasoning()
+    ? lazyStrings.ConnectionTab__same_as_conversation()
     : undefined;
   return [{
     value: 'same_scope' as const,
@@ -311,7 +328,9 @@ function currentSettingsTitleGeneration(): SettingsTitleGeneration {
 
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
-  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') {
+    return;
+  }
   setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
@@ -322,7 +341,9 @@ function resetModelsWhenEndpointNamespaceChanges({
   previousEndpoint: Endpoint,
   nextEndpoint: Endpoint,
 }): void {
-  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) {
+    return;
+  }
   form.value.defaultModelId = '';
   resetSameScopeTitleModel();
 }
@@ -333,7 +354,9 @@ function titleModelIdFromSettingsTitleGeneration({
 }: {
   titleGeneration: SettingsTitleGeneration,
 }): string | undefined {
-  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') {
+    return undefined;
+  }
   return titleGeneration.model.id;
 }
 
@@ -351,15 +374,23 @@ const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> =
 type TitleEndpointTypeSelectValue = 'same_scope' | Endpoint['type'];
 
 function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEndpointTypeSelectValue {
-  if (value === 'same_scope') return 'same_scope';
-  if (value === 'unsupported_experimental_endpoint') return 'unsupported_experimental_endpoint';
-  if (Object.hasOwn(titleEndpointTypeSelectValueRecord, value)) return value as EndpointType;
+  if (value === 'same_scope') {
+    return 'same_scope';
+  }
+  if (value === 'unsupported_experimental_endpoint') {
+    return 'unsupported_experimental_endpoint';
+  }
+  if (Object.hasOwn(titleEndpointTypeSelectValueRecord, value)) {
+    return value as EndpointType;
+  }
   throw new Error(`Unhandled title endpoint type value: ${value}`);
 }
 
 const globalTitleEndpoint = computed(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return 'same_scope';
+  if (titleGeneration === 'disabled') {
+    return 'same_scope';
+  }
   return titleGeneration.endpoint;
 });
 const globalTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() => {
@@ -378,7 +409,9 @@ const globalTitleEndpointUrl = computed({
   set: (url: string) => {
     const titleGeneration = currentSettingsTitleGeneration();
     const endpoint = globalTitleEndpoint.value;
-    if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+    if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) {
+      return;
+    }
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: {
@@ -405,7 +438,9 @@ function setGlobalTitleEndpointHttpHeaders({
 }): void {
   const titleGeneration = currentSettingsTitleGeneration();
   const endpoint = globalTitleEndpoint.value;
-  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) {
+    return;
+  }
   setFormTitleGeneration({
     titleGeneration: {
       endpoint: {
@@ -418,36 +453,6 @@ function setGlobalTitleEndpointHttpHeaders({
   });
 }
 
-function addGlobalTitleHeader(): void {
-  const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
-  setGlobalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
-}
-
-function updateGlobalTitleHeader({
-  index,
-  field,
-  value,
-}: {
-  index: number,
-  field: 0 | 1,
-  value: string,
-}): void {
-  const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
-  setGlobalTitleEndpointHttpHeaders({
-    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
-      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
-      : header),
-  });
-}
-
-function removeGlobalTitleHeader({ index }: { index: number }): void {
-  const headers = globalTitleEndpointHttpHeaders.value;
-  if (headers === undefined) return;
-  setGlobalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
-}
-
 const globalTitleModelOptions = computed(() => globalTitleEndpointUsesSameScope.value
   ? sortedModels.value
   : sortedTitleEndpointModels.value);
@@ -458,13 +463,17 @@ const globalTitleModelLoading = computed(() => globalTitleEndpointUsesSameScope.
 
 const globalTitleModelId = computed(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') {
+    return undefined;
+  }
   return titleGeneration.model.id;
 });
 
 const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'disabled') {
+    return undefined;
+  }
   return titleReasoningSelectValueFromLmParameters({
     endpoint: titleGeneration.endpoint,
     lmParameters: titleGeneration.lmParameters,
@@ -473,8 +482,12 @@ const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() =
 
 function setGlobalTitleReasoningSelectValue({ value }: { value: TitleReasoningSelectValue }): void {
   const titleGeneration = currentSettingsTitleGeneration();
-  if (titleGeneration === 'disabled') return;
-  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') return;
+  if (titleGeneration === 'disabled') {
+    return;
+  }
+  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') {
+    return;
+  }
   setFormTitleGeneration({
     titleGeneration: {
       ...titleGeneration,
@@ -591,10 +604,6 @@ function setGlobalTitleEndpointType({
   }
 }
 
-function handleGlobalTitleEndpointTypeChange({ event }: { event: Event }): void {
-  setGlobalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value: (event.target as HTMLSelectElement).value }) });
-}
-
 function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): void {
   const titleGeneration = currentSettingsTitleGeneration();
   const endpoint = titleGeneration === 'disabled' ? 'same_scope' : titleGeneration.endpoint;
@@ -630,13 +639,17 @@ async function fetchTitleEndpointModels(): Promise<void> {
   error.value = null;
   try {
     const models = await fetchModelsGlobal({ overrides: endpoint });
-    if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) return;
+    if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) {
+      return;
+    }
     if (models.length === 0 && endpoint.type !== 'transformers_js' && endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
     titleEndpointModels.value = models;
     const titleGeneration = currentSettingsTitleGeneration();
-    if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') return;
+    if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') {
+      return;
+    }
     if (!models.includes(titleGeneration.model.id) && models[0] !== undefined) {
       setFormTitleGeneration({
         titleGeneration: {
@@ -740,7 +753,9 @@ async function fetchModels() {
   try {
     // Trigger global fetch with current form values (may be unsaved)
     const models = await fetchModelsGlobal({ overrides: requestedEndpoint });
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+      return;
+    }
 
     if (models.length === 0 && form.value.endpoint.type !== 'transformers_js' && form.value.endpoint.type !== 'llama_cpp_browser') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
@@ -792,7 +807,9 @@ async function fetchModels() {
       connectionSuccess.value = false;
     }, 3000);
   } catch (err) {
-    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) {
+      return;
+    }
     console.error(err);
     error.value = err instanceof Error ? err.message : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
     connectionSuccess.value = false;
@@ -845,7 +862,9 @@ async function handleCreateProviderProfile() {
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
 
-  if (!name) return;
+  if (!name) {
+    return;
+  }
 
   const newProviderProfile: ProviderProfile = {
     id: generateId<ProviderProfileId>(),
@@ -857,7 +876,9 @@ async function handleCreateProviderProfile() {
     lmParameters: form.value.lmParameters ? JSON.parse(JSON.stringify(form.value.lmParameters)) : undefined,
   };
 
-  if (!form.value.providerProfiles) form.value.providerProfiles = [];
+  if (!form.value.providerProfiles) {
+    form.value.providerProfiles = [];
+  }
   form.value.providerProfiles.push(newProviderProfile);
   await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
 
@@ -885,21 +906,6 @@ function handleQuickProviderProfileChange() {
   selectedProviderProfileId.value = '';
 }
 
-function addHeader() {
-  const endpoint = form.value.endpoint;
-  if (!isHttpEndpoint(endpoint)) return;
-  endpointHttpHeaders.value = [
-    ...(endpoint.httpHeaders ?? []),
-    ['', ''],
-  ];
-}
-
-function removeHeader({ index }: { index: number }) {
-  const headers = endpointHttpHeaders.value;
-  if (headers === undefined) return;
-  endpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
-}
-
 // Auto-fetch for localhost or transformers_js
 watch([endpointUrl, endpointType], ([url, type]) => {
   if (
@@ -910,6 +916,100 @@ watch([endpointUrl, endpointType], ([url, type]) => {
     fetchModels();
   }
 });
+
+const mainReasoningDisabled = computed(() => endpointType.value === 'browser_provided_lm');
+
+function setMainReasoningEffort({ effort }: { effort: Reasoning['effort'] }): void {
+  if (mainReasoningDisabled.value || effort === form.value.lmParameters?.reasoning.effort) {
+    return;
+  }
+  const current = form.value.lmParameters ?? EMPTY_LM_PARAMETERS;
+  form.value.lmParameters = { ...current, reasoning: { ...current.reasoning, effort } };
+}
+
+const settingsId = useId();
+const titleOpen = ref(false);
+const titleTrigger = ref<HTMLButtonElement | null>(null);
+const titleDetailsId = `${settingsId}-title-details`;
+
+type EndpointChoice = { value: TitleEndpointTypeSelectValue, label: string | undefined, detail?: string, disabled?: boolean, source?: SettingsSourcePresentation };
+
+function endpointChoices({ current, title }: { current: TitleEndpointTypeSelectValue, title: boolean }): EndpointChoice[] {
+  const transformersUnavailable = getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available';
+  const choices: EndpointChoice[] = [
+    { value: 'openai', label: lazyStrings.ConnectionTab__openai_compatible(), detail: endpointTypeDescription({ endpointType: 'openai' }) },
+    { value: 'ollama', label: lazyStrings.ConnectionTab__ollama(), detail: endpointTypeDescription({ endpointType: 'ollama' }) },
+  ];
+  if (rpcEnabled.value || current === 'naidan_rpc') {
+    choices.push({ value: 'naidan_rpc', label: rpcEnabled.value ? lazyStrings.naidanRpc__title() : lazyStrings.naidanRpc__disabled(), detail: endpointTypeDescription({ endpointType: 'naidan_rpc' }), disabled: !rpcEnabled.value });
+  }
+  choices.push(
+    { value: 'llama_cpp_browser', label: lazyStrings.llamaCppBrowser__endpoint_label(), detail: endpointTypeDescription({ endpointType: 'llama_cpp_browser' }), disabled: getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available' },
+    { value: 'transformers_js', label: lazyStrings.ConnectionTab__transformers_js_experimental(), detail: !title && transformersUnavailable ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : endpointTypeDescription({ endpointType: 'transformers_js' }), disabled: transformersUnavailable },
+    { value: 'browser_provided_lm', label: lazyStrings.SHARED__browser_provided(), detail: !title && !isPromptApiSupported.value ? lazyStrings.ConnectionTab__browser_api_not_available() : endpointTypeDescription({ endpointType: 'browser_provided_lm' }) },
+  );
+  switch (current) {
+  case 'unsupported_experimental_endpoint': {
+    const unsupported: EndpointChoice = { value: current, label: lazyStrings.SHARED__unsupported_experimental_endpoint(), disabled: true };
+    if (title) {
+      choices.unshift(unsupported);
+    } else {
+      choices.push(unsupported);
+    }
+    break;
+  }
+  case 'same_scope':
+  case 'naidan_rpc':
+  case 'openai':
+  case 'ollama':
+  case 'llama_cpp_browser':
+  case 'transformers_js':
+  case 'browser_provided_lm':
+    break;
+  default: {
+    const _ex: never = current;
+    throw new Error(`Unhandled endpoint choice: ${_ex}`);
+  }
+  }
+  return choices;
+}
+
+const mainEndpointChoices = computed(() => endpointChoices({ current: endpointType.value, title: false }));
+const conversationSource = computed<SettingsSourcePresentation>(() => ({ label: lazyStrings.ConnectionTab__regular_conversation(), description: lazyStrings.ConnectionTab__uses_each_conversations_settings() }));
+const titleEndpointChoices = computed<EndpointChoice[]>(() => [
+  { value: 'same_scope', label: lazyStrings.ConnectionTab__conversation_connection(), source: conversationSource.value },
+  ...endpointChoices({ current: globalTitleEndpointSelectValue.value, title: true }),
+]);
+const titleModelPresentation = computed(() => globalTitleEndpointUsesSameScope.value
+  ? { id: undefined, source: conversationSource.value }
+  : undefined);
+const profileChoices = computed(() => [
+  { value: '', label: lazyStrings.ConnectionTab__load_saved_profile(), disabled: true },
+  ...(form.value.providerProfiles ?? []).map(profile => ({ value: idToRaw({ id: profile.id }), label: profile.name, detail: endpointTypeLabel({ endpointType: profile.endpoint.type }) })),
+]);
+const titleSummary = computed(() => !globalTitleGenerationEnabled.value
+  ? lazyStrings.ConnectionTab__off()
+  : globalTitleModelId.value || lazyStrings.ConnectionTab__conversation_model());
+
+function changeMainEndpoint({ value }: { value: string }): void {
+  const type = titleEndpointTypeFromSelectValue({ value });
+  switch (type) {
+  case 'same_scope': return;
+  case 'openai':
+  case 'ollama':
+  case 'naidan_rpc':
+  case 'llama_cpp_browser':
+  case 'transformers_js':
+  case 'browser_provided_lm':
+  case 'unsupported_experimental_endpoint':
+    endpointType.value = type;
+    return;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint choice: ${_ex}`);
+  }
+  }
+}
 
 defineExpose({
   fetchModels,
@@ -922,424 +1022,287 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="flex-1 flex flex-col min-h-0">
-    <div tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-      <div tw-class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
-        <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-10 duration-400">
-
-          <!-- Quick Switcher (If profiles exist) -->
-          <div v-if="form.providerProfiles && form.providerProfiles.length > 0" tw-class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-2xl space-y-3 shadow-sm">
-            <label tw-class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__quick_profile_switcher() }}</label>
-            <div tw-class="flex gap-2">
-              <select
-                v-model="selectedProviderProfileId"
-                @change="handleQuickProviderProfileChange"
-                tw-class="flex-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                data-testid="setting-quick-provider-profile-select"
-              >
-                <option value="" disabled>{{ lazyStrings.ConnectionTab__load_saved_profile() }}</option>
-                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
-              </select>
-            </div>
+  <section class="connection-settings" tw-class="flex min-h-0 min-w-0 flex-1 flex-col bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+    <div tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div tw-class="mx-auto w-full max-w-4xl px-5 pb-6 pt-5 sm:px-7 sm:pt-6">
+        <div class="connection-toolbar" tw-class="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div v-if="form.providerProfiles?.length" class="connection-profile" tw-class="min-w-0 flex-1">
+            <SettingsSelect v-model="selectedProviderProfileId" :options="profileChoices" :label="lazyStrings.ConnectionTab__quick_profile_switcher()" presentation="toolbar" @update:model-value="handleQuickProviderProfileChange" data-testid="setting-quick-provider-profile-select" />
           </div>
+          <button type="button" class="connection-text-button" tw-class="ml-auto inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2" :title="lazyStrings.ConnectionTab__copy_url_with_current_settings()" @click="copySetupUrl" data-testid="setting-copy-setup-url">
+            <CheckIcon v-if="copied" tw-class="h-3.5 w-3.5 shrink-0" /><LinkIcon v-else tw-class="h-3.5 w-3.5 shrink-0" />
+            <span class="connection-feedback-label"><span :aria-hidden="copied" :style="{ visibility: copied ? 'hidden' : 'visible' }">{{ lazyStrings.ConnectionTab__copy_setup_url() }}</span><span :aria-hidden="!copied" :style="{ visibility: copied ? 'visible' : 'hidden' }">{{ lazyStrings.ConnectionTab__url_copied() }}</span></span>
+          </button>
+        </div>
 
-          <section tw-class="space-y-6">
-            <div tw-class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <div tw-class="flex items-center gap-2">
-                <GlobeIcon tw-class="w-5 h-5 text-blue-500" />
-                <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__endpoint_configuration() }}</h2>
-              </div>
-              <button
-                @click="copySetupUrl"
-                tw-class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all border border-blue-100/50 dark:border-blue-900/30"
-                :title="lazyStrings.ConnectionTab__copy_url_with_current_settings()"
-                data-testid="setting-copy-setup-url"
-              >
-                <CheckIcon v-if="copied" tw-class="w-3 h-3" />
-                <LinkIcon v-else tw-class="w-3 h-3" />
-                <span>{{ copied ? lazyStrings.ConnectionTab__url_copied() : lazyStrings.ConnectionTab__copy_setup_url() }}</span>
-              </button>
+        <div class="connection-setup">
+          <div class="connection-provider" tw-class="min-w-0 space-y-2">
+            <span class="connection-label">{{ lazyStrings.ConnectionTab__connection() }}</span>
+            <SettingsSelect :model-value="endpointType" :options="mainEndpointChoices" :label="lazyStrings.ConnectionTab__api_provider()" @update:model-value="value => changeMainEndpoint({ value })" data-testid="setting-provider-select" />
+          </div>
+          <div class="connection-model" tw-class="min-w-0 space-y-2" data-testid="connection-model-selection">
+            <span class="connection-label">{{ lazyStrings.ConnectionTab__default_model() }}</span>
+            <div tw-class="flex min-w-0 items-stretch overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700/60 dark:bg-gray-800/55">
+              <ModelSelector surface="settings" frame="embedded" :model-value="form.defaultModelId" @update:model-value="value => { form.defaultModelId = value; }" :models="sortedModels" :loading="isFetchingModels" :disabled="endpointType === 'browser_provided_lm'" :placeholder="lazyStrings.ConnectionTab__none()" allow-clear :clear-label="lazyStrings.ConnectionTab__none()" @refresh="fetchModels" data-testid="setting-model-select" />
+              <router-link v-if="endpointType === 'llama_cpp_browser' || endpointType === 'transformers_js'" :to="{ query: { ...$route?.query, settings: endpointType === 'llama_cpp_browser' ? 'llama-cpp-browser' : 'transformers-js' } }" :title="lazyStrings.ConnectionTab__model_management()" :aria-label="lazyStrings.ConnectionTab__model_management()" tw-class="flex shrink-0 items-center justify-center gap-1.5 border-l border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-800" data-testid="setting-model-management"><FolderOpenIcon tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span>{{ lazyStrings.ConnectionTab__model_management() }}</span></router-link>
             </div>
-
-            <div tw-class="grid grid-cols-1 gap-8">
-              <div tw-class="space-y-2">
-                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__api_provider() }}</label>
-                <select
-                  v-model="endpointType"
-                  tw-class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                  style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                  data-testid="setting-provider-select"
-                >
-                  <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
-                  <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
-                  <option v-else-if="endpointType === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
-                  <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
-                  <option :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'" value="transformers_js">
-                    {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available' ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
-                  </option>
-                  <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">
-                    {{ lazyStrings.SHARED__browser_provided() }}
-                  </option>
-                  <option
-                    v-if="endpointType === 'unsupported_experimental_endpoint'"
-                    value="unsupported_experimental_endpoint"
-                    disabled
-                  >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
-                </select>
-                <RpcRegistrationSelect v-if="form.endpoint.type === 'naidan_rpc'" v-model="form.endpoint.registrationId" />
-                <PromptApiStatus v-if="endpointType === 'browser_provided_lm'" show-ready tw-class="mt-3" />
+            <ReasoningSettings :selected-effort="form.lmParameters?.reasoning.effort" :disabled="mainReasoningDisabled" surface="plain" notice="inline-help" @update:effort="effort => setMainReasoningEffort({ effort })" data-testid="setting-main-reasoning-select" />
+            <p tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
+          </div>
+          <div class="connection-details" tw-class="min-w-0 space-y-4">
+            <RpcRegistrationSelect v-if="form.endpoint.type === 'naidan_rpc'" v-model="form.endpoint.registrationId" surface="settings" />
+            <PromptApiStatus v-if="endpointType === 'browser_provided_lm'" show-ready />
+            <template v-if="isHttpEndpoint(form.endpoint)">
+              <EndpointPresetButtons :endpoint="form.endpoint" test-id-prefix="endpoint-preset" @apply="preset => applyPreset({ preset })" />
+              <div>
+                <div tw-class="mb-2 flex min-h-8 items-center justify-between gap-3">
+                  <label :for="`${settingsId}-url`" class="connection-field-label">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
+                  <button type="button" class="connection-text-button" tw-class="inline-flex min-h-8 shrink-0 items-center gap-1.5 disabled:cursor-wait disabled:opacity-50" :disabled="isFetchingModels" :title="lazyStrings.ConnectionTab__check_connection()" @click="fetchModels" data-testid="setting-check-connection"><span tw-class="grid h-3.5 w-3.5 place-items-center"><Loader2Icon v-if="isFetchingModels" tw-class="h-3.5 w-3.5 animate-spin" /><CheckIcon v-else-if="connectionSuccess" tw-class="h-3.5 w-3.5 text-green-600 dark:text-green-400" /><ActivityIcon v-else tw-class="h-3.5 w-3.5" /></span>{{ lazyStrings.ConnectionTab__check_connection() }}</button>
+                </div>
+                <span v-if="connectionSuccess" role="status" tw-class="sr-only" data-testid="setting-connection-success">{{ lazyStrings.ConnectionTab__connected() }}</span>
+                <input :id="`${settingsId}-url`" v-model="endpointUrl" class="connection-input" type="url" :placeholder="endpointUrlPlaceholder({ endpointType })" spellcheck="false" data-testid="setting-url-input" />
+                <p tw-class="mt-2 text-xs leading-5 text-gray-400 dark:text-gray-500" data-testid="setting-auto-check-hint">{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
               </div>
+              <HttpHeadersEditor :model-value="endpointHttpHeaders ?? []" @update:model-value="value => endpointHttpHeaders = value" test-id-prefix="setting-http-header" :name-placeholder="lazyStrings.ConnectionTab__header_name_example()" />
+            </template>
+          </div>
+        </div>
+        <p v-if="error" role="alert" tw-class="mt-3 text-xs leading-5 text-red-600 dark:text-red-400" data-testid="setting-connection-error">{{ error }}</p>
+        <Transition tw-enter-active-class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none" tw-enter-from-class="grid-rows-[0fr] opacity-0" tw-enter-to-class="grid-rows-[1fr] opacity-100" tw-leave-active-class="grid transition-[grid-template-rows,opacity] duration-150 ease-in motion-reduce:transition-none" tw-leave-from-class="grid-rows-[1fr] opacity-100" tw-leave-to-class="grid-rows-[0fr] opacity-0">
+          <div v-if="endpointType === 'ollama'" tw-class="grid" data-testid="ollama-management-transition"><div tw-class="overflow-hidden"><OllamaManagementView presentation="settings" :endpoint-url="endpointUrl" :endpoint-http-headers="endpointHttpHeaders" :fake-lm-debug-mode-status="form.experimental?.fakeLm ?? 'disabled'" /></div></div>
+        </Transition>
 
-              <!-- Endpoint URL -->
-              <div tw-class="space-y-4" v-if="isHttpEndpoint(form.endpoint)">
-                <div tw-class="flex items-center justify-between ml-1">
-                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
-                  <div tw-class="flex flex-wrap gap-1.5">
-                    <button
-                      v-for="preset in ENDPOINT_PRESETS"
-                      :key="preset.name"
-                      @click="applyPreset({ preset })"
-                      type="button"
-                      :tw-class="['px-3 py-1 text-[10px] font-bold rounded-lg border transition-all', endpointUrl === preset.url && endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600']"
-                      :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
-                    >
-                      {{ preset.name }}
-                    </button>
-                  </div>
-                </div>
-                <div tw-class="flex gap-2">
-                  <input
-                    v-model="endpointUrl"
-                    type="text"
-                    tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                    placeholder="http://localhost:11434"
-                    data-testid="setting-url-input"
-                  />
-                  <button
-                    @click="fetchModels"
-                    :tw-class="['px-6 py-2 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[180px] disabled:opacity-70 shadow-sm',
-                                connectionSuccess
-                                  ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800'
-                                  : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
-                    ]"
-                    :title="lazyStrings.ConnectionTab__check_connection()"
-                    :disabled="isFetchingModels"
-                    data-testid="setting-check-connection"
-                  >
-                    <span tw-class="relative w-4 h-4 flex items-center justify-center">
-                      <Loader2Icon v-if="isFetchingModels" tw-class="w-4 h-4 animate-spin absolute" />
-                      <CheckIcon v-else-if="connectionSuccess" class="animate-in zoom-in" tw-class="w-4 h-4 text-green-600 dark:text-green-400 duration-300" />
-                      <ActivityIcon v-else tw-class="w-4 h-4" />
-                    </span>
-                    <span tw-class="text-xs font-bold">{{ connectionSuccess ? lazyStrings.ConnectionTab__connected() : lazyStrings.ConnectionTab__check_connection() }}</span>
-                  </button>
-                </div>
-                <!-- Info message about auto-connection check -->
-                <div tw-class="flex items-start gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700/80 dark:text-blue-300/80 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/20 ml-1">
-                  <GlobeIcon tw-class="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
-                </div>
-                <!-- Error message container -->
-                <div v-if="error" tw-class="mt-2">
-                  <p class="animate-in fade-in slide-in-from-top-1" tw-class="text-xs text-red-500 font-bold ml-1 duration-200 leading-relaxed">{{ error }}</p>
-                </div>
-              </div>
-
-              <!-- Custom HTTP Headers -->
-              <div v-if="isHttpEndpoint(form.endpoint)" tw-class="space-y-4">
-                <div tw-class="flex items-center justify-between ml-1">
-                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
-                  <button
-                    @click="addHeader"
-                    type="button"
-                    tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
-                  >
-                    <PlusIcon tw-class="w-3 h-3" />
-                    {{ lazyStrings.ConnectionTab__add_header() }}
-                  </button>
-                </div>
-
-                <div v-if="endpointHttpHeaders && endpointHttpHeaders.length > 0" tw-class="space-y-2">
-                  <div
-                    v-for="(header, index) in endpointHttpHeaders"
-                    :key="index"
-                    class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
-                  >
-                    <input
-                      v-model="header[0]"
-                      type="text"
-                      tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      :placeholder="lazyStrings.ConnectionTab__header_name_example()"
-                    />
-                    <input
-                      v-model="header[1]"
-                      type="text"
-                      tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      :placeholder="lazyStrings.ConnectionTab__value()"
-                    />
-                    <button
-                      @click="removeHeader({ index })"
-                      tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2Icon tw-class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div v-else tw-class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
-              </div>
+        <section tw-class="mt-6 border-t border-gray-200/70 pt-5 dark:border-gray-800">
+          <label :for="`${settingsId}-prompt`" class="connection-label" tw-class="mb-3">{{ lazyStrings.ConnectionTab__global_system_prompt() }}</label>
+          <textarea :id="`${settingsId}-prompt`" v-model="form.systemPrompt" rows="4" class="connection-input connection-prompt" :placeholder="lazyStrings.ConnectionTab__helpful_ai_assistant_placeholder()" data-testid="setting-system-prompt-textarea" />
+          <p tw-class="mt-2 text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ConnectionTab__applied_to_all_new_chats() }}</p>
+        </section>
+        <div tw-class="mt-5">
+          <SettingsDisclosure :title="lazyStrings.ConnectionTab__generation_parameters()" :summary="hasLmParameterOverrides({ lmParameters: form.lmParameters }) ? lazyStrings.ConnectionTab__custom_parameters() : lazyStrings.ConnectionTab__provider_defaults()" test-id="setting-parameters-disclosure"><template #icon><SlidersHorizontalIcon tw-class="h-4 w-4" /></template>
+            <fieldset :disabled="endpointType === 'browser_provided_lm'" :inert="endpointType === 'browser_provided_lm'" :tw-class="['min-w-0', endpointType === 'browser_provided_lm' && 'opacity-45']"><LmParametersEditor v-model="form.lmParameters" /></fieldset>
+          </SettingsDisclosure>
+          <section tw-class="border-t border-gray-200/70 dark:border-gray-800">
+            <div tw-class="flex min-h-14 items-center gap-3">
+              <button ref="titleTrigger" type="button" :aria-expanded="titleOpen" :aria-controls="titleDetailsId" tw-class="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" @click="titleOpen = !titleOpen" data-testid="setting-title-disclosure"><TypeIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" /><span class="connection-label">{{ lazyStrings.ConnectionTab__auto_title_generation() }}</span><span tw-class="ml-auto min-w-0 truncate text-xs text-gray-500 dark:text-gray-400">{{ titleSummary }}</span><ChevronDownIcon :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200', titleOpen && 'rotate-180']" /></button>
+              <label tw-class="relative inline-flex h-9 w-11 shrink-0 cursor-pointer items-center justify-center rounded-lg focus-within:ring-2 focus-within:ring-blue-500/30"><input type="checkbox" :checked="globalTitleGenerationEnabled" :aria-label="lazyStrings.ConnectionTab__auto_title_generation()" @change="handleGlobalAutoTitleChange({ event: $event })" tw-class="sr-only" data-testid="setting-auto-title-checkbox" /><span :tw-class="['relative block h-5 w-9 rounded-full border transition-colors duration-200 motion-reduce:transition-none', globalTitleGenerationEnabled ? 'border-blue-500 bg-blue-500 hover:border-blue-400 hover:bg-blue-400' : 'border-gray-300/80 bg-gray-100 dark:border-gray-600/70 dark:bg-gray-800/80']"><span :tw-class="['absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full transition-transform duration-200 motion-reduce:transition-none', globalTitleGenerationEnabled ? 'translate-x-4 bg-white' : 'bg-gray-400 dark:bg-gray-500']" /></span></label>
             </div>
-
-            <Transition
-              tw-enter-active-class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
-              tw-enter-from-class="grid-rows-[0fr] opacity-0"
-              tw-enter-to-class="grid-rows-[1fr] opacity-100"
-              tw-leave-active-class="grid transition-[grid-template-rows,opacity] duration-150 ease-in motion-reduce:transition-none"
-              tw-leave-from-class="grid-rows-[1fr] opacity-100"
-              tw-leave-to-class="grid-rows-[0fr] opacity-0"
-            >
-              <div v-if="endpointType === 'ollama'" tw-class="grid" data-testid="ollama-management-transition">
-                <div tw-class="overflow-hidden">
-                  <OllamaManagementView
-                    :endpoint-url="endpointUrl"
-                    :endpoint-http-headers="endpointHttpHeaders"
-                    :fake-lm-debug-mode-status="form.experimental?.fakeLm ?? 'disabled'"
-                  />
+            <SettingsCollapse :id="titleDetailsId" :open="titleOpen" :return-focus="titleTrigger ?? undefined">
+              <fieldset :disabled="!globalTitleGenerationEnabled" :inert="!globalTitleGenerationEnabled" :aria-disabled="!globalTitleGenerationEnabled" :tw-class="['min-w-0 space-y-4 pb-5 pt-1', !globalTitleGenerationEnabled && 'opacity-45']">
+                <div class="connection-title-grid">
+                  <div tw-class="min-w-0 space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__title_endpoint() }}</span><SettingsSelect :model-value="globalTitleEndpointSelectValue" :options="titleEndpointChoices" :label="lazyStrings.ConnectionTab__title_endpoint()" :disabled="!globalTitleGenerationEnabled" @update:model-value="value => setGlobalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value }) })" data-testid="setting-title-endpoint-type-select" /></div>
+                  <div tw-class="min-w-0 space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__title_generation_model() }}</span><ModelSelector surface="settings" :model-value="globalTitleModelId" :inherited-model="titleModelPresentation" @update:model-value="value => setGlobalTitleModelId({ modelId: value })" :models="globalTitleModelOptions" :loading="globalTitleModelLoading" :disabled="!globalTitleGenerationEnabled || globalEffectiveTitleEndpoint.type === 'browser_provided_lm'" :placeholder="globalTitleEndpointUsesSameScope ? lazyStrings.ConnectionTab__conversation_model() : undefined" :allow-clear="globalTitleModelAllowClear" :clear-label="lazyStrings.ConnectionTab__conversation_model()" @refresh="fetchTitleEndpointModels" data-testid="setting-title-model-select" /></div>
                 </div>
-              </div>
-            </Transition>
-          </section>
-
-          <section data-testid="connection-model-selection" tw-class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-            <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <BotIcon tw-class="w-5 h-5 text-blue-500" />
-              <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__model_selection() }}</h2>
-            </div>
-
-            <div tw-class="space-y-8">
-              <div tw-class="space-y-2">
-                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
-                <ModelSelector
-                  :model-value="form.defaultModelId"
-                  @update:model-value="value => { form.defaultModelId = value; }"
-                  :models="sortedModels"
-                  :loading="isFetchingModels"
-                  :disabled="endpointType === 'browser_provided_lm'"
-                  :placeholder="lazyStrings.ConnectionTab__none()"
-                  allow-clear
-                  :clear-label="lazyStrings.ConnectionTab__none()"
-                  @refresh="fetchModels"
-                  data-testid="setting-model-select"
-                />
-                <TransformersJsUpsell :show="endpointType === 'transformers_js'" />
-                <LlamaCppBrowserUpsell :show="endpointType === 'llama_cpp_browser'" />
-                <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
-              </div>
-
-              <div tw-class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-5 shadow-sm">
-                <div tw-class="flex items-center justify-between">
-                  <div tw-class="flex items-center gap-3">
-                    <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                      <TypeIcon tw-class="w-4 h-4 text-blue-500" />
-                    </div>
-                    <span tw-class="text-sm font-bold text-gray-700 dark:text-gray-300">{{ lazyStrings.ConnectionTab__auto_title_generation() }}</span>
-                  </div>
-                  <label tw-class="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      :checked="globalTitleGenerationEnabled"
-                      @change="handleGlobalAutoTitleChange({ event: $event })"
-                      tw-class="sr-only peer"
-                      data-testid="setting-auto-title-checkbox"
-                    >
-                    <div tw-class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-
-                <div :tw-class="['grid grid-cols-1 md:grid-cols-2 gap-4 opacity-50 transition-all duration-300', { 'opacity-100': globalTitleGenerationEnabled }]">
-                  <div tw-class="space-y-2">
-                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_endpoint() }}</label>
-                    <select
-                      :value="globalTitleEndpointSelectValue"
-                      @change="handleGlobalTitleEndpointTypeChange({ event: $event })"
-                      :disabled="!globalTitleGenerationEnabled"
-                      tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                      data-testid="setting-title-endpoint-type-select"
-                    >
-                      <option value="same_scope">{{ lazyStrings.ConnectionTab__use_current_chat_endpoint() }}</option>
-                      <option
-                        v-if="globalTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
-                        value="unsupported_experimental_endpoint"
-                        disabled
-                      >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
-                      <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
-                      <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
-                      <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
-                      <option v-else-if="globalTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
-                      <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
-                      <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
-                      <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>
-                    </select>
-                  </div>
-
-                  <RpcRegistrationSelect
-                    v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'"
-                    :model-value="globalTitleEndpoint.registrationId"
-                    @update:model-value="registrationId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })"
-                  />
-
-                  <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-2">
-                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
-                    <input
-                      v-model="globalTitleEndpointUrl"
-                      @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
-                      type="text"
-                      tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      placeholder="http://localhost:11434"
-                      data-testid="setting-title-endpoint-url-input"
-                    />
-                  </div>
-
-                  <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
-                    <div tw-class="flex items-center justify-between ml-1">
-                      <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
-                      <button
-                        @click="addGlobalTitleHeader"
-                        type="button"
-                        :disabled="!globalTitleGenerationEnabled"
-                        tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:text-gray-400 transition-colors flex items-center gap-1"
-                      >
-                        <PlusIcon tw-class="w-3 h-3" />
-                        {{ lazyStrings.ConnectionTab__add_header() }}
-                      </button>
-                    </div>
-
-                    <div v-if="globalTitleEndpointHttpHeaders && globalTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
-                      <div
-                        v-for="(header, index) in globalTitleEndpointHttpHeaders"
-                        :key="index"
-                        class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
-                      >
-                        <input
-                          :value="header[0]"
-                          @input="updateGlobalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
-                          type="text"
-                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
-                          :placeholder="lazyStrings.ConnectionTab__header_name_example()"
-                          :disabled="!globalTitleGenerationEnabled"
-                          data-testid="setting-title-http-header-name-input"
-                        />
-                        <input
-                          :value="header[1]"
-                          @input="updateGlobalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
-                          type="text"
-                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
-                          :placeholder="lazyStrings.ConnectionTab__value()"
-                          :disabled="!globalTitleGenerationEnabled"
-                          data-testid="setting-title-http-header-value-input"
-                        />
-                        <button
-                          @click="removeGlobalTitleHeader({ index })"
-                          :disabled="!globalTitleGenerationEnabled"
-                          tw-class="p-2 text-gray-400 hover:text-red-500 disabled:hover:text-gray-400 transition-colors"
-                          data-testid="setting-title-http-header-remove-button"
-                        >
-                          <Trash2Icon tw-class="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div v-else tw-class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
-                  </div>
-
-                  <div tw-class="space-y-2 md:col-span-2">
-                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
-                    <ModelSelector
-                      :model-value="globalTitleModelId"
-                      @update:model-value="value => setGlobalTitleModelId({ modelId: value })"
-                      :models="globalTitleModelOptions"
-                      :loading="globalTitleModelLoading"
-                      :disabled="!globalTitleGenerationEnabled || globalEffectiveTitleEndpoint.type === 'browser_provided_lm'"
-                      :placeholder="globalTitleEndpointUsesSameScope ? lazyStrings.ConnectionTab__use_current_chat_model() : undefined"
-                      :allow-clear="globalTitleModelAllowClear"
-                      :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
-                      @refresh="fetchTitleEndpointModels"
-                      data-testid="setting-title-model-select"
-                    />
-                  </div>
-
-
-                  <div tw-class="md:col-span-2">
-                    <ReasoningSettings
-                      :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })"
-                      :selected-value="globalTitleReasoningSelectValue"
-                      :leading-options="globalTitleReasoningLeadingOptions"
-                      :heading="lazyStrings.ConnectionTab__title_reasoning()"
-                      :disabled="!globalTitleGenerationEnabled"
-                      surface="card"
-                      @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })"
-                      data-testid="setting-title-reasoning-select"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section tw-class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-            <div tw-class="flex items-center gap-2 pb-3">
-              <MessageSquareQuoteIcon tw-class="w-5 h-5 text-blue-500" />
-              <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__global_context_and_parameters() }}</h2>
-            </div>
-
-            <div tw-class="space-y-8">
-              <!-- System Prompt -->
-              <div tw-class="space-y-2">
-                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__global_system_prompt() }}</label>
-                <textarea
-                  v-model="form.systemPrompt"
-                  rows="4"
-                  tw-class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                  :placeholder="lazyStrings.ConnectionTab__helpful_ai_assistant_placeholder()"
-                  data-testid="setting-system-prompt-textarea"
-                ></textarea>
-                <p tw-class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">{{ lazyStrings.ConnectionTab__applied_to_all_new_chats() }}</p>
-              </div>
-
-              <!-- LM Parameters -->
-              <fieldset
-                :disabled="endpointType === 'browser_provided_lm'"
-                :tw-class="['bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800', { 'opacity-50': endpointType === 'browser_provided_lm' }]"
-              >
-                <LmParametersEditor v-model="form.lmParameters" />
+                <ReasoningSettings :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })" :selected-value="globalTitleReasoningSelectValue" :leading-options="globalTitleReasoningLeadingOptions" :heading="lazyStrings.ConnectionTab__title_reasoning()" :disabled="!globalTitleGenerationEnabled" surface="plain" notice="inline-help" @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })" data-testid="setting-title-reasoning-select" />
+                <RpcRegistrationSelect v-if="globalTitleEndpoint !== 'same_scope' && globalTitleEndpoint.type === 'naidan_rpc'" :model-value="globalTitleEndpoint.registrationId" surface="settings" @update:model-value="registrationId => setFormTitleGeneration({ titleGeneration: { endpoint: { type: 'naidan_rpc', registrationId }, model: explicitSettingsTitleModel({ modelId: globalTitleModelId }) } })" />
+                <template v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)">
+                  <label tw-class="block space-y-2"><span class="connection-field-label">{{ lazyStrings.ConnectionTab__endpoint_url() }}</span><input v-model="globalTitleEndpointUrl" @keyup.enter="($event.target as HTMLInputElement).blur()" type="url" class="connection-input" :placeholder="endpointUrlPlaceholder({ endpointType: globalEffectiveTitleEndpoint.type })" data-testid="setting-title-endpoint-url-input" /></label>
+                  <p tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
+                  <HttpHeadersEditor :model-value="globalTitleEndpointHttpHeaders ?? []" @update:model-value="value => setGlobalTitleEndpointHttpHeaders({ httpHeaders: value })" test-id-prefix="setting-title-http-header" :name-placeholder="lazyStrings.ConnectionTab__header_name_example()" />
+                </template>
               </fieldset>
-            </div>
+            </SettingsCollapse>
           </section>
         </div>
       </div>
     </div>
-
-    <!-- Footer Actions -->
-    <div tw-class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
-      <button
-        @click="handleCreateProviderProfile"
-        tw-class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
-        data-testid="setting-save-provider-profile-button"
-      >
-        <BookmarkPlusIcon tw-class="w-4 h-4" />
-        <span>{{ lazyStrings.ConnectionTab__save_as_new_profile() }}</span>
-      </button>
-
-      <button
-        @click="handleSave"
-        :disabled="!hasUnsavedChanges"
-        tw-class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
-        data-testid="setting-save-button"
-      >
-        <CheckCircle2Icon v-if="saveSuccess" tw-class="w-4 h-4" />
-        <SaveIcon v-else tw-class="w-4 h-4" />
-        <span>{{ saveSuccess ? lazyStrings.ConnectionTab__settings_saved() : lazyStrings.ConnectionTab__save_changes() }}</span>
-      </button>
-    </div>
-  </div>
+    <footer tw-class="shrink-0 border-t border-gray-200/70 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div tw-class="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-end gap-2.5 px-5 py-3.5 sm:px-7">
+        <button type="button" class="connection-footer-secondary" @click="handleCreateProviderProfile" data-testid="setting-save-provider-profile-button"><BookmarkPlusIcon tw-class="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" /><span>{{ lazyStrings.ConnectionTab__save_as_new_profile() }}</span></button>
+        <button type="button" class="connection-footer-primary" :disabled="!hasUnsavedChanges" @click="handleSave" data-testid="setting-save-button"><CheckCircle2Icon v-if="saveSuccess" tw-class="h-4 w-4 shrink-0" /><SaveIcon v-else tw-class="h-4 w-4 shrink-0" /><span class="connection-feedback-label"><span :aria-hidden="saveSuccess" :style="{ visibility: saveSuccess ? 'hidden' : 'visible' }">{{ lazyStrings.ConnectionTab__save_changes() }}</span><span :aria-hidden="!saveSuccess" :style="{ visibility: saveSuccess ? 'visible' : 'hidden' }">{{ lazyStrings.ConnectionTab__settings_saved() }}</span></span></button>
+      </div>
+    </footer>
+  </section>
 </template>
+
+<style scoped>
+.connection-settings {
+  container-type: inline-size;
+}
+.connection-setup, .connection-title-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+}
+.connection-provider {
+  grid-row: 1;
+}
+.connection-model {
+  grid-row: 2;
+}
+.connection-details:empty {
+  display: none;
+}
+.connection-profile {
+  max-width: 19rem;
+}
+.connection-label {
+  display: block;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+.connection-field-label {
+  display: block;
+  color: #6b7280;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+.connection-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.625rem 0.875rem;
+  color: #1f2937;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.connection-input:focus-visible {
+  border-color: rgb(59 130 246 / 65%);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 10%);
+}
+.connection-prompt {
+  min-height: 7.5rem;
+  resize: vertical;
+  line-height: 1.65;
+}
+.connection-text-button {
+  border-radius: 0.375rem;
+  color: #2563eb;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+.connection-text-button:hover {
+  color: #1d4ed8;
+}
+.connection-text-button:focus-visible, .connection-footer-secondary:focus-visible, .connection-footer-primary:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 45%);
+  outline-offset: 2px;
+}
+.connection-feedback-label {
+  display: inline-grid;
+}
+.connection-feedback-label > span {
+  grid-area: 1 / 1;
+}
+.connection-footer-secondary, .connection-footer-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  gap: 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  transition: color 150ms, background 150ms, border-color 150ms;
+}
+.connection-footer-secondary {
+  margin-right: auto;
+  border-color: #e5e7eb;
+  background: #fff;
+  color: #4b5563;
+}
+.connection-footer-secondary:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+.connection-footer-primary {
+  min-width: 9rem;
+  background: #2563eb;
+  color: #fff;
+}
+.connection-footer-primary:hover:enabled {
+  background: #1d4ed8;
+}
+.connection-footer-primary:disabled {
+  cursor: default;
+  background: var(--color-gray-200);
+  color: var(--color-gray-400);
+}
+.dark .connection-label {
+  color: #e5e7eb;
+}
+.dark .connection-field-label {
+  color: #9ca3af;
+}
+.dark .connection-input {
+  border-color: rgb(55 65 81 / 60%);
+  background: rgb(31 41 55 / 55%);
+  color: #e5e7eb;
+}
+.dark .connection-text-button {
+  color: #60a5fa;
+}
+.dark .connection-text-button:hover {
+  color: #93c5fd;
+}
+.dark .connection-footer-secondary {
+  border-color: rgb(55 65 81 / 60%);
+  background: rgb(31 41 55 / 55%);
+  color: #d1d5db;
+}
+.dark .connection-footer-secondary:hover {
+  border-color: #4b5563;
+  background: rgb(55 65 81 / 45%);
+}
+.dark .connection-footer-primary:hover:enabled {
+  background: #3b82f6;
+}
+.dark .connection-footer-primary:disabled {
+  background: var(--color-gray-700);
+  color: var(--color-gray-500);
+}
+@container (min-width: 42rem) {
+  .connection-setup {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    grid-template-rows: max-content minmax(0, 1fr);
+    column-gap: 2rem;
+    row-gap: 1rem;
+  }
+  .connection-provider {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .connection-model {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .connection-details {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .connection-title-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+@container (max-width: 33rem) {
+  .connection-footer-secondary, .connection-footer-primary {
+    width: 100%;
+    margin-right: 0;
+  }
+}
+@container (max-width: 29rem) {
+  .connection-profile {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}
+@media (min-width: 48rem) {
+  .connection-toolbar {
+    padding-right: 2.5rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .connection-input, .connection-text-button, .connection-footer-secondary, .connection-footer-primary {
+    transition: none;
+  }
+}
+</style>

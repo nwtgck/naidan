@@ -48,7 +48,9 @@ const promptText = computed(() => formatWeshTerminalPrompt({ shellState: activeS
 
 function getHistory({ sessionId }: { sessionId: string }) {
   const existing = histories.get(sessionId);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    return existing;
+  }
   const created = createWeshTerminalHistory();
   histories.set(sessionId, created);
   return created;
@@ -56,7 +58,9 @@ function getHistory({ sessionId }: { sessionId: string }) {
 
 // Save/restore draft on session switch.
 watch(() => props.activeSessionId, (newId, oldId) => {
-  if (oldId) drafts.set(oldId, inputDraft.value);
+  if (oldId) {
+    drafts.set(oldId, inputDraft.value);
+  }
   inputDraft.value = newId ? (drafts.get(newId) ?? '') : '';
   completionCandidates.value = [];
   nextTick(() => {
@@ -81,9 +85,12 @@ watch(inputDraft, () => {
 watch(
   () => activeSession.value?.state,
   (state) => {
-    if (state === undefined) return;
+    if (state === undefined) {
+      return;
+    }
     switch (state) {
-    case 'ready': nextTick(focusInput); break;
+    case 'ready': nextTick(focusInput);
+      break;
     case 'initializing':
     case 'running':
     case 'error':
@@ -122,7 +129,9 @@ async function applyCompletion() {
   const sessionId = props.activeSessionId;
   const completeInput = props.completeInput;
   const input = inputRef.value;
-  if (sessionId === undefined || completeInput === undefined || input === null) return;
+  if (sessionId === undefined || completeInput === undefined || input === null) {
+    return;
+  }
 
   const cursor = input.selectionStart;
   const result = await completeInput({
@@ -132,7 +141,9 @@ async function applyCompletion() {
   });
   completionCandidates.value = result.candidates;
 
-  if (result.replacement === undefined) return;
+  if (result.replacement === undefined) {
+    return;
+  }
 
   const before = inputDraft.value.slice(0, result.replacement.start);
   const after = inputDraft.value.slice(result.replacement.end);
@@ -338,6 +349,11 @@ defineExpose({
 </template>
 
 <style scoped>
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 </style>

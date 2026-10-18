@@ -32,9 +32,13 @@ function getCapabilityMarker(type, checker) {
     const property = candidate.getProperties().find(item =>
       item.escapedName.toString().includes("workerCapabilityMarker")
     );
-    if (!property) continue;
+    if (!property) {
+      continue;
+    }
     const declaration = property.valueDeclaration ?? property.declarations?.[0];
-    if (!declaration) return undefined;
+    if (!declaration) {
+      return undefined;
+    }
     const markerType = checker.getTypeOfSymbolAtLocation(property, declaration);
     return getTypeName(markerType, checker).replace(/^"|"$/g, "");
   }
@@ -53,14 +57,20 @@ function declarationPath(type) {
 
 function isKnownAtomic({ type, checker }) {
   const name = getTypeName(type, checker);
-  if (/^(Date|RegExp|Blob|File|ArrayBuffer|DataView|Error|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(name)) return true;
+  if (/^(Date|RegExp|Blob|File|ArrayBuffer|DataView|Error|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(name)) {
+    return true;
+  }
 
   // Modern TypeScript gives native views an explicit backing-buffer argument.
   // Review the native declaration and its concrete ArrayBuffer argument, not
   // merely a similarly named user object. Shared/unknown buffers stay denied.
   const symbol = type.getSymbol();
-  if (!/^(DataView|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(symbol?.getName() ?? "")) return false;
-  if (!isTypeScriptLibSymbol({ symbol }) || !(type.objectFlags & ts.ObjectFlags.Reference)) return false;
+  if (!/^(DataView|Uint8Array|Uint8ClampedArray|Int8Array|Uint16Array|Int16Array|Uint32Array|Int32Array|Float32Array|Float64Array|BigInt64Array|BigUint64Array)$/.test(symbol?.getName() ?? "")) {
+    return false;
+  }
+  if (!isTypeScriptLibSymbol({ symbol }) || !(type.objectFlags & ts.ObjectFlags.Reference)) {
+    return false;
+  }
   const args = checker.getTypeArguments(type);
   return args.length === 1 && args[0].getSymbol()?.getName() === "ArrayBuffer"
     && isTypeScriptLibSymbol({ symbol: args[0].getSymbol() });
@@ -75,7 +85,9 @@ function isTypeScriptLibSymbol({ symbol }) {
 
 function isNativeReadableStreamSymbol({ symbol }) {
   const declarations = symbol?.declarations;
-  if (symbol?.getName() !== "ReadableStream" || !declarations?.length) return false;
+  if (symbol?.getName() !== "ReadableStream" || !declarations?.length) {
+    return false;
+  }
   const paths = declarations.map(declaration => declaration.getSourceFile().fileName.replace(/\\/g, "/"));
   // Node typings augment the DOM stream when both libraries are present.
   return paths.some(path => /\/typescript\/lib\/lib\.dom(?:\.[^/]+)?\.d\.ts$/.test(path))
@@ -97,7 +109,9 @@ function firstReturnViolation({ type, checker, path, depth = 24, seen = new Set(
       allowTransfer: true,
       allowCapability: true,
     });
-    if (violation) return violation;
+    if (violation) {
+      return violation;
+    }
   }
   return undefined;
 }
@@ -112,14 +126,18 @@ function proxyTargetViolation({ type, checker, path, depth, seen, analysis }) {
         for (let index = 0; index < parameters.length; index += 1) {
           const parameter = parameters[index];
           const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
-          if (!declaration) continue;
+          if (!declaration) {
+            continue;
+          }
           const parameterType = ts.isParameter(declaration) && declaration.type
             ? checker.getTypeFromTypeNode(declaration.type)
             : checker.getTypeOfSymbolAtLocation(parameter, declaration);
           const violation = firstViolation({
             type: parameterType, checker, path: `${path}.proxy.arg${index}`, depth: depth - 1, seen, analysis, allowProxy: true, allowTransfer: true, allowCapability: true,
           });
-          if (violation) return violation;
+          if (violation) {
+            return violation;
+          }
         }
         const violation = firstReturnViolation({
           type: signature.getReturnType(),
@@ -129,20 +147,28 @@ function proxyTargetViolation({ type, checker, path, depth, seen, analysis }) {
           seen,
           analysis,
         });
-        if (violation) return violation;
+        if (violation) {
+          return violation;
+        }
       }
       continue;
     }
 
     for (const property of checker.getPropertiesOfType(target)) {
-      if (property.escapedName.toString().includes("proxyMarker")) continue;
+      if (property.escapedName.toString().includes("proxyMarker")) {
+        continue;
+      }
       const declaration = property.valueDeclaration ?? property.declarations?.[0];
-      if (!declaration) continue;
+      if (!declaration) {
+        continue;
+      }
       const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
       const propertySignatures = propertyType.getCallSignatures();
       if (propertySignatures.length === 0) {
         const violation = firstViolation({ type: propertyType, checker, path: `${path}.proxy.${property.getName()}.return`, depth: depth - 1, seen, analysis });
-        if (violation) return violation;
+        if (violation) {
+          return violation;
+        }
         continue;
       }
       for (const signature of propertySignatures) {
@@ -156,7 +182,9 @@ function proxyTargetViolation({ type, checker, path, depth, seen, analysis }) {
           const violation = firstViolation({
             type: parameterType, checker, path: `${path}.proxy.${property.getName()}.arg${index}`, depth: depth - 1, seen, analysis, allowProxy: true, allowTransfer: true, allowCapability: true,
           });
-          if (violation) return violation;
+          if (violation) {
+            return violation;
+          }
         }
         const violation = firstReturnViolation({
           type: signature.getReturnType(),
@@ -166,7 +194,9 @@ function proxyTargetViolation({ type, checker, path, depth, seen, analysis }) {
           seen,
           analysis,
         });
-        if (violation) return violation;
+        if (violation) {
+          return violation;
+        }
       }
     }
   }
@@ -174,26 +204,48 @@ function proxyTargetViolation({ type, checker, path, depth, seen, analysis }) {
 }
 
 function firstViolation({ type, checker, path, depth = 24, seen = new Set(), analysis = { remaining: DEFAULT_ANALYSIS_BUDGET }, allowProxy = false, allowTransfer = false, allowCapability = false, transferScope = false, capabilityScope = new Set() }) {
-  if (analysis.remaining <= 0) return { path, reason: "analysis-budget-exceeded" };
+  if (analysis.remaining <= 0) {
+    return { path, reason: "analysis-budget-exceeded" };
+  }
   analysis.remaining -= 1;
-  if (depth <= 0) return { path, reason: "analysis-depth-exceeded" };
-  if (type.flags & ts.TypeFlags.Any) return { path, reason: "any" };
-  if (type.flags & ts.TypeFlags.Unknown) return { path, reason: "unknown" };
-  if (type.flags & ts.TypeFlags.TypeParameter) return { path, reason: `type-parameter-unreviewed:${getTypeName(type, checker)}` };
-  if (type.flags & ts.TypeFlags.Never) return undefined;
-  if (type.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return undefined;
-  if (type.flags & ts.TypeFlags.ESSymbolLike) return { path, reason: "symbol" };
+  if (depth <= 0) {
+    return { path, reason: "analysis-depth-exceeded" };
+  }
+  if (type.flags & ts.TypeFlags.Any) {
+    return { path, reason: "any" };
+  }
+  if (type.flags & ts.TypeFlags.Unknown) {
+    return { path, reason: "unknown" };
+  }
+  if (type.flags & ts.TypeFlags.TypeParameter) {
+    return { path, reason: `type-parameter-unreviewed:${getTypeName(type, checker)}` };
+  }
+  if (type.flags & ts.TypeFlags.Never) {
+    return undefined;
+  }
+  if (type.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) {
+    return undefined;
+  }
+  if (type.flags & ts.TypeFlags.ESSymbolLike) {
+    return { path, reason: "symbol" };
+  }
 
   if (hasProxyMarker(type)) {
-    if (!allowProxy) return { path, reason: "proxy-must-be-top-level" };
+    if (!allowProxy) {
+      return { path, reason: "proxy-must-be-top-level" };
+    }
     return proxyTargetViolation({ type, checker, path, depth, seen, analysis });
   }
 
   const transferMarker = hasTransferMarker(type);
   const capabilityMarker = getCapabilityMarker(type, checker);
-  if (transferMarker && !allowTransfer) return { path, reason: "transfer-must-be-top-level" };
+  if (transferMarker && !allowTransfer) {
+    return { path, reason: "transfer-must-be-top-level" };
+  }
   if (capabilityMarker !== undefined) {
-    if (!allowCapability) return { path, reason: "capability-marker-must-be-top-level" };
+    if (!allowCapability) {
+      return { path, reason: "capability-marker-must-be-top-level" };
+    }
     if (capabilityMarker !== "file-system-handle-clone" && capabilityMarker !== "readable-stream-transfer") {
       return { path, reason: `unknown-capability:${capabilityMarker}` };
     }
@@ -202,16 +254,22 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     // A top-level argument or return value can require both a transfer list and
     // an environment capability. Collect both markers before inspecting data.
     const nextCapabilityScope = new Set(capabilityScope);
-    if (capabilityMarker !== undefined) nextCapabilityScope.add(capabilityMarker);
+    if (capabilityMarker !== undefined) {
+      nextCapabilityScope.add(capabilityMarker);
+    }
     if (type.isIntersection()) {
       for (const member of type.types) {
-        if (hasTransferMarker(member) || hasCapabilityMarker(member, checker)) continue;
+        if (hasTransferMarker(member) || hasCapabilityMarker(member, checker)) {
+          continue;
+        }
         const violation = firstViolation({
           type: member, checker, path, depth: depth - 1, seen, analysis,
           transferScope: transferScope || transferMarker,
           capabilityScope: nextCapabilityScope,
         });
-        if (violation) return violation;
+        if (violation) {
+          return violation;
+        }
       }
       return undefined;
     }
@@ -222,7 +280,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   if (type.isUnionOrIntersection()) {
     for (const member of type.types) {
       const violation = firstViolation({ type: member, checker, path, depth: depth - 1, seen, analysis, allowProxy, allowTransfer, allowCapability, transferScope, capabilityScope });
-      if (violation) return violation;
+      if (violation) {
+        return violation;
+      }
     }
     return undefined;
   }
@@ -232,16 +292,24 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     return { path, reason: "function-must-be-proxied" };
   }
 
-  if (isKnownAtomic({ type, checker })) return undefined;
+  if (isKnownAtomic({ type, checker })) {
+    return undefined;
+  }
 
   const name = getTypeName(type, checker);
   const streamSymbol = type.getSymbol();
   if (isNativeReadableStreamSymbol({ symbol: streamSymbol })
       && (type.objectFlags & ts.ObjectFlags.Reference)) {
-    if (!transferScope) return { path, reason: "transfer-required:ReadableStream" };
-    if (!capabilityScope.has("readable-stream-transfer")) return { path, reason: "capability-sensitive:ReadableStream" };
+    if (!transferScope) {
+      return { path, reason: "transfer-required:ReadableStream" };
+    }
+    if (!capabilityScope.has("readable-stream-transfer")) {
+      return { path, reason: "capability-sensitive:ReadableStream" };
+    }
     const args = checker.getTypeArguments(type);
-    if (args.length !== 1) return { path, reason: "unreviewed-stream-chunk" };
+    if (args.length !== 1) {
+      return { path, reason: "unreviewed-stream-chunk" };
+    }
     return firstViolation({ type: args[0], checker, path: `${path}.chunk`, depth: depth - 1, seen, analysis });
   }
   if (name === "MessagePort") {
@@ -253,7 +321,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
       : { path, reason: `capability-sensitive:${name}` };
   }
 
-  if (seen.has(type)) return undefined;
+  if (seen.has(type)) {
+    return undefined;
+  }
   const nextSeen = new Set(seen);
   nextSeen.add(type);
 
@@ -261,7 +331,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     const args = checker.getTypeArguments(type);
     for (const arg of args) {
       const violation = firstViolation({ type: arg, checker, path: `${path}[]`, depth: depth - 1, seen: nextSeen, analysis, transferScope, capabilityScope });
-      if (violation) return violation;
+      if (violation) {
+        return violation;
+      }
     }
     return undefined;
   }
@@ -272,7 +344,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
     for (let index = 0; index < args.length; index += 1) {
       const segment = collectionName === "Map" ? (index === 0 ? "<key>" : "<value>") : "<value>";
       const violation = firstViolation({ type: args[index], checker, path: `${path}.${segment}`, depth: depth - 1, seen: nextSeen, analysis, transferScope, capabilityScope });
-      if (violation) return violation;
+      if (violation) {
+        return violation;
+      }
     }
     return undefined;
   }
@@ -280,12 +354,16 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   const stringIndexType = checker.getIndexTypeOfType(type, ts.IndexKind.String);
   if (stringIndexType) {
     const violation = firstViolation({ type: stringIndexType, checker, path: `${path}[string]`, depth: depth - 1, seen: nextSeen, analysis, transferScope, capabilityScope });
-    if (violation) return violation;
+    if (violation) {
+      return violation;
+    }
   }
   const numberIndexType = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
   if (numberIndexType) {
     const violation = firstViolation({ type: numberIndexType, checker, path: `${path}[number]`, depth: depth - 1, seen: nextSeen, analysis, transferScope, capabilityScope });
-    if (violation) return violation;
+    if (violation) {
+      return violation;
+    }
   }
   if ((stringIndexType || numberIndexType) && checker.getPropertiesOfType(type).length === 0) {
     return undefined;
@@ -304,7 +382,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   const properties = checker.getPropertiesOfType(type);
   for (const property of properties) {
     const declaration = property.valueDeclaration ?? property.declarations?.[0];
-    if (!declaration) continue;
+    if (!declaration) {
+      continue;
+    }
     const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
     const violation = firstViolation({
       type: propertyType,
@@ -316,7 +396,9 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
       transferScope,
       capabilityScope,
     });
-    if (violation) return violation;
+    if (violation) {
+      return violation;
+    }
   }
   return undefined;
 }
@@ -328,7 +410,9 @@ function getPromiseResult(type, checker) {
 
 function resolvedCallDeclarationName({ tsCall, checker }) {
   const declaration = checker.getResolvedSignature(tsCall)?.declaration;
-  if (!declaration || !("name" in declaration) || declaration.name === undefined) return undefined;
+  if (!declaration || !("name" in declaration) || declaration.name === undefined) {
+    return undefined;
+  }
   if (ts.isIdentifier(declaration.name) || ts.isStringLiteral(declaration.name)) {
     return declaration.name.text;
   }
@@ -353,21 +437,29 @@ export const rule = {
   },
   create(context) {
     const services = context.sourceCode.parserServices;
-    if (!services?.program || !services.esTreeNodeToTSNodeMap) return {};
+    if (!services?.program || !services.esTreeNodeToTSNodeMap) {
+      return {};
+    }
     const checker = services.program.getTypeChecker();
     const options = context.options[0] ?? {};
     const analysisBudget = options.analysisBudget ?? DEFAULT_ANALYSIS_BUDGET;
     const normalizedFilename = context.filename.replace(/\\/g, "/");
-    if (isTestFile(normalizedFilename)) return {};
+    if (isTestFile(normalizedFilename)) {
+      return {};
+    }
     const isAllowedGenericBridge = (options.genericBridgeFileSuffixes ?? [])
       .some(suffix => normalizedFilename.endsWith(suffix));
     const isLegacyUncheckedFile = (options.legacyUncheckedFileSuffixes ?? [])
       .some(suffix => normalizedFilename.endsWith(suffix));
-    if (isLegacyUncheckedFile) return {};
+    if (isLegacyUncheckedFile) {
+      return {};
+    }
     return {
       CallExpression(node) {
         const tsCall = services.esTreeNodeToTSNodeMap.get(node);
-        if (!ts.isCallExpression(tsCall)) return;
+        if (!ts.isCallExpression(tsCall)) {
+          return;
+        }
         const resolvedCalleeName = resolvedCallDeclarationName({ tsCall, checker });
         const isProjectWrap = resolvedCalleeName === "wrapWorkerRemote"
           || (node.callee.type === "Identifier" && node.callee.name === "wrapWorkerRemote");
@@ -380,11 +472,15 @@ export const rule = {
           && node.callee.property.type === "Identifier";
         const isComlinkWrap = isComlinkMember && node.callee.property.name === "wrap";
         const isComlinkExpose = isComlinkMember && node.callee.property.name === "expose";
-        if (!isProjectWrap && !isProjectExpose && !isComlinkWrap && !isComlinkExpose) return;
+        if (!isProjectWrap && !isProjectExpose && !isComlinkWrap && !isComlinkExpose) {
+          return;
+        }
 
         let apiType;
         if (isProjectWrap || isComlinkWrap) {
-          if (!tsCall.typeArguments?.[0]) return;
+          if (!tsCall.typeArguments?.[0]) {
+            return;
+          }
           apiType = checker.getTypeFromTypeNode(tsCall.typeArguments[0]);
         } else if (tsCall.typeArguments?.[0]) {
           apiType = checker.getTypeFromTypeNode(tsCall.typeArguments[0]);
@@ -395,7 +491,9 @@ export const rule = {
         }
 
         if (apiType.flags & ts.TypeFlags.TypeParameter) {
-          if (isAllowedGenericBridge) return;
+          if (isAllowedGenericBridge) {
+            return;
+          }
           context.report({ node, messageId: "invalidApi", data: { path: "<api>", reason: "generic-transport-bridge-not-allowed" } });
           return;
         }
@@ -411,13 +509,17 @@ export const rule = {
 
         let reportCount = 0;
         const reportViolation = (violation) => {
-          if (reportCount >= 20) return;
+          if (reportCount >= 20) {
+            return;
+          }
           context.report({ node, messageId: "invalidApi", data: violation });
           reportCount += 1;
         };
         for (const method of checker.getPropertiesOfType(apiType)) {
           const declaration = method.valueDeclaration ?? method.declarations?.[0];
-          if (!declaration) continue;
+          if (!declaration) {
+            continue;
+          }
           const methodType = checker.getTypeOfSymbolAtLocation(method, declaration);
           const signatures = methodType.getCallSignatures();
           if (signatures.length === 0) {
@@ -436,7 +538,10 @@ export const rule = {
               const violation = firstViolation({ type: parameterType, checker, path: `${method.getName()}.arg${index}`, analysis: { remaining: analysisBudget }, allowProxy: true, allowTransfer: true, allowCapability: true });
               if (violation) {
                 const key = `${violation.path}:${violation.reason}`;
-                if (!reported.has(key)) { reported.add(key); reportViolation(violation); }
+                if (!reported.has(key)) {
+                  reported.add(key);
+                  reportViolation(violation);
+                }
               }
             }
             const violation = firstReturnViolation({
@@ -447,7 +552,10 @@ export const rule = {
             });
             if (violation) {
               const key = `${violation.path}:${violation.reason}`;
-              if (!reported.has(key)) { reported.add(key); reportViolation(violation); }
+              if (!reported.has(key)) {
+                reported.add(key);
+                reportViolation(violation);
+              }
             }
           }
         }

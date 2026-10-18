@@ -38,12 +38,16 @@ function findImproperFunctionControl({
       if (statement.elseStatements !== undefined) {
         for (let index = statement.elseStatements.length - 1; index >= 0; index -= 1) {
           const nested = statement.elseStatements[index];
-          if (nested !== undefined) pending.push(nested);
+          if (nested !== undefined) {
+            pending.push(nested);
+          }
         }
       }
       for (let index = statement.thenStatements.length - 1; index >= 0; index -= 1) {
         const nested = statement.thenStatements[index];
-        if (nested !== undefined) pending.push(nested);
+        if (nested !== undefined) {
+          pending.push(nested);
+        }
       }
       break;
     case 'while':
@@ -52,7 +56,9 @@ function findImproperFunctionControl({
     case 'forIn':
       for (let index = statement.statements.length - 1; index >= 0; index -= 1) {
         const nested = statement.statements[index];
-        if (nested !== undefined) pending.push(nested);
+        if (nested !== undefined) {
+          pending.push(nested);
+        }
       }
       break;
     case 'print':
@@ -81,7 +87,9 @@ function previousTokenCanEndExpression({
   tokens: AwkToken[],
 }): boolean {
   const previous = tokens.findLast((token) => token.kind !== 'newline');
-  if (previous === undefined) return false;
+  if (previous === undefined) {
+    return false;
+  }
 
   switch (previous.kind) {
   case 'identifier':
@@ -163,10 +171,14 @@ function consumeAwkStringEscape({
   startIndex: number,
 }): { value: string, endIndex: number } {
   const escaped = script[startIndex + 1];
-  if (escaped === undefined) return { value: '\\', endIndex: startIndex + 1 };
+  if (escaped === undefined) {
+    return { value: '\\', endIndex: startIndex + 1 };
+  }
 
   const decoded = decodeAwkStringSingleCharacterEscape({ escaped });
-  if (decoded !== undefined) return { value: decoded, endIndex: startIndex + 2 };
+  if (decoded !== undefined) {
+    return { value: decoded, endIndex: startIndex + 2 };
+  }
 
   if (/^[0-7]$/u.test(escaped)) {
     let digits = escaped;
@@ -205,10 +217,14 @@ function consumeAwkRegexLiteralEscape({
   startIndex: number,
 }): { value: string, endIndex: number } {
   const escaped = script[startIndex + 1];
-  if (escaped === undefined) return { value: '\\', endIndex: startIndex + 1 };
+  if (escaped === undefined) {
+    return { value: '\\', endIndex: startIndex + 1 };
+  }
 
   const decoded = decodeAwkRegexLiteralSingleCharacterEscape({ escaped });
-  if (decoded !== undefined) return { value: decoded, endIndex: startIndex + 2 };
+  if (decoded !== undefined) {
+    return { value: decoded, endIndex: startIndex + 2 };
+  }
 
   if (/^[0-7]$/u.test(escaped)) {
     let digits = escaped;
@@ -235,7 +251,9 @@ function consumeAwkRegexLiteralEscape({
     }
   }
 
-  if (escaped === '/') return { value: '/', endIndex: startIndex + 2 };
+  if (escaped === '/') {
+    return { value: '/', endIndex: startIndex + 2 };
+  }
   if ('.[]\\*^$()+?{|}'.includes(escaped)) {
     return { value: `\\${escaped}`, endIndex: startIndex + 2 };
   }
@@ -252,7 +270,9 @@ export function tokenizeAwkProgram({
 
   while (index < script.length) {
     const char = script[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (char === ' ' || char === '\t' || char === '\r') {
       index += 1;
@@ -279,7 +299,9 @@ export function tokenizeAwkProgram({
 
       while (index < script.length) {
         const current = script[index];
-        if (current === undefined) break;
+        if (current === undefined) {
+          break;
+        }
 
         if (current === '"') {
           tokens.push({ kind: 'string', value });
@@ -315,7 +337,9 @@ export function tokenizeAwkProgram({
 
       while (index < script.length) {
         const current = script[index];
-        if (current === undefined) break;
+        if (current === undefined) {
+          break;
+        }
 
         if (current === '/') {
           tokens.push({ kind: 'regex', value });
@@ -349,7 +373,9 @@ export function tokenizeAwkProgram({
       let digits = '';
       while (index < script.length) {
         const current = script[index];
-        if (current === undefined || !/\d/.test(current)) break;
+        if (current === undefined || !/\d/.test(current)) {
+          break;
+        }
         digits += current;
         index += 1;
       }
@@ -402,7 +428,9 @@ export function tokenizeAwkProgram({
       index += 1;
       while (index < script.length) {
         const current = script[index];
-        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        if (current === undefined || !isIdentifierPart({ char: current })) {
+          break;
+        }
         value += current;
         index += 1;
       }
@@ -479,7 +507,9 @@ class AwkParser {
         declaredFunctionNames.add(name.value);
       }
 
-      if (keyword === undefined) continue;
+      if (keyword === undefined) {
+        continue;
+      }
       switch (keyword.kind) {
       case 'punctuation': {
         const punctuation = keyword.value;
@@ -545,16 +575,22 @@ class AwkParser {
 
     while (!this.isEof()) {
       this.skipSeparators();
-      if (this.isEof()) break;
+      if (this.isEof()) {
+        break;
+      }
 
       const token = this.peek();
       if (token.kind === 'identifier' && token.value === 'function') {
         const functionDefinition = this.parseFunctionDefinition();
-        if (!functionDefinition.ok) return functionDefinition;
+        if (!functionDefinition.ok) {
+          return functionDefinition;
+        }
         functions.push(functionDefinition.functionDefinition);
       } else {
         const rule = this.parseRule();
-        if (!rule.ok) return rule;
+        if (!rule.ok) {
+          return rule;
+        }
         rules.push(rule.rule);
       }
       this.skipSeparators();
@@ -577,7 +613,9 @@ class AwkParser {
     this.index += 1;
 
     const open = this.consumePunctuation({ value: '(' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
 
     const parameters: string[] = [];
     const parameterNames = new Set<string>();
@@ -597,16 +635,22 @@ class AwkParser {
         this.index += 1;
 
         const separator = this.peek();
-        if (!(separator.kind === 'punctuation' && separator.value === ',')) break;
+        if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+          break;
+        }
         this.index += 1;
       }
     }
 
     const close = this.consumePunctuation({ value: ')' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
     this.skipSeparators();
     const statements = this.parseBlock();
-    if (!statements.ok) return statements;
+    if (!statements.ok) {
+      return statements;
+    }
 
     const improperControl = findImproperFunctionControl({ statements: statements.statements });
     if (improperControl !== undefined) {
@@ -637,12 +681,16 @@ class AwkParser {
       pattern = { kind: 'always' };
     } else {
       const expression = this.parseExpression();
-      if (!expression.ok) return expression;
+      if (!expression.ok) {
+        return expression;
+      }
       const separator = this.peek();
       if (separator.kind === 'punctuation' && separator.value === ',') {
         this.index += 1;
         const end = this.parseExpression();
-        if (!end.ok) return end;
+        if (!end.ok) {
+          return end;
+        }
         pattern = {
           kind: 'range',
           start: expression.expression,
@@ -657,7 +705,9 @@ class AwkParser {
     const blockToken = this.peek();
     if (blockToken.kind === 'punctuation' && blockToken.value === '{') {
       const statements = this.parseBlock();
-      if (!statements.ok) return statements;
+      if (!statements.ok) {
+        return statements;
+      }
       return {
         ok: true,
         rule: { pattern, statements: statements.statements },
@@ -675,7 +725,9 @@ class AwkParser {
 
   private parseBlock(): { ok: true, statements: AwkStatement[] } | { ok: false, message: string } {
     const open = this.consumePunctuation({ value: '{' });
-    if (!open.ok) return open;
+    if (!open.ok) {
+      return open;
+    }
 
     const statements: AwkStatement[] = [];
     while (true) {
@@ -685,7 +737,9 @@ class AwkParser {
       }
       this.skipSeparators();
       const afterSeparator = this.peek();
-      if (afterSeparator.kind === 'punctuation' && afterSeparator.value === '}') break;
+      if (afterSeparator.kind === 'punctuation' && afterSeparator.value === '}') {
+        break;
+      }
       switch (afterSeparator.kind) {
       case 'eof':
         return { ok: false, message: "missing closing '}'" };
@@ -694,13 +748,17 @@ class AwkParser {
       }
 
       const statement = this.parseStatement();
-      if (!statement.ok) return statement;
+      if (!statement.ok) {
+        return statement;
+      }
       statements.push(statement.statement);
       this.skipSeparators();
     }
 
     const close = this.consumePunctuation({ value: '}' });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
     return { ok: true, statements };
   }
 
@@ -713,12 +771,18 @@ class AwkParser {
       try {
         while (!this.isStatementBoundary()) {
           const nextToken = this.peek();
-          if (nextToken.kind === 'operator' && (nextToken.value === '>' || nextToken.value === '>>' || nextToken.value === '|')) break;
+          if (nextToken.kind === 'operator' && (nextToken.value === '>' || nextToken.value === '>>' || nextToken.value === '|')) {
+            break;
+          }
           const expression = this.parseExpression();
-          if (!expression.ok) return expression;
+          if (!expression.ok) {
+            return expression;
+          }
           expressions.push(expression.expression);
           const separator = this.peek();
-          if (!(separator.kind === 'punctuation' && separator.value === ',')) break;
+          if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+            break;
+          }
           this.index += 1;
         }
       } finally {
@@ -726,7 +790,9 @@ class AwkParser {
       }
 
       const redirection = this.parseOutputRedirection();
-      if (!redirection.ok) return redirection;
+      if (!redirection.ok) {
+        return redirection;
+      }
       return {
         ok: true,
         statement: {
@@ -744,7 +810,9 @@ class AwkParser {
       const argumentsList: AwkExpression[] = [];
       try {
         format = this.parseExpression();
-        if (!format.ok) return format;
+        if (!format.ok) {
+          return format;
+        }
 
         while (true) {
           const separator = this.peek();
@@ -753,7 +821,9 @@ class AwkParser {
           }
           this.index += 1;
           const argument = this.parseExpression();
-          if (!argument.ok) return argument;
+          if (!argument.ok) {
+            return argument;
+          }
           argumentsList.push(argument.expression);
         }
       } finally {
@@ -761,7 +831,9 @@ class AwkParser {
       }
 
       const redirection = this.parseOutputRedirection();
-      if (!redirection.ok) return redirection;
+      if (!redirection.ok) {
+        return redirection;
+      }
       return {
         ok: true,
         statement: {
@@ -800,7 +872,9 @@ class AwkParser {
       }
 
       const expression = this.parseExpression();
-      if (!expression.ok) return expression;
+      if (!expression.ok) {
+        return expression;
+      }
       return { ok: true, statement: { kind: 'exit', expression: expression.expression } };
     }
 
@@ -812,22 +886,32 @@ class AwkParser {
       }
 
       const expression = this.parseExpression();
-      if (!expression.ok) return expression;
+      if (!expression.ok) {
+        return expression;
+      }
       return { ok: true, statement: { kind: 'return', expression: expression.expression } };
     }
 
     if (token.kind === 'identifier' && token.value === 'if') {
       this.index += 1;
       const open = this.consumePunctuation({ value: '(' });
-      if (!open.ok) return open;
+      if (!open.ok) {
+        return open;
+      }
       const condition = this.parseExpression();
-      if (!condition.ok) return condition;
+      if (!condition.ok) {
+        return condition;
+      }
       const close = this.consumePunctuation({ value: ')' });
-      if (!close.ok) return close;
+      if (!close.ok) {
+        return close;
+      }
 
       this.skipSeparators();
       const thenStatements = this.parseStatementBody();
-      if (!thenStatements.ok) return thenStatements;
+      if (!thenStatements.ok) {
+        return thenStatements;
+      }
 
       this.skipSeparators();
       const nextToken = this.peek();
@@ -835,7 +919,9 @@ class AwkParser {
         this.index += 1;
         this.skipSeparators();
         const elseStatements = this.parseStatementBody();
-        if (!elseStatements.ok) return elseStatements;
+        if (!elseStatements.ok) {
+          return elseStatements;
+        }
         return {
           ok: true,
           statement: {
@@ -862,7 +948,9 @@ class AwkParser {
       this.index += 1;
       this.skipSeparators();
       const statements = this.parseStatementBody();
-      if (!statements.ok) return statements;
+      if (!statements.ok) {
+        return statements;
+      }
       this.skipSeparators();
 
       const whileToken = this.peek();
@@ -871,11 +959,17 @@ class AwkParser {
       }
       this.index += 1;
       const open = this.consumePunctuation({ value: '(' });
-      if (!open.ok) return open;
+      if (!open.ok) {
+        return open;
+      }
       const condition = this.parseExpression();
-      if (!condition.ok) return condition;
+      if (!condition.ok) {
+        return condition;
+      }
       const close = this.consumePunctuation({ value: ')' });
-      if (!close.ok) return close;
+      if (!close.ok) {
+        return close;
+      }
       return {
         ok: true,
         statement: {
@@ -889,15 +983,23 @@ class AwkParser {
     if (token.kind === 'identifier' && token.value === 'while') {
       this.index += 1;
       const open = this.consumePunctuation({ value: '(' });
-      if (!open.ok) return open;
+      if (!open.ok) {
+        return open;
+      }
       const condition = this.parseExpression();
-      if (!condition.ok) return condition;
+      if (!condition.ok) {
+        return condition;
+      }
       const close = this.consumePunctuation({ value: ')' });
-      if (!close.ok) return close;
+      if (!close.ok) {
+        return close;
+      }
 
       this.skipSeparators();
       const statements = this.parseStatementBody();
-      if (!statements.ok) return statements;
+      if (!statements.ok) {
+        return statements;
+      }
       return {
         ok: true,
         statement: {
@@ -911,16 +1013,22 @@ class AwkParser {
     if (token.kind === 'identifier' && token.value === 'for') {
       this.index += 1;
       const open = this.consumePunctuation({ value: '(' });
-      if (!open.ok) return open;
+      if (!open.ok) {
+        return open;
+      }
 
       const forIn = this.parseForInClause();
       if (forIn.ok) {
         const close = this.consumePunctuation({ value: ')' });
-        if (!close.ok) return close;
+        if (!close.ok) {
+          return close;
+        }
 
         this.skipSeparators();
         const statements = this.parseStatementBody();
-        if (!statements.ok) return statements;
+        if (!statements.ok) {
+          return statements;
+        }
         return {
           ok: true,
           statement: {
@@ -933,23 +1041,37 @@ class AwkParser {
       }
 
       const initializer = this.parseForClausePart();
-      if (!initializer.ok) return initializer;
+      if (!initializer.ok) {
+        return initializer;
+      }
       const firstSeparator = this.consumePunctuation({ value: ';' });
-      if (!firstSeparator.ok) return firstSeparator;
+      if (!firstSeparator.ok) {
+        return firstSeparator;
+      }
 
       const condition = this.parseOptionalExpressionUntil({ terminator: ';' });
-      if (!condition.ok) return condition;
+      if (!condition.ok) {
+        return condition;
+      }
       const secondSeparator = this.consumePunctuation({ value: ';' });
-      if (!secondSeparator.ok) return secondSeparator;
+      if (!secondSeparator.ok) {
+        return secondSeparator;
+      }
 
       const increment = this.parseForClausePart();
-      if (!increment.ok) return increment;
+      if (!increment.ok) {
+        return increment;
+      }
       const close = this.consumePunctuation({ value: ')' });
-      if (!close.ok) return close;
+      if (!close.ok) {
+        return close;
+      }
 
       this.skipSeparators();
       const statements = this.parseStatementBody();
-      if (!statements.ok) return statements;
+      if (!statements.ok) {
+        return statements;
+      }
       return {
         ok: true,
         statement: {
@@ -978,7 +1100,9 @@ class AwkParser {
     }
 
     const expression = this.parseExpression();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
     const assignment = this.asAssignmentExpression({ expression: expression.expression });
     if (assignment !== undefined) {
       return {
@@ -1007,7 +1131,9 @@ class AwkParser {
 
     this.index += 1;
     const target = this.parseExpression();
-    if (!target.ok) return target;
+    if (!target.ok) {
+      return target;
+    }
     return {
       ok: true,
       redirection: {
@@ -1023,20 +1149,28 @@ class AwkParser {
     closing: ']' | ')',
   }): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const first = this.parseExpression();
-    if (!first.ok) return first;
+    if (!first.ok) {
+      return first;
+    }
     const items: AwkExpression[] = [first.expression];
 
     while (true) {
       const separator = this.peek();
-      if (!(separator.kind === 'punctuation' && separator.value === ',')) break;
+      if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+        break;
+      }
       this.index += 1;
       const item = this.parseExpression();
-      if (!item.ok) return item;
+      if (!item.ok) {
+        return item;
+      }
       items.push(item.expression);
     }
 
     const close = this.consumePunctuation({ value: closing });
-    if (!close.ok) return close;
+    if (!close.ok) {
+      return close;
+    }
     return {
       ok: true,
       expression: items.length === 1
@@ -1100,7 +1234,9 @@ class AwkParser {
       if (!(firstArgumentToken.kind === 'punctuation' && firstArgumentToken.value === ')')) {
         while (true) {
           const argument = this.parseExpression();
-          if (!argument.ok) return argument;
+          if (!argument.ok) {
+            return argument;
+          }
           args.push(argument.expression);
 
           const separator = this.peek();
@@ -1112,7 +1248,9 @@ class AwkParser {
       }
 
       const close = this.consumePunctuation({ value: ')' });
-      if (!close.ok) return close;
+      if (!close.ok) {
+        return close;
+      }
       return { ok: true, arguments: args };
     } finally {
       this.expressionNestingDepth -= 1;
@@ -1134,7 +1272,9 @@ class AwkParser {
         startIndex,
       };
     case 'operator': {
-      if (token.value !== '$') return { ok: false };
+      if (token.value !== '$') {
+        return { ok: false };
+      }
       this.index += 1;
       const indexExpression = this.parseNestedUnaryExpression();
       if (!indexExpression.ok) {
@@ -1235,7 +1375,9 @@ class AwkParser {
       }
 
       const closingIndex = this.matchingClosingTokenIndexes.get(this.index + 1);
-      if (closingIndex === undefined) return false;
+      if (closingIndex === undefined) {
+        return false;
+      }
       const assignment = this.tokens[closingIndex + 1] ?? { kind: 'eof' };
       return assignment.kind === 'operator'
         && this.isAssignmentOperator(assignment.value);
@@ -1308,7 +1450,9 @@ class AwkParser {
       }
 
       const statement = this.parseStatement();
-      if (!statement.ok) return statement;
+      if (!statement.ok) {
+        return statement;
+      }
       return { ok: true, statements: [statement.statement] };
     } finally {
       this.statementNestingDepth -= 1;
@@ -1326,7 +1470,9 @@ class AwkParser {
     }
 
     const expression = this.parseExpression();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
     return { ok: true, expression: expression.expression };
   }
 
@@ -1342,7 +1488,9 @@ class AwkParser {
     }
 
     const expression = this.parseExpression();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
     const assignment = this.asAssignmentExpression({ expression: expression.expression });
     if (assignment !== undefined) {
       return {
@@ -1420,7 +1568,9 @@ class AwkParser {
         const right = this.parseRightAssociativeExpression({
           parse: () => this.parseExpression(),
         });
-        if (!right.ok) return right;
+        if (!right.ok) {
+          return right;
+        }
         return {
           ok: true,
           expression: {
@@ -1438,7 +1588,9 @@ class AwkParser {
 
   private parseConditional(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const condition = this.parseLogicalOr();
-    if (!condition.ok) return condition;
+    if (!condition.ok) {
+      return condition;
+    }
 
     const question = this.peek();
     if (!(question.kind === 'operator' && question.value === '?')) {
@@ -1449,7 +1601,9 @@ class AwkParser {
     const whenTrue = this.parseRightAssociativeExpression({
       parse: () => this.parseExpression(),
     });
-    if (!whenTrue.ok) return whenTrue;
+    if (!whenTrue.ok) {
+      return whenTrue;
+    }
 
     const colon = this.peek();
     if (!(colon.kind === 'operator' && colon.value === ':')) {
@@ -1460,7 +1614,9 @@ class AwkParser {
     const whenFalse = this.parseRightAssociativeExpression({
       parse: () => this.parseExpression(),
     });
-    if (!whenFalse.ok) return whenFalse;
+    if (!whenFalse.ok) {
+      return whenFalse;
+    }
     return {
       ok: true,
       expression: {
@@ -1474,7 +1630,9 @@ class AwkParser {
 
   private parseLogicalOr(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseLogicalAnd();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (true) {
       const token = this.peek();
@@ -1484,7 +1642,9 @@ class AwkParser {
 
       this.index += 1;
       const right = this.parseLogicalAnd();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1501,7 +1661,9 @@ class AwkParser {
 
   private parseLogicalAnd(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseComparison();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (true) {
       const token = this.peek();
@@ -1511,7 +1673,9 @@ class AwkParser {
 
       this.index += 1;
       const right = this.parseComparison();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1528,7 +1692,9 @@ class AwkParser {
 
   private parseComparison(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseConcatenation();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (true) {
       const token = this.peek();
@@ -1537,7 +1703,9 @@ class AwkParser {
         if (nextToken.kind === 'identifier' && nextToken.value === 'getline') {
           this.index += 1;
           const getline = this.parseGetlineExpression();
-          if (!getline.ok) return getline;
+          if (!getline.ok) {
+            return getline;
+          }
           return {
             ok: true,
             expression: {
@@ -1561,11 +1729,15 @@ class AwkParser {
       ) {
         operator = token.value as AwkBinaryOperator;
       }
-      if (operator === undefined) break;
+      if (operator === undefined) {
+        break;
+      }
 
       this.index += 1;
       const right = this.parseConcatenation();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1582,11 +1754,15 @@ class AwkParser {
 
   private parseConcatenation(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseAdditive();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (this.isExpressionStart({ token: this.peek() })) {
       const right = this.parseAdditive();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1603,7 +1779,9 @@ class AwkParser {
 
   private parseAdditive(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseMultiplicative();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (true) {
       const token = this.peek();
@@ -1613,7 +1791,9 @@ class AwkParser {
 
       this.index += 1;
       const right = this.parseMultiplicative();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1711,7 +1891,9 @@ class AwkParser {
       );
     }
     }
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     for (let index = operators.length - 1; index >= 0; index -= 1) {
       const operator = operators[index];
@@ -1733,7 +1915,9 @@ class AwkParser {
 
   private parseMultiplicative(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseUnary();
-    if (!expression.ok) return expression;
+    if (!expression.ok) {
+      return expression;
+    }
 
     while (true) {
       const token = this.peek();
@@ -1743,7 +1927,9 @@ class AwkParser {
 
       this.index += 1;
       const right = this.parseUnary();
-      if (!right.ok) return right;
+      if (!right.ok) {
+        return right;
+      }
       expression = {
         ok: true,
         expression: {
@@ -1760,7 +1946,9 @@ class AwkParser {
 
   private parsePower(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const left = this.parsePrimary();
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
 
     const token = this.peek();
     if (!(token.kind === 'operator' && token.value === '^')) {
@@ -1771,7 +1959,9 @@ class AwkParser {
     const right = this.parseRightAssociativeExpression({
       parse: () => this.parseUnary(),
     });
-    if (!right.ok) return right;
+    if (!right.ok) {
+      return right;
+    }
     return {
       ok: true,
       expression: {
@@ -1833,7 +2023,9 @@ class AwkParser {
         const name = token.value;
         this.index += 2;
         const indexExpression = this.parseNestedSubscriptExpression({ closing: ']' });
-        if (!indexExpression.ok) return indexExpression;
+        if (!indexExpression.ok) {
+          return indexExpression;
+        }
         return {
           ok: true,
           target: {
@@ -1859,10 +2051,14 @@ class AwkParser {
         },
       };
     case 'operator': {
-      if (token.value !== '$') return { ok: true, target: undefined };
+      if (token.value !== '$') {
+        return { ok: true, target: undefined };
+      }
       this.index += 1;
       const indexExpression = this.parseNestedUnaryExpression();
-      if (!indexExpression.ok) return indexExpression;
+      if (!indexExpression.ok) {
+        return indexExpression;
+      }
       return {
         ok: true,
         target: { kind: 'field', index: indexExpression.expression },
@@ -1887,7 +2083,9 @@ class AwkParser {
     | { ok: false, message: string } {
     this.index += 1;
     const target = this.parseGetlineTarget();
-    if (!target.ok) return target;
+    if (!target.ok) {
+      return target;
+    }
 
     const sourceToken = this.peek();
     if (!(sourceToken.kind === 'operator' && sourceToken.value === '<')) {
@@ -1903,7 +2101,9 @@ class AwkParser {
 
     this.index += 1;
     const sourceExpression = this.parseExpression();
-    if (!sourceExpression.ok) return sourceExpression;
+    if (!sourceExpression.ok) {
+      return sourceExpression;
+    }
     return {
       ok: true,
       expression: {
@@ -1961,7 +2161,9 @@ class AwkParser {
           const name = token.value;
           this.index += 2;
           const indexExpression = this.parseNestedSubscriptExpression({ closing: ']' });
-          if (!indexExpression.ok) return indexExpression;
+          if (!indexExpression.ok) {
+            return indexExpression;
+          }
           return {
             ok: true,
             expression: {
@@ -1980,7 +2182,9 @@ class AwkParser {
           const callee = token.value;
           this.index += 2;
           const args = this.parseFunctionArguments();
-          if (!args.ok) return args;
+          if (!args.ok) {
+            return args;
+          }
           return {
             ok: true,
             expression: { kind: 'call', callee, args: args.arguments },
@@ -2012,7 +2216,9 @@ class AwkParser {
         if (token.value === '$') {
           this.index += 1;
           const indexExpression = this.parseNestedUnaryExpression();
-          if (!indexExpression.ok) return indexExpression;
+          if (!indexExpression.ok) {
+            return indexExpression;
+          }
           return {
             ok: true,
             expression: { kind: 'field', index: indexExpression.expression },

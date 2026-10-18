@@ -36,8 +36,9 @@ export async function createReplayCommit({ context, repository, kind, sourceObje
     subject: string;
 }> {
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error(`cannot ${kind} on an unborn branch`);
+  }
   const entries = await readIndex({ files: context.files, repository });
   const treeObjectId = await writeTreeFromIndex({ files: context.files, repository, entries });
   const sourceCommit = await readCommit({ files: context.files, repository, objectId: sourceObjectId });
@@ -102,8 +103,9 @@ export async function applyReplayStep({ context, repository, kind, sourceObjectI
     mainlineParentNumber?: number;
 }): Promise<GitReplayStepResult> {
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error(`cannot ${kind} on an unborn branch`);
+  }
   const currentIndexEntries = await readIndex({ files: context.files, repository });
   const replay = await prepareCommitReplay({
     files: context.files,
@@ -144,8 +146,9 @@ export async function applyReplayStep({ context, repository, kind, sourceObjectI
     targetEntries: replay.mergedEntries,
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
-  if (plan.conflicts.length > 0)
+  if (plan.conflicts.length > 0) {
     return { type: 'checkout-conflict', conflicts: plan.conflicts };
+  }
   await applyCheckoutTreePlan({
     files: context.files,
     repository,
@@ -222,8 +225,9 @@ async function applyReplayObject({ context, repository, kind, sourceObjectId, ma
       message: result.replay.message,
       conflictPaths: result.preparedConflicts.map(conflict => conflict.path),
     });
-    for (const path of result.replay.autoMergedPaths)
+    for (const path of result.replay.autoMergedPaths) {
       await context.text().print({ text: `Auto-merging ${path}\n` });
+    }
     for (const conflict of result.preparedConflicts) {
       for (const text of formatPreparedMergeConflict({ conflict, oursLabel: 'HEAD', theirsLabel: result.replay.theirsLabel })) {
         await context.text().print({ text });
@@ -248,8 +252,9 @@ async function applyReplayObject({ context, repository, kind, sourceObjectId, ma
     return { exitCode: 1 };
   }
   case 'committed':
-    for (const path of result.autoMergedPaths)
+    for (const path of result.autoMergedPaths) {
       await context.text().print({ text: `Auto-merging ${path}\n` });
+    }
     await printReplayCommit({ context, objectId: result.objectId, subject: result.subject });
     return { exitCode: 0 };
   default: {
@@ -266,15 +271,17 @@ export async function executeSequencerSteps({ context, repository, kind }: {
 }): Promise<WeshCommandResult> {
   while (true) {
     const state = await readSequencerState({ files: context.files, repository });
-    if (state === undefined)
+    if (state === undefined) {
       return { exitCode: 0 };
+    }
     const step = state.todo[0];
     if (step === undefined) {
       await clearSequencerState({ files: context.files, repository });
       return { exitCode: 0 };
     }
-    if (step.kind !== kind)
+    if (step.kind !== kind) {
       throw new Error(`sequencer kind mismatch: expected ${kind}, found ${step.kind}`);
+    }
     const result = await applyReplayObject({
       context,
       repository,
@@ -282,8 +289,9 @@ export async function executeSequencerSteps({ context, repository, kind }: {
       sourceObjectId: step.objectId,
       mainlineParentNumber: state.mainlineParentNumber,
     });
-    if (result.exitCode !== 0)
+    if (result.exitCode !== 0) {
       return result;
+    }
     await advanceSequencer({ files: context.files, repository });
   }
 }
@@ -317,8 +325,9 @@ async function continueReplay({ context, kind }: {
   const entries = await readIndex({ files: context.files, repository });
   const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
-    for (const path of unmergedPaths)
+    for (const path of unmergedPaths) {
       await context.text().print({ text: `U\t${path}\n` });
+    }
     await context.text().error({ text: 'error: Committing is not possible because you have unmerged files.\n' });
     await context.text().error({ text: 'fatal: Exiting because of an unresolved conflict.\n' });
     return { exitCode: 128 };
@@ -333,8 +342,9 @@ async function continueReplay({ context, kind }: {
   });
   await clearReplayState({ files: context.files, repository, kind });
   await printReplayCommit({ context, objectId: created.objectId, subject: created.subject });
-  if (sequence === undefined)
+  if (sequence === undefined) {
     return { exitCode: 0 };
+  }
   await advanceSequencer({ files: context.files, repository });
   return executeSequencerSteps({ context, repository, kind });
 }
@@ -385,13 +395,15 @@ async function abortReplay({ context, kind }: {
     return { exitCode: 128 };
   }
   if (sequence !== undefined) {
-    if (sequence.todo.some(entry => entry.kind !== kind))
+    if (sequence.todo.some(entry => entry.kind !== kind)) {
       throw new Error('mixed sequencer kinds are not supported');
+    }
     await restoreReplayHead({ context, repository, objectId: sequence.headObjectId });
   } else {
     const head = await readHead({ files: context.files, repository });
-    if (head.objectId === undefined)
+    if (head.objectId === undefined) {
       throw new Error(`cannot abort ${kind} on an unborn branch`);
+    }
     const headCommit = await readCommit({ files: context.files, repository, objectId: head.objectId });
     const headEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: headCommit.treeObjectId });
     const currentEntries = await readIndex({ files: context.files, repository });
@@ -403,10 +415,12 @@ async function abortReplay({ context, kind }: {
       contentConfig: await resolveContentConfigForContext({ context, repository }),
     });
   }
-  if (state !== undefined)
+  if (state !== undefined) {
     await clearReplayState({ files: context.files, repository, kind });
-  if (sequence !== undefined)
+  }
+  if (sequence !== undefined) {
     await clearSequencerState({ files: context.files, repository });
+  }
   return { exitCode: 0 };
 }
 
@@ -417,8 +431,9 @@ async function skipReplay({ context, kind }: {
   const repository = await discoverRepositoryFromContext({ context });
   const sequence = await readSequencerState({ files: context.files, repository });
   const state = await readReplayState({ files: context.files, repository });
-  if (sequence === undefined)
+  if (sequence === undefined) {
     return abortReplay({ context, kind });
+  }
   const current = sequence.todo[0];
   if (current === undefined || current.kind !== kind) {
     await context.text().error({ text: `error: no ${kind} in progress\n` });
@@ -426,8 +441,9 @@ async function skipReplay({ context, kind }: {
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error(`cannot skip ${kind} on an unborn branch`);
+  }
   const headCommit = await readCommit({ files: context.files, repository, objectId: head.objectId });
   const headEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: headCommit.treeObjectId });
   const currentEntries = await readIndex({ files: context.files, repository });
@@ -438,8 +454,9 @@ async function skipReplay({ context, kind }: {
     targetEntries: headEntries,
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
-  if (state !== undefined)
+  if (state !== undefined) {
     await clearReplayState({ files: context.files, repository, kind });
+  }
   await advanceSequencer({ files: context.files, repository });
   return executeSequencerSteps({ context, repository, kind });
 }
@@ -481,8 +498,9 @@ export async function executeReplay({ context, request, kind }: {
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error(`cannot ${kind} on an unborn branch`);
+  }
   const headCommit = await readCommit({ files: context.files, repository, objectId: head.objectId });
   const currentIndexEntries = await readIndex({ files: context.files, repository });
   let currentIndexTreeObjectId: string;
@@ -502,7 +520,9 @@ export async function executeReplay({ context, request, kind }: {
     try {
       objectId = await resolveCommitRevision({ files: context.files, repository, expression: operand });
     } catch (error) {
-      if (!(error instanceof GitUnknownRevisionError)) throw error;
+      if (!(error instanceof GitUnknownRevisionError)) {
+        throw error;
+      }
       await context.text().error({ text: `fatal: bad revision '${error.expression}'\n` });
       return { exitCode: 128 };
     }

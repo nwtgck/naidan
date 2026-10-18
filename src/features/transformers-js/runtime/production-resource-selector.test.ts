@@ -9,7 +9,9 @@ type Runtime = typeof import('@huggingface/transformers');
 const cleanup: Array<() => void> = [];
 
 afterEach(() => {
-  for (const close of cleanup.splice(0).reverse()) close();
+  for (const close of cleanup.splice(0).reverse()) {
+    close();
+  }
   vi.doUnmock('@huggingface/transformers');
   vi.unstubAllGlobals();
 });
@@ -48,13 +50,18 @@ async function fixture() {
     async match(input: string | Request) {
       const url = typeof input === 'string' ? input : input.url;
       const path = url.split('/resolve/' + 'a'.repeat(40) + '/')[1];
-      if (path === undefined) return undefined;
+      if (path === undefined) {
+        return undefined;
+      }
       if (path.startsWith('onnx/')) {
         paths.push(path);
         return new Response(new Uint8Array([7, 9, 13]));
       }
-      if (path === 'generation_config.json') return new Response('{}');
-      unknown.push(path); throw new Error(`Unexpected selector fixture request: ${path}`);
+      if (path === 'generation_config.json') {
+        return new Response('{}');
+      }
+      unknown.push(path);
+      throw new Error(`Unexpected selector fixture request: ${path}`);
     },
     async put() {
       throw new Error('Read-only selector fixture');
@@ -83,8 +90,11 @@ it('keeps existing generic classes and explicitly records three missing upstream
   const overrides: string[] = [];
   for (const name of names) {
     const selected: unknown = Reflect.get(h.runtime, name);
-    if (typeof selected !== 'function') missing.push(name);
-    else if (Reflect.get(selected, 'from_pretrained') !== h.runtime.PreTrainedModel.from_pretrained) overrides.push(name);
+    if (typeof selected !== 'function') {
+      missing.push(name);
+    } else if (Reflect.get(selected, 'from_pretrained') !== h.runtime.PreTrainedModel.from_pretrained) {
+      overrides.push(name);
+    }
   }
   expect(names).toHaveLength(92);
   expect(overrides).toEqual([]);

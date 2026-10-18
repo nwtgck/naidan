@@ -47,11 +47,15 @@ function scriptKindForModule({ lang, moduleId }: {
   }
 
   const filePath = stripModuleQuery({ moduleId });
-  if (filePath.endsWith('.jsx')) return ts.ScriptKind.JSX;
+  if (filePath.endsWith('.jsx')) {
+    return ts.ScriptKind.JSX;
+  }
   if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) {
     return ts.ScriptKind.JS;
   }
-  if (filePath.endsWith('.tsx')) return ts.ScriptKind.TSX;
+  if (filePath.endsWith('.tsx')) {
+    return ts.ScriptKind.TSX;
+  }
   return ts.ScriptKind.TS;
 }
 

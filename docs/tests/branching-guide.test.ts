@@ -17,7 +17,9 @@ describe('conversation branching guide', () => {
     const html = await renderToString(createSSRApp(BranchingPage, { s: copy, locale, common }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-branching"]');
-    if (!article) throw new Error('Missing branching guide');
+    if (!article) {
+      throw new Error('Missing branching guide');
+    }
     expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
     const demo = readBranchingMessages({ locale }).messages;

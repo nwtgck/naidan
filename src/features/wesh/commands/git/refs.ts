@@ -54,7 +54,9 @@ async function readRefRecursive({ files, repository, refName, visitedRefNames }:
   visitedRefNames: ReadonlySet<string>,
 }): Promise<string | undefined> {
   assertRefName({ refName });
-  if (visitedRefNames.has(refName)) throw new Error(`symbolic ref cycle at ${refName}`);
+  if (visitedRefNames.has(refName)) {
+    throw new Error(`symbolic ref cycle at ${refName}`);
+  }
   const nextVisitedRefNames = new Set(visitedRefNames);
   nextVisitedRefNames.add(refName);
   const path = joinPath({ base: repository.commonDirPath, child: refName });
@@ -65,7 +67,9 @@ async function readRefRecursive({ files, repository, refName, visitedRefNames }:
       break;
     case 'file': {
       const value = (await readFileText({ files, path })).trim();
-      if (/^[0-9a-f]{40}$/u.test(value)) return value;
+      if (/^[0-9a-f]{40}$/u.test(value)) {
+        return value;
+      }
       if (value.startsWith('ref: ')) {
         const targetRefName = value.slice(5);
         assertRefName({ refName: targetRefName });
@@ -105,7 +109,9 @@ export async function writeSymbolicRef({ files, repository, refName, targetRefNa
   const refPath = joinPath({ base: repository.commonDirPath, child: refName });
   const slashIndex = refPath.lastIndexOf('/');
   const parent = slashIndex <= 0 ? '/' : refPath.slice(0, slashIndex);
-  if (!await pathExists({ files, path: parent })) await files.mkdir({ path: parent, recursive: true });
+  if (!await pathExists({ files, path: parent })) {
+    await files.mkdir({ path: parent, recursive: true });
+  }
   await replaceTextViaLock({ files, path: refPath, text: `ref: ${targetRefName}\n` });
 }
 
@@ -116,11 +122,15 @@ export async function writeRef({ files, repository, refName, objectId }: {
   objectId: string,
 }): Promise<void> {
   assertRefName({ refName });
-  if (!/^[0-9a-f]{40}$/u.test(objectId)) throw new Error(`invalid object id: ${objectId}`);
+  if (!/^[0-9a-f]{40}$/u.test(objectId)) {
+    throw new Error(`invalid object id: ${objectId}`);
+  }
   const refPath = joinPath({ base: repository.commonDirPath, child: refName });
   const slashIndex = refPath.lastIndexOf('/');
   const parent = slashIndex <= 0 ? '/' : refPath.slice(0, slashIndex);
-  if (!await pathExists({ files, path: parent })) await files.mkdir({ path: parent, recursive: true });
+  if (!await pathExists({ files, path: parent })) {
+    await files.mkdir({ path: parent, recursive: true });
+  }
   await replaceTextViaLock({ files, path: refPath, text: `${objectId}\n` });
 }
 
@@ -132,7 +142,9 @@ async function rollbackRefAfterReflogFailure({ files, repository, refName, oldOb
 }): Promise<void> {
   const refPath = joinPath({ base: repository.commonDirPath, child: refName });
   if (oldObjectId === undefined) {
-    if (await pathExists({ files, path: refPath })) await files.unlink({ path: refPath });
+    if (await pathExists({ files, path: refPath })) {
+      await files.unlink({ path: refPath });
+    }
     return;
   }
   await writeRef({ files, repository, refName, objectId: oldObjectId });
@@ -155,7 +167,9 @@ async function restoreOptionalTextFile({ files, state }: {
   state: OptionalTextFileState,
 }): Promise<void> {
   if (state.text === undefined) {
-    if (await pathExists({ files, path: state.path })) await files.unlink({ path: state.path });
+    if (await pathExists({ files, path: state.path })) {
+      await files.unlink({ path: state.path });
+    }
     return;
   }
   await replaceTextViaLock({ files, path: state.path, text: state.text });
@@ -250,7 +264,9 @@ export async function deleteRef({ files, repository, refName }: {
     removed = true;
   }
   try {
-    if (await removePackedRef({ files, repository, refName })) removed = true;
+    if (await removePackedRef({ files, repository, refName })) {
+      removed = true;
+    }
   } catch (error) {
     if (looseState.text !== undefined) {
       try {
@@ -274,12 +290,16 @@ export async function renameRef({ files, repository, oldRefName, newRefName, ref
 }): Promise<boolean> {
   assertRefName({ refName: oldRefName });
   assertRefName({ refName: newRefName });
-  if (oldRefName === newRefName) return true;
+  if (oldRefName === newRefName) {
+    return true;
+  }
   if (await readRef({ files, repository, refName: newRefName }) !== undefined) {
     throw new Error(`reference already exists: ${newRefName}`);
   }
   const objectId = await readRef({ files, repository, refName: oldRefName });
-  if (objectId === undefined) return false;
+  if (objectId === undefined) {
+    return false;
+  }
 
   const oldLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${oldRefName}` });
   const newLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${newRefName}` });
@@ -293,9 +313,13 @@ export async function renameRef({ files, repository, oldRefName, newRefName, ref
     if (oldLogState.text !== undefined) {
       const slashIndex = newLogPath.lastIndexOf('/');
       const parent = slashIndex <= 0 ? '/' : newLogPath.slice(0, slashIndex);
-      if (!await pathExists({ files, path: parent })) await files.mkdir({ path: parent, recursive: true });
+      if (!await pathExists({ files, path: parent })) {
+        await files.mkdir({ path: parent, recursive: true });
+      }
       await replaceTextViaLock({ files, path: newLogPath, text: oldLogState.text });
-      if (await pathExists({ files, path: oldLogPath })) await files.unlink({ path: oldLogPath });
+      if (await pathExists({ files, path: oldLogPath })) {
+        await files.unlink({ path: oldLogPath });
+      }
     }
     if (reflog !== undefined) {
       await appendReflog({
@@ -346,7 +370,9 @@ export async function listRefs({ files, repository, prefix }: {
   repository: GitRepository,
   prefix: string,
 }): Promise<GitListedRef[]> {
-  if (prefix !== 'refs') assertRefName({ refName: prefix });
+  if (prefix !== 'refs') {
+    assertRefName({ refName: prefix });
+  }
   const byName = new Map<string, GitListedRef>();
   for (const entry of await readPackedRefs({ files, repository })) {
     if (entry.refName.startsWith(`${prefix}/`)) {
@@ -371,7 +397,9 @@ export async function listRefs({ files, repository, prefix }: {
           await visit({ directoryPath: entry.fullPath, refPrefix: refName });
           break;
         case 'file': {
-          if (entry.name.endsWith('.lock')) break;
+          if (entry.name.endsWith('.lock')) {
+            break;
+          }
           const value = (await readFileText({ files, path: entry.fullPath })).trim();
           if (/^[0-9a-f]{40}$/u.test(value)) {
             byName.set(refName, { refName, objectId: value, symbolicTargetRefName: undefined });
@@ -381,7 +409,9 @@ export async function listRefs({ files, repository, prefix }: {
             const symbolicTargetRefName = value.slice(5);
             assertRefName({ refName: symbolicTargetRefName });
             const objectId = await readRef({ files, repository, refName: symbolicTargetRefName });
-            if (objectId === undefined) throw new Error(`dangling symbolic ref ${refName}: ${symbolicTargetRefName}`);
+            if (objectId === undefined) {
+              throw new Error(`dangling symbolic ref ${refName}: ${symbolicTargetRefName}`);
+            }
             byName.set(refName, { refName, objectId, symbolicTargetRefName });
             break;
           }
@@ -419,7 +449,9 @@ export async function readHead({ files, repository }: {
       objectId: await readRef({ files, repository, refName: symbolicRef }),
     };
   }
-  if (/^[0-9a-f]{40}$/u.test(headText)) return { symbolicRef: undefined, objectId: headText };
+  if (/^[0-9a-f]{40}$/u.test(headText)) {
+    return { symbolicRef: undefined, objectId: headText };
+  }
   throw new Error('invalid HEAD');
 }
 
@@ -506,7 +538,9 @@ export async function moveHeadReference({ files, repository, target, reflog }: {
     await replaceTextViaLock({ files, path: headPath, text: `ref: ${target.refName}\n` });
     break;
   case 'detached':
-    if (!/^[0-9a-f]{40}$/u.test(target.objectId)) throw new Error(`invalid object id: ${target.objectId}`);
+    if (!/^[0-9a-f]{40}$/u.test(target.objectId)) {
+      throw new Error(`invalid object id: ${target.objectId}`);
+    }
     await replaceTextViaLock({ files, path: headPath, text: `${target.objectId}\n` });
     break;
   default: {
@@ -555,7 +589,9 @@ export async function updateHead({ files, repository, objectId, reflog }: {
   objectId: string,
   reflog?: GitReflogUpdate,
 }): Promise<void> {
-  if (!/^[0-9a-f]{40}$/u.test(objectId)) throw new Error(`invalid object id: ${objectId}`);
+  if (!/^[0-9a-f]{40}$/u.test(objectId)) {
+    throw new Error(`invalid object id: ${objectId}`);
+  }
   const head = await readHead({ files, repository });
   const headPath = joinPath({ base: repository.gitDirPath, child: 'HEAD' });
   if (head.symbolicRef !== undefined) {
@@ -597,7 +633,9 @@ export async function writeOrigHead({ files, repository, objectId }: {
   repository: GitRepository,
   objectId: string,
 }): Promise<void> {
-  if (!/^[0-9a-f]{40}$/u.test(objectId)) throw new Error(`invalid object id: ${objectId}`);
+  if (!/^[0-9a-f]{40}$/u.test(objectId)) {
+    throw new Error(`invalid object id: ${objectId}`);
+  }
   await replaceTextViaLock({
     files,
     path: joinPath({ base: repository.gitDirPath, child: 'ORIG_HEAD' }),
@@ -606,7 +644,9 @@ export async function writeOrigHead({ files, repository, objectId }: {
 }
 
 export function branchNameFromHead({ head }: { head: GitHeadState }): string | undefined {
-  if (head.symbolicRef === undefined) return undefined;
+  if (head.symbolicRef === undefined) {
+    return undefined;
+  }
   const prefix = 'refs/heads/';
   return head.symbolicRef.startsWith(prefix) ? head.symbolicRef.slice(prefix.length) : undefined;
 }

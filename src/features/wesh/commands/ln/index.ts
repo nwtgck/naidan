@@ -18,7 +18,9 @@ function basename({ path }: { path: string }): string {
 
 function dirname({ path }: { path: string }): string {
   const normalized = normalizePath({ cwd: '/', path });
-  if (normalized === '/') return '/';
+  if (normalized === '/') {
+    return '/';
+  }
   const index = normalized.lastIndexOf('/');
   return index <= 0 ? '/' : normalized.slice(0, index);
 }
@@ -237,7 +239,9 @@ async function pathStatOrUndefined({
       ? await context.files.stat({ path })
       : await context.files.lstat({ path });
   } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) return undefined;
+    if (isPathNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -407,7 +411,9 @@ export const lnCommandImplementation: WeshCommandImplementation = {
       displayLinkPath: string,
     }): Promise<boolean> => {
       const existing = await pathStatOrUndefined({ context, path: linkPath, dereference: false });
-      if (existing === undefined) return true;
+      if (existing === undefined) {
+        return true;
+      }
       switch (existing.type) {
       case 'directory':
         throw new Error(`cannot overwrite directory '${displayLinkPath}'`);
@@ -424,7 +430,9 @@ export const lnCommandImplementation: WeshCommandImplementation = {
 
       if (interactive) {
         await text.error({ text: `ln: replace '${displayLinkPath}'? ` });
-        if (!await readAffirmativeResponse()) return false;
+        if (!await readAffirmativeResponse()) {
+          return false;
+        }
       } else if (!force && !backupEnabled) {
         return true;
       }
@@ -522,7 +530,9 @@ export const lnCommandImplementation: WeshCommandImplementation = {
           if (error instanceof Error && error.message.includes('are the same file')) {
             throw error;
           }
-          if (!isPathNotFoundError({ error })) throw error;
+          if (!isPathNotFoundError({ error })) {
+            throw error;
+          }
         }
       }
       if (!await prepareExistingDestination({ linkPath, displayLinkPath })) {

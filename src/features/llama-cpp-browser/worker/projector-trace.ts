@@ -13,13 +13,20 @@ export function createProjectorTrace({ core }: { core: Core }) {
   // Use layouts exported by this core, not hard-coded offsets: pointer arrays
   // differ between wasm32 and wasm64 even though tensor dimensions are int64.
   const sources = core.fieldLayout({ name: 'ggml_tensor', field: 'src' });
-  if (sources.kind !== 'array' || sources.size < core.pointerBytes * 2 || sources.size % core.pointerBytes !== 0) throw new Error('Unsupported native tensor source layout');
-  if (op.kind !== 'signed' || op.size !== 4 || type.kind !== 'signed' || type.size !== 4 || shape.kind !== 'array' || shape.size !== 32) throw new Error('Unsupported native tensor metadata layout');
+  if (sources.kind !== 'array' || sources.size < core.pointerBytes * 2 || sources.size % core.pointerBytes !== 0) {
+    throw new Error('Unsupported native tensor source layout');
+  }
+  if (op.kind !== 'signed' || op.size !== 4 || type.kind !== 'signed' || type.size !== 4 || shape.kind !== 'array' || shape.size !== 32) {
+    throw new Error('Unsupported native tensor metadata layout');
+  }
   // Pooling modes are a separate enum whose identifiers share the operation prefix.
   const nonOperations = new Set(['GGML_OP_COUNT', 'GGML_OP_POOL_MAX', 'GGML_OP_POOL_AVG', 'GGML_OP_POOL_COUNT']);
   const names = new Map(core.enumValues({ prefix: 'GGML_OP_' }).filter(({ name }) => !nonOperations.has(name)).map(({ name, value }) => [value, name]));
   const typeNames = new Map(core.enumValues({ prefix: 'GGML_TYPE_' }).filter(({ name }) => name !== 'GGML_TYPE_COUNT').map(({ name, value }) => [value, name]));
-  let node = 0; let started = 0; let reportedFailure = false; let released = false;
+  let node = 0;
+  let started = 0;
+  let reportedFailure = false;
+  let released = false;
   const view = ({ pointer, offset, size }: { pointer: bigint, offset: bigint, size: number }): DataView => {
     const span = core.bytes({ pointer: pointer + offset, length: size });
     return new DataView(span.buffer, span.byteOffset, span.byteLength);
@@ -29,7 +36,9 @@ export function createProjectorTrace({ core }: { core: Core }) {
     const dimensions = view({ pointer: address, ...shape });
     const tensorShape = [0, 1, 2, 3].map(index => {
       const value = dimensions.getBigInt64(index * 8, true);
-      if (value < 1n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError('Unsafe tensor dimension');
+      if (value < 1n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new RangeError('Unsafe tensor dimension');
+      }
       return Number(value);
     });
     return { type: tensorType, typeName: typeNames.get(tensorType), shape: tensorShape };
@@ -55,7 +64,8 @@ export function createProjectorTrace({ core }: { core: Core }) {
         return input === 0n ? [] : [{ index, ...metadata({ address: input }) }];
       });
       if (ask) {
-        node++; started = performance.now();
+        node++;
+        started = performance.now();
       }
       logNativeCheckpoint({
         diagnostic: {
@@ -88,8 +98,11 @@ export function createProjectorTrace({ core }: { core: Core }) {
   return {
     pointer,
     release(): void {
-      if (released) return;
-      core.module.removeFunction(pointer); released = true;
+      if (released) {
+        return;
+      }
+      core.module.removeFunction(pointer);
+      released = true;
     },
   };
 }

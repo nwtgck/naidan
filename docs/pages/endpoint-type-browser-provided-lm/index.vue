@@ -67,18 +67,59 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.concept-section h2{margin-bottom:0}
-.concept-section .guide-figure{margin:18px 0 28px}
-.concept-section figcaption{margin-inline:auto;max-width:660px}
-.requirements-details{margin:30px 0 28px;padding:0 20px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface)}
-.requirements-details summary{padding:17px 0;color:var(--text);font-weight:750;cursor:pointer}
-.requirements-details summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px}
-.requirements-details[open] summary{border-bottom:1px solid var(--line)}
-.requirements-details p{margin:16px 0 0}
-.requirements-details .requirements-source{margin:10px 0 17px;font-size:.9em}
-.walkthrough-step{border-top:1px solid var(--line);margin-top:38px;padding-top:22px}
-.walkthrough-step h2{margin-top:0}
-.walkthrough-step>p{margin-bottom:0}
-.walkthrough-step .guide-figure{margin:18px 0 0}
-.walkthrough-step figcaption{margin-inline:auto;max-width:660px}
+.concept-section h2 {
+  margin-bottom: 0;
+}
+.concept-section .guide-figure {
+  margin: 18px 0 28px;
+}
+.concept-section figcaption {
+  margin-inline: auto;
+  max-width: 660px;
+}
+.requirements-details {
+  margin: 30px 0 28px;
+  padding: 0 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.requirements-details summary {
+  padding: 17px 0;
+  color: var(--text);
+  font-weight: 750;
+  cursor: pointer;
+}
+.requirements-details summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.requirements-details[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+.requirements-details p {
+  margin: 16px 0 0;
+}
+.requirements-details .requirements-source {
+  margin: 10px 0 17px;
+  font-size: .9em;
+}
+.walkthrough-step {
+  border-top: 1px solid var(--line);
+  margin-top: 38px;
+  padding-top: 22px;
+}
+.walkthrough-step h2 {
+  margin-top: 0;
+}
+.walkthrough-step>p {
+  margin-bottom: 0;
+}
+.walkthrough-step .guide-figure {
+  margin: 18px 0 0;
+}
+.walkthrough-step figcaption {
+  margin-inline: auto;
+  max-width: 660px;
+}
 </style>

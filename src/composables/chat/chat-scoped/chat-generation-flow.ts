@@ -126,10 +126,17 @@ function resolveGenerationModel({
   switch (endpointType) {
   case 'naidan_rpc': case 'llama_cpp_browser': return preferredModel;
   case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case undefined: break;
-  default: { const exhaustive: never = endpointType; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = endpointType;
+    throw new Error(String(exhaustive));
   }
-  if (!preferredModel || availableModels.length === 0) return preferredModel;
-  if (availableModels.includes(preferredModel)) return preferredModel;
+  }
+  if (!preferredModel || availableModels.length === 0) {
+    return preferredModel;
+  }
+  if (availableModels.includes(preferredModel)) {
+    return preferredModel;
+  }
   return availableModels[0] ?? '';
 }
 
@@ -501,15 +508,21 @@ export async function generateResponseForAssistant({
       for (const part of node.parts) {
         switch (part.result.status) {
         case 'success':
-        case 'error': chatVolatileState.deleteVolatileToolOutput({ toolCallId: part.result.toolCallId }); break;
+        case 'error': chatVolatileState.deleteVolatileToolOutput({ toolCallId: part.result.toolCallId });
+          break;
         case 'executing': break;
-        default: { const _ex: never = part.result; throw new Error(`Unhandled tool result: ${_ex}`); }
+        default: {
+          const _ex: never = part.result;
+          throw new Error(`Unhandled tool result: ${_ex}`);
+        }
         }
       }
     }
     notifyChatChanged({ chatId: mutableChat.id });
     // The consumer serializes this callback; UI updates never race a prior save.
-    if (Date.now() - lastSave > 500) await saveContent();
+    if (Date.now() - lastSave > 500) {
+      await saveContent();
+    }
   }
 
   try {
@@ -547,18 +560,26 @@ export async function generateResponseForAssistant({
             switch (part.type) {
             case 'attachment': {
               const blob = await resolveAttachmentBlob({ attachment: part.attachment });
-              if (blob !== null && part.attachment.mimeType.startsWith('image/')) images.push({ blob });
+              if (blob !== null && part.attachment.mimeType.startsWith('image/')) {
+                images.push({ blob });
+              }
               break;
             }
             case 'text': break;
-            default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+            default: {
+              const _ex: never = part;
+              throw new Error(`Unhandled user part: ${_ex}`);
+            }
             }
           }
           break;
         case 'assistant':
         case 'tool':
         case 'system': break;
-        default: { const _ex: never = parentNode; throw new Error(`Unhandled message: ${_ex}`); }
+        default: {
+          const _ex: never = parentNode;
+          throw new Error(`Unhandled message: ${_ex}`);
+        }
         }
       }
 
@@ -604,14 +625,18 @@ export async function generateResponseForAssistant({
           signal?.throwIfAborted();
           const blob = await storageService.getFile({ binaryObjectId });
           signal?.throwIfAborted();
-          if (!blob) throw new Error('The referenced binary object is missing.');
+          if (!blob) {
+            throw new Error('The referenced binary object is missing.');
+          }
           return blob;
         },
         createAssistantMessage: () => {
           if (reservedAssistant !== undefined) {
             const node = reservedAssistant;
             reservedAssistant = undefined;
-            if (node.parts.length !== 0) throw new Error('Generation requires a new empty assistant message.');
+            if (node.parts.length !== 0) {
+              throw new Error('Generation requires a new empty assistant message.');
+            }
             return node;
           }
           const node: AssistantMessageNode = reactive({
@@ -632,7 +657,9 @@ export async function generateResponseForAssistant({
           return node;
         },
         createToolMessage: ({ assistant }) => {
-          if (assistant !== activeAssistant) throw new Error('The active assistant no longer owns this tool execution.');
+          if (assistant !== activeAssistant) {
+            throw new Error('The active assistant no longer owns this tool execution.');
+          }
           const node: ToolMessageNode = reactive({
             id: generateId<MessageId>(),
             role: 'tool',
@@ -648,10 +675,14 @@ export async function generateResponseForAssistant({
           mutableChat.currentLeafId = node.id;
           for (const part of assistant.parts) {
             switch (part.type) {
-            case 'tool_call': currentGenerationToolCallIds.add(part.toolCall.id); break;
+            case 'tool_call': currentGenerationToolCallIds.add(part.toolCall.id);
+              break;
             case 'text':
             case 'reasoning': break;
-            default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+            default: {
+              const _ex: never = part;
+              throw new Error(`Unhandled assistant part: ${_ex}`);
+            }
             }
           }
           notifyChatChanged({ chatId: mutableChat.id });
@@ -667,16 +698,23 @@ export async function generateResponseForAssistant({
         onToolCallDraftsChange: ({ messageId, drafts }) => {
           // Only the live operation may publish or clear its transient previews.
           // No history notification or persistence is triggered by draft updates.
-          if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller !== controller) return;
+          if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller !== controller) {
+            return;
+          }
           draftMessages.add(messageId);
           chatVolatileState.setToolCallDrafts({ chatId: mutableChat.id, messageId, owner: controller.signal, drafts });
         },
         onToolEvent: ({ toolCallId, event }) => {
           switch (event.type) {
-          case 'started': chatVolatileState.setVolatileToolOutput({ toolCallId, output: '' }); break;
-          case 'output': chatVolatileState.appendVolatileToolOutput({ toolCallId, text: event.text }); break;
+          case 'started': chatVolatileState.setVolatileToolOutput({ toolCallId, output: '' });
+            break;
+          case 'output': chatVolatileState.appendVolatileToolOutput({ toolCallId, text: event.text });
+            break;
           case 'exit': break;
-          default: { const _ex: never = event; throw new Error(`Unhandled tool event: ${_ex}`); }
+          default: {
+            const _ex: never = event;
+            throw new Error(`Unhandled tool event: ${_ex}`);
+          }
           }
           notifyChatChanged({ chatId: mutableChat.id });
         },
@@ -699,7 +737,10 @@ export async function generateResponseForAssistant({
           scheduleAutoTitleForChat({ chatId: mutableChat.id });
         }
         break;
-      default: { const _ex: never = result; throw new Error(`Unhandled generation result: ${_ex}`); }
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled generation result: ${_ex}`);
+      }
       }
     } finally {
       await Promise.all(enabledTools.map(async tool => {
@@ -725,14 +766,18 @@ export async function generateResponseForAssistant({
     notifyChatChanged({ chatId: mutableChat.id });
     // Keep accepted in-memory content on persistence failure; do not invent an
     // empty replacement or append an error notice to model-visible text.
-    if (persistenceFailure === undefined) await saveContent();
+    if (persistenceFailure === undefined) {
+      await saveContent();
+    }
   } finally {
     signalReady();
     for (const messageId of draftMessages) {
       // A replacement operation may already own this message's previews.
       chatVolatileState.setToolCallDrafts({ chatId: mutableChat.id, messageId, owner: controller.signal, drafts: [] });
     }
-    for (const toolCallId of currentGenerationToolCallIds) chatVolatileState.deleteVolatileToolOutput({ toolCallId });
+    for (const toolCallId of currentGenerationToolCallIds) {
+      chatVolatileState.deleteVolatileToolOutput({ toolCallId });
+    }
     if (chatRuntimeStore.getActiveGeneration({ chatId: mutableChat.id })?.controller === controller) {
       chatRuntimeStore.deleteActiveGeneration({ chatId: mutableChat.id });
       storageService.notify({
@@ -1076,7 +1121,9 @@ async function getEnabledToolsForChat({
   try {
     return [...tools, ...getImageGenerationToolsForChat({ chatId: chat.id })];
   } catch (error) {
-    for (const tool of tools) await tool.dispose?.();
+    for (const tool of tools) {
+      await tool.dispose?.();
+    }
     throw error;
   }
 }

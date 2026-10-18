@@ -21,9 +21,15 @@ const SPECIAL_CLASS_MASKS: Readonly<Record<PermissionClass, number>> = {
 
 function classesFromWho({ who }: { who: string }): readonly PermissionClass[] {
   const classes: PermissionClass[] = [];
-  if (who.includes('a') || who.includes('u')) classes.push('user');
-  if (who.includes('a') || who.includes('g')) classes.push('group');
-  if (who.includes('a') || who.includes('o')) classes.push('other');
+  if (who.includes('a') || who.includes('u')) {
+    classes.push('user');
+  }
+  if (who.includes('a') || who.includes('g')) {
+    classes.push('group');
+  }
+  if (who.includes('a') || who.includes('o')) {
+    classes.push('other');
+  }
   return classes;
 }
 
@@ -47,7 +53,9 @@ function permissionTriplet({
       triplet |= 0o1;
       break;
     case 'X':
-      if ((mode & 0o111) !== 0) triplet |= 0o1;
+      if ((mode & 0o111) !== 0) {
+        triplet |= 0o1;
+      }
       break;
     case 'u':
       triplet |= (mode & CLASS_MASKS.user) >> CLASS_SHIFTS.user;
@@ -77,8 +85,12 @@ function specialPermissionMask({
 }): number {
   let mask = 0;
   if (permissions.includes('s')) {
-    if (classes.includes('user')) mask |= SPECIAL_CLASS_MASKS.user;
-    if (classes.includes('group')) mask |= SPECIAL_CLASS_MASKS.group;
+    if (classes.includes('user')) {
+      mask |= SPECIAL_CLASS_MASKS.user;
+    }
+    if (classes.includes('group')) {
+      mask |= SPECIAL_CLASS_MASKS.group;
+    }
   }
   if (permissions.includes('t') && classes.includes('other')) {
     mask |= SPECIAL_CLASS_MASKS.other;
@@ -101,15 +113,21 @@ function applySymbolicOperation({
   umask: number;
   allowSpecialBits: boolean;
 }): number | undefined {
-  if (!/^[rwxXugost]*$/u.test(permissions)) return undefined;
-  if (!allowSpecialBits && /[st]/u.test(permissions)) return undefined;
+  if (!/^[rwxXugost]*$/u.test(permissions)) {
+    return undefined;
+  }
+  if (!allowSpecialBits && /[st]/u.test(permissions)) {
+    return undefined;
+  }
 
   const explicitWho = who.length > 0;
   const classes = explicitWho
     ? classesFromWho({ who })
     : (['user', 'group', 'other'] as const);
   const triplet = permissionTriplet({ permissions, mode });
-  if (triplet === undefined) return undefined;
+  if (triplet === undefined) {
+    return undefined;
+  }
 
   let affectedMask = 0;
   let permissionMask = 0;
@@ -156,23 +174,31 @@ function applySymbolicClause({
   allowSpecialBits: boolean;
 }): number | undefined {
   const match = clause.match(/^([ugoa]*)(.*)$/u);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const who = match[1] ?? '';
   const operations = match[2] ?? '';
-  if (operations.length === 0) return undefined;
+  if (operations.length === 0) {
+    return undefined;
+  }
 
   let nextMode = mode;
   let offset = 0;
   while (offset < operations.length) {
     const operation = operations[offset];
-    if (operation !== '+' && operation !== '-' && operation !== '=') return undefined;
+    if (operation !== '+' && operation !== '-' && operation !== '=') {
+      return undefined;
+    }
     offset += 1;
 
     const permissionStart = offset;
     while (offset < operations.length) {
       const character = operations[offset];
-      if (character === '+' || character === '-' || character === '=') break;
+      if (character === '+' || character === '-' || character === '=') {
+        break;
+      }
       offset += 1;
     }
 
@@ -185,7 +211,9 @@ function applySymbolicClause({
       umask,
       allowSpecialBits,
     });
-    if (applied === undefined) return undefined;
+    if (applied === undefined) {
+      return undefined;
+    }
     nextMode = applied;
   }
 
@@ -205,21 +233,29 @@ export function parseFilePermissionMode({
 }): { ok: true; mode: number } | { ok: false; specialBits: boolean } {
   if (/^[0-7]{1,4}$/u.test(value)) {
     const mode = Number.parseInt(value, 8);
-    if ((mode & ~0o777) !== 0 && !allowSpecialBits) return { ok: false, specialBits: true };
+    if ((mode & ~0o777) !== 0 && !allowSpecialBits) {
+      return { ok: false, specialBits: true };
+    }
     return { ok: true, mode };
   }
 
-  if (value.length === 0) return { ok: false, specialBits: false };
+  if (value.length === 0) {
+    return { ok: false, specialBits: false };
+  }
   const clauses = value.split(',');
   if (clauses.some(clause => clause.length === 0)) {
     return { ok: false, specialBits: false };
   }
-  if (!allowSpecialBits && /[st]/u.test(value)) return { ok: false, specialBits: true };
+  if (!allowSpecialBits && /[st]/u.test(value)) {
+    return { ok: false, specialBits: true };
+  }
 
   let mode = initialMode & (allowSpecialBits ? 0o7777 : 0o777);
   for (const clause of clauses) {
     const nextMode = applySymbolicClause({ clause, mode, umask, allowSpecialBits });
-    if (nextMode === undefined) return { ok: false, specialBits: false };
+    if (nextMode === undefined) {
+      return { ok: false, specialBits: false };
+    }
     mode = nextMode & (allowSpecialBits ? 0o7777 : 0o777);
   }
   return { ok: true, mode };

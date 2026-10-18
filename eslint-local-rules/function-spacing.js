@@ -29,8 +29,12 @@ function isFunctionValue({ node }) {
 
 function isTopLevelImplementation({ statement }) {
   const node = unwrapExport({ node: statement });
-  if (!node || node.declare) return false;
-  if (node.type === 'FunctionDeclaration') return node.body?.type === 'BlockStatement';
+  if (!node || node.declare) {
+    return false;
+  }
+  if (node.type === 'FunctionDeclaration') {
+    return node.body?.type === 'BlockStatement';
+  }
   if (node.type === 'VariableDeclaration') {
     // Do not split a mixed/multiple declaration or treat a destructuring
     // initializer, factory call, callback, or function reference as a definition.
@@ -48,7 +52,9 @@ function isFunctionOverload({ signature, implementation }) {
   if (left?.type !== 'TSDeclareFunction' || left.declare
     || right?.type !== 'FunctionDeclaration'
     || (right.id ? left.id?.name !== right.id.name
-      : implementation.type !== 'ExportDefaultDeclaration' || left.id !== null)) return false;
+      : implementation.type !== 'ExportDefaultDeclaration' || left.id !== null)) {
+    return false;
+  }
   const signatureExported = signature !== left;
   const implementationExported = implementation !== right;
   return signatureExported === implementationExported
@@ -58,12 +64,18 @@ function isFunctionOverload({ signature, implementation }) {
 // Only compare simple spellings, never evaluate computed keys. Calls and
 // arbitrary expressions might name different properties on successive reads.
 function stableKey({ node, computed }) {
-  if (node.type === 'PrivateIdentifier') return `private:${node.name}`;
-  if (!computed && node.type === 'Identifier') return `public:${node.name}`;
+  if (node.type === 'PrivateIdentifier') {
+    return `private:${node.name}`;
+  }
+  if (!computed && node.type === 'Identifier') {
+    return `public:${node.name}`;
+  }
   if (node.type === 'Literal' && ['string', 'number'].includes(typeof node.value)) {
     return `public:${String(node.value)}`;
   }
-  if (computed && node.type === 'Identifier') return `computed:${node.name}`;
+  if (computed && node.type === 'Identifier') {
+    return `computed:${node.name}`;
+  }
   if (computed && node.type === 'MemberExpression' && !node.computed && !node.optional
     && node.property.type === 'Identifier') {
     const owner = stableKey({ node: node.object, computed: true });
@@ -124,7 +136,9 @@ export const rule = {
       .map(node => [node.startTag.range[1], node.endTag.range[0]]);
 
     function sameScript({ left, right }) {
-      if (!scriptRanges) return true;
+      if (!scriptRanges) {
+        return true;
+      }
       return scriptRanges.some(([start, end]) => left.range[0] >= start && right.range[1] <= end);
     }
 
@@ -135,16 +149,25 @@ export const rule = {
       let high = protectedLines.length;
       while (low < high) {
         const middle = Math.floor((low + high) / 2);
-        if (protectedLines[middle].end <= line) low = middle + 1;
-        else high = middle;
+        if (protectedLines[middle].end <= line) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
       }
       return low < protectedLines.length && protectedLines[low].start <= line;
     }
 
     function checkBoundary({ previous, next, classBody }) {
-      if (!previous.target && !next.target) return;
-      if (previous.last.range[1] > next.first.range[0]) return;
-      if (!sameScript({ left: previous.last, right: next.first })) return;
+      if (!previous.target && !next.target) {
+        return;
+      }
+      if (previous.last.range[1] > next.first.range[0]) {
+        return;
+      }
+      if (!sameScript({ left: previous.last, right: next.first })) {
+        return;
+      }
       let left = previous.last;
       const right = next.first;
       const middle = sourceCode.getTokensBetween(left, right, { includeComments: true });
@@ -152,9 +175,13 @@ export const rule = {
       // the preceding member; never introduce an empty, separately padded unit.
       const isSeparator = token => token.type === 'Punctuator' && token.value === ';';
       if (middle.some(token => token.type !== 'Line' && token.type !== 'Block'
-        && !(classBody && isSeparator(token)))) return;
+        && !(classBody && isSeparator(token)))) {
+        return;
+      }
       const offset = classBody ? middle.findLastIndex(isSeparator) + 1 : 0;
-      if (offset > 0) left = middle[offset - 1];
+      if (offset > 0) {
+        left = middle[offset - 1];
+      }
       const comments = middle.slice(offset);
       const parts = [left, ...comments, right];
       const gaps = parts.slice(1).map((part, index) => ({
@@ -163,10 +190,14 @@ export const rule = {
         text: text.slice(parts[index].range[1], part.range[0]),
       }));
       // This also excludes non-script source gaps and parser-generated nodes.
-      if (gaps.some(gap => /\S/u.test(gap.text))) return;
+      if (gaps.some(gap => /\S/u.test(gap.text))) {
+        return;
+      }
       // Blank lines inside comments are not separation. Existing external
       // blank lines anywhere in the boundary are preserved, never normalized.
-      if (gaps.some(gap => (gap.text.match(lineBreakPattern)?.length ?? 0) >= 2)) return;
+      if (gaps.some(gap => (gap.text.match(lineBreakPattern)?.length ?? 0) >= 2)) {
+        return;
+      }
 
       let trailing = 0;
       while (trailing < comments.length && comments[trailing].loc.start.line === parts[trailing].loc.end.line) {
@@ -205,7 +236,9 @@ export const rule = {
         for (const statement of node.body) {
           if (statement.type === 'EmptyStatement') {
             const previous = units.at(-1);
-            if (previous && sameScript({ left: previous.last, right: statement })) previous.last = statement;
+            if (previous && sameScript({ left: previous.last, right: statement })) {
+              previous.last = statement;
+            }
             continue;
           }
           const unit = { first: statement, last: statement, target: isTopLevelImplementation({ statement }) };
@@ -214,7 +247,9 @@ export const rule = {
               const previous = units.at(-1);
               if (previous.first !== previous.last
                 || !sameScript({ left: previous.first, right: statement })
-                || !isFunctionOverload({ signature: previous.first, implementation: statement })) break;
+                || !isFunctionOverload({ signature: previous.first, implementation: statement })) {
+                break;
+              }
               unit.first = units.pop().first;
             }
           }
@@ -230,7 +265,9 @@ export const rule = {
             while (units.length > 0) {
               const previous = units.at(-1);
               if (previous.first !== previous.last
-                || !isMethodOverload({ signature: previous.first, implementation: member })) break;
+                || !isMethodOverload({ signature: previous.first, implementation: member })) {
+                break;
+              }
               unit.first = units.pop().first;
             }
             const previous = units.at(-1);

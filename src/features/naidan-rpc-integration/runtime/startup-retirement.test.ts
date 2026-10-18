@@ -32,7 +32,9 @@ it.each([
     ? new PipingRetirementError({ cause: new Error('Unretired factory resource'), logicalError: new Error('Establishment failed') })
     : new Error('Unaccepted link cleanup failed');
   const abort = vi.fn(() => {
-    if (failureAt === 'abort') throw failure;
+    if (failureAt === 'abort') {
+      throw failure;
+    }
   });
   const resourcesDone = Promise.withResolvers<void>(), retireResources = vi.fn(() => resourcesDone.promise);
   const dependencies: RpcManagerDependencies = {
@@ -58,20 +60,27 @@ it.each([
   const manager = new NaidanPeerManager({ dependencies });
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      linkClosed.resolve(); resourcesDone.resolve(); await manager.setEnabled({ enabled: false }).catch(() => {});
+      linkClosed.resolve();
+      resourcesDone.resolve();
+      await manager.setEnabled({ enabled: false }).catch(() => {});
     },
   };
-  await manager.setEnabled({ enabled: true }); await manager.reload();
+  await manager.setEnabled({ enabled: true });
+  await manager.reload();
   const start = (() => {
     switch (mode) {
     case 'connect': return manager.connect({ id: record.id });
     case 'pair': return manager.pair({ settings: record.transport, code: '0042', verifyPeer: async () => true, signal: new AbortController().signal });
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   void start.catch(() => {});
   await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
-  const stopping = manager.setEnabled({ enabled: false }); let settled = false;
+  const stopping = manager.setEnabled({ enabled: false });
+  let settled = false;
   void stopping.then(() => {
     settled = true;
   }, () => {
@@ -80,13 +89,18 @@ it.each([
   if (failureAt === 'factory') {
     opening.reject(failure);
     await vi.waitFor(() => expect(retireResources).toHaveBeenCalledOnce());
-    expect(settled).toBe(false); expect(abort).not.toHaveBeenCalled();
+    expect(settled).toBe(false);
+    expect(abort).not.toHaveBeenCalled();
     resourcesDone.resolve();
     await expect(stopping).rejects.toBe(failure);
-    if (mode === 'connect') await expect(start).rejects.toThrow('cancelled');
-    else await expect(start).rejects.toMatchObject({ name: 'PipingRetirementError', cause: failure });
+    if (mode === 'connect') {
+      await expect(start).rejects.toThrow('cancelled');
+    } else {
+      await expect(start).rejects.toMatchObject({ name: 'PipingRetirementError', cause: failure });
+    }
     await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure);
-    expect(open).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledOnce();
+    expect(release).not.toHaveBeenCalled();
     return;
   }
   opening.resolve({
@@ -100,10 +114,19 @@ it.each([
     abort,
   });
   await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
-  expect(settled).toBe(false); expect(retireResources).not.toHaveBeenCalled(); expect(release).not.toHaveBeenCalled();
-  if (failureAt === 'closed') linkClosed.reject(failure); else linkClosed.resolve();
+  expect(settled).toBe(false);
+  expect(retireResources).not.toHaveBeenCalled();
+  expect(release).not.toHaveBeenCalled();
+  if (failureAt === 'closed') {
+    linkClosed.reject(failure);
+  } else {
+    linkClosed.resolve();
+  }
   await vi.waitFor(() => expect(retireResources).toHaveBeenCalledOnce());
-  expect(settled).toBe(false); resourcesDone.resolve();
-  await expect(stopping).rejects.toBe(failure); await expect(start).rejects.toBeDefined();
-  await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure); expect(release).not.toHaveBeenCalled();
+  expect(settled).toBe(false);
+  resourcesDone.resolve();
+  await expect(stopping).rejects.toBe(failure);
+  await expect(start).rejects.toBeDefined();
+  await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure);
+  expect(release).not.toHaveBeenCalled();
 });

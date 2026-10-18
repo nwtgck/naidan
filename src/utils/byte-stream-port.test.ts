@@ -31,7 +31,8 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
       signal: undefined,
@@ -42,7 +43,9 @@ describe('bounded byte stream ports', () => {
     const lengths: number[] = [];
     for (;;) {
       const result = await reader.read();
-      if (result.done) break;
+      if (result.done) {
+        break;
+      }
       lengths.push(result.value.byteLength);
       expect(result.value.every(value => value === 42)).toBe(true);
     }
@@ -59,7 +62,8 @@ describe('bounded byte stream ports', () => {
       signal: undefined,
       stream: new ReadableStream({
         pull(controller) {
-          produced++; controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
+          produced++;
+          controller.enqueue(new Uint8Array(BYTE_STREAM_CHUNK_BYTES));
         },
       }, { highWaterMark: 0 }),
     });
@@ -79,7 +83,8 @@ describe('bounded byte stream ports', () => {
       signal: undefined,
       stream: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes.subarray(1, 3)); controller.close();
+          controller.enqueue(bytes.subarray(1, 3));
+          controller.close();
         },
       }),
     });

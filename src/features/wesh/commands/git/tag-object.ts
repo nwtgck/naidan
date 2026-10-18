@@ -21,11 +21,15 @@ function parseTargetType({ value }: { value: string }): ParsedAnnotatedTag['targ
 export function parseAnnotatedTagObject({ body }: { body: Uint8Array }): ParsedAnnotatedTag {
   const text = new TextDecoder().decode(body);
   const separator = text.indexOf('\n\n');
-  if (separator < 0) throw new Error('corrupt annotated tag: header separator is missing');
+  if (separator < 0) {
+    throw new Error('corrupt annotated tag: header separator is missing');
+  }
   const headers = new Map<string, string>();
   for (const line of text.slice(0, separator).split('\n')) {
     const space = line.indexOf(' ');
-    if (space <= 0) throw new Error(`corrupt annotated tag header: ${line}`);
+    if (space <= 0) {
+      throw new Error(`corrupt annotated tag header: ${line}`);
+    }
     headers.set(line.slice(0, space), line.slice(space + 1));
   }
   const targetObjectId = headers.get('object');
@@ -35,9 +39,15 @@ export function parseAnnotatedTagObject({ body }: { body: Uint8Array }): ParsedA
   if (targetObjectId === undefined || !/^[0-9a-f]{40}$/u.test(targetObjectId)) {
     throw new Error('corrupt annotated tag: object header is missing');
   }
-  if (targetType === undefined) throw new Error('corrupt annotated tag: type header is missing');
-  if (name === undefined) throw new Error('corrupt annotated tag: tag header is missing');
-  if (tagger === undefined) throw new Error('corrupt annotated tag: tagger header is missing');
+  if (targetType === undefined) {
+    throw new Error('corrupt annotated tag: type header is missing');
+  }
+  if (name === undefined) {
+    throw new Error('corrupt annotated tag: tag header is missing');
+  }
+  if (tagger === undefined) {
+    throw new Error('corrupt annotated tag: tagger header is missing');
+  }
   return {
     targetObjectId,
     targetType: parseTargetType({ value: targetType }),

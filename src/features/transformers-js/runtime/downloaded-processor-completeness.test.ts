@@ -36,10 +36,14 @@ it('excludes a Gemma processor namespace missing its required processor config b
   const fs = h.observations.fs;
   fs.enter({ nextPhase: 'fixture-setup', mutationPolicy: 'read-write' });
   for (const [path, bytes] of [...fs.files]) {
-    if (!path.startsWith(`${prefix}main/`) || path.endsWith('/processor_config.json')) continue;
+    if (!path.startsWith(`${prefix}main/`) || path.endsWith('/processor_config.json')) {
+      continue;
+    }
     const next = path.replace(`${prefix}main/`, `${prefix}${revision}/`);
     let directory = fs.root;
-    for (const part of next.split('/').slice(0, -1)) directory = await directory.getDirectoryHandle(part, { create: true });
+    for (const part of next.split('/').slice(0, -1)) {
+      directory = await directory.getDirectoryHandle(part, { create: true });
+    }
     fs.files.set(next, Uint8Array.from(bytes));
   }
   fs.activity.length = 0;

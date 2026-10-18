@@ -12,12 +12,18 @@ export function collectChunkClosure({ chunkByFileName, entryFileNames }: Readonl
   const queue = [...entryFileNames];
   while (queue.length > 0) {
     const fileName = queue.pop();
-    if (!fileName || visited.has(fileName)) continue;
+    if (!fileName || visited.has(fileName)) {
+      continue;
+    }
     visited.add(fileName);
     const chunk = chunkByFileName.get(fileName);
-    if (!chunk) continue;
+    if (!chunk) {
+      continue;
+    }
     for (const dependency of [...chunk.imports, ...chunk.dynamicImports]) {
-      if (!visited.has(dependency)) queue.push(dependency);
+      if (!visited.has(dependency)) {
+        queue.push(dependency);
+      }
     }
   }
   return visited;

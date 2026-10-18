@@ -80,7 +80,9 @@ describe('warm before/after preparation evidence', () => {
   it('accepts observed reuse below the cap, but cannot certify complete evidence at the cap', () => {
     const snapshot = warmSnapshot({ models: 1, repeats: 1 });
     const events = snapshot.trials[1]!.summary!.performance!.preparationEvents!;
-    while (events.length < 63) events.push({ event: 'context-ready', observedMs: events.length });
+    while (events.length < 63) {
+      events.push({ event: 'context-ready', observedMs: events.length });
+    }
     expect(performanceFindings({ snapshot })[0]!.reasons).toEqual([]);
     events.push({ event: 'context-ready', observedMs: 63 });
     expect(performanceFindings({ snapshot })[0]).toMatchObject({ reasons: [], uncertainties: ['after-preparation-evidence-at-cap'], afterToBeforeRatio: 1 });
@@ -90,7 +92,9 @@ describe('warm before/after preparation evidence', () => {
     const snapshot = warmSnapshot({ models: 1, repeats: 1 });
     const events = snapshot.trials[0]!.summary!.performance!.preparationEvents!;
     events.push({ event: 'context-retry', observedMs: 2 });
-    while (events.length < 64) events.push({ event: 'context-ready', observedMs: events.length });
+    while (events.length < 64) {
+      events.push({ event: 'context-ready', observedMs: events.length });
+    }
     expect(performanceFindings({ snapshot })[0]).toMatchObject({
       reasons: ['before-context-retried'],
       uncertainties: ['before-preparation-evidence-at-cap'],

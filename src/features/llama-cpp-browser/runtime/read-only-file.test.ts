@@ -21,7 +21,8 @@ function fixture() {
     source: {
       size: 2 ** 36,
       read: ({ destination, offset }) => {
-        destination.fill(offset % 251); return destination.length;
+        destination.fill(offset % 251);
+        return destination.length;
       },
     },
     maxChunkBytes: 8,
@@ -49,7 +50,8 @@ describe('retained native descriptors on read-only model mounts', () => {
     expect(ops.read({}, bytes, 0, 4, 2 ** 32 + 11)).toBe(4);
     expect(bytes[0]).toBe((2 ** 32 + 11) % 251);
     ops.close();
-    mounted.remove(); mounted.remove();
+    mounted.remove();
+    mounted.remove();
     expect(() => ops.dup()).toThrow('ENOENT');
     expect(() => ops.open({ flags: 0, position: 0 })).toThrow('ENOENT');
   });
@@ -57,10 +59,14 @@ describe('retained native descriptors on read-only model mounts', () => {
   it('counts each duplicate, not just the first duplicate', () => {
     const { mounted, ops } = fixture();
     ops.open({ flags: 0, position: 0 });
-    for (let i = 0; i < 3; i++) ops.dup();
     for (let i = 0; i < 3; i++) {
-      ops.close(); expect(() => mounted.remove()).toThrow('Close native file handles');
+      ops.dup();
     }
-    ops.close(); mounted.remove();
+    for (let i = 0; i < 3; i++) {
+      ops.close();
+      expect(() => mounted.remove()).toThrow('Close native file handles');
+    }
+    ops.close();
+    mounted.remove();
   });
 });

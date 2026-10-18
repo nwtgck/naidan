@@ -35,7 +35,10 @@ export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageReci
         tensor({ name: `blk.${layers - 1}.attn_norm.weight`, shape: [4096] }),
       ],
     }).file;
-    default: { const exhaustive: never = file.role; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = file.role;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   return new Uint8Array(await blob.slice(0, blob.size).arrayBuffer());

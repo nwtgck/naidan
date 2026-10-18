@@ -81,7 +81,9 @@ function createUniqueLicenseTexts({ dependencies }: {
 }>[] {
   const dependencyIndicesByText = new Map<string, number[]>();
   for (const [dependencyIndex, dependency] of dependencies.entries()) {
-    if (dependency.licenseText === null) continue;
+    if (dependency.licenseText === null) {
+      continue;
+    }
     const dependencyIndices = dependencyIndicesByText.get(dependency.licenseText);
     if (dependencyIndices === undefined) {
       dependencyIndicesByText.set(dependency.licenseText, [dependencyIndex]);
@@ -228,12 +230,16 @@ function createSuffixArray({ values }: { values: Uint32Array }): Uint32Array {
 
     let nextRank = 0;
     const firstSuffix = suffixes[0];
-    if (firstSuffix === undefined) return suffixes;
+    if (firstSuffix === undefined) {
+      return suffixes;
+    }
     nextRanks[firstSuffix] = nextRank;
     for (let suffixArrayIndex = 1; suffixArrayIndex < length; suffixArrayIndex += 1) {
       const previousSuffix = suffixes[suffixArrayIndex - 1];
       const currentSuffix = suffixes[suffixArrayIndex];
-      if (previousSuffix === undefined || currentSuffix === undefined) continue;
+      if (previousSuffix === undefined || currentSuffix === undefined) {
+        continue;
+      }
       const previousPair = [
         ranks[previousSuffix],
         previousSuffix + offset < length ? ranks[previousSuffix + offset] : -1,
@@ -242,14 +248,18 @@ function createSuffixArray({ values }: { values: Uint32Array }): Uint32Array {
         ranks[currentSuffix],
         currentSuffix + offset < length ? ranks[currentSuffix + offset] : -1,
       ] as const;
-      if (previousPair[0] !== currentPair[0] || previousPair[1] !== currentPair[1]) nextRank += 1;
+      if (previousPair[0] !== currentPair[0] || previousPair[1] !== currentPair[1]) {
+        nextRank += 1;
+      }
       nextRanks[currentSuffix] = nextRank;
     }
     const previousRanks = ranks;
     ranks = nextRanks;
     nextRanks = previousRanks;
     maximumRank = nextRank;
-    if (nextRank === length - 1) break;
+    if (nextRank === length - 1) {
+      break;
+    }
   }
   return suffixes;
 }
@@ -259,14 +269,20 @@ function createLongestCommonPrefixArray({ values, suffixes }: {
   suffixes: Uint32Array,
 }): Uint32Array {
   const rankBySuffix = new Uint32Array(values.length);
-  for (const [rank, suffix] of suffixes.entries()) rankBySuffix[suffix] = rank;
+  for (const [rank, suffix] of suffixes.entries()) {
+    rankBySuffix[suffix] = rank;
+  }
   const longestCommonPrefixes = new Uint32Array(values.length);
   let commonLength = 0;
   for (let suffix = 0; suffix < values.length; suffix += 1) {
     const rank = rankBySuffix[suffix] ?? 0;
-    if (rank === 0) continue;
+    if (rank === 0) {
+      continue;
+    }
     const previousSuffix = suffixes[rank - 1];
-    if (previousSuffix === undefined) continue;
+    if (previousSuffix === undefined) {
+      continue;
+    }
     while (
       suffix + commonLength < values.length
       && previousSuffix + commonLength < values.length
@@ -275,7 +291,9 @@ function createLongestCommonPrefixArray({ values, suffixes }: {
       commonLength += 1;
     }
     longestCommonPrefixes[rank] = commonLength;
-    if (commonLength > 0) commonLength -= 1;
+    if (commonLength > 0) {
+      commonLength -= 1;
+    }
   }
   return longestCommonPrefixes;
 }
@@ -304,12 +322,16 @@ function findLineSequenceOccurrences({ index, sourceStart, lineCount }: {
   lineCount: number,
 }): readonly LicenseTextOccurrence[] {
   const firstLineId = index.concatenatedLineIds[sourceStart];
-  if (firstLineId === undefined) return [];
+  if (firstLineId === undefined) {
+    return [];
+  }
   const positions = index.positionsByLineId[firstLineId] ?? [];
   const occurrences: LicenseTextOccurrence[] = [];
   for (const { uniqueTextIndex, lineIndex } of positions) {
     const uniqueText = index.uniqueTexts[uniqueTextIndex];
-    if (uniqueText === undefined || lineIndex + lineCount > uniqueText.lineIds.length) continue;
+    if (uniqueText === undefined || lineIndex + lineCount > uniqueText.lineIds.length) {
+      continue;
+    }
     let matches = true;
     for (let candidateLineIndex = 0; candidateLineIndex < lineCount; candidateLineIndex += 1) {
       if (
@@ -320,10 +342,14 @@ function findLineSequenceOccurrences({ index, sourceStart, lineCount }: {
         break;
       }
     }
-    if (!matches) continue;
+    if (!matches) {
+      continue;
+    }
     const start = uniqueText.lineOffsets[lineIndex];
     const end = uniqueText.lineOffsets[lineIndex + lineCount];
-    if (start === undefined || end === undefined) continue;
+    if (start === undefined || end === undefined) {
+      continue;
+    }
     for (const dependencyIndex of uniqueText.dependencyIndices) {
       occurrences.push({ dependencyIndex, start, end });
     }
@@ -338,7 +364,9 @@ function createLicenseTextCandidates({ dependencies }: {
   const occurrencesByCandidateText = new Map<string, Map<string, LicenseTextOccurrence>>();
 
   for (const uniqueText of index.uniqueTexts) {
-    if (uniqueText.dependencyIndices.length < 2 || uniqueText.text.length === 0) continue;
+    if (uniqueText.dependencyIndices.length < 2 || uniqueText.text.length === 0) {
+      continue;
+    }
     addCandidateOccurrences({
       occurrencesByCandidateText,
       text: uniqueText.text,
@@ -364,7 +392,9 @@ function createLicenseTextCandidates({ dependencies }: {
     for (let suffixArrayIndex = 1; suffixArrayIndex < suffixes.length; suffixArrayIndex += 1) {
       const lineCount = longestCommonPrefixes[suffixArrayIndex] ?? 0;
       const sourceStart = suffixes[suffixArrayIndex];
-      if (lineCount === 0 || sourceStart === undefined) continue;
+      if (lineCount === 0 || sourceStart === undefined) {
+        continue;
+      }
       const uniqueTextIndex = index.concatenatedTextIndices[sourceStart];
       const sourceLineIndex = index.concatenatedLineIndices[sourceStart];
       const uniqueText = uniqueTextIndex === undefined || uniqueTextIndex < 0
@@ -381,15 +411,21 @@ function createLicenseTextCandidates({ dependencies }: {
       const lineSequenceKey = Array.from(
         index.concatenatedLineIds.subarray(sourceStart, sourceStart + lineCount),
       ).join(',');
-      if (seenLineSequenceKeys.has(lineSequenceKey)) continue;
+      if (seenLineSequenceKeys.has(lineSequenceKey)) {
+        continue;
+      }
       seenLineSequenceKeys.add(lineSequenceKey);
 
       const start = uniqueText.lineOffsets[sourceLineIndex];
       const end = uniqueText.lineOffsets[sourceLineIndex + lineCount];
-      if (start === undefined || end === undefined) continue;
+      if (start === undefined || end === undefined) {
+        continue;
+      }
       const text = uniqueText.text.slice(start, end);
       const occurrences = findLineSequenceOccurrences({ index, sourceStart, lineCount });
-      if (occurrences.length < 2) continue;
+      if (occurrences.length < 2) {
+        continue;
+      }
       addCandidateOccurrences({ occurrencesByCandidateText, text, occurrences });
     }
   }
@@ -444,7 +480,9 @@ function selectAvailableOccurrences({ candidate, selectedOccurrencesByDependency
     occurrences.sort((left, right) => left.start - right.start || right.end - left.end);
     let previousEnd = -1;
     for (const occurrence of occurrences) {
-      if (occurrence.start < previousEnd) continue;
+      if (occurrence.start < previousEnd) {
+        continue;
+      }
       selected.push(occurrence);
       previousEnd = occurrence.end;
     }
@@ -456,15 +494,21 @@ function serializeLicenseTextExpression({ text, selectedOccurrences }: {
   text: string,
   selectedOccurrences: readonly SelectedLicenseTextOccurrence[],
 }): string {
-  if (selectedOccurrences.length === 0) return JSON.stringify(text);
+  if (selectedOccurrences.length === 0) {
+    return JSON.stringify(text);
+  }
   const parts: string[] = [];
   let offset = 0;
   for (const occurrence of selectedOccurrences) {
-    if (occurrence.start > offset) parts.push(JSON.stringify(text.slice(offset, occurrence.start)));
+    if (occurrence.start > offset) {
+      parts.push(JSON.stringify(text.slice(offset, occurrence.start)));
+    }
     parts.push(`${dictionaryVariableName}[${occurrence.dictionaryIndex}]`);
     offset = occurrence.end;
   }
-  if (offset < text.length) parts.push(JSON.stringify(text.slice(offset)));
+  if (offset < text.length) {
+    parts.push(JSON.stringify(text.slice(offset)));
+  }
   return parts.length === 0 ? JSON.stringify('') : parts.join('+');
 }
 
@@ -498,7 +542,9 @@ function createCompressionPlan({ dependencies }: {
       candidate,
       selectedOccurrencesByDependency,
     });
-    if (availableOccurrences.length < 2) continue;
+    if (availableOccurrences.length < 2) {
+      continue;
+    }
     const dictionaryIndex = dictionary.length;
     const affectedDependencyIndices = [...new Set(
       availableOccurrences.map((occurrence) => occurrence.dependencyIndex),
@@ -516,7 +562,9 @@ function createCompressionPlan({ dependencies }: {
       ].sort((left, right) => left.start - right.start);
       proposedOccurrencesByDependency.set(dependencyIndex, proposedOccurrences);
       const licenseText = dependencies[dependencyIndex]?.licenseText;
-      if (licenseText === null || licenseText === undefined) continue;
+      if (licenseText === null || licenseText === undefined) {
+        continue;
+      }
       proposedExpressionBytes += getUtf8ByteLength({
         value: serializeLicenseTextExpression({ text: licenseText, selectedOccurrences: proposedOccurrences }),
       });
@@ -525,13 +573,17 @@ function createCompressionPlan({ dependencies }: {
       dictionary,
       candidateText: candidate.text,
     });
-    if (previousExpressionBytes <= proposedExpressionBytes + additionalDictionaryBytes) continue;
+    if (previousExpressionBytes <= proposedExpressionBytes + additionalDictionaryBytes) {
+      continue;
+    }
 
     dictionary.push(candidate.text);
     for (const dependencyIndex of affectedDependencyIndices) {
       const proposedOccurrences = proposedOccurrencesByDependency.get(dependencyIndex);
       const licenseText = dependencies[dependencyIndex]?.licenseText;
-      if (proposedOccurrences === undefined || licenseText === null || licenseText === undefined) continue;
+      if (proposedOccurrences === undefined || licenseText === null || licenseText === undefined) {
+        continue;
+      }
       selectedOccurrencesByDependency[dependencyIndex] = proposedOccurrences;
       currentExpressions[dependencyIndex] = serializeLicenseTextExpression({
         text: licenseText,
@@ -564,7 +616,9 @@ export function serializeLicenseDependencies({ dependencies }: {
 }): string {
   const plan = createCompressionPlan({ dependencies });
   const licenseArray = serializeLicenseArray({ dependencies, plan });
-  if (plan.dictionary.length === 0) return licenseArray;
+  if (plan.dictionary.length === 0) {
+    return licenseArray;
+  }
 
   // Emit normal JavaScript concatenations instead of a generic runtime decoder.
   // The generated virtual module is therefore portable and self-contained: it

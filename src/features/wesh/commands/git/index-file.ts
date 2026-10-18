@@ -68,8 +68,12 @@ function findNul({ bytes, offset, limit, label }: {
   label: string,
 }): number {
   let nulOffset = offset;
-  while (nulOffset < limit && bytes[nulOffset] !== 0) nulOffset += 1;
-  if (nulOffset >= limit) throw new Error(`${label} is not terminated`);
+  while (nulOffset < limit && bytes[nulOffset] !== 0) {
+    nulOffset += 1;
+  }
+  if (nulOffset >= limit) {
+    throw new Error(`${label} is not terminated`);
+  }
   return nulOffset;
 }
 
@@ -92,12 +96,16 @@ function parseExtensions({ bytes, offset, contentEnd }: {
 }): string[] {
   const extensions: string[] = [];
   while (offset < contentEnd) {
-    if (offset + 8 > contentEnd) throw new Error('truncated index extension header');
+    if (offset + 8 > contentEnd) {
+      throw new Error('truncated index extension header');
+    }
     const signatureBytes = bytes.subarray(offset, offset + 4);
     const signature = String.fromCharCode(...signatureBytes);
     const size = readUint32({ bytes, offset: offset + 4 });
     const extensionEnd = offset + 8 + size;
-    if (extensionEnd > contentEnd) throw new Error(`truncated index extension ${signature}`);
+    if (extensionEnd > contentEnd) {
+      throw new Error(`truncated index extension ${signature}`);
+    }
     const firstByte = signatureBytes[0]!;
     if (firstByte < 0x41 || firstByte > 0x5a) {
       throw new Error(`unsupported required index extension ${signature}`);
@@ -110,7 +118,9 @@ function parseExtensions({ bytes, offset, contentEnd }: {
 
 function assertWritableIndexExtensions({ extensions }: { extensions: readonly string[] }): void {
   for (const signature of extensions) {
-    if (DROPPABLE_OPTIONAL_INDEX_EXTENSIONS.has(signature)) continue;
+    if (DROPPABLE_OPTIONAL_INDEX_EXTENSIONS.has(signature)) {
+      continue;
+    }
     if (signature === "REUC") {
       throw new Error("index resolve-undo extension REUC is not supported for mutation yet");
     }
@@ -119,8 +129,12 @@ function assertWritableIndexExtensions({ extensions }: { extensions: readonly st
 }
 
 function parseIndexState({ bytes }: { bytes: Uint8Array }): ParsedIndex {
-  if (bytes.byteLength < 32) throw new Error('index file is too small');
-  if (String.fromCharCode(...bytes.subarray(0, 4)) !== 'DIRC') throw new Error('index signature is invalid');
+  if (bytes.byteLength < 32) {
+    throw new Error('index file is too small');
+  }
+  if (String.fromCharCode(...bytes.subarray(0, 4)) !== 'DIRC') {
+    throw new Error('index signature is invalid');
+  }
   const rawVersion = readUint32({ bytes, offset: 4 });
   if (rawVersion !== 2 && rawVersion !== 3 && rawVersion !== 4) {
     throw new Error(`unsupported index version ${rawVersion}`);
@@ -139,18 +153,26 @@ function parseIndexState({ bytes }: { bytes: Uint8Array }): ParsedIndex {
   let previousPathBytes: Uint8Array = new Uint8Array();
   for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
     const entryStart = offset;
-    if (offset + 62 > contentEnd) throw new Error('truncated index entry');
+    if (offset + 62 > contentEnd) {
+      throw new Error('truncated index entry');
+    }
     const mode = readUint32({ bytes, offset: offset + 24 });
     const size = readUint32({ bytes, offset: offset + 36 });
     const objectId = bytesToHex({ bytes: bytes.subarray(offset + 40, offset + 60) });
     const flags = readUint16({ bytes, offset: offset + 60 });
-    if ((flags & 0x8000) !== 0) throw new Error('assume-valid index entries are not supported yet');
+    if ((flags & 0x8000) !== 0) {
+      throw new Error('assume-valid index entries are not supported yet');
+    }
     const hasExtendedFlags = (flags & 0x4000) !== 0;
     const stage = ((flags >>> 12) & 0x3) as 0 | 1 | 2 | 3;
     offset += 62;
     if (hasExtendedFlags) {
-      if (version === 2) throw new Error('version 2 index entry has extended flags');
-      if (offset + 2 > contentEnd) throw new Error('truncated index extended flags');
+      if (version === 2) {
+        throw new Error('version 2 index entry has extended flags');
+      }
+      if (offset + 2 > contentEnd) {
+        throw new Error('truncated index extended flags');
+      }
       validateExtendedFlags({ extendedFlags: readUint16({ bytes, offset }) });
       offset += 2;
     }
@@ -175,10 +197,14 @@ function parseIndexState({ bytes }: { bytes: Uint8Array }): ParsedIndex {
       pathBytes = bytes.slice(offset, nulOffset);
       const entryLength = nulOffset + 1 - entryStart;
       offset = entryStart + Math.ceil(entryLength / 8) * 8;
-      if (offset > contentEnd) throw new Error('truncated index entry padding');
+      if (offset > contentEnd) {
+        throw new Error('truncated index entry padding');
+      }
     }
 
-    if (pathBytes.byteLength === 0) throw new Error('index pathname is empty');
+    if (pathBytes.byteLength === 0) {
+      throw new Error('index pathname is empty');
+    }
     assertSafeGitRepositoryPathBytes({ bytes: pathBytes, source: 'index' });
     previousPathBytes = pathBytes;
     entries.push({ pathBytes, objectId, mode, size, stage });
@@ -191,7 +217,9 @@ function parseIndexState({ bytes }: { bytes: Uint8Array }): ParsedIndex {
 function commonPrefixLength({ left, right }: { left: Uint8Array, right: Uint8Array }): number {
   const limit = Math.min(left.byteLength, right.byteLength);
   let length = 0;
-  while (length < limit && left[length] === right[length]) length += 1;
+  while (length < limit && left[length] === right[length]) {
+    length += 1;
+  }
   return length;
 }
 
@@ -210,7 +238,9 @@ function prepareIndexEntry({ entry, version, previousPathBytes, pathBytes }: {
   pathBytes: Uint8Array,
 }): PreparedIndexEntry {
   assertSafeGitRepositoryPath({ path: entry.path, source: 'index' });
-  if (pathBytes.byteLength === 0 || pathBytes.includes(0)) throw new Error(`invalid index path: ${entry.path}`);
+  if (pathBytes.byteLength === 0 || pathBytes.includes(0)) {
+    throw new Error(`invalid index path: ${entry.path}`);
+  }
   if (version === 4) {
     const prefixLength = commonPrefixLength({ left: previousPathBytes, right: pathBytes });
     const encodedRemoveCount = writeOffsetVariableWidth({
@@ -250,7 +280,9 @@ function writePreparedIndexEntry({ bytes, offset, prepared, version }: {
   writeUint16({ bytes, offset: offset + 60, value: nameLengthBits | (entry.stage << 12) });
 
   if (version === 4) {
-    if (encodedRemoveCount === undefined) throw new Error('missing prepared index v4 pathname prefix length');
+    if (encodedRemoveCount === undefined) {
+      throw new Error('missing prepared index v4 pathname prefix length');
+    }
     let pathOffset = offset + 62;
     bytes.set(encodedRemoveCount, pathOffset);
     pathOffset += encodedRemoveCount.byteLength;
@@ -315,7 +347,9 @@ export async function readIndexRaw({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitRawIndexEntry[]> {
   const indexPath = joinPath({ base: repository.gitDirPath, child: 'index' });
-  if (!await pathExists({ files, path: indexPath })) return [];
+  if (!await pathExists({ files, path: indexPath })) {
+    return [];
+  }
   return parseIndexFileRaw({ bytes: await readFileBytes({ files, path: indexPath }) });
 }
 
@@ -331,7 +365,9 @@ export function collectUnmergedPaths({ entries }: {
 }): Set<string> {
   const paths = new Set<string>();
   for (const entry of entries) {
-    if (entry.stage !== 0) paths.add(entry.path);
+    if (entry.stage !== 0) {
+      paths.add(entry.path);
+    }
   }
   return paths;
 }

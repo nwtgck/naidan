@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Settings2Icon, ChevronDownIcon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useWindowSize } from '@vueuse/core';
@@ -9,14 +9,12 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/components/ImageGenerationSettings.vue') });
-const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/components/ReasoningSettings.vue') });
 const LmToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmToolsSettings.vue') });
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean,
   isProcessing: boolean,
   isImageMode: boolean,
-  isThinkActive: boolean,
   selectedWidth: number,
   selectedHeight: number,
   selectedCount: number,
@@ -25,8 +23,9 @@ const props = withDefaults(defineProps<{
   selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png',
   availableImageModels: string[],
   selectedImageModel: string | undefined,
-  selectedReasoningEffort: 'none' | 'low' | 'medium' | 'high' | undefined,
   direction?: 'up' | 'down',
+  surface?: 'default' | 'composer',
+  disabled?: boolean,
 }>(), {
   direction: 'up',
 });
@@ -39,7 +38,7 @@ const emit = defineEmits<{
   (e: 'update:seed', seed: number | 'browser_random' | undefined): void,
   (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void,
   (e: 'update:model', modelId: string): void,
-  (e: 'update:reasoning-effort', effort: 'none' | 'low' | 'medium' | 'high' | undefined): void,
+  (e: 'update:open', open: boolean): void,
 }>();
 
 const { enabledToolNames } = useChatTools();
@@ -58,10 +57,16 @@ onMounted(() => {
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
-  if (!showMenu.value) return;
+  if (!showMenu.value) {
+    return;
+  }
 
-  if (triggerRef.value?.contains(target)) return;
-  if (sheetRef.value?.contains(target)) return;
+  if (triggerRef.value?.contains(target)) {
+    return;
+  }
+  if (sheetRef.value?.contains(target)) {
+    return;
+  }
 
   let current: HTMLElement | null = target as HTMLElement;
   while (current && current !== document.body) {
@@ -80,8 +85,18 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 watch(windowWidth, () => {
-  if (showMenu.value) showMenu.value = false;
+  if (showMenu.value) {
+    showMenu.value = false;
+  }
 });
+
+watch(showMenu, open => emit('update:open', open));
+watch(() => props.disabled, disabled => {
+  if (disabled) {
+    showMenu.value = false;
+  }
+});
+onBeforeUnmount(() => emit('update:open', false));
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -95,15 +110,19 @@ defineExpose({
 <template>
   <div tw-class="relative" ref="triggerRef">
     <button
-      @click="showMenu = !showMenu"
-      :tw-class="['p-2 rounded-xl transition-colors',
-                  showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
-                  (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
+      type="button"
+      :disabled="disabled"
+      :aria-expanded="showMenu"
+      :aria-label="lazyStrings.ChatToolsMenu__tools()"
+      @click="!disabled && (showMenu = !showMenu)"
+      :tw-class="['rounded-xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/50', surface === 'composer' ? 'w-9 h-9 p-0 flex items-center justify-center' : 'p-2',
+                  showMenu || isImageMode || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+                  (isImageMode || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
       ]"
       :title="lazyStrings.ChatToolsMenu__tools()"
       data-testid="chat-tools-button"
     >
-      <Settings2Icon tw-class="w-5 h-5" />
+      <Settings2Icon :tw-class="surface === 'composer' ? 'w-4 h-4' : 'w-5 h-5'" />
     </button>
 
     <Teleport :to="teleportTarget" v-if="teleportTarget">
@@ -130,14 +149,6 @@ defineExpose({
             <div class="custom-scrollbar" tw-class="flex-1 overflow-y-auto bg-white dark:bg-gray-800">
               <div tw-class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.18em] border-b border-gray-100 dark:border-gray-700 mb-1">
                 {{ lazyStrings.ChatToolsMenu__options_tools() }}
-              </div>
-
-              <div tw-class="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
-                <ReasoningSettings
-                  :selected-effort="selectedReasoningEffort"
-                  @update:effort="e => emit('update:reasoning-effort', e)"
-                  tw-class="!p-0 !border-none"
-                />
               </div>
 
               <div tw-class="px-3 py-3 border-b border-gray-100 dark:border-gray-700">

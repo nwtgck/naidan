@@ -19,7 +19,9 @@ const PromptApiAvailabilitySchema = z.enum([
 
 function isPromptApiLanguageModelStatic(value: unknown): value is PromptApiLanguageModelStatic {
   const valueType = typeof value;
-  if ((valueType !== 'object' && valueType !== 'function') || value === null) return false;
+  if ((valueType !== 'object' && valueType !== 'function') || value === null) {
+    return false;
+  }
   const candidate = value as Record<string, unknown>;
   return (
     typeof candidate.availability === 'function'
@@ -28,7 +30,9 @@ function isPromptApiLanguageModelStatic(value: unknown): value is PromptApiLangu
 }
 
 function isPromptApiSession(value: unknown): value is PromptApiSession {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
   const candidate = value as Record<string, unknown>;
   return (
     typeof candidate.promptStreaming === 'function'
@@ -98,7 +102,9 @@ export async function createPromptApiSession({
           // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the browser Prompt API monitor callback signature.
           monitor: monitor => {
             monitor.addEventListener('downloadprogress', event => {
-              if (!Number.isFinite(event.loaded)) return;
+              if (!Number.isFinite(event.loaded)) {
+                return;
+              }
               onDownloadProgress({
                 progress: Math.min(1, Math.max(0, event.loaded)),
               });

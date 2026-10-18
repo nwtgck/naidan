@@ -27,16 +27,22 @@ function createDocumentMetadata({ router, document, homeIntroduction, continueHo
   }
   const introduction = computed(() => isHomeIntroductionActive({ introduction: homeIntroduction.value, route: route.value }));
   const page = computed(() => {
-    if (introduction.value) return HOME_METADATA;
+    if (introduction.value) {
+      return HOME_METADATA;
+    }
     for (const source of [...pages.values()].reverse()) {
       const value = source.value;
-      if (value !== undefined && matchesCurrentRoute({ routePath: value.routePath })) return value.metadata;
+      if (value !== undefined && matchesCurrentRoute({ routePath: value.routePath })) {
+        return value.metadata;
+      }
     }
     return routeDocumentMetadata({ route: route.value });
   });
 
   function apply(): void {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     let documentTitle = [...printTitles.values()].at(-1);
     if (documentTitle === undefined && !introduction.value) {
       for (const source of [...loadingTitles.values()].reverse()) {
@@ -72,7 +78,9 @@ function createDocumentMetadata({ router, document, homeIntroduction, continueHo
   async function withPrintTitle({ title, run }: { title: string | undefined, run: () => Promise<void> }): Promise<void> {
     const token = Symbol('printing');
     try {
-      if (title !== undefined) printTitles.set(token, title);
+      if (title !== undefined) {
+        printTitles.set(token, title);
+      }
       // Printing needs the new title synchronously, before its callback can run.
       apply();
       await run();
@@ -116,14 +124,19 @@ function useActiveSource<T>({ source }: { source: ComputedRef<T | undefined> }):
     switch (current) {
     case 'active': return source.value;
     case 'inactive': return undefined;
-    default: { const _ex: never = current; return _ex; }
+    default: {
+      const _ex: never = current;
+      return _ex;
+    }
     }
   });
 }
 
 export function usePageDocumentMetadata({ source }: { source: ComputedRef<ScopedPageMetadata | undefined> }): void {
   const metadata = useDocumentMetadata();
-  if (metadata === undefined) return;
+  if (metadata === undefined) {
+    return;
+  }
   const release = metadata.registerPage({ source: useActiveSource({ source }) });
   onScopeDispose(release);
 }
@@ -133,14 +146,19 @@ export function useDocumentTitleOverride({ kind, source }: {
   source: ComputedRef<ScopedTitle | undefined>,
 }): void {
   const metadata = useDocumentMetadata();
-  if (metadata === undefined) return;
+  if (metadata === undefined) {
+    return;
+  }
   switch (kind) {
   case 'model-loading': {
     const release = metadata.registerLoadingTitle({ source: useActiveSource({ source }) });
     onScopeDispose(release);
     return;
   }
-  default: { const _ex: never = kind; return _ex; }
+  default: {
+    const _ex: never = kind;
+    return _ex;
+  }
   }
 }
 

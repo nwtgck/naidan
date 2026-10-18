@@ -86,7 +86,9 @@ async function waitForOperationUntilDeadline<Result>({ label, timeoutMs, action 
   try {
     return await Promise.race([action(), timeout]);
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -126,7 +128,9 @@ async function releaseAndTerminateSession<Api>({ session }: {
     // force the physical realm down even when Comlink never acknowledges release.
     session.worker.terminate();
   }
-  if (releaseError !== undefined) throw releaseError;
+  if (releaseError !== undefined) {
+    throw releaseError;
+  }
 }
 
 async function releaseSessionUntilDeadline<Api>({ session, releaseSession, timeoutMs }: {
@@ -174,7 +178,9 @@ async function createSessionUntilDeadline<Api>({
   try {
     return await Promise.race([creation, timeout]);
   } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
     if (timedOut) {
       // Promise.race does not cancel Worker construction. Reclaim a session that
       // resolves after the deadline instead of leaving a hidden live Worker.
@@ -280,9 +286,15 @@ async function runHighlightProbeAndCleanup({
   } catch (error) {
     cleanupError = error;
   }
-  if (operationError !== undefined) throw operationError;
-  if (cleanupError !== undefined) throw cleanupError;
-  if (result === undefined) throw new Error('Highlight Worker probe produced no result.');
+  if (operationError !== undefined) {
+    throw operationError;
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  if (result === undefined) {
+    throw new Error('Highlight Worker probe produced no result.');
+  }
   return result;
 }
 
@@ -351,9 +363,15 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
   } catch (error) {
     cleanupError ??= error;
   }
-  if (operationError !== undefined) throw operationError;
-  if (cleanupError !== undefined) throw cleanupError;
-  if (result === undefined) throw new Error('Standalone Wesh file probe produced no result.');
+  if (operationError !== undefined) {
+    throw operationError;
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  if (result === undefined) {
+    throw new Error('Standalone Wesh file probe produced no result.');
+  }
   return result;
 }
 
@@ -387,9 +405,15 @@ async function runWeshProbeAndCleanup({
   } catch (error) {
     cleanupError = error;
   }
-  if (operationError !== undefined) throw operationError;
-  if (cleanupError !== undefined) throw cleanupError;
-  if (result === undefined) throw new Error('Wesh Worker file probe produced no result.');
+  if (operationError !== undefined) {
+    throw operationError;
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  if (result === undefined) {
+    throw new Error('Wesh Worker file probe produced no result.');
+  }
   return result;
 }
 
@@ -459,7 +483,9 @@ async function verifyWithDependencies({
     cleanupTimeoutMs,
   })));
   const concurrentFailure = concurrentOutcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
-  if (concurrentFailure) throw concurrentFailure.reason;
+  if (concurrentFailure) {
+    throw concurrentFailure.reason;
+  }
   const concurrentHighlights = concurrentOutcomes.map((outcome) => {
     switch (outcome.status) {
     case 'fulfilled':

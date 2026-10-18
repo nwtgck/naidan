@@ -35,7 +35,9 @@ export async function runReset({ context, args }: {
     const currentIndex = await readIndex({ files: context.files, repository });
     const sourceEntries = await readCommitIndex({ context, repository, revisionExpression });
     const availablePaths = new Set(currentIndex.map(entry => entry.path));
-    for (const entry of sourceEntries) availablePaths.add(entry.path);
+    for (const entry of sourceEntries) {
+      availablePaths.add(entry.path);
+    }
     const selectedPaths = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
@@ -46,22 +48,25 @@ export async function runReset({ context, args }: {
     const nextEntries = currentIndex.filter(entry => !selectedPaths.has(entry.path));
     for (const path of selectedPaths) {
       const sourceEntry = sourceByPath.get(path);
-      if (sourceEntry !== undefined)
+      if (sourceEntry !== undefined) {
         nextEntries.push(sourceEntry);
+      }
     }
     await writeIndex({ files: context.files, repository, entries: nextEntries });
     const status = await collectStatus({ context });
     const unstaged = status.entries.filter(entry => entry.worktreeStatus === 'M' || entry.worktreeStatus === 'D');
     if (unstaged.length > 0) {
       await context.text().print({ text: 'Unstaged changes after reset:\n' });
-      for (const entry of unstaged)
+      for (const entry of unstaged) {
         await context.text().print({ text: `${entry.worktreeStatus}\t${entry.path}\n` });
+      }
     }
     return { exitCode: 0 };
   }
   const oldHead = await readHead({ files: context.files, repository });
-  if (oldHead.objectId === undefined)
+  if (oldHead.objectId === undefined) {
     throw new Error('ambiguous argument HEAD: unknown revision');
+  }
   const targetObjectId = await resolveCommitRevision({
     files: context.files,
     repository,
@@ -126,8 +131,9 @@ export async function runReset({ context, args }: {
     return { exitCode: 0 };
   case 'mixed': {
     await writeIndex({ files: context.files, repository, entries: targetIndex });
-    if (mergeState !== undefined)
+    if (mergeState !== undefined) {
       await clearMergeState({ files: context.files, repository });
+    }
     const status = await collectStatus({ context });
     const unstaged = status.entries.filter(entry => entry.worktreeStatus === 'M' || entry.worktreeStatus === 'D');
     if (unstaged.length > 0) {

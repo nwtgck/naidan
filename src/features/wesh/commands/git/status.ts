@@ -32,8 +32,9 @@ export interface GitStatusEntry {
 function regularFileModeFromIndex({ entry }: {
     entry: GitIndexEntry | undefined;
 }): 0o100644 | 0o100755 | undefined {
-  if (entry === undefined)
+  if (entry === undefined) {
     return undefined;
+  }
   switch (entry.mode) {
   case 0o100644:
   case 0o100755:
@@ -51,8 +52,9 @@ async function readHeadTreeMap({ context, repository, headObjectId }: {
     objectId: string;
     mode: number;
 }>> {
-  if (headObjectId === undefined)
+  if (headObjectId === undefined) {
     return new Map();
+  }
   const commit = await readCommit({ files: context.files, repository, objectId: headObjectId });
   const entries = await readTreeRecursively({
     files: context.files,
@@ -60,7 +62,9 @@ async function readHeadTreeMap({ context, repository, headObjectId }: {
     treeObjectId: commit.treeObjectId,
   });
   const byPath = new Map<string, { objectId: string, mode: number }>();
-  for (const entry of entries) byPath.set(entry.path, { objectId: entry.objectId, mode: entry.mode });
+  for (const entry of entries) {
+    byPath.set(entry.path, { objectId: entry.objectId, mode: entry.mode });
+  }
   return byPath;
 }
 
@@ -109,24 +113,31 @@ export async function collectStatus({ context }: {
   });
   const gitlinkPaths = new Set<string>();
   for (const entry of index.values()) {
-    if (entry.mode === 0o160000) gitlinkPaths.add(entry.path);
+    if (entry.mode === 0o160000) {
+      gitlinkPaths.add(entry.path);
+    }
   }
   const isInsideGitlink = ({ path }: { path: string }): boolean => {
     let separator = path.indexOf('/');
     while (separator >= 0) {
-      if (gitlinkPaths.has(path.slice(0, separator))) return true;
+      if (gitlinkPaths.has(path.slice(0, separator))) {
+        return true;
+      }
       separator = path.indexOf('/', separator + 1);
     }
     return false;
   };
   const worktreePaths = new Set<string>();
   for (const path of await listWorktreeEntries({ files: context.files, repository })) {
-    if (!isInsideGitlink({ path })) worktreePaths.add(path);
+    if (!isInsideGitlink({ path })) {
+      worktreePaths.add(path);
+    }
   }
   for (const gitlinkPath of gitlinkPaths) {
     const absolutePath = worktreeAbsolutePath({ repository, path: gitlinkPath });
-    if (!await pathExists({ files: context.files, path: absolutePath }))
+    if (!await pathExists({ files: context.files, path: absolutePath })) {
       continue;
+    }
     const stat = await context.files.lstat({ path: absolutePath });
     switch (stat.type) {
     case 'directory':
@@ -148,9 +159,13 @@ export async function collectStatus({ context }: {
   }
   const paths = new Set<string>();
   for (const collection of [headTree, index, unmergedByPath]) {
-    for (const path of collection.keys()) paths.add(path);
+    for (const path of collection.keys()) {
+      paths.add(path);
+    }
   }
-  for (const path of worktreePaths) paths.add(path);
+  for (const path of worktreePaths) {
+    paths.add(path);
+  }
   const statusEntries: GitStatusEntry[] = [];
   for (const path of sortGitPaths({ paths })) {
     const headEntry = headTree.get(path);
@@ -193,8 +208,9 @@ export async function collectStatus({ context }: {
       continue;
     }
     if (headEntry === undefined && indexEntry === undefined && inWorktree
-            && ignoreMatcher.isIgnored({ path, isDirectory: false }))
+            && ignoreMatcher.isIgnored({ path, isDirectory: false })) {
       continue;
+    }
     if (headEntry !== undefined && indexEntry === undefined && inWorktree) {
       statusEntries.push({
         path,
@@ -243,13 +259,14 @@ export async function collectStatus({ context }: {
       continue;
     }
     let indexStatus: GitStatusEntry['indexStatus'] = ' ';
-    if (headEntry === undefined && indexEntry !== undefined)
+    if (headEntry === undefined && indexEntry !== undefined) {
       indexStatus = 'A';
-    else if (headEntry !== undefined && indexEntry === undefined)
+    } else if (headEntry !== undefined && indexEntry === undefined) {
       indexStatus = 'D';
-    else if (headEntry !== undefined && indexEntry !== undefined
-            && (headEntry.objectId !== indexEntry.objectId || headEntry.mode !== indexEntry.mode))
+    } else if (headEntry !== undefined && indexEntry !== undefined
+            && (headEntry.objectId !== indexEntry.objectId || headEntry.mode !== indexEntry.mode)) {
       indexStatus = 'M';
+    }
     let worktreeStatus: GitStatusEntry['worktreeStatus'] = ' ';
     let worktreeMode: number | undefined;
     if (indexEntry === undefined && inWorktree) {

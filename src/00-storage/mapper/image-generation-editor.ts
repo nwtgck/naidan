@@ -33,7 +33,10 @@ export function imageInferenceLocationToDto({ location }: { location: ImageInfer
     })();
     return exactObject<Extract<ExperimentalImageInferenceLocationPreferenceDto, { kind: 'naidan_rpc' }>>()({ kind, registration: mapped });
   }
-  default: { const exhaustive: never = location; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = location;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -47,7 +50,9 @@ export function imageInferenceLocationToDomain({ dto }: { dto: ExperimentalImage
   case 'naidan_rpc': {
     const { kind, registration, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-    if (registration && (!/^[A-Za-z0-9_-]{8,128}$/.test(registration.registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(registration.peerPublicKey))) return { kind: 'unavailable' };
+    if (registration && (!/^[A-Za-z0-9_-]{8,128}$/.test(registration.registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(registration.peerPublicKey))) {
+      return { kind: 'unavailable' };
+    }
     let mapped: Extract<ImageInferenceLocationPreference, { kind: 'naidan_rpc' }>['registration'];
     try {
       mapped = registration && { registrationId: toNaidanRpcRegistrationId({ raw: registration.registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: registration.peerPublicKey }) };
@@ -56,7 +61,10 @@ export function imageInferenceLocationToDomain({ dto }: { dto: ExperimentalImage
     }
     return exactObject<Extract<ImageInferenceLocationPreference, { kind: 'naidan_rpc' }>>()({ kind, registration: mapped });
   }
-  default: { const exhaustive: never = dto; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = dto;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -69,7 +77,9 @@ export function remoteImageModelEditorPreferenceToDto({ preference }: { preferen
 export function remoteImageModelEditorPreferenceToDomain({ dto }: { dto: ExperimentalRemoteImageModelEditorPreferenceDto }): RemoteImageModelEditorPreference | undefined {
   const { registrationId, peerPublicKey, editor, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(peerPublicKey)) return undefined;
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(peerPublicKey)) {
+    return undefined;
+  }
   try {
     return exactObject<RemoteImageModelEditorPreference>()({ registrationId: toNaidanRpcRegistrationId({ raw: registrationId }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: peerPublicKey }), editor: remoteImageModelEditorToDomain({ dto: editor }) });
   } catch {

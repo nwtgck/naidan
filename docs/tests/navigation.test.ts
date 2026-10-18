@@ -23,7 +23,9 @@ describe('all-page Docs navigation', () => {
     const paths = DOCS_PAGES.map(page => page.path);
     expect(DOCS_PAGES.filter(page => page.path === '').map(page => page.id)).toEqual(['index']);
     expect(new Set(paths).size).toBe(paths.length);
-    for (const path of paths.filter(path => path !== '')) expect(path).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*\/$/u);
+    for (const path of paths.filter(path => path !== '')) {
+      expect(path).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*\/$/u);
+    }
     for (const page of DOCS_PAGES) {
       expect(docsHref({ locale: 'en', page: page.id }).slice('/docs/en/'.length))
         .toBe(docsHref({ locale: 'ja', page: page.id }).slice('/docs/ja/'.length));
@@ -87,7 +89,9 @@ describe('all-page Docs navigation', () => {
         expect(link?.getAttribute('hreflang')).toBe(option);
         expect(link?.getAttribute('aria-current')).toBe(option === locale ? 'page' : null);
         expect(link?.textContent).toContain(DOCS_LOCALE_NAMES[option]);
-        if (option === locale) expect(link?.textContent).toContain(copy[locale].current_language);
+        if (option === locale) {
+          expect(link?.textContent).toContain(copy[locale].current_language);
+        }
       }
       expect(header?.querySelector('a[href="https://github.com/nwtgck/naidan"]')).toBeNull();
     }
@@ -96,7 +100,9 @@ describe('all-page Docs navigation', () => {
   it('places child guides below their parent in both article navigation and the header menu', async () => {
     for (const route of DOCS_PAGES) {
       const placement = DOCS_NAV_PAGES[route.id];
-      if (placement.parent === undefined) continue;
+      if (placement.parent === undefined) {
+        continue;
+      }
       const parent = DOCS_NAV_PAGES[placement.parent];
       expect(parent.parent).toBeUndefined();
       expect(parent.group).toBe(placement.group);

@@ -55,7 +55,9 @@ function setFileInputRef({ el, index }: { el: unknown, index: number }) {
 
 function clearAttachmentUrls() {
   previewVersion++;
-  for (const url of attachmentUrls.value.values()) URL.revokeObjectURL(url);
+  for (const url of attachmentUrls.value.values()) {
+    URL.revokeObjectURL(url);
+  }
   attachmentUrls.value = new Map();
 }
 
@@ -80,7 +82,9 @@ watch(() => props.isOpen, (open, wasOpen) => {
     inheritedSystemPromptMessages.value = [];
     editableMessages.value = [];
     // Lazy mounting a closed modal must not move focus away from the current area.
-    if (!open && wasOpen) setActiveFocusArea({ area: 'chat' });
+    if (!open && wasOpen) {
+      setActiveFocusArea({ area: 'chat' });
+    }
   }
 }, { immediate: true });
 
@@ -96,7 +100,10 @@ const attachmentPreviews = computed(() => editableMessages.value.flatMap(item =>
     case 'reasoning':
     case 'tool_call':
     case 'tool_result': return [];
-    default: { const _ex: never = part; throw new Error(`Unhandled part: ${_ex}`); }
+    default: {
+      const _ex: never = part;
+      throw new Error(`Unhandled part: ${_ex}`);
+    }
     }
   }),
 ));
@@ -108,15 +115,26 @@ watch(attachmentPreviews, async entries => {
     try {
       let blob: Blob | undefined;
       switch (attachment.status) {
-      case 'memory': blob = attachment.blob; break;
-      case 'persisted': blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId }) ?? undefined; break;
+      case 'memory': blob = attachment.blob;
+        break;
+      case 'persisted': blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId }) ?? undefined;
+        break;
       case 'missing': continue;
-      default: { const _ex: never = attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+      default: {
+        const _ex: never = attachment;
+        throw new Error(`Unhandled attachment: ${_ex}`);
       }
-      if (disposed || !props.isOpen || version !== previewVersion) return;
-      if (blob !== undefined) attachmentUrls.value.set(key, URL.createObjectURL(blob));
+      }
+      if (disposed || !props.isOpen || version !== previewVersion) {
+        return;
+      }
+      if (blob !== undefined) {
+        attachmentUrls.value.set(key, URL.createObjectURL(blob));
+      }
     } catch (error) {
-      if (disposed || version !== previewVersion) return;
+      if (disposed || version !== previewVersion) {
+        return;
+      }
       console.error('Failed to load history attachment preview:', error);
     }
   }
@@ -136,7 +154,10 @@ function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
   case 'system':
   case 'tool':
   case undefined: return 'user';
-  default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
+  default: {
+    const _ex: never = role;
+    throw new Error(`Unhandled role: ${_ex}`);
+  }
   }
 }
 
@@ -156,7 +177,10 @@ function addMessage({ index }: { index: number }) {
       switch (role) {
       case 'user': return { ...common, role };
       case 'assistant': return { ...common, role, interruption: undefined };
-      default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled role: ${_ex}`);
+      }
       }
     })(),
   });
@@ -174,7 +198,9 @@ function canDuplicateMessage({ message }: { message: MessageNode }): boolean {
 
 function duplicateMessage({ index }: { index: number }) {
   const item = editableMessages.value[index];
-  if (item === undefined || !canDuplicateMessage({ message: item.message })) return;
+  if (item === undefined || !canDuplicateMessage({ message: item.message })) {
+    return;
+  }
   editableMessages.value.splice(index + 1, 0, {
     localId: generateId<EditableHistoryItemId>(),
     message: { ...copyMessageWithoutReplies({ message: item.message }), id: generateId<MessageId>() },
@@ -191,7 +217,9 @@ function canSwitchRole({ message }: { message: MessageNode }): boolean {
 
 function switchRole({ item }: { item: EditableHistoryItem }) {
   const message = item.message;
-  if (!canSwitchRole({ message })) return;
+  if (!canSwitchRole({ message })) {
+    return;
+  }
   const parts = message.parts.map(part => {
     switch (part.type) {
     case 'text': return { ...part };
@@ -199,7 +227,10 @@ function switchRole({ item }: { item: EditableHistoryItem }) {
     case 'attachment':
     case 'tool_call':
     case 'tool_result': throw new Error('Only text-only messages can switch roles.');
-    default: { const _ex: never = part; throw new Error(`Unhandled part: ${_ex}`); }
+    default: {
+      const _ex: never = part;
+      throw new Error(`Unhandled part: ${_ex}`);
+    }
     }
   });
   const common = {
@@ -210,38 +241,56 @@ function switchRole({ item }: { item: EditableHistoryItem }) {
     lmParameters: cloneLmParameters({ lmParameters: message.lmParameters }),
   };
   switch (message.role) {
-  case 'user': item.message = { ...common, role: 'assistant', modelId: undefined, interruption: undefined }; break;
+  case 'user': item.message = { ...common, role: 'assistant', modelId: undefined, interruption: undefined };
+    break;
   case 'assistant':
-  case 'system': item.message = { ...common, role: 'user', modelId: undefined }; break;
+  case 'system': item.message = { ...common, role: 'user', modelId: undefined };
+    break;
   case 'tool': throw new Error('Tool results cannot switch roles.');
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
 }
 
 function triggerFileInput({ index }: { index: number }) {
   const message = editableMessages.value[index]?.message;
-  if (message === undefined) return;
+  if (message === undefined) {
+    return;
+  }
   switch (message.role) {
-  case 'user': fileInputs.value[index]?.click(); break;
+  case 'user': fileInputs.value[index]?.click();
+    break;
   case 'assistant':
   case 'system':
   case 'tool': break;
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
 }
 
 function appendImages({ index, files }: { index: number; files: readonly File[] }) {
   const message = editableMessages.value[index]?.message;
-  if (message === undefined) return;
+  if (message === undefined) {
+    return;
+  }
   switch (message.role) {
   case 'user': break;
   case 'assistant':
   case 'system':
   case 'tool': return;
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
   for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
+    if (!file.type.startsWith('image/')) {
+      continue;
+    }
     const attachment: Attachment = {
       id: generateId<AttachmentId>(),
       binaryObjectId: generateId<BinaryObjectId>(),
@@ -258,7 +307,9 @@ function appendImages({ index, files }: { index: number; files: readonly File[] 
 
 function handleFileSelect({ event, index }: { event: Event, index: number }) {
   const input = event.currentTarget;
-  if (!(input instanceof HTMLInputElement) || input.files === null) return;
+  if (!(input instanceof HTMLInputElement) || input.files === null) {
+    return;
+  }
   appendImages({ index, files: Array.from(input.files) });
   input.value = '';
 }
@@ -266,22 +317,31 @@ function handleFileSelect({ event, index }: { event: Event, index: number }) {
 function handlePaste({ event, index }: { event: ClipboardEvent, index: number }) {
   const files: File[] = [];
   for (const item of Array.from(event.clipboardData?.items ?? [])) {
-    if (!item.type.startsWith('image/')) continue;
+    if (!item.type.startsWith('image/')) {
+      continue;
+    }
     const file = item.getAsFile();
-    if (file !== null) files.push(file);
+    if (file !== null) {
+      files.push(file);
+    }
   }
   appendImages({ index, files });
 }
 
 function removeAttachment({ index, part }: { index: number; part: MessageNode['parts'][number] }) {
   const message = editableMessages.value[index]?.message;
-  if (message === undefined) return;
+  if (message === undefined) {
+    return;
+  }
   switch (message.role) {
   case 'user': break;
   case 'assistant':
   case 'system':
   case 'tool': return;
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
   message.parts = message.parts.filter(candidate => candidate !== part || candidate.type !== 'attachment');
 }
@@ -292,8 +352,12 @@ function hasReasoning({ message }: { message: MessageNode }): boolean {
 
 const systemPromptBehavior = computed({
   get: () => {
-    if (!localSystemPrompt.value) return 'inherit';
-    if (localSystemPrompt.value.behavior === 'override' && localSystemPrompt.value.content === null) return 'clear';
+    if (!localSystemPrompt.value) {
+      return 'inherit';
+    }
+    if (localSystemPrompt.value.behavior === 'override' && localSystemPrompt.value.content === null) {
+      return 'clear';
+    }
     return localSystemPrompt.value.behavior;
   },
   set: (val: 'inherit' | 'clear' | 'override' | 'append') => {
@@ -324,16 +388,22 @@ const systemPromptBehavior = computed({
 
 async function handleSave() {
   const chatId = editingChatId.value;
-  if (chatId === undefined || isSaving.value) return;
+  if (chatId === undefined || isSaving.value) {
+    return;
+  }
   const session = editSession;
   const messages = editableMessages.value.map(item => copyMessageWithoutReplies({ message: item.message }));
   const systemPrompt = localSystemPrompt.value === undefined ? undefined : { ...localSystemPrompt.value };
   isSaving.value = true;
   try {
     await commitFullHistoryManipulationForChat({ chatId, messages, systemPrompt });
-    if (!disposed && session === editSession && props.isOpen) emit('close');
+    if (!disposed && session === editSession && props.isOpen) {
+      emit('close');
+    }
   } finally {
-    if (!disposed && session === editSession) isSaving.value = false;
+    if (!disposed && session === editSession) {
+      isSaving.value = false;
+    }
   }
 }
 
@@ -639,12 +709,20 @@ textarea {
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes slide-in-from-top {
-  from { transform: translateY(-0.5rem); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(-0.5rem);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .fade-in {
   animation-name: fade-in;

@@ -14,7 +14,9 @@ function session({ observer, failure }: { observer: unknown; failure: unknown })
   const observerEnd = transformed.indexOf('\nasync function readResponse(', observerStart);
   const sessionStart = transformed.indexOf('async function createInferenceSession(');
   const sessionEnd = transformed.indexOf('\nvar webInferenceChain', sessionStart);
-  if (observerStart < 0 || observerEnd <= observerStart || sessionStart < 0 || sessionEnd <= sessionStart) throw new Error('Missing pinned diagnostic/session boundaries');
+  if (observerStart < 0 || observerEnd <= observerStart || sessionStart < 0 || sessionEnd <= sessionStart) {
+    throw new Error('Missing pinned diagnostic/session boundaries');
+  }
   // Actual transformed observer and session functions; only native ORT is tiny.
   return new Function('env', 'failure', `
     const apis = { IS_WEB_ENV: true }; let webInitChain = Promise.resolve();
@@ -81,7 +83,9 @@ it('keeps legacy category absence unobserved and drops an invalid optional class
   observe({ token: {}, kind: 'session', phase: 'session-rejected', bytes: 0, errorName: 'Error', errorCategory: 'arbitrary private message' });
   const snapshot = ledger.snapshot({ expectedLoadCount: 1 });
   expect(snapshot.events.filter(event => event.kind === 'session-rejected')).toHaveLength(2);
-  for (const event of snapshot.events) expect(event).not.toHaveProperty('errorCategory');
+  for (const event of snapshot.events) {
+    expect(event).not.toHaveProperty('errorCategory');
+  }
   expect(loadDiagnosticsSchema.safeParse(snapshot).success).toBe(true);
   expect(JSON.stringify(snapshot)).not.toContain('private message');
 });
@@ -94,7 +98,8 @@ function setup() {
     loadOrdinal: 1,
     resourceNames: 'public-repository',
     sink: ({ packet }) => {
-      packets.push(packet); ledger.observe({ packet });
+      packets.push(packet);
+      ledger.observe({ packet });
     },
   });
   return { ledger, operation, packets };
@@ -131,7 +136,9 @@ it('marks dropped previous-candidate events without assigning them to a subseque
 
 it('reports an event limit within its bounded output instead of silently truncating', () => {
   const { ledger, operation } = setup();
-  for (let index = 0; index < 1000; index++) operation.emit({ kind: 'load-start', details: {} });
+  for (let index = 0; index < 1000; index++) {
+    operation.emit({ kind: 'load-start', details: {} });
+  }
   const snapshot = ledger.snapshot({ expectedLoadCount: 1 });
   expect(snapshot.events).toHaveLength(512);
   expect(snapshot.events.at(-1)?.kind).toBe('diagnostic-incomplete');
@@ -141,7 +148,9 @@ it('reports an event limit within its bounded output instead of silently truncat
 it('reports resource limits without retaining a body or buffer', () => {
   const { ledger, operation } = setup();
   const observe = operation.beginCandidate({ device: 'webgpu', dtype: 'q4f16', revision });
-  for (let index = 0; index < 140; index++) observe({ token: {}, kind: 'read', resource: 'onnx/model.onnx', phase: 'allocation-attempt', bytes: 1 });
+  for (let index = 0; index < 140; index++) {
+    observe({ token: {}, kind: 'read', resource: 'onnx/model.onnx', phase: 'allocation-attempt', bytes: 1 });
+  }
   operation.emit({ kind: 'load-failed', details: {} });
   const snapshot = ledger.snapshot({ expectedLoadCount: 1 });
   expect(snapshot.events.filter(event => event.kind === 'allocation-attempt')).toHaveLength(128);
@@ -203,8 +212,12 @@ it.each(['throw', 'reject'] as const)('reports a recovered %s transport failure 
     loadOrdinal: 1,
     resourceNames: 'public-repository',
     sink: ({ packet }) => {
-      if (++deliveries > 1) return ledger.observe({ packet });
-      if (mode === 'throw') throw new Error('Sink failure');
+      if (++deliveries > 1) {
+        return ledger.observe({ packet });
+      }
+      if (mode === 'throw') {
+        throw new Error('Sink failure');
+      }
       return Promise.reject(new Error('Sink failure'));
     },
   });
@@ -221,7 +234,9 @@ it('does not throw or reject Load for synchronous or asynchronous diagnostic sin
       loadOrdinal: 1,
       resourceNames: 'public-repository',
       sink: () => {
-        if (mode === 'throw') throw new Error('Sink failed');
+        if (mode === 'throw') {
+          throw new Error('Sink failed');
+        }
         return Promise.reject(new Error('Sink rejected'));
       },
     });

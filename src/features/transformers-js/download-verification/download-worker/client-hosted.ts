@@ -41,13 +41,17 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
       function publishProgress({ info }: { info: ProgressInfo }): Promise<void> | undefined {
         const { status, file, loaded, total, progress, name, downloadTiming, downloadCumulativeTiming, downloadTotalKind, ...unhandled } = info;
         unhandled satisfies Record<PropertyKey, never>;
-        if (file === undefined) return;
+        if (file === undefined) {
+          return;
+        }
         const terminal = status === 'done' || status === 'cached' || status === 'error';
         if (terminal) {
           // Keep only immutable scalars, before invoking an observer that may
           // mutate its input. The RPC result may correct a differing terminal.
           const signature = JSON.stringify([status, file, loaded, total, progress, name, downloadTiming, downloadCumulativeTiming, downloadTotalKind]);
-          if (deliveredTerminals.get(file) === signature) return;
+          if (deliveredTerminals.get(file) === signature) {
+            return;
+          }
           deliveredTerminals.set(file, signature);
         } else if (deliveredTerminals.has(file)) {
           return;
@@ -67,9 +71,13 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
             workerProxy({
               // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
               value: (info: ProgressInfo) => {
-                if (!accepting || !session.isActive()) return;
+                if (!accepting || !session.isActive()) {
+                  return;
+                }
                 const parsed = downloadTransferProgressSchema.safeParse(info);
-                if (!parsed.success || !paths.has(parsed.data.file)) return;
+                if (!parsed.success || !paths.has(parsed.data.file)) {
+                  return;
+                }
                 // A verified file can finish long before a later shard. Reflect its
                 // terminal now; only an identical result notification is redundant.
                 return publishProgress({ info: parsed.data });
@@ -82,9 +90,13 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
         // RPC completion is authoritative; callback ports can still have queued
         // samples. Reconcile every terminal without waiting for a UI observer.
         for (const file of result.files) {
-          if (!session.isActive()) break;
+          if (!session.isActive()) {
+            break;
+          }
           const path = downloadResourcePath({ url: file.url });
-          if (path === undefined || !paths.has(path)) continue;
+          if (path === undefined || !paths.has(path)) {
+            continue;
+          }
           const info: ProgressInfo = (() => {
             switch (file.status) {
             case 'failed': {
@@ -93,7 +105,10 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
             }
             case 'cached': return { status: 'cached', file: path, loaded: file.byteLength, total: file.byteLength, progress: 100 };
             case 'downloaded': return { status: 'done', file: path, loaded: file.byteLength, total: file.byteLength, progress: 100 };
-            default: { const exhaustive: never = file; throw new Error(String(exhaustive)); }
+            default: {
+              const exhaustive: never = file;
+              throw new Error(String(exhaustive));
+            }
             }
           })();
           observeDownloadSafely({ observe: () => publishProgress({ info }) });

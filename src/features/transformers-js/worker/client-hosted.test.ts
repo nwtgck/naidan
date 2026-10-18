@@ -35,7 +35,8 @@ class MockWorker extends EventTarget {
   }
 
   async publishReady() {
-    this.startup.start(); await this.startup.ready;
+    this.startup.start();
+    await this.startup.ready;
   }
 }
 
@@ -97,7 +98,9 @@ describe('Transformers.js Worker client cleanup', () => {
         if (callbacks.length === 1) {
           await chunk('first');
           await tools([]);
-          if (outcome === 'rejected') throw new Error('First generation failed');
+          if (outcome === 'rejected') {
+            throw new Error('First generation failed');
+          }
         } else {
           await callbacks[0]!.chunk('late-first');
           await callbacks[0]!.tools([]);
@@ -127,8 +130,11 @@ describe('Transformers.js Worker client cleanup', () => {
     };
     await MockWorker.latest.publishReady();
     const firstCall = client.generateText({ messages: [], onChunk: first, onToolCalls: firstTools, params: undefined, tools: undefined });
-    if (outcome === 'rejected') await expect(firstCall).rejects.toThrow('First generation failed');
-    else await firstCall;
+    if (outcome === 'rejected') {
+      await expect(firstCall).rejects.toThrow('First generation failed');
+    } else {
+      await firstCall;
+    }
     await client.generateText({ messages: [], onChunk: second, onToolCalls: secondTools, params: undefined, tools: undefined });
     expect(first).toHaveBeenCalledExactlyOnceWith({ chunk: 'first' });
     expect(firstTools).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
@@ -149,7 +155,8 @@ describe('Transformers.js Worker client cleanup', () => {
     const toolProxies: Array<import('comlink').Remote<(calls: []) => void>> = [];
     const api = {
       async generateText(messages: InferenceMessage[], onChunk: typeof proxies[number], onTools: typeof toolProxies[number], params: typeof received[number]['params'], tools: WorkerToolDefinition[] | undefined, _capture: unknown, owner: string | undefined) {
-        proxies.push(onChunk); toolProxies.push(onTools);
+        proxies.push(onChunk);
+        toolProxies.push(onTools);
         received.push({ messages, params, tools, owner });
         await onChunk('<think>literal</think>');
         await onTools([]);
@@ -167,27 +174,36 @@ describe('Transformers.js Worker client cleanup', () => {
     const params = { ...EMPTY_LM_PARAMETERS, stop: ['stop'], reasoning: { effort: 'high' as const } };
     const tools: WorkerToolDefinition[] = [{ type: 'function', function: { name: 'calculator', description: 'accepted', parameters: { type: 'object' } } }];
     const original = structuredClone({ messages, params, tools });
-    const onChunk = vi.fn(); const onToolCalls = vi.fn();
+    const onChunk = vi.fn();
+    const onToolCalls = vi.fn();
     const pending = client.generateText({ messages, params, tools, onChunk, onToolCalls, continuationOwner: 'accepted-owner' });
     // The accepted request is still waiting for its Worker bootstrap.
-    reasoning.text = 'edited'; reasoning.completeness = 'partial';
-    content[0]!.text = 'edited'; functionCall.arguments = '{"edited":true}';
-    params.stop.push('later'); tools[0]!.function.description = 'edited';
-    await using _cleanupResource = {
-      async [Symbol.asyncDispose]() {
-        await client.dispose();
-        await pending.catch(() => undefined);
-        for (const proxy of proxies) proxy[comlink.releaseProxy]();
-        for (const proxy of toolProxies) proxy[comlink.releaseProxy]();
-        channel.port1.close(); channel.port2.close();
-      },
-    };
-    await MockWorker.latest.publishReady();
-    await pending;
-    expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
-    expect(received[0]?.messages[0]?.reasoning).not.toBe(reasoning);
-    expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: '<think>literal</think>' });
-    expect(onToolCalls).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
+    reasoning.text = 'edited';
+    reasoning.completeness = 'partial';
+    content[0]!.text = 'edited';
+    functionCall.arguments = '{"edited":true}';
+    params.stop.push('later');
+tools[0]!.function.description = 'edited';
+await using _cleanupResource = {
+  async [Symbol.asyncDispose]() {
+    await client.dispose();
+    await pending.catch(() => undefined);
+    for (const proxy of proxies) {
+      proxy[comlink.releaseProxy]();
+    }
+    for (const proxy of toolProxies) {
+      proxy[comlink.releaseProxy]();
+    }
+    channel.port1.close();
+    channel.port2.close();
+  },
+};
+await MockWorker.latest.publishReady();
+await pending;
+expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
+expect(received[0]?.messages[0]?.reasoning).not.toBe(reasoning);
+expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: '<think>literal</think>' });
+expect(onToolCalls).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
   });
 
   it('rejects disposal while a real Comlink callback is held and ignores later delivery', async () => {
@@ -594,7 +610,9 @@ describe('investigation-owned generation capture client', () => {
 describe('structured generation through the real Comlink callback boundary', () => {
   beforeEach(() => {
     installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
-    vi.stubGlobal('Worker', MockWorker); vi.clearAllMocks(); mocks.wrap.mockReturnValue({});
+    vi.stubGlobal('Worker', MockWorker);
+    vi.clearAllMocks();
+    mocks.wrap.mockReturnValue({});
   });
 
   it('clones before startup, acknowledges callbacks and rejects late events from an old request', async () => {
@@ -605,44 +623,60 @@ describe('structured generation through the real Comlink callback boundary', () 
     const remoteCallbacks: Array<{ event: Callback, chunk: import('comlink').Remote<(chunk: string) => void>, calls: import('comlink').Remote<(calls: []) => void> }> = [];
     const input: InferenceMessage[] = [{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }];
     const recorded: InferenceMessage[][] = [];
-    const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
     const api = {
       // Mirrors the positional Comlink transport.
       async generateText(messages: InferenceMessage[], chunk: typeof remoteCallbacks[number]['chunk'], calls: typeof remoteCallbacks[number]['calls'], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
-        recorded.push(messages); remoteCallbacks.push({ event, chunk, calls });
+        recorded.push(messages);
+        remoteCallbacks.push({ event, chunk, calls });
         if (recorded.length === 1) {
           await event({ event: { type: 'part_start', index: 0, kind: 'reasoning' } });
           await event({ event: { type: 'text_delta', index: 0, text: '  R\n' } });
-          entered.resolve(); await release.promise;
+          entered.resolve();
+          await release.promise;
         } else {
           await remoteCallbacks[0]!.event({ event: { type: 'text_delta', index: 0, text: 'late' } });
           await event({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
         }
       },
     };
-    C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
-    const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient();
-    const first = vi.fn(); const second = vi.fn();
+    C.expose(api, channel.port1);
+    mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const first = vi.fn();
+    const second = vi.fn();
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        release.resolve(); await client.dispose();
+        release.resolve();
+        await client.dispose();
         for (const callback of remoteCallbacks) {
-          callback.event[C.releaseProxy](); callback.chunk[C.releaseProxy](); callback.calls[C.releaseProxy]();
+          callback.event[C.releaseProxy]();
+          callback.chunk[C.releaseProxy]();
+          callback.calls[C.releaseProxy]();
         }
-        channel.port1.close(); channel.port2.close();
+        channel.port1.close();
+        channel.port2.close();
       },
     };
     const pending = client.generateMessage({ messages: input, params: undefined, tools: undefined, continuationOwner: 'scope', onEvent: first });
-    input[0]!.content = 'mutated'; input[0]!.reasoning!.text = 'mutated';
-    await MockWorker.latest.publishReady(); await entered.promise;
-    expect(recorded[0]?.[0]).toMatchObject({ content: '<think>literal</think>', reasoning: { text: '  R\n' } });
-    expect(first).toHaveBeenCalledTimes(2); release.resolve(); await pending;
-    await client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'scope-2', onEvent: second });
-    expect(first).toHaveBeenCalledTimes(2); expect(second).toHaveBeenCalledOnce();
+    input[0]!.content = 'mutated';
+input[0]!.reasoning!.text = 'mutated';
+await MockWorker.latest.publishReady();
+await entered.promise;
+expect(recorded[0]?.[0]).toMatchObject({ content: '<think>literal</think>', reasoning: { text: '  R\n' } });
+expect(first).toHaveBeenCalledTimes(2);
+release.resolve();
+await pending;
+await client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'scope-2', onEvent: second });
+expect(first).toHaveBeenCalledTimes(2);
+expect(second).toHaveBeenCalledOnce();
   });
 
   it('propagates a failed structured callback acknowledgement', async () => {
-    const C = await vi.importActual<typeof import('comlink')>('comlink'); const channel = new MessageChannel();
+    const C = await vi.importActual<typeof import('comlink')>('comlink');
+    const channel = new MessageChannel();
     const retained: Array<import('comlink').Remote<(...args: never[]) => unknown>> = [];
     const api = {
       // Mirrors the positional Comlink transport.
@@ -651,11 +685,19 @@ describe('structured generation through the real Comlink callback boundary', () 
         await event({ event: { type: 'part_start', index: -1, kind: 'text' } });
       },
     };
-    C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
-    const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient(); const sink = vi.fn();
+    C.expose(api, channel.port1);
+    mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const sink = vi.fn();
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
+        await client.dispose();
+        for (const callback of retained) {
+          callback[C.releaseProxy]();
+        }
+        channel.port1.close();
+        channel.port2.close();
       },
     };
     await MockWorker.latest.publishReady();
@@ -704,7 +746,9 @@ describe('structured generation through the real Comlink callback boundary', () 
         await client.dispose().catch(() => undefined);
         await outcome;
         await remoteSettled.promise;
-        for (const callback of retained) callback[C.releaseProxy]();
+        for (const callback of retained) {
+          callback[C.releaseProxy]();
+        }
         channel.port1.close();
         channel.port2.close();
       },

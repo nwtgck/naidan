@@ -59,16 +59,23 @@ export function scheduleAutoTitleForChat({ chatId }: { chatId: ChatId }): void {
         switch (item.type) {
         case 'chat': return item.id === chatId;
         case 'chat_group': return item.chat_ids.includes(chatId);
-        default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = item;
+          throw new Error(String(exhaustive));
         }
-      })) return;
+        }
+      })) {
+        return;
+      }
       // A background chat may have left the live registry while waiting.
       const loaded = getLiveChatById({ chatId }) ?? await storageService.loadChat({ id: chatId });
       signal.throwIfAborted();
       // Navigation may have installed a newer instance while storage was reading.
       // Never merge an earlier snapshot over that instance.
       const chat = getLiveChatById({ chatId }) ?? loaded;
-      if (chat === null || chat.title !== null) return;
+      if (chat === null || chat.title !== null) {
+        return;
+      }
       registerLiveInstance({ chat });
       await generateTitle({ chatId, titleModelIdOverride: undefined, signal, mode: 'automatic' });
     },
@@ -98,7 +105,9 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
   mode: 'automatic' | 'manual',
 }): Promise<string | undefined> {
   const mutableChat = getLiveChatById({ chatId });
-  if (mutableChat === null || (mode === 'automatic' && mutableChat.title !== null)) return undefined;
+  if (mutableChat === null || (mode === 'automatic' && mutableChat.title !== null)) {
+    return undefined;
+  }
   const taskId = mutableChat.id;
   const titleAtStart = mutableChat.title;
   const leafAtStart = mutableChat.currentLeafId;
@@ -172,10 +181,16 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
       switch (result.next) {
       case 'user': break;
       case 'tool_results': throw new Error('Title generation unexpectedly requested tools.');
-      default: { const _ex: never = result.next; throw new Error(`Unhandled title step: ${_ex}`); }
+      default: {
+        const _ex: never = result.next;
+        throw new Error(`Unhandled title step: ${_ex}`);
+      }
       }
       break;
-    default: { const _ex: never = result; throw new Error(`Unhandled title generation result: ${_ex}`); }
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled title generation result: ${_ex}`);
+    }
     }
 
     const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
@@ -188,7 +203,9 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
       && mutableChat.title === titleAtStart
       && mutableChat.currentLeafId === leafAtStart
       && JSON.stringify(resolveTitleSettings({ chat: mutableChat }).titleGeneration) === settingsAtStart;
-    if (!canCommit()) return undefined;
+    if (!canCommit()) {
+      return undefined;
+    }
 
     // Check the persisted title again under its lock, not only the live object:
     // another tab may have renamed or deleted this chat while we were generating.
@@ -196,12 +213,16 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
     await storageService.updateChatMeta({
       id: taskId,
       updater: ({ current }) => {
-        if (current === null || current.title !== titleAtStart || !canCommit()) return undefined;
+        if (current === null || current.title !== titleAtStart || !canCommit()) {
+          return undefined;
+        }
         committedAt = Math.max(Date.now(), current.updatedAt + 1);
         return { ...current, title: finalTitle, updatedAt: committedAt };
       },
     });
-    if (committedAt === undefined) return undefined;
+    if (committedAt === undefined) {
+      return undefined;
+    }
     // A later input/abort cannot undo an already accepted durable write. Reflect
     // it without overwriting a rename, a replacement instance or a newer owner.
     if (chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId }) === controller
@@ -219,7 +240,9 @@ async function generateTitle({ chatId, titleModelIdOverride, signal, mode }: {
       chatRuntimeStore.deleteActiveTitleGeneration({ chatId: taskId });
     }
     // Keep a selected chat registered; background-only instances can be released.
-    if (currentChatRef.value?.id !== taskId) unregisterLiveInstance({ chatId: taskId });
+    if (currentChatRef.value?.id !== taskId) {
+      unregisterLiveInstance({ chatId: taskId });
+    }
   }
 }
 

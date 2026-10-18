@@ -33,7 +33,9 @@ const CLEAN_LONG_ARGV_CATALOG = defineArgvCatalog<CleanLongOptionSemantic>({
 });
 
 function resolveCleanLongOption({ arg }: { arg: string }): CleanLongOptionSemantic | undefined {
-  if (!arg.startsWith('--')) return undefined;
+  if (!arg.startsWith('--')) {
+    return undefined;
+  }
   if (!arg.includes('=')) {
     const optionName = arg.slice(2);
     if (optionName === 'n' || optionName === 'no') {
@@ -85,7 +87,9 @@ async function isNestedGitWorktree({ context, absolutePath }: {
   absolutePath: string;
 }): Promise<boolean> {
   const markerPath = joinPath({ base: absolutePath, child: '.git' });
-  if (!await pathExists({ files: context.files, path: markerPath })) return false;
+  if (!await pathExists({ files: context.files, path: markerPath })) {
+    return false;
+  }
   const markerStat = await context.files.lstat({ path: markerPath });
   switch (markerStat.type) {
   case 'directory':
@@ -93,9 +97,13 @@ async function isNestedGitWorktree({ context, absolutePath }: {
       && await pathExists({ files: context.files, path: joinPath({ base: markerPath, child: 'objects' }) });
   case 'file': {
     const match = /^gitdir:\s*(.+?)\s*$/u.exec(await readFileText({ files: context.files, path: markerPath }));
-    if (match === null) return false;
+    if (match === null) {
+      return false;
+    }
     const gitDirPath = normalizePath({ cwd: absolutePath, path: match[1]! });
-    if (!await pathExists({ files: context.files, path: gitDirPath })) return false;
+    if (!await pathExists({ files: context.files, path: gitDirPath })) {
+      return false;
+    }
     const stat = await context.files.lstat({ path: gitDirPath });
     return stat.type === 'directory';
   }
@@ -130,7 +138,9 @@ function hasAncestorInSet({ path, directories }: {
 }): boolean {
   let slashIndex = path.indexOf('/');
   while (slashIndex >= 0) {
-    if (directories.has(path.slice(0, slashIndex))) return true;
+    if (directories.has(path.slice(0, slashIndex))) {
+      return true;
+    }
     slashIndex = path.indexOf('/', slashIndex + 1);
   }
   return false;
@@ -169,7 +179,9 @@ async function collectCleanInventory({ context, repository, trackedPaths, nested
     let hasTrackedDescendant = false;
     let hasProtectedDescendant = false;
     for await (const entry of context.files.readDir({ path: absolutePath })) {
-      if (relativePath.length === 0 && entry.name === '.git') continue;
+      if (relativePath.length === 0 && entry.name === '.git') {
+        continue;
+      }
       const childRelativePath = relativeToWorktree({ repository, absolutePath: entry.fullPath });
       switch (entry.type) {
       case 'directory': {
@@ -200,7 +212,9 @@ async function collectCleanInventory({ context, repository, trackedPaths, nested
 
     if (relativePath.length > 0 && !hasTrackedDescendant) {
       untrackedDirectoryPaths.add(relativePath);
-      if (!hasProtectedDescendant) fullyRemovableDirectoryPaths.add(relativePath);
+      if (!hasProtectedDescendant) {
+        fullyRemovableDirectoryPaths.add(relativePath);
+      }
     }
     return { hasTrackedDescendant, hasProtectedDescendant };
   };
@@ -217,7 +231,9 @@ function chooseTopmostDirectories({ directories }: { directories: Iterable<strin
   const directorySet = new Set(directories);
   const selected: string[] = [];
   for (const path of directorySet) {
-    if (!hasAncestorInSet({ path, directories: directorySet })) selected.push(path);
+    if (!hasAncestorInSet({ path, directories: directorySet })) {
+      selected.push(path);
+    }
   }
   return sortGitPaths({ paths: selected });
 }
@@ -238,11 +254,17 @@ function selectExplicitCleanPaths({ repository, cwd, operands, inventory }: {
   const selectedDirectories = new Set<string>();
   for (const operandMatches of selection.byOperand.values()) {
     for (const matchedPath of operandMatches) {
-      if (!matchedPath.endsWith('/')) continue;
+      if (!matchedPath.endsWith('/')) {
+        continue;
+      }
       const directory = matchedPath.slice(0, -1);
-      if (!inventory.fullyRemovableDirectoryPaths.has(directory)) continue;
+      if (!inventory.fullyRemovableDirectoryPaths.has(directory)) {
+        continue;
+      }
       const descendantLeaves = inventory.leafPaths.filter(path => isDescendantOf({ path, directory }));
-      if (descendantLeaves.every(path => selection.selected.has(path))) selectedDirectories.add(directory);
+      if (descendantLeaves.every(path => selection.selected.has(path))) {
+        selectedDirectories.add(directory);
+      }
     }
   }
   const directories = chooseTopmostDirectories({ directories: selectedDirectories });
@@ -293,17 +315,19 @@ export async function runClean({ context, args }: {
       }
     } else if (parsingOptions && /^-[nfd]+$/u.test(arg)) {
       for (const option of arg.slice(1)) {
-        if (option === 'n')
+        if (option === 'n') {
           dryRun = true;
-        else if (option === 'f')
+        } else if (option === 'f') {
           forceCount += 1;
-        else if (option === 'd')
+        } else if (option === 'd') {
           directories = true;
+        }
       }
-    } else if (parsingOptions && arg.startsWith('-'))
+    } else if (parsingOptions && arg.startsWith('-')) {
       throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else
+    } else {
       operands.push(arg);
+    }
   }
   if (!dryRun && forceCount === 0) {
     if (getBooleanConfigValue({ config, key: 'clean.requireforce' }) !== false) {
@@ -356,8 +380,9 @@ export async function runClean({ context, args }: {
       text: `${dryRun ? 'Would remove' : 'Removing'} ${displayPath}${directorySet.has(path) ? '/' : ''}\n`,
     });
   }
-  if (!dryRun)
+  if (!dryRun) {
     await removeWorktreePaths({ files: context.files, repository, paths: candidatePaths });
+  }
   return { exitCode: 0 };
 }
 

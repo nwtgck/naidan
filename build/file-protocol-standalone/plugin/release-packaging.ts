@@ -48,9 +48,15 @@ export function createFileProtocolStandaloneReleasePackagingPlugin({
   workerEntryModuleIds,
   packageRelease,
 }: FileProtocolStandaloneReleasePackagingOptions): Plugin {
-  if (!outputDirectory) throw new TypeError('outputDirectory is required');
-  if (workerEntryModuleIds.length === 0) throw new TypeError('workerEntryModuleIds must not be empty');
-  if (typeof packageRelease !== 'function') throw new TypeError('packageRelease is required');
+  if (!outputDirectory) {
+    throw new TypeError('outputDirectory is required');
+  }
+  if (workerEntryModuleIds.length === 0) {
+    throw new TypeError('workerEntryModuleIds must not be empty');
+  }
+  if (typeof packageRelease !== 'function') {
+    throw new TypeError('packageRelease is required');
+  }
   const resolvedOutput = path.resolve(outputDirectory);
 
   return {
@@ -99,7 +105,9 @@ export function createFileProtocolStandaloneReleasePackagingPlugin({
         }];
         for (const locale of BOUNDARY_STRING_LOCALES) {
           const plan = plans.get(locale);
-          if (plan === undefined) throw new Error(`Missing standalone locale package plan: ${locale}`);
+          if (plan === undefined) {
+            throw new Error(`Missing standalone locale package plan: ${locale}`);
+          }
           const indexHtml = insertPackageLocaleMetadata({ html: canonicalIndexHtml, locale });
           assertFileProtocolStandaloneHtmlAfterRewrite({
             html: indexHtml,

@@ -7,8 +7,12 @@ const UPDATE_MODES = ['all', 'none', 'none-fail', 'older'] as const satisfies re
 
 function parseUpdateMode({ value }: { value: string }): UpdateMode | undefined {
   const exact = UPDATE_MODES.find((candidate) => candidate === value);
-  if (exact !== undefined) return exact;
-  if (value.length === 0) return undefined;
+  if (exact !== undefined) {
+    return exact;
+  }
+  if (value.length === 0) {
+    return undefined;
+  }
 
   const matches = UPDATE_MODES.filter((candidate) => candidate.startsWith(value));
   return matches.length === 1 ? matches[0] : undefined;
@@ -33,7 +37,9 @@ export function parseUpdateLongOption({
   }
 
   const prefix = '--update=';
-  if (!token.startsWith(prefix)) return undefined;
+  if (!token.startsWith(prefix)) {
+    return undefined;
+  }
 
   const rawValue = token.slice(prefix.length);
   const mode = parseUpdateMode({ value: rawValue });

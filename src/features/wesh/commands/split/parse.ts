@@ -242,11 +242,15 @@ function parseLegacyLineCountToken({
   token: string,
 }): ArgvSpecialParseResult | undefined {
   const match = /^-(d*)(\d+)$/u.exec(token);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const numericSuffixFlags = match[1];
   const rawValue = match[2];
-  if (numericSuffixFlags === undefined || rawValue === undefined) return undefined;
+  if (numericSuffixFlags === undefined || rawValue === undefined) {
+    return undefined;
+  }
 
   const parsed = parseLineCount({ value: rawValue });
   const numericEffects = numericSuffixFlags.length > 0

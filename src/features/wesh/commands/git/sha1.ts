@@ -143,9 +143,15 @@ class IncrementalSha1 implements Sha1Hasher {
 
       for (let index = 0; index < 80; index += 1) {
         const { f, k } = (() => {
-          if (index < 20) return { f: ((b & c) | (~b & d)) >>> 0, k: 0x5a827999 };
-          if (index < 40) return { f: (b ^ c ^ d) >>> 0, k: 0x6ed9eba1 };
-          if (index < 60) return { f: ((b & c) | (b & d) | (c & d)) >>> 0, k: 0x8f1bbcdc };
+          if (index < 20) {
+            return { f: ((b & c) | (~b & d)) >>> 0, k: 0x5a827999 };
+          }
+          if (index < 40) {
+            return { f: (b ^ c ^ d) >>> 0, k: 0x6ed9eba1 };
+          }
+          if (index < 60) {
+            return { f: ((b & c) | (b & d) | (c & d)) >>> 0, k: 0x8f1bbcdc };
+          }
           return { f: (b ^ c ^ d) >>> 0, k: 0xca62c1d6 };
         })();
         const temporary = (

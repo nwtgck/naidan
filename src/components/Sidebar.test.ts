@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/01-models/types';
+import type { ChatGroup, ChatSummary, SidebarItem, StorageType, LmParameters, Endpoint } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 beforeEach(async () => {
@@ -19,11 +20,15 @@ const mockEventCount = ref(0);
 const mockToggleDebug = vi.fn();
 const mockOpenFileExplorer = vi.fn();
 const mockUpdateGlobalModel = vi.fn();
+const mockUpdateGlobalReasoningEffort = vi.fn();
+const mockAddToast = vi.fn();
+vi.mock('../composables/useToast', () => ({ useToast: () => ({ addToast: mockAddToast }) }));
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockSettings = ref({
-  endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
+  endpoint: { type: 'ollama', url: 'http://localhost:11434' } as Endpoint,
+  lmParameters: undefined as LmParameters | undefined,
   defaultModelId: 'llama3',
   storageType: 'local' as StorageType,
   titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
@@ -189,6 +194,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockIsFetchingModels,
     save: mockSaveSettings,
     updateGlobalModel: mockUpdateGlobalModel,
+    updateGlobalReasoningEffort: mockUpdateGlobalReasoningEffort,
   }),
 }));
 
@@ -273,9 +279,11 @@ describe('Sidebar Logic Stability', () => {
     }),
     'ModelSelector': {
       name: 'ModelSelector',
-      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder">{{ modelValue || placeholder }}<div v-if="loading" class="animate-spin-mock"></div></div>',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder"><slot name="trigger-label" /><slot name="trigger-summary" />{{ modelValue || placeholder }}<slot name="unavailable" v-if="modelSelection === \'unavailable\'" /><slot name="settings" /><div v-if="loading" class="animate-spin-mock"></div></div>',
       props: {
+        surface: String,
         modelValue: String,
+        modelSelection: String,
         models: Array,
         placeholder: String,
         loading: {
@@ -295,6 +303,7 @@ describe('Sidebar Logic Stability', () => {
     mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Initial Chat', updatedAt: 0 }];
     mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
     mockSettings.value.defaultModelId = 'llama3';
+    mockSettings.value.lmParameters = undefined;
     mockSettings.value.storageType = 'local';
     mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
     mockIsSidebarOpen.value = true;
@@ -311,6 +320,7 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
+      expect(wrapper.getComponent({ name: 'ModelSelector' }).props('surface')).toBe('sidebar');
       await vi.waitFor(() => {
         expect(wrapper.text()).toContain('Default model');
       });
@@ -349,6 +359,35 @@ describe('Sidebar Logic Stability', () => {
       expect(selector.attributes('model-value')).toBe('llama3');
     });
 
+    it('summarizes global reasoning without materializing the provider default', async () => {
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      expect(wrapper.find('[data-testid="sidebar-reasoning-summary"]').exists()).toBe(false);
+      mockSettings.value.lmParameters = {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      };
+      await nextTick();
+      expect(wrapper.get('[data-testid="sidebar-reasoning-value"]').text()).toBe('Med');
+      expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').text()).toContain('Think');
+      expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').attributes('title')).toBe('Think Med');
+      for (const { effort, label } of [{ effort: 'none', label: 'Off' }, { effort: 'low', label: 'Low' }, { effort: 'high', label: 'High' }] as const) {
+        mockSettings.value.lmParameters.reasoning.effort = effort;
+        await nextTick();
+        expect(wrapper.get('[data-testid="sidebar-reasoning-value"]').text()).toBe(label);
+        expect(wrapper.get('[data-testid="sidebar-reasoning-summary"]').attributes('title')).toBe(`Think ${label}`);
+      }
+      mockSettings.value.lmParameters.reasoning.effort = undefined;
+      await nextTick();
+      expect(wrapper.find('[data-testid="sidebar-reasoning-summary"]').exists()).toBe(false);
+      expect(mockUpdateGlobalReasoningEffort).not.toHaveBeenCalled();
+      expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
+    });
+
     it('does not enable allowClear for the global model selector', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
@@ -369,6 +408,41 @@ describe('Sidebar Logic Stability', () => {
       await selector.vm.$emit('update:modelValue', 'mistral');
 
       expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'mistral' });
+    });
+
+    it('persists global reasoning separately from model selection and allows retry after failure', async () => {
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      const reasoning = wrapper.getComponent(ReasoningSettings);
+      expect(reasoning.props('selectedEffort')).toBeUndefined();
+      const pending = Promise.withResolvers<void>();
+      mockUpdateGlobalReasoningEffort.mockImplementationOnce(() => pending.promise);
+      const control = reasoning.element;
+      await reasoning.vm.$emit('update:effort', 'high');
+      expect(reasoning.props('disabled')).toBe(true);
+      expect(reasoning.element).toBe(control);
+      expect(reasoning.get<HTMLButtonElement>('[data-testid="reasoning-effort-low"]').element.disabled).toBe(true);
+      await reasoning.vm.$emit('update:effort', 'low');
+      expect(mockUpdateGlobalReasoningEffort).toHaveBeenCalledTimes(1);
+      pending.reject(new Error('Disk unavailable'));
+      await vi.waitFor(() => expect(mockAddToast).toHaveBeenCalled());
+      expect(reasoning.props('disabled')).toBe(false);
+      expect(reasoning.element).toBe(control);
+      expect(reasoning.get<HTMLButtonElement>('[data-testid="reasoning-effort-low"]').element.disabled).toBe(false);
+      await reasoning.vm.$emit('update:effort', undefined);
+      expect(mockUpdateGlobalReasoningEffort).toHaveBeenLastCalledWith({ effort: undefined });
+      expect(mockUpdateGlobalModel).not.toHaveBeenCalled();
+    });
+
+    it('keeps global reasoning reachable when the provider manages its own model', async () => {
+      mockSettings.value.endpoint = { type: 'browser_provided_lm' };
+      const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+      expect(wrapper.getComponent({ name: 'ModelSelector' }).props('modelSelection')).toBe('unavailable');
+      expect(wrapper.text()).toContain('You cannot change the model for this connection.');
+      const reasoning = wrapper.getComponent(ReasoningSettings);
+      expect(reasoning.props('disabled')).toBe(false);
+      await reasoning.vm.$emit('update:effort', 'none');
+      expect(mockUpdateGlobalReasoningEffort).toHaveBeenCalledWith({ effort: 'none' });
+      expect(mockSaveSettings).not.toHaveBeenCalled();
     });
 
     it('shows a loading spinner when models are being fetched', async () => {
@@ -583,7 +657,7 @@ describe('Sidebar Logic Stability', () => {
     });
   });
 
-  it('should display the New Chat shortcut key when sidebar is open', async () => {
+  it('should keep the New Chat shortcut key in its tooltip when sidebar is open', async () => {
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
@@ -596,7 +670,8 @@ describe('Sidebar Logic Stability', () => {
 
     const text = newChatButton.text();
     expect(text).toContain('New Chat');
-    expect(text).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
+    expect(newChatButton.attributes('title')).toContain('New Chat');
+    expect(newChatButton.attributes('title')).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
   });
 
   it("should display 'New Chat' when a chat title is empty in the sidebar", async () => {

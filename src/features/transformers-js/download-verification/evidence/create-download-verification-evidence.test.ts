@@ -177,7 +177,9 @@ describe('createDownloadVerificationEvidence', () => {
   it('records observed and failed artifact-request candidates separately in events', async () => {
     const evidence = sampleEvidence();
     const failed = evidence.modelArtifactObservations[2];
-    if (failed === undefined) throw new Error('Expected a third artifact observation fixture');
+    if (failed === undefined) {
+      throw new Error('Expected a third artifact observation fixture');
+    }
     evidence.modelArtifactObservations[2] = {
       ...failed,
       status: 'failed',

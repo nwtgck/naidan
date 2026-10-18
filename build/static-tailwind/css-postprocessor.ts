@@ -39,9 +39,13 @@ function assertValueHasNoRelativeUrls({ value, context }: {
   context: string;
 }): void {
   valueParser(value).walk((node) => {
-    if (node.type !== 'function' || node.value.toLowerCase() !== 'url') return;
+    if (node.type !== 'function' || node.value.toLowerCase() !== 'url') {
+      return;
+    }
     const urlValue = parsedUrlValue({ node });
-    if (urlValue !== '' && isRuntimeSafeUrl({ value: urlValue })) return;
+    if (urlValue !== '' && isRuntimeSafeUrl({ value: urlValue })) {
+      return;
+    }
     throw new Error(
       '[tw-class] Split runtime CSS cannot preserve relative asset URLs. '
       + `Found ${JSON.stringify(urlValue)} in ${context}. `

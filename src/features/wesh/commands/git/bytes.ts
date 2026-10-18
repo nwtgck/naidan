@@ -12,8 +12,12 @@ export function concatBytes({ chunks }: { chunks: readonly Uint8Array[] }): Uint
 const HEX_DIGITS = '0123456789abcdef';
 
 function hexNibble({ code }: { code: number }): number {
-  if (code >= 0x30 && code <= 0x39) return code - 0x30;
-  if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
+  if (code >= 0x30 && code <= 0x39) {
+    return code - 0x30;
+  }
+  if (code >= 0x61 && code <= 0x66) {
+    return code - 0x61 + 10;
+  }
   return -1;
 }
 
@@ -43,7 +47,9 @@ export function writeHexBytes({ hex, bytes, offset, byteLength }: {
   for (let index = 0; index < decodedLength; index += 1) {
     const high = hexNibble({ code: hex.charCodeAt(index * 2) });
     const low = hexNibble({ code: hex.charCodeAt(index * 2 + 1) });
-    if (high < 0 || low < 0) throw new Error(`Invalid hexadecimal value: ${hex}`);
+    if (high < 0 || low < 0) {
+      throw new Error(`Invalid hexadecimal value: ${hex}`);
+    }
     bytes[offset + index] = (high << 4) | low;
   }
 }
@@ -61,7 +67,9 @@ export function compareBytes({ left, right }: { left: Uint8Array, right: Uint8Ar
   const commonLength = Math.min(left.byteLength, right.byteLength);
   for (let index = 0; index < commonLength; index += 1) {
     const difference = left[index]! - right[index]!;
-    if (difference !== 0) return difference;
+    if (difference !== 0) {
+      return difference;
+    }
   }
   return left.byteLength - right.byteLength;
 }

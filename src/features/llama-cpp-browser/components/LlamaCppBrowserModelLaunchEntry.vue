@@ -14,12 +14,17 @@ const props = defineProps<{ input?: string | (string | null)[] | null }>();
 // Render the link's name immediately, including before app initialization. Do
 // not wait for the remote catalog, invent a file size, or enable an early Start.
 const presentation = computed(() => {
-  if (props.input !== undefined) return modelLaunchPresentation({ input: props.input });
+  if (props.input !== undefined) {
+    return modelLaunchPresentation({ input: props.input });
+  }
   const state = modelLaunchEntryState.value;
   switch (state.status) {
   case 'idle': return undefined;
   case 'checking': case 'failed': return modelLaunchPresentation({ input: state.input });
-  default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = state;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const statusText = computed(() => modelLaunchEntryState.value.status === 'checking' && modelLaunchEntryState.value.phase === 'opening-chat'
@@ -35,13 +40,19 @@ const errorText = computed(() => {
   switch (modelLaunchEntryState.value.status) {
   case 'idle': case 'checking': return undefined;
   case 'failed': break;
-  default: { const exhaustive: never = modelLaunchEntryState.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = modelLaunchEntryState.value;
+    throw new Error(String(exhaustive));
+  }
   }
   switch (modelLaunchEntryState.value.problem) {
   case 'invalid-input': case 'failed': return lazyStrings.LlamaCppBrowserModelLaunch__model_link_could_not_be_opened();
   case 'variant-unavailable': return lazyStrings.LlamaCppBrowserModelLaunch__variant_not_found();
   case 'companion-required': return lazyStrings.LlamaCppBrowserModelLaunch__companion_needs_selection();
-  default: { const exhaustive: never = modelLaunchEntryState.value.problem; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = modelLaunchEntryState.value.problem;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 

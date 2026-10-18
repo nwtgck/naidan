@@ -51,7 +51,9 @@ export const DOCS_PAGES = DOCS_PAGE_IDS.map(id => ({
 
 export function docsHref({ locale, page }: { locale: DocsLocale; page: DocsPageId }): string {
   const definition = DOCS_PAGES.find(entry => entry.id === page);
-  if (!definition) throw new Error(`Unregistered Docs page: ${page}`);
+  if (!definition) {
+    throw new Error(`Unregistered Docs page: ${page}`);
+  }
   return `${DOCS_BASE}${locale}/${definition.path}`;
 }
 
@@ -59,6 +61,9 @@ export function otherLocale({ locale }: { locale: DocsLocale }): DocsLocale {
   switch (locale) {
   case 'en': return 'ja';
   case 'ja': return 'en';
-  default: { const unreachable: never = locale; return unreachable; }
+  default: {
+    const unreachable: never = locale;
+    return unreachable;
+  }
   }
 }

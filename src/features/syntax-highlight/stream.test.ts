@@ -12,12 +12,18 @@ describe('highlightSyntaxStream', () => {
     const display = createTokenDisplay();
     input.setCode({ code: 'echo first' });
     const first = await stream.next();
-    if (first.done) throw new Error('Expected first highlight');
+    if (first.done) {
+      throw new Error('Expected first highlight');
+    }
     display.apply({ edit: first.value });
-    for (let index = 0; index < 100; index++) input.setCode({ code: 'echo ignored ' + index });
+    for (let index = 0; index < 100; index++) {
+      input.setCode({ code: 'echo ignored ' + index });
+    }
     input.setCode({ code: 'printf "last"' });
     const last = await stream.next();
-    if (last.done) throw new Error('Expected latest highlight');
+    if (last.done) {
+      throw new Error('Expected latest highlight');
+    }
     display.apply({ edit: last.value });
     expect(display.tokens.map(token => token.text).join('')).toBe('printf "last"');
     expect(display.tokens[0]).toEqual({ kind: 'command', text: 'printf' });
@@ -87,7 +93,9 @@ describe('highlightSyntaxStream', () => {
     const add = vi.spyOn(controller.signal, 'addEventListener');
     const remove = vi.spyOn(controller.signal, 'removeEventListener');
     async function* input() {
-      for (let offset = 0; offset < 20; offset++) yield { offset, text: 'a' };
+      for (let offset = 0; offset < 20; offset++) {
+        yield { offset, text: 'a' };
+      }
     }
     const stream = highlightSyntaxStream({ edits: input(), language: 'shell', signal: controller.signal });
     for await (const _edit of stream) {

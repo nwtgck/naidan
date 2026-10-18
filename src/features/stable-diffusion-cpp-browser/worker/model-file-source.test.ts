@@ -9,7 +9,9 @@ it('coalesces thousands of native 2-KiB reads into three bounded Blob reads', ()
   const source = createModelFileSource({ file: fixture.file, reader: fixtureReader, cache });
   const destination = new Uint8Array(2048);
   const reads = MODEL_FILE_PAGE_BYTES * 2 / destination.length + 1;
-  for (let index = 0; index < reads; index++) expect(source.read(destination, index * destination.length)).toBe(destination.length);
+  for (let index = 0; index < reads; index++) {
+    expect(source.read(destination, index * destination.length)).toBe(destination.length);
+  }
   expect(fixture.reads).toEqual([0, 1, 2].map(page => ({ offset: page * MODEL_FILE_PAGE_BYTES, length: MODEL_FILE_PAGE_BYTES })));
   expect(source.metrics()).toMatchObject({
     reads,
@@ -37,7 +39,9 @@ it('preserves safe integer offsets through 20 GiB and reads the original file ta
   expect(source.read(tail, fixture.file.size)).toBe(0);
   expect(source.read(new Uint8Array(), 0)).toBe(0);
   expect(fixture.reads).toHaveLength(5);
-  for (const offset of [-1, 0.5, fixture.file.size + 1, Number.MAX_SAFE_INTEGER + 1, NaN]) expect(() => source.read(tail, offset)).toThrow('offset');
+  for (const offset of [-1, 0.5, fixture.file.size + 1, Number.MAX_SAFE_INTEGER + 1, NaN]) {
+    expect(() => source.read(tail, offset)).toThrow('offset');
+  }
 });
 
 it('copies overlapping reads across pages and separates partial from full cache hits', () => {
@@ -45,13 +49,16 @@ it('copies overlapping reads across pages and separates partial from full cache 
   const cache = createModelFileReadCache({ pageBytes: 8, capacityBytes: 24 });
   const source = createModelFileSource({ file: fixture.file, reader: fixtureReader, cache });
   const first = new Uint8Array(3);
-  expect(source.read(first, 2)).toBe(3); expect([...first]).toEqual([2, 3, 4]);
+  expect(source.read(first, 2)).toBe(3);
+  expect([...first]).toEqual([2, 3, 4]);
   const overlap = new Uint8Array(6);
-  expect(source.read(overlap, 6)).toBe(6); expect([...overlap]).toEqual([6, 7, 8, 9, 10, 11]);
+  expect(source.read(overlap, 6)).toBe(6);
+  expect([...overlap]).toEqual([6, 7, 8, 9, 10, 11]);
   expect(source.metrics()).toMatchObject({ reads: 2, bytes: 9, blobReads: 2, blobBytes: 16, cacheHits: 0, cacheHitBytes: 2 });
   expect(source.read(overlap, 6)).toBe(6);
   const all = new Uint8Array(24);
-  expect(source.read(all, 0)).toBe(24); expect([...all]).toEqual(Array.from({ length: 24 }, (_, index) => index));
+  expect(source.read(all, 0)).toBe(24);
+  expect([...all]).toEqual(Array.from({ length: 24 }, (_, index) => index));
   expect(source.metrics()).toMatchObject({ reads: 4, bytes: 39, blobReads: 3, blobBytes: 24, cacheHits: 1, cacheHitBytes: 24 });
 });
 
@@ -62,15 +69,23 @@ it('shares one LRU byte budget across same-named files without confusing their c
   const a = createModelFileSource({ file: first.file, reader: fixtureReader, cache });
   const b = createModelFileSource({ file: second.file, reader: fixtureReader, cache });
   const destination = new Uint8Array(1);
-  a.read(destination, 0); expect(destination[0]).toBe(17);
-  b.read(destination, 0); expect(destination[0]).toBe(83);
+  a.read(destination, 0);
+  expect(destination[0]).toBe(17);
+  b.read(destination, 0);
+  expect(destination[0]).toBe(83);
   a.read(destination, 1); // Touch A so the next page evicts B.
-  a.read(destination, 8); expect(cache.retainedBytes()).toBe(16);
-  a.read(destination, 0); expect(first.reads).toHaveLength(2);
-  b.read(destination, 0); expect(destination[0]).toBe(83); expect(second.reads).toHaveLength(2);
+  a.read(destination, 8);
   expect(cache.retainedBytes()).toBe(16);
-  cache.clear(); expect(cache.retainedBytes()).toBe(0);
-  a.read(destination, 0); expect(first.reads).toHaveLength(3);
+  a.read(destination, 0);
+  expect(first.reads).toHaveLength(2);
+  b.read(destination, 0);
+  expect(destination[0]).toBe(83);
+  expect(second.reads).toHaveLength(2);
+  expect(cache.retainedBytes()).toBe(16);
+  cache.clear();
+  expect(cache.retainedBytes()).toBe(0);
+  a.read(destination, 0);
+  expect(first.reads).toHaveLength(3);
 });
 
 it('never caches a truncated or failed Blob read', () => {
@@ -82,9 +97,11 @@ it('never caches a truncated or failed Blob read', () => {
   const source = createModelFileSource({ file: fixture.file, reader: { readAsArrayBuffer }, cache });
   const destination = new Uint8Array(4).fill(255);
   expect(() => source.read(destination, 0)).toThrow('completely');
-  expect(cache.retainedBytes()).toBe(0); expect([...destination]).toEqual([255, 255, 255, 255]);
+  expect(cache.retainedBytes()).toBe(0);
+  expect([...destination]).toEqual([255, 255, 255, 255]);
   expect(() => source.read(destination, 0)).toThrow('Read failed');
   expect(cache.retainedBytes()).toBe(0);
-  expect(source.read(destination, 0)).toBe(4); expect([...destination]).toEqual([42, 42, 42, 42]);
+  expect(source.read(destination, 0)).toBe(4);
+  expect([...destination]).toEqual([42, 42, 42, 42]);
   expect(readAsArrayBuffer).toHaveBeenCalledTimes(3);
 });

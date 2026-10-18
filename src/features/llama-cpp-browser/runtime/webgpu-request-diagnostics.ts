@@ -19,12 +19,16 @@ let measurement: Measurement | undefined;
 
 /** One serialized generate request per Worker; closing also invalidates late promises. */
 export function beginGpuMeasurement({ now }: { now: () => number }): () => void {
-  if (measurement) measurement.open = false;
+  if (measurement) {
+    measurement.open = false;
+  }
   const current: Measurement = { open: true, now };
   measurement = current;
   return () => {
     current.open = false;
-    if (measurement === current) measurement = undefined;
+    if (measurement === current) {
+      measurement = undefined;
+    }
   };
 }
 
@@ -40,7 +44,9 @@ function readMetadata({ device, adapter }: { device: GPUDevice, adapter: GPUAdap
   const adapterInfo: Record<string, string> = {};
   for (const name of ['vendor', 'architecture', 'device', 'description']) {
     const value = safelyRead({ read: () => Reflect.get(adapter?.info ?? {}, name) as unknown });
-    if (typeof value === 'string' && value.length > 0) adapterInfo[name] = value.slice(0, 256);
+    if (typeof value === 'string' && value.length > 0) {
+      adapterInfo[name] = value.slice(0, 256);
+    }
   }
   const currentFallback = safelyRead({ read: () => adapter?.info?.isFallbackAdapter });
   const fallback = typeof currentFallback === 'boolean' ? currentFallback : safelyRead({ read: () => adapter ? Reflect.get(adapter, 'isFallbackAdapter') as unknown : undefined });
@@ -48,11 +54,17 @@ function readMetadata({ device, adapter }: { device: GPUDevice, adapter: GPUAdap
     return safelyRead({
       read: () => {
         const values = source();
-        if (!values) return undefined;
+        if (!values) {
+          return undefined;
+        }
         const result: string[] = [];
         for (const value of values) {
-          if (result.length >= 128) break;
-          if (typeof value === 'string') result.push(value.slice(0, 128));
+          if (result.length >= 128) {
+            break;
+          }
+          if (typeof value === 'string') {
+            result.push(value.slice(0, 128));
+          }
         }
         return result.sort();
       },
@@ -62,7 +74,9 @@ function readMetadata({ device, adapter }: { device: GPUDevice, adapter: GPUAdap
   // WebIDL limit accessors are usually inherited and non-enumerable.
   for (const name of ['maxTextureDimension1D', 'maxTextureDimension2D', 'maxTextureDimension3D', 'maxTextureArrayLayers', 'maxBindGroups', 'maxBindGroupsPlusVertexBuffers', 'maxBindingsPerBindGroup', 'maxDynamicUniformBuffersPerPipelineLayout', 'maxDynamicStorageBuffersPerPipelineLayout', 'maxSampledTexturesPerShaderStage', 'maxSamplersPerShaderStage', 'maxStorageBuffersPerShaderStage', 'maxStorageTexturesPerShaderStage', 'maxUniformBuffersPerShaderStage', 'maxUniformBufferBindingSize', 'maxStorageBufferBindingSize', 'minUniformBufferOffsetAlignment', 'minStorageBufferOffsetAlignment', 'maxVertexBuffers', 'maxBufferSize', 'maxVertexAttributes', 'maxVertexBufferArrayStride', 'maxInterStageShaderVariables', 'maxColorAttachments', 'maxColorAttachmentBytesPerSample', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxComputeWorkgroupSizeX', 'maxComputeWorkgroupSizeY', 'maxComputeWorkgroupSizeZ', 'maxComputeWorkgroupsPerDimension']) {
     const value = safelyRead({ read: () => Reflect.get(device.limits, name) as unknown });
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) deviceLimits[name] = value;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      deviceLimits[name] = value;
+    }
   }
   return {
     adapterInfo: Object.keys(adapterInfo).length ? adapterInfo : undefined,
@@ -78,12 +92,17 @@ function facade<T extends object>({ target, overrides }: { target: T, overrides:
   const methods = new Map<PropertyKey, { original: unknown, bound: unknown }>();
   return new Proxy(target, {
     get(_target, key) {
-      if (Object.prototype.hasOwnProperty.call(overrides, key)) return Reflect.get(overrides, key);
+      if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+        return Reflect.get(overrides, key);
+      }
       const value: unknown = Reflect.get(target, key, target);
-      if (typeof value !== 'function') return value;
+      if (typeof value !== 'function') {
+        return value;
+      }
       let entry = methods.get(key);
       if (!entry || entry.original !== value) {
-        entry = { original: value, bound: value.bind(target) }; methods.set(key, entry);
+        entry = { original: value, bound: value.bind(target) };
+        methods.set(key, entry);
       }
       return entry.bound;
     },
@@ -114,17 +133,23 @@ export function createGpuRequestObserver() {
   }
   const totals: Omit<GpuRequests, 'metadata' | 'queue'> = { bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0 };
   function observe({ update }: { update: () => void }): void {
-    if (!available) return;
+    if (!available) {
+      return;
+    }
     try {
       update();
-      if (Object.values(totals).some(value => !Number.isSafeInteger(value) || value < 0)) available = false;
+      if (Object.values(totals).some(value => !Number.isSafeInteger(value) || value < 0)) {
+        available = false;
+      }
     } catch {
       available = false;
     }
   }
   return {
     snapshot(): GpuRequests | undefined {
-      if (!available) return undefined;
+      if (!available) {
+        return undefined;
+      }
       const queue = measurement?.open ? { ...queueState({ current: measurement }) } : undefined;
       return { ...totals, ...(metadata ? { metadata: structuredClone(metadata) } : {}), ...(queue ? { queue } : {}) };
     },
@@ -139,7 +164,8 @@ export function createGpuRequestObserver() {
             // Read the returned object's size, never evaluate descriptor getters again.
             observe({
               update() {
-                totals.bufferCount++; totals.bufferBytes += buffer.size;
+                totals.bufferCount++;
+                totals.bufferBytes += buffer.size;
               },
             });
             return buffer;
@@ -150,26 +176,33 @@ export function createGpuRequestObserver() {
               submit(...args: Parameters<GPUQueue['submit']>) {
                 const result = queue.submit(...args);
                 const current = measurement;
-                if (current?.open) increment({ state: queueState({ current }), key: 'submitCount' });
+                if (current?.open) {
+                  increment({ state: queueState({ current }), key: 'submitCount' });
+                }
                 return result;
               },
               onSubmittedWorkDone() {
                 const current = measurement;
                 const started = current?.open && outstandingWaitObservers < maximumOutstandingWaitObservers ? safelyRead({ read: current.now }) : undefined;
                 const result = queue.onSubmittedWorkDone();
-                if (!current?.open) return result;
+                if (!current?.open) {
+                  return result;
+                }
                 // Return the original promise, with native receiver and rejection unchanged.
                 // Side observers never fence, await, or feed timing back into inference.
                 const state = queueState({ current });
                 increment({ state, key: 'completionWaitCount' });
                 if (outstandingWaitObservers >= maximumOutstandingWaitObservers) {
-                  increment({ state, key: 'completionWaitUnobserved' }); return result;
+                  increment({ state, key: 'completionWaitUnobserved' });
+                  return result;
                 }
                 outstandingWaitObservers++;
                 increment({ state, key: 'completionWaitPending' });
                 function settled({ outcome }: { outcome: 'completionWaitResolved' | 'completionWaitRejected' }): void {
                   outstandingWaitObservers--;
-                  if (!current?.open) return;
+                  if (!current?.open) {
+                    return;
+                  }
                   safelyRead({
                     read: () => {
                       increment({ state, key: outcome });
@@ -178,7 +211,8 @@ export function createGpuRequestObserver() {
                       const elapsed = started === undefined || ended === undefined ? NaN : ended - started;
                       const sum = (state.completionWaitDurationMs ?? NaN) + elapsed;
                       if (!Number.isFinite(elapsed) || elapsed < 0 || !Number.isFinite(sum)) {
-                        state.completionWaitDurationMs = undefined; state.longestCompletionWaitDurationMs = undefined;
+                        state.completionWaitDurationMs = undefined;
+                        state.longestCompletionWaitDurationMs = undefined;
                       } else {
                         state.completionWaitDurationMs = sum;
                         state.longestCompletionWaitDurationMs = Math.max(state.longestCompletionWaitDurationMs ?? 0, elapsed);
@@ -203,9 +237,12 @@ export function createGpuRequestObserver() {
                     const data = args[2];
                     const unit = ArrayBuffer.isView(data) && 'BYTES_PER_ELEMENT' in data ? Number(data.BYTES_PER_ELEMENT) : 1;
                     const bytes = args[4] === undefined ? data.byteLength - (args[3] ?? 0) * unit : args[4] * unit;
-                    totals.writeCount++; totals.writeBytes += bytes;
+                    totals.writeCount++;
+                    totals.writeBytes += bytes;
                     totals.largestWriteBytes = Math.max(totals.largestWriteBytes, bytes);
-                    if (bytes >= 4 * 1024 * 1024) totals.writesAtLeast4MiB++;
+                    if (bytes >= 4 * 1024 * 1024) {
+                      totals.writesAtLeast4MiB++;
+                    }
                   },
                 });
                 return result;

@@ -49,7 +49,9 @@ export function createSearchResultStore({
 
   return {
     addContentMatches({ source, matches }) {
-      if (matches.length === 0) return;
+      if (matches.length === 0) {
+        return;
+      }
 
       const chatId = source.chat.id;
       contentMatchesByChatId.set(chatId, matches);
@@ -85,7 +87,9 @@ export function createSearchResultStore({
         switch (entry.type) {
         case 'chat': {
           const matches = contentMatchesByChatId.get(entry.item.chatId);
-          if (matches === undefined) break;
+          if (matches === undefined) {
+            break;
+          }
 
           for (const match of matches) {
             flatResults.push({
@@ -110,7 +114,9 @@ export function createSearchResultStore({
       for (const chatId of contentOnlyChatOrder) {
         const header = contentOnlyChatHeaders.get(chatId);
         const matches = contentMatchesByChatId.get(chatId);
-        if (header === undefined || matches === undefined) continue;
+        if (header === undefined || matches === undefined) {
+          continue;
+        }
 
         flatResults.push({ type: 'chat', item: header });
         for (const match of matches) {

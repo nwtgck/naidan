@@ -14,9 +14,13 @@ export function findCopyMovePreHelpSemanticError({
   for (const occurrence of occurrences) {
     switch (occurrence.kind) {
     case 'value':
-      if (occurrence.key !== 'targetDirectory') break;
+      if (occurrence.key !== 'targetDirectory') {
+        break;
+      }
       targetDirectoryCount += 1;
-      if (targetDirectoryCount > 1) return { kind: 'multiple-target-directories' };
+      if (targetDirectoryCount > 1) {
+        return { kind: 'multiple-target-directories' };
+      }
       break;
     case 'special':
       for (const effect of occurrence.effects) {

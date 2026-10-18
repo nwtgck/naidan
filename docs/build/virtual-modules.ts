@@ -9,7 +9,9 @@ import { validateDocsAuthoringSource } from './authoring-policy';
 function articleTranslationFile({ root, id }: { root: string; id: string }): string | undefined {
   const filename = id.split('?', 1)[0] ?? id;
   const relative = path.relative(root, filename);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return undefined;
+  }
   const docsFile = relative.split(path.sep).join('/');
   return /^pages\/[^/]+\/messages\/(?:en|ja)\.tsx$/u.test(docsFile) ? docsFile : undefined;
 }
@@ -21,16 +23,24 @@ export function createDocsModulesPlugin({ root, allowTestArticleTranslations = f
     name: 'naidan-docs-modules',
     enforce: 'pre',
     resolveId(id) {
-      if (id === REGISTRY_ID || stylePages.has(id) || clientEntries.has(id)) return `\0${id}`;
+      if (id === REGISTRY_ID || stylePages.has(id) || clientEntries.has(id)) {
+        return `\0${id}`;
+      }
       return undefined;
     },
     async load(id, options) {
       const translation = articleTranslationFile({ root, id });
-      if (translation && !options?.ssr && !allowTestArticleTranslations) throw new Error(`Docs article translations are server-only: ${translation}`);
-      if (!id.startsWith('\0')) return undefined;
+      if (translation && !options?.ssr && !allowTestArticleTranslations) {
+        throw new Error(`Docs article translations are server-only: ${translation}`);
+      }
+      if (!id.startsWith('\0')) {
+        return undefined;
+      }
       const name = id.slice(1);
       if (name === REGISTRY_ID) {
-        if (!options?.ssr) throw new Error('The Docs page and translation registry is server-only');
+        if (!options?.ssr) {
+          throw new Error('The Docs page and translation registry is server-only');
+        }
         const lines = [
           'import { lstat } from "node:fs/promises";',
           'import path from "node:path";',
@@ -72,15 +82,23 @@ export function createDocsModulesPlugin({ root, allowTestArticleTranslations = f
     },
     async transform(source, id, options) {
       const translation = articleTranslationFile({ root, id });
-      if (translation && !options?.ssr && !allowTestArticleTranslations) throw new Error(`Docs article translations are server-only: ${translation}`);
+      if (translation && !options?.ssr && !allowTestArticleTranslations) {
+        throw new Error(`Docs article translations are server-only: ${translation}`);
+      }
       // These are filesystem IDs, not request URLs. Preserve drive letters,
       // spaces and literal percent signs; generated Vue subrequests have queries.
-      if (id.includes('\0') || id.includes('?') || !/\.(?:vue|tsx?|jsx?)$/u.test(id)) return undefined;
+      if (id.includes('\0') || id.includes('?') || !/\.(?:vue|tsx?|jsx?)$/u.test(id)) {
+        return undefined;
+      }
       const filename = id;
       const relative = path.relative(root, filename);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
+      if (relative.startsWith('..') || path.isAbsolute(relative)) {
+        return undefined;
+      }
       const docsFile = relative.split(path.sep).join('/');
-      if (/^(?:build|tests|\.cache|dist)\//u.test(docsFile) || /(?:^|\/)\w+\.config\.[jt]s$/u.test(docsFile)) return undefined;
+      if (/^(?:build|tests|\.cache|dist)\//u.test(docsFile) || /(?:^|\/)\w+\.config\.[jt]s$/u.test(docsFile)) {
+        return undefined;
+      }
       await validateDocsAuthoringSource({
         source,
         filename: docsFile,
@@ -96,7 +114,9 @@ export function createDocsModulesPlugin({ root, allowTestArticleTranslations = f
           plugins: [vueJsx],
           sourceMaps: true,
         });
-        if (!result?.code) throw new Error(`Docs JSX transform produced no code: ${docsFile}`);
+        if (!result?.code) {
+          throw new Error(`Docs JSX transform produced no code: ${docsFile}`);
+        }
         return { code: result.code, map: result.map };
       }
       return undefined;

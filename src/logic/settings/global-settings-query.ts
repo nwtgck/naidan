@@ -112,7 +112,9 @@ export function installGlobalSettingsQuerySync({ router, settingsStore, initialF
     () => router.currentRoute.value.query,
     (query) => {
       const parsed = parseGlobalSettingsQuery({ query });
-      if (parsed.fingerprint === lastFingerprint) return;
+      if (parsed.fingerprint === lastFingerprint) {
+        return;
+      }
       lastFingerprint = parsed.fingerprint;
 
       updateQueue = updateQueue

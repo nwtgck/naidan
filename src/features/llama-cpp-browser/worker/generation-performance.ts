@@ -18,7 +18,9 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   let stage: DiagnosticStage = 'session';
   let finished = false;
   const stages = new Map<DiagnosticStage, { stage: DiagnosticStage, visits: number, elapsedMs: number }>();
-  if (enabled) stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
+  if (enabled) {
+    stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
+  }
   const counters = {
     checkpoint: undefined as PerformanceSummary['checkpoint'],
     backendCensus: undefined as PerformanceSummary['backendCensus'],
@@ -58,7 +60,9 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   let firstDeliveryMs: number | undefined;
   const settle = ({ at }: { at: number }): void => {
     const current = stages.get(stage);
-    if (current) current.elapsedMs += Math.max(0, at - since);
+    if (current) {
+      current.elapsedMs += Math.max(0, at - since);
+    }
     since = at;
   };
   const postFirstSample = (): NonNullable<PerformanceSummary['postFirstSample']> => sampleRate({
@@ -68,24 +72,35 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   return {
     counters,
     enter({ next }: { next: DiagnosticStage }): void {
-      if (!enabled || finished) return;
+      if (!enabled || finished) {
+        return;
+      }
       settle({ at: now() });
       stage = next;
       const current = stages.get(stage);
-      if (current) current.visits++;
-      else stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
+      if (current) {
+        current.visits++;
+      } else {
+        stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
+      }
     },
     sampled(): Diagnostic | undefined {
-      if (finished) return undefined;
+      if (finished) {
+        return undefined;
+      }
       counters.sampledTokens++;
-      if (!enabled) return undefined;
+      if (!enabled) {
+        return undefined;
+      }
       lastSampleMs = Math.max(0, now() - started);
       firstSampleMs ??= lastSampleMs;
       if (progressSampleMs === undefined) {
         progressSampleMs = lastSampleMs;
         progressSampledTokens = counters.sampledTokens;
       }
-      if (counters.sampledTokens < 100 || lastSampleMs - progressSampleMs < 3000) return undefined;
+      if (counters.sampledTokens < 100 || lastSampleMs - progressSampleMs < 3000) {
+        return undefined;
+      }
       const interval = sampleRate({ sampledTokens: counters.sampledTokens - progressSampledTokens, elapsedMs: lastSampleMs - progressSampleMs });
       progressSampleMs = lastSampleMs;
       progressSampledTokens = counters.sampledTokens;
@@ -100,7 +115,9 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       };
     },
     rendered({ endOfGeneration }: { endOfGeneration: boolean }): void {
-      if (endOfGeneration || !enabled || finished) return;
+      if (endOfGeneration || !enabled || finished) {
+        return;
+      }
       counters.nonEogTokens++;
       counters.firstNonEogSampleMs ??= lastSampleMs;
       counters.lastNonEogSampleMs = lastSampleMs;
@@ -108,17 +125,24 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       if (windows && lastSampleMs !== undefined) {
         const current = windows.at(-1);
         if (!current || current.lastSample - current.firstSample >= 15) {
-          if (windows.length < 256) windows.push({ firstSample: counters.nonEogTokens, lastSample: counters.nonEogTokens, firstMs: lastSampleMs, lastMs: lastSampleMs });
+          if (windows.length < 256) {
+            windows.push({ firstSample: counters.nonEogTokens, lastSample: counters.nonEogTokens, firstMs: lastSampleMs, lastMs: lastSampleMs });
+          }
         } else {
-          current.lastSample = counters.nonEogTokens; current.lastMs = lastSampleMs;
+          current.lastSample = counters.nonEogTokens;
+          current.lastMs = lastSampleMs;
         }
       }
     },
     delivered(): void {
-      if (enabled && !finished && firstDeliveryMs === undefined) firstDeliveryMs = Math.max(0, now() - started);
+      if (enabled && !finished && firstDeliveryMs === undefined) {
+        firstDeliveryMs = Math.max(0, now() - started);
+      }
     },
     finish({ outcome, profile }: { outcome: PerformanceSummary['outcome'], profile: LlamaCppProfile }): Diagnostic | undefined {
-      if (!enabled || finished) return undefined;
+      if (!enabled || finished) {
+        return undefined;
+      }
       finished = true;
       const ended = now();
       settle({ at: ended });

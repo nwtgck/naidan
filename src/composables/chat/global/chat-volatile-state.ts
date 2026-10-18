@@ -87,14 +87,21 @@ export function createChatVolatileState(): ChatVolatileState {
   function setToolCallDrafts({ chatId, messageId, owner, drafts }: { chatId: ChatId, messageId: MessageId, owner: AbortSignal, drafts: readonly ToolCallDraft[] }): void {
     const existing = toolCallDrafts.get(chatId);
     if (drafts.length === 0) {
-      if (existing?.get(messageId)?.owner !== owner) return;
+      if (existing?.get(messageId)?.owner !== owner) {
+        return;
+      }
       existing.delete(messageId);
-      if (existing?.size === 0) toolCallDrafts.delete(chatId);
+      if (existing?.size === 0) {
+        toolCallDrafts.delete(chatId);
+      }
       return;
     }
     const snapshot = drafts.map(draft => ({ ...draft }));
-    if (existing !== undefined) existing.set(messageId, { owner, drafts: snapshot });
-    else toolCallDrafts.set(chatId, new Map([[messageId, { owner, drafts: snapshot }]]));
+    if (existing !== undefined) {
+      existing.set(messageId, { owner, drafts: snapshot });
+    } else {
+      toolCallDrafts.set(chatId, new Map([[messageId, { owner, drafts: snapshot }]]));
+    }
   }
 
   function getToolCallDrafts({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): readonly ToolCallDraft[] {
@@ -126,7 +133,9 @@ export function createChatVolatileState(): ChatVolatileState {
     messageId: MessageId,
   }) {
     const existing = volatileAssistantErrors.get(chatId);
-    if (!existing) return;
+    if (!existing) {
+      return;
+    }
 
     existing.delete(messageId);
     if (existing.size === 0) {
@@ -140,22 +149,31 @@ export function createChatVolatileState(): ChatVolatileState {
     chat: Chat,
   }) {
     const errors = volatileAssistantErrors.get(chat.id);
-    if (!errors || errors.size === 0) return;
+    if (!errors || errors.size === 0) {
+      return;
+    }
 
     for (const messageId of errors.keys()) {
       const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
       if (!node) {
-        errors.delete(messageId); continue;
+        errors.delete(messageId);
+        continue;
       }
       switch (node.role) {
       case 'assistant': break;
       case 'user':
       case 'system':
-      case 'tool': errors.delete(messageId); break;
-      default: { const _ex: never = node; throw new Error(`Unhandled message: ${_ex}`); }
+      case 'tool': errors.delete(messageId);
+        break;
+      default: {
+        const _ex: never = node;
+        throw new Error(`Unhandled message: ${_ex}`);
+      }
       }
     }
-    if (errors.size === 0) volatileAssistantErrors.delete(chat.id);
+    if (errors.size === 0) {
+      volatileAssistantErrors.delete(chat.id);
+    }
   }
 
   // UI diagnostics stay outside the persisted message. Reloading history must

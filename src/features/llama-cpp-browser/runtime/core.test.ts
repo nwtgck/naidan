@@ -43,7 +43,9 @@ describe('native call adaptation', () => {
     expect(() => optionalCore.tryAlloc({ bytes: 0 })).toThrow('Allocation must be nonempty');
     const pointer = core.tryAlloc({ bytes: 8 });
     expect(pointer).toBeDefined();
-    if (pointer !== undefined) core.free({ pointer });
+    if (pointer !== undefined) {
+      core.free({ pointer });
+    }
   });
 
   it.each([
@@ -61,8 +63,12 @@ describe('native call adaptation', () => {
       // Model old/new contracts explicitly, independently of installed exports.
       const module = new Proxy(loaded.module, {
         get(target, property) {
-          if (property === '_lcb_callback_metadata_version') return bindings ? () => 1 : undefined;
-          if (typeof property === 'string' && property.startsWith('_lcb_callback_')) return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+          if (property === '_lcb_callback_metadata_version') {
+            return bindings ? () => 1 : undefined;
+          }
+          if (typeof property === 'string' && property.startsWith('_lcb_callback_')) {
+            return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+          }
           return Reflect.get(target, property, target);
         },
       });
@@ -126,7 +132,9 @@ describe('native call adaptation', () => {
     await expect(asyncCore.api.ggml_backend_dev_count()).rejects.toThrow('Serialize access');
     expect(() => asyncCore.alloc({ bytes: 8 })).toThrow('Serialize access');
     expect(ccall).toHaveBeenCalledOnce();
-    if (!finish) throw new Error('Expected a pending native call');
+    if (!finish) {
+      throw new Error('Expected a pending native call');
+    }
     finish(7n);
     await expect(pending).resolves.toBe(7n);
     ccall.mockRejectedValueOnce(new Error('native suspension failed'));
@@ -171,25 +179,41 @@ describe('native call adaptation', () => {
   });
 
   it.each(['string', 'record'] as const)('releases an unpublished %s allocation when the current heap rejects initialization', kind => {
-    let truncated = false; const freed: bigint[] = [];
+    let truncated = false;
+    const freed: bigint[] = [];
     const module = new Proxy(core.module, {
       get(target, property) {
         const value: unknown = Reflect.get(target, property, target);
-        if (property === 'HEAPU8' && truncated) return new Uint8Array(0);
-        if (property === '_lcb_malloc') return (...args: bigint[]) => {
-          if (typeof value !== 'function') throw new Error('Missing fixture allocation');
-          const pointer: unknown = Reflect.apply(value, target, args); truncated = true; return pointer;
-        };
-        if (property === '_lcb_free') return (pointer: bigint) => {
-          if (typeof value !== 'function') throw new Error('Missing fixture release');
-          freed.push(pointer); return Reflect.apply(value, target, [pointer]);
-        };
+        if (property === 'HEAPU8' && truncated) {
+          return new Uint8Array(0);
+        }
+        if (property === '_lcb_malloc') {
+          return (...args: bigint[]) => {
+            if (typeof value !== 'function') {
+              throw new Error('Missing fixture allocation');
+            }
+            const pointer: unknown = Reflect.apply(value, target, args);
+            truncated = true;
+            return pointer;
+          };
+        }
+        if (property === '_lcb_free') {
+          return (pointer: bigint) => {
+            if (typeof value !== 'function') {
+              throw new Error('Missing fixture release');
+            }
+            freed.push(pointer);
+            return Reflect.apply(value, target, [pointer]);
+          };
+        }
         return value;
       },
     });
     const bound = attachCore({ module, callMode: 'direct' });
     const run = () => kind === 'string' ? bound.utf8({ text: 'owned native string' }) : bound.allocRecord({ name: 'llama_batch' });
-    expect(run).toThrow('out of bounds'); expect(freed).toHaveLength(1); expect(freed[0]).not.toBe(0n);
+    expect(run).toThrow('out of bounds');
+    expect(freed).toHaveLength(1);
+    expect(freed[0]).not.toBe(0n);
     truncated = false;
   });
 
@@ -197,12 +221,19 @@ describe('native call adaptation', () => {
     const invoked = vi.fn();
     const module = new Proxy(core.module, {
       get(target, property) {
-        if (property === '_lcb_callback_metadata_version') return bindings ? () => 1 : undefined;
-        if (typeof property === 'string' && property.startsWith('_lcb_callback_')) return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+        if (property === '_lcb_callback_metadata_version') {
+          return bindings ? () => 1 : undefined;
+        }
+        if (typeof property === 'string' && property.startsWith('_lcb_callback_')) {
+          return bindings ? Reflect.get(target, property.replace('_lcb_callback_', '_lcb_'), target) : undefined;
+        }
         const value: unknown = Reflect.get(target, property, target);
-        if (typeof property === 'string' && property.startsWith('_lcb_ggml_') && typeof value === 'function') return (...args: unknown[]) => {
-          invoked(property); return Promise.resolve(Reflect.apply(value, target, args));
-        };
+        if (typeof property === 'string' && property.startsWith('_lcb_ggml_') && typeof value === 'function') {
+          return (...args: unknown[]) => {
+            invoked(property);
+            return Promise.resolve(Reflect.apply(value, target, args));
+          };
+        }
         return value;
       },
     });
@@ -221,8 +252,12 @@ describe('native call adaptation', () => {
     let context = 0n, buffer = 0n;
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        if (buffer) await core.api.ggml_backend_buffer_free(buffer);
-        if (context) await core.api.ggml_free(context);
+        if (buffer) {
+          await core.api.ggml_backend_buffer_free(buffer);
+        }
+        if (context) {
+          await core.api.ggml_free(context);
+        }
         core.free({ pointer: params });
       },
     };
@@ -254,9 +289,13 @@ describe('native call adaptation', () => {
     for (const version of [2, 1]) {
       const module = new Proxy(core.module, {
         get(target, property) {
-          if (property === '_lcb_callback_metadata_version') return () => version;
+          if (property === '_lcb_callback_metadata_version') {
+            return () => version;
+          }
           // Keep the incomplete fixture incomplete after updating the package.
-          if (property === '_lcb_callback_ggml_op_desc') return undefined;
+          if (property === '_lcb_callback_ggml_op_desc') {
+            return undefined;
+          }
           return Reflect.get(target, property, target);
         },
       });

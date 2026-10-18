@@ -113,7 +113,9 @@ describe('LFM2.5 2.6B Download replay', () => {
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       for (const path of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing persisted metadata: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing persisted metadata: ${path}`);
+        }
         expect(digest({ bytes: saved }), path).toBe(digest({ bytes: h.archive.files.get(path)! }));
         expect(h.fs.files.has(`${base}.${path}.complete`), path).toBe(true);
       }
@@ -178,13 +180,17 @@ describe('LFM2.5 2.6B Download replay', () => {
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       for (const path of expectedPaths) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing service-downloaded model artifact: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing service-downloaded model artifact: ${path}`);
+        }
         expect(readSyntheticModelBody({ bytes: saved }), path).toEqual({ modelId, revision, path });
         expect(h.fs.files.has(`${base}onnx/.${path.slice('onnx/'.length)}.complete`), path).toBe(true);
       }
       for (const path of ['config.json', 'tokenizer.json', 'tokenizer_config.json']) {
         const saved = h.fs.files.get(`${base}${path}`);
-        if (saved === undefined) throw new Error(`Missing service-downloaded metadata: ${path}`);
+        if (saved === undefined) {
+          throw new Error(`Missing service-downloaded metadata: ${path}`);
+        }
         expect(digest({ bytes: saved }), path).toBe(digest({ bytes: h.archive.files.get(path)! }));
         expect(h.fs.files.has(`${base}.${path}.complete`), path).toBe(true);
       }
@@ -260,7 +266,9 @@ describe('LFM2.5 2.6B Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('An incomplete candidate must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('An incomplete candidate must not produce an accepted model');
+      }
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(failure.message).toContain(missingPath);
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);
@@ -305,7 +313,9 @@ describe('LFM2.5 2.6B Download replay', () => {
 
       const failure = await h.freshLoad({ progressCallback: undefined }).then(() => undefined, (error: unknown) => error);
       expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('Missing required metadata must not produce an accepted model');
+      if (!(failure instanceof Error)) {
+        throw new Error('Missing required metadata must not produce an accepted model');
+      }
       // tokenizer_config remains present, so the upstream registry lists tokenizer.json.
       expect(failure.message).toContain('Downloaded model is incomplete');
       expect(h.sessions.slice(sessionBoundary)).toEqual([]);

@@ -44,7 +44,10 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
       add({ scenario: 'placement', position: 'diagnostic', repetition: 0, dependsOn: undefined, prompt: longPrompt, maxTokens: 2 });
       break;
     case 'none': case undefined: break;
-    default: { const exhaustive: never = settings.diagnostics; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = settings.diagnostics;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options, notes, steps });

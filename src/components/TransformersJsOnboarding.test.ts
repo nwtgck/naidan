@@ -284,11 +284,15 @@ describe('Transformers.js Onboarding Integration', () => {
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: preference === 'high' ? 'high' : undefined } },
       };
       break;
-    case 'disabled': mockSettings.value.titleGeneration = 'disabled'; break;
+    case 'disabled': mockSettings.value.titleGeneration = 'disabled';
+      break;
     case 'same_scope':
       mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: 'same_scope' };
       break;
-    default: { const exhaustive: never = preference; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = preference;
+      throw new Error(String(exhaustive));
+    }
     }
     const originalTitle = structuredClone(toRaw(mockSettings.value).titleGeneration);
     const wrapper = mountModal();
@@ -364,14 +368,18 @@ describe('Transformers.js Onboarding Integration', () => {
     const wrapper = mountModal({ global: { stubs: { TransformersJsManager: false } } });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        wrapper.unmount(); vi.unstubAllGlobals();
+        wrapper.unmount();
+        vi.unstubAllGlobals();
       },
     };
     await flushPromises();
     const tab = wrapper.findAll('button').find(button => button.text().includes('Transformers.js'));
-    if (!tab) throw new Error('Missing discoverable feature tab');
+    if (!tab) {
+      throw new Error('Missing discoverable feature tab');
+    }
     expect(tab.attributes('disabled')).toBeUndefined();
-    await tab.trigger('click'); await flushPromises();
+    await tab.trigger('click');
+    await flushPromises();
     expect(wrapper.text()).toContain('is not available in the Standalone build');
     expect(wrapper.get('fieldset[data-testid="transformers-js-actions"]').attributes('disabled')).toBeDefined();
     expect(transformersJsService.subscribe).not.toHaveBeenCalled();
@@ -381,7 +389,9 @@ describe('Transformers.js Onboarding Integration', () => {
     wrapper.getComponent(TransformersJsManager).vm.$emit('model-loaded', 'stale-model');
     await flushPromises();
     const start = wrapper.findAll('button').find(button => button.text().includes('Get Started'));
-    if (!start) throw new Error('Missing visible start action');
+    if (!start) {
+      throw new Error('Missing visible start action');
+    }
     expect(start.attributes('disabled')).toBeDefined();
     await start.trigger('click');
     expect(mockSave).not.toHaveBeenCalled();

@@ -72,8 +72,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Mock loadChat behavior for deleteChat's verification steps
     vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
-      if (id === toChatId({ raw: 'c1' })) return chat1;
-      if (id === toChatId({ raw: 'c2' })) return chat2;
+      if (id === toChatId({ raw: 'c1' })) {
+        return chat1;
+      }
+      if (id === toChatId({ raw: 'c2' })) {
+        return chat2;
+      }
       return null;
     });
 
@@ -100,8 +104,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.push({ id: 'chat:c_out', type: 'chat', chat: chatOut });
 
     vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
-      if (id === toChatId({ raw: 'c_in' })) return chatInGroup;
-      if (id === toChatId({ raw: 'c_out' })) return chatOut;
+      if (id === toChatId({ raw: 'c_in' })) {
+        return chatInGroup;
+      }
+      if (id === toChatId({ raw: 'c_out' })) {
+        return chatOut;
+      }
       return null;
     });
 

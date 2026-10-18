@@ -133,8 +133,12 @@ function areStringArraysEqual({
   left: readonly string[] | undefined,
   right: readonly string[] | undefined,
 }): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined || left.length !== right.length) return false;
+  if (left === right) {
+    return true;
+  }
+  if (left === undefined || right === undefined || left.length !== right.length) {
+    return false;
+  }
   return left.every((value, index) => value === right[index]);
 }
 
@@ -311,8 +315,12 @@ function cloneScopedTitleGeneration({
 }: {
   titleGeneration: ScopedTitleGeneration | undefined,
 }): ScopedTitleGeneration | undefined {
-  if (titleGeneration === undefined) return undefined;
-  if (typeof titleGeneration === 'string') return titleGeneration;
+  if (titleGeneration === undefined) {
+    return undefined;
+  }
+  if (typeof titleGeneration === 'string') {
+    return titleGeneration;
+  }
 
   if (titleGeneration.endpoint === 'same_scope') {
     return {
@@ -630,7 +638,9 @@ export function applyScopedSettingChangesToChat({
   changes: readonly ScopedSettingChange[],
   updatedAt: number,
 }): Chat {
-  if (changes.length === 0) return current;
+  if (changes.length === 0) {
+    return current;
+  }
 
   const next = applyChanges({
     current: {
@@ -659,7 +669,9 @@ export function applyScopedSettingChangesToChatMeta({
   changes: readonly ScopedSettingChange[],
   updatedAt: number,
 }): ChatMeta {
-  if (changes.length === 0) return current;
+  if (changes.length === 0) {
+    return current;
+  }
 
   const next = applyChanges({
     current: {
@@ -688,7 +700,9 @@ export function applyScopedSettingChangesToChatGroup({
   changes: readonly ScopedSettingChange[],
   updatedAt: number,
 }): ChatGroup {
-  if (changes.length === 0) return current;
+  if (changes.length === 0) {
+    return current;
+  }
 
   const next = applyChanges({
     current: {

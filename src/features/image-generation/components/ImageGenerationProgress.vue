@@ -15,7 +15,10 @@ const heightLimit = computed(() => {
   case 'compact': return 20;
   case 'monitor': return 38;
   case undefined: return 65;
-  default: { const exhaustive: never = props.size; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.size;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const visible = computed(() => props.supported && props.busy);
@@ -27,7 +30,9 @@ watch(() => [visible.value, props.startedAt] as const, ([value]) => {
   elapsedSeconds.value = 0;
 }, { immediate: true, flush: 'sync' });
 watch(running, (value, _previous, onCleanup) => {
-  if (!value) return;
+  if (!value) {
+    return;
+  }
   const tick = () => {
     elapsedSeconds.value = Math.floor((performance.now() - began) / 1000);
   };
@@ -47,22 +52,31 @@ const displayedStep = computed(() => units.value
   ? Math.min(units.value.current + (props.stopping ? 0 : 1), units.value.total)
   : undefined);
 const samplingStatus = computed(() => {
-  if (!sampling.value || !units.value || displayedStep.value === undefined) return undefined;
+  if (!sampling.value || !units.value || displayedStep.value === undefined) {
+    return undefined;
+  }
   if (props.stopping || units.value.current === units.value.total) {
     return lazyStrings.ImageGenerationProgress__steps_completed({ current: units.value.current, total: units.value.total });
   }
   return lazyStrings.ImageGenerationProgress__processing_step({ current: displayedStep.value, total: units.value.total });
 });
 const phaseLabel = computed(() => {
-  if (props.stopping) return lazyStrings.stableDiffusionCppBrowser__stopping_retained();
-  if (!props.progress) return lazyStrings.llamaCppBrowserDownloads__waiting();
+  if (props.stopping) {
+    return lazyStrings.stableDiffusionCppBrowser__stopping_retained();
+  }
+  if (!props.progress) {
+    return lazyStrings.llamaCppBrowserDownloads__waiting();
+  }
   switch (props.progress.phase) {
   case 'runtime': return lazyStrings.stableDiffusionCppBrowser__loading_runtime();
   case 'model': return lazyStrings.stableDiffusionCppBrowser__loading_model();
   case 'sampling': return units.value ? samplingStatus.value : lazyStrings.stableDiffusionCppBrowser__sampling();
   case 'decoding': return lazyStrings.stableDiffusionCppBrowser__decoding_image();
   case 'encoding': return lazyStrings.stableDiffusionCppBrowser__encoding();
-  default: { const exhaustive: never = props.progress.phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.progress.phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 // Copy the Ollama loader's visual language without coupling the generation paths.
@@ -122,23 +136,74 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .generation-particle {
-  position: absolute; top: 50%; left: 50%; width: var(--size); height: var(--size);
-  background: var(--color); border-radius: 50%; box-shadow: 0 0 calc(var(--size) * 3) var(--color);
-  opacity: 0; animation: particle-expansion var(--duration) ease-out infinite; animation-delay: var(--delay);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--size);
+  height: var(--size);
+  background: var(--color);
+  border-radius: 50%;
+  box-shadow: 0 0 calc(var(--size) * 3) var(--color);
+  opacity: 0;
+  animation: particle-expansion var(--duration) ease-out infinite;
+  animation-delay: var(--delay);
 }
-.generation-glow { animation: glow 3s ease-in-out infinite; }
-.generation-shimmer { animation: shimmer 2s linear infinite; }
-.generation-travelling { transform: translateX(100%); animation: travelling 1.6s ease-in-out infinite alternate; }
-.generation-progress[data-running="false"] * { animation: none; }
+.generation-glow {
+  animation: glow 3s ease-in-out infinite;
+}
+.generation-shimmer {
+  animation: shimmer 2s linear infinite;
+}
+.generation-travelling {
+  transform: translateX(100%);
+  animation: travelling 1.6s ease-in-out infinite alternate;
+}
+.generation-progress[data-running="false"] * {
+  animation: none;
+}
 @keyframes particle-expansion {
-  0% { transform: rotate(var(--direction)) translateX(0) scale(0); opacity: 0; }
-  15% { opacity: 0.8; transform: rotate(var(--direction)) translateX(30px) scale(1.2); }
-  100% { transform: rotate(var(--direction)) translateX(var(--distance)) scale(0.2); opacity: 0; }
+  0% {
+    transform: rotate(var(--direction)) translateX(0) scale(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+    transform: rotate(var(--direction)) translateX(30px) scale(1.2);
+  }
+  100% {
+    transform: rotate(var(--direction)) translateX(var(--distance)) scale(0.2);
+    opacity: 0;
+  }
 }
-@keyframes glow { 0%, 100% { opacity: 0.8; transform: scale(0.99); } 50% { opacity: 1; transform: scale(1); } }
-@keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
-@keyframes travelling { from { transform: translateX(0); } to { transform: translateX(200%); } }
+@keyframes glow {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(0.99);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes travelling {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .generation-progress * { animation: none; }
+  .generation-progress * {
+    animation: none;
+  }
 }
 </style>

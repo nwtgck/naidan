@@ -5,7 +5,9 @@ export function createWeshTerminalHistory() {
 
   function record({ script }: { script: string }) {
     const trimmed = script.trim();
-    if (trimmed.length === 0) return;
+    if (trimmed.length === 0) {
+      return;
+    }
     if (entries.at(-1) !== trimmed) {
       entries.push(trimmed);
     }
@@ -14,7 +16,9 @@ export function createWeshTerminalHistory() {
   }
 
   function previous({ draft }: { draft: string }): string | undefined {
-    if (entries.length === 0) return undefined;
+    if (entries.length === 0) {
+      return undefined;
+    }
     if (cursor === undefined) {
       cursor = entries.length - 1;
       draftBeforeNavigation = draft;
@@ -25,7 +29,9 @@ export function createWeshTerminalHistory() {
   }
 
   function next(): string | undefined {
-    if (cursor === undefined) return undefined;
+    if (cursor === undefined) {
+      return undefined;
+    }
     if (cursor >= entries.length - 1) {
       cursor = undefined;
       return draftBeforeNavigation;

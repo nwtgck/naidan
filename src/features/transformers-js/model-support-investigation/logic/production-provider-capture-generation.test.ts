@@ -32,7 +32,9 @@ function fixture({ chat }: { chat: LmProvider['chat'] }) {
     return chat(args);
   });
   const operation = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ signal, operation }) => {
-    if (!signal) throw new Error('Expected explicit capture signal');
+    if (!signal) {
+      throw new Error('Expected explicit capture signal');
+    }
     owned = true;
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -73,7 +75,8 @@ beforeEach(() => vi.stubGlobal('fetch', vi.fn(() => {
 })));
 
 afterEach(() => {
-  expect(globalThis.fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });
 
 // The common operation, parts consumer, snapshots and fixed tool are real.
@@ -90,7 +93,8 @@ describe('production capture using the parts generation contract', () => {
     const recorded = trace();
     const result = await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }), abortController: new AbortController(), trace: recorded });
     expect(result).toEqual(limited.result);
-    expect(f.operation).toHaveBeenCalledOnce(); expect(f.calls).toHaveBeenCalledOnce();
+    expect(f.operation).toHaveBeenCalledOnce();
+    expect(f.calls).toHaveBeenCalledOnce();
     const settled = recorded.settle({ outcome: 'fulfilled', error: undefined });
     expect(captureSettledAssistantParts({ settled })).toEqual([
       { id: 'part_0', type: 'reasoning', text: '  R\n', completeness: 'complete' },
@@ -105,10 +109,14 @@ describe('production capture using the parts generation contract', () => {
         { type: 'text', text: '<think>literal</think>🙂\r\n', completeness: 'partial' },
       ],
     });
-    for (const part of history[1]?.parts ?? []) expect(part).not.toHaveProperty('id');
+    for (const part of history[1]?.parts ?? []) {
+      expect(part).not.toHaveProperty('id');
+    }
     expect(history[2]).toMatchObject({ role: 'user', parts: [{ text: 'Continue the synthetic conversation with a short response.' }] });
     const first = history[1]?.parts[0];
-    if (first?.type !== 'reasoning') throw new Error('Expected reasoning part');
+    if (first?.type !== 'reasoning') {
+      throw new Error('Expected reasoning part');
+    }
     first.text = 'mutated caller copy';
     expect(captureProviderMessages({ input: next })[1]?.parts[0]).toMatchObject({ text: '  R\n' });
     expect(recorded.snapshot().events.some(event => ['chunk', 'assistant-start', 'tool-call'].includes(event.kind))).toBe(false);
@@ -123,13 +131,15 @@ describe('production capture using the parts generation contract', () => {
           yield { type: 'tool_call', partId: 'c', index: 1, toolCall: { id: toToolCallId({ raw: 'call-fixed' }), type: 'function', function: { name: 'lookup_weather', arguments: ' {"city":"Tokyo"} ' } } };
           yield { type: 'result', result: { type: 'finished', next: 'tool_results' } };
         } else {
-          yield text({ type: 'text', partId: 'answer', index: 0, chunks: ['20°C'], completeness: 'complete' }); yield done;
+          yield text({ type: 'text', partId: 'answer', index: 0, chunks: ['20°C'], completeness: 'complete' });
+          yield done;
         }
       })(),
     });
     const recorded = trace();
     await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'natural-tool-minimal', firstSettled: undefined }), abortController: new AbortController(), trace: recorded });
-    expect(f.operation).toHaveBeenCalledOnce(); expect(f.calls).toHaveBeenCalledTimes(2);
+    expect(f.operation).toHaveBeenCalledOnce();
+    expect(f.calls).toHaveBeenCalledTimes(2);
     expect(f.calls.mock.calls[1]?.[0].messages).toEqual([
       { id: 'capture_input_0', role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
       {
@@ -172,10 +182,14 @@ describe('production capture using the parts generation contract', () => {
     });
     await generateProductionProviderCapture({ provider: f.provider, modelId: 'fixture/model', input: captureScenarioInput({ scenario: 'image', firstSettled: undefined }), abortController: new AbortController(), trace: trace() });
     const call = f.calls.mock.calls[0]?.[0];
-    expect(call?.readBinaryObject).toBeUndefined(); expect(call?.parameters?.maxCompletionTokens).toBe(1);
+    expect(call?.readBinaryObject).toBeUndefined();
+    expect(call?.parameters?.maxCompletionTokens).toBe(1);
     const image = call?.messages[0]?.parts[1];
-    if (image?.type !== 'attachment' || image.attachment.status !== 'memory') throw new Error('Expected local image');
-    expect(image.attachment.blob.size).toBe(68); expect(image.attachment.blob.type).toBe('image/png');
+    if (image?.type !== 'attachment' || image.attachment.status !== 'memory') {
+      throw new Error('Expected local image');
+    }
+    expect(image.attachment.blob.size).toBe(68);
+    expect(image.attachment.blob.type).toBe('image/png');
   });
 
   it('does not conflate empty parts, absent text, or adjacent same-kind part boundaries', () => {
@@ -218,7 +232,8 @@ describe('production capture using the parts generation contract', () => {
   it('marks an over-budget observation incomplete without controlling production generation', async () => {
     const f = fixture({
       chat: () => (async function* () {
-        yield text({ type: 'text', partId: 't', index: 0, chunks: ['long captured content'], completeness: 'complete' }); yield done;
+        yield text({ type: 'text', partId: 't', index: 0, chunks: ['long captured content'], completeness: 'complete' });
+        yield done;
       })(),
     });
     const recorded = createProductionProviderPartsTrace({ requestId: 'tiny', limits: { maximumEvents: 1, maximumCharacters: 1 } });

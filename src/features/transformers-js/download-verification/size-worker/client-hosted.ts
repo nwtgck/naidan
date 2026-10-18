@@ -10,14 +10,17 @@ export function createDownloadSizeClient() {
   const stopped = Promise.withResolvers<DownloadSizeResult>();
   const empty: DownloadSizeResult = { sizes: [], quotaLimited: false };
   function dispose(): void {
-    closed = true; stopped.resolve(empty);
+    closed = true;
+    stopped.resolve(empty);
     try {
       session?.dispose();
     } catch { /* Observation cleanup cannot fail model acquisition. */ }
   }
   return {
     async collect({ request }: { request: DownloadSizeRequest }): Promise<DownloadSizeResult> {
-      if (closed || started || typeof Worker === 'undefined') return empty;
+      if (closed || started || typeof Worker === 'undefined') {
+        return empty;
+      }
       started = true;
       const timer = setTimeout(dispose, 5_000);
       try {
@@ -29,7 +32,8 @@ export function createDownloadSizeClient() {
       } catch {
         return empty;
       } finally {
-        clearTimeout(timer); dispose();
+        clearTimeout(timer);
+        dispose();
       }
     },
     dispose,

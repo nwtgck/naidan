@@ -75,7 +75,9 @@ async function sha256Hex({ bytes }: { bytes: Uint8Array }): Promise<string> {
 }
 
 function isJavaScriptContentType({ contentType }: { contentType: string | null }): boolean {
-  if (contentType === null) return false;
+  if (contentType === null) {
+    return false;
+  }
   const normalized = contentType.toLowerCase();
   return normalized.includes("javascript") || normalized.includes("ecmascript");
 }
@@ -329,7 +331,9 @@ export async function runRuntimeIntegrityPreflight({
     originSafe = partial.mjsOrigin === applicationOrigin
       && partial.wasmOrigin === applicationOrigin
       && partial.physicalWasmOrigin === applicationOrigin;
-    if (!originSafe) throw new Error("ONNX Runtime assets are not configured for the Naidan origin");
+    if (!originSafe) {
+      throw new Error("ONNX Runtime assets are not configured for the Naidan origin");
+    }
     finishStage({ observation: { stage: "origin-validation", status: "passed", detail: "All ONNX Runtime asset URLs are same-origin" }, error: undefined });
   } catch (error) {
     const message = errorMessage({ error });
@@ -391,7 +395,9 @@ export async function runRuntimeIntegrityPreflight({
     }
 
     const mjsResponse = await runtimeFetch(assets.mjsUrl);
-    if (!mjsResponse.ok) throw new Error(`ONNX Runtime MJS request failed: ${mjsResponse.status} ${mjsResponse.statusText}`);
+    if (!mjsResponse.ok) {
+      throw new Error(`ONNX Runtime MJS request failed: ${mjsResponse.status} ${mjsResponse.statusText}`);
+    }
     const mjsContentType = mjsResponse.headers.get("content-type");
     if (!isJavaScriptContentType({ contentType: mjsContentType })) {
       throw new Error(`ONNX Runtime MJS asset has an invalid Content-Type: ${mjsContentType ?? "missing"}`);
@@ -435,7 +441,9 @@ export async function runRuntimeIntegrityPreflight({
     }
 
     const response = await runtimeFetch(assets.wasmUrl);
-    if (!response.ok) throw new Error(`ONNX Runtime WASM request failed: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`ONNX Runtime WASM request failed: ${response.status} ${response.statusText}`);
+    }
     if (response.headers.get("content-type") !== "application/wasm") {
       throw new Error("ONNX Runtime WASM logical response has an invalid Content-Type");
     }
@@ -479,7 +487,9 @@ export async function runRuntimeIntegrityPreflight({
   publishPartial({ stage: "wasm-control", detail: "Creating and running a fixed ONNX Runtime WASM control session" });
   const observeBinding: RuntimeControlInput['observeBinding'] = ({ observation }) => {
     const parsed = runtimeControlBindingSchema.safeParse(observation);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      return;
+    }
     partial.controlRuntimeBindings ??= {};
     partial.controlRuntimeBindings[parsed.data.executionProvider] = parsed.data;
   };

@@ -10,7 +10,9 @@ function productionSourceFiles({ root }: { root: string }): string[] {
       files.push(...productionSourceFiles({ root: fullPath }));
       continue;
     }
-    if (!/\.(?:ts|vue)$/u.test(name) || name.endsWith('.test.ts')) continue;
+    if (!/\.(?:ts|vue)$/u.test(name) || name.endsWith('.test.ts')) {
+      continue;
+    }
     files.push(fullPath);
   }
   return files;

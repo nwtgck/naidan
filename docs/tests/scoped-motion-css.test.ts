@@ -27,14 +27,18 @@ describe('Docs scoped motion CSS', () => {
     let checked = 0;
     while (pending.length > 0) {
       const directory = pending.pop();
-      if (!directory) throw new Error('Missing directory');
+      if (!directory) {
+        throw new Error('Missing directory');
+      }
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const filename = join(directory, entry.name);
         if (entry.isDirectory()) {
           pending.push(filename);
           continue;
         }
-        if (!entry.name.endsWith('.vue')) continue;
+        if (!entry.name.endsWith('.vue')) {
+          continue;
+        }
         const file = relative(docsRoot, filename);
         for (const { source, compiled } of scopedStyles({ file })) {
           const sourceRules: Rule[] = [], compiledRules: Rule[] = [];
@@ -47,18 +51,28 @@ describe('Docs scoped motion CSS', () => {
           expect(compiledRules.length, file).toBe(sourceRules.length);
           for (const [ruleIndex, sourceRule] of sourceRules.entries()) {
             const compiledRule = compiledRules[ruleIndex];
-            if (!compiledRule) throw new Error(`Missing compiled rule in ${file}`);
+            if (!compiledRule) {
+              throw new Error(`Missing compiled rule in ${file}`);
+            }
             const sourceSelectors = postcss.list.comma(sourceRule.selector);
             const compiledSelectors = postcss.list.comma(compiledRule.selector);
             expect(compiledSelectors.length, `${file}:${sourceRule.source?.start?.line}`).toBe(sourceSelectors.length);
             for (const [selectorIndex, sourceSelector] of sourceSelectors.entries()) {
-              if (!sourceSelector.includes('#docs-pause-motion:checked') && !sourceSelector.includes('#docs-light-theme:checked')) continue;
+              if (!sourceSelector.includes('#docs-pause-motion:checked') && !sourceSelector.includes('#docs-light-theme:checked')) {
+                continue;
+              }
               const selector = compiledSelectors[selectorIndex];
-              if (!selector) throw new Error(`Missing compiled selector in ${file}`);
+              if (!selector) {
+                throw new Error(`Missing compiled selector in ${file}`);
+              }
               expect(selector, `${file}:${sourceRule.source?.start?.line}`).toMatch(/^html:has\(#docs-(?:pause-motion|light-theme):checked\)/);
-              if (sourceRootOnly.test(sourceSelector)) continue;
+              if (sourceRootOnly.test(sourceSelector)) {
+                continue;
+              }
               expect(selector, `${file}:${sourceRule.source?.start?.line}`).not.toMatch(rootGuard);
-              if (!sourceSelector.includes(':global(')) expect(selector, `${file}:${sourceRule.source?.start?.line}`).toContain(`[${scopeId}]`);
+              if (!sourceSelector.includes(':global(')) {
+                expect(selector, `${file}:${sourceRule.source?.start?.line}`).toContain(`[${scopeId}]`);
+              }
               checked++;
             }
           }
@@ -76,9 +90,11 @@ describe('Docs scoped motion CSS', () => {
     { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-light-theme:checked) .backup-viewport[${scopeId}]`, property: '--demo-warning', value: undefined },
   ])('preserves the $property declaration on $selector', ({ file, selector, property, value }) => {
     const rules: Rule[] = [];
-    for (const { compiled } of scopedStyles({ file })) compiled.walkRules(rule => {
-      rules.push(rule);
-    });
+    for (const { compiled } of scopedStyles({ file })) {
+      compiled.walkRules(rule => {
+        rules.push(rule);
+      });
+    }
     const target = rules.find(rule => postcss.list.comma(rule.selector).includes(selector));
     expect(target, file).toBeDefined();
     expect(target?.nodes.some(node => node.type === 'decl' && node.prop === property && (value === undefined || node.value === value))).toBe(true);

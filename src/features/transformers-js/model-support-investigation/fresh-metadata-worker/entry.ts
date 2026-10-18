@@ -59,7 +59,9 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
         // Report every phase transition, but bound callback volume when fetch
         // supplies tiny chunks. This never delays the final completion signal.
         const states = summary.requests.map(request => `${request.status}:${request.httpStatus ?? ''}`).join('|');
-        if (states === publishedStates && summary.receivedBytes - publishedBytes < 256 * 1024) return;
+        if (states === publishedStates && summary.receivedBytes - publishedBytes < 256 * 1024) {
+          return;
+        }
         publishedStates = states;
         publishedBytes = summary.receivedBytes;
         onObservation({ summary });

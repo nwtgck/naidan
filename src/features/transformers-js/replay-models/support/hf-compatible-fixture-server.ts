@@ -54,7 +54,9 @@ function writeJson({ response, value }: { response: ServerResponse; value: unkno
 
 function parseRange({ value, size }: { value: string | undefined; size: number }): { start: number; end: number } | undefined {
   const match = /^bytes=(\d+)-(\d+)$/u.exec(value ?? '');
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const start = Number(match[1]);
   const requestedEnd = Number(match[2]);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(requestedEnd) || start < 0 || requestedEnd < start || start >= size) {
@@ -194,7 +196,9 @@ function handleRange({ request, response, file, behavior }: {
   case 'slow': {
     const delayMs = Math.max(1, behavior.slowDelayMs ?? DEFAULT_SLOW_DELAY_MS);
     setTimeout(() => {
-      if (response.destroyed) return;
+      if (response.destroyed) {
+        return;
+      }
       writeNormalRange({ response, file, range });
     }, delayMs);
     return;

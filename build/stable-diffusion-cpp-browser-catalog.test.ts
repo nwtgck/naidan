@@ -31,7 +31,9 @@ describe('checked-in image-generation locale files', () => {
       root,
       paths: createBoundaryStringProjectPaths({ root }),
     });
-    for (const key of keys) expect(catalog.messagesByKey.has(key), key).toBe(true);
+    for (const key of keys) {
+      expect(catalog.messagesByKey.has(key), key).toBe(true);
+    }
     expect(Object.keys(modules).sort()).toEqual(keys.flatMap(key => BOUNDARY_STRING_LOCALES.map(locale =>
       `../src/strings/messages/${key}/${locale}.ts`,
     )).sort());
@@ -41,10 +43,14 @@ describe('checked-in image-generation locale files', () => {
     const sourceId = `../src/strings/messages/${key}/${locale}.ts`;
     const message = modules[sourceId]?.[key];
     expect(message, sourceId).toBeTypeOf('function');
-    if (typeof message !== 'function') throw new Error(`Missing named message function: ${sourceId}`);
+    if (typeof message !== 'function') {
+      throw new Error(`Missing named message function: ${sourceId}`);
+    }
     const text: unknown = message();
     expect(text).toBeTypeOf('string');
-    if (typeof text !== 'string') throw new Error(`Non-string message: ${sourceId}`);
+    if (typeof text !== 'string') {
+      throw new Error(`Non-string message: ${sourceId}`);
+    }
     expect(text.trim().length).toBeGreaterThan(0);
     expect(text).not.toContain(key);
   });

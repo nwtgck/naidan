@@ -17,14 +17,18 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
   const entry: Plugin = {
     name: 'llama-feature-build-fixture',
     resolveId(id) {
-      if (id === 'virtual:llama-build-fixture') return '\0llama-build-fixture';
+      if (id === 'virtual:llama-build-fixture') {
+        return '\0llama-build-fixture';
+      }
     },
     load(id) {
-      if (id === '\0llama-build-fixture') return `
+      if (id === '\0llama-build-fixture') {
+        return `
         export { llamaCppBrowserService } from '@/features/llama-cpp-browser';
         export { LlamaCppBrowserProvider } from '@/features/llama-cpp-browser/provider';
         export { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
       `;
+      }
     },
   };
   const fixtureRoot = standalone ? mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-standalone-')) : undefined;
@@ -35,7 +39,9 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
   const adapter = createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: standalone ? 'standalone' : 'hosted' });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
+      if (fixtureRoot) {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
     },
   };
   const result = await build({
@@ -57,8 +63,14 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
         name: 'llama-worker-provenance-fixture',
         generateBundle(_options, output) {
           for (const file of Object.values(output)) {
-            if (file.type !== 'chunk') continue;
-            for (const id of Object.keys(file.modules)) if (id.includes('llama-cpp-browser-core/profiles/')) workerCores.add(id);
+            if (file.type !== 'chunk') {
+              continue;
+            }
+            for (const id of Object.keys(file.modules)) {
+              if (id.includes('llama-cpp-browser-core/profiles/')) {
+                workerCores.add(id);
+              }
+            }
           }
         },
       }],
@@ -73,7 +85,9 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
   });
   const resultList = Array.isArray(result) ? result : [result];
   const files = resultList.flatMap(item => {
-    if (!('output' in item)) throw new Error('Unexpected watch result');
+    if (!('output' in item)) {
+      throw new Error('Unexpected watch result');
+    }
     return item.output;
   });
   return { output: Object.fromEntries(files.map(file => [file.fileName, file])), workerCores: [...workerCores] };
@@ -106,7 +120,9 @@ describe('llama.cpp runtime distribution boundary', () => {
       const wasm = output[prefix + 'core.wasm.gz'];
       expect(output[prefix + 'core.mjs']).toBeUndefined();
       expect(wasm?.type).toBe('asset');
-      if (!wasm || wasm.type !== 'asset') throw new Error('Missing built Wasm asset');
+      if (!wasm || wasm.type !== 'asset') {
+        throw new Error('Missing built Wasm asset');
+      }
       expect(gunzipSync(wasm.source).equals(readFileSync(`node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
       expect(output[prefix + 'core.wasm']).toBeUndefined();
       expect(output[prefix + 'core.wasm.br']).toBeUndefined();

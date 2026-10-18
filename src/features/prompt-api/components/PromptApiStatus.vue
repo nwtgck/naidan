@@ -83,7 +83,9 @@ async function retry(): Promise<void> {
 watch(
   () => promptApiRuntimeState.value,
   state => {
-    if (state.status !== 'downloading' || state.progress !== undefined) return;
+    if (state.status !== 'downloading' || state.progress !== undefined) {
+      return;
+    }
     void prepare();
   },
   { immediate: true },

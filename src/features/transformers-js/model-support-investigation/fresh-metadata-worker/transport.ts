@@ -33,8 +33,12 @@ export function createFreshMetadataTransport({ modelId, revision, maximumBytes, 
     if (request.method !== 'GET' || (request.headers.has('Range') && request.headers.get('Range') !== 'bytes=0-0')) {
       throw new Error('Fresh metadata request is not a full GET or size probe');
     }
-    if (receivedBytes >= maximumBytes) throw new Error('Fresh metadata transfer budget exhausted');
-    if (requests.length >= FRESH_METADATA_MAX_REQUESTS) throw new Error('Fresh metadata request budget exceeded');
+    if (receivedBytes >= maximumBytes) {
+      throw new Error('Fresh metadata transfer budget exhausted');
+    }
+    if (requests.length >= FRESH_METADATA_MAX_REQUESTS) {
+      throw new Error('Fresh metadata request budget exceeded');
+    }
     const observation: FreshMetadataHttpObservation = {
       consumer,
       path: url.pathname.slice(prefix.length),
@@ -75,7 +79,9 @@ export function createFreshMetadataTransport({ modelId, revision, maximumBytes, 
           try {
             operationSignal.throwIfAborted();
             const item = await reader.read();
-            if (ended) return;
+            if (ended) {
+              return;
+            }
             operationSignal.throwIfAborted();
             if (item.done) {
               observation.status = 'complete';
@@ -88,7 +94,9 @@ export function createFreshMetadataTransport({ modelId, revision, maximumBytes, 
             }
             receivedBytes += item.value.byteLength;
             observation.receivedBytes += item.value.byteLength;
-            if (receivedBytes > maximumBytes) throw new Error('Fresh metadata transfer budget exceeded');
+            if (receivedBytes > maximumBytes) {
+              throw new Error('Fresh metadata transfer budget exceeded');
+            }
             stream.enqueue(item.value);
             onObservation();
           } catch (error) {
@@ -132,7 +140,9 @@ export function createFreshMetadataTransport({ modelId, revision, maximumBytes, 
     },
     dispose() {
       controller.abort();
-      for (const reader of readers) void reader.cancel().catch(() => undefined);
+      for (const reader of readers) {
+        void reader.cancel().catch(() => undefined);
+      }
       readers.clear();
     },
   };

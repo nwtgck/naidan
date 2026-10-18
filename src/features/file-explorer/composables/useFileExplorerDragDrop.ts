@@ -23,8 +23,12 @@ export function useFileExplorerDragDrop({
     event: DragEvent,
     entries: FileExplorerEntry[],
   }): void {
-    if (isReadOnly()) return;
-    if (!event.dataTransfer) return;
+    if (isReadOnly()) {
+      return;
+    }
+    if (!event.dataTransfer) {
+      return;
+    }
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', entries.map(e => e.name).join('\n'));
     activeDragEntries.value = entries;
@@ -67,7 +71,9 @@ export function useFileExplorerDragDrop({
     }
 
     event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
     dragState.value = { status: 'over-target', targetEntryName: entry.name };
   }
 

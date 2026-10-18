@@ -34,7 +34,9 @@ export async function applyMergedIndexWithConflicts({
   const checkoutTargetEntries = [...mergedEntries];
   for (const conflict of preparedConflicts) {
     const ours = headByPath.get(conflict.path);
-    if (ours !== undefined) checkoutTargetEntries.push(ours);
+    if (ours !== undefined) {
+      checkoutTargetEntries.push(ours);
+    }
   }
   const sortedCheckoutTargetEntries = sortByGitUtf8StringKey({
     values: checkoutTargetEntries,
@@ -49,7 +51,9 @@ export async function applyMergedIndexWithConflicts({
     targetEntries: sortedCheckoutTargetEntries,
     contentConfig,
   });
-  if (plan.conflicts.length > 0) return { checkoutConflicts: plan.conflicts };
+  if (plan.conflicts.length > 0) {
+    return { checkoutConflicts: plan.conflicts };
+  }
 
   await applyCheckoutTreePlan({ files, repository, currentIndexEntries, plan, contentConfig });
   await writeIndex({

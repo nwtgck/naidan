@@ -17,7 +17,9 @@ export async function withCacheAcceptanceDeadline<T>({ start, controller, timeou
   controller: AbortController;
   timeoutMs: number;
 }): Promise<T> {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid cache acceptance timeout');
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error('Invalid cache acceptance timeout');
+  }
   controller.signal.throwIfAborted();
   const timer = setTimeout(() => controller.abort(new CacheAcceptanceTimeoutError({ timeoutMs })), timeoutMs);
   try {

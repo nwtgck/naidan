@@ -25,7 +25,8 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
     channel: {
       receive: toA.receive,
       send: async ({ bytes }) => {
-        sendsFromInitiator++; await toB.send({ bytes });
+        sendsFromInitiator++;
+        await toB.send({ bytes });
       },
     },
   });
@@ -41,36 +42,48 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
       send: async ({ bytes }) => {
         responderFlights++;
         const owned = bytes.slice();
-        if (failure === 'final' && responderFlights === 4) owned[owned.length - 1]! ^= 1;
+        if (failure === 'final' && responderFlights === 4) {
+owned[owned.length - 1]! ^= 1;
+        }
         await toA.send({ bytes: owned });
       },
     },
   });
   // The failing side wakes the other; no test waits for an unrelated timeout to pass.
-  void left.catch(error => stop.abort(error)); void right.catch(error => stop.abort(error));
+  void left.catch(error => stop.abort(error));
+  void right.catch(error => stop.abort(error));
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange did not terminate')), 5000);
   using _cleanupResource = {
     [Symbol.dispose]() {
-      clearTimeout(timer); stop.abort();
+      clearTimeout(timer);
+      stop.abort();
     },
   };
   const results = await promiseAllKeyed({ left: Promise.allSettled([left]), right: Promise.allSettled([right]) });
   const l = results.left[0]!, r = results.right[0]!;
-  if (l.status === 'fulfilled') l.value.dispose();
-  if (r.status === 'fulfilled') r.value.dispose();
+  if (l.status === 'fulfilled') {
+    l.value.dispose();
+  }
+  if (r.status === 'fulfilled') {
+    r.value.dispose();
+  }
   return { left: l, right: r, sendsFromInitiator };
 }
 
 it('pin mismatch aborts before the initiator discloses its long-term public identity', async () => {
   const result = await rejectedHandshake({ failure: 'pin' });
-  expect(result.left.status).toBe('rejected'); expect(result.right.status).toBe('rejected');
+  expect(result.left.status).toBe('rejected');
+  expect(result.right.status).toBe('rejected');
   expect(result.sendsFromInitiator).toBe(1);
-  if (result.left.status === 'rejected') expect(String(result.left.reason)).toContain('identity mismatch');
+  if (result.left.status === 'rejected') {
+    expect(String(result.left.reason)).toContain('identity mismatch');
+  }
 });
 
 it('different rendezvous bindings never establish compatible keys', async () => {
   const result = await rejectedHandshake({ failure: 'binding' });
-  expect(result.left.status).toBe('rejected'); expect(result.right.status).toBe('rejected');
+  expect(result.left.status).toBe('rejected');
+  expect(result.right.status).toBe('rejected');
 });
 
 it('a modified final confirmation cannot publish a key context to its receiver', async () => {
@@ -81,7 +94,8 @@ it('a modified final confirmation cannot publish a key context to its receiver',
 
 it('pre-cancelled key establishment sends no handshake message', async () => {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
-  const stop = new AbortController(), reason = new Error('Do not start'); stop.abort(reason);
+  const stop = new AbortController(), reason = new Error('Do not start');
+  stop.abort(reason);
   const send = vi.fn(), receive = vi.fn();
   await expect(establishNaidanPipingKeys({
     responseTimeoutMs: 75_000,
@@ -92,7 +106,8 @@ it('pre-cancelled key establishment sends no handshake message', async () => {
     channel: { send, receive },
     signal: stop.signal,
   })).rejects.toBe(reason);
-  expect(send).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(receive).not.toHaveBeenCalled();
 });
 
 it('missing pin or binding lengths fail without network or handshake-channel use', async () => {
@@ -117,7 +132,8 @@ it('missing pin or binding lengths fail without network or handshake-channel use
       signal: new AbortController().signal,
     })).rejects.toThrow();
   }
-  expect(send).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalled();
+  expect(receive).not.toHaveBeenCalled();
 });
 
 it('directional keys agree for reciprocal permissions but not for direction, epoch or application context', async () => {
@@ -134,7 +150,8 @@ it('directional keys agree for reciprocal permissions but not for direction, epo
     await different.aead({ direction: 1, epoch: 0n, usage: 'decrypt' })]) {
     await expect(crypto.subtle.decrypt(params, key, ciphertext)).rejects.toThrow();
   }
-  expect(tx.extractable).toBe(false); expect(rx.extractable).toBe(false);
+  expect(tx.extractable).toBe(false);
+  expect(rx.extractable).toBe(false);
   await expect(crypto.subtle.exportKey('raw', tx)).rejects.toThrow();
   expect(await left.route({ direction: 1 })).toBe(await right.route({ direction: 1 }));
   expect(await left.route({ direction: 1 })).not.toBe(await right.route({ direction: 2 }));
@@ -148,18 +165,24 @@ it.each(['', 'UPPER', 'a b', '/leading', 'é', '\ud800', '\ud801', 'x'.repeat(65
 
 it('domain context is copied and duplicate byte scopes cannot acquire fresh security state', async () => {
   const { a, b } = await keyPair(), context = new Uint8Array([9, 4]);
-  const first = a.createDomain({ label: 'test/context', context }); context.fill(8);
+  const first = a.createDomain({ label: 'test/context', context });
+  context.fill(8);
   const peer = b.createDomain({ label: 'test/context', context: new Uint8Array([9, 4]) });
   expect(await first.route({ direction: 1 })).toBe(await peer.route({ direction: 1 }));
   expect(() => a.createDomain({ label: 'test/context', context: new Uint8Array([9, 4]) })).toThrow('consumed');
-  const id = a.contextId, identity = a.peerIdentity; id.fill(0); identity.fill(0);
-  expect(a.contextId).not.toEqual(id); expect(a.peerIdentity).not.toEqual(identity);
+  const id = a.contextId, identity = a.peerIdentity;
+  id.fill(0);
+  identity.fill(0);
+  expect(a.contextId).not.toEqual(id);
+  expect(a.peerIdentity).not.toEqual(identity);
 });
 
 it('key-domain capacity and context allocation are bounded', async () => {
   const { a } = await keyPair();
   expect(() => a.createDomain({ label: 'test/oversized', context: new Uint8Array(4097) })).toThrow('limit');
-  for (let index = 0; index < 64; index++) a.createDomain({ label: `test/${index}`, context: new Uint8Array() });
+  for (let index = 0; index < 64; index++) {
+    a.createDomain({ label: `test/${index}`, context: new Uint8Array() });
+  }
   expect(() => a.createDomain({ label: 'test/overflow', context: new Uint8Array() })).toThrow('capacity');
 });
 
@@ -170,7 +193,8 @@ it('disposal during an asynchronous route or key derivation rejects the result',
   const route = left.route({ direction: 1 }), key = right.aead({ direction: 1, epoch: 0n, usage: 'decrypt' });
   const rejectedRoute = expect(route).rejects.toThrow('disposed');
   const rejectedKey = expect(key).rejects.toThrow('disposed');
-  a.dispose(); b.dispose();
+  a.dispose();
+  b.dispose();
   await Promise.all([rejectedRoute, rejectedKey]);
   expect(() => a.createDomain({ label: 'new', context: new Uint8Array() })).toThrow('disposed');
   expect(() => left.claimRecordOwner({ direction: 1, usage: 'encrypt', context: a.contextId })).toThrow('disposed');

@@ -44,7 +44,9 @@ export const freshMetadataSummarySchema = z.object({
 }).strict().superRefine((summary, context) => {
   switch (summary.status) {
   case 'prepared':
-    if (summary.preparation === undefined) context.addIssue({ code: 'custom', message: 'Prepared metadata must include the runtime preparation result' });
+    if (summary.preparation === undefined) {
+      context.addIssue({ code: 'custom', message: 'Prepared metadata must include the runtime preparation result' });
+    }
     break;
   case 'running':
   case 'failed':
@@ -86,7 +88,9 @@ export const freshMetadataResultSchema = z.object({
   // Validate the relationship, not only each independently valid JSON object.
   // Otherwise a stale Worker result could attach another revision's raw files.
   if (replayMetadata === undefined) {
-    if (files.length !== 0) context.addIssue({ code: 'custom', message: 'Fresh sidecars require a matching replay manifest' });
+    if (files.length !== 0) {
+      context.addIssue({ code: 'custom', message: 'Fresh sidecars require a matching replay manifest' });
+    }
     return;
   }
   if (replayMetadata.modelId !== summary.modelId || replayMetadata.revision !== summary.revision

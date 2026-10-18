@@ -131,7 +131,9 @@ function nativeRecords({ runId, modelId }: { runId: string; modelId: string }) {
 }
 
 async function savedNativeEvidence({ run, native }: { run: ModelSupportInvestigationRun; native: ProductionProviderNativeCollectionSnapshot }) {
-  if (run.productionProviderCapture === undefined) throw new Error('Expected test Provider capture');
+  if (run.productionProviderCapture === undefined) {
+    throw new Error('Expected test Provider capture');
+  }
   return nativeEvidence.createProductionProviderNativeEvidence({ native, provider: run.productionProviderCapture, maximumBinaryBytes: nativeEvidence.PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES });
 }
 
@@ -140,7 +142,9 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     const records = [nativeRecords({ runId: 'size-one', modelId: 'org/one' }), nativeRecords({ runId: 'size-two', modelId: 'org/two' })];
     const items = await Promise.all(records.map(async (item, index) => {
       const collection = item.native.epochs[0]!.collection;
-      if (collection.status !== 'returned' || collection.result.status !== 'captured') throw new Error('Expected native fixture');
+      if (collection.status !== 'returned' || collection.result.status !== 'captured') {
+        throw new Error('Expected native fixture');
+      }
       const capture = collection.result.capture;
       capture.events.push({
         kind: 'inputs',
@@ -192,7 +196,8 @@ describe('native sidecars in generated Evidence ZIPs', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(globalThis.Worker).not.toHaveBeenCalled();
     expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
-    vi.restoreAllMocks(); vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('compresses the outer batch once after assembling uncompressed model file sets', async () => {
@@ -269,7 +274,9 @@ describe('native sidecars in generated Evidence ZIPs', () => {
   it('keeps refusal and unavailable collection distinct from an absent sidecar', async () => {
     const { run, recovery, native } = nativeRecords({ runId: 'native-partial', modelId: 'org/one' });
     const epoch = native.epochs[0]!;
-    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected test capture');
+    if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') {
+      throw new Error('Expected test capture');
+    }
     const capture = epoch.collection.result.capture;
     capture.events.push({ kind: 'inputs', identity: { ...capture.calls[0]!.context, nativeInvocationOrdinal: 1 }, phase: 'pre-budget', values: [{ name: 'private-key-not-exportable', snapshot: { status: 'not-recorded', reason: 'excluded-field' } }] });
     const refused = await createPartialModelSupportEvidence({ run, recovery, nativeEvidence: await savedNativeEvidence({ run, native }) });
@@ -889,7 +896,9 @@ describe("createPartialModelSupportEvidence", () => {
         ...assessment.contradictoryEvidencePaths,
       ]),
     ];
-    for (const path of referencedPaths) expect(archive.file(path), path).not.toBeNull();
+    for (const path of referencedPaths) {
+      expect(archive.file(path), path).not.toBeNull();
+    }
 
     const secondRun = structuredClone(run);
     secondRun.runId = "run-2";
@@ -965,7 +974,9 @@ describe("createPartialModelSupportEvidence", () => {
     failedWasmRun.steps = failedWasmRun.steps.map(step => step.id === "runtime-assets"
       ? { ...step, status: "failed", detail: "Wasm session failed" }
       : step);
-    if (failedWasmRun.runtimeAssets === undefined) throw new Error("Expected runtime fixture");
+    if (failedWasmRun.runtimeAssets === undefined) {
+      throw new Error("Expected runtime fixture");
+    }
     failedWasmRun.runtimeAssets.control = {
       ...failedWasmRun.runtimeAssets.control,
       status: "failed",
@@ -1134,7 +1145,9 @@ describe("createPartialModelSupportEvidence", () => {
     }));
 
     const [sourceAttempt] = run.loadAttempts;
-    if (sourceAttempt === undefined) throw new Error("Expected a load attempt fixture");
+    if (sourceAttempt === undefined) {
+      throw new Error("Expected a load attempt fixture");
+    }
     const failedCacheRun: ModelSupportInvestigationRun = {
       ...run,
       runId: "run-load-cache-inspection-failed",
@@ -1593,7 +1606,9 @@ describe("createPartialModelSupportEvidence", () => {
 
     const channelHistoryMismatchRun = structuredClone(base);
     const channelHistoryObservation = channelHistoryMismatchRun.productionLane.observation;
-    if (channelHistoryObservation === undefined) throw new Error("Production observation fixture is unavailable");
+    if (channelHistoryObservation === undefined) {
+      throw new Error("Production observation fixture is unavailable");
+    }
     channelHistoryObservation.continuity = {
       status: "failed",
       assistantMessage: {
@@ -1624,7 +1639,9 @@ describe("createPartialModelSupportEvidence", () => {
 
     const checkpointRun = structuredClone(base);
     const checkpointSource = checkpointRun.productionLane.observation;
-    if (checkpointSource === undefined) throw new Error("Production observation fixture is unavailable");
+    if (checkpointSource === undefined) {
+      throw new Error("Production observation fixture is unavailable");
+    }
     checkpointRun.productionLane = {
       status: "failed",
       observation: undefined,
@@ -1774,7 +1791,9 @@ describe("createPartialModelSupportEvidence", () => {
     }));
 
     const failedFirstTurnObservation = base.productionLane.observation;
-    if (failedFirstTurnObservation === undefined) throw new Error("Production observation fixture is unavailable");
+    if (failedFirstTurnObservation === undefined) {
+      throw new Error("Production observation fixture is unavailable");
+    }
     failedFirstTurnObservation.firstTurn = {
       status: "failed",
       error: {

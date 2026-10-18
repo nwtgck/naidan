@@ -56,15 +56,22 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
       changed[changed.length - 1] = changed[changed.length - 1]! ^ 1;
       return changed;
     }
-    default: { const exhaustive: never = bodyKind; return exhaustive; }
+    default: {
+      const exhaustive: never = bodyKind;
+      return exhaustive;
+    }
     }
   })();
   const fetchCalls: string[] = [];
   const transport: typeof fetch = async input => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     fetchCalls.push(url);
-    if (url === assets.mjsUrl) return new Response(mjs, { headers: { 'Content-Type': 'text/javascript' } });
-    if (url === assets.wasmUrl) return new Response(responseWasm, { headers: { 'Content-Type': 'application/wasm' } });
+    if (url === assets.mjsUrl) {
+      return new Response(mjs, { headers: { 'Content-Type': 'text/javascript' } });
+    }
+    if (url === assets.wasmUrl) {
+      return new Response(responseWasm, { headers: { 'Content-Type': 'application/wasm' } });
+    }
     throw new Error(`Unprovided transport: ${url}`);
   };
   class DedicatedWorkerGlobalScope {}
@@ -78,8 +85,12 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
     [Symbol.dispose]() {
       rootCreate.mockRestore();
       webGpuCreate.mockRestore();
-      for (const key of Object.keys(rootOrt.env.wasm)) Reflect.deleteProperty(rootOrt.env.wasm, key);
-      for (const key of Object.keys(webGpuOrt.env.wasm)) Reflect.deleteProperty(webGpuOrt.env.wasm, key);
+      for (const key of Object.keys(rootOrt.env.wasm)) {
+        Reflect.deleteProperty(rootOrt.env.wasm, key);
+      }
+      for (const key of Object.keys(webGpuOrt.env.wasm)) {
+        Reflect.deleteProperty(webGpuOrt.env.wasm, key);
+      }
       Object.assign(rootOrt.env.wasm, rootWasm);
       Object.assign(webGpuOrt.env.wasm, webGpuWasm);
       vi.doUnmock('@huggingface/transformers');
@@ -123,7 +134,9 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
     },
   }));
   await import('./entry');
-  if (api === undefined) throw new Error('Planning entry did not expose its API');
+  if (api === undefined) {
+    throw new Error('Planning entry did not expose its API');
+  }
   const configuration = configurationForPreset({ preset: 'offline' });
   await expect(api.runPartialInvestigation({
     runId: 'runtime-control-test',
@@ -161,7 +174,9 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
   expect(suppliedBuffers).toHaveLength(2);
   expect(suppliedBuffers[0] === suppliedBuffers[1]).toBe(true);
   const suppliedBuffer = suppliedBuffers[0];
-  if (!(suppliedBuffer instanceof Uint8Array)) throw new Error('Control did not receive WASM bytes');
+  if (!(suppliedBuffer instanceof Uint8Array)) {
+    throw new Error('Control did not receive WASM bytes');
+  }
   expect(suppliedBuffer.byteLength).toBe(wasm.byteLength);
   expect(createHash('sha256').update(suppliedBuffer).digest('hex')).toBe(assets.wasmSha256);
   expect(preflight?.runtimeAssets?.controlRuntimeBindings).toMatchObject({
@@ -170,7 +185,9 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
   });
   expect(release).toHaveBeenCalledTimes(2);
   const checkpoint = checkpoints.find(run => run.runtimeAssetsPartial?.controlRuntimeBindings?.wasm !== undefined);
-  if (preflight === undefined || checkpoint === undefined) throw new Error('Missing actual preflight evidence');
+  if (preflight === undefined || checkpoint === undefined) {
+    throw new Error('Missing actual preflight evidence');
+  }
   const evidenceWorker = createModelSupportInvestigationEvidenceWorker();
   for (const run of [checkpoint, preflight]) {
     const result = await evidenceWorker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined }) });

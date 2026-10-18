@@ -174,7 +174,9 @@ describe('Sidebar Focus Sync', () => {
 
     HTMLElement.prototype.scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: ScrollToOptions) {
-      if (typeof options.top === 'number') this.scrollTop = options.top;
+      if (typeof options.top === 'number') {
+        this.scrollTop = options.top;
+      }
     });
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function(this: HTMLElement) {
       if (this.dataset.testid === 'sidebar-nav') {

@@ -37,7 +37,9 @@ async function boundedCleanup({ cleanup, cause }: { cleanup: Promise<void>, caus
       }),
     ]);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -45,7 +47,9 @@ export async function disposeRejectedDownloadedRuntime({ dispose, cause }: { dis
   // Once resource cleanup has expired, report that typed failure immediately so
   // the host can physically terminate the Worker. Disposal is advisory then.
   const disposal = Promise.resolve().then(dispose).then(() => undefined, () => undefined);
-  if (cause instanceof RequiredDownloadedResourceCleanupError) return;
+  if (cause instanceof RequiredDownloadedResourceCleanupError) {
+    return;
+  }
   await boundedCleanup({ cleanup: disposal, cause: () => cause });
 }
 
@@ -99,12 +103,17 @@ export function createRequiredDownloadedResourceOperation({
     return failure;
   }
   function assertHealthy() {
-    if (cleanupFailure) throw cleanupFailure;
-    if (failure) throw failure;
+    if (cleanupFailure) {
+      throw cleanupFailure;
+    }
+    if (failure) {
+      throw failure;
+    }
   }
   function resourceUrl({ value }: { value: string }): string {
     const url = new URL(value, workerLocationUrl);
-    url.search = ''; url.hash = '';
+    url.search = '';
+    url.hash = '';
     // Keep pathname escaping intact: OPFS keys do not decode it. Resolving a
     // relative URL must not alias the local namespace to the HF repository.
     return url.href;
@@ -128,7 +137,9 @@ export function createRequiredDownloadedResourceOperation({
     return operation;
   }
   async function drain() {
-    while (pending.size > 0) await Promise.allSettled([...pending]);
+    while (pending.size > 0) {
+      await Promise.allSettled([...pending]);
+    }
   }
   function scopedIoFailure({ url, scopeOwnership, cause }: {
     url: string, scopeOwnership: 'owned' | 'outside', cause: unknown,
@@ -144,7 +155,9 @@ export function createRequiredDownloadedResourceOperation({
   }
   function observeBody({ response, url, resourceKey, scopeOwnership }: { response: Response, url: string, resourceKey: string | undefined, scopeOwnership: 'owned' | 'outside' }): Response {
     const source = response.body;
-    if (!source) return response;
+    if (!source) {
+      return response;
+    }
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let cancellation: Promise<void> | undefined;
     function bodyFailure({ cause }: { cause: unknown }) {
@@ -161,8 +174,11 @@ export function createRequiredDownloadedResourceOperation({
       cancellation ??= track({
         operation: (async () => {
           try {
-            if (reader) await reader.cancel();
-            else await source.cancel();
+            if (reader) {
+              await reader.cancel();
+            } else {
+              await source.cancel();
+            }
           } catch (cause) {
             throw bodyFailure({ cause });
           } finally {
@@ -260,7 +276,9 @@ export function createRequiredDownloadedResourceOperation({
             }
             throw cause;
           }
-          if (required && response === undefined) throw recordFailure({ url, kind: 'missing', cause: undefined });
+          if (required && response === undefined) {
+            throw recordFailure({ url, kind: 'missing', cause: undefined });
+          }
           switch (lifecycle) {
           case 'closed':
             try {
@@ -288,7 +306,9 @@ export function createRequiredDownloadedResourceOperation({
     assertHealthy();
     const url = resourceUrl({ value: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url });
     const resolution = scope.resolve({ request: input instanceof URL ? input.href : input });
-    if (resolution.kind === 'admitted' && requiredKeys.has(resolution.resourceKey)) throw recordFailure({ url, kind: 'missing', cause: undefined });
+    if (resolution.kind === 'admitted' && requiredKeys.has(resolution.resourceKey)) {
+      throw recordFailure({ url, kind: 'missing', cause: undefined });
+    }
     return cacheOnlyFetch(input, init);
   };
   return {
@@ -305,7 +325,9 @@ export function createRequiredDownloadedResourceOperation({
         try {
           await boundedCleanup({ cleanup, cause: () => failure });
         } catch (error) {
-          if (error instanceof RequiredDownloadedResourceCleanupError) cleanupFailure = error;
+          if (error instanceof RequiredDownloadedResourceCleanupError) {
+            cleanupFailure = error;
+          }
           throw error;
         }
       })();

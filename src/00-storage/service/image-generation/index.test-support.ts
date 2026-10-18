@@ -8,7 +8,9 @@ export function createImageGenerationStorageHarness() {
   const faults = new Set<string>();
   const writes: string[] = [], reads: string[] = [], acquired: string[] = [];
   function fault({ operation, path }: { operation: string, path: string }): void {
-    if (faults.delete(`${operation}:${path}`)) throw new Error(`Injected ${operation} failure: ${path}`);
+    if (faults.delete(`${operation}:${path}`)) {
+      throw new Error(`Injected ${operation} failure: ${path}`);
+    }
   }
   class MockFile {
     readonly kind = 'file';
@@ -17,11 +19,13 @@ export function createImageGenerationStorageHarness() {
     readonly path: string;
 
     constructor({ name, path }: { name: string, path: string }) {
-      this.name = name; this.path = path;
+      this.name = name;
+      this.path = path;
     }
 
     async getFile() {
-      reads.push(this.path); fault({ operation: 'read', path: this.path });
+      reads.push(this.path);
+      fault({ operation: 'read', path: this.path });
       const text = this.text;
       return new NodeFile([text], this.name, { type: 'application/json' });
     }
@@ -32,10 +36,13 @@ export function createImageGenerationStorageHarness() {
       return {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemWritableFileStream.write is a browser positional contract.
         write: async (text: string) => {
-          fault({ operation: 'write', path: this.path }); pending = text;
+          fault({ operation: 'write', path: this.path });
+          pending = text;
         },
         close: async () => {
-          fault({ operation: 'close', path: this.path }); this.text = pending; writes.push(this.path);
+          fault({ operation: 'close', path: this.path });
+          this.text = pending;
+          writes.push(this.path);
         },
         abort: async () => {
           fault({ operation: 'abort', path: this.path });
@@ -50,30 +57,45 @@ export function createImageGenerationStorageHarness() {
     readonly path: string;
 
     constructor({ name, path }: { name: string, path: string }) {
-      this.name = name; this.path = path;
+      this.name = name;
+      this.path = path;
     }
 
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle.getDirectoryHandle is a browser positional contract.
     async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockDirectory> {
-      if (name.includes('/') || name === '.' || name === '..') throw new Error('Invalid directory component.');
+      if (name.includes('/') || name === '.' || name === '..') {
+        throw new Error('Invalid directory component.');
+      }
       let child = this.children.get(name);
       if (!child && options?.create) {
-        child = new MockDirectory({ name, path: `${this.path}/${name}` }); this.children.set(name, child);
+        child = new MockDirectory({ name, path: `${this.path}/${name}` });
+        this.children.set(name, child);
       }
-      if (!child) throw new DOMException('Missing directory', 'NotFoundError');
-      if (!(child instanceof MockDirectory)) throw new DOMException('Not a directory', 'TypeMismatchError');
+      if (!child) {
+        throw new DOMException('Missing directory', 'NotFoundError');
+      }
+      if (!(child instanceof MockDirectory)) {
+        throw new DOMException('Not a directory', 'TypeMismatchError');
+      }
       return child;
     }
 
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle.getFileHandle is a browser positional contract.
     async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFile> {
-      if (name.includes('/') || name === '.' || name === '..') throw new Error('Invalid file component.');
+      if (name.includes('/') || name === '.' || name === '..') {
+        throw new Error('Invalid file component.');
+      }
       let child = this.children.get(name);
       if (!child && options?.create) {
-        child = new MockFile({ name, path: `${this.path}/${name}` }); this.children.set(name, child);
+        child = new MockFile({ name, path: `${this.path}/${name}` });
+        this.children.set(name, child);
       }
-      if (!child) throw new DOMException('Missing file', 'NotFoundError');
-      if (!(child instanceof MockFile)) throw new DOMException('Not a file', 'TypeMismatchError');
+      if (!child) {
+        throw new DOMException('Missing file', 'NotFoundError');
+      }
+      if (!(child instanceof MockFile)) {
+        throw new DOMException('Not a file', 'TypeMismatchError');
+      }
       return child;
     }
 
@@ -86,8 +108,12 @@ export function createImageGenerationStorageHarness() {
     async removeEntry(name: string, options?: { recursive?: boolean }) {
       fault({ operation: 'remove', path: `${this.path}/${name}` });
       const child = this.children.get(name);
-      if (!child) throw new DOMException('Missing entry', 'NotFoundError');
-      if (child instanceof MockDirectory && child.children.size && !options?.recursive) throw new DOMException('Directory is not empty', 'InvalidModificationError');
+      if (!child) {
+        throw new DOMException('Missing entry', 'NotFoundError');
+      }
+      if (child instanceof MockDirectory && child.children.size && !options?.recursive) {
+        throw new DOMException('Directory is not empty', 'InvalidModificationError');
+      }
       this.children.delete(name);
     }
   }
@@ -100,15 +126,19 @@ export function createImageGenerationStorageHarness() {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- LockManager.request is a browser positional contract.
       request<T>(name: string, operation: () => Promise<T>): Promise<T> {
         const pending = (tails.get(name) ?? Promise.resolve()).then(async () => {
-          acquired.push(name); return operation();
+          acquired.push(name);
+          return operation();
         });
-        tails.set(name, pending.catch(() => {})); return pending;
+        tails.set(name, pending.catch(() => {}));
+        return pending;
       },
     },
   });
   async function directory({ path }: { path: string }): Promise<MockDirectory> {
     let value = root;
-    for (const name of path.split('/').filter(Boolean)) value = await value.getDirectoryHandle(name);
+    for (const name of path.split('/').filter(Boolean)) {
+      value = await value.getDirectoryHandle(name);
+    }
     return value;
   }
   async function file({ path }: { path: string }): Promise<MockFile> {
@@ -170,7 +200,9 @@ export function generationRunFixture({ id, sessionId, count, seed }: { id: strin
 
 export function generationAssetFixture({ id, run, index }: { id: string, run: ImageGenerationRun, index: number }): ImageGenerationAsset {
   const seed = run.seeds[index];
-  if (seed === undefined) throw new Error('Fixture has no planned output at this index.');
+  if (seed === undefined) {
+    throw new Error('Fixture has no planned output at this index.');
+  }
   return {
     id: toImageGenerationAssetId({ raw: id }),
     sessionId: run.sessionId,

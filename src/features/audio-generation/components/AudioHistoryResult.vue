@@ -17,22 +17,32 @@ async function copyText(): Promise<void> {
   switch (status) {
   case 'copying': return;
   case 'idle': case 'copied': case 'failed': break;
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
   copyState.value = 'copying';
   try {
     await navigator.clipboard.writeText(props.entry.settings.text);
-    if (!disposed) copyState.value = 'copied';
+    if (!disposed) {
+      copyState.value = 'copied';
+    }
   } catch {
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     copyState.value = 'failed';
     // Clipboard access can be denied (including standalone environments). Keep
     // manual copying possible without deprecated execCommand or a hidden file.
     const element = fullText.value;
     if (element) {
       element.focus();
-      const range = document.createRange(); range.selectNodeContents(element);
-      const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range);
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
   }
 }
@@ -43,7 +53,10 @@ const language = computed(() => {
   case 'default': return lazyStrings.audioGeneration__model_default();
   case 'en': case 'ja': case 'zh': case 'de': case 'it': case 'pt': case 'es': case 'ko': case 'fr': case 'ru':
     return audioLanguageOptions({ locale: currentLocale.value }).find(option => option.value === code)?.label;
-  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = code;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const createdAt = computed(() => new Intl.DateTimeFormat(currentLocale.value, { dateStyle: 'short', timeStyle: 'medium' }).format(props.entry.createdAt));
@@ -51,8 +64,12 @@ const createdAt = computed(() => new Intl.DateTimeFormat(currentLocale.value, { 
 // Detach its source as well when deleted or when the route is left.
 onBeforeUnmount(() => {
   disposed = true;
-  if (!player.value) return;
-  player.value.pause(); player.value.removeAttribute('src'); player.value.load();
+  if (!player.value) {
+    return;
+  }
+  player.value.pause();
+  player.value.removeAttribute('src');
+  player.value.load();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -71,7 +88,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <audio ref="player" :src="entry.url" controls preload="metadata" :aria-label="lazyStrings.audioGeneration__generated_audio()" data-testid="audio-player" tw-class="min-w-0 w-0 flex-1" />
       <a :href="entry.url" :download="`naidan-audio-${entry.id}.wav`" :aria-label="lazyStrings.audioGeneration__save_wav()" :title="lazyStrings.audioGeneration__save_wav()" data-testid="audio-download" tw-class="inline-flex shrink-0 items-center gap-2 rounded-lg bg-gray-100 dark:bg-gray-800 p-3 text-sm font-medium"><DownloadIcon tw-class="h-4 w-4" /><span tw-class="sr-only sm:not-sr-only">{{ lazyStrings.audioGeneration__save_wav() }}</span></a>
     </div>
-    <p v-if="entry.result.finishReason === 'preview'" role="status" data-testid="audio-preview-result" tw-class="text-sm text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__preview_result() }}</p>
+    <p v-if="entry.result.finishReason === 'preview'" role="status" data-testid="audio-preview-result" tw-class="text-sm text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__preview_result() }}</p>
     <p v-else-if="entry.result.finishReason === 'user-stop'" role="status" data-testid="audio-finished-early" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ lazyStrings.audioGeneration__finished_early() }}</p>
     <p v-else-if="entry.result.finishReason !== 'stop'" role="status" data-testid="audio-truncated" tw-class="text-sm text-amber-700 dark:text-amber-400">{{ lazyStrings.audioGeneration__limit_reached() }}</p>
     <details data-testid="audio-result-settings" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">

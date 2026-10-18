@@ -28,7 +28,9 @@ describe('Gemma 4 offline image preparation', () => {
     const localOnlyFetch: typeof fetch = async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : input);
       receivedProtocols.push(url.protocol);
-      if (url.protocol !== 'data:') throw new Error('Fixture forbids network access');
+      if (url.protocol !== 'data:') {
+        throw new Error('Fixture forbids network access');
+      }
       return nativeFetch(input, init);
     };
     const offlineFetch = createDownloadedModelWorkerFetch({
@@ -58,7 +60,9 @@ describe('Gemma 4 offline image preparation', () => {
     expect(receivedProtocols).toEqual(['data:']);
     expect(RawImage.read).toHaveBeenCalledTimes(1);
     const blob = vi.mocked(RawImage.read).mock.calls[0]?.[0];
-    if (!(blob instanceof Blob)) throw new Error('Expected image Blob');
+    if (!(blob instanceof Blob)) {
+      throw new Error('Expected image Blob');
+    }
     expect(blob.type).toBe('image/png');
     expect(blob.size).toBe(68);
     expect(createHash('sha256').update(new Uint8Array(await blob.arrayBuffer())).digest('hex'))

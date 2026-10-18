@@ -58,7 +58,9 @@ export class Lexer {
     if (char === '#') {
       while (this.position < this.length) {
         const commentChar = this.input[this.position];
-        if (commentChar === '\n') break;
+        if (commentChar === '\n') {
+          break;
+        }
         this.position += 1;
       }
 
@@ -444,7 +446,9 @@ export class Lexer {
     while (this.position < this.length) {
       const lineStart = this.position;
       let lineEnd = this.input.indexOf('\n', lineStart);
-      if (lineEnd === -1) lineEnd = this.length;
+      if (lineEnd === -1) {
+        lineEnd = this.length;
+      }
 
       const rawLine = this.input.slice(lineStart, lineEnd);
       const line = (() => {

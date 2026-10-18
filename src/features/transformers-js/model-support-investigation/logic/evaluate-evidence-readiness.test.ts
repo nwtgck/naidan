@@ -421,7 +421,9 @@ describe("evaluateEvidenceReadiness", () => {
 
   it("keeps runtime readiness insufficient when runtime asset identity is unavailable", () => {
     const value = run();
-    if (value.runtimeAssets === undefined) throw new Error("Runtime-assets fixture is unavailable");
+    if (value.runtimeAssets === undefined) {
+      throw new Error("Runtime-assets fixture is unavailable");
+    }
     value.runtimeAssets.assetIdentity = undefined;
 
     const runtime = evaluateEvidenceReadiness({ run: value }).domains
@@ -454,7 +456,9 @@ describe("evaluateEvidenceReadiness", () => {
   it("preserves successful model-load readiness when deterministic input construction fails", () => {
     const value = run();
     const attempt = value.loadAttempts[0];
-    if (attempt === undefined) throw new Error("Load-attempt fixture is unavailable");
+    if (attempt === undefined) {
+      throw new Error("Load-attempt fixture is unavailable");
+    }
     attempt.status = "failed";
     attempt.failureStage = "input-build";
     attempt.inputTensors = [];
@@ -477,7 +481,9 @@ describe("evaluateEvidenceReadiness", () => {
   it("keeps Production plain-text evidence when all Reference input strategies fail", () => {
     const value = run();
     const attempt = value.loadAttempts[0];
-    if (attempt === undefined) throw new Error("Load-attempt fixture is unavailable");
+    if (attempt === undefined) {
+      throw new Error("Load-attempt fixture is unavailable");
+    }
     attempt.status = "failed";
     attempt.failureStage = "first-generation";
     attempt.inputStrategyAttempts = [{
@@ -637,7 +643,9 @@ TypeError: fixture inspection failed
       renderedText: "fixture",
     };
     const firstAttempt = value.loadAttempts[0];
-    if (firstAttempt === undefined) throw new Error("Load-attempt fixture is unavailable");
+    if (firstAttempt === undefined) {
+      throw new Error("Load-attempt fixture is unavailable");
+    }
     firstAttempt.toolProtocolProbe = {
       status: "unavailable",
       forced: false,
@@ -955,7 +963,9 @@ TypeError: fixture inspection failed
       error: undefined,
     };
     const productionObservation = value.productionLane.observation;
-    if (productionObservation === undefined) throw new Error("Production observation fixture is unavailable");
+    if (productionObservation === undefined) {
+      throw new Error("Production observation fixture is unavailable");
+    }
     value.laneComparison = {
       scenarioCaseId: "user-generation",
       referenceAttemptId: "attempt-1",

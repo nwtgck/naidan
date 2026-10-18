@@ -13,8 +13,13 @@ import { receiveTranscript } from '@/features/naidan-rpc-integration/codecs/chat
 // Structural dimension fixture, not compressed pixels or a decoder test.
 function png({ width, height }: { width: number, height: number }) {
   const bytes = new Uint8Array(57), view = new DataView(bytes.buffer);
-  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]); view.setUint32(8, 13); view.setUint32(12, 0x49484452);
-  view.setUint32(16, width); view.setUint32(20, height); view.setUint32(37, 0x49444154); view.setUint32(49, 0x49454e44);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  view.setUint32(8, 13);
+  view.setUint32(12, 0x49484452);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  view.setUint32(37, 0x49444154);
+  view.setUint32(49, 0x49454e44);
   return bytes;
 }
 
@@ -58,7 +63,9 @@ it('counts every image use but reads each distinct payload once before rejecting
     notify: { progress() {} },
   });
   await expect(collectBytes({ readable: output.events, limit: 8192, signal })).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-  expect(engine.generate).not.toHaveBeenCalled(); expect(reads).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
+  expect(engine.generate).not.toHaveBeenCalled();
+  expect(reads).toHaveBeenCalledOnce();
+  expect(budget.reserved).toBe(0);
 });
 
 it('permits repeated small images without copying their encoded payload for each occurrence', async () => {
@@ -74,7 +81,9 @@ it('permits repeated small images without copying their encoded payload for each
     notify: { progress() {} },
   });
   await collectBytes({ readable: output.events, limit: 8192, signal });
-  expect(engine.generate).toHaveBeenCalledOnce(); expect(reads).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
+  expect(engine.generate).toHaveBeenCalledOnce();
+  expect(reads).toHaveBeenCalledOnce();
+  expect(budget.reserved).toBe(0);
 });
 
 it('rejects an impossible attachment reference before pulling any uploaded image', async () => {
@@ -107,7 +116,9 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
   const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   await using _cleanupResource = {
     async [Symbol.asyncDispose]() {
-      lifetime.abort(); pair.close(); await Promise.all([provider.retire(), caller.retire()]);
+      lifetime.abort();
+      pair.close();
+      await Promise.all([provider.retire(), caller.retire()]);
     },
   };
   const bytes = png({ width: 2048, height: 2048 });
@@ -124,7 +135,10 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
       transcript: transcript({ attachments: Array(32).fill(0) }),
       images: [{ mimeType: 'image/png' as const, byteLength: bytes.length, data: bytesSource({ bytes }) }],
     };
-    default: { const exhaustive: never = attack; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = attack;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const client = caller.client({ contract: naidanPeerContract });
@@ -141,6 +155,8 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
     signal: lifetime.signal,
     timeoutMs: undefined,
   });
-  await collectBytes({ readable: (await accepted.result).events, limit: 8192, signal: lifetime.signal }); await accepted.closed;
-  expect(engine.generate).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
+  await collectBytes({ readable: (await accepted.result).events, limit: 8192, signal: lifetime.signal });
+  await accepted.closed;
+  expect(engine.generate).toHaveBeenCalledOnce();
+  expect(budget.reserved).toBe(0);
 });

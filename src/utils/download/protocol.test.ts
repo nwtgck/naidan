@@ -61,6 +61,8 @@ describe('download protocol', () => {
       { ...request, version: 3 }, { ...request, token: '../file' },
       { ...request, metadata: { filename: 'x', size: -1 } },
       { ...request, metadata: { filename: 'x', size: Number.MAX_SAFE_INTEGER + 1 } },
-    ]) expect(downloadPrepareSchema.safeParse(value).success).toBe(false);
+    ]) {
+      expect(downloadPrepareSchema.safeParse(value).success).toBe(false);
+    }
   });
 });

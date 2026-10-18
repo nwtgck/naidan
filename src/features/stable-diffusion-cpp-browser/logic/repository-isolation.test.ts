@@ -16,13 +16,16 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind => {
   async function fixtures() {
     let parent = root;
-    for (const name of kind === 'opfs' ? ['models', 'user'] : ['owner']) parent = await parent.getDirectoryHandle(name, { create: true });
+    for (const name of kind === 'opfs' ? ['models', 'user'] : ['owner']) {
+      parent = await parent.getDirectoryHandle(name, { create: true });
+    }
     const bad = await parent.getDirectoryHandle('bad', { create: true });
     await bad.getFileHandle('already-read.gguf', { create: true });
     const unreadable = await bad.getFileHandle('unreadable.gguf', { create: true });
@@ -57,7 +60,9 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
   it('keeps the path nesting limit and does not return partial files', async () => {
     const { bad } = await fixtures();
     let folder = bad;
-    for (let index = 0; index < 65; index++) folder = await folder.getDirectoryHandle('nested', { create: true });
+    for (let index = 0; index < 65; index++) {
+      folder = await folder.getDirectoryHandle('nested', { create: true });
+    }
     const result = await list({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
     expect(result[0]?.issues?.[0]?.message).toContain('Unsafe path');
@@ -67,7 +72,9 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
   it('keeps the repository entry limit and continues with the next repository', async () => {
     const { bad } = await fixtures();
     vi.spyOn(bad, 'entries').mockImplementation(async function* () {
-      for (let index = 0; index <= 20_000; index++) yield [String(index), new MemoryDirectory(String(index))];
+      for (let index = 0; index <= 20_000; index++) {
+        yield [String(index), new MemoryDirectory(String(index))];
+      }
     });
     const result = await list({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
@@ -79,7 +86,9 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     const { unreadable, good } = await fixtures();
     const controller = new AbortController(), error = new DOMException('Inspection stopped', 'AbortError');
     vi.spyOn(unreadable, 'getFile').mockImplementation(async () => {
-      if (source === 'signal') controller.abort(error);
+      if (source === 'signal') {
+        controller.abort(error);
+      }
       throw error;
     });
     const nextRead = vi.spyOn(good, 'entries');
@@ -90,7 +99,9 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
 
 it('continues through the inventory worker from an unreadable OPFS repository to a valid host model', async () => {
   let broken = root;
-  for (const name of ['models', 'user', 'broken']) broken = await broken.getDirectoryHandle(name, { create: true });
+  for (const name of ['models', 'user', 'broken']) {
+    broken = await broken.getDirectoryHandle(name, { create: true });
+  }
   const unreadable = await broken.getFileHandle('weights.gguf', { create: true });
   vi.spyOn(unreadable, 'getFile').mockRejectedValue(new DOMException('OPFS file is unavailable', 'NotReadableError'));
   const host = new MemoryDirectory('host');

@@ -8,7 +8,9 @@ let runtime: { dispose: () => void } | undefined;
 
 /** Called only by PWAManager after Sidebar and the chat surface can paint. */
 export function startPWAUpdateRuntime(): void {
-  if (runtime || !('serviceWorker' in navigator) || (import.meta.env.DEV && !__BUILD_MODE_IS_TEST__)) return;
+  if (runtime || !('serviceWorker' in navigator) || (import.meta.env.DEV && !__BUILD_MODE_IS_TEST__)) {
+    return;
+  }
   const { setUpdateState } = usePWAUpdate();
   const { addInfoEvent, addErrorEvent, addEvent } = useGlobalEvents();
   let disposed = false;
@@ -22,9 +24,13 @@ export function startPWAUpdateRuntime(): void {
     onState: ({ next }) => setUpdateState({ next }),
     onOfflineReady: () => {
       void ensureStrings.PWAManager__app_ready_to_work_offline().then((message) => {
-        if (!disposed) addInfoEvent({ source: 'PWA', message });
+        if (!disposed) {
+          addInfoEvent({ source: 'PWA', message });
+        }
       }).catch((error: unknown) => {
-        if (!disposed) console.error('[PWA] Failed to load the offline-ready notification.', error);
+        if (!disposed) {
+          console.error('[PWA] Failed to load the offline-ready notification.', error);
+        }
       });
     },
     onWarning: ({ message }) => {
@@ -38,7 +44,8 @@ export function startPWAUpdateRuntime(): void {
   });
   runtime = {
     dispose() {
-      disposed = true; controller.dispose();
+      disposed = true;
+      controller.dispose();
     },
   };
 }

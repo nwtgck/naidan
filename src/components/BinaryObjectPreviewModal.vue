@@ -34,7 +34,9 @@ watch([() => props.objects, () => props.initialId], ([objects, initialId], [prev
   // Keep the selected occurrence: a message may reference the same binary more than once.
   let occurrence = previousObjects.slice(0, currentIndex.value).filter(object => object.id === previous.id).length;
   currentIndex.value = objects.findIndex(object => {
-    if (object.id !== previous.id) return false;
+    if (object.id !== previous.id) {
+      return false;
+    }
     return occurrence-- === 0;
   });
 });
@@ -54,7 +56,9 @@ let controlsTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const showControls = () => {
   isControlsVisible.value = true;
-  if (controlsTimeout) clearTimeout(controlsTimeout);
+  if (controlsTimeout) {
+    clearTimeout(controlsTimeout);
+  }
   controlsTimeout = setTimeout(() => {
     if (zoom.value > 1) {
       isControlsVisible.value = false;
@@ -78,24 +82,38 @@ watch(currentObject, (obj, _previous, onCleanup) => {
   isDragging.value = false;
   onCleanup(() => {
     active = false;
-    if (loadingTimeout !== undefined) clearTimeout(loadingTimeout);
-    if (url !== undefined) URL.revokeObjectURL(url);
+    if (loadingTimeout !== undefined) {
+      clearTimeout(loadingTimeout);
+    }
+    if (url !== undefined) {
+      URL.revokeObjectURL(url);
+    }
   });
-  if (!obj) return;
+  if (!obj) {
+    return;
+  }
   loadingTimeout = setTimeout(() => {
-    if (active) isLoading.value = true;
+    if (active) {
+      isLoading.value = true;
+    }
   }, 200);
   void (async () => {
     try {
       const blob = obj.memoryBlob ?? await storageService.getFile({ binaryObjectId: obj.id });
-      if (!active || !blob) return;
+      if (!active || !blob) {
+        return;
+      }
       url = URL.createObjectURL(blob);
       previewUrl.value = url;
     } catch (error) {
-      if (active) console.error('Failed to load preview:', error);
+      if (active) {
+        console.error('Failed to load preview:', error);
+      }
     } finally {
       if (active) {
-        if (loadingTimeout !== undefined) clearTimeout(loadingTimeout);
+        if (loadingTimeout !== undefined) {
+          clearTimeout(loadingTimeout);
+        }
         isLoading.value = false;
       }
     }
@@ -136,11 +154,15 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (controlsTimeout) clearTimeout(controlsTimeout);
+  if (controlsTimeout) {
+    clearTimeout(controlsTimeout);
+  }
 });
 
 const handleWheel = ({ event }: { event: WheelEvent }) => {
-  if (!isImage.value) return;
+  if (!isImage.value) {
+    return;
+  }
   event.preventDefault();
 
   const zoomFactor = 1.1;
@@ -149,7 +171,9 @@ const handleWheel = ({ event }: { event: WheelEvent }) => {
   const newZoom = delta > 0 ? oldZoom * zoomFactor : oldZoom / zoomFactor;
   const clampedZoom = Math.min(Math.max(newZoom, 0.1), 20);
 
-  if (clampedZoom === oldZoom) return;
+  if (clampedZoom === oldZoom) {
+    return;
+  }
 
   // Calculate focal point relative to the container
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -181,13 +205,17 @@ const resetZoom = () => {
 };
 
 const startDrag = ({ event }: { event: MouseEvent }) => {
-  if (zoom.value <= 1) return;
+  if (zoom.value <= 1) {
+    return;
+  }
   isDragging.value = true;
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 };
 
 const onDrag = ({ event }: { event: MouseEvent }) => {
-  if (!isDragging.value) return;
+  if (!isDragging.value) {
+    return;
+  }
   const dx = event.clientX - lastMousePos.value.x;
   const dy = event.clientY - lastMousePos.value.y;
   position.value = {
@@ -202,7 +230,9 @@ const stopDrag = () => {
 };
 
 const formatSize = ({ bytes }: { bytes: number }) => {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) {
+    return '0 B';
+  }
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -216,7 +246,9 @@ const formatDate = ({ timestamp }: { timestamp: number }) => {
 const isCopied = ref(false);
 
 const copyName = async () => {
-  if (!currentObject.value?.name) return;
+  if (!currentObject.value?.name) {
+    return;
+  }
   await navigator.clipboard.writeText(currentObject.value.name);
   isCopied.value = true;
   setTimeout(() => isCopied.value = false, 2000);

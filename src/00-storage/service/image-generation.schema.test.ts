@@ -90,7 +90,8 @@ describe('Image Generation persistence contracts', () => {
 
 describe('legacy request mapper reuse', () => {
   it('does not change existing single-image history mapping', () => {
-    const run = runFixture(); const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 });
+    const run = runFixture();
+    const asset = generationAssetFixture({ id: 'asset-aa', run, index: 0 });
     const record = { id: toImageGenerationId({ raw: 'legacy-aa' }), createdAt: run.createdAt, request: run.request, result: asset.result, previews: asset.previews };
     expect(imageGenerationToDomain({ dto: imageGenerationToDto({ record }) })).toEqual(record);
     expect(imageGenerationRequestToDomain({ request: imageGenerationRequestToDto({ request: run.request }) })).toEqual(run.request);

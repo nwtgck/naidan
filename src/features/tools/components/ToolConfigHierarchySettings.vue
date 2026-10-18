@@ -87,7 +87,9 @@ const toolDefinitions = computed<readonly ToolDefinition[]>(() => {
 
   const resolved: ToolDefinition[] = [];
   for (const draft of drafts) {
-    if (draft.name === undefined || draft.description === undefined) return [];
+    if (draft.name === undefined || draft.description === undefined) {
+      return [];
+    }
     resolved.push({ ...draft, name: draft.name, description: draft.description });
   }
   return resolved;
@@ -187,7 +189,9 @@ function toggleAriaLabel({
   key: BuiltinToolKey,
   toolName: string | undefined,
 }): string | undefined {
-  if (toolName === undefined) return undefined;
+  if (toolName === undefined) {
+    return undefined;
+  }
   return isEffectivelyEnabled({ key })
     ? lazyStrings.ToolConfigHierarchySettings__turn_off_tool({ toolName })
     : lazyStrings.ToolConfigHierarchySettings__turn_on_tool({ toolName });
@@ -195,7 +199,9 @@ function toggleAriaLabel({
 
 function handleAccessScopeChange({ event }: { event: Event }): void {
   const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) return;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
   const accessScope = target.value as NaidanSysfsAccessScope;
   switch (accessScope) {
   case 'current_chat_only':
@@ -268,7 +274,7 @@ defineExpose({
         :tw-class="['overflow-hidden rounded-xl border transition-all duration-300 active:scale-[0.995]',
                     'h-[52px]',
                     isEffectivelyEnabled({ key: tool.key })
-                      ? 'border-blue-200 bg-blue-50/30 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/5'
+                      ? 'border-slate-300/80 bg-slate-50/70 shadow-sm dark:border-slate-600/60 dark:bg-slate-800/45'
                       : 'border-gray-100 bg-white/70 hover:border-gray-200 dark:border-gray-700/60 dark:bg-gray-800/40 dark:hover:border-gray-700',
         ]"
         :data-testid="`tool-config-card-${tool.key}`"
@@ -278,7 +284,7 @@ defineExpose({
         >
           <div
             :tw-class="['grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-300', isEffectivelyEnabled({ key: tool.key })
-              ? 'scale-[1.02] bg-blue-600 text-white shadow-sm shadow-blue-500/10'
+              ? 'scale-[1.02] bg-slate-100 text-blue-600 shadow-sm shadow-slate-950/5 dark:bg-slate-800/80 dark:text-blue-400'
               : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500']"
           >
             <component :is="tool.icon" tw-class="h-4.5 w-4.5" />
@@ -286,8 +292,8 @@ defineExpose({
 
           <div tw-class="min-w-0">
             <div tw-class="flex items-center gap-1.5">
-              <span :tw-class="['truncate text-xs font-bold tracking-tight', isEffectivelyEnabled({ key: tool.key }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300']">{{ tool.name }}</span>
-              <span v-if="isEffectivelyEnabled({ key: tool.key })" tw-class="h-1 w-1 shrink-0 rounded-full bg-blue-500 animate-pulse"></span>
+              <span :tw-class="['truncate text-xs font-bold tracking-tight', isEffectivelyEnabled({ key: tool.key }) ? 'text-slate-800 dark:text-slate-100' : 'text-gray-600 dark:text-gray-300']">{{ tool.name }}</span>
+              <span v-if="isEffectivelyEnabled({ key: tool.key })" tw-class="h-1 w-1 shrink-0 rounded-full bg-slate-400 dark:bg-slate-500 animate-pulse"></span>
             </div>
             <p tw-class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
               {{ tool.description }}
@@ -302,7 +308,7 @@ defineExpose({
               type="button"
               role="switch"
               :tw-class="['relative h-[22px] w-[46px] rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50', isEffectivelyEnabled({ key: tool.key })
-                ? 'bg-blue-600 ring-4 ring-blue-500/10'
+                ? 'bg-blue-500 enabled:hover:bg-blue-400'
                 : 'bg-gray-300 dark:bg-gray-600']"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
@@ -311,7 +317,7 @@ defineExpose({
               @click="toggleStatus({ key: tool.key })"
             >
               <span
-                :tw-class="['absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white', isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5']"
+                :tw-class="['absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em]', isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5 text-blue-950' : 'right-1.5 text-white']"
               >
                 {{ isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__on() : lazyStrings.ToolConfigHierarchySettings__off() }}
               </span>
@@ -334,7 +340,7 @@ defineExpose({
                 <button
                   v-if="explicitConfig({ key: tool.key }) !== undefined"
                   type="button"
-                  tw-class="inline-flex h-[22px] items-center justify-center rounded-lg border border-gray-200 bg-white/60 px-2 text-[9px] font-bold text-gray-500 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-400 dark:hover:border-blue-600 dark:hover:bg-blue-500/10 dark:hover:text-blue-400 shrink-0"
+                  tw-class="inline-flex h-[22px] items-center justify-center rounded-lg border border-gray-200 bg-white/60 px-2 text-[9px] font-bold text-gray-500 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-400 dark:hover:border-[#2b63a4] dark:hover:bg-blue-500/10 dark:hover:text-blue-400 shrink-0"
                   :disabled="!isEditable"
                   :data-testid="`tool-config-${tool.key}-inherit`"
                   @click="emit('reset-tool', { key: tool.key })"
@@ -348,7 +354,7 @@ defineExpose({
               type="button"
               role="switch"
               :tw-class="['relative h-[22px] w-[46px] rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shrink-0', isEffectivelyEnabled({ key: tool.key })
-                ? 'bg-blue-600 ring-4 ring-blue-500/10'
+                ? 'bg-blue-500 enabled:hover:bg-blue-400'
                 : 'bg-gray-300 dark:bg-gray-600']"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
@@ -357,7 +363,7 @@ defineExpose({
               @click="toggleStatus({ key: tool.key })"
             >
               <span
-                :tw-class="['absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white', isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5']"
+                :tw-class="['absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em]', isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5 text-blue-950' : 'right-1.5 text-white']"
               >
                 {{ isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__on() : lazyStrings.ToolConfigHierarchySettings__off() }}
               </span>
@@ -373,10 +379,10 @@ defineExpose({
     <Transition name="shell-settings">
       <section
         v-if="isWeshFeatureEnabled && effectiveWeshConfig.status === 'enabled'"
-        tw-class="overflow-hidden rounded-2xl border border-blue-200/60 bg-white/80 shadow-sm dark:border-blue-500/20 dark:bg-gray-900/30"
+        tw-class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm dark:border-slate-700/60 dark:bg-gray-900/30"
         data-testid="hierarchical-wesh-settings"
       >
-        <header tw-class="border-b border-gray-100 bg-blue-50/40 px-3 py-2.5 dark:border-gray-700/60 dark:bg-blue-500/5">
+        <header tw-class="border-b border-gray-100 bg-slate-50/70 px-3 py-2.5 dark:border-gray-700/60 dark:bg-slate-800/35">
           <h3 tw-class="text-[11px] font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.ToolConfigHierarchySettings__shell_settings() }}</h3>
           <p tw-class="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
             {{ lazyStrings.SHARED__configure_browser_based_shell_access() }}
@@ -403,7 +409,7 @@ defineExpose({
             </span>
 
             <span
-              :tw-class="['relative h-3.5 w-7 rounded-full transition-colors duration-200', isWeshMounted ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700']"
+              :tw-class="['relative h-3.5 w-7 rounded-full transition-colors duration-200', isWeshMounted ? (isEditable ? 'bg-blue-500 hover:bg-blue-400' : 'bg-blue-500') : 'bg-gray-200 dark:bg-gray-700']"
             >
               <span
                 :tw-class="['absolute left-0.5 top-0.5 h-2.5 w-2.5 rounded-full bg-white transition-transform duration-200', isWeshMounted ? 'translate-x-3.5' : 'translate-x-0']"

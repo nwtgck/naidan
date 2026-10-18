@@ -9,13 +9,17 @@ const path = 'nested/Model-Q8_0.gguf';
 const modelId = `hf.co/owner/Model:${encodeURIComponent(path)}`;
 
 beforeEach(() => {
-  vi.resetAllMocks(); calls.folder.mockResolvedValue({}); calls.journal.mockRejectedValue(new DOMException('missing', 'NotFoundError')); calls.inspect.mockResolvedValue(catalog);
+  vi.resetAllMocks();
+  calls.folder.mockResolvedValue({});
+  calls.journal.mockRejectedValue(new DOMException('missing', 'NotFoundError'));
+  calls.inspect.mockResolvedValue(catalog);
 });
 
 describe('explicit ordinary-chat recovery plan', () => {
   it('selects the exact encoded file path, never the first quantization', async () => {
     const target = await resolveRecoveryDownload({ modelId, signal: new AbortController().signal });
-    expect(target.modelId).toBe(modelId); expect(target.mainFilePath).toBe(path);
+    expect(target.modelId).toBe(modelId);
+    expect(target.mainFilePath).toBe(path);
     expect(target.selection.files).toEqual([{ path, size: 256 }]);
   });
 
@@ -28,7 +32,8 @@ describe('explicit ordinary-chat recovery plan', () => {
 
   it.each(['user/model', 'hf.co/owner/Model:Q8_0', 'hf.co/owner/Model', 'hf.co/owner/Model:%2e%2e%2fsecret.gguf'])('does not guess a remote source for %s', async modelId => {
     await expect(resolveRecoveryDownload({ modelId, signal: new AbortController().signal })).rejects.toThrow();
-    expect(calls.inspect).not.toHaveBeenCalled(); expect(calls.folder).not.toHaveBeenCalled();
+    expect(calls.inspect).not.toHaveBeenCalled();
+    expect(calls.folder).not.toHaveBeenCalled();
   });
 
   it('does not overwrite a different interrupted download or hide permission failures', async () => {
@@ -47,9 +52,13 @@ describe('explicit ordinary-chat recovery plan', () => {
   });
 
   it('stops before discovery if cancelled during a local journal read', async () => {
-    const controller = new AbortController(); const gate = Promise.withResolvers<never>(); calls.journal.mockReturnValueOnce(gate.promise);
+    const controller = new AbortController();
+    const gate = Promise.withResolvers<never>();
+    calls.journal.mockReturnValueOnce(gate.promise);
     const pending = resolveRecoveryDownload({ modelId, signal: controller.signal });
-    controller.abort(); gate.reject(new DOMException('missing', 'NotFoundError'));
-    await expect(pending).rejects.toThrow(); expect(calls.inspect).not.toHaveBeenCalled();
+    controller.abort();
+    gate.reject(new DOMException('missing', 'NotFoundError'));
+    await expect(pending).rejects.toThrow();
+    expect(calls.inspect).not.toHaveBeenCalled();
   });
 });

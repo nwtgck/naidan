@@ -180,7 +180,9 @@ describe('Captured text causal gate mechanics', () => {
 
   it('rejects an ending whose recorded last token is not the actual sequence ending', () => {
     const evidence = endedRecording();
-    if (evidence.scenario.boundary.kind !== 'recorded-ending') throw new Error('Expected ending fixture');
+    if (evidence.scenario.boundary.kind !== 'recorded-ending') {
+      throw new Error('Expected ending fixture');
+    }
     evidence.scenario.boundary.lastTokenId = 41;
     const fixture = nativeOptions();
     fixture.options['max_new_tokens'] = 3;

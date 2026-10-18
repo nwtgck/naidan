@@ -173,9 +173,13 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     activeTaskCounts.set(serializedKey, (activeTaskCounts.get(serializedKey) || 0) + 1);
     let released = false;
     return () => {
-      if (released) return;
+      if (released) {
+        return;
+      }
       released = true;
-      if (taskEpochs.get(serializedKey) === epoch) finishTask({ key: ownedKey });
+      if (taskEpochs.get(serializedKey) === epoch) {
+        finishTask({ key: ownedKey });
+      }
     };
   }
 

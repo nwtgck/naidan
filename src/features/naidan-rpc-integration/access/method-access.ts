@@ -37,7 +37,8 @@ export function createMethodAccess({ initial, stored, revision, persist, apply, 
     // Revocation can synchronously call back into close/update/disconnect.
     // Publish the reduced authority before invoking external cancellation code;
     // never overwrite the newer state installed by that reentrant operation.
-    effective = names; apply({ allowedMethods: names });
+    effective = names;
+    apply({ allowedMethods: names });
   };
   return {
     state,
@@ -45,68 +46,96 @@ export function createMethodAccess({ initial, stored, revision, persist, apply, 
      * the stored method list. It must not confirm an unsaved restriction or
      * install authority into a running session. */
     adoptStoredRevision({ revision }: { revision: number }): void {
-      if (disposed || !Number.isSafeInteger(revision) || revision < currentRevision) throw new Error('Unexpected connection storage revision');
+      if (disposed || !Number.isSafeInteger(revision) || revision < currentRevision) {
+        throw new Error('Unexpected connection storage revision');
+      }
       currentRevision = revision;
     },
     update({ allowedMethods }: { allowedMethods: Names }): Promise<void> {
-      if (disposed) return Promise.reject(new Error('The connection access controller is closed'));
+      if (disposed) {
+        return Promise.reject(new Error('The connection access controller is closed'));
+      }
       let next: Names;
       try {
         next = validate({ names: allowedMethods });
       } catch (error) {
         return Promise.reject(error);
       }
-      const accepted = ++intent; desired = next;
+      const accepted = ++intent;
+      desired = next;
       // Mixed edits first revoke removals. Never install uncommitted additions.
       try {
         install({ names: Object.freeze(effective.filter(name => next.includes(name))) });
       } catch (error) {
         if (!disposed && accepted === intent) {
-          persistence = 'failed'; publish();
+          persistence = 'failed';
+          publish();
         }
         return Promise.reject(error);
       }
-      if (disposed || accepted !== intent) return Promise.resolve();
+      if (disposed || accepted !== intent) {
+        return Promise.resolve();
+      }
       if (!persist) {
         try {
           install({ names: next });
           if (!disposed && accepted === intent) {
-            persistence = 'temporary'; publish();
+            persistence = 'temporary';
+            publish();
           }
           return Promise.resolve();
         } catch (error) {
           if (!disposed && accepted === intent) {
-            persistence = 'failed'; publish();
+            persistence = 'failed';
+            publish();
           }
           return Promise.reject(error);
         }
       }
-      persistence = 'saving'; publish();
+      persistence = 'saving';
+      publish();
       const task = queue.catch(() => {}).then(async () => {
         // An edit superseded before any write starts need not touch persistence.
-        if (disposed || accepted !== intent) return;
+        if (disposed || accepted !== intent) {
+          return;
+        }
         try {
           const revision = await persist({ allowedMethods: next, expectedRevision: currentRevision });
-          if (!Number.isSafeInteger(revision) || revision !== currentRevision + 1) throw new Error('Unexpected connection storage revision');
-          currentRevision = revision; saved = next;
-          if (disposed || accepted !== intent) return;
+          if (!Number.isSafeInteger(revision) || revision !== currentRevision + 1) {
+            throw new Error('Unexpected connection storage revision');
+          }
+          currentRevision = revision;
+          saved = next;
+          if (disposed || accepted !== intent) {
+            return;
+          }
           install({ names: next });
-          if (!disposed && accepted === intent) persistence = 'saved';
+          if (!disposed && accepted === intent) {
+            persistence = 'saved';
+          }
         } catch (error) {
-          if (!disposed && accepted === intent) persistence = 'failed';
+          if (!disposed && accepted === intent) {
+            persistence = 'failed';
+          }
           throw error;
         } finally {
-          if (!disposed && accepted === intent) publish();
+          if (!disposed && accepted === intent) {
+            publish();
+          }
         }
       });
-      queue = task; void task.catch(() => {});
+      queue = task;
+      void task.catch(() => {});
       return task;
     },
     /** Invalidates pending grant additions before the session/owner changes.
      * This does not claim that a pending storage write can be rolled back. */
     close(): void {
-      if (disposed) return;
-      disposed = true; intent++;
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      intent++;
       try {
         install({ names: Object.freeze([]) });
       } finally {

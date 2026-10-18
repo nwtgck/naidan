@@ -46,7 +46,9 @@ const repositoryAccessSchema = z.object({ private: z.boolean(), gated: z.union([
 
 export function classifyReplayMetadataAccess({ metadata }: { metadata: unknown }): ReplayMetadataAccess {
   const result = repositoryAccessSchema.safeParse(metadata);
-  if (!result.success) return 'unverified';
+  if (!result.success) {
+    return 'unverified';
+  }
   return result.data.private || result.data.gated !== false ? 'excluded-private-or-gated' : 'public-request';
 }
 
@@ -78,7 +80,9 @@ export function validateReplayMetadataContent({ path, bytes }: { path: string, b
   }
   const hasCredential = ({ value }: { value: string }): boolean => /\b(?:hf_[A-Za-z0-9]{16,}|Bearer\s+[A-Za-z0-9._~+/-]{8,})|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|https?:\/\/[^\s/]+:[^\s/]+@|[?&](?:access_token|api_key|token|signature)=/iu.test(value);
   if (path.endsWith('.jinja')) {
-    if (hasCredential({ value: text })) throw new CollectionFailure({ status: 'privacy-excluded', httpStatus: undefined });
+    if (hasCredential({ value: text })) {
+      throw new CollectionFailure({ status: 'privacy-excluded', httpStatus: undefined });
+    }
     return;
   }
   let value: unknown;
@@ -88,7 +92,9 @@ export function validateReplayMetadataContent({ path, bytes }: { path: string, b
     throw new CollectionFailure({ status: 'invalid-content', httpStatus: undefined });
   }
   const object = metadataObjectSchema.safeParse(value);
-  if (!object.success) throw new CollectionFailure({ status: 'invalid-content', httpStatus: undefined });
+  if (!object.success) {
+    throw new CollectionFailure({ status: 'invalid-content', httpStatus: undefined });
+  }
   const pending: Array<{ value: unknown, location: string }> = [{ value: object.data, location: '' }];
   while (pending.length > 0) {
     const { value: item, location } = pending.pop()!;
@@ -98,7 +104,9 @@ export function validateReplayMetadataContent({ path, bytes }: { path: string, b
       const valid = Array.isArray(item)
         ? item.every(entry => Array.isArray(entry) && entry.length === 2 && typeof entry[0] === 'string' && typeof entry[1] === 'number')
         : item !== null && typeof item === 'object' && Object.values(item).every(id => typeof id === 'number' && Number.isSafeInteger(id));
-      if (!valid) throw new CollectionFailure({ status: 'invalid-content', httpStatus: undefined });
+      if (!valid) {
+        throw new CollectionFailure({ status: 'invalid-content', httpStatus: undefined });
+      }
       continue;
     }
     if (path === 'tokenizer.json' && location === 'model.merges') {
@@ -108,9 +116,15 @@ export function validateReplayMetadataContent({ path, bytes }: { path: string, b
       continue;
     }
     if (((path === 'tokenizer.json' && /^added_tokens\.\d+\.content$/u.test(location))
-      || (path === 'tokenizer_config.json' && /^added_tokens_decoder\.\d+\.content$/u.test(location))) && typeof item === 'string') continue;
-    if (typeof item === 'string' && hasCredential({ value: item })) throw new CollectionFailure({ status: 'privacy-excluded', httpStatus: undefined });
-    if (item === null || typeof item !== 'object') continue;
+      || (path === 'tokenizer_config.json' && /^added_tokens_decoder\.\d+\.content$/u.test(location))) && typeof item === 'string') {
+      continue;
+    }
+    if (typeof item === 'string' && hasCredential({ value: item })) {
+      throw new CollectionFailure({ status: 'privacy-excluded', httpStatus: undefined });
+    }
+    if (item === null || typeof item !== 'object') {
+      continue;
+    }
     for (const [key, child] of Object.entries(item)) {
       if (/^(?:authorization|proxy-authorization|cookie|set-cookie|password|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)$/iu.test(key)) {
         throw new CollectionFailure({ status: 'privacy-excluded', httpStatus: undefined });
@@ -158,7 +172,9 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
     };
     const cancel = (): void => {
       controller.abort();
-      if (reader !== undefined) void reader.cancel().catch(() => undefined);
+      if (reader !== undefined) {
+        void reader.cancel().catch(() => undefined);
+      }
     };
     try {
       switch (modelAccess) {
@@ -173,8 +189,12 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
         throw new Error(`Unhandled model access: ${_ex}`);
       }
       }
-      if (revision === undefined) fail({ status: 'unverified-revision', httpStatus: undefined });
-      if (files !== undefined && file === undefined) fail({ status: 'not-listed', httpStatus: undefined });
+      if (revision === undefined) {
+        fail({ status: 'unverified-revision', httpStatus: undefined });
+      }
+      if (files !== undefined && file === undefined) {
+        fail({ status: 'not-listed', httpStatus: undefined });
+      }
       const remaining = Math.min(REPLAY_METADATA_FILE_BYTES, budgetBytes - summary.receivedBytes);
       if (remaining <= 0 || (file?.size !== undefined && (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > remaining))) {
         fail({ status: 'budget-exceeded', httpStatus: undefined });
@@ -182,17 +202,25 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
       const exactRevision = revision!;
       const operation = (async () => {
         const local = await localRead({ path, revision: exactRevision });
-        if (stopped) throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+        if (stopped) {
+          throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+        }
         let stream: ReadableStream<Uint8Array>;
         let expectedSize: number | undefined = file?.size;
         if (local !== undefined) {
           source = 'local-exact';
-          if (local.size > remaining) throw new CollectionFailure({ status: 'budget-exceeded', httpStatus: undefined });
-          if (expectedSize !== undefined && local.size !== expectedSize) throw new CollectionFailure({ status: 'size-mismatch', httpStatus: undefined });
+          if (local.size > remaining) {
+            throw new CollectionFailure({ status: 'budget-exceeded', httpStatus: undefined });
+          }
+          if (expectedSize !== undefined && local.size !== expectedSize) {
+            throw new CollectionFailure({ status: 'size-mismatch', httpStatus: undefined });
+          }
           expectedSize = local.size;
           stream = local.stream();
         } else {
-          if (remoteFetch === undefined) throw new CollectionFailure({ status: 'local-missing', httpStatus: undefined });
+          if (remoteFetch === undefined) {
+            throw new CollectionFailure({ status: 'local-missing', httpStatus: undefined });
+          }
           source = 'remote-exact';
           const response = await remoteFetch(`https://huggingface.co/${modelId}/resolve/${exactRevision}/${path}`, {
             credentials: 'omit',
@@ -201,46 +229,63 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
             headers: { Accept: path.endsWith('.json') ? 'application/json' : 'text/plain' },
           });
           if (stopped) {
-            void response.body?.cancel().catch(() => undefined); throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+            void response.body?.cancel().catch(() => undefined);
+            throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
           }
           // These are full replay resources, not size probes. Even a response
           // labelled 200 must not archive a Content-Range fragment as complete.
           if (response.status !== 200 || response.headers.has('Content-Range')) {
-            void response.body?.cancel().catch(() => undefined); throw new CollectionFailure({ status: 'http-failure', httpStatus: response.status });
+            void response.body?.cancel().catch(() => undefined);
+            throw new CollectionFailure({ status: 'http-failure', httpStatus: response.status });
           }
           const length = response.headers.get('content-length');
           if (length !== null && (!/^\d+$/u.test(length) || Number(length) > remaining)) {
             void response.body?.cancel().catch(() => undefined);
             throw new CollectionFailure({ status: 'budget-exceeded', httpStatus: undefined });
           }
-          if (response.body === null) throw new CollectionFailure({ status: 'read-failure', httpStatus: undefined });
+          if (response.body === null) {
+            throw new CollectionFailure({ status: 'read-failure', httpStatus: undefined });
+          }
           stream = response.body;
         }
         reader = stream.getReader();
         const chunks: Uint8Array[] = [];
         while (true) {
           const next = await reader.read();
-          if (stopped) throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
-          if (next.done) break;
+          if (stopped) {
+            throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+          }
+          if (next.done) {
+            break;
+          }
           received += next.value.byteLength;
           summary.receivedBytes += next.value.byteLength;
-          if (received > remaining) throw new CollectionFailure({ status: 'budget-exceeded', httpStatus: undefined });
+          if (received > remaining) {
+            throw new CollectionFailure({ status: 'budget-exceeded', httpStatus: undefined });
+          }
           chunks.push(next.value);
         }
-        if (expectedSize !== undefined && received !== expectedSize) throw new CollectionFailure({ status: 'size-mismatch', httpStatus: undefined });
+        if (expectedSize !== undefined && received !== expectedSize) {
+          throw new CollectionFailure({ status: 'size-mismatch', httpStatus: undefined });
+        }
         const bytes = new Uint8Array(received);
         let offset = 0;
         for (const chunk of chunks) {
-          bytes.set(chunk, offset); offset += chunk.byteLength;
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
         }
         validateReplayMetadataContent({ path, bytes });
         const sha256 = await replayMetadataSha256({ bytes });
-        if (stopped) throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+        if (stopped) {
+          throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
+        }
         return { blob: new Blob([bytes]), sha256 };
       })();
       const timeout = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          stopped = true; cancel(); reject(new CollectionFailure({ status: 'timeout', httpStatus: undefined }));
+          stopped = true;
+          cancel();
+          reject(new CollectionFailure({ status: 'timeout', httpStatus: undefined }));
         }, fileTimeoutMs);
       });
       const result = await Promise.race([operation, timeout]);
@@ -252,7 +297,9 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
       cancel();
       summary.files.push({ path, status: error instanceof CollectionFailure ? error.status : 'read-failure', source, byteLength: received, httpStatus: error instanceof CollectionFailure ? error.httpStatus : undefined });
     } finally {
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
     }
     publish();
   }

@@ -31,7 +31,9 @@ function collectUiStylesheetFileNamesInViteOrder({
   const pendingDynamicImports: string[] = [];
 
   const visitStaticClosure = ({ fileName }: Readonly<{fileName: string}>): void => {
-    if (visitedChunks.has(fileName)) return;
+    if (visitedChunks.has(fileName)) {
+      return;
+    }
     visitedChunks.add(fileName);
     const chunk = chunkByFileName.get(fileName);
     if (chunk === undefined) {
@@ -42,7 +44,9 @@ function collectUiStylesheetFileNamesInViteOrder({
     // before the importing chunk's own importedCss Set. Dynamic branches are
     // visited only when validating the complete UI closure; initial HTML must
     // contain only the static closure so lazy CSS keeps its import-time semantics.
-    for (const importedFileName of chunk.imports) visitStaticClosure({ fileName: importedFileName });
+    for (const importedFileName of chunk.imports) {
+      visitStaticClosure({ fileName: importedFileName });
+    }
 
     const importedCss = chunk.viteMetadata?.importedCss;
     if (importedCss === undefined) {
@@ -77,7 +81,9 @@ function collectUiStylesheetFileNamesInViteOrder({
   visitStaticClosure({ fileName: entryFileName });
   for (let index = 0; index < pendingDynamicImports.length; index += 1) {
     const dynamicImport = pendingDynamicImports[index];
-    if (dynamicImport !== undefined) visitStaticClosure({ fileName: dynamicImport });
+    if (dynamicImport !== undefined) {
+      visitStaticClosure({ fileName: dynamicImport });
+    }
   }
 
   return orderedCss;

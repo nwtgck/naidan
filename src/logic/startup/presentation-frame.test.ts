@@ -37,7 +37,9 @@ describe('waitForPresentationPaint', () => {
     const completed = waitForPresentationPaint({
       window: {
         requestAnimationFrame(callback) {
-          if (++calls === failingFrame) throw error;
+          if (++calls === failingFrame) {
+            throw error;
+          }
           callbacks.push(callback);
           return calls;
         },

@@ -162,7 +162,9 @@ function createBufferedByteWriter({
   let length = 0;
 
   const flush = async (): Promise<void> => {
-    if (length === 0) return;
+    if (length === 0) {
+      return;
+    }
     await writeAll({
       handle,
       buffer: buffer.subarray(0, length),
@@ -316,7 +318,9 @@ function findShufPreHelpSemanticIssue({
       ? [occurrence.value]
       : []
   )));
-  if (outputPaths.size > 1) return { kind: 'multiple-output' };
+  if (outputPaths.size > 1) {
+    return { kind: 'multiple-output' };
+  }
 
   const inputRangeCount = parsed.occurrences.filter((occurrence) => (
     occurrence.kind === 'value' && occurrence.key === 'inputRange'
@@ -326,7 +330,9 @@ function findShufPreHelpSemanticIssue({
   }
 
   const range = parsed.optionValues.inputRange;
-  if (typeof range !== 'string') return undefined;
+  if (typeof range !== 'string') {
+    return undefined;
+  }
   const result = parseInputRange({ value: range });
   return result.ok ? undefined : { kind: 'input-range', message: result.message };
 }
@@ -470,7 +476,9 @@ export const shufCommandImplementation: WeshCommandImplementation = {
           path: inputPath,
           delimiterByte,
         });
-        for (const record of inputRecords) records.push(record);
+        for (const record of inputRecords) {
+          records.push(record);
+        }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

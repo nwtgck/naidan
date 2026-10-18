@@ -23,7 +23,8 @@ export type MaintenanceClock = {
 export const maintenanceClock: MaintenanceClock = {
   now: () => performance.now(),
   schedule({ milliseconds, callback }) {
-    const timer = setTimeout(callback, milliseconds); return () => clearTimeout(timer);
+    const timer = setTimeout(callback, milliseconds);
+    return () => clearTimeout(timer);
   },
 };
 export type MaintenanceFailure = 'retry' | 'blocked' | 'retirement-failed';
@@ -47,9 +48,11 @@ export class ConnectionOpenPermits {
   private readonly waiting: { signal: AbortSignal; mode: ConnectionInitiation; grant(): void; cancel(): void }[] = [];
 
   constructor({ capacity, maximumWaiting }: { capacity: number; maximumWaiting: number }) {
-    if (!Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(maximumWaiting) || maximumWaiting < 0)
+    if (!Number.isSafeInteger(capacity) || capacity < 1 || !Number.isSafeInteger(maximumWaiting) || maximumWaiting < 0) {
       throw new RangeError('Invalid connection capacity');
-    this.capacity = capacity; this.maximumWaiting = maximumWaiting;
+    }
+    this.capacity = capacity;
+    this.maximumWaiting = maximumWaiting;
   }
 
   get idle(): boolean {
@@ -58,38 +61,65 @@ export class ConnectionOpenPermits {
 
   acquire({ signal, mode }: { signal: AbortSignal; mode: ConnectionInitiation }): PermitAdmission {
     signal.throwIfAborted();
-    if (this.active >= this.capacity && this.waiting.length >= this.maximumWaiting)
+    if (this.active >= this.capacity && this.waiting.length >= this.maximumWaiting) {
       throw new Error('Connection opening queue is full');
-    const result = deferred<() => void>(); let pending = true;
+    }
+    const result = deferred<() => void>();
+    let pending = true;
     const remove = () => {
-      const index = this.waiting.indexOf(request); if (index >= 0) this.waiting.splice(index, 1);
+      const index = this.waiting.indexOf(request);
+      if (index >= 0) {
+        this.waiting.splice(index, 1);
+      }
       signal.removeEventListener('abort', request.cancel);
     };
     const request = {
       signal,
       mode,
       grant: () => {
-        if (!pending) return; pending = false; remove(); this.active++;
-        let held = true; result.resolve(() => {
-          if (!held) return; held = false; this.active--; this.drain();
+        if (!pending) {
+          return;
+        }
+        pending = false;
+        remove();
+        this.active++;
+        let held = true;
+        result.resolve(() => {
+          if (!held) {
+            return;
+          }
+          held = false;
+          this.active--;
+          this.drain();
         });
       },
       cancel: () => {
-        if (!pending) return; pending = false; remove(); result.reject(signal.reason);
+        if (!pending) {
+          return;
+        }
+        pending = false;
+        remove();
+        result.reject(signal.reason);
       },
     };
     signal.addEventListener('abort', request.cancel, { once: true });
-    if (signal.aborted) request.cancel();
-    else {
-      this.waiting.push(request); this.drain();
+    if (signal.aborted) {
+      request.cancel();
+    } else {
+      this.waiting.push(request);
+      this.drain();
     }
     return {
       ready: result.promise,
       promote: () => {
-        if (!pending) return;
-        if (signal.aborted) request.cancel();
-        else {
-          request.mode = 'explicit'; this.drain();
+        if (!pending) {
+          return;
+        }
+        if (signal.aborted) {
+          request.cancel();
+        } else {
+          request.mode = 'explicit';
+          this.drain();
         }
       },
     };
@@ -98,7 +128,11 @@ export class ConnectionOpenPermits {
   private drain(): void {
     while (this.active < this.capacity && this.waiting.length) {
       const request = this.waiting.find(request => isExplicit({ mode: request.mode })) ?? this.waiting[0]!;
-      if (request.signal.aborted) request.cancel(); else request.grant();
+      if (request.signal.aborted) {
+        request.cancel();
+      } else {
+        request.grant();
+      }
     }
   }
 }
@@ -131,7 +165,12 @@ export class ConnectionMaintenance<Value> {
     retryDelay({ attempt }: { attempt: number }): number;
     clock: MaintenanceClock; changed(): void;
   }) {
-    this.permits = permits; this.factory = factory; this.classify = classify; this.retryDelay = retryDelay; this.clock = clock; this.changed = changed;
+    this.permits = permits;
+    this.factory = factory;
+    this.classify = classify;
+    this.retryDelay = retryDelay;
+    this.clock = clock;
+    this.changed = changed;
   }
 
   get desiredConnection(): 'connected' | 'disconnected' {
@@ -159,16 +198,25 @@ export class ConnectionMaintenance<Value> {
     switch (phase) {
     case 'connected': return true;
     case 'idle': case 'queued': case 'opening': case 'retiring': case 'backoff': case 'blocked': return false;
-    default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
   private retirementBlock(): Block | undefined {
-    const block = this.blockState; if (!block) return undefined;
+    const block = this.blockState;
+    if (!block) {
+      return undefined;
+    }
     switch (block.kind) {
     case 'retirement': return block;
     case 'terminal': return undefined;
-    default: { const exhaustive: never = block.kind; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = block.kind;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
@@ -180,66 +228,116 @@ export class ConnectionMaintenance<Value> {
 
   private rejectRequest({ error }: { error: unknown }): void {
     if (this.request && !this.request.settled) {
-      this.request.settled = true; this.request.result.reject(error);
+      this.request.settled = true;
+      this.request.result.reject(error);
     }
   }
 
   private failRetirement({ error }: { error: unknown }): void {
-    if (this.retirementBlock()) return;
-    this.blockState = Object.freeze({ kind: 'retirement', error }); this.status = 'blocked';
-    this.rejectRequest({ error }); this.notify();
+    if (this.retirementBlock()) {
+      return;
+    }
+    this.blockState = Object.freeze({ kind: 'retirement', error });
+    this.status = 'blocked';
+    this.rejectRequest({ error });
+    this.notify();
   }
 
   private clearTimer(): boolean {
-    const timer = this.timer; this.timer = undefined;
+    const timer = this.timer;
+    this.timer = undefined;
     try {
-      timer?.cancel(); return true;
+      timer?.cancel();
+      return true;
     } catch (error) {
-      this.failRetirement({ error }); return false;
+      this.failRetirement({ error });
+      return false;
     }
   }
 
   /** Explicit desire. Returns this attempt's result; a retryable failure can
    * reject it while the runtime desire remains connected for future attempts. */
   connect({ mode }: { mode: ConnectionInitiation }): Promise<Value> {
-    if (!isExplicit({ mode }) && this.blockState) return Promise.reject(this.blockState.error);
+    if (!isExplicit({ mode }) && this.blockState) {
+      return Promise.reject(this.blockState.error);
+    }
     if (isExplicit({ mode })) {
       if (this.slot && !this.slot.stop.signal.aborted) {
-        this.slot.mode = 'explicit'; this.slot.admission?.promote();
-      } else if (this.request && !this.request.settled) this.nextMode = 'explicit';
+        this.slot.mode = 'explicit';
+        this.slot.admission?.promote();
+      } else if (this.request && !this.request.settled) {
+        this.nextMode = 'explicit';
+      }
     }
     if (this.retirementBlock()) {
-      this.desired = 'connected'; this.notify(); return Promise.reject(this.blockState?.error);
+      this.desired = 'connected';
+      this.notify();
+      return Promise.reject(this.blockState?.error);
     }
-    if (this.desired === 'connected' && !this.blockState && this.request && !this.request.settled) return this.request.result.promise;
-    if (this.desired === 'connected' && !this.blockState && this.slot && !this.slot.stop.signal.aborted) {
-      if (this.isConnected() && this.slot.lease) return Promise.resolve(this.slot.lease.value);
-      if (!this.request || this.request.settled) this.request = { generation: this.generation, result: deferred<Value>(), settled: false };
+    if (this.desired === 'connected' && !this.blockState && this.request && !this.request.settled) {
       return this.request.result.promise;
     }
-    this.desired = 'connected'; this.generation++; this.intentToken = {}; this.attempts = 0; this.nextMode = mode;
+    if (this.desired === 'connected' && !this.blockState && this.slot && !this.slot.stop.signal.aborted) {
+      if (this.isConnected() && this.slot.lease) {
+        return Promise.resolve(this.slot.lease.value);
+      }
+      if (!this.request || this.request.settled) {
+        this.request = { generation: this.generation, result: deferred<Value>(), settled: false };
+      }
+      return this.request.result.promise;
+    }
+    this.desired = 'connected';
+    this.generation++;
+    this.intentToken = {};
+    this.attempts = 0;
+    this.nextMode = mode;
     this.blockState = undefined;
-    if (!this.clearTimer()) return Promise.reject(this.blocked?.error);
-    const request = { generation: this.generation, result: deferred<Value>(), settled: false }; this.request = request;
-    this.notify(); this.start(); return request.result.promise;
+    if (!this.clearTimer()) {
+      return Promise.reject(this.blocked?.error);
+    }
+    const request = { generation: this.generation, result: deferred<Value>(), settled: false };
+    this.request = request;
+    this.notify();
+    this.start();
+    return request.result.promise;
   }
 
   disconnect(): Promise<void> {
-    this.desired = 'disconnected'; this.generation++; this.intentToken = {};
+    this.desired = 'disconnected';
+    this.generation++;
+    this.intentToken = {};
     const slot = this.slot, error = new Error('Connection desire cancelled');
-    this.rejectRequest({ error }); this.clearTimer();
-    if (!this.blockState) this.status = slot ? 'retiring' : 'idle';
-    slot?.stop.abort(error); if (slot) this.beginRetirement({ slot }); this.notify();
+    this.rejectRequest({ error });
+    this.clearTimer();
+    if (!this.blockState) {
+      this.status = slot ? 'retiring' : 'idle';
+    }
+    slot?.stop.abort(error);
+    if (slot) {
+      this.beginRetirement({ slot });
+    }
+    this.notify();
     return slot?.retired.promise ?? (this.retirementBlock() ? Promise.reject(this.blockState?.error) : Promise.resolve());
   }
 
   /** Authority invalidation retains desire, but only explicit revalidation may
    * clear an ordinary terminal block. Passive wakeups never clear blocks. */
   block({ error }: { error: unknown }): Promise<void> {
-    if (this.retirementBlock()) return Promise.reject(this.blockState?.error);
-    this.generation++; this.intentToken = {}; this.blockState = Object.freeze({ kind: 'terminal', error });
-    this.rejectRequest({ error }); this.clearTimer(); this.status = 'blocked';
-    const slot = this.slot; slot?.stop.abort(error); if (slot) this.beginRetirement({ slot }); this.notify();
+    if (this.retirementBlock()) {
+      return Promise.reject(this.blockState?.error);
+    }
+    this.generation++;
+    this.intentToken = {};
+    this.blockState = Object.freeze({ kind: 'terminal', error });
+    this.rejectRequest({ error });
+    this.clearTimer();
+    this.status = 'blocked';
+    const slot = this.slot;
+    slot?.stop.abort(error);
+    if (slot) {
+      this.beginRetirement({ slot });
+    }
+    this.notify();
     return slot?.retired.promise ?? (this.retirementBlock() ? Promise.reject(this.blockState?.error) : Promise.resolve());
   }
 
@@ -252,9 +350,14 @@ export class ConnectionMaintenance<Value> {
   }
 
   private start(): void {
-    if (this.desired !== 'connected' || this.slot || this.timer || this.blockState) return;
+    if (this.desired !== 'connected' || this.slot || this.timer || this.blockState) {
+      return;
+    }
     const slot: Slot<Value> = { mode: this.nextMode, admission: undefined, generation: this.generation, binding: {}, stop: new AbortController(), retired: deferred<void>(), lease: undefined, retirement: undefined };
-    this.nextMode = 'background'; this.slot = slot; this.status = 'queued'; this.notify();
+    this.nextMode = 'background';
+    this.slot = slot;
+    this.status = 'queued';
+    this.notify();
     void this.run({ slot });
   }
 
@@ -263,10 +366,14 @@ export class ConnectionMaintenance<Value> {
       const decision = this.classify({ error, source });
       switch (decision) {
       case 'retry': case 'blocked': case 'retirement-failed': return decision;
-      default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = decision;
+        throw new Error(String(exhaustive));
+      }
       }
     } catch (failure) {
-      this.failRetirement({ error: failure }); return 'retirement-failed';
+      this.failRetirement({ error: failure });
+      return 'retirement-failed';
     }
   }
 
@@ -280,7 +387,9 @@ export class ConnectionMaintenance<Value> {
       slot.admission = this.permits.acquire({ signal: slot.stop.signal, mode: slot.mode });
       release = await slot.admission.ready;
       slot.stop.signal.throwIfAborted();
-      this.status = 'opening'; this.notify(); slot.stop.signal.throwIfAborted();
+      this.status = 'opening';
+      this.notify();
+      slot.stop.signal.throwIfAborted();
       slot.lease = await this.factory({ signal: slot.stop.signal, mode: slot.mode });
       void slot.lease.ended.catch(() => {});
       while (this.current({ slot })) {
@@ -288,36 +397,53 @@ export class ConnectionMaintenance<Value> {
         this.status = 'connected';
         const request = this.request;
         if (request && !request.settled && request.generation === slot.generation) {
-          request.settled = true; request.result.resolve(slot.lease!.value);
+          request.settled = true;
+          request.result.resolve(slot.lease!.value);
         }
         this.notify();
         if (this.current({ slot })) {
           const update = await this.waitForUpdate({ slot, lease: slot.lease! });
-          if (!update) break;
+          if (!update) {
+            break;
+          }
           switch (update.kind) {
           case 'replacement': {
             let consumed = false;
             try {
-              if (!this.current({ slot })) break;
+              if (!this.current({ slot })) {
+                break;
+              }
               try {
                 update.candidate.assertAvailable();
               } catch (error) {
-                if (this.contactRetirementFailed({ error })) throw error;
+                if (this.contactRetirementFailed({ error })) {
+                  throw error;
+                }
                 continue; // An expired proposal cannot terminate the live lease.
               }
-              this.status = 'retiring'; this.notify();
+              this.status = 'retiring';
+              this.notify();
               // Keep the intent scope and its permit. Only the old DATA lease
               // retires; aborting the slot here would destroy the candidate.
-              this.beginRetirement({ slot, replacement: true }); await slot.retirement;
-              if (!this.current({ slot })) break;
-              slot.lease = undefined; slot.retirement = undefined; slot.binding = {};
-              this.status = 'opening'; this.notify();
+              this.beginRetirement({ slot, replacement: true });
+              await slot.retirement;
+              if (!this.current({ slot })) {
+                break;
+              }
+              slot.lease = undefined;
+              slot.retirement = undefined;
+              slot.binding = {};
+              this.status = 'opening';
+              this.notify();
               slot.stop.signal.throwIfAborted();
-              consumed = true; slot.lease = await update.candidate.finish({ signal: slot.stop.signal });
+              consumed = true;
+              slot.lease = await update.candidate.finish({ signal: slot.stop.signal });
               void slot.lease.ended.catch(() => {});
             } finally {
               try {
-                if (!consumed) await this.disposeCandidate({ candidate: update.candidate });
+                if (!consumed) {
+                  await this.disposeCandidate({ candidate: update.candidate });
+                }
               } finally {
                 update.stop();
               }
@@ -327,55 +453,84 @@ export class ConnectionMaintenance<Value> {
           case 'ended': {
             if (this.current({ slot })) {
               const connectedFor = this.clock.now() - connectedAt;
-              if (Number.isFinite(connectedFor) && connectedFor >= 30000) this.attempts = 0;
+              if (Number.isFinite(connectedFor) && connectedFor >= 30000) {
+                this.attempts = 0;
+              }
               outcome = { error: update.error, decision: this.decision({ error: update.error, source: 'connection' }) };
             }
             break;
           }
-          default: { const exhaustive: never = update; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = update;
+            throw new Error(String(exhaustive));
+          }
           }
           break;
         }
       }
     } catch (error) {
       const decision = this.decision({ error, source: slot.lease ? 'connection' : 'factory' });
-      if (decision === 'retirement-failed' || this.current({ slot })) outcome = { error, decision };
-      if (this.request?.generation === slot.generation) this.rejectRequest({ error });
+      if (decision === 'retirement-failed' || this.current({ slot })) {
+        outcome = { error, decision };
+      }
+      if (this.request?.generation === slot.generation) {
+        this.rejectRequest({ error });
+      }
     }
-    if (!this.blockState) this.status = 'retiring';
-    slot.stop.abort(outcome?.error); this.notify();
+    if (!this.blockState) {
+      this.status = 'retiring';
+    }
+    slot.stop.abort(outcome?.error);
+    this.notify();
     let retirement: { error: unknown } | undefined;
     try {
-      this.beginRetirement({ slot }); await slot.retirement;
+      this.beginRetirement({ slot });
+      await slot.retirement;
     } catch (error) {
       retirement = { error };
     }
     if (retirement || outcome?.decision === 'retirement-failed' || this.retirementBlock()) {
       const error = this.retirementBlock() ? this.blockState?.error : retirement ? retirement.error : outcome?.error;
-      if (!this.retirementBlock()) this.failRetirement({ error });
-      slot.retired.reject(error); return; // Keep the failed ownership slot; no replacement loop.
+      if (!this.retirementBlock()) {
+        this.failRetirement({ error });
+      }
+      slot.retired.reject(error);
+      return; // Keep the failed ownership slot; no replacement loop.
     }
     release?.();
-    if (this.slot === slot) this.slot = undefined;
+    if (this.slot === slot) {
+      this.slot = undefined;
+    }
     slot.retired.resolve();
     if (slot.generation === this.generation && this.desired === 'connected' && !this.blockState) {
       const decision = outcome?.decision;
       switch (decision) {
-      case 'blocked': this.blockState = Object.freeze({ kind: 'terminal', error: outcome?.error }); this.status = 'blocked'; break;
-      case 'retry': this.scheduleRetry(); break;
-      case undefined: this.start(); break;
-      default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
+      case 'blocked': this.blockState = Object.freeze({ kind: 'terminal', error: outcome?.error });
+        this.status = 'blocked';
+        break;
+      case 'retry': this.scheduleRetry();
+        break;
+      case undefined: this.start();
+        break;
+      default: {
+        const exhaustive: never = decision;
+        throw new Error(String(exhaustive));
+      }
       }
     } else if (!this.blockState) {
-      this.status = 'idle'; this.start();
+      this.status = 'idle';
+      this.start();
     }
     this.notify();
   }
 
   private beginRetirement({ slot, replacement = false }: { slot: Slot<Value>; replacement?: boolean }): void {
-    if (!slot.lease || slot.retirement) return;
+    if (!slot.lease || slot.retirement) {
+      return;
+    }
     // Reserve the join before shutdown can synchronously reenter the owner.
-    const retiring = deferred<void>(); slot.retirement = retiring.promise;
+    const retiring = deferred<void>();
+    slot.retirement = retiring.promise;
     try {
       Promise.resolve(slot.lease.retire({ replacement })).then(retiring.resolve, retiring.reject);
     } catch (error) {
@@ -389,24 +544,33 @@ export class ConnectionMaintenance<Value> {
     | undefined
   > {
     const stopped = deferred<undefined>(), cancel = () => stopped.resolve(undefined);
-    slot.stop.signal.addEventListener('abort', cancel, { once: true }); if (slot.stop.signal.aborted) cancel();
+    slot.stop.signal.addEventListener('abort', cancel, { once: true });
+    if (slot.stop.signal.aborted) {
+      cancel();
+    }
     const contactStop = new AbortController(), signal = AbortSignal.any([slot.stop.signal, contactStop.signal]);
     const contact = lease.prepareReplacement ? (async () => {
       for (;;) {
-        signal.throwIfAborted(); const started = this.clock.now();
-        if (!Number.isFinite(started)) throw new Error('Invalid contact clock');
+        signal.throwIfAborted();
+        const started = this.clock.now();
+        if (!Number.isFinite(started)) {
+          throw new Error('Invalid contact clock');
+        }
         try {
           const candidate = await lease.prepareReplacement!({ signal });
           if (candidate) {
             try {
               candidate.assertAvailable();
             } catch (error) {
-              await this.disposeCandidate({ candidate }); throw error;
+              await this.disposeCandidate({ candidate });
+              throw error;
             }
             return { kind: 'replacement' as const, candidate, stop: () => contactStop.abort() };
           }
         } catch (error) {
-          if (signal.aborted || this.contactRetirementFailed({ error })) throw error;
+          if (signal.aborted || this.contactRetirementFailed({ error })) {
+            throw error;
+          }
           // Unauthenticated input cannot terminate the current data connection.
         }
         signal.throwIfAborted();
@@ -415,17 +579,23 @@ export class ConnectionMaintenance<Value> {
             try {
               cancelTimer();
             } catch (error) {
-              this.failRetirement({ error }); reject(error); return;
+              this.failRetirement({ error });
+              reject(error);
+              return;
             }
             reject(signal.reason);
           };
           const cancelTimer = this.clock.schedule({
             milliseconds: Math.max(1, Math.ceil(1000 - (this.clock.now() - started))),
             callback: () => {
-              signal.removeEventListener('abort', abort); resolve();
+              signal.removeEventListener('abort', abort);
+              resolve();
             },
           });
-          signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort();
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) {
+            abort();
+          }
         });
       }
     })() : undefined;
@@ -444,7 +614,10 @@ export class ConnectionMaintenance<Value> {
       switch (result.kind) {
       case 'replacement': return result;
       case 'ended': break;
-      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = result;
+        throw new Error(String(exhaustive));
+      }
       }
     }
     contactStop.abort();
@@ -453,10 +626,16 @@ export class ConnectionMaintenance<Value> {
     try {
       late = await contact;
     } catch (error) {
-      if (this.contactRetirementFailed({ error })) failure = { error };
+      if (this.contactRetirementFailed({ error })) {
+        failure = { error };
+      }
     }
-    if (late) await this.disposeCandidate({ candidate: late.candidate });
-    if (failure) throw failure.error;
+    if (late) {
+      await this.disposeCandidate({ candidate: late.candidate });
+    }
+    if (failure) {
+      throw failure.error;
+    }
     return result;
   }
 
@@ -465,7 +644,10 @@ export class ConnectionMaintenance<Value> {
     switch (decision) {
     case 'retirement-failed': return true;
     case 'retry': case 'blocked': return false;
-    default: { const exhaustive: never = decision; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = decision;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
@@ -474,35 +656,55 @@ export class ConnectionMaintenance<Value> {
       await candidate.dispose();
     } catch (error) {
       // Disposal failure is ownership failure, independent of retryable peer errors.
-      this.failRetirement({ error }); throw error;
+      this.failRetirement({ error });
+      throw error;
     }
   }
 
   private scheduleRetry(): void {
-    if (this.desired !== 'connected' || this.slot || this.blockState || this.timer) return;
+    if (this.desired !== 'connected' || this.slot || this.blockState || this.timer) {
+      return;
+    }
     try {
       this.attempts = Math.min(Number.MAX_SAFE_INTEGER, this.attempts + 1);
       const milliseconds = this.retryDelay({ attempt: this.attempts }), now = this.clock.now(), deadline = now + milliseconds;
-      if (!Number.isInteger(milliseconds) || milliseconds <= 0 || milliseconds > 2147483647 || !Number.isFinite(now) || !Number.isFinite(deadline) || deadline <= now)
+      if (!Number.isInteger(milliseconds) || milliseconds <= 0 || milliseconds > 2147483647 || !Number.isFinite(now) || !Number.isFinite(deadline) || deadline <= now) {
         throw new Error('Invalid connection retry policy or clock');
+      }
       this.armRetry({ deadline, generation: this.generation });
     } catch (error) {
-      if (!this.blockState) this.blockState = Object.freeze({ kind: 'terminal', error }); this.status = 'blocked';
+      if (!this.blockState) {
+        this.blockState = Object.freeze({ kind: 'terminal', error });
+      }
+      this.status = 'blocked';
     }
   }
 
   private armRetry({ deadline, generation }: { deadline: number; generation: number }): void {
     const identity = {}, remaining = deadline - this.clock.now();
-    if (!Number.isFinite(remaining)) throw new Error('Invalid connection retry clock');
+    if (!Number.isFinite(remaining)) {
+      throw new Error('Invalid connection retry clock');
+    }
     this.status = 'backoff';
     const callback = () => {
-      if (this.timer?.identity !== identity || generation !== this.generation) return;
+      if (this.timer?.identity !== identity || generation !== this.generation) {
+        return;
+      }
       this.timer = undefined;
       try {
-        const now = this.clock.now(); if (!Number.isFinite(now)) throw new Error('Invalid connection retry clock');
-        if (now < deadline) this.armRetry({ deadline, generation }); else this.start();
+        const now = this.clock.now();
+        if (!Number.isFinite(now)) {
+          throw new Error('Invalid connection retry clock');
+        }
+        if (now < deadline) {
+          this.armRetry({ deadline, generation });
+        } else {
+          this.start();
+        }
       } catch (error) {
-        this.blockState = Object.freeze({ kind: 'terminal', error }); this.status = 'blocked'; this.notify();
+        this.blockState = Object.freeze({ kind: 'terminal', error });
+        this.status = 'blocked';
+        this.notify();
       }
     };
     const cancel = this.clock.schedule({ milliseconds: Math.max(1, Math.min(2147483647, remaining)), callback });
@@ -514,7 +716,10 @@ function isExplicit({ mode }: { mode: ConnectionInitiation }): boolean {
   switch (mode) {
   case 'explicit': return true;
   case 'background': return false;
-  default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = mode;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

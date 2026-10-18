@@ -25,14 +25,18 @@ const currentHref = docsHref({ locale: props.locale, page: props.currentPage });
 
 function pageForResult({ href }: { href: string }): DocsPageId {
   const page = DOCS_PAGES.find(candidate => docsHref({ locale: props.locale, page: candidate.id }) === href);
-  if (!page) throw new Error(`Unregistered Docs search result: ${href}`);
+  if (!page) {
+    throw new Error(`Unregistered Docs search result: ${href}`);
+  }
   return page.id;
 }
 
 const resultsLabel = computed(() => {
   const typed = query.value.trim();
   if (typed !== displayedQuery.value) {
-    if (displayedQuery.value) return messages.search_ui_previous_results({ query: displayedQuery.value });
+    if (displayedQuery.value) {
+      return messages.search_ui_previous_results({ query: displayedQuery.value });
+    }
     return messages.search_ui_purpose_title;
   }
   return typed ? messages.search_ui_title : messages.search_ui_purpose_title;
@@ -54,7 +58,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', shortcutListener);
-  if (dialog.value?.open) dialog.value.close();
+  if (dialog.value?.open) {
+    dialog.value.close();
+  }
   restorePage();
   disposeWorker();
 });
@@ -69,7 +75,9 @@ defineExpose({
 
 function disposeWorker(): void {
   try {
-    if (searchRemote) releaseSearchWorker({ remote: searchRemote });
+    if (searchRemote) {
+      releaseSearchWorker({ remote: searchRemote });
+    }
   } finally {
     searchRemote = undefined;
     searchWorker?.terminate();
@@ -87,7 +95,9 @@ function workerFailed({ error }: { error: unknown }): void {
 }
 
 function submitSearch(): void {
-  if (!dialog.value?.open) return;
+  if (!dialog.value?.open) {
+    return;
+  }
   const currentRequestId = ++requestId;
   if (!query.value.trim()) {
     results.value = [...props.purpose];
@@ -104,7 +114,9 @@ function submitSearch(): void {
       searchWorker = worker;
       searchRemote = wrapSearchWorker({ worker });
       worker.onerror = event => {
-        if (worker !== searchWorker) return;
+        if (worker !== searchWorker) {
+          return;
+        }
         if (!dialog.value?.open || !query.value.trim()) {
           disposeWorker();
           return;
@@ -116,9 +128,13 @@ function submitSearch(): void {
     const isCurrent = () => remote === searchRemote && currentRequestId === requestId && !!dialog.value?.open;
     const request: SearchWorkerRequest = { requestId: currentRequestId, locale: props.locale, query: query.value };
     void remote.search({ request }).then(value => {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
       const response = parseWorkerResponse({ value, locale: props.locale });
-      if (response.requestId !== currentRequestId) throw new Error('Mismatched Docs search response ID');
+      if (response.requestId !== currentRequestId) {
+        throw new Error('Mismatched Docs search response ID');
+      }
       switch (response.kind) {
       case 'results':
         results.value = response.results;
@@ -136,7 +152,9 @@ function submitSearch(): void {
       }
       }
     }).catch(error => {
-      if (isCurrent()) workerFailed({ error });
+      if (isCurrent()) {
+        workerFailed({ error });
+      }
     });
   } catch (error) {
     workerFailed({ error });
@@ -144,14 +162,18 @@ function submitSearch(): void {
 }
 
 function restorePage(): void {
-  if (previousOverflow !== undefined) document.body.style.overflow = previousOverflow;
+  if (previousOverflow !== undefined) {
+    document.body.style.overflow = previousOverflow;
+  }
   previousOverflow = undefined;
   previousFocus?.focus();
   previousFocus = undefined;
 }
 
 function closeSearch(): void {
-  if (!dialog.value?.open) return;
+  if (!dialog.value?.open) {
+    return;
+  }
   dialog.value.close();
   requestId += 1;
   status.value = 'idle';
@@ -161,7 +183,9 @@ function closeSearch(): void {
 }
 
 function openSearch(): void {
-  if (!dialog.value || dialog.value.open) return;
+  if (!dialog.value || dialog.value.open) {
+    return;
+  }
   const focused = document.activeElement;
   previousFocus = focused instanceof HTMLElement ? focused : undefined;
   previousOverflow = document.body.style.overflow;
@@ -172,10 +196,15 @@ function openSearch(): void {
 }
 
 function onShortcut({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+  if (event.isComposing || event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') {
+    return;
+  }
   event.preventDefault();
-  if (dialog.value?.open) closeSearch();
-  else openSearch();
+  if (dialog.value?.open) {
+    closeSearch();
+  } else {
+    openSearch();
+  }
 }
 
 function onCancel({ event }: { event: Event }): void {
@@ -184,9 +213,13 @@ function onCancel({ event }: { event: Event }): void {
 }
 
 function onBackdrop({ event }: { event: MouseEvent }): void {
-  if (event.target !== dialog.value || !dialog.value) return;
+  if (event.target !== dialog.value || !dialog.value) {
+    return;
+  }
   const bounds = dialog.value.getBoundingClientRect();
-  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeSearch();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+    closeSearch();
+  }
 }
 
 function focusResult({ offset }: { offset: number }): void {
@@ -194,7 +227,9 @@ function focusResult({ offset }: { offset: number }): void {
 }
 
 function onInputKeydown({ event }: { event: KeyboardEvent }): void {
-  if (event.isComposing || event.key !== 'ArrowDown' || !results.value.length) return;
+  if (event.isComposing || event.key !== 'ArrowDown' || !results.value.length) {
+    return;
+  }
   event.preventDefault();
   focusResult({ offset: 0 });
 }
@@ -202,11 +237,16 @@ function onInputKeydown({ event }: { event: KeyboardEvent }): void {
 function moveResult({ event, offset }: { event: KeyboardEvent; offset: number }): void {
   const links = [...(resultList.value?.querySelectorAll<HTMLAnchorElement>('a') ?? [])];
   const current = links.indexOf(event.target as HTMLAnchorElement);
-  if (current < 0) return;
+  if (current < 0) {
+    return;
+  }
   event.preventDefault();
   const next = current + offset;
-  if (next < 0) input.value?.focus();
-  else links[next]?.focus();
+  if (next < 0) {
+    input.value?.focus();
+  } else {
+    links[next]?.focus();
+  }
 }
 </script>
 
@@ -261,25 +301,140 @@ function moveResult({ event, offset }: { event: KeyboardEvent; offset: number })
 </template>
 
 <style scoped>
-.docs-search-trigger { width:37px; padding:0; }
-.docs-search-trigger:disabled { cursor:default; }
-.docs-search-dialog { box-sizing:border-box; width:min(680px,calc(100vw - 28px)); max-width:none; height:min(62dvh,460px); margin:10dvh auto 0; padding:0; border:1px solid var(--line-strong); border-radius:16px; background:var(--surface); color:var(--text); box-shadow:var(--panel-shadow); overflow:hidden; }
-.docs-search-dialog[open] { display:flex; flex-direction:column; }
-.docs-search-dialog::backdrop { background:rgba(3,8,18,.62); backdrop-filter:blur(4px); }
-.docs-search-head { display:flex; align-items:center; gap:12px; padding:14px 17px; border-bottom:1px solid var(--line); color:var(--muted); }
-.docs-search-head input { flex:1; min-width:0; padding:7px 0; border:0; outline:0; background:transparent; color:var(--text); font-size:16px; }
-.docs-search-head input:focus-visible { outline:0; }
-.docs-search-close { flex:none; width:31px; height:31px; border:1px solid var(--line-strong); border-radius:7px; background:var(--surface-2); color:var(--muted); font-size:22px; line-height:1; }
-.docs-search-close:hover { color:var(--text); }
-.docs-search-content { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
-.search-status { position:sticky; top:0; z-index:1; box-sizing:border-box; display:flex; align-items:center; min-height:54px; margin:0; padding:12px 20px; background:var(--surface); color:var(--muted); font-size:13px; }
-.search-status span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.docs-search-retry { margin:0 20px 12px; padding:8px 13px; border:1px solid var(--line-strong); border-radius:8px; background:var(--surface-2); color:var(--text); }
-.search-results { list-style:none; padding:0 12px 12px; margin:0; }
-.search-results li + li { border-top:1px solid var(--line); }
-.search-results a { display:block; padding:14px 10px; border-radius:9px; text-decoration:none; }
-.search-results a:hover, .search-results a:focus-visible { background:var(--surface-2); }
-.search-results strong { display:block; color:var(--text); font-size:15px; }
-.search-results span { display:block; margin-top:5px; color:var(--muted); font-size:12px; line-height:1.7; }
-@media(max-width:620px) { .docs-search-dialog { margin:5dvh auto 0; max-height:85dvh; } .docs-search-head { padding:10px 12px; } }
+.docs-search-trigger {
+  width: 37px;
+  padding: 0;
+}
+.docs-search-trigger:disabled {
+  cursor: default;
+}
+.docs-search-dialog {
+  box-sizing: border-box;
+  width: min(680px,calc(100vw - 28px));
+  max-width: none;
+  height: min(62dvh,460px);
+  margin: 10dvh auto 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+.docs-search-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.docs-search-dialog::backdrop {
+  background: rgba(3,8,18,.62);
+  backdrop-filter: blur(4px);
+}
+.docs-search-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 17px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.docs-search-head input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+}
+.docs-search-head input:focus-visible {
+  outline: 0;
+}
+.docs-search-close {
+  flex: none;
+  width: 31px;
+  height: 31px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+.docs-search-close:hover {
+  color: var(--text);
+}
+.docs-search-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.search-status {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  margin: 0;
+  padding: 12px 20px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+.search-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docs-search-retry {
+  margin: 0 20px 12px;
+  padding: 8px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+.search-results {
+  list-style: none;
+  padding: 0 12px 12px;
+  margin: 0;
+}
+.search-results li + li {
+  border-top: 1px solid var(--line);
+}
+.search-results a {
+  display: block;
+  padding: 14px 10px;
+  border-radius: 9px;
+  text-decoration: none;
+}
+.search-results a:hover, .search-results a:focus-visible {
+  background: var(--surface-2);
+}
+.search-results strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+}
+.search-results span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+@media(max-width:620px) {
+  .docs-search-dialog {
+    margin: 5dvh auto 0;
+    max-height: 85dvh;
+  }
+  .docs-search-head {
+    padding: 10px 12px;
+  }
+}
 </style>

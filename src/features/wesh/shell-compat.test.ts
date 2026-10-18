@@ -553,7 +553,9 @@ printf 'AFTER\\n'
         source: {
           kind: 'bytes',
           async read() {
-            if (emitted) return undefined;
+            if (emitted) {
+              return undefined;
+            }
             emitted = true;
             return sourceBytes;
           },
@@ -625,7 +627,9 @@ cat <<< "$value"
     const source = {
       kind: 'bytes' as const,
       async read() {
-        if (emitted) return undefined;
+        if (emitted) {
+          return undefined;
+        }
         emitted = true;
         return sourceBytes;
       },

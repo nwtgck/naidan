@@ -83,7 +83,9 @@ export function useVirtualizedGlobalSearchResults({
 
     for (let index = 0; index < results.value.length; index++) {
       const entry = results.value[index];
-      if (entry === undefined) continue;
+      if (entry === undefined) {
+        continue;
+      }
       const key = getSearchResultKey({ entry });
       const measuredHeight = measuredHeights.get(key);
       const height = measuredHeight ?? estimatedResultHeight({ entry });
@@ -99,7 +101,9 @@ export function useVirtualizedGlobalSearchResults({
   const virtualizationEnabled = computed(() => viewportHeight.value > 0);
 
   const visibleResults = computed<VirtualizedGlobalSearchResult[]>(() => {
-    if (results.value.length === 0) return [];
+    if (results.value.length === 0) {
+      return [];
+    }
 
     let startIndex = 0;
     let endIndex = results.value.length;
@@ -120,7 +124,9 @@ export function useVirtualizedGlobalSearchResults({
     const visible: VirtualizedGlobalSearchResult[] = [];
     for (let index = startIndex; index < endIndex; index++) {
       const entry = results.value[index];
-      if (entry === undefined) continue;
+      if (entry === undefined) {
+        continue;
+      }
       visible.push({
         entry,
         index,
@@ -175,15 +181,23 @@ export function useVirtualizedGlobalSearchResults({
     rowResizeObserver = new ResizeObserver(entries => {
       let changed = false;
       for (const resizeEntry of entries) {
-        if (!(resizeEntry.target instanceof HTMLElement)) continue;
+        if (!(resizeEntry.target instanceof HTMLElement)) {
+          continue;
+        }
         const key = resizeEntry.target.dataset.searchResultKey;
-        if (key === undefined) continue;
+        if (key === undefined) {
+          continue;
+        }
         const height = resizeEntry.borderBoxSize[0]?.blockSize ?? resizeEntry.contentRect.height;
-        if (height <= 0 || measuredHeights.get(key) === height) continue;
+        if (height <= 0 || measuredHeights.get(key) === height) {
+          continue;
+        }
         measuredHeights.set(key, height);
         changed = true;
       }
-      if (changed) measurementsRevision.value++;
+      if (changed) {
+        measurementsRevision.value++;
+      }
     });
     return rowResizeObserver;
   }
@@ -201,7 +215,9 @@ export function useVirtualizedGlobalSearchResults({
       rowElements.delete(key);
     }
 
-    if (!(element instanceof HTMLElement) || previous === element) return;
+    if (!(element instanceof HTMLElement) || previous === element) {
+      return;
+    }
     element.dataset.searchResultKey = key;
     rowElements.set(key, element);
     ensureRowResizeObserver()?.observe(element);
@@ -209,8 +225,12 @@ export function useVirtualizedGlobalSearchResults({
 
   function scrollResultIntoView({ index }: { index: number }): void {
     const container = containerRef.value;
-    if (container === null || container.clientHeight <= 0) return;
-    if (index < 0 || index >= results.value.length) return;
+    if (container === null || container.clientHeight <= 0) {
+      return;
+    }
+    if (index < 0 || index >= results.value.length) {
+      return;
+    }
 
     const resultTop = layout.value.offsets[index] ?? 0;
     const resultBottom = layout.value.offsets[index + 1] ?? resultTop;
@@ -238,7 +258,9 @@ export function useVirtualizedGlobalSearchResults({
     async nextResults => {
       const currentKeys = new Set(nextResults.map(entry => getSearchResultKey({ entry })));
       for (const key of measuredHeights.keys()) {
-        if (!currentKeys.has(key)) measuredHeights.delete(key);
+        if (!currentKeys.has(key)) {
+          measuredHeights.delete(key);
+        }
       }
       measurementsRevision.value++;
       await nextTick();

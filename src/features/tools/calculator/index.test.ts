@@ -37,14 +37,18 @@ describe('CalculatorTool', () => {
       args: { expression: 'pi * 2', output: { format: 'rational' } },
     });
     expect(approximate.status).toBe('error');
-    if (approximate.status === 'error') expect(approximate.code).toBe('execution_failed');
+    if (approximate.status === 'error') {
+      expect(approximate.code).toBe('execution_failed');
+    }
   });
 
   it('exposes calculator precision help', async () => {
     const tool = new CalculatorTool();
     const result = await tool.execute({ args: { expression: 'help precision' } });
     expect(result.status).toBe('success');
-    if (result.status === 'success') expect(result.content).toContain('Rational Tool output');
+    if (result.status === 'success') {
+      expect(result.content).toContain('Rational Tool output');
+    }
   });
 
   it('strictly rejects invalid Tool argument combinations', async () => {
@@ -60,7 +64,9 @@ describe('CalculatorTool', () => {
     for (const args of invalidArguments) {
       const result = await tool.execute({ args });
       expect(result.status, JSON.stringify(args)).toBe('error');
-      if (result.status === 'error') expect(result.code).toBe('invalid_arguments');
+      if (result.status === 'error') {
+        expect(result.code).toBe('invalid_arguments');
+      }
     }
   });
 

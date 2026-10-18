@@ -17,11 +17,15 @@ function createDeferred(): Deferred {
   return {
     promise,
     resolve() {
-      if (resolvePromise === undefined) throw new Error('Deferred resolve was not initialized.');
+      if (resolvePromise === undefined) {
+        throw new Error('Deferred resolve was not initialized.');
+      }
       resolvePromise();
     },
     reject(error) {
-      if (rejectPromise === undefined) throw new Error('Deferred reject was not initialized.');
+      if (rejectPromise === undefined) {
+        throw new Error('Deferred reject was not initialized.');
+      }
       rejectPromise(error);
     },
   };
@@ -32,7 +36,9 @@ async function waitForCallCount({ callback, count }: {
   count: number,
 }): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (callback.mock.calls.length === count) return;
+    if (callback.mock.calls.length === count) {
+      return;
+    }
     await Promise.resolve();
   }
   throw new Error(`Expected callback to be called ${count} times, but saw ${callback.mock.calls.length}.`);
@@ -127,7 +133,9 @@ describe('static Tailwind refresh coordinator', () => {
     const firstRefresh = createDeferred();
     const expectedError = new Error('first refresh failed');
     const refresh = vi.fn(async ({ context }: { context: string }) => {
-      if (context === 'first') await firstRefresh.promise;
+      if (context === 'first') {
+        await firstRefresh.promise;
+      }
     });
     const coordinator = createRefreshCoordinator({ refresh });
 

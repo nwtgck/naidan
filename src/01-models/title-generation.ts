@@ -6,7 +6,9 @@ export function retargetTitleGenerationToSameScope({ source, model }: {
   source: SettingsTitleGeneration,
   model: 'same_scope' | { id: string },
 }): SettingsTitleGeneration {
-  if (source === 'disabled') return 'disabled';
+  if (source === 'disabled') {
+    return 'disabled';
+  }
   const { endpoint: _endpoint, model: _model, lmParameters, ...unhandled } = source;
   unhandled satisfies Record<PropertyKey, never>;
   return {

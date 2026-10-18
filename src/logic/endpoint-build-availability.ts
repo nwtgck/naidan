@@ -6,7 +6,10 @@ export function getEndpointBuildAvailability({ type }: { type: EndpointType }): 
   switch (type) {
   case 'transformers_js': return __BUILD_MODE_IS_STANDALONE__ ? 'unavailable-in-standalone' : 'available';
   case 'naidan_rpc': case 'openai': case 'ollama': case 'llama_cpp_browser': case 'browser_provided_lm': return 'available';
-  default: { const exhaustive: never = type; throw new Error(`Unhandled endpoint type: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = type;
+    throw new Error(`Unhandled endpoint type: ${exhaustive}`);
+  }
   }
 }
 

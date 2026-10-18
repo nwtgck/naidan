@@ -58,7 +58,9 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     chatId: ChatId,
   }) {
     const existingTimer = compactProgressResetTimers.get(chatId);
-    if (existingTimer === undefined) return;
+    if (existingTimer === undefined) {
+      return;
+    }
     globalThis.clearTimeout(existingTimer);
     compactProgressResetTimers.delete(chatId);
   }

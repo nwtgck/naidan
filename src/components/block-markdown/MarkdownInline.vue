@@ -12,7 +12,9 @@ const props = defineProps<{
 }>();
 
 const parts = computed<MarkdownInlinePart[]>(() => {
-  if (!props.text) return [];
+  if (!props.text) {
+    return [];
+  }
 
   const rawHtml = (() => {
     const m = props.mode;

@@ -29,8 +29,12 @@ export async function readFileRange({ files, path, position, length }: {
   position: number,
   length: number,
 }): Promise<Uint8Array> {
-  if (!Number.isSafeInteger(position) || position < 0) throw new Error(`invalid file position: ${position}`);
-  if (!Number.isSafeInteger(length) || length < 0) throw new Error(`invalid file read length: ${length}`);
+  if (!Number.isSafeInteger(position) || position < 0) {
+    throw new Error(`invalid file position: ${position}`);
+  }
+  if (!Number.isSafeInteger(length) || length < 0) {
+    throw new Error(`invalid file read length: ${length}`);
+  }
   const handle = await files.open({
     path,
     flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
@@ -45,7 +49,9 @@ export async function readFileRange({ files, path, position, length }: {
         length: length - totalRead,
         position: position + totalRead,
       });
-      if (bytesRead === 0) break;
+      if (bytesRead === 0) {
+        break;
+      }
       totalRead += bytesRead;
     }
     return buffer.subarray(0, totalRead);
@@ -86,7 +92,9 @@ export async function writeHandleBytes({ handle, bytes }: {
       offset,
       length: bytes.byteLength - offset,
     });
-    if (bytesWritten === 0) throw new Error('short write to output');
+    if (bytesWritten === 0) {
+      throw new Error('short write to output');
+    }
     offset += bytesWritten;
   }
 }
@@ -111,7 +119,9 @@ export async function replaceFileViaLock({ files, path, bytes }: {
     await files.rename({ oldPath: lockPath, newPath: path });
     lockExists = false;
   } finally {
-    if (handle !== undefined) await handle.close();
+    if (handle !== undefined) {
+      await handle.close();
+    }
     if (lockExists && await pathExists({ files, path: lockPath })) {
       await files.unlink({ path: lockPath });
     }

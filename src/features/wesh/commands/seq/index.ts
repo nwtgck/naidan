@@ -236,7 +236,9 @@ function parseSeqArgs({
   let optionsDone = false;
   for (let index = 0; index < args.length; index++) {
     const token = args[index];
-    if (token === undefined) continue;
+    if (token === undefined) {
+      continue;
+    }
 
     if (!optionsDone && token === '--') {
       optionsDone = true;
@@ -584,8 +586,12 @@ function quantizeLongDoubleRational({
     return { numerator: 0n, denominator: 1n, negativeZero };
   }
   let exponent = bitLength({ value: numerator }) - bitLength({ value: denominator });
-  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent }) < 0) exponent -= 1;
-  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent: exponent + 1 }) >= 0) exponent += 1;
+  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent }) < 0) {
+    exponent -= 1;
+  }
+  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent: exponent + 1 }) >= 0) {
+    exponent += 1;
+  }
 
   const minimumNormalExponent = -16_382;
   const effectiveExponent = Math.max(exponent, minimumNormalExponent);
@@ -1272,7 +1278,9 @@ export const seqCommandImplementation: WeshCommandImplementation = {
     try {
       if (parsed.format === undefined) {
         for (const value of iterateSeqValues({ plan: planned.plan })) {
-          if (wroteValue) await writer.write({ text: parsed.separator });
+          if (wroteValue) {
+            await writer.write({ text: parsed.separator });
+          }
           const rendered = renderValue({ value });
           await writer.write({
             text: equalWidth === undefined
@@ -1300,7 +1308,9 @@ export const seqCommandImplementation: WeshCommandImplementation = {
           last,
           spec: printfSpec,
         })) {
-          if (wroteValue) await writer.write({ text: parsed.separator });
+          if (wroteValue) {
+            await writer.write({ text: parsed.separator });
+          }
           await writer.write({ text: formatLongDoubleValue({ value, spec: printfSpec }) });
           wroteValue = true;
         }

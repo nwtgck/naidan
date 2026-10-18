@@ -26,7 +26,9 @@ function regexEscape({ value }: { value: string }): string {
 }
 
 function regexClassLiteral({ character, escaped }: { character: string, escaped: boolean }): string {
-  if (escaped && character === '-') return '\\x2D';
+  if (escaped && character === '-') {
+    return '\\x2D';
+  }
   switch (character) {
   case '\\':
     return '\\\\';
@@ -77,11 +79,16 @@ function compileGitBracketExpression({
     }
     if (character === '[' && pattern[index + 1] === ':') {
       const end = pattern.indexOf(':]', index + 2);
-      if (end < 0) return undefined;
+      if (end < 0) {
+        return undefined;
+      }
       const name = pattern.slice(index + 2, end);
       const translated = gitPosixCharacterClassSource({ name });
-      if (translated === undefined) impossible = true;
-      else body += translated;
+      if (translated === undefined) {
+        impossible = true;
+      } else {
+        body += translated;
+      }
       index = end + 2;
       hasContent = true;
       continue;
@@ -127,7 +134,9 @@ function createGitGlobSource({ pattern, slashMode }: {
     }
     if (character === '*') {
       if (bytePattern[index + 1] === '*') {
-        while (bytePattern[index + 1] === '*') index += 1;
+        while (bytePattern[index + 1] === '*') {
+          index += 1;
+        }
         if (bytePattern[index + 1] === '/') {
           source += '(?:.*?/)?';
           index += 1;

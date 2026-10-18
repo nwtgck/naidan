@@ -21,19 +21,29 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
   async runChatOperation({ signal, operation, onProgress }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {
     const notify = ({ progress }: { progress: LmOperationProgress }): void => {
       try {
-        if (onProgress) void Promise.resolve(onProgress({ progress })).catch(() => undefined);
+        if (onProgress) {
+          void Promise.resolve(onProgress({ progress })).catch(() => undefined);
+        }
       } catch { /* Display-only, independent of operation success. */ }
     };
-    if (!signal?.aborted) notify({ progress: { phase: 'queued', completed: 0, total: 0 } });
+    if (!signal?.aborted) {
+      notify({ progress: { phase: 'queued', completed: 0, total: 0 } });
+    }
     await this.service.runGenerationOperation({
       signal,
       onProgress({ progress }) {
-        if (signal?.aborted) return;
+        if (signal?.aborted) {
+          return;
+        }
         const { phase, completed, total } = progress;
         switch (phase) {
-        case 'initializing': case 'loading': case 'prefill': case 'generating': notify({ progress: { phase, completed, total } }); break;
+        case 'initializing': case 'loading': case 'prefill': case 'generating': notify({ progress: { phase, completed, total } });
+          break;
         case 'importing': case 'decoding-audio': break;
-        default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = phase;
+          throw new Error(String(exhaustive));
+        }
         }
       },
       operation: async ({ scope }) => {
@@ -47,10 +57,14 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
         try {
           await owned.close();
         } catch (error) {
-          if (failure !== undefined && failure.error !== error) throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+          if (failure !== undefined && failure.error !== error) {
+            throw new AggregateError([failure.error, error], 'Chat operation and cleanup failed.');
+          }
           throw error;
         }
-        if (failure !== undefined) throw failure.error;
+        if (failure !== undefined) {
+          throw failure.error;
+        }
       },
     });
   }

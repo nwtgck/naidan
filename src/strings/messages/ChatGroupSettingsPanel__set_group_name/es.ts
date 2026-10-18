@@ -1,1 +1,1 @@
-export const ChatGroupSettingsPanel__set_group_name = (): string => 'Establecer nombre del grupo';
+export const ChatGroupSettingsPanel__set_group_name = (): string => 'Usar el nombre del modelo para el grupo';

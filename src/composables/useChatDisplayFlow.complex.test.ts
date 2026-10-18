@@ -178,7 +178,9 @@ describe('useChatDisplayFlow complex scenario', () => {
     expect(new Set(sequences.map(sequence => sequence.id)).size).toBe(2);
     for (const sequence of sequences) {
       const first = sequence.items[0];
-      if (first?.type !== 'message') throw new Error('Expected each sequence to start with a message');
+      if (first?.type !== 'message') {
+        throw new Error('Expected each sequence to start with a message');
+      }
       expect(sequence.id).toBe(`seq-${first.key}`);
     }
 

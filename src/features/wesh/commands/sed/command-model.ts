@@ -68,7 +68,9 @@ export function isZeroSedAddress({
 }: {
   address: SedAddress | undefined;
 }): boolean {
-  if (address === undefined) return false;
+  if (address === undefined) {
+    return false;
+  }
   switch (address.kind) {
   case "zero":
     return true;

@@ -205,7 +205,8 @@ describe('generateGptOss input observation', () => {
 
 describe('GPT-OSS content boundaries', () => {
   beforeEach(() => {
-    vi.clearAllMocks(); streaming.callback = undefined;
+    vi.clearAllMocks();
+    streaming.callback = undefined;
   });
 
   it('renders every text-array item in order without interpreting literal tags or adding separators', async () => {
@@ -276,7 +277,9 @@ describe('GPT-OSS content boundaries', () => {
     const onChunk = vi.fn();
     const generateWithModel = vi.fn(async () => {
       const emit = streaming.callback!;
-      for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|channel|>', 'commentary', '<|message|>', argumentsText]) emit(token);
+      for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|channel|>', 'commentary', '<|message|>', argumentsText]) {
+        emit(token);
+      }
       expect(onToolCalls).not.toHaveBeenCalled();
       emit('<|call|>');
       // Delivery waits for the native call to settle rather than starting a tool in its callback.
@@ -321,7 +324,9 @@ describe('GPT-OSS content boundaries', () => {
       onInputPrepared: undefined,
       generateWithModel: vi.fn(async () => {
         const emit = streaming.callback!;
-        for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', content, '<|call|>']) emit(token);
+        for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', content, '<|call|>']) {
+          emit(token);
+        }
         return { past_key_values: undefined };
       }),
     });
@@ -346,7 +351,9 @@ describe('GPT-OSS content boundaries', () => {
       onInputPrepared: undefined,
       generateWithModel: vi.fn(async () => {
         const emit = streaming.callback!;
-        for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', '{}']) emit(token);
+        for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', '{}']) {
+          emit(token);
+        }
         return { past_key_values: undefined };
       }),
     });

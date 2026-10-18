@@ -61,7 +61,9 @@ function repositoryRelativePath({ url }: { url: string }): string {
   const parsed = new URL(url);
   const marker = `/resolve/${REVISION}/`;
   const markerIndex = parsed.pathname.indexOf(marker);
-  if (markerIndex < 0) throw new Error(`Unexpected Transformers.js request URL: ${parsed.origin}${parsed.pathname}`);
+  if (markerIndex < 0) {
+    throw new Error(`Unexpected Transformers.js request URL: ${parsed.origin}${parsed.pathname}`);
+  }
   return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length));
 }
 
@@ -90,7 +92,9 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
     const path = repositoryRelativePath({ url });
     if (isHuggingFaceModelArtifactUrl({ url })) {
       const request = huggingFaceResolveArtifactRequest({ url });
-      if (request === undefined) throw new Error(`Could not parse actual Transformers.js artifact URL: ${url}`);
+      if (request === undefined) {
+        throw new Error(`Could not parse actual Transformers.js artifact URL: ${url}`);
+      }
       return await barrier.observe({ request });
     }
 
@@ -133,7 +137,9 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
       try {
         const result = await outcome;
         expect(result.status).toBe('rejected');
-        if (result.status === 'rejected') expect(result.error).toBe(reason);
+        if (result.status === 'rejected') {
+          expect(result.error).toBe(reason);
+        }
       } finally {
         barrier.dispose();
       }

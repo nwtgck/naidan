@@ -1,6 +1,6 @@
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { discoverRepository, groupModelFiles } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
@@ -22,25 +22,34 @@ const wrappers: VueWrapper[] = [];
 
 function render({ models }: { models: LocalModel[] }): VueWrapper {
   const wrapper = mount(LlamaCppBrowserModelSuggestions, { props: { models, disabled: false, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, defaultActionDisabled: false } });
-  wrappers.push(wrapper); return wrapper;
+  wrappers.push(wrapper);
+  return wrapper;
 }
 
 beforeEach(async () => {
-  vi.resetAllMocks(); queueTest.reset(); metadataTest.reset();
+  vi.resetAllMocks();
+  queueTest.reset();
+  metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
   vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.hfRepository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
 afterEach(async () => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
-  for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
-  await flushPromises(); vi.useRealTimers();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
+  for (const job of getDownloadQueue().jobs.value) {
+    getDownloadQueue().cancel({ id: job.id });
+  }
+  await flushPromises();
+  vi.useRealTimers();
 });
 
 describe('offline-first suggested model UI', () => {
   it('does not contact repositories on mount, expansion, filtering, details or multimodal toggles', async () => {
-    const wrapper = render({ models: [] }); await flushPromises();
+    const wrapper = render({ models: [] });
+    await flushPromises();
     expect(wrapper.get('[data-testid="llama-suggestions-toggle"]').attributes('aria-expanded')).toBe('true');
     expect(wrapper.get('[data-testid="llama-suggestions-memory"]').findAll('button')).toHaveLength(4);
     await wrapper.get('[data-testid="llama-suggestions-memory-8"]').trigger('click');
@@ -49,10 +58,13 @@ describe('offline-first suggested model UI', () => {
     await wrapper.get('[data-testid="llama-suggestions-memory-all"]').trigger('click');
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     expect(row.get('[role="switch"]').attributes('aria-checked')).toBe('false');
-    await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click'); await row.get('[role="switch"]').trigger('click'); await flushPromises();
+    await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
+    await row.get('[role="switch"]').trigger('click');
+    await flushPromises();
     expect(row.get('[role="switch"]').attributes('aria-checked')).toBe('true');
     await wrapper.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
-    expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
     expect(wrapper.get('[data-testid="llama-suggestions-find-more"]').attributes('href')).toBe('https://huggingface.co/models?library=gguf');
   });
 
@@ -63,7 +75,8 @@ describe('offline-first suggested model UI', () => {
     await flushPromises();
     await wrapper.setProps({ models: [local] });
     expect(toggle.attributes('aria-expanded')).toBe('true');
-    const existing = render({ models: [local] }); await flushPromises();
+    const existing = render({ models: [local] });
+    await flushPromises();
     expect(existing.get('[data-testid="llama-suggestions-toggle"]').attributes('aria-expanded')).toBe('true');
     await toggle.trigger('click');
     const content = wrapper.get(`[id="${toggle.attributes('aria-controls')}"]`);
@@ -79,7 +92,8 @@ describe('offline-first suggested model UI', () => {
   });
 
   it('keeps details next to options, uniquely labelled, initially inert and separate from the repository action', async () => {
-    const wrapper = render({ models: [] }); await flushPromises();
+    const wrapper = render({ models: [] });
+    await flushPromises();
     const toggles = wrapper.findAll('[data-testid="llama-suggestion-details-toggle"]');
     expect(toggles).toHaveLength(modelSuggestions.length);
     expect(new Set(toggles.map(toggle => toggle.attributes('aria-controls'))).size).toBe(modelSuggestions.length);
@@ -117,7 +131,8 @@ describe('offline-first suggested model UI', () => {
     { locale: 'zh-Hans', title: '模型目录', more: '浏览更多模型', contents: '下载内容', check: '查看内容' },
   ] as const)('localizes the catalog and discovery actions in $locale', async ({ locale, title, more, contents, check }) => {
     await ensureAllStringsForTest({ locale });
-    const wrapper = render({ models: [] }); await flushPromises();
+    const wrapper = render({ models: [] });
+    await flushPromises();
     expect(wrapper.get('[data-testid="llama-suggestions-toggle"]').text()).toBe(title);
     const link = wrapper.get('[data-testid="llama-suggestions-find-more"]');
     expect(link.text()).toBe(more);
@@ -132,18 +147,21 @@ describe('offline-first suggested model UI', () => {
   });
 
   it('shows a pinned file plan only after explicit inspection and recalculates multimodal locally', async () => {
-    const wrapper = render({ models: [] }); await flushPromises();
+    const wrapper = render({ models: [] });
+    await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     expect(row.find('[data-testid="llama-download-plan-files"]').exists()).toBe(false);
     await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
-    await row.get('[data-testid="llama-suggestion-check"]').trigger('click'); await flushPromises();
+    await row.get('[data-testid="llama-suggestion-check"]').trigger('click');
+    await flushPromises();
     expect(discoverRepository).toHaveBeenCalledOnce();
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).toContain(main);
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).not.toContain(projector);
     const link = row.get('[data-testid="llama-download-plan-files"] a');
     expect(link.attributes('href')).toBe(`https://huggingface.co/${muse.hfRepository}/resolve/${revision}/${main}?download=true`);
     expect(link.attributes('download')).toBeDefined();
-    await row.get('[role="switch"]').trigger('click'); await flushPromises();
+    await row.get('[role="switch"]').trigger('click');
+    await flushPromises();
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).toContain(projector);
     expect(discoverRepository).toHaveBeenCalledOnce();
     await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
@@ -151,7 +169,8 @@ describe('offline-first suggested model UI', () => {
     await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).toContain(projector);
     expect(row.get('[data-testid="llama-suggestion-check"]').text()).toBe('Refresh contents');
-    await row.get('[data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
+    await row.get('[data-testid="llama-suggestion-download"]').trigger('click');
+    await flushPromises();
     expect(discoverRepository).toHaveBeenCalledOnce();
     expect(vi.mocked(downloadRepository).mock.calls[0]?.[0].selection.files.map(file => file.path)).toEqual([main, projector]);
   });
@@ -160,40 +179,54 @@ describe('offline-first suggested model UI', () => {
     const gate = Promise.withResolvers<void>();
     vi.mocked(downloadRepository).mockImplementationOnce(async ({ signal, onProgress }) => {
       onProgress({ progress: { total: 128, completed: 64, processed: 64, phase: 'transferring' } });
-      await gate.promise; signal.throwIfAborted();
+      await gate.promise;
+      signal.throwIfAborted();
     });
-    const wrapper = render({ models: [] }); await flushPromises();
+    const wrapper = render({ models: [] });
+    await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
-    await row.get('[data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
+    await row.get('[data-testid="llama-suggestion-download"]').trigger('click');
+    await flushPromises();
     expect(vi.mocked(downloadRepository).mock.calls[0]?.[0].selection.files.map(file => file.path)).toEqual([main]);
     expect(row.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('50');
     const small = wrapper.get('[data-testid="llama-suggestion-smollm2-135m"]');
-    await small.get('[data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
+    await small.get('[data-testid="llama-suggestion-download"]').trigger('click');
+    await flushPromises();
     expect(small.text()).toContain('Waiting');
     expect(discoverRepository).toHaveBeenCalledOnce();
-    await small.get('[data-testid="llama-download-cancel"]').trigger('click'); await flushPromises();
+    await small.get('[data-testid="llama-download-cancel"]').trigger('click');
+    await flushPromises();
     expect(small.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
-    gate.resolve(); await flushPromises();
+    gate.resolve();
+    await flushPromises();
     expect(downloadRepository).toHaveBeenCalledOnce();
   });
 
   it('keeps the active request alive across unmount and remount without re-inspecting', async () => {
-    const gate = Promise.withResolvers<void>(); let signal: AbortSignal | undefined;
+    const gate = Promise.withResolvers<void>();
+    let signal: AbortSignal | undefined;
     vi.mocked(downloadRepository).mockImplementationOnce(async request => {
-      signal = request.signal; await gate.promise;
+      signal = request.signal;
+      await gate.promise;
     });
-    const wrapper = render({ models: [] }); await flushPromises();
-    await wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"] [data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
-    wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
+    const wrapper = render({ models: [] });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"] [data-testid="llama-suggestion-download"]').trigger('click');
+    await flushPromises();
+    wrapper.unmount();
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
     expect(signal?.aborted).toBe(false);
-    const again = render({ models: [] }); await flushPromises();
+    const again = render({ models: [] });
+    await flushPromises();
     expect(again.find('[data-testid="llama-suggestion-muse-glimmer-30b"] [data-testid="llama-download-pause"]').exists()).toBe(true);
     expect(discoverRepository).toHaveBeenCalledOnce();
-    gate.resolve(); await flushPromises();
+    gate.resolve();
+    await flushPromises();
   });
 
   it('uses exact local quantization state and changes the action instead of re-downloading', async () => {
-    const wrapper = render({ models: [local] }); await flushPromises();
+    const wrapper = render({ models: [local] });
+    await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(false);
     await row.get('[data-testid="llama-default-model-action"]').trigger('click');
@@ -201,27 +234,93 @@ describe('offline-first suggested model UI', () => {
     await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.name } });
     expect(row.get('[data-testid="llama-default-model-action"]').text()).toBe('In use');
     expect(row.get('[data-testid="llama-default-model-action"]').attributes('disabled')).toBeDefined();
-    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.hfRepository}:model-Q8_0.gguf` }] }); await flushPromises();
+    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.hfRepository}:model-Q8_0.gguf` }] });
+    await flushPromises();
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
+  });
+
+  it('offers the shared chat-group action only for an installed model when the caller provides it', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [] });
+    await wrapper.setProps({ createChatGroup });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    expect(row.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
+    await wrapper.setProps({ models: [local] });
+    await flushPromises();
+    expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(false);
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledExactlyOnceWith({ model: local });
+    expect(wrapper.emitted('selectDefault')).toBeUndefined();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('changes the catalog action without executing it and keeps the existing default-model event', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [local] });
+    await wrapper.setProps({ createChatGroup });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    await row.get('[data-testid="llama-model-action-options"]').trigger('click');
+    const option = document.querySelector<HTMLButtonElement>('[data-testid="llama-model-action-set-default"]');
+    if (!option) {
+      throw new Error('Default-model option was not shown');
+    }
+    await new DOMWrapper(option).trigger('click');
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(wrapper.emitted('selectDefault')).toBeUndefined();
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(wrapper.emitted('selectDefault')).toEqual([[local]]);
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('disables both catalog controls and shows progress only for the model being used to create a chat group', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [local] });
+    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.id });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('true');
+    expect(row.get('[data-testid="llama-model-action-main"]').element.matches(':disabled')).toBe(true);
+    expect(row.get('[data-testid="llama-model-action-options"]').element.matches(':disabled')).toBe(true);
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(createChatGroup).not.toHaveBeenCalled();
+    await wrapper.setProps({ creatingChatGroupModelId: 'another-model' });
+    expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('false');
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
   });
 });
 
 describe('the original catalog reused for audio', () => {
   function audioCatalog(): VueWrapper {
     const view = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: audioModelCatalog, selectionAction: 'select', memoryFilter: 'hide' } });
-    wrappers.push(view); return view;
+    wrappers.push(view);
+    return view;
   }
 
   it('uses the existing disclosure and never fetches on mount, folding, details or quantization changes', async () => {
-    const view = audioCatalog(); await flushPromises();
+    const view = audioCatalog();
+    await flushPromises();
     expect(view.findAll('[data-testid="llama-suggestion-heading"]')).toHaveLength(2);
     expect(view.find('[data-testid="llama-suggestions-memory"]').exists()).toBe(false);
-    for (const toggle of view.findAll('[data-testid="llama-suggestion-details-toggle"]')) await toggle.trigger('click');
-    for (const select of view.findAll('[data-testid="llama-suggestion-quantization"]')) await select.setValue('q8_0');
+    for (const toggle of view.findAll('[data-testid="llama-suggestion-details-toggle"]')) {
+      await toggle.trigger('click');
+    }
+    for (const select of view.findAll('[data-testid="llama-suggestion-quantization"]')) {
+      await select.setValue('q8_0');
+    }
     await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
-    await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click'); await flushPromises();
-    expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
+    await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
+    await flushPromises();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
     expect(view.findAll('[role="switch"]')).toHaveLength(0);
     expect(view.findAll('[data-testid="llama-suggestion-companion-required"]')).toHaveLength(2);
   });
@@ -229,22 +328,31 @@ describe('the original catalog reused for audio', () => {
   it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
     const saved: LocalModel = { id: `hf.co/${hint.hfRepository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
-    const view = audioCatalog(); await view.setProps({ models: [saved] }); await flushPromises();
+    const view = audioCatalog();
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    await view.setProps({ models: [saved], createChatGroup });
+    await flushPromises();
     const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
     // Required companion mode checks actual stored selection, not just a name.
     vi.mocked(repositoryDirectories).mockResolvedValue([{ id: saved.id, name: saved.name, modelPath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', projectorPath: 'mmproj-Q8_0.gguf', files: [] }]);
-    await view.setProps({ models: [{ ...saved, importedAt: 2 }] }); await flushPromises();
+    await view.setProps({ models: [{ ...saved, importedAt: 2 }] });
+    await flushPromises();
     const action = row.find('[data-testid="llama-suggestion-use"]');
-    expect(action.exists()).toBe(true); await action.trigger('click');
+    expect(action.exists()).toBe(true);
+    await action.trigger('click');
     expect(view.emitted('select')).toEqual([[{ ...saved, importedAt: 2 }]]);
     expect(view.emitted('selectDefault')).toBeUndefined();
-    expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
+    expect(view.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
   });
 
   it('resolves the main model and required companion only after a user download action', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
     vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.hfRepository, revision, ...groupModelFiles({ files: ['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'].map(path => ({ path, size: 128 })) }) });
-    const view = audioCatalog(); await flushPromises();
+    const view = audioCatalog();
+    await flushPromises();
     await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
     await vi.waitFor(() => expect(downloadRepository).toHaveBeenCalledOnce());
     expect(vi.mocked(downloadRepository).mock.calls[0]![0].selection.files.map(file => file.path)).toEqual(['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf']);
@@ -253,7 +361,8 @@ describe('the original catalog reused for audio', () => {
   it('does not start a main-only download if the required companion cannot be found', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
     vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.hfRepository, revision, ...groupModelFiles({ files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 128 }] }) });
-    const view = audioCatalog(); await flushPromises();
+    const view = audioCatalog();
+    await flushPromises();
     await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
     await vi.waitFor(() => expect(getDownloadQueue().jobs.value.some(job => job.status === 'failed')).toBe(true));
     expect(downloadRepository).not.toHaveBeenCalled();

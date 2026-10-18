@@ -47,19 +47,25 @@ export async function openModelDownloadAccess({ handle, kind, offset }: {
     let closed = false;
     let closeFailure: { error: unknown } | undefined;
     async function writable(): Promise<FileSystemWritableFileStream> {
-      if (closed) throw new Error('Model writer is closed');
+      if (closed) {
+        throw new Error('Model writer is closed');
+      }
       writer ??= await handle.createWritable({ keepExistingData: offset > 0 });
       return writer;
     }
     async function close(): Promise<void> {
-      if (closeFailure) throw closeFailure.error;
+      if (closeFailure) {
+        throw closeFailure.error;
+      }
       if (writer) {
         const active = writer;
         writer = undefined;
         try {
           await active.close();
         } catch (error) {
-          closeFailure = { error }; await active.abort().catch(() => undefined); throw error;
+          closeFailure = { error };
+          await active.abort().catch(() => undefined);
+          throw error;
         }
       }
       closed = true;
@@ -69,7 +75,8 @@ export async function openModelDownloadAccess({ handle, kind, offset }: {
       getSize: () => snapshot.size,
       async read({ bytes, at }) {
         const source = new Uint8Array(await snapshot.slice(at, at + bytes.length).arrayBuffer());
-        bytes.set(source); return source.length;
+        bytes.set(source);
+        return source.length;
       },
       async write({ bytes, at }) {
         await (await writable()).write({ type: 'write', position: at, data: bytes });
@@ -85,7 +92,10 @@ export async function openModelDownloadAccess({ handle, kind, offset }: {
       close,
     };
   }
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

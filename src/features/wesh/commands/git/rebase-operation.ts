@@ -25,11 +25,13 @@ async function finishRebase({ context, repository, reflogAction }: {
     reflogAction: string;
 }): Promise<WeshCommandResult> {
   const state = await readRebaseState({ files: context.files, repository });
-  if (state === undefined)
+  if (state === undefined) {
     throw new Error('no rebase in progress');
+  }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error('rebase HEAD is unborn');
+  }
   const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const identity = resolveGitReflogIdentity({ env: context.env, config });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
@@ -66,8 +68,9 @@ export async function executeRemainingRebaseSteps({ context, repository, reflogA
 }): Promise<WeshCommandResult> {
   while (true) {
     const step = await beginRebaseStep({ files: context.files, repository });
-    if (step === undefined)
+    if (step === undefined) {
       return finishRebase({ context, repository, reflogAction });
+    }
     let result: GitReplayStepResult;
     try {
       result = await applyReplayStep({
@@ -93,8 +96,9 @@ export async function executeRemainingRebaseSteps({ context, repository, reflogA
         message: result.replay.message,
         conflictPaths: result.preparedConflicts.map(conflict => conflict.path),
       });
-      for (const path of result.replay.autoMergedPaths)
+      for (const path of result.replay.autoMergedPaths) {
         await context.text().print({ text: `Auto-merging ${path}\n` });
+      }
       for (const conflict of result.preparedConflicts) {
         for (const text of formatPreparedMergeConflict({ conflict, oursLabel: 'HEAD', theirsLabel: result.replay.theirsLabel })) {
           await context.text().print({ text });
@@ -160,8 +164,9 @@ export async function skipRebase({ context }: {
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error('rebase HEAD is unborn');
+  }
   const headCommit = await readCommit({ files: context.files, repository, objectId: head.objectId });
   const headEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: headCommit.treeObjectId });
   await forceReplaceIndexAndWorktree({

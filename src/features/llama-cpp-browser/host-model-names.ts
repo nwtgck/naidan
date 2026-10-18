@@ -7,8 +7,12 @@ import { resolveHostModelName } from './runtime/host-model-aliases';
  * Workers and filesystem operations only receive canonical storage identities.
  */
 export async function resolveStoredModelName({ name }: { name: string }): Promise<string> {
-  if (name.startsWith('hf.co/')) return (await resolveRepositoryModel({ name })).id;
-  if (!name.startsWith('host/')) return name;
+  if (name.startsWith('hf.co/')) {
+    return (await resolveRepositoryModel({ name })).id;
+  }
+  if (!name.startsWith('host/')) {
+    return name;
+  }
   const directories = await storageService.loadHostModelDirectories();
   const reference = resolveHostModelName({ name, directories });
   // Capture the inventory selection as well as the root before queueing. Later

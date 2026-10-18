@@ -373,7 +373,9 @@ export const gzipCommandImplementation: WeshCommandImplementation = {
       if (testOnly) {
         delegatedArgs.push('-t');
       }
-      for (const positional of parsed.positionals) delegatedArgs.push(positional);
+      for (const positional of parsed.positionals) {
+        delegatedArgs.push(positional);
+      }
       return executeGzipDecompressionCommand({
         context: {
           ...context,

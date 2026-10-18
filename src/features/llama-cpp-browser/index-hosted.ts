@@ -50,7 +50,9 @@ let workerRetirement = Promise.resolve();
 
 function retireWorker({ worker }: { worker: LlamaCppWorkerClient }): WorkerRetirement {
   const existing = retiringWorkers.get(worker);
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   const outcome = Promise.withResolvers<void>();
   // Explicit disposal callers receive the original failure. Background cleanup
   // and the shared retirement barrier still settle without poisoning the lane.
@@ -91,18 +93,26 @@ function publishProfiles({ next }: { next: ProfileState }): void {
 
 function invalidateProfiles(): void {
   cacheOwner = undefined;
-  profileEpoch++; profileProbe = undefined; profileOwner = undefined; publishProfiles({ next: { status: 'idle' } });
+  profileEpoch++;
+  profileProbe = undefined;
+  profileOwner = undefined;
+  publishProfiles({ next: { status: 'idle' } });
 }
 
 async function ensureProfiles({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal | undefined }): Promise<ProfileCapabilities> {
-  if (profileOwner === worker && worker.canReuse() && profileState.status === 'ready') return profileState.capabilities;
+  if (profileOwner === worker && worker.canReuse() && profileState.status === 'ready') {
+    return profileState.capabilities;
+  }
   publishProfiles({ next: { status: 'checking' } });
   // Ordinary UI probes omit signal and only detach their waiter. A measured
   // operation owns its fresh Worker and can cancel its startup/probe as well.
   const epoch = profileEpoch;
   const capabilities = profileCapabilitiesSchema.parse(await worker.probeProfiles({ signal }));
-  if (epoch !== profileEpoch || client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
-  profileOwner = worker; publishProfiles({ next: { status: 'ready', capabilities } });
+  if (epoch !== profileEpoch || client !== worker || !worker.canReuse()) {
+    throw new LlamaCppBrowserError({ code: 'worker-failed' });
+  }
+  profileOwner = worker;
+  publishProfiles({ next: { status: 'ready', capabilities } });
   return capabilities;
 }
 
@@ -112,13 +122,19 @@ async function resolveGenerationOptions({ worker, options, signal }: { worker: L
   if (profile === undefined || !capabilities.profiles.some(entry => entry.profile === profile && entry.status === 'available')) {
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
-  if (client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+  if (client !== worker || !worker.canReuse()) {
+    throw new LlamaCppBrowserError({ code: 'worker-failed' });
+  }
   return { ...options, profile };
 }
 
 async function observeProbe({ pending, signal }: { pending: Promise<ProfileCapabilities>, signal: AbortSignal | undefined }): Promise<ProfileCapabilities> {
-  if (!signal) return pending;
-  if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  if (!signal) {
+    return pending;
+  }
+  if (signal.aborted) {
+    throw new LlamaCppBrowserError({ code: 'aborted' });
+  }
   let abort: () => void = () => {};
   try {
     return await Promise.race([pending, new Promise<never>((_resolve, reject) => {
@@ -163,13 +179,19 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
 }): Promise<T> {
   // Cancellation can skip awaiting preflight work, which must still own its rejection.
   void ready?.catch(() => {});
-  if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  if (signal?.aborted) {
+    throw new LlamaCppBrowserError({ code: 'aborted' });
+  }
   const epoch = profileEpoch;
   laneReservations++;
   switch (kind) {
-  case 'read-only': readOnlyReservations++; break;
+  case 'read-only': readOnlyReservations++;
+    break;
   case 'measurement': case 'operation': case 'probe': break;
-  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = kind;
+    throw new Error(String(exhaustive));
+  }
   }
   const predecessor = queue;
   let releaseLane: () => void = () => {};
@@ -179,13 +201,22 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
   try {
     await predecessor;
     await ready;
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-    switch (kind) {
-    case 'probe': if (epoch !== profileEpoch) throw new LlamaCppBrowserError({ code: 'aborted' }); break;
-    case 'measurement': case 'operation': case 'read-only': break;
-    default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
     }
-    const controller = new AbortController(); activeController = controller;
+    switch (kind) {
+    case 'probe': if (epoch !== profileEpoch) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
+      break;
+    case 'measurement': case 'operation': case 'read-only': break;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const controller = new AbortController();
+    activeController = controller;
     let measuredWorker: LlamaCppWorkerClient | undefined;
     const forwardAbort = (): void => controller.abort();
     signal?.addEventListener('abort', forwardAbort, { once: true });
@@ -193,48 +224,74 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       switch (kind) {
       case 'measurement':
         if (client) {
-          const retired = client; client = undefined; invalidateProfiles();
+          const retired = client;
+          client = undefined;
+          invalidateProfiles();
           await retireWorker({ worker: retired }).completed;
         }
-        await workerRetirement; controller.signal.throwIfAborted();
+        await workerRetirement;
+        controller.signal.throwIfAborted();
         break;
       case 'operation': case 'probe': case 'read-only': break;
-      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(String(exhaustive));
+      }
       }
       if (client && !client.canReuse()) {
-        void retireWorker({ worker: client }); client = undefined; invalidateProfiles();
+        void retireWorker({ worker: client });
+        client = undefined;
+        invalidateProfiles();
       }
       if (!client) {
-        const created = createLlamaCppWorkerClient(); client = created;
+        const created = createLlamaCppWorkerClient();
+        client = created;
         created.subscribeDisposed({
           listener: () => {
             void retireWorker({ worker: created });
             if (client === created) {
               const checking = profileState.status === 'checking';
-              client = undefined; invalidateProfiles();
-              if (checking) publishProfiles({ next: { status: 'error', code: 'worker-failed' } });
+              client = undefined;
+              invalidateProfiles();
+              if (checking) {
+                publishProfiles({ next: { status: 'error', code: 'worker-failed' } });
+              }
             }
           },
         });
       }
       // A real ownership handoff releases the previous reader's claim. A probe
       // keeps it; failure/cancellation detachment retains its retirement handle.
-      if (kind !== 'probe' && cacheOwner && cacheOwner !== owner) cacheOwner.worker = undefined;
+      if (kind !== 'probe' && cacheOwner && cacheOwner !== owner) {
+        cacheOwner.worker = undefined;
+      }
       switch (kind) {
-      case 'measurement': measuredWorker = client; cacheOwner = undefined; break;
-      case 'operation': cacheOwner = undefined; break;
+      case 'measurement': measuredWorker = client;
+        cacheOwner = undefined;
+        break;
+      case 'operation': cacheOwner = undefined;
+        break;
       case 'read-only':
         cacheOwner = owner;
-        if (owner) owner.worker = client;
+        if (owner) {
+          owner.worker = client;
+        }
         break;
       case 'probe': break;
-      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(String(exhaustive));
+      }
       }
       const result = await operation({ worker: client, signal: controller.signal });
       switch (kind) {
-      case 'measurement': case 'operation': case 'read-only': publish({ next: { status: 'idle' } }); break;
+      case 'measurement': case 'operation': case 'read-only': publish({ next: { status: 'idle' } });
+        break;
       case 'probe': break;
-      default: { const exhaustive: never = kind; throw new Error(`Unhandled operation kind: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(`Unhandled operation kind: ${exhaustive}`);
+      }
       }
       return result;
     } catch (error) {
@@ -242,16 +299,27 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
       switch (kind) {
       case 'probe':
         if (epoch === profileEpoch) {
-          if (client) void retireWorker({ worker: client }); client = undefined; invalidateProfiles();
+          if (client) {
+            void retireWorker({ worker: client });
+          }
+          client = undefined;
+          invalidateProfiles();
           publishProfiles({ next: { status: 'error', code: failure } });
         }
         throw new LlamaCppBrowserError({ code: failure });
       case 'measurement': case 'operation': case 'read-only': break;
-      default: { const exhaustive: never = kind; throw new Error(`Unhandled operation kind: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = kind;
+        throw new Error(`Unhandled operation kind: ${exhaustive}`);
+      }
       }
       const reusable = (failure === 'aborted' || failure === 'context-full' || failure === 'template-unsupported' || failure === 'reasoning-unsupported') && client?.canReuse();
       if (!reusable) {
-        if (client) void retireWorker({ worker: client }); client = undefined; invalidateProfiles();
+        if (client) {
+          void retireWorker({ worker: client });
+        }
+        client = undefined;
+        invalidateProfiles();
       }
       const code = controller.signal.aborted ? 'aborted' : errorCode({ error });
       switch (code) {
@@ -266,26 +334,35 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
         publish({ next: { status: 'error', code } });
         logDiagnostic({ diagnostic: { event: 'failed' } });
         break;
-      default: { const exhaustive: never = code; throw new Error(`Unhandled error code: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = code;
+        throw new Error(`Unhandled error code: ${exhaustive}`);
+      }
       }
       throw new LlamaCppBrowserError({ code });
     } finally {
       if (measuredWorker) {
         if (client === measuredWorker) {
-          client = undefined; invalidateProfiles();
+          client = undefined;
+          invalidateProfiles();
         }
         // Always retire the physical Worker, including failure and Stop, while
         // still holding the lane. Native release alone can retain mapped pools.
         await retireWorker({ worker: measuredWorker }).completed;
       }
-      signal?.removeEventListener('abort', forwardAbort); activeController = undefined;
+      signal?.removeEventListener('abort', forwardAbort);
+      activeController = undefined;
     }
   } finally {
     laneReservations--;
     switch (kind) {
-    case 'read-only': readOnlyReservations--; break;
+    case 'read-only': readOnlyReservations--;
+      break;
     case 'measurement': case 'operation': case 'probe': break;
-    default: { const exhaustive: never = kind; void exhaustive; }
+    default: {
+      const exhaustive: never = kind;
+      void exhaustive;
+    }
     }
     releaseLane();
   }
@@ -293,7 +370,9 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
 
 export const llamaCppBrowserService: LlamaCppBrowserService = {
   async prepareModel({ model, signal, onProgress }) {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
     const acceptedOptions = captureChatOptions({ options: { ...options } });
     // Resolve at acceptance so a shared advisory probe cannot retarget warmup.
     const accepted = acceptModelRequest({ request: { model }, validate: ({ request }) => ({ model: generateInputSchema.shape.model.parse(request.model) }) });
@@ -304,11 +383,15 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       const epoch = profileEpoch;
       await observeProbe({ pending: profileProbe, signal });
       // Releasing the engine while we waited must not revive its Worker.
-      if (epoch !== profileEpoch) throw new LlamaCppBrowserError({ code: 'aborted' });
+      if (epoch !== profileEpoch) {
+        throw new LlamaCppBrowserError({ code: 'aborted' });
+      }
     }
     // Inspect ownership, not progress. Tool callbacks can own the lane while
     // EngineState still says idle. Do not evict or wait behind another chat.
-    if (laneReservations > 0) return 'skipped-busy';
+    if (laneReservations > 0) {
+      return 'skipped-busy';
+    }
     return run({
       ready: promiseAllKeyed({ model: accepted, options: acceptedOptions }),
       kind: 'operation',
@@ -317,14 +400,18 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       operation: async ({ worker, signal }) => {
         let acceptingProgress = true;
         const report: typeof progress = ({ progress: value }) => {
-          if (signal.aborted || !acceptingProgress) return;
+          if (signal.aborted || !acceptingProgress) {
+            return;
+          }
           progress({ progress: value });
           onProgress?.({ progress: value });
         };
         try {
           report({ progress: { phase: 'initializing', completed: 0, total: 0 } });
           const concreteOptions = await resolveGenerationOptions({ worker, options: await acceptedOptions, signal: undefined });
-          if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+          if (signal.aborted) {
+            throw new LlamaCppBrowserError({ code: 'aborted' });
+          }
           await worker.prepareModel({ request: { model: (await accepted).model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
           return 'ready' as const;
         } finally {
@@ -335,12 +422,16 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   getProfileState: () => profileState,
   subscribeProfiles({ listener }) {
-    profileListeners.add(listener); listener({ state: profileState }); return () => {
+    profileListeners.add(listener);
+    listener({ state: profileState });
+    return () => {
       profileListeners.delete(listener);
     };
   },
   probeProfiles({ signal }) {
-    if (signal?.aborted) return Promise.reject(new LlamaCppBrowserError({ code: 'aborted' }));
+    if (signal?.aborted) {
+      return Promise.reject(new LlamaCppBrowserError({ code: 'aborted' }));
+    }
     if (client?.canReuse() && profileOwner === client && profileState.status === 'ready') {
       return observeProbe({ pending: Promise.resolve(profileState.capabilities), signal });
     }
@@ -348,7 +439,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       const pending = run({ ready: undefined, kind: 'probe', owner: undefined, signal: undefined, operation: ({ worker }) => ensureProfiles({ worker, signal: undefined }) });
       profileProbe = pending;
       void pending.finally(() => {
-        if (profileProbe === pending) profileProbe = undefined;
+        if (profileProbe === pending) {
+          profileProbe = undefined;
+        }
       }).catch(() => {});
     }
     return observeProbe({ pending: profileProbe, signal });
@@ -380,29 +473,39 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     }
   },
   subscribe({ listener }) {
-    listeners.add(listener); listener({ state: { ...state } }); return () => {
+    listeners.add(listener);
+    listener({ state: { ...state } });
+    return () => {
       listeners.delete(listener);
     };
   },
   subscribeModelList({ listener }) {
-    modelListeners.add(listener); return () => {
+    modelListeners.add(listener);
+    return () => {
       modelListeners.delete(listener);
     };
   },
   async listModels({ signal }) {
     signal?.throwIfAborted();
     const directories = await storageService.loadHostModelDirectories();
-    let models: LocalModel[]; let opfsFailure: { error: unknown } | undefined;
+    let models: LocalModel[];
+    let opfsFailure: { error: unknown } | undefined;
     try {
       models = await listStoredModels();
     } catch (error) {
       // An unavailable browser store must not hide usable linked folders.
-      if (!directories.length) throw error;
-      models = []; opfsFailure = { error };
+      if (!directories.length) {
+        throw error;
+      }
+      models = [];
+      opfsFailure = { error };
     }
     models.push(...await listHostStoredModels({ directories, signal }));
-    if (opfsFailure) recordOpfsInventoryIssue(opfsFailure);
-    signal?.throwIfAborted(); return models.sort((a, b) => a.name.localeCompare(b.name));
+    if (opfsFailure) {
+      recordOpfsInventoryIssue(opfsFailure);
+    }
+    signal?.throwIfAborted();
+    return models.sort((a, b) => a.name.localeCompare(b.name));
   },
   importModel({ file, signal }) {
     return run({
@@ -449,7 +552,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     signal?.throwIfAborted();
     const result = await withModelMutationLock({
       operation: () => {
-        signal?.throwIfAborted(); return removeStoredModel({ plan });
+        signal?.throwIfAborted();
+        return removeStoredModel({ plan });
       },
     });
     for (const listener of modelListeners) {
@@ -474,7 +578,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         const request = await initialRequest;
         progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
         const concreteOptions = await resolveGenerationOptions({ worker, options: request.options, signal: undefined });
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        if (signal.aborted) {
+          throw new LlamaCppBrowserError({ code: 'aborted' });
+        }
         return worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: progress, signal });
       },
     });
@@ -490,7 +596,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         const request = await initialRequest;
         progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
         const concreteOptions = await resolveGenerationOptions({ worker, options: request.options, signal: undefined });
-        if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+        if (signal.aborted) {
+          throw new LlamaCppBrowserError({ code: 'aborted' });
+        }
         return worker.generateAudio({ request: { ...request, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
       },
     });
@@ -499,7 +607,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     const reportOperation = ({ progress: value }: { progress: Progress }): void => {
       progress({ progress: value });
       try {
-        if (onProgress) void Promise.resolve(onProgress({ progress: { ...value } })).catch(() => undefined);
+        if (onProgress) {
+          void Promise.resolve(onProgress({ progress: { ...value } })).catch(() => undefined);
+        }
       } catch { /* Display observers cannot invalidate a healthy model. */ }
     };
     const capturedOptions = captureChatOptions({ options: { ...options } });
@@ -516,40 +626,59 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           const controller = new AbortController();
           const abort = () => controller.abort(signal.reason);
           signal.addEventListener('abort', abort, { once: true });
-          if (signal.aborted) abort();
+          if (signal.aborted) {
+            abort();
+          }
           let phase: 'open' | 'closed' = 'open';
           let pending: Promise<GenerationResult> | undefined;
           const generate: LlamaCppBrowserService['generate'] = ({ input, onEvent, signal }) => {
             switch (phase) {
             case 'open': break;
             case 'closed': throw new Error('The generation operation is closed.');
-            default: { const exhaustive: never = phase; throw new Error(`Unknown operation phase: ${exhaustive}`); }
+            default: {
+              const exhaustive: never = phase;
+              throw new Error(`Unknown operation phase: ${exhaustive}`);
             }
-            if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
-            if (observedFailure) throw observedFailure.error;
-            if (controller.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+            }
+            if (pending) {
+              throw new LlamaCppBrowserError({ code: 'busy' });
+            }
+            if (observedFailure) {
+              throw observedFailure.error;
+            }
+            if (controller.signal.aborted) {
+              throw new LlamaCppBrowserError({ code: 'aborted' });
+            }
             const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: acceptedOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
             const local = new AbortController();
             const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
             const removers = sources.map(source => {
               const forward = () => local.abort(source.reason);
               source.addEventListener('abort', forward, { once: true });
-              if (source.aborted) forward();
+              if (source.aborted) {
+                forward();
+              }
               return () => source.removeEventListener('abort', forward);
             });
             pending = Promise.resolve().then(async () => {
               let acceptingProgress = true;
               const report = ({ progress: value }: { progress: Progress }): void => {
-                if (!acceptingProgress || local.signal.aborted) return;
+                if (!acceptingProgress || local.signal.aborted) {
+                  return;
+                }
                 reportOperation({ progress: value });
               };
               try {
-                if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+                if (local.signal.aborted) {
+                  throw new LlamaCppBrowserError({ code: 'aborted' });
+                }
                 const request = await acceptedRequest;
                 local.signal.throwIfAborted();
                 report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
                 const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions, signal: undefined });
-                if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+                if (local.signal.aborted) {
+                  throw new LlamaCppBrowserError({ code: 'aborted' });
+                }
                 return await worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: report, signal: local.signal });
               } catch (error) {
               // A failed model request is not a user cancellation. Keep its error
@@ -558,7 +687,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
                 throw error;
               } finally {
                 acceptingProgress = false;
-                for (const remove of removers) remove();
+                for (const remove of removers) {
+                  remove();
+                }
                 pending = undefined;
               }
             });
@@ -581,21 +712,29 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
             }
             signal.removeEventListener('abort', abort);
           }
-          if (callbackFailure) throw callbackFailure.error;
+          if (callbackFailure) {
+            throw callbackFailure.error;
+          }
           callbackCompleted = true;
           // The common consumer may have recorded a model failure as a result.
           // Let run retire the failed runtime, without replacing that recorded result.
-          if (observedFailure) throw observedFailure.error;
+          if (observedFailure) {
+            throw observedFailure.error;
+          }
         },
       });
     } catch (error) {
-      if (!callbackCompleted || observedFailure === undefined) throw error;
+      if (!callbackCompleted || observedFailure === undefined) {
+        throw error;
+      }
     }
   },
   async runPerformanceOperation({ options, signal, operation }) {
     const acceptedOptions = captureChatOptions({ options });
     // Fail rather than silently warming behind an unrelated operation.
-    if (laneReservations > 0) throw new LlamaCppBrowserError({ code: 'busy' });
+    if (laneReservations > 0) {
+      throw new LlamaCppBrowserError({ code: 'busy' });
+    }
     await run({
       ready: acceptedOptions,
       owner: undefined,
@@ -606,21 +745,31 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         const controller = new AbortController();
         const abort = () => controller.abort();
         signal.addEventListener('abort', abort, { once: true });
-        if (signal.aborted) abort();
+        if (signal.aborted) {
+          abort();
+        }
         let open = true;
         let pending: Promise<GenerationResult> | undefined;
         let failure: { error: unknown } | undefined;
         const generate: LlamaCppPerformanceScope['generate'] = ({ input, sequence, observation, onEvent, onSummary, onMemoryDiagnostics, onProgress, signal }) => {
-          if (!open) throw new Error('The performance operation is closed.');
-          if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
-          if (failure) throw failure.error;
+          if (!open) {
+            throw new Error('The performance operation is closed.');
+          }
+          if (pending) {
+            throw new LlamaCppBrowserError({ code: 'busy' });
+          }
+          if (failure) {
+            throw failure.error;
+          }
           const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: concreteOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
           const local = new AbortController();
           const abort = () => local.abort();
           const sources = [...new Set([signal, controller.signal])];
           for (const source of sources) {
             source.addEventListener('abort', abort, { once: true });
-            if (source.aborted) abort();
+            if (source.aborted) {
+              abort();
+            }
           }
           pending = Promise.resolve().then(async () => {
             try {
@@ -633,14 +782,18 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
                 onSummary,
                 onMemoryDiagnostics,
                 onProgress: ({ progress: value }) => {
-                  progress({ progress: value }); onProgress?.({ progress: value });
+                  progress({ progress: value });
+                  onProgress?.({ progress: value });
                 },
                 signal: local.signal,
               });
             } catch (error) {
-              failure = { error }; throw error;
+              failure = { error };
+              throw error;
             } finally {
-              for (const source of sources) source.removeEventListener('abort', abort);
+              for (const source of sources) {
+                source.removeEventListener('abort', abort);
+              }
               pending = undefined;
             }
           });
@@ -649,8 +802,12 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         };
         try {
           await operation({ scope: { signal: controller.signal, options: concreteOptions, generate } });
-          if (failure) throw failure.error;
-          if (pending) throw new Error('The performance operation ended with a pending request.');
+          if (failure) {
+            throw failure.error;
+          }
+          if (pending) {
+            throw new Error('The performance operation ended with a pending request.');
+          }
         } finally {
           open = false;
           controller.abort();
@@ -658,28 +815,44 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           await pending?.catch(() => {});
           // Cleanup is outside trial timing. It is bounded by the client and
           // cannot overlap the next model, even when the user has pressed Stop.
-          if (worker.canReuse()) await worker.releaseRuntime({ signal: undefined });
+          if (worker.canReuse()) {
+            await worker.releaseRuntime({ signal: undefined });
+          }
         }
       },
     });
   },
   async restartRuntime({ signal }) {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
     // State may still be idle while a tool callback owns the lane. Inspect the
     // owner, not the last progress message, before retiring a shared Worker.
-    if (laneReservations > 0) throw new LlamaCppBrowserError({ code: 'busy' });
+    if (laneReservations > 0) {
+      throw new LlamaCppBrowserError({ code: 'busy' });
+    }
     llamaCppBrowserService.release();
     // Probe through the existing serialized lane. No model/cache deletion and
     // no automatic generation. The next request lazily reloads native weights.
     return llamaCppBrowserService.probeProfiles({ signal });
   },
   cancel() {
-    if (readOnlyReservations > 0) return;
+    if (readOnlyReservations > 0) {
+      return;
+    }
     activeController?.abort();
   },
   release() {
-    if (readOnlyReservations > 0) return;
-    activeController?.abort(); if (client) void retireWorker({ worker: client }); client = undefined; invalidateProfiles(); publish({ next: { status: 'idle' } });
+    if (readOnlyReservations > 0) {
+      return;
+    }
+    activeController?.abort();
+    if (client) {
+      void retireWorker({ worker: client });
+    }
+    client = undefined;
+    invalidateProfiles();
+    publish({ next: { status: 'idle' } });
   },
 };
 
@@ -687,7 +860,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
  * capability probe. Model lookup inside generate is read-only; this entry point
  * never imports/downloads weights, changes settings or writes chat history. */
 async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgress }: { owner: ReadOnlyOwner, input: Parameters<LlamaCppBrowserService['generate']>[0]['input'], onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent'], signal: Parameters<LlamaCppBrowserService['generate']>[0]['signal'], onProgress({ progress }: { progress: Progress }): void }): Promise<GenerationResult> {
-  if (laneReservations !== 0) throw new LlamaCppBrowserError({ code: 'busy' });
+  if (laneReservations !== 0) {
+    throw new LlamaCppBrowserError({ code: 'busy' });
+  }
   const accepted = acceptChatRequest({ request: publicGenerateInputSchema.parse({ ...input, debug: 'off', options: { ...options } }) });
   return run({
     ready: accepted,
@@ -703,8 +878,11 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
         request: { ...request, options: { ...request.options, profile } },
         onEvent,
         onProgress: ({ progress: value }) => {
-          if (signal.aborted) return;
-          progress({ progress: value }); onProgress({ progress: value });
+          if (signal.aborted) {
+            return;
+          }
+          progress({ progress: value });
+          onProgress({ progress: value });
         },
         signal,
       });
@@ -722,7 +900,9 @@ function retireReadOnlyCache({ owner }: { owner: ReadOnlyOwner }): Promise<void>
   const retiring = predecessor.then(() => {
     // Cancellation may already have detached this owner's Worker. Await only
     // its registered retirement; never retire a cache handed to another owner.
-    if (cacheOwner !== owner) return owner.worker ? retiringWorkers.get(owner.worker)?.outcome : undefined;
+    if (cacheOwner !== owner) {
+      return owner.worker ? retiringWorkers.get(owner.worker)?.outcome : undefined;
+    }
     const retired = client;
     client = undefined;
     invalidateProfiles();
@@ -747,7 +927,9 @@ export function createReadOnlyLlamaCppClient() {
   let closing: Promise<void> | undefined;
   return {
     async generate({ input, onEvent, signal, onProgress }: { input: Parameters<LlamaCppBrowserService['generate']>[0]['input'], onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent'], signal: Parameters<LlamaCppBrowserService['generate']>[0]['signal'], onProgress({ progress }: { progress: Progress }): void }): Promise<GenerationResult> {
-      if (lifetime.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      if (lifetime.signal.aborted) {
+        throw new LlamaCppBrowserError({ code: 'aborted' });
+      }
       const combined = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
       pending++;
       try {
@@ -759,7 +941,9 @@ export function createReadOnlyLlamaCppClient() {
       }
     },
     dispose(): Promise<void> {
-      if (closing) return closing;
+      if (closing) {
+        return closing;
+      }
       const completed = Promise.withResolvers<void>();
       closing = completed.promise;
       lifetime.abort();

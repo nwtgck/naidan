@@ -17,7 +17,9 @@ describe('standalone facades', () => {
     const alias = aliases.find(({ find }) => find instanceof RegExp && find.test(facadePath));
     expect(alias?.replacement).toBe(`/repo/${standalonePath}`);
     expect(alias?.find).toBeInstanceOf(RegExp);
-    if (alias?.find instanceof RegExp) expect(alias.find.test(`${facadePath}-estimate`)).toBe(false);
+    if (alias?.find instanceof RegExp) {
+      expect(alias.find.test(`${facadePath}-estimate`)).toBe(false);
+    }
 
     const standaloneSource = readFileSync(resolve(process.cwd(), standalonePath), 'utf8');
     expect(standaloneSource).not.toContain('new Worker');

@@ -23,7 +23,8 @@ export function createPrefillOutputs({ core, mode }: {
         // broken runtime must propagate instead of being retried as inference.
         const allocated = core.tryAlloc({ bytes: prefillBatchTokens });
         if (allocated === undefined) {
-          state = 'fallback'; counters.allocationFallbacks++;
+          state = 'fallback';
+          counters.allocationFallbacks++;
         } else {
           pointer = allocated;
           core.bytes({ pointer, length: prefillBatchTokens }).fill(0);
@@ -34,12 +35,19 @@ export function createPrefillOutputs({ core, mode }: {
       // batch_get_one resets logits. Explicitly reset it here as well so final
       // batches cannot accidentally retain the all-zero selection.
       core.setField({ name: 'llama_batch', pointer: batch, field: 'logits', value: omit ? pointer : 0n });
-      if (omit) counters.skippedLogits++; else counters.requestedLogits++;
+      if (omit) {
+        counters.skippedLogits++;
+      } else {
+        counters.requestedLogits++;
+      }
     },
     dispose(): void {
       state = 'disposed';
-      const allocation = pointer; pointer = 0n;
-      if (allocation !== 0n) core.free({ pointer: allocation });
+      const allocation = pointer;
+      pointer = 0n;
+      if (allocation !== 0n) {
+        core.free({ pointer: allocation });
+      }
     },
   };
 }

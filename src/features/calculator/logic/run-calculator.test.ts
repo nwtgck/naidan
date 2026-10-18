@@ -60,7 +60,9 @@ describe('runCalculator', () => {
     });
     const rational = runCalculator({ input: 'pi * 2', output: { format: 'rational' } });
     expect(rational.status).toBe('error');
-    if (rational.status !== 'error') throw new Error('Expected rational-output error');
+    if (rational.status !== 'error') {
+      throw new Error('Expected rational-output error');
+    }
     expect(rational.diagnostic.code).toBe('result_not_rational');
   });
 
@@ -116,7 +118,9 @@ describe('runCalculator', () => {
     for (const input of ['1e100001', '0e100001', 'factorial(459)']) {
       const result = runCalculator({ input, output: DECIMAL_15 });
       expect(result.status, input).toBe('error');
-      if (result.status === 'error') expect(result.diagnostic.code).toBe('limit_exceeded');
+      if (result.status === 'error') {
+        expect(result.diagnostic.code).toBe('limit_exceeded');
+      }
     }
     expectValue({ input: 'min(1e100000, 1)', text: '1', exactness: 'rational' });
     expectValue({
@@ -130,18 +134,24 @@ describe('runCalculator', () => {
   it('returns actionable syntax and domain diagnostics', () => {
     const syntax = runCalculator({ input: '2 + * 3' });
     expect(syntax.status).toBe('error');
-    if (syntax.status !== 'error') throw new Error('Expected syntax error');
+    if (syntax.status !== 'error') {
+      throw new Error('Expected syntax error');
+    }
     expect(syntax.diagnostic.code).toBe('unexpected_token');
     expect(syntax.text).toContain('line 1, column 5');
 
     const domain = runCalculator({ input: 'sqrt(-1)' });
     expect(domain.status).toBe('error');
-    if (domain.status !== 'error') throw new Error('Expected domain error');
+    if (domain.status !== 'error') {
+      throw new Error('Expected domain error');
+    }
     expect(domain.diagnostic.code).toBe('domain_error');
 
     const nonIntegerPower = runCalculator({ input: '2 ^ 0.5' });
     expect(nonIntegerPower.status).toBe('error');
-    if (nonIntegerPower.status === 'error') expect(nonIntegerPower.diagnostic.code).toBe('invalid_argument');
+    if (nonIntegerPower.status === 'error') {
+      expect(nonIntegerPower.diagnostic.code).toBe('invalid_argument');
+    }
   });
 
   it('locates numeric resource-limit errors at the expression that caused them', () => {

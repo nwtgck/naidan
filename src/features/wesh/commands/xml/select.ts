@@ -103,7 +103,9 @@ function renderActions({
   while (pending.length > 0) {
     const frame = pending.pop()!;
     const action = frame.actions[frame.nextIndex];
-    if (action === undefined) continue;
+    if (action === undefined) {
+      continue;
+    }
     pending.push({ ...frame, nextIndex: frame.nextIndex + 1 });
 
     switch (action.kind) {
@@ -136,7 +138,9 @@ function renderActions({
       if (output !== undefined) {
         for (const node of nodes) {
           const value = (() => {
-            if (!textOutput) return serializeXmlNode({ node });
+            if (!textOutput) {
+              return serializeXmlNode({ node });
+            }
             if (
               node.nodeType === Node.COMMENT_NODE
               || node.nodeType === Node.PROCESSING_INSTRUCTION_NODE
@@ -209,7 +213,9 @@ function renderActions({
           }
           }
         })();
-        if (!matches) continue;
+        if (!matches) {
+          continue;
+        }
         pending.push({
           actions: branch.actions,
           nextIndex: 0,
@@ -274,7 +280,9 @@ export async function runXmlSelect({
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index];
-    if (token === undefined) continue;
+    if (token === undefined) {
+      continue;
+    }
     if (templateMode && inputs.length > 0) {
       inputs.push(token);
       continue;
@@ -545,7 +553,9 @@ markup actions:
           text: `xml sel: ${source.label}: ${source.message}\n`,
         });
       }
-      if (!quietBatch) failureExitCode = Math.max(failureExitCode, 3);
+      if (!quietBatch) {
+        failureExitCode = Math.max(failureExitCode, 3);
+      }
       continue;
     }
 
@@ -558,7 +568,9 @@ markup actions:
           text: `xml sel: ${source.label}: ${parsed.message}\n`,
         });
       }
-      if (!quietBatch) failureExitCode = Math.max(failureExitCode, 3);
+      if (!quietBatch) {
+        failureExitCode = Math.max(failureExitCode, 3);
+      }
       continue;
     }
 

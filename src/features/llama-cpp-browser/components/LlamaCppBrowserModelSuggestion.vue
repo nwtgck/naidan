@@ -15,9 +15,10 @@ import { installedSelection, repositoryDirectories } from '@/features/llama-cpp-
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { repositoryUrlPath, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
+import LlamaCppBrowserModelAction from './LlamaCppBrowserModelAction.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
-const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination> }>();
+const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination>, createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel] }>();
 const id = useId();
 const queue = getDownloadQueue();
@@ -29,7 +30,10 @@ const companionRequired = computed(() => {
   switch (requirement) {
   case 'required': return true;
   case undefined: return false;
-  default: { const exhaustive: never = requirement; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = requirement;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const optionalMultimodal = ref<MultimodalDownload>('off');
@@ -66,10 +70,13 @@ const otherDestinationJobs = computed(() => queue.jobs.value.filter(entry => ent
 // after a settings-tab remount. Never inspect or resume just to render this row.
 for (const choice of props.suggestion.quantizationHints) {
   for (const requestedMultimodal of ['off', 'on'] as const) {
-    if (companionRequired.value && requestedMultimodal === 'off') continue;
+    if (companionRequired.value && requestedMultimodal === 'off') {
+      continue;
+    }
     const key = downloadJobKey({ key: suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: choice, multimodal: requestedMultimodal }), destination: destination.value });
     if (queue.jobs.value.some(entry => entry.key === key && (jobIsBusy({ job: entry }) || entry.status === 'paused'))) {
-      quantizationId.value = choice.id; multimodal.value = requestedMultimodal;
+      quantizationId.value = choice.id;
+      multimodal.value = requestedMultimodal;
     }
   }
 }
@@ -78,7 +85,9 @@ const busy = computed(() => jobIsBusy({ job: job.value }));
 // Other rows remain selectable/queueable. Waiting cancellation unlocks this row.
 const optionsLocked = computed(() => props.disabled || authorizing.value || busy.value || inspecting.value !== undefined || job.value?.status === 'paused');
 const preview = computed(() => {
-  if (!catalog.value) return { status: 'unchecked' } as const;
+  if (!catalog.value) {
+    return { status: 'unchecked' } as const;
+  }
   try {
     return { status: 'ready', selection: resolveSuggestionPlan({ quantization: quantization.value, catalog: catalog.value, multimodal: multimodal.value }) } as const;
   } catch {
@@ -90,25 +99,36 @@ const previewSelection = computed(() => {
   switch (current.status) {
   case 'ready': return current.selection;
   case 'unchecked': case 'unavailable': return undefined;
-  default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = current;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const plan = computed<DownloadSelection | undefined>(() => {
   // A queued/resumed job keeps its exact revision and option snapshot. The
   // plan displayed while it runs is the plan the writer actually receives.
-  if (job.value?.selection) return job.value.selection;
+  if (job.value?.selection) {
+    return job.value.selection;
+  }
   return previewSelection.value;
 });
 // An absent upstream projector may prevent enabling multimodal, but must never
 // prevent turning it OFF to recover from stale hints or a source change.
 const canUseMultimodal = computed(() => catalog.value ? catalog.value.projectors.length > 0 : quantization.value.approximateMultimodalBytes !== undefined);
 const totalLabel = computed(() => {
-  if (plan.value) return formatDownloadBytes({ bytes: plan.value.files.reduce((sum, file) => sum + file.size, 0) });
+  if (plan.value) {
+    return formatDownloadBytes({ bytes: plan.value.files.reduce((sum, file) => sum + file.size, 0) });
+  }
   let bytes = quantization.value.approximateModelBytes;
   switch (multimodal.value) {
   case 'off': break;
-  case 'on': bytes += quantization.value.approximateMultimodalBytes ?? 0; break;
-  default: { const exhaustive: never = multimodal.value; throw new Error(String(exhaustive)); }
+  case 'on': bytes += quantization.value.approximateMultimodalBytes ?? 0;
+    break;
+  default: {
+    const exhaustive: never = multimodal.value;
+    throw new Error(String(exhaustive));
+  }
   }
   return lazyStrings.llamaCppBrowserDownloads__approximately_size({ size: formatDownloadBytes({ bytes }) });
 });
@@ -116,33 +136,56 @@ const totalLabel = computed(() => {
 // Only local storage is read here. Approximate sizes cannot determine installed
 // state, and having Q8_0 (or an auxiliary GGUF) must not satisfy Q4_K_M.
 watch([() => props.models, quantization, multimodal, plan, queue.changed, destination, () => props.destinationRevision], async (_values, _old, onCleanup) => {
-  let cancelled = false; onCleanup(() => {
+  let cancelled = false;
+  onCleanup(() => {
     cancelled = true;
   });
-  installed.value = undefined; localError.value = false; checkingLocal.value = true;
+  installed.value = undefined;
+  localError.value = false;
+  checkingLocal.value = true;
   try {
     const known = findLocalSuggestedModel({ quantization: quantization.value, models: props.models, destination: destination.value });
     let found: LocalModel | undefined;
-    if (plan.value) found = await installedSelection({ selection: plan.value, destination: destination.value });
-    else if (known && multimodal.value === 'off') found = known;
-    else if (known) {
+    if (plan.value) {
+      found = await installedSelection({ selection: plan.value, destination: destination.value });
+    } else if (known && multimodal.value === 'off') {
+      found = known;
+    } else if (known) {
       const directories = await repositoryDirectories({ repository: quantization.value.hfRepository, destination: destination.value });
-      if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) found = known;
+      if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) {
+        found = known;
+      }
     }
-    if (!cancelled && !disposed) installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
+    if (!cancelled && !disposed) {
+      installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
+    }
   } catch {
-    if (!cancelled && !disposed) localError.value = true;
+    if (!cancelled && !disposed) {
+      localError.value = true;
+    }
   } finally {
-    if (!cancelled && !disposed) checkingLocal.value = false;
+    if (!cancelled && !disposed) {
+      checkingLocal.value = false;
+    }
   }
 }, { immediate: true });
 
+async function handleCreateChatGroup(): Promise<void> {
+  if (disposed || optionsLocked.value || checkingLocal.value || localError.value || props.destinationUnavailable || !installed.value || !props.createChatGroup) {
+    return;
+  }
+  await props.createChatGroup({ model: installed.value });
+}
+
 function selectQuantization({ event }: { event: Event }): void {
   const target = event.target;
-  if (!(target instanceof HTMLSelectElement)) return;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
   const choice = props.suggestion.quantizationHints.find(entry => entry.id === target.value);
   if (optionsLocked.value || !choice) {
-    target.value = quantization.value.id; return;
+    target.value = quantization.value.id;
+    return;
   }
   quantizationId.value = choice.id;
   previewError.value = false;
@@ -150,27 +193,39 @@ function selectQuantization({ event }: { event: Event }): void {
 }
 
 async function checkContents(): Promise<void> {
-  if (optionsLocked.value) return;
+  if (optionsLocked.value) {
+    return;
+  }
   const requested = quantization.value;
   const requestedKey = jobKey.value;
-  const controller = new AbortController(); inspecting.value = controller; previewError.value = false;
+  const controller = new AbortController();
+  inspecting.value = controller;
+  previewError.value = false;
   try {
     // Privacy boundary: ONLY this button or Download authorizes metadata I/O.
     // Details expansion and quantization/multimodal changes never call it.
     const result = await getMetadataSession().inspect({ input: requested.hfRepository, signal: controller.signal, freshness: catalog.value ? 'refresh' : 'reuse' });
     if (!disposed && !controller.signal.aborted) {
-      if (job.value && jobKey.value === requestedKey && !busy.value) queue.forget({ id: job.value.id });
+      if (job.value && jobKey.value === requestedKey && !busy.value) {
+        queue.forget({ id: job.value.id });
+      }
       catalogs.value = new Map(catalogs.value).set(requested.hfRepository.toLowerCase(), result);
     }
   } catch {
-    if (!disposed && !controller.signal.aborted && jobKey.value === requestedKey) previewError.value = true;
+    if (!disposed && !controller.signal.aborted && jobKey.value === requestedKey) {
+      previewError.value = true;
+    }
   } finally {
-    if (!disposed && inspecting.value === controller) inspecting.value = undefined;
+    if (!disposed && inspecting.value === controller) {
+      inspecting.value = undefined;
+    }
   }
 }
 
 async function download(): Promise<void> {
-  if (props.disabled || props.destinationUnavailable || authorizing.value || busy.value || inspecting.value || checkingLocal.value || localError.value) return;
+  if (props.disabled || props.destinationUnavailable || authorizing.value || busy.value || inspecting.value || checkingLocal.value || localError.value) {
+    return;
+  }
   // Capture all mutable UI options BEFORE asking permission. A section can
   // change destination while the browser prompt is open without redirecting it.
   const requestedQuantization = quantization.value;
@@ -178,10 +233,14 @@ async function download(): Promise<void> {
   const requestedDestination = job.value?.destination ?? destination.value;
   const requestedKey = intentKey.value;
   const pinned = job.value?.selection ?? previewSelection.value;
-  previewError.value = false; authorizationFailed.value = false; authorizing.value = true;
+  previewError.value = false;
+  authorizationFailed.value = false;
+  authorizing.value = true;
   try {
     const authorized = props.authorizeDestination ? await props.authorizeDestination({ destination: requestedDestination }) : { destination: requestedDestination, expectedRoot: undefined };
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     queue.enqueue({
       key: requestedKey,
       repository: requestedQuantization.hfRepository,
@@ -189,28 +248,39 @@ async function download(): Promise<void> {
       destination: authorized.destination,
       expectedRoot: authorized.expectedRoot,
       prepare: async ({ signal }) => {
-        if (pinned) return pinned;
+        if (pinned) {
+          return pinned;
+        }
         const resolved = await getMetadataSession().inspect({ input: requestedQuantization.hfRepository, signal, freshness: 'reuse' });
         return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
       },
     });
   } catch {
-    if (!disposed) authorizationFailed.value = true;
+    if (!disposed) {
+      authorizationFailed.value = true;
+    }
   } finally {
     authorizing.value = false;
   }
 }
 
 async function resumeOtherDestination({ job: requestedJob }: { job: DownloadJob }): Promise<void> {
-  if (props.disabled || authorizing.value || jobIsBusy({ job: requestedJob })) return;
+  if (props.disabled || authorizing.value || jobIsBusy({ job: requestedJob })) {
+    return;
+  }
   const requestedDestination = requestedJob.destination;
   const options = props.suggestion.quantizationHints.flatMap(quantization => (['off', 'on'] as const).map(multimodal => ({ quantization, multimodal })));
   const requested = options.find(option => downloadJobKey({ key: suggestionDownloadKey({ suggestionId: props.suggestion.id, ...option }), destination: requestedDestination }) === requestedJob.key);
-  if (!requested) return;
-  authorizing.value = true; authorizationFailed.value = false;
+  if (!requested) {
+    return;
+  }
+  authorizing.value = true;
+  authorizationFailed.value = false;
   try {
     const authorized = props.authorizeDestination ? await props.authorizeDestination({ destination: requestedDestination }) : { destination: requestedDestination, expectedRoot: undefined };
-    if (disposed) return;
+    if (disposed) {
+      return;
+    }
     queue.enqueue({
       key: requestedJob.key,
       repository: requestedJob.repository,
@@ -218,20 +288,25 @@ async function resumeOtherDestination({ job: requestedJob }: { job: DownloadJob 
       destination: authorized.destination,
       expectedRoot: authorized.expectedRoot,
       prepare: async ({ signal }) => {
-        if (requestedJob.selection) return requestedJob.selection;
+        if (requestedJob.selection) {
+          return requestedJob.selection;
+        }
         const resolved = await getMetadataSession().inspect({ input: requestedJob.repository, signal, freshness: 'reuse' });
         return resolveSuggestionPlan({ quantization: requested.quantization, catalog: resolved, multimodal: requested.multimodal });
       },
     });
   } catch {
-    if (!disposed) authorizationFailed.value = true;
+    if (!disposed) {
+      authorizationFailed.value = true;
+    }
   } finally {
     authorizing.value = false;
   }
 }
 
 onUnmounted(() => {
-  disposed = true; inspecting.value?.abort();
+  disposed = true;
+  inspecting.value?.abort();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -259,6 +334,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
       <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+      <LlamaCppBrowserModelAction v-else-if="installed && !busy && props.createChatGroup" :key="installed.id" :model="installed" :current="defaultModel" :disabled="optionsLocked || checkingLocal || localError || destinationUnavailable === true" :default-action-disabled="defaultActionDisabled" :creating="creatingChatGroupModelId === installed.id" tw-class="ml-auto" @create-chat-group="handleCreateChatGroup" @select-default="emit('selectDefault', $event)" />
       <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
       <button
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"
@@ -334,8 +410,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </article>
 </template>
 <style scoped>
-.suggestion-details { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms ease, opacity 180ms ease; }
-.suggestion-details-open { grid-template-rows: 1fr; opacity: 1; }
-.suggestion-details-inner { min-height: 0; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .suggestion-details { transition: none; } }
+.suggestion-details {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.suggestion-details-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.suggestion-details-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestion-details {
+    transition: none;
+  }
+}
 </style>

@@ -47,7 +47,9 @@ describe('createGlobalSearchWorker', () => {
     const depth = 10_000;
     const content = createContent();
     const root = content.root.items[0];
-    if (root === undefined) throw new Error('Expected root message');
+    if (root === undefined) {
+      throw new Error('Expected root message');
+    }
     let current: MessageNode = root;
 
     for (let index = 1; index < depth; index++) {

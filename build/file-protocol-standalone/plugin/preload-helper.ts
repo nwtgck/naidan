@@ -6,7 +6,9 @@ export function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Read
     name: 'naidan-file-protocol-standalone-vite-preload-helper-compatibility',
     enforce: 'post',
     transform(code, id) {
-      if (id !== '\0vite/preload-helper.js') return null;
+      if (id !== '\0vite/preload-helper.js') {
+        return null;
+      }
       const importMetaResolveCall = 'dep = importMetaResolve(dep);';
       if (
         !code.includes('vite:preloadError')

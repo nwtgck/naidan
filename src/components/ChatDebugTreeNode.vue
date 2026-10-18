@@ -47,7 +47,10 @@ const interruption = computed(() => {
   case 'user':
   case 'system':
   case 'tool': return undefined;
-  default: { const unhandled: never = node; throw new Error(`Unhandled debug node: ${unhandled}`); }
+  default: {
+    const unhandled: never = node;
+    throw new Error(`Unhandled debug node: ${unhandled}`);
+  }
   }
 });
 
@@ -55,7 +58,9 @@ const interruption = computed(() => {
 const isCopied = ref(false);
 
 const copyContent = async () => {
-  if (!rawContent.value) return;
+  if (!rawContent.value) {
+    return;
+  }
   await navigator.clipboard.writeText(rawContent.value);
   isCopied.value = true;
   setTimeout(() => isCopied.value = false, 2000);
@@ -101,7 +106,10 @@ const cleanContentCompact = computed(() => {
     case 'attachment':
     case 'tool_call':
     case 'tool_result': return [];
-    default: { const unhandled: never = part; throw new Error(`Unhandled debug part: ${unhandled}`); }
+    default: {
+      const unhandled: never = part;
+      throw new Error(`Unhandled debug part: ${unhandled}`);
+    }
     }
   }).join(' ').trim();
   return stripped.slice(0, 50) + (stripped.length > 50 ? '...' : '');
@@ -115,10 +123,16 @@ async function loadThumbnails() {
   cleanupThumbnails();
   const blobs = new Map<BinaryObjectId, Blob | undefined>();
   for (const { attachment } of attachmentParts.value) {
-    if (!attachment.mimeType.startsWith('image/')) continue;
+    if (!attachment.mimeType.startsWith('image/')) {
+      continue;
+    }
     switch (attachment.status) {
-    case 'memory': blobs.set(attachment.binaryObjectId, attachment.blob); break;
-    case 'persisted': if (!blobs.has(attachment.binaryObjectId)) blobs.set(attachment.binaryObjectId, undefined); break;
+    case 'memory': blobs.set(attachment.binaryObjectId, attachment.blob);
+      break;
+    case 'persisted': if (!blobs.has(attachment.binaryObjectId)) {
+      blobs.set(attachment.binaryObjectId, undefined);
+    }
+      break;
     case 'missing': break;
     default: {
       const unhandled: never = attachment;
@@ -128,13 +142,19 @@ async function loadThumbnails() {
   }
   for (const { image } of inlineImages.value) {
     const id = toBinaryObjectId({ raw: image.binaryObjectId });
-    if (!blobs.has(id)) blobs.set(id, undefined);
+    if (!blobs.has(id)) {
+      blobs.set(id, undefined);
+    }
   }
   for (const [id, memoryBlob] of blobs) {
     try {
       const blob = memoryBlob ?? await storageService.getFile({ binaryObjectId: id });
-      if (disposed || version !== thumbnailsVersion) return;
-      if (blob) thumbnailUrls.value[idToRaw({ id })] = URL.createObjectURL(blob);
+      if (disposed || version !== thumbnailsVersion) {
+        return;
+      }
+      if (blob) {
+        thumbnailUrls.value[idToRaw({ id })] = URL.createObjectURL(blob);
+      }
     } catch (error) {
       console.error('Failed to load debug thumbnail:', error);
     }
@@ -151,7 +171,8 @@ watch([attachmentParts, inlineImages], () => {
 }, { immediate: true, deep: true });
 
 onUnmounted(() => {
-  disposed = true; thumbnailsVersion += 1;
+  disposed = true;
+  thumbnailsVersion += 1;
   cleanupThumbnails();
 });
 

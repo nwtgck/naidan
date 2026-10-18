@@ -8,7 +8,9 @@ it('shares readers, queues writers in order, and holds each callback until settl
   const release = Promise.withResolvers<void>();
   const order: string[] = [];
   const reader = platform.locks.request('file', { mode: 'shared' }, async () => {
-    order.push('reader'); entered.resolve(); await release.promise;
+    order.push('reader');
+    entered.resolve();
+    await release.promise;
   });
   await entered.promise;
   await platform.locks.request('file', { mode: 'shared', ifAvailable: true }, () => {
@@ -43,7 +45,8 @@ it('cancels only a waiting request and removes its queue reservation', async () 
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const holder = platform.locks.request('file', { mode: 'exclusive' }, async () => {
-    entered.resolve(); await release.promise;
+    entered.resolve();
+    await release.promise;
   });
   await entered.promise;
   const controller = new AbortController();
@@ -72,7 +75,8 @@ it('does not release a granted lock when its admission signal is later aborted',
   const release = Promise.withResolvers<void>();
   const controller = new AbortController();
   const holder = platform.locks.request('file', { mode: 'exclusive', signal: controller.signal }, async () => {
-    entered.resolve(); await release.promise;
+    entered.resolve();
+    await release.promise;
   });
   await entered.promise;
   controller.abort();

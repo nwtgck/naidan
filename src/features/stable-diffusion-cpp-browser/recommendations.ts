@@ -128,14 +128,19 @@ const presets = {
 /** Tensor structure identifies a family; only metadata/receipts select variants.
  * Unlabelled training variants have no guessed distilled/Turbo preset. */
 export function recommendationForSelection({ model }: { model: ImageModelFacts | undefined }): ImageGenerationRecommendation | undefined {
-  if (!model) return undefined;
+  if (!model) {
+    return undefined;
+  }
   switch (model.family) {
   case 'z-image':
     switch (model.variant) {
     case 'turbo': return presets['z-image-turbo'];
     case 'base': return presets['z-image-base'];
     case 'distilled': case 'unknown': return undefined;
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   // Turbo and Base share the same tensor shape; provenance distinguishes them.
   // The Turbo entry is deliberately partial until custom sigmas are supported.
@@ -143,34 +148,52 @@ export function recommendationForSelection({ model }: { model: ImageModelFacts |
     switch (model.variant) {
     case 'turbo': return presets['qwen-image-2.1-turbo'];
     case 'base': case 'distilled': case 'unknown': return presets['qwen-image-2.1'];
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'flux2-klein-4b':
     switch (model.variant) {
     case 'distilled': return presets['flux2-klein-4b'];
     case 'turbo': case 'base': case 'unknown': return undefined;
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'anima':
     switch (model.variant) {
     case 'turbo': return presets['anima-turbo-1.1'];
     case 'distilled': case 'base': case 'unknown': return undefined;
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'krea2':
     switch (model.variant) {
     case 'turbo': return presets['krea2-turbo'];
     case 'distilled': case 'base': case 'unknown': return undefined;
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'ernie-image':
     switch (model.variant) {
     case 'turbo': return presets['ernie-image-turbo'];
     case 'distilled': case 'base': case 'unknown': return undefined;
-    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = model.variant;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'sd-checkpoint': case 'flux1': case 'unknown': return undefined;
-  default: { const exhaustive: never = model.family; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = model.family;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

@@ -11,28 +11,36 @@ function intervalAt({ pattern, start }: {
   start: number,
 }): { source: string, nextIndex: number } {
   const end = pattern.indexOf('\\}', start + 2);
-  if (end < 0) throw new Error('unterminated BRE interval');
+  if (end < 0) {
+    throw new Error('unterminated BRE interval');
+  }
   const body = pattern.slice(start + 2, end);
-  if (!/^(?:[0-9]+|[0-9]+,|[0-9]+,[0-9]+|,[0-9]+)$/u.test(body))
+  if (!/^(?:[0-9]+|[0-9]+,|[0-9]+,[0-9]+|,[0-9]+)$/u.test(body)) {
     throw new Error(`invalid BRE interval: ${body}`);
+  }
 
   const [minimumText, maximumText] = body.split(',');
   const minimum = minimumText!.length === 0 ? 0 : Number.parseInt(minimumText!, 10);
-  if (!Number.isSafeInteger(minimum) || minimum > GIT_REGEX_DUPLICATION_MAX)
+  if (!Number.isSafeInteger(minimum) || minimum > GIT_REGEX_DUPLICATION_MAX) {
     throw new Error(`BRE interval is too large: ${body}`);
+  }
   if (maximumText !== undefined && maximumText.length > 0) {
     const maximum = Number.parseInt(maximumText, 10);
-    if (!Number.isSafeInteger(maximum) || maximum < minimum)
+    if (!Number.isSafeInteger(maximum) || maximum < minimum) {
       throw new Error(`invalid BRE interval: ${body}`);
-    if (maximum > GIT_REGEX_DUPLICATION_MAX)
+    }
+    if (maximum > GIT_REGEX_DUPLICATION_MAX) {
       throw new Error(`BRE interval is too large: ${body}`);
+    }
   }
   const sourceBody = minimumText!.length === 0 ? `0,${maximumText}` : body;
   return { source: `{${sourceBody}}`, nextIndex: end + 2 };
 }
 
 function isBranchEnd({ pattern, index }: { pattern: string, index: number }): boolean {
-  if (index + 1 >= pattern.length) return true;
+  if (index + 1 >= pattern.length) {
+    return true;
+  }
   return pattern[index + 1] === '\\' && (pattern[index + 2] === ')' || pattern[index + 2] === '|');
 }
 
@@ -148,7 +156,9 @@ export function compileGitBasicRegex({ pattern }: { pattern: string }): GitBasic
     }
     if (character === '\\') {
       const next = bytePattern[index + 1];
-      if (next === undefined) throw new Error('basic regular expression ends with an incomplete escape');
+      if (next === undefined) {
+        throw new Error('basic regular expression ends with an incomplete escape');
+      }
       switch (next) {
       case '+':
       case '?': {
@@ -180,7 +190,9 @@ export function compileGitBasicRegex({ pattern }: { pattern: string }): GitBasic
         continue;
       case ')': {
         const groupStart = groupStartStack.pop();
-        if (groupStart === undefined) throw new Error('unmatched BRE group close');
+        if (groupStart === undefined) {
+          throw new Error('unmatched BRE group close');
+        }
         source += ')';
         atomStart = groupStart;
         repetitionKind = 'none';
@@ -189,8 +201,9 @@ export function compileGitBasicRegex({ pattern }: { pattern: string }): GitBasic
         continue;
       }
       case '{': {
-        if (atomStart === undefined || repetitionKind !== 'none')
+        if (atomStart === undefined || repetitionKind !== 'none') {
           throw new Error('invalid preceding expression for BRE interval');
+        }
         const interval = intervalAt({ pattern: bytePattern, start: index });
         source += interval.source;
         repetitionKind = 'interval';
@@ -247,9 +260,13 @@ export function compileGitBasicRegex({ pattern }: { pattern: string }): GitBasic
       }
       default: {
         let atomSource: string;
-        if (/^[1-9]$/u.test(next)) atomSource = `\\${next}`;
-        else if (/^[A-Za-z]$/u.test(next)) throw new Error(`unsupported BRE escape: \\${next}`);
-        else atomSource = escapeRegexLiteral({ character: next });
+        if (/^[1-9]$/u.test(next)) {
+          atomSource = `\\${next}`;
+        } else if (/^[A-Za-z]$/u.test(next)) {
+          throw new Error(`unsupported BRE escape: \\${next}`);
+        } else {
+          atomSource = escapeRegexLiteral({ character: next });
+        }
         const appended = appendRepeatableAtom({ source, atomSource });
         source = appended.source;
         atomStart = appended.atomStart;
@@ -322,7 +339,9 @@ export function compileGitBasicRegex({ pattern }: { pattern: string }): GitBasic
     atBranchStart = false;
   }
 
-  if (groupStartStack.length !== 0) throw new Error('unterminated BRE group');
+  if (groupStartStack.length !== 0) {
+    throw new Error('unterminated BRE group');
+  }
   try {
     return { byteRegex: new RegExp(source, 'u') };
   } catch (error) {

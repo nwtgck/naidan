@@ -1,6 +1,6 @@
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
-import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
+import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
@@ -151,7 +151,10 @@ function createTextNode({ id, role, text, createdAt }: {
   switch (role) {
   case 'user': return { ...common, role } satisfies MessageNode;
   case 'assistant': return { ...common, role, interruption: undefined } satisfies MessageNode;
-  default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = role;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -385,7 +388,7 @@ function mountChatPane({
     targetMessageId?: MessageId,
   },
   attachTo?: Element | string,
-  global?: Record<string, unknown>,
+  global?: GlobalMountOptions,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -394,7 +397,18 @@ function mountChatPane({
       targetMessageId: props?.targetMessageId,
     },
     attachTo,
-    global,
+    global: {
+      ...global,
+      stubs: {
+        MessageActionsMenu: {
+          props: ['isOpen'],
+          template: '<div v-if="isOpen"><slot /></div>',
+        },
+        ...(Array.isArray(global?.stubs)
+          ? Object.fromEntries(global.stubs.map(name => [name, true]))
+          : global?.stubs),
+      },
+    },
   });
 }
 
@@ -677,7 +691,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of mockSettings.value.mounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -685,7 +701,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of chatGroupMounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -693,7 +711,9 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
     }
 
     for (const mount of chatMounts ?? []) {
-      if (mount.type !== 'volume') continue;
+      if (mount.type !== 'volume') {
+        continue;
+      }
       const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
       if (handle !== undefined) {
         mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
@@ -1139,7 +1159,9 @@ Question`,
   it('should display the model name with correct casing (not forced to uppercase)', async () => {
     // Set a specifically lowercase model name in settings to test for uppercase transformation
     const testModelName = 'gemma3:1b-lowercase';
-    if (mockCurrentChat.value) mockCurrentChat.value.modelId = testModelName;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.modelId = testModelName;
+    }
 
     wrapper = mountChatPane( {
       global: {
@@ -1220,7 +1242,9 @@ Question`,
   });
 
   it('should open and close the chat inspector independently of debug mode', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+    }
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
@@ -1419,7 +1443,9 @@ Question`,
   it('should preserve the previous title in dialog history when generation replaces it', async () => {
     mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
     mockGenerateChatTitle.mockImplementation(async () => {
-      if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value.title = 'Generated Title';
+      }
       return 'Generated Title';
     });
     wrapper = mountChatPane( {
@@ -1442,7 +1468,9 @@ Question`,
     let resolveTitleGeneration: ((title: string) => void) | undefined;
     mockGenerateChatTitle.mockImplementation(async () => new Promise<string>((resolve) => {
       resolveTitleGeneration = (title) => {
-        if (mockCurrentChat.value) mockCurrentChat.value.title = title;
+        if (mockCurrentChat.value) {
+          mockCurrentChat.value.title = title;
+        }
         resolve(title);
       };
     }));
@@ -1733,7 +1761,7 @@ Question`,
     expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-access-scope')).toBe('current_chat_only');
   });
 
-  it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
+  it('should keep the menu open through debug updates and close the inspector on chat navigation', async () => {
     wrapper = mountChatPane({
       global: {
         plugins: [router],
@@ -1749,22 +1777,30 @@ Question`,
     expect(mockCurrentChat.value?.debugEnabled).toBe(true);
     expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
-    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('true');
     await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
     await flushPromises();
     expect(mockCurrentChat.value?.debugEnabled).toBe(false);
-    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="chat-debug-enabled"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="toggle-debug-button"]').attributes('aria-checked')).toBe('false');
+    expect(mockToggleChatDebug).toHaveBeenCalledTimes(2);
     await wrapper.find('[data-testid="open-chat-inspector-button"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(true);
     expect(mockCurrentChat.value?.debugEnabled).toBe(false);
+    expect(wrapper.find('[data-testid="more-actions-button"]').attributes('aria-expanded')).toBe('false');
     await wrapper.setProps({ chatId: toChatId({ raw: 'other-chat' }) });
     await flushPromises();
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
   });
 
   it('should keep the chat inspector closed until explicitly opened', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = false;
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = false;
+    }
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1784,7 +1820,9 @@ Question`,
   });
 
   it('should show jump to origin button when originChatId is present', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.originChatId = toChatId({ raw: 'original-id' });
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.originChatId = toChatId({ raw: 'original-id' });
+    }
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -2268,7 +2306,9 @@ describe('ChatPane Scrolling Logic', () => {
     targetEl.id = 'message-target-message';
     targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
     container.querySelector = vi.fn().mockImplementation((selector: string) => {
-      if (selector === '#message-target-message') return targetEl;
+      if (selector === '#message-target-message') {
+        return targetEl;
+      }
       return null;
     });
 
@@ -2293,7 +2333,9 @@ describe('ChatPane Scrolling Logic', () => {
     targetEl.id = 'message-late-message';
     targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
     container.querySelector = vi.fn().mockImplementation((selector: string) => {
-      if (selector === '#message-late-message') return targetEl;
+      if (selector === '#message-late-message') {
+        return targetEl;
+      }
       return null;
     });
     scrollTopSetterSpy.mockClear();
@@ -3038,7 +3080,9 @@ describe('ChatPane Header Delete Action', () => {
   });
 
   afterEach(() => {
-    if (wrapper) wrapper.unmount();
+    if (wrapper) {
+      wrapper.unmount();
+    }
     wrapper = null;
   });
 
@@ -3134,7 +3178,8 @@ describe('ChatPane Export Functionality', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     if (wrapper) {
-      wrapper.unmount(); wrapper = null;
+      wrapper.unmount();
+      wrapper = null;
     }
     document.body.innerHTML = '';
   });
@@ -3418,8 +3463,7 @@ Line 1
 Line 2
 Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
-    await nextTick();
-    await nextTick();
+    await flushPromises();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 7 lines: button appears
@@ -3653,23 +3697,28 @@ Line 7`;
       configurable: true,
       get: () => internalScrollTop,
       set: (val) => {
-        internalScrollTop = val; scrollTopSpy(val);
+        internalScrollTop = val;
+        scrollTopSpy(val);
       },
     });
 
+    const input = wrapper.getComponent(ChatInput);
+    container.getBoundingClientRect = () => new DOMRect(0, 0, 800, 500);
+    input.element.getBoundingClientRect = () => new DOMRect(0, 400, 800, 100);
+    await input.trigger('transitionend');
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     mockTextareaDimensions(textarea, 24);
     await nextTick();
     scrollTopSpy.mockClear();
 
-    // Simulate textarea expansion (1 line -> 3 lines)
+    // Simulate textarea expansion (1 line -> 3 lines).
+    input.element.getBoundingClientRect = () => new DOMRect(0, 352, 800, 148);
     (wrapper.findComponent(ChatInput).vm as any).input = `\
 Line 1
 Line 2
 Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
-    await nextTick();
-    await nextTick();
+    await flushPromises();
 
     // It should trigger scrollToBottom to compensate for the smaller container
     expect(scrollTopSpy).toHaveBeenCalled();
@@ -4090,63 +4139,67 @@ describe('ChatPane Model Selection', () => {
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
-  it('should sync reasoning effort between tools menu and settings panel in real-time', async () => {
-    wrapper = mountChatPane( {
-      global: {
-        plugins: [router],
-        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true },
-      },
+  it('should sync reasoning effort between model selection and settings panel in real-time', async () => {
+    await mockFetchAvailableModels.withImplementation(async () => [...mockAvailableModels.value], async () => {
+      wrapper = mountChatPane( {
+        global: {
+          plugins: [router],
+          stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true },
+        },
+      });
+      await flushPromises();
+
+      // 1. Initial state
+      mockCurrentChat.value = {
+        id: toChatId({ raw: '1' }),
+        title: 'Test Chat',
+        root: { items: [] },
+        lmParameters: EMPTY_LM_PARAMETERS,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      } as Chat;
+      await nextTick();
+
+      // 2. Open model selection and change its chat-owned reasoning override.
+      const modelSelector = wrapper.getComponent(ChatInput).getComponent({ name: 'ModelSelector' });
+      await modelSelector.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
+      const inputReasoning = modelSelector.getComponent({ name: 'ReasoningSettings' });
+      await inputReasoning.vm.$emit('update:effort', 'high');
+      await nextTick();
+
+      // Verify currentChat was updated via the updateChatSettings call from ChatInput
+      expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('high');
+
+      // 3. Open Settings Panel
+      const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
+      await settingsBtn.trigger('click');
+      await vi.dynamicImportSettled();
+      await flushPromises();
+      await nextTick();
+
+      await vi.waitFor(() => {
+        expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
+      });
+      const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
+
+      // Verify Settings Panel UI is synced
+      const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
+      expect(reasoningSettings.exists()).toBe(true);
+      expect(reasoningSettings.props('selectedEffort')).toBe('high');
+
+      // 4. Change reasoning effort in Settings Panel
+      await reasoningSettings.vm.$emit('update:effort', 'low');
+      await flushPromises();
+      await nextTick();
+
+      // Verify currentChat was updated via the panel's save mechanism
+      expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
+
+      // 5. The model selector reflects the same saved override.
+      expect(inputReasoning.props('selectedEffort')).toBe('low');
     });
-    await flushPromises();
-
-    // 1. Initial state
-    mockCurrentChat.value = {
-      id: toChatId({ raw: '1' }),
-      title: 'Test Chat',
-      root: { items: [] },
-      lmParameters: EMPTY_LM_PARAMETERS,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    } as Chat;
-    await nextTick();
-
-    // 2. Open tools menu and change reasoning effort
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.exists()).toBe(true);
-    await toolsMenu.vm.$emit('update:reasoning-effort', 'high');
-    await nextTick();
-
-    // Verify currentChat was updated via the updateChatSettings call from ChatInput
-    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('high');
-
-    // 3. Open Settings Panel
-    const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
-    await settingsBtn.trigger('click');
-    await vi.dynamicImportSettled();
-    await flushPromises();
-    await nextTick();
-
-    await vi.waitFor(() => {
-      expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
-    });
-    const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
-
-    // Verify Settings Panel UI is synced
-    const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
-    expect(reasoningSettings.exists()).toBe(true);
-    expect(reasoningSettings.props('selectedEffort')).toBe('high');
-
-    // 4. Change reasoning effort in Settings Panel
-    await reasoningSettings.vm.$emit('update:effort', 'low');
-    await flushPromises();
-    await nextTick();
-
-    // Verify currentChat was updated via the panel's save mechanism
-    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
-
-    // 5. Verify Tools Menu UI is also synced
-    expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
   }, 20_000);
 });
 
@@ -4158,7 +4211,8 @@ describe('model-link composer visibility wiring', () => {
   });
 
   afterEach(() => {
-    wrapper?.unmount(); wrapper = null;
+    wrapper?.unmount();
+    wrapper = null;
     launchComposerOverride.value = undefined;
     document.body.innerHTML = '';
   });
@@ -4170,10 +4224,14 @@ describe('model-link composer visibility wiring', () => {
     const instance = input.element;
     const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Draft survives model setup');
+    const selector = input.getComponent({ name: 'ModelSelector' });
+    await selector.get('[data-testid="model-selector-trigger"]').trigger('click');
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
     launchComposerOverride.value = 'hidden';
     await nextTick();
     expect(wrapper.getComponent(ChatInput).element).toBe(instance);
     expect(input.isVisible()).toBe(false);
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeNull();
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
     launchComposerOverride.value = 'visible';
     await nextTick();
@@ -4181,12 +4239,15 @@ describe('model-link composer visibility wiring', () => {
     expect(input.isVisible()).toBe(true);
     expect(textarea.element.value).toBe('Draft survives model setup');
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    await selector.get('[data-testid="model-selector-trigger"]').trigger('click');
+    expect(document.body.querySelector('[data-testid="model-selector-dropdown"]')).toBeTruthy();
   });
 });
 
 describe('ordinary Chat missing browser model notice', () => {
   beforeEach(() => {
-    resetMocks(); setupScrollToMock();
+    resetMocks();
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -4202,14 +4263,16 @@ describe('ordinary Chat missing browser model notice', () => {
     await textarea.setValue('keep writing while the model is prepared');
     const original = textarea.element;
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
-    recoveryAvailability.value = 'missing'; await flushPromises();
+    recoveryAvailability.value = 'missing';
+    await flushPromises();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(true);
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
     expect(textarea.element.value).toBe('keep writing while the model is prepared');
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
-    recoveryAvailability.value = 'available'; await flushPromises();
+    recoveryAvailability.value = 'available';
+    await flushPromises();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
@@ -4234,13 +4297,15 @@ describe('ordinary Chat missing browser model notice', () => {
 
 describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
   beforeEach(() => {
-    resetMocks(); setupScrollToMock();
+    resetMocks();
+    setupScrollToMock();
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/local-model' };
     firefoxWebGpuWarningCandidate.value = true;
   });
 
   afterEach(() => {
-    wrapper?.unmount(); wrapper = null;
+    wrapper?.unmount();
+    wrapper = null;
   });
 
   it.each(['privacy', 'model-launch'] as const)('supplements the %s welcome without replacing its primary content', async appearance => {
@@ -4256,9 +4321,14 @@ describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
     expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('relative');
     switch (appearance) {
-    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.'); break;
-    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true); break;
-    default: { const exhaustive: never = appearance; throw new Error(String(exhaustive)); }
+    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.');
+      break;
+    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true);
+      break;
+    default: {
+      const exhaustive: never = appearance;
+      throw new Error(String(exhaustive));
+    }
     }
   });
 

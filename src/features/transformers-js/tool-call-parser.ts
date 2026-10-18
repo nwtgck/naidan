@@ -12,7 +12,9 @@ const TOOL_CALL_CLOSE = '</tool_call>';
 function longestSuffixMatchingPrefix({ text, pattern }: { text: string, pattern: string }): number {
   const maxLen = Math.min(pattern.length - 1, text.length);
   for (let len = maxLen; len > 0; len--) {
-    if (pattern.startsWith(text.slice(text.length - len))) return len;
+    if (pattern.startsWith(text.slice(text.length - len))) {
+      return len;
+    }
   }
   return 0;
 }
@@ -75,12 +77,16 @@ export class ToolCallStreamParser {
           // No opening tag — stream everything except a potential partial tag at the tail
           const holdBack = longestSuffixMatchingPrefix({ text: this.pending, pattern: TOOL_CALL_OPEN });
           const safe = this.pending.length - holdBack;
-          if (safe > 0) this.onText({ text: this.pending.slice(0, safe) });
+          if (safe > 0) {
+            this.onText({ text: this.pending.slice(0, safe) });
+          }
           this.pending = this.pending.slice(safe);
           break;
         }
         // Stream text before the opening tag, then enter tool call mode
-        if (startIdx > 0) this.onText({ text: this.pending.slice(0, startIdx) });
+        if (startIdx > 0) {
+          this.onText({ text: this.pending.slice(0, startIdx) });
+        }
         this.pending = this.pending.slice(startIdx + TOOL_CALL_OPEN.length);
         this.inToolCall = true;
         this.buffer = '';

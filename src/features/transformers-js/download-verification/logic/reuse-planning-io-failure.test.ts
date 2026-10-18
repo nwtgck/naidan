@@ -87,7 +87,9 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
   const failure = new DOMException('Synthetic exact-revision permission failure', 'NotAllowedError');
   let candidatePlanning = false;
   const getDirectory = vi.fn(async () => {
-    if (candidatePlanning) throw failure;
+    if (candidatePlanning) {
+      throw failure;
+    }
     return fs.root;
   });
   const forbiddenFetch = vi.fn<typeof fetch>(async () => {
@@ -98,7 +100,9 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
   const runtimeRequests: string[] = [];
   const transport: typeof fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    if (url !== assets.mjsUrl) return forbiddenFetch(input, init);
+    if (url !== assets.mjsUrl) {
+      return forbiddenFetch(input, init);
+    }
     expect(init?.redirect).toBe('error');
     runtimeRequests.push(url);
     return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
@@ -112,17 +116,25 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
   const entry = await import('@/features/transformers-js/worker/entry');
   await initializeProductionEntryFixture({ initialize: entry.initializeProductionWorkerRuntime });
   const worker = boundary.api;
-  if (worker === undefined) throw new Error('Production entry did not expose its API');
+  if (worker === undefined) {
+    throw new Error('Production entry did not expose its API');
+  }
   const phases: string[] = [];
   const failures: Array<{ name: string; message: string }> = [];
   const verifyDownloadedModelRevision = vi.fn<ReturnType<typeof createDownloadVerificationCandidateAcceptanceWorkerClient>['verifyDownloadedModelRevision']>(async ({ modelId, loadRevision }) => {
     try {
       return await worker.verifyDownloadedModelRevision(modelId, loadRevision, info => {
-        if (typeof info.status === 'string') phases.push(info.status);
-        if (info.status === 'cache-acceptance-candidate-plan') candidatePlanning = true;
+        if (typeof info.status === 'string') {
+          phases.push(info.status);
+        }
+        if (info.status === 'cache-acceptance-candidate-plan') {
+          candidatePlanning = true;
+        }
       });
     } catch (error) {
-      if (!(error instanceof Error)) throw error;
+      if (!(error instanceof Error)) {
+        throw error;
+      }
       failures.push({ name: error.name, message: error.message });
       // Reconstruct only Error name/message as Comlink does, not its prototype.
       throw Object.assign(new Error(error.message), { name: error.name });
@@ -149,7 +161,9 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
         ],
       }),
     });
-    if (!reuse.reused) startFreshDownload();
+    if (!reuse.reused) {
+      startFreshDownload();
+    }
     return { status: 'resolved' as const, reuse };
   })().catch((error: unknown) => ({ status: 'rejected' as const, error }));
 

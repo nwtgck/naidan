@@ -118,12 +118,18 @@ describe('walkthrough motion and user selection', () => {
         expect(reserve.text()).toContain(copy.editedPrompt);
         expect(reserve.text()).toContain(copy.editedReply);
       }
-      if (index === 1 || index === 2) expect(reserve.text()).toContain(copy.replies[1]);
+      if (index === 1 || index === 2) {
+        expect(reserve.text()).toContain(copy.replies[1]);
+      }
       expect(section.findAll('.caption-reserve')).toHaveLength(4);
       expect(section.find('aside').exists()).toBe(index === 3);
       await section.get('[data-testid="branch-step-1"]').trigger('click');
-      if (index === 0) expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.sendAndBranch);
-      if (index === 3) expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.fork);
+      if (index === 0) {
+        expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.sendAndBranch);
+      }
+      if (index === 3) {
+        expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.fork);
+      }
       await section.get('[data-testid="branch-step-2"]').trigger('click');
       await section.get('[data-testid="branch-step-3"]').trigger('click');
       expect(section.get('[data-testid="branch-conversation-reserve"]').element).toBe(element);
@@ -150,7 +156,9 @@ describe('walkthrough motion and user selection', () => {
     expect(wrapper.attributes('data-playback')).toBe('automatic');
     expect(wrapper.attributes('data-stage')).toBe('0');
     const fork = demo.wrapper.get('[data-testid="branch-method-fork"]');
-    for (let step = 0; step < 4; step += 1) await fork.get('[data-testid="branch-clock"]').trigger('animationiteration');
+    for (let step = 0; step < 4; step += 1) {
+      await fork.get('[data-testid="branch-clock"]').trigger('animationiteration');
+    }
     expect(fork.attributes('data-method')).toBe('fork');
     expect(fork.attributes('data-stage')).toBe('0');
   });
@@ -165,7 +173,8 @@ describe('walkthrough motion and user selection', () => {
     document.body.append(pause);
     using _cleanup = {
       [Symbol.dispose]() {
-        pause.remove(); vi.unstubAllGlobals();
+        pause.remove();
+        vi.unstubAllGlobals();
       },
     };
     await wrapper.get('[data-testid="branch-clock"]').trigger('animationiteration');

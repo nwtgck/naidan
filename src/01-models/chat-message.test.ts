@@ -42,7 +42,9 @@ describe('createChatMessageSnapshot', () => {
     const snapshot = createChatMessageSnapshot({ node });
     const call = node.parts.find(part => part.type === 'tool_call');
     const reasoning = node.parts.find(part => part.type === 'reasoning');
-    if (!call || !reasoning) throw new Error('Incomplete fixture');
+    if (!call || !reasoning) {
+      throw new Error('Incomplete fixture');
+    }
     call.toolCall.function.arguments = '{}';
     call.toolCall.function.name = 'other';
     reasoning.text = 'changed';
@@ -66,23 +68,35 @@ describe('createChatMessageSnapshot', () => {
       case 'memory': return { ...common, status, blob };
       case 'persisted': return { ...common, status };
       case 'missing': return { ...common, status };
-      default: { const _ex: never = status; throw new Error(`Unhandled status: ${_ex}`); }
+      default: {
+        const _ex: never = status;
+        throw new Error(`Unhandled status: ${_ex}`);
+      }
       }
     })();
     const node: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'attachment', attachment }], replies: { items: [] } };
     const snapshot = createChatMessageSnapshot({ node });
     expect(snapshot.parts).toEqual(node.parts);
     attachment.originalName = 'changed';
-    if (snapshot.role !== 'user') throw new Error('Expected user');
+    if (snapshot.role !== 'user') {
+      throw new Error('Expected user');
+    }
     const part = snapshot.parts[0];
-    if (part?.type !== 'attachment') throw new Error('Expected attachment');
+    if (part?.type !== 'attachment') {
+      throw new Error('Expected attachment');
+    }
     expect(part.attachment.originalName).toBe('a.png');
     expect(part.attachment.binaryObjectId).toBe(common.binaryObjectId);
     switch (part.attachment.status) {
-    case 'memory': expect(part.attachment.blob).toBe(blob); break;
+    case 'memory': expect(part.attachment.blob).toBe(blob);
+      break;
     case 'persisted':
-    case 'missing': expect(Object.hasOwn(part.attachment, 'blob')).toBe(false); break;
-    default: { const _ex: never = part.attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+    case 'missing': expect(Object.hasOwn(part.attachment, 'blob')).toBe(false);
+      break;
+    default: {
+      const _ex: never = part.attachment;
+      throw new Error(`Unhandled attachment: ${_ex}`);
+    }
     }
   });
 
@@ -109,9 +123,15 @@ describe('createChatMessageSnapshot', () => {
     for (const part of node.parts) {
       switch (part.result.status) {
       case 'executing': break;
-      case 'success': part.result.content = { type: 'text', text: 'changed' }; break;
-      case 'error': part.result.error.code = 'execution_failed'; part.result.error.message = { type: 'text', text: 'changed' }; break;
-      default: { const _ex: never = part.result; throw new Error(`Unhandled result: ${_ex}`); }
+      case 'success': part.result.content = { type: 'text', text: 'changed' };
+        break;
+      case 'error': part.result.error.code = 'execution_failed';
+        part.result.error.message = { type: 'text', text: 'changed' };
+        break;
+      default: {
+        const _ex: never = part.result;
+        throw new Error(`Unhandled result: ${_ex}`);
+      }
       }
     }
     expect(snapshot.parts).toEqual(expected);

@@ -15,7 +15,8 @@ describe('worker memory history', () => {
     worker.dispatchEvent(new MessageEvent('message', { data: sample }));
     worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: 'model-released', capacityBytes: 2 ** 33 } }));
     expect(memoryDiagnosticsHistories.value[0]?.observedMaximumBytes).toBe(2 ** 33);
-    stop(); stop();
+    stop();
+    stop();
     worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, capacityBytes: 0 } }));
     expect(memoryDiagnosticsHistories.value[0]?.status).toBe('worker-ended');
     expect(memoryDiagnosticsHistories.value[0]?.samples).toHaveLength(2);
@@ -27,21 +28,29 @@ describe('worker memory history', () => {
     for (const capacityBytes of [65536, 131072]) {
       worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: 'before-model-load', capacityBytes } }));
     }
-    for (let i = 0; i < 400; i++) worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: 'decode', capacityBytes: 262144 } }));
+    for (let i = 0; i < 400; i++) {
+      worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: 'decode', capacityBytes: 262144 } }));
+    }
     expect(memoryDiagnosticsHistories.value[0]?.latestLoad).toEqual({ ordinal: 2, baselineBytes: 131072 });
     stop();
   });
 
   it('bounds history while retaining startup samples and lifetime observed maximum', () => {
-    const worker = Object.assign(new EventTarget(), { postMessage() {} }); const stop = observeWorkerMemory({ worker });
-    for (let i = 0; i < 400; i++) worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: i === 0 ? 'runtime-ready' : 'decode', timestamp: i, capacityBytes: i === 1 ? 1000000 : 65536 } }));
+    const worker = Object.assign(new EventTarget(), { postMessage() {} });
+    const stop = observeWorkerMemory({ worker });
+    for (let i = 0; i < 400; i++) {
+      worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, checkpoint: i === 0 ? 'runtime-ready' : 'decode', timestamp: i, capacityBytes: i === 1 ? 1000000 : 65536 } }));
+    }
     const history = memoryDiagnosticsHistories.value[0]!;
     expect(history.samples).toHaveLength(128);
     expect(history.samples[0]?.checkpoint).toBe('runtime-ready');
     expect(history.samples.at(-1)?.timestamp).toBe(399);
     expect(history.observedMaximumBytes).toBe(1000000);
-    for (let i = 0; i < 20; i++) worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, instanceId: `runtime-${i}` } }));
-    expect(memoryDiagnosticsHistories.value).toHaveLength(8); stop();
+    for (let i = 0; i < 20; i++) {
+      worker.dispatchEvent(new MessageEvent('message', { data: { ...sample, instanceId: `runtime-${i}` } }));
+    }
+    expect(memoryDiagnosticsHistories.value).toHaveLength(8);
+    stop();
   });
 });
 
@@ -66,7 +75,10 @@ it('receives real MessagePort notifications alongside Comlink requests without a
   const remote = wrapWorkerRemote<Api>({ endpoint: client });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      stop(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
+      stop();
+      releaseWorkerRemote({ remote });
+      port1.close();
+      port2.close();
     },
   };
   expect(await remote.ping()).toBe(42);

@@ -21,25 +21,33 @@ export function parseSedScriptListWidth({ value }: { value: string }): number | 
 }
 
 export function parseSedQuitStatus({ value }: { value: string | undefined }): number {
-  if (value === undefined) return 0;
+  if (value === undefined) {
+    return 0;
+  }
 
   const uint32Modulus = 0x1_0000_0000;
   let uint32Value = 0;
   for (const digit of value) {
     uint32Value = (uint32Value * 10 + (digit.charCodeAt(0) - 48)) % uint32Modulus;
   }
-  if (uint32Value === 0xffff_ffff) return 0;
+  if (uint32Value === 0xffff_ffff) {
+    return 0;
+  }
   return uint32Value & 0xff;
 }
 
 export function parseSedLineLengthOption({ value }: { value: string }): number {
   const match = value.match(/^\s*([+-]?)([0-9]+)/);
-  if (match?.[2] === undefined || match[1] === "-") return 0;
+  if (match?.[2] === undefined || match[1] === "-") {
+    return 0;
+  }
 
   let parsed = 0n;
   for (const digit of match[2]) {
     const next = parsed * 10n + BigInt(digit.charCodeAt(0) - 48);
-    if (next > SED_UINT64_MAX) return Number(SED_UINT32_MAX);
+    if (next > SED_UINT64_MAX) {
+      return Number(SED_UINT32_MAX);
+    }
     parsed = next;
   }
   return Number(parsed & SED_UINT32_MASK);

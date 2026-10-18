@@ -48,33 +48,51 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
 
   function preparedWorker(): ServiceWorker | undefined {
     const worker = candidate?.worker;
-    if (!worker || candidate?.buildId === pageBuildId) return undefined;
-    if (worker === registration?.waiting && worker.state === 'installed') return worker;
-    if (worker === registration?.active && (worker.state === 'activating' || worker.state === 'activated')) return worker;
+    if (!worker || candidate?.buildId === pageBuildId) {
+      return undefined;
+    }
+    if (worker === registration?.waiting && worker.state === 'installed') {
+      return worker;
+    }
+    if (worker === registration?.active && (worker.state === 'activating' || worker.state === 'activated')) {
+      return worker;
+    }
     return undefined;
   }
 
   // This is the ONLY path with reload capability; offline completion never calls it.
   async function applyTransaction(): Promise<void> {
-    if (disposed() || !registration || !candidate || !updateAvailable) throw new Error('The update is no longer available.');
+    if (disposed() || !registration || !candidate || !updateAvailable) {
+      throw new Error('The update is no longer available.');
+    }
     try {
       const prepared = preparedWorker();
       if (prepared) {
         await activateUpdate({ worker: prepared, signal: lifetime.signal });
       } else {
         const controller = sw.controller;
-        if (!controller || controller !== registration.active) throw new Error('This page is not controlled by the application service worker. Reload and retry.');
+        if (!controller || controller !== registration.active) {
+          throw new Error('This page is not controlled by the application service worker. Reload and retry.');
+        }
         await requestNetworkUpdate({ worker: controller, signal: lifetime.signal });
         // An acknowledgement from A says nothing about a replacement B's mode.
-        if (sw.controller !== controller || registration.active !== controller) throw new Error('The controlling service worker changed during the update. Retry.');
+        if (sw.controller !== controller || registration.active !== controller) {
+          throw new Error('The controlling service worker changed during the update. Retry.');
+        }
       }
-      if (disposed()) throw new Error('The update runtime was stopped.');
+      if (disposed()) {
+        throw new Error('The update runtime was stopped.');
+      }
       platform.reload();
     } catch (error) {
-      if (!disposed()) onError({ message: 'Failed to apply the application update.', error });
+      if (!disposed()) {
+        onError({ message: 'Failed to apply the application update.', error });
+      }
       throw error;
     } finally {
-      if (!disposed()) synchronize();
+      if (!disposed()) {
+        synchronize();
+      }
     }
   }
 
@@ -88,18 +106,24 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
 
   function identify({ item }: { item: Observation }): void {
     const worker = item.worker;
-    if (item.buildId || item.querying || item.queriedState === worker.state || worker.state === 'redundant') return;
+    if (item.buildId || item.querying || item.queriedState === worker.state || worker.state === 'redundant') {
+      return;
+    }
     item.querying = true;
     item.queriedState = worker.state;
     void requestBuildId({ worker, signal: item.lifetime.signal }).then(buildId => {
-      if (disposed() || observed.get(worker) !== item) return;
+      if (disposed() || observed.get(worker) !== item) {
+        return;
+      }
       item.buildId = buildId;
     }).catch(() => {
       // Older workers need not understand this protocol. No invented identity,
       // automatic activation, or immediate retry loop on a missing response.
     }).finally(() => {
       item.querying = false;
-      if (!disposed() && observed.get(worker) === item) synchronize();
+      if (!disposed() && observed.get(worker) === item) {
+        synchronize();
+      }
     });
   }
 
@@ -107,7 +131,9 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
     const active = registration?.active;
     if (!active || sw.controller !== active || item.worker !== registration?.waiting
       || item.worker.state !== 'installed' || item.buildId !== pageBuildId
-      || item.completionController === active) return;
+      || item.completionController === active) {
+      return;
+    }
     item.completionController = active;
     // The ACTIVE worker owns every download session, including other tabs. It
     // drains them before addressing this exact build, rather than blindly skipping.
@@ -119,18 +145,24 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
   }
 
   function synchronize(): void {
-    if (disposed() || !registration) return;
+    if (disposed() || !registration) {
+      return;
+    }
     const current = registration;
     const workers = [current.installing, current.waiting, current.active].filter(worker => worker !== null);
     for (const [worker, item] of observed) {
-      if (workers.includes(worker)) continue;
+      if (workers.includes(worker)) {
+        continue;
+      }
       worker.removeEventListener('statechange', item.listener);
       observed.delete(worker);
       item.lifetime.abort();
     }
     const observedAt = ++observationSequence;
     for (const worker of workers) {
-      if (observed.has(worker)) continue;
+      if (observed.has(worker)) {
+        continue;
+      }
       let previous = worker.state;
       const item: Observation = {
         worker,
@@ -154,16 +186,24 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
       worker.addEventListener('statechange', item.listener);
     }
     lastActive = current.active;
-    for (const item of observed.values()) identify({ item });
+    for (const item of observed.values()) {
+      identify({ item });
+    }
     const newest = current.installing ?? current.waiting ?? current.active;
     const latest = newest ? observed.get(newest) : undefined;
     const ownActive = current.active && observed.get(current.active)?.buildId === pageBuildId;
-    if (ownActive || latest?.buildId === pageBuildId) lineageKnown = true;
-    if (latest && ownActive) latest.trusted = true;
+    if (ownActive || latest?.buildId === pageBuildId) {
+      lineageKnown = true;
+    }
+    if (latest && ownActive) {
+      latest.trusted = true;
+    }
 
     if (latest?.buildId === pageBuildId) {
       // Falling back to an OLDER slot after C fails is not a new observation of B.
-      if (!candidate || latest.observedAt > candidate.observedAt || candidate.worker.state !== 'redundant') candidate = undefined;
+      if (!candidate || latest.observedAt > candidate.observedAt || candidate.worker.state !== 'redundant') {
+        candidate = undefined;
+      }
     } else if (latest?.buildId && latest.trusted && latest.worker.state !== 'redundant') {
       candidate = latest;
     } else if (candidate && candidate.worker.state !== 'redundant' && candidate !== latest) {
@@ -184,8 +224,12 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
     }
     // Independent of C's update: waiting B can be this page's offline preparation.
     const waiting = current.waiting ? observed.get(current.waiting) : undefined;
-    if ([current.installing, current.waiting].some(worker => worker && observed.get(worker)?.buildId === pageBuildId)) offlinePending = true;
-    if (waiting) completeOffline({ item: waiting });
+    if ([current.installing, current.waiting].some(worker => worker && observed.get(worker)?.buildId === pageBuildId)) {
+      offlinePending = true;
+    }
+    if (waiting) {
+      completeOffline({ item: waiting });
+    }
     if (offlinePending && ownActive && current.active?.state === 'activated' && !offlineAnnounced) {
       offlineAnnounced = true;
       onOfflineReady();
@@ -193,7 +237,9 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
   }
 
   function attach({ next }: { next: ServiceWorkerRegistration }): void {
-    if (disposed() || next.scope !== baseUrl.href || registration === next) return;
+    if (disposed() || next.scope !== baseUrl.href || registration === next) {
+      return;
+    }
     registration?.removeEventListener('updatefound', synchronize);
     registration = next;
     offlinePending ||= !next.active;
@@ -204,12 +250,15 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
     // register() alone can return an unchanged registration. A successful update
     // check authenticates the newest slot, NOT every old worker left in the scope.
     void next.update().then(() => {
-      if (disposed() || registration !== next) return;
+      if (disposed() || registration !== next) {
+        return;
+      }
       synchronize();
       const newest = next.installing ?? next.waiting ?? next.active;
       const item = newest ? observed.get(newest) : undefined;
       if (item && (newest !== activeBeforeCheck || item.buildId === pageBuildId || item.trusted)) {
-        item.trusted = true; lineageKnown = true;
+        item.trusted = true;
+        lineageKnown = true;
       }
       synchronize();
     }).catch(() => {
@@ -219,13 +268,21 @@ export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onSt
 
   sw.addEventListener('controllerchange', synchronize);
   void sw.getRegistration(baseUrl.href).then(existing => {
-    if (disposed()) return;
-    if (existing?.scope === baseUrl.href) attach({ next: existing });
+    if (disposed()) {
+      return;
+    }
+    if (existing?.scope === baseUrl.href) {
+      attach({ next: existing });
+    }
     return sw.register(new URL('sw.js', baseUrl).href, { scope: baseUrl.href, updateViaCache: 'none' });
   }).then(next => {
-    if (next) attach({ next });
+    if (next) {
+      attach({ next });
+    }
   }).catch((error: unknown) => {
-    if (!disposed()) onError({ message: 'Failed to register the service worker.', error });
+    if (!disposed()) {
+      onError({ message: 'Failed to register the service worker.', error });
+    }
   });
 
   return {

@@ -49,7 +49,9 @@ describe('wesh jq compatibility', () => {
   }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let directory = rootHandle;
     for (const segment of segments) {

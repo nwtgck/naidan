@@ -15,9 +15,14 @@ function fixture({ status, content }: { status: 'success' | 'error', content: Te
   const callId = toToolCallId({ raw: 'lookup-1' });
   let result: ToolExecutionResult;
   switch (status) {
-  case 'success': result = { toolCallId: callId, status, content }; break;
-  case 'error': result = { toolCallId: callId, status, error: { code: 'other', message: content } }; break;
-  default: { const _ex: never = status; throw new Error(`Unhandled test status: ${_ex}`); }
+  case 'success': result = { toolCallId: callId, status, content };
+    break;
+  case 'error': result = { toolCallId: callId, status, error: { code: 'other', message: content } };
+    break;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled test status: ${_ex}`);
+  }
   }
   const tool: ToolMessageNode = {
     id: toMessageId({ raw: 'tool' }),
@@ -72,7 +77,9 @@ data: [DONE]
 
 function requestBody({ fetcher, index }: { fetcher: ReturnType<typeof vi.fn<LmFetch>>, index: number }): unknown {
   const raw = fetcher.mock.calls[index]?.[1]?.body;
-  if (typeof raw !== 'string') throw new Error('Missing serialized API request.');
+  if (typeof raw !== 'string') {
+    throw new Error('Missing serialized API request.');
+  }
   return JSON.parse(raw);
 }
 
@@ -97,10 +104,14 @@ for (const kind of ['openai', 'ollama'] as const) {
       const { chat } = fixture({ status: 'success', content: { type: 'binary_object', id: binaryObjectId } });
       const user = chat.root.items[0]!;
       const assistant = user.replies.items[0]!;
-      if (assistant.role !== 'assistant') throw new Error('Missing assistant fixture.');
+      if (assistant.role !== 'assistant') {
+        throw new Error('Missing assistant fixture.');
+      }
       const literal = assistant.parts[1];
       const call = assistant.parts[2];
-      if (literal?.type !== 'text' || call?.type !== 'tool_call') throw new Error('Missing assistant parts.');
+      if (literal?.type !== 'text' || call?.type !== 'tool_call') {
+        throw new Error('Missing assistant parts.');
+      }
       literal.text = literalText;
       call.toolCall.function.arguments = argumentsText;
       const inactive: AssistantMessageNode = {
@@ -133,7 +144,9 @@ for (const kind of ['openai', 'ollama'] as const) {
             readBinaryObject: async ({ binaryObjectId, signal }) => {
               signal?.throwIfAborted();
               const blob = await storage.getFile({ binaryObjectId });
-              if (!blob) throw new Error('Missing stored tool result.');
+              if (!blob) {
+                throw new Error('Missing stored tool result.');
+              }
               return blob;
             },
           },
@@ -180,7 +193,9 @@ for (const kind of ['openai', 'ollama'] as const) {
         const readBinaryObject: NonNullable<Parameters<LmProvider['chat']>[0]['readBinaryObject']> = async ({ binaryObjectId, signal }) => {
           signal?.throwIfAborted();
           const blob = await storage.getFile({ binaryObjectId });
-          if (!blob) throw new Error('Missing saved tool content.');
+          if (!blob) {
+            throw new Error('Missing saved tool content.');
+          }
           return blob;
         };
         const invoke = ({ content }: { content: ChatContent }) => consumeProviderGenerationForTest({
@@ -199,17 +214,26 @@ for (const kind of ['openai', 'ollama'] as const) {
         await storage.saveFile({ binaryObjectId, blob: new Blob([text], { type: 'text/plain' }), name: 'result.txt', mimeType: 'text/plain' });
         const saved = { type: 'binary_object' as const, id: binaryObjectId };
         const part = tool.parts[0];
-        if (!part) throw new Error('Missing tool part.');
+        if (!part) {
+          throw new Error('Missing tool part.');
+        }
         switch (part.result.status) {
-        case 'success': part.result.content = saved; break;
-        case 'error': part.result.error.message = saved; break;
+        case 'success': part.result.content = saved;
+          break;
+        case 'error': part.result.error.message = saved;
+          break;
         case 'executing': throw new Error('Expected a terminal tool outcome.');
-        default: { const _ex: never = part.result; throw new Error(`Unhandled result: ${_ex}`); }
+        default: {
+          const _ex: never = part.result;
+          throw new Error(`Unhandled result: ${_ex}`);
+        }
         }
         const binaryHistory = build({ content: chat });
         await storage.saveChatContent({ id, content: chat });
         const loaded = await storage.loadChatContent({ id });
-        if (!loaded) throw new Error('Missing saved chat.');
+        if (!loaded) {
+          throw new Error('Missing saved chat.');
+        }
         expect(build({ content: loaded })).toEqual(binaryHistory);
         expect((await invoke({ content: loaded })).result).toEqual({ type: 'finished', next: 'user' });
         const resultText = status === 'success' ? text : `Error [other]: ${text}`;

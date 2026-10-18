@@ -13,7 +13,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const view of views.splice(0)) view.unmount();
+  for (const view of views.splice(0)) {
+    view.unmount();
+  }
   vi.restoreAllMocks();
 });
 
@@ -27,7 +29,9 @@ it('invalidates every view of the deleted binary while preserving unrelated imag
   const untouched = views[2]!.get('img').element;
   const untouchedUrl = untouched.getAttribute('src');
   getImage.mockImplementation(async ({ binaryObjectId }: { binaryObjectId: typeof deleted }) => binaryObjectId === deleted ? undefined : new Blob(['PNG']));
-  for (const view of views) await view.setProps({ invalidation: { binaryObjectId: deleted, revision: 1 } });
+  for (const view of views) {
+    await view.setProps({ invalidation: { binaryObjectId: deleted, revision: 1 } });
+  }
   await flushPromises();
   expect(views[0]!.find('img').exists()).toBe(false);
   expect(views[1]!.find('img').exists()).toBe(false);
@@ -37,7 +41,9 @@ it('invalidates every view of the deleted binary while preserving unrelated imag
   expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
   expect(getImage).toHaveBeenCalledTimes(5);
   // A later deletion of another ID must not reload the previous missing image.
-  for (const view of views) await view.setProps({ invalidation: { binaryObjectId: other, revision: 2 } });
+  for (const view of views) {
+    await view.setProps({ invalidation: { binaryObjectId: other, revision: 2 } });
+  }
   await flushPromises();
   expect(getImage).toHaveBeenCalledTimes(6);
 });

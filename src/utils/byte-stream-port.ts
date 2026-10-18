@@ -12,7 +12,8 @@ const arrayBufferByteLength = Object.getOwnPropertyDescriptor(ArrayBuffer.protot
 const arrayBufferSchema = z.custom<ArrayBuffer>(value => {
   // Use the intrinsic brand check, not instanceof: browser/VM realms can differ.
   try {
-    arrayBufferByteLength.call(value); return true;
+    arrayBufferByteLength.call(value);
+    return true;
   } catch {
     return false;
   }
@@ -46,7 +47,9 @@ export function serveByteStream({ port, openStream, signal }: {
   void completion.promise.catch(() => undefined);
 
   const finish = ({ reason }: { reason: unknown | undefined }) => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     finished = true;
     remainder = undefined;
     signal?.removeEventListener('abort', onAbort);
@@ -59,11 +62,16 @@ export function serveByteStream({ port, openStream, signal }: {
       // Producer cleanup must not retain a reader after the transport has ended.
       current.releaseLock();
     }
-    if (reason === undefined) completion.resolve();
-    else completion.reject(reason);
+    if (reason === undefined) {
+      completion.resolve();
+    } else {
+      completion.reject(reason);
+    }
   };
   const abort = ({ reason }: { reason: unknown }) => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     try {
       channel.send({ message: { type: 'error', message: (reason instanceof Error ? reason.message : 'Stream failed').slice(0, 2048) }, transferables: [] });
     } finally {
@@ -77,14 +85,18 @@ export function serveByteStream({ port, openStream, signal }: {
     outgoingSchema: responseSchema,
     onError: abort,
     async onMessage({ message }) {
-      if (finished) return;
+      if (finished) {
+        return;
+      }
       try {
         switch (message.type) {
         case 'cancel':
           finish({ reason: abortError() });
           return;
         case 'pull':
-          if (pulling) throw new Error('Overlapping stream reads');
+          if (pulling) {
+            throw new Error('Overlapping stream reads');
+          }
           pulling = true;
           break;
         default: {
@@ -102,7 +114,9 @@ export function serveByteStream({ port, openStream, signal }: {
         }
         while (!remainder?.byteLength) {
           const result = await reader.read();
-          if (finished) return;
+          if (finished) {
+            return;
+          }
           if (result.done) {
             channel.send({ message: { type: 'end' }, transferables: [] });
             finish({ reason: undefined });
@@ -116,7 +130,9 @@ export function serveByteStream({ port, openStream, signal }: {
         const bytes = new Uint8Array(Math.min(remainder.byteLength, BYTE_STREAM_CHUNK_BYTES));
         bytes.set(remainder.subarray(0, bytes.byteLength));
         remainder = remainder.subarray(bytes.byteLength);
-        if (remainder.byteLength === 0) remainder = undefined;
+        if (remainder.byteLength === 0) {
+          remainder = undefined;
+        }
         channel.send({ message: { type: 'chunk', bytes: bytes.buffer }, transferables: [bytes.buffer] });
       } catch (reason) {
         abort({ reason });
@@ -126,7 +142,9 @@ export function serveByteStream({ port, openStream, signal }: {
     },
   });
   signal?.addEventListener('abort', onAbort, { once: true });
-  if (signal?.aborted) onAbort();
+  if (signal?.aborted) {
+    onAbort();
+  }
   return { completed: completion.promise, abort };
 }
 
@@ -141,18 +159,24 @@ export function receiveByteStream({ port }: { port: MessagePort }): {
   const completion = Promise.withResolvers<void>();
   void completion.promise.catch(() => undefined);
   const finish = ({ reason }: { reason: unknown | undefined }) => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     finished = true;
     if (reason !== undefined) {
       channel.send({ message: { type: 'cancel' }, transferables: [] });
       completion.reject(reason);
-    } else completion.resolve();
+    } else {
+      completion.resolve();
+    }
     channel.close();
     pending?.resolve();
     pending = undefined;
   };
   const abort = ({ reason }: { reason: unknown }) => {
-    if (finished) return;
+    if (finished) {
+      return;
+    }
     const error = reason ?? abortError();
     controller.error(error);
     finish({ reason: error });
@@ -162,7 +186,9 @@ export function receiveByteStream({ port }: { port: MessagePort }): {
       controller = value;
     },
     pull() {
-      if (finished) return;
+      if (finished) {
+        return;
+      }
       const request = Promise.withResolvers<void>();
       pending = request;
       channel.send({ message: { type: 'pull' }, transferables: [] });
@@ -178,14 +204,18 @@ export function receiveByteStream({ port }: { port: MessagePort }): {
     outgoingSchema: requestSchema,
     onError: abort,
     onMessage({ message }) {
-      if (finished) return;
+      if (finished) {
+        return;
+      }
       try {
         switch (message.type) {
         case 'error':
           abort({ reason: new Error(message.message) });
           return;
         case 'end':
-          if (!pending) throw new Error('Unrequested stream end');
+          if (!pending) {
+            throw new Error('Unrequested stream end');
+          }
           controller.close();
           finish({ reason: undefined });
           return;

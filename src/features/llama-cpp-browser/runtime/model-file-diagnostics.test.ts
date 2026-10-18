@@ -44,7 +44,9 @@ describe('ordinal-only model file read diagnostics', () => {
     const read = vi.fn(() => 2);
     const trace = createModelFileDiagnostics({ ordinal: 1, source: { size: 10, read } });
     expect(() => trace.source.read({ destination: new Uint8Array(10), offset: 9 })).toThrow('Invalid model read count');
-    for (const offset of [-1, 11, NaN, 0.5]) expect(() => trace.source.read({ destination: new Uint8Array(10), offset })).toThrow('Invalid model read offset');
+    for (const offset of [-1, 11, NaN, 0.5]) {
+      expect(() => trace.source.read({ destination: new Uint8Array(10), offset })).toThrow('Invalid model read offset');
+    }
     expect(read).toHaveBeenCalledOnce();
   });
 

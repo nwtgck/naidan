@@ -61,9 +61,13 @@ interface ParsedGrepArguments {
 }
 
 function parseContextCount({ value }: { value: string }): number {
-  if (!/^[0-9]+$/u.test(value)) throw new GitUsageError({ message: `invalid context length argument: ${value}` });
+  if (!/^[0-9]+$/u.test(value)) {
+    throw new GitUsageError({ message: `invalid context length argument: ${value}` });
+  }
   const count = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(count)) throw new GitUsageError({ message: `invalid context length argument: ${value}` });
+  if (!Number.isSafeInteger(count)) {
+    throw new GitUsageError({ message: `invalid context length argument: ${value}` });
+  }
   return count;
 }
 
@@ -122,7 +126,9 @@ function parseGrepArguments({ args }: { args: readonly string[] }): ParsedGrepAr
               return analysis.value.rawValue;
             case 'following-required': {
               const value = args[index + 1];
-              if (value === undefined) throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+              if (value === undefined) {
+                throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+              }
               index += 1;
               return value;
             }
@@ -163,12 +169,16 @@ function parseGrepArguments({ args }: { args: readonly string[] }): ParsedGrepAr
       }
       continue;
     }
-    if (!optionTerminated && arg.startsWith('--')) throw new GitUsageError({ message: `unknown option: ${arg}` });
+    if (!optionTerminated && arg.startsWith('--')) {
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
+    }
     positionals.push(arg);
   }
 
   const pattern = positionals[0];
-  if (pattern === undefined) throw new GitUsageError({ message: 'no pattern given' });
+  if (pattern === undefined) {
+    throw new GitUsageError({ message: 'no pattern given' });
+  }
   return {
     pattern,
     pathOperands: positionals.slice(1),
@@ -226,9 +236,13 @@ function selectedOutputLines({ matchingLineIndexes, lineCount, beforeContext, af
   for (const lineIndex of matchingLineIndexes) {
     const start = Math.max(previousSelectedEnd + 1, lineIndex - beforeContext, 0);
     const end = Math.min(lineCount - 1, lineIndex + afterContext);
-    while (matchOffset < matchingLineIndexes.length && matchingLineIndexes[matchOffset]! < start) matchOffset += 1;
+    while (matchOffset < matchingLineIndexes.length && matchingLineIndexes[matchOffset]! < start) {
+      matchOffset += 1;
+    }
     for (let current = start; current <= end; current += 1) {
-      while (matchOffset < matchingLineIndexes.length && matchingLineIndexes[matchOffset]! < current) matchOffset += 1;
+      while (matchOffset < matchingLineIndexes.length && matchingLineIndexes[matchOffset]! < current) {
+        matchOffset += 1;
+      }
       output.push({ lineIndex: current, matched: matchingLineIndexes[matchOffset] === current });
     }
     previousSelectedEnd = Math.max(previousSelectedEnd, end);
@@ -262,9 +276,13 @@ export async function runGrep({ context, args }: {
   let outputBuffer = '';
 
   for (const entry of indexEntries) {
-    if (selectedPaths !== undefined && !selectedPaths.has(entry.path)) continue;
+    if (selectedPaths !== undefined && !selectedPaths.has(entry.path)) {
+      continue;
+    }
     const absolutePath = worktreeAbsolutePath({ repository, path: entry.path });
-    if (!await pathExists({ files: context.files, path: absolutePath })) continue;
+    if (!await pathExists({ files: context.files, path: absolutePath })) {
+      continue;
+    }
     const stat = await context.files.lstat({ path: absolutePath });
     switch (stat.type) {
     case 'file':
@@ -280,13 +298,19 @@ export async function runGrep({ context, args }: {
     }
     }
     const bytes = await readFileBytes({ files: context.files, path: absolutePath });
-    if (bytes.includes(0)) continue;
+    if (bytes.includes(0)) {
+      continue;
+    }
     const text = decoder.decode(bytes);
     const lines = text.split('\n');
-    if (lines.length > 0 && lines.at(-1) === '') lines.pop();
+    if (lines.length > 0 && lines.at(-1) === '') {
+      lines.pop();
+    }
     const displayPath = statusPathFromCwd({ context, repository, path: entry.path });
     if (parsed.filesWithMatches) {
-      if (!lines.some(line => matchesLine({ line }))) continue;
+      if (!lines.some(line => matchesLine({ line }))) {
+        continue;
+      }
       found = true;
       outputBuffer += `${displayPath}\n`;
       if (outputBuffer.length >= GREP_OUTPUT_FLUSH_THRESHOLD) {
@@ -297,9 +321,13 @@ export async function runGrep({ context, args }: {
     }
     const matchingLineIndexes: number[] = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-      if (matchesLine({ line: lines[lineIndex]! })) matchingLineIndexes.push(lineIndex);
+      if (matchesLine({ line: lines[lineIndex]! })) {
+        matchingLineIndexes.push(lineIndex);
+      }
     }
-    if (matchingLineIndexes.length === 0) continue;
+    if (matchingLineIndexes.length === 0) {
+      continue;
+    }
     found = true;
     const outputLines = selectedOutputLines({
       matchingLineIndexes,
@@ -326,7 +354,9 @@ export async function runGrep({ context, args }: {
       outputBuffer = '';
     }
   }
-  if (outputBuffer.length > 0) await context.text().print({ text: outputBuffer });
+  if (outputBuffer.length > 0) {
+    await context.text().print({ text: outputBuffer });
+  }
   return { exitCode: found ? 0 : 1 };
 }
 

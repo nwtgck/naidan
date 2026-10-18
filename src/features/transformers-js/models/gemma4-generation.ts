@@ -25,21 +25,30 @@ export function createGemma4Generation({ emit, toolCalls }: {
   let settled = false;
 
   function assertWritable(): void {
-    if (settled || terminal !== undefined) throw new Error('Gemma content arrived after completion.');
+    if (settled || terminal !== undefined) {
+      throw new Error('Gemma content arrived after completion.');
+    }
   }
   function open({ kind }: { kind: 'text' | 'reasoning' }): void {
-    if (active !== undefined) throw new Error('Gemma opened an overlapping body.');
+    if (active !== undefined) {
+      throw new Error('Gemma opened an overlapping body.');
+    }
     active = { index: nextIndex++, kind };
     emit({ event: { type: 'part_start', index: active.index, kind } });
   }
   function delta({ text }: { text: string }): void {
-    if (!text) return;
-    if (active === undefined) open({ kind: 'text' });
+    if (!text) {
+      return;
+    }
+    if (active === undefined) {
+      open({ kind: 'text' });
+    }
     emit({ event: { type: 'text_delta', index: active!.index, text } });
   }
   function flushNewline(): void {
     if (trailingNewline) {
-      trailingNewline = false; delta({ text: '\n' });
+      trailingNewline = false;
+      delta({ text: '\n' });
     }
   }
   function close({ completeness }: { completeness: 'complete' | 'partial' }): void {
@@ -51,16 +60,22 @@ export function createGemma4Generation({ emit, toolCalls }: {
   function appendCallText(): void {
     // Ordinary text spelling a native quote must not become a quote boundary
     // when converting the already-framed body to the native argument grammar.
-    if (callText.includes(quote)) throw new Error('Gemma cannot preserve a literal native quote delimiter in tool arguments.');
-    callBody += callText; callText = '';
+    if (callText.includes(quote)) {
+      throw new Error('Gemma cannot preserve a literal native quote delimiter in tool arguments.');
+    }
+    callBody += callText;
+    callText = '';
   }
   function appendCall({ text }: { text: string }): void {
-    if (callBody.length + callText.length + text.length > maxCallLength) throw new Error('Gemma tool draft exceeds its size limit.');
+    if (callBody.length + callText.length + text.length > maxCallLength) {
+      throw new Error('Gemma tool draft exceeds its size limit.');
+    }
     callText += text;
   }
   function bodyText({ text }: { text: string }): void {
     switch (phase) {
-    case 'body': delta({ text }); break;
+    case 'body': delta({ text });
+      break;
     case 'thought':
       // The template inserts exactly one newline before <channel|>. Retain at
       // most that character until the boundary confirms it is framing. At an
@@ -73,104 +88,161 @@ export function createGemma4Generation({ emit, toolCalls }: {
       header += text;
       if (header.startsWith(thoughtHeader)) {
         const content = header.slice(thoughtHeader.length);
-        header = ''; phase = 'thought'; open({ kind: 'reasoning' });
+        header = '';
+        phase = 'thought';
+        open({ kind: 'reasoning' });
         bodyText({ text: content });
       } else if (!thoughtHeader.startsWith(header)) {
         throw new Error('Unsupported Gemma channel header.');
       }
       break;
-    case 'tool_call': appendCall({ text }); break;
-    default: { const exhaustive: never = phase; throw new Error(`Unhandled Gemma phase: ${exhaustive}`); }
+    case 'tool_call': appendCall({ text });
+      break;
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(`Unhandled Gemma phase: ${exhaustive}`);
+    }
     }
   }
 
   return {
     text({ text }: { text: string }): void {
-      if (text.length === 0) return;
-      assertWritable(); bodyText({ text });
+      if (text.length === 0) {
+        return;
+      }
+      assertWritable();
+      bodyText({ text });
     },
     control({ token }: { token: string }): void {
       // Gemma recordings can contain both a turn boundary and EOS. They are
       // redundant native end markers, not a second semantic completion.
-      if (!settled && terminal !== undefined && (token === '<turn|>' || token === '<eos>')) return;
+      if (!settled && terminal !== undefined && (token === '<turn|>' || token === '<eos>')) {
+        return;
+      }
       assertWritable();
       switch (phase) {
       case 'tool_call':
         appendCallText();
         if (token === quote) {
-          if (callBody.length + token.length > maxCallLength) throw new Error('Gemma tool draft exceeds its size limit.');
-          callBody += token; quoted = !quoted; return;
+          if (callBody.length + token.length > maxCallLength) {
+            throw new Error('Gemma tool draft exceeds its size limit.');
+          }
+          callBody += token;
+          quoted = !quoted;
+          return;
         }
         if (quoted) {
           // An actual control token inside a native string is argument data.
-          appendCall({ text: token }); return;
+          appendCall({ text: token });
+          return;
         }
         if (token === '<turn|>' || token === '<eos>') {
-          terminal = 'incomplete'; return;
+          terminal = 'incomplete';
+          return;
         }
-        if (token !== '<tool_call|>') throw new Error('Gemma tool draft ended without its closing delimiter.');
+        if (token !== '<tool_call|>') {
+          throw new Error('Gemma tool draft ended without its closing delimiter.');
+        }
         {
           const toolCall = parseGemma4ToolCallBody({ body: callBody });
           validateGemma4ToolCallsForTemplate({ toolCalls: [toolCall] });
           emit({ event: { type: 'tool_call', index: callIndex!, toolCall } });
           completedCalls++;
-          phase = 'body'; callIndex = undefined; callBody = ''; return;
+          phase = 'body';
+          callIndex = undefined;
+          callBody = '';
+          return;
         }
       case 'channel_header':
         throw new Error('Gemma channel header was interrupted by another control token.');
       case 'thought':
         if (token === quote) {
-          quoted = !quoted; bodyText({ text: token }); return;
+          quoted = !quoted;
+          bodyText({ text: token });
+          return;
         }
         if (quoted) {
-          bodyText({ text: token }); return;
+          bodyText({ text: token });
+          return;
         }
         switch (token) {
         case '<channel|>':
           trailingNewline = false;
-          close({ completeness: 'complete' }); phase = 'body'; return;
+          close({ completeness: 'complete' });
+          phase = 'body';
+          return;
         case '<|tool_call>': case '<tool_call|>': case '<|tool_response>': case '<tool_response|>':
-          bodyText({ text: token }); return;
+          bodyText({ text: token });
+          return;
         case '<turn|>': case '<eos>':
-          flushNewline(); close({ completeness: 'partial' });
+          flushNewline();
+          close({ completeness: 'partial' });
           // A turn terminator cannot complete an unclosed thought channel.
-          terminal = 'incomplete'; return;
+          terminal = 'incomplete';
+          return;
         default: throw new Error('Unsupported control token inside a Gemma thought.');
         }
       case 'body':
         if (token === quote) {
-          quoted = !quoted; bodyText({ text: token }); return;
+          quoted = !quoted;
+          bodyText({ text: token });
+          return;
         }
         if (quoted) {
-          bodyText({ text: token }); return;
+          bodyText({ text: token });
+          return;
         }
         switch (token) {
         case '<|channel>':
-          close({ completeness: 'complete' }); phase = 'channel_header'; header = ''; return;
+          close({ completeness: 'complete' });
+          phase = 'channel_header';
+          header = '';
+          return;
         case '<|tool_call>':
           switch (toolCalls) {
           case 'enabled': break;
           case 'disabled': throw new Error('Gemma generated a tool call without tool declarations.');
-          default: { const exhaustive: never = toolCalls; throw new Error(`Unhandled tool mode: ${exhaustive}`); }
+          default: {
+            const exhaustive: never = toolCalls;
+            throw new Error(`Unhandled tool mode: ${exhaustive}`);
+          }
           }
           close({ completeness: 'complete' });
-          phase = 'tool_call'; callIndex = nextIndex++; callBody = ''; callText = '';
-          emit({ event: { type: 'tool_start', index: callIndex } }); return;
+          phase = 'tool_call';
+          callIndex = nextIndex++;
+          callBody = '';
+          callText = '';
+          emit({ event: { type: 'tool_start', index: callIndex } });
+          return;
         case '<|tool_response>':
-          if (!completedCalls) throw new Error('Gemma tool handoff has no completed call.');
-          close({ completeness: 'complete' }); terminal = 'tool_results'; return;
+          if (!completedCalls) {
+            throw new Error('Gemma tool handoff has no completed call.');
+          }
+          close({ completeness: 'complete' });
+          terminal = 'tool_results';
+          return;
         case '<turn|>': case '<eos>':
-          if (nextIndex === 0) open({ kind: 'text' });
-          close({ completeness: 'complete' }); terminal = completedCalls ? 'tool_results' : 'user'; return;
+          if (nextIndex === 0) {
+            open({ kind: 'text' });
+          }
+          close({ completeness: 'complete' });
+          terminal = completedCalls ? 'tool_results' : 'user';
+          return;
         default: throw new Error('Unsupported or misplaced Gemma control token.');
         }
-      default: { const exhaustive: never = phase; throw new Error(`Unhandled Gemma phase: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(`Unhandled Gemma phase: ${exhaustive}`);
+      }
       }
     },
     finish({ reason }: { reason: 'aborted' | 'limit' | 'unknown' }): void {
-      if (settled) throw new Error('Gemma generation was settled twice.');
+      if (settled) {
+        throw new Error('Gemma generation was settled twice.');
+      }
       settled = true;
-      flushNewline(); close({ completeness: 'partial' });
+      flushNewline();
+      close({ completeness: 'partial' });
       emit({
         event: {
           type: 'result',

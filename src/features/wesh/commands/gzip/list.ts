@@ -25,7 +25,9 @@ function formatRatio({
   uncompressedBytes: number,
   headerBytes: number,
 }): string {
-  if (uncompressedBytes === 0) return '0.0%';
+  if (uncompressedBytes === 0) {
+    return '0.0%';
+  }
   const payloadBytes = Math.max(
     0,
     compressedBytes - headerBytes - GZIP_FOOTER_BYTES,
@@ -53,8 +55,12 @@ function deriveUncompressedName({
   input: string,
   suffix: string,
 }): string {
-  if (input === '-') return 'stdout';
-  if (input.endsWith('.gz')) return input.slice(0, -3);
+  if (input === '-') {
+    return 'stdout';
+  }
+  if (input.endsWith('.gz')) {
+    return input.slice(0, -3);
+  }
   if (suffix.length > 0 && input.endsWith(suffix)) {
     return input.slice(0, -suffix.length);
   }
@@ -132,7 +138,9 @@ export async function executeGzipListCommand({
     }
   }
 
-  if (rows.length === 0) return { exitCode };
+  if (rows.length === 0) {
+    return { exitCode };
+  }
 
   await text.print({ text: LIST_HEADER });
   for (const row of rows) {

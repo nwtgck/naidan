@@ -99,7 +99,9 @@ function decodePrintfEscapes({
   let textBuffer = '';
 
   const flushTextBuffer = (): void => {
-    if (textBuffer.length === 0) return;
+    if (textBuffer.length === 0) {
+      return;
+    }
     byteChunks.push(encodeCommandDataText({ text: textBuffer }));
     textBuffer = '';
   };
@@ -775,13 +777,19 @@ function formatIntegerConversion({
   if (token.flags.alternate) {
     switch (token.spec) {
     case 'o':
-      if (!digits.startsWith('0')) basePrefix = '0';
+      if (!digits.startsWith('0')) {
+        basePrefix = '0';
+      }
       break;
     case 'x':
-      if (magnitude !== 0n) basePrefix = '0x';
+      if (magnitude !== 0n) {
+        basePrefix = '0x';
+      }
       break;
     case 'X':
-      if (magnitude !== 0n) basePrefix = '0X';
+      if (magnitude !== 0n) {
+        basePrefix = '0X';
+      }
       break;
     case 'd':
     case 'i':

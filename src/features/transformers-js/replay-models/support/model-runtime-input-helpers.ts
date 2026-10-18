@@ -43,7 +43,9 @@ export interface ReplayRuntime {
 export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bodyPaths: string[] }) {
   // Build before installing the browser-like globals used only for evaluation.
   const runtimeArtifact = await getProductionTransformersArtifact();
-  if (runtimeArtifact.originalBundleSha256 !== WEB_BUNDLE_SHA256) throw new Error('Unexpected installed Transformers.js web bundle');
+  if (runtimeArtifact.originalBundleSha256 !== WEB_BUNDLE_SHA256) {
+    throw new Error('Unexpected installed Transformers.js web bundle');
+  }
   const transport = vi.fn<typeof fetch>(async () => {
     throw new Error('Transport forbidden in checked-in model replay');
   });
@@ -73,28 +75,34 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle browser API signature.
     getDirectoryHandle: async (name: string, options: FileSystemGetDirectoryOptions) => {
       if (options?.create) {
-        mutations(); throw new Error('Directory write forbidden');
+        mutations();
+        throw new Error('Directory write forbidden');
       }
       return directory({ prefix: `${prefix}${name}/` });
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- FileSystemDirectoryHandle browser API signature.
     getFileHandle: async (name: string, options: FileSystemGetFileOptions) => {
       if (options?.create) {
-        mutations(); throw new Error('File write forbidden');
+        mutations();
+        throw new Error('File write forbidden');
       }
       const path = `${prefix}${name}`;
       reads.push(path);
       const blob = blobs.get(path);
-      if (blob === undefined) throw new DOMException('Missing raw fixture file', 'NotFoundError');
+      if (blob === undefined) {
+        throw new DOMException('Missing raw fixture file', 'NotFoundError');
+      }
       return {
         getFile: async () => blob,
         createWritable: () => {
-          mutations(); throw new Error('Writer forbidden');
+          mutations();
+          throw new Error('Writer forbidden');
         },
       };
     },
     removeEntry: () => {
-      mutations(); throw new Error('Delete forbidden');
+      mutations();
+      throw new Error('Delete forbidden');
     },
   } as unknown as FileSystemDirectoryHandle);
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, storage: { getDirectory: async () => directory({ prefix: '' }) } });
@@ -133,7 +141,8 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
           const [, revision, ...parts] = path.split('/');
           path = parts.join('/');
           if (revision !== archive.summary.revision && !(revision === 'main' && ['tokenizer_config.json', 'preprocessor_config.json'].includes(path))) {
-            unknownRequests.push(url); throw new Error('Unexpected raw replay revision');
+            unknownRequests.push(url);
+            throw new Error('Unexpected raw replay revision');
           }
         }
         requests.push(path);
@@ -141,17 +150,21 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
           await gate.promise;
           return new Response(new ReadableStream<Uint8Array>({
             pull(controller) {
-              bodyReads.push(path); controller.enqueue(new Uint8Array([1])); controller.close();
+              bodyReads.push(path);
+              controller.enqueue(new Uint8Array([1]));
+              controller.close();
             },
           }, { highWaterMark: 0 }), { headers: { 'Content-Length': '1' } });
         }
         if (offset < 0 || !allowedMetadata.has(path)) {
-          unknownRequests.push(url); throw new Error('Uncaptured raw replay request');
+          unknownRequests.push(url);
+          throw new Error('Uncaptured raw replay request');
         }
         return cache.match(request);
       },
       async put() {
-        mutations(); throw new Error('Cache put forbidden');
+        mutations();
+        throw new Error('Cache put forbidden');
       },
     },
   });

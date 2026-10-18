@@ -11,7 +11,8 @@ import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/downl
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind => {
@@ -27,7 +28,8 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
       },
     });
     const bytes = new Uint8Array(32), view = new DataView(bytes.buffer);
-    view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true);
+    view.setUint32(0, 0x46554747, true);
+    view.setUint32(4, 3, true);
     const file = { repository: 'org/model', revision: 'a'.repeat(40), path: 'model.gguf', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
     const fetch = vi.fn<CatalogFetch>(async () => ({
       url: '',
@@ -40,7 +42,8 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
       headers: new Headers(),
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
     }));
@@ -50,14 +53,18 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
       if (this.name === '.model.gguf.pending' && failFirstPending) {
         failFirstPending = false;
         const failure = new DOMException('Storage is full', 'QuotaExceededError');
-        if (phase === 'open') throw failure;
+        if (phase === 'open') {
+          throw failure;
+        }
         const writer = await original.call(this, options);
-        if (phase === 'write') return {
-          ...writer,
-          write: async () => {
-            throw failure;
-          },
-        };
+        if (phase === 'write') {
+          return {
+            ...writer,
+            write: async () => {
+              throw failure;
+            },
+          };
+        }
         return {
           ...writer,
           close: async () => {
@@ -70,7 +77,9 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
     const run = () => saveImageCatalogFile({ file, destination, signal: new AbortController().signal, report() {}, fetch });
     await expect(run()).rejects.toThrow('Storage is full');
     let folder = root;
-    for (const part of kind === 'opfs' ? ['models', 'huggingface.co', 'org', 'model', 'resolve', 'main'] : ['org', 'model']) folder = await folder.getDirectoryHandle(part);
+    for (const part of kind === 'opfs' ? ['models', 'huggingface.co', 'org', 'model', 'resolve', 'main'] : ['org', 'model']) {
+      folder = await folder.getDirectoryHandle(part);
+    }
     expect(folder.children.has('model.gguf')).toBe(false);
     expect(folder.children.has('.model.gguf.pending')).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
@@ -80,6 +89,8 @@ describe.each(['opfs', 'host'] as const)('first %s pending marker failure', kind
     expect(folder.children.has('.model.gguf.pending')).toBe(false);
     expect(folder.children.has('.model.gguf.complete')).toBe(true);
     expect(fetch).toHaveBeenCalledOnce();
-    if (kind === 'host') expect(hostModelHandles.get).toHaveBeenCalledWith({ id: toHostModelDirectoryId({ raw: directoryId }) });
+    if (kind === 'host') {
+      expect(hostModelHandles.get).toHaveBeenCalledWith({ id: toHostModelDirectoryId({ raw: directoryId }) });
+    }
   });
 });

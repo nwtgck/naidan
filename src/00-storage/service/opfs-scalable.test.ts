@@ -45,7 +45,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'directory') throw new Error(`Not a directory: ${name}`);
+    if (entry?.kind !== 'directory') {
+      throw new Error(`Not a directory: ${name}`);
+    }
     return entry as MockFileSystemDirectoryHandle;
   }
 
@@ -60,7 +62,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'file') throw new Error(`Not a file: ${name}`);
+    if (entry?.kind !== 'file') {
+      throw new Error(`Not a file: ${name}`);
+    }
     return entry as MockFileSystemFileHandle;
   }
 

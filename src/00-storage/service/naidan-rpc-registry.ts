@@ -30,7 +30,9 @@ export async function readNaidanRpcRegistry({ provider, providerGeneration, pers
   provider: IStorageProvider, providerGeneration: number, persistence: NaidanRpcRegistryAccess['persistence'],
 }): Promise<NaidanRpcRegistrySnapshot> {
   const value = await provider.loadNaidanRpcRegistry();
-  if (value === undefined) return { access: { providerGeneration, persistence, registryId: undefined }, registrations: [] };
+  if (value === undefined) {
+    return { access: { providerGeneration, persistence, registryId: undefined }, registrations: [] };
+  }
   const { version: _version, id, registrations, ...rest } = ExperimentalNaidanRpcRegistrySchemaDto.parse(value);
   rest satisfies Record<PropertyKey, never>;
   validateRegistry({ id, registrations });
@@ -55,9 +57,15 @@ export async function writeNaidanRpcRegistry({ provider, current, registrations 
 }
 
 function validateRegistry({ id, registrations }: { id: string; registrations: readonly { id: string }[] }): void {
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw new Error('Invalid RPC registry identity');
-  if (registrations.length > 32) throw new Error('RPC registry capacity exceeded');
-  if (new Set(registrations.map(registration => registration.id)).size !== registrations.length) throw new Error('Duplicate RPC registration');
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) {
+    throw new Error('Invalid RPC registry identity');
+  }
+  if (registrations.length > 32) {
+    throw new Error('RPC registry capacity exceeded');
+  }
+  if (new Set(registrations.map(registration => registration.id)).size !== registrations.length) {
+    throw new Error('Duplicate RPC registration');
+  }
 }
 
 export const TEST_ONLY = {

@@ -16,7 +16,9 @@ export function usePWAUpdate() {
   }
   async function update(): Promise<void> {
     const current = state.value;
-    if (applying.value || current.kind === 'idle' || !current.handler) return;
+    if (applying.value || current.kind === 'idle' || !current.handler) {
+      return;
+    }
     applying.value = true;
     try {
       await current.handler();

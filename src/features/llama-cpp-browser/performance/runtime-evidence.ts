@@ -10,7 +10,9 @@ const manifestSchema = z.object({
 /** Published package identity, not proof of the live transformed module bytes. */
 export function runtimeBuildEvidence({ manifest }: { manifest: unknown }): PerformanceSnapshot['environment']['runtimeBuild'] {
   const parsed = manifestSchema.safeParse(manifest);
-  if (!parsed.success) return undefined;
+  if (!parsed.success) {
+    return undefined;
+  }
   return {
     sourceCommit: parsed.data.sourceCommit,
     files: parsed.data.files.filter(file =>

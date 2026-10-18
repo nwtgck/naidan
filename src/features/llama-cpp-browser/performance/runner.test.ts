@@ -33,7 +33,8 @@ function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnost
     }),
   };
   const waitUntilVisible = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
-    signal.throwIfAborted(); hidden = false;
+    signal.throwIfAborted();
+    hidden = false;
   });
   const runner = createPerformanceRunner({
     service,
@@ -54,7 +55,8 @@ function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnost
     order,
     waitUntilVisible,
     hide: () => {
-      hidden = true; runner.visibilityChanged();
+      hidden = true;
+      runner.visibilityChanged();
     },
     start: () => runner.start({ plan, environment: performanceEnvironment() }),
   };
@@ -85,12 +87,15 @@ describe('in-memory sequential performance measurement', () => {
     expect(snapshot.trials[0]).toMatchObject({ firstReceivedMs: 100, firstReasoningMs: 100, firstTextMs: 200, elapsedMs: 200 });
     const followup = test.generate.mock.calls[2]![0];
     expect(followup.input.messages).toEqual([snapshot.trials[1]!.input[0], { role: 'assistant', content: 'answer', reasoning_content: 'reasoning' }, { role: 'user', content: test.plan.steps[2]!.prompt }]);
-    for (const [index, [call]] of test.generate.mock.calls.entries()) expect(call.input).toMatchObject({ temperature: 0, topP: 1, debug: 'off', maxTokens: test.plan.steps[index]!.maxTokens });
+    for (const [index, [call]] of test.generate.mock.calls.entries()) {
+      expect(call.input).toMatchObject({ temperature: 0, topP: 1, debug: 'off', maxTokens: test.plan.steps[index]!.maxTokens });
+    }
     expect(summarizePerformance({ snapshot })).toHaveLength(10);
   });
 
   it('rejects changed model inventory without beginning that model', async () => {
-    const test = setup(); test.service.listModels.mockResolvedValue([{ ...test.plan.models[0]!, importedAt: 2 }]);
+    const test = setup();
+    test.service.listModels.mockResolvedValue([{ ...test.plan.models[0]!, importedAt: 2 }]);
     await test.start();
     expect(test.generate).not.toHaveBeenCalled();
     expect(test.runner.snapshot()?.trials.every(trial => trial.status === 'skipped')).toBe(true);
@@ -98,7 +103,8 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('records a model failure, retires that model, and continues with the next model', async () => {
-    const test = setup({ models: 2 }); test.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'runtime-error' }));
+    const test = setup({ models: 2 });
+    test.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'runtime-error' }));
     await test.start();
     expect(test.generate).toHaveBeenCalledTimes(6);
     const snapshot = test.runner.snapshot()!;
@@ -130,20 +136,24 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('aborts timed out inference and waits for it to settle instead of racing the next model', async () => {
-    vi.useFakeTimers(); const test = setup();
+    vi.useFakeTimers();
+    const test = setup();
     test.generate.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal.addEventListener('abort', () => reject(new LlamaCppBrowserError({ code: 'aborted' })), { once: true });
     }));
     const pending = test.start();
-    await vi.advanceTimersByTimeAsync(1001); await pending;
+    await vi.advanceTimersByTimeAsync(1001);
+    await pending;
     expect(test.runner.snapshot()?.trials[0]).toMatchObject({ status: 'failed', error: 'trial-timeout' });
     expect(test.generate).toHaveBeenCalledOnce();
   });
 
   it('excludes hidden trials without replacing a slow measurement or hiding raw evidence', async () => {
-    const test = setup(); const original = test.generate.getMockImplementation()!;
+    const test = setup();
+    const original = test.generate.getMockImplementation()!;
     test.generate.mockImplementationOnce(async args => {
-      test.hide(); return original(args);
+      test.hide();
+      return original(args);
     });
     await test.start();
     expect(test.runner.snapshot()?.trials).toHaveLength(5);
@@ -153,9 +163,12 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('does not fabricate a continuation after an empty preparation', async () => {
-    const test = setup(); const original = test.generate.getMockImplementation()!; let calls = 0;
+    const test = setup();
+    const original = test.generate.getMockImplementation()!;
+    let calls = 0;
     test.generate.mockImplementation(async args => {
-      const result = await original(args); calls++;
+      const result = await original(args);
+      calls++;
       return calls === 2 ? { ...result, content: '', reasoningContent: '' } : result;
     });
     await test.start();
@@ -164,7 +177,8 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('separates truncated-parent continuations while excluding unexpected fresh reuse', async () => {
-    const test = setup(); const original = test.generate.getMockImplementation()!;
+    const test = setup();
+    const original = test.generate.getMockImplementation()!;
     test.generate.mockImplementation(async args => {
       const result = await original(args);
       args.onSummary({ diagnostic: performanceReport({ reused: 8 }) });
@@ -177,7 +191,8 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('records missing metrics as missing, never zero', async () => {
-    const test = setup(); test.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    const test = setup();
+    test.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await test.start();
     expect(test.runner.snapshot()?.trials[0]?.exclusion).toContain('missing-summary');
     expect(test.runner.snapshot()?.trials[0]?.exclusion).not.toContain('unexpected-reuse');
@@ -185,10 +200,14 @@ describe('in-memory sequential performance measurement', () => {
   });
 
   it('rejects overlapping starts', async () => {
-    const test = setup(); const gate = Promise.withResolvers<void>();
+    const test = setup();
+    const gate = Promise.withResolvers<void>();
     test.waitUntilVisible.mockImplementationOnce(async () => gate.promise);
-    const first = test.start(); await expect(test.start()).rejects.toThrow('already running');
-    test.runner.stop(); gate.resolve(); await first;
+    const first = test.start();
+    await expect(test.start()).rejects.toThrow('already running');
+    test.runner.stop();
+    gate.resolve();
+    await first;
     expect(test.generate).not.toHaveBeenCalled();
   });
 });
@@ -245,7 +264,8 @@ describe('measurement ownership and surviving failure evidence', () => {
 });
 
 it('runs one final instrumented census outside speed aggregates and never requests it for speed trials', async () => {
-  const test = setup({ diagnostics: 'placement' }); await test.start();
+  const test = setup({ diagnostics: 'placement' });
+  await test.start();
   expect(test.generate).toHaveBeenCalledTimes(6);
   expect(test.generate.mock.calls.map(([call]) => call.observation)).toEqual([undefined, undefined, undefined, undefined, undefined, 'placement']);
   const snapshot = test.runner.snapshot()!;
@@ -256,14 +276,17 @@ it('runs one final instrumented census outside speed aggregates and never reques
 
 describe('orchestration timing, separate from inference', () => {
   it('records hidden waits between trials rather than charging them to GPU time', async () => {
-    const test = setup(); let calls = 0;
+    const test = setup();
+    let calls = 0;
     test.waitUntilVisible.mockImplementation(async ({ signal }) => {
       signal.throwIfAborted();
       if (++calls === 3) {
-        test.hide(); test.advance(13000);
+        test.hide();
+        test.advance(13000);
       }
       if (calls === 6) {
-        test.hide(); test.advance(61000);
+        test.hide();
+        test.advance(61000);
       }
     });
     await test.start();
@@ -279,8 +302,12 @@ describe('orchestration timing, separate from inference', () => {
   it('accounts for cancellation while waiting and bounds visibility history', async () => {
     const test = setup();
     test.waitUntilVisible.mockImplementationOnce(async ({ signal }) => {
-      for (let index = 0; index < 300; index++) test.hide();
-      test.advance(7000); test.runner.stop(); signal.throwIfAborted();
+      for (let index = 0; index < 300; index++) {
+        test.hide();
+      }
+      test.advance(7000);
+      test.runner.stop();
+      signal.throwIfAborted();
     });
     await test.start();
     const snapshot = snapshotSchema.parse(test.runner.snapshot());
@@ -289,7 +316,8 @@ describe('orchestration timing, separate from inference', () => {
     expect(snapshot.execution?.visibility).toHaveLength(256);
     expect(snapshot.execution?.intervals).toContainEqual(expect.objectContaining({ kind: 'visibility-wait', elapsedMs: 7000, outcome: 'cancelled' }));
     expect(test.generate).not.toHaveBeenCalled();
-    test.hide(); expect(snapshot.execution?.visibility).toHaveLength(256);
+    test.hide();
+    expect(snapshot.execution?.visibility).toHaveLength(256);
   });
 });
 
@@ -326,12 +354,14 @@ it('retains failed-attempt memory and rejects late evidence from the previous mo
   let late: Parameters<LlamaCppPerformanceScope['generate']>[0] | undefined;
   const memory = { samples: [], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [], droppedNativeSettings: 0 };
   test.generate.mockImplementationOnce(async args => {
-    late = args; args.onMemoryDiagnostics?.({ memory });
+    late = args;
+    args.onMemoryDiagnostics?.({ memory });
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   });
   await test.start();
   const trials = test.runner.snapshot()!.trials;
-  expect(trials[0]?.memoryDiagnostics).toEqual(memory); expect(trials[0]?.status).toBe('failed');
+  expect(trials[0]?.memoryDiagnostics).toEqual(memory);
+  expect(trials[0]?.status).toBe('failed');
   expect(trials.some(trial => trial.modelIndex === 1 && trial.status === 'succeeded')).toBe(true);
   late!.onMemoryDiagnostics?.({ memory: { ...memory, droppedSamples: 99 } });
   expect(trials[0]?.memoryDiagnostics?.droppedSamples).toBe(0);

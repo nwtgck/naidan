@@ -64,7 +64,9 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
   let requested = false;
   return {
     requestRuntimeModule({ variant, bytes }) {
-      if (requested) return Promise.reject(new Error('Runtime module lease was already requested'));
+      if (requested) {
+        return Promise.reject(new Error('Runtime module lease was already requested'));
+      }
       requested = true;
       const requestId = crypto.randomUUID();
       return new Promise((resolve, reject) => {
@@ -75,7 +77,9 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Worker event boundary.
         function onMessage(event: MessageEvent<unknown>) {
           const value = event.data;
-          if (typeof value !== 'object' || value === null || !('channel' in value) || value.channel !== PRODUCTION_WORKER_READY.channel) return;
+          if (typeof value !== 'object' || value === null || !('channel' in value) || value.channel !== PRODUCTION_WORKER_READY.channel) {
+            return;
+          }
           const parsed = productionRuntimeModuleReplySchema.safeParse(value);
           cleanup();
           if (!parsed.success || parsed.data.requestId !== requestId) {
@@ -85,7 +89,8 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
           }
         }
         function onMessageError() {
-          cleanup(); reject(new Error('Runtime module lease acknowledgement could not be deserialized'));
+          cleanup();
+          reject(new Error('Runtime module lease acknowledgement could not be deserialized'));
         }
 
         endpoint.addEventListener('message', onMessage);
@@ -99,7 +104,8 @@ export function createProductionRuntimeModuleRequester({ endpoint }: {
             bytes,
           }));
         } catch (error) {
-          cleanup(); reject(error);
+          cleanup();
+          reject(error);
         }
       });
     },

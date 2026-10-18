@@ -483,7 +483,9 @@ describe('StorageTab.vue Tests', () => {
 
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-      if (storageTab) await storageTab.trigger('click');
+      if (storageTab) {
+        await storageTab.trigger('click');
+      }
       await flushPromises();
       await vi.dynamicImportSettled();
 
@@ -508,7 +510,9 @@ describe('StorageTab.vue Tests', () => {
 
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-      if (storageTab) await storageTab.trigger('click');
+      if (storageTab) {
+        await storageTab.trigger('click');
+      }
       await flushPromises();
       await vi.dynamicImportSettled();
 
@@ -580,6 +584,7 @@ describe('StorageTab.vue Tests', () => {
         init: vi.fn(),
         fetchModels: vi.fn().mockResolvedValue([]),
         updateGlobalModel: vi.fn(),
+        updateGlobalReasoningEffort: vi.fn<ReturnType<typeof useSettings>['updateGlobalReasoningEffort']>(),
         updateGlobalEndpoint: vi.fn(),
         updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
         captureModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['captureModelLaunchDefaults']>(),

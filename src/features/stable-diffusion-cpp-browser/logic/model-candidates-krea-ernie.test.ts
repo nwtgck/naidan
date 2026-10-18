@@ -7,7 +7,8 @@ import type { TensorInfo } from './model-metadata';
 async function candidate({ tensors, architecture }: { tensors: TensorInfo[], architecture: string | undefined }) {
   const file = ggufFixture({ name: 'renamed.gguf', tensors, metadata: architecture ? { 'general.architecture': architecture } : {}, extraBytes: 0 }).file;
   const inventory = await scanImageRepositories({ signal: undefined, repositories: [{ id: 'user/renamed', name: 'renamed', files: [{ path: file.name, file }] }] });
-  expect(inventory.issues).toEqual([]); return inventory.candidates[0]!;
+  expect(inventory.issues).toEqual([]);
+  return inventory.candidates[0]!;
 }
 
 it.each(['txtfusion', 'text_fusion'])('recognizes Krea2 %s with matching image dimensions, never from the marker alone', async name => {

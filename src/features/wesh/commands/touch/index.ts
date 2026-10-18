@@ -222,7 +222,9 @@ function findTouchPreHelpSemanticIssue({
   }
 
   const timestamp = parsed.optionValues.timestamp;
-  if (typeof timestamp !== 'string') return undefined;
+  if (typeof timestamp !== 'string') {
+    return undefined;
+  }
   try {
     parseTimestampValue({ value: timestamp, now });
     return undefined;
@@ -377,7 +379,9 @@ export const touchCommandImplementation: WeshCommandImplementation = {
     let exitCode = 0;
 
     for (const p of parsed.positionals) {
-      if (p === undefined || p === '-' || (noCreate && p.length === 0)) continue;
+      if (p === undefined || p === '-' || (noCreate && p.length === 0)) {
+        continue;
+      }
       try {
         const affectSymbolicLink = noDereference && !p.endsWith('/');
         let fullPath: string;

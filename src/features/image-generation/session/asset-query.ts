@@ -28,23 +28,39 @@ export function selectImageGenerationAssets({ snapshot, query }: {
     switch (state) {
     case 'deleting': case 'deleted': return false;
     case 'active': case 'archived': break;
-    default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = state;
+      throw new Error(String(exhaustive));
     }
-    if (query.visibility !== 'all' && state !== query.visibility) return false;
-    if (query.runId !== undefined && asset.runId !== query.runId) return false;
+    }
+    if (query.visibility !== 'all' && state !== query.visibility) {
+      return false;
+    }
+    if (query.runId !== undefined && asset.runId !== query.runId) {
+      return false;
+    }
     const run = byRun.get(asset.runId);
     if (!run) {
       warningCount++;
-      if (warnings.length < 100) warnings.push({ path: `runs/${idToRaw({ id: asset.runId })}`, message: 'The originating run is unavailable.' });
+      if (warnings.length < 100) {
+        warnings.push({ path: `runs/${idToRaw({ id: asset.runId })}`, message: 'The originating run is unavailable.' });
+      }
     }
     const haystack = `${run?.prompt ?? ''}\n${run?.modelName ?? ''}`.normalize('NFC').toLowerCase();
-    if (!words.every(word => haystack.includes(word))) return false;
+    if (!words.every(word => haystack.includes(word))) {
+      return false;
+    }
     const assigned = new Set((byAsset.get(asset.id)?.tags ?? []).map(item => imageGenerationTagReferenceKey({ tag: item.tag })));
-    if (!keys.length) return true;
+    if (!keys.length) {
+      return true;
+    }
     switch (query.match) {
     case 'all': return keys.every(key => assigned.has(key));
     case 'any': return keys.some(key => assigned.has(key));
-    default: { const exhaustive: never = query.match; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = query.match;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   matches.sort((a, b) => b.createdAt - a.createdAt || compareIds({ a: idToRaw({ id: a.id }), b: idToRaw({ id: b.id }) }));

@@ -4,7 +4,9 @@ import { exactObject } from '@/utils/exact-object';
 import type { WorkerToolDefinition, WorkerToolJsonObject } from './types';
 
 export function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
-  if (!params) return undefined;
+  if (!params) {
+    return undefined;
+  }
   const { temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop, reasoning, ...unhandled } = params;
   unhandled satisfies Record<PropertyKey, never>;
   if (reasoning !== undefined) {
@@ -26,7 +28,9 @@ export function cloneLmParameters({ params }: { params: LmParameters | undefined
 }
 
 function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
-  if (!toolCalls) return undefined;
+  if (!toolCalls) {
+    return undefined;
+  }
 
   return toolCalls.map(toolCall => {
     const { id, type, function: fn, ...unhandled } = toolCall;
@@ -85,7 +89,9 @@ export function cloneChatMessages({ messages }: { messages: readonly InferenceMe
 }
 
 export function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
-  if (!tools) return undefined;
+  if (!tools) {
+    return undefined;
+  }
 
   return tools.map(tool => ({
     type: 'function',

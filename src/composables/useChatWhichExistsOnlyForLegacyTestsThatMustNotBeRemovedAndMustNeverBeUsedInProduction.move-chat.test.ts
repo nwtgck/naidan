@@ -26,14 +26,18 @@ vi.mock('../00-storage/service', () => ({
       const chat = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
       const currentH = {
         items: chat.rootItems.value.map(item => {
-          if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
+          if (item.type === 'chat') {
+            return { type: 'chat', id: item.chat.id };
+          }
           return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
         }),
       };
       const updated = await updater({ current: currentH as any });
       // Map back to sidebar structure for the test to see the changes after loadChats()
       const newSidebar = (updated.items as TestHierarchyNode[]).map((node) => {
-        if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
+        if (node.type === 'chat') {
+          return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
+        }
         return {
           id: `chat_group:${node.id}`,
           type: 'chat_group',

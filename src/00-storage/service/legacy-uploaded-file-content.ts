@@ -8,12 +8,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readRecord({ value }: { value: unknown }): Record<string, unknown> {
-  if (!isRecord(value)) throw new Error('Expected a JSON object in validated chat content.');
+  if (!isRecord(value)) {
+    throw new Error('Expected a JSON object in validated chat content.');
+  }
   return value;
 }
 
 function readItems({ value }: { value: unknown }): unknown[] {
-  if (!Array.isArray(value)) throw new Error('Expected a JSON array in validated chat content.');
+  if (!Array.isArray(value)) {
+    throw new Error('Expected a JSON array in validated chat content.');
+  }
   return value;
 }
 
@@ -33,20 +37,26 @@ export function remapLegacyUploadedFileReferences({ serialized, binaryObjectIds 
   let unresolvedReferences = 0;
   while (pending.length > 0) {
     const branch = pending.pop();
-    if (!branch) break;
+    if (!branch) {
+      break;
+    }
     for (const [index, node] of branch.nodes.entries()) {
       const record = readRecord({ value: branch.originals[index] });
       branch.originals[index] = record;
       if (node.parts === undefined && node.role === 'user' && node.attachments !== undefined) {
         const attachments = readItems({ value: record.attachments });
         for (const [attachmentIndex, attachment] of node.attachments.entries()) {
-          if ('binaryObjectId' in attachment) continue;
+          if ('binaryObjectId' in attachment) {
+            continue;
+          }
           const copiedFiles = binaryObjectIds.get(attachment.id);
           const binaryObjectId = copiedFiles?.get(attachment.originalName);
           if (binaryObjectId === undefined) {
             // A nonempty legacy directory with no matching file is ambiguous.
             // Do not redirect the reference to whichever entry was copied last.
-            if (copiedFiles !== undefined && copiedFiles.size > 0) unresolvedReferences++;
+            if (copiedFiles !== undefined && copiedFiles.size > 0) {
+              unresolvedReferences++;
+            }
             continue;
           }
           const source = readRecord({ value: attachments[attachmentIndex] });
@@ -63,7 +73,9 @@ export function remapLegacyUploadedFileReferences({ serialized, binaryObjectIds 
       pending.push({ nodes: node.replies.items, originals: readItems({ value: replies.items }) });
     }
   }
-  if (!modified) return { serialized: undefined, unresolvedReferences };
+  if (!modified) {
+    return { serialized: undefined, unresolvedReferences };
+  }
   // Validate the deliberate reference edits without using stripped parse output.
   ChatContentSchemaDto.parse(document);
   return { serialized: JSON.stringify(document), unresolvedReferences };
@@ -81,10 +93,14 @@ export function readLegacyUploadedFileMetadata({ serialized }: { serialized: str
   const metadata: ReturnType<typeof readLegacyUploadedFileMetadata> = [];
   while (pending.length > 0) {
     const node = pending.pop();
-    if (!node) break;
+    if (!node) {
+      break;
+    }
     if (node.parts === undefined && node.role === 'user') {
       for (const attachment of node.attachments ?? []) {
-        if ('binaryObjectId' in attachment) continue;
+        if ('binaryObjectId' in attachment) {
+          continue;
+        }
         metadata.push({
           attachmentId: attachment.id,
           name: attachment.originalName,
@@ -93,7 +109,9 @@ export function readLegacyUploadedFileMetadata({ serialized }: { serialized: str
         });
       }
     }
-    for (const reply of node.replies.items) pending.push(reply);
+    for (const reply of node.replies.items) {
+      pending.push(reply);
+    }
   }
   return metadata;
 }

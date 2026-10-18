@@ -28,7 +28,9 @@ vi.mock('../00-storage/service', () => ({
       const chat = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
       const currentH = {
         items: chat.rootItems.value.map(item => {
-          if (item.type === 'chat') return { type: 'chat', id: idToRaw({ id: item.chat.id }) };
+          if (item.type === 'chat') {
+            return { type: 'chat', id: idToRaw({ id: item.chat.id }) };
+          }
           return { type: 'chat_group', id: idToRaw({ id: item.chatGroup.id }), chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
         }),
       };

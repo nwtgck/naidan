@@ -11,14 +11,17 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import SidebarHeader from './SidebarHeader.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
+import ChatGroupNameDialog from './ChatGroupNameDialog.vue';
+import { useToast } from '@/composables/useToast';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
-import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/01-models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem, Reasoning } from '@/01-models/types';
 import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
-  BotIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
+  SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
@@ -157,10 +160,53 @@ function renameChat({
   });
 }
 
-const renameChatGroup = chatOrganization.renameChatGroup;
 const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
-const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
+const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
+const { addToast } = useToast();
+const reasoningSaveState = ref<'idle' | 'saving'>('idle');
+const globalReasoningLabel = computed(() => {
+  const effort = settings.value.lmParameters?.reasoning.effort;
+  switch (effort) {
+  case undefined: return undefined;
+  case 'none': return lazyStrings.ReasoningSettings__off();
+  case 'low': return lazyStrings.ReasoningSettings__low();
+  case 'medium': return lazyStrings.ReasoningSettings__med();
+  case 'high': return lazyStrings.ReasoningSettings__high();
+  default: {
+    const _ex: never = effort;
+    throw new Error(`Unhandled reasoning effort: ${_ex}`);
+  }
+  }
+});
+const globalReasoningDescription = computed(() => {
+  const heading = lazyStrings.ReasoningSettings__think();
+  const label = globalReasoningLabel.value;
+  return heading === undefined || label === undefined ? undefined : `${heading} ${label}`;
+});
+
+async function handleGlobalReasoningChange({ effort }: { effort: Reasoning['effort'] }) {
+  const saveState = reasoningSaveState.value;
+  switch (saveState) {
+  case 'saving':
+    return;
+  case 'idle':
+    break;
+  default: {
+    const _ex: never = saveState;
+    throw new Error(`Unhandled reasoning save state: ${_ex}`);
+  }
+  }
+  reasoningSaveState.value = 'saving';
+  try {
+    await updateGlobalReasoningEffort({ effort });
+  } catch {
+    addToast({ message: await ensureStrings.Sidebar__failed_to_save_reasoning() });
+  } finally {
+    reasoningSaveState.value = 'idle';
+  }
+}
+
 const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
 const layout = useLayout();
 const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
@@ -184,8 +230,8 @@ const editingId = ref<ChatId | null>(null);
 const editingTitle = ref('');
 const isCreatingChatGroup = ref(false);
 const newChatGroupName = ref('');
-const editingChatGroupId = ref<ChatGroupId | null>(null);
-const editingChatGroupName = ref('');
+const renamingChatGroup = ref<Pick<ChatGroup, 'id' | 'name'>>();
+const renameRestoreFocusTo = ref<HTMLElement>();
 const skipLeaveAnimation = ref(false);
 const lastNavigatedId = ref<string | null>(null);
 
@@ -290,9 +336,15 @@ function ensureChatVisibleInCompactGroup({
         index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId,
       );
 
-      if (hiddenItemIndex === -1) continue;
-      if (item.chatGroup.isCollapsed) return;
-      if (expandedGroupIds.value.has(item.chatGroup.id)) return;
+      if (hiddenItemIndex === -1) {
+        continue;
+      }
+      if (item.chatGroup.isCollapsed) {
+        return;
+      }
+      if (expandedGroupIds.value.has(item.chatGroup.id)) {
+        return;
+      }
 
       expandedGroupIds.value.add(item.chatGroup.id);
       return;
@@ -318,7 +370,9 @@ async function scheduleSidebarItemScroll({
   id: ChatGroupId | undefined,
   onlyWhenOutOfView: boolean,
 }) {
-  if (!id || typeof document === 'undefined' || !navContainer.value) return;
+  if (!id || typeof document === 'undefined' || !navContainer.value) {
+    return;
+  }
 
   switch (itemType) {
   case 'chat':
@@ -448,6 +502,10 @@ const vFocus: ObjectDirective<HTMLElement> = {
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
+const newChatTitle = computed(() => {
+  const label = lazyStrings.SHARED__new_chat();
+  return label === undefined ? undefined : `${label} (${newChatShortcutText})`;
+});
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as HTMLElement;
@@ -478,17 +536,23 @@ onMounted(() => {
 
 function captureSidebarItemRects() {
   const rects = new Map<string, DOMRect>();
-  if (!navContainer.value) return rects;
+  if (!navContainer.value) {
+    return rects;
+  }
 
   navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
     const id = element.dataset.sidebarChatId;
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     rects.set(`chat:${id}`, element.getBoundingClientRect());
   });
 
   navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
     const id = element.dataset.sidebarGroupId;
-    if (!id) return;
+    if (!id) {
+      return;
+    }
     rects.set(`group:${id}`, element.getBoundingClientRect());
   });
 
@@ -496,20 +560,30 @@ function captureSidebarItemRects() {
 }
 
 function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string, DOMRect> }) {
-  if (previousRects.size === 0 || typeof window === 'undefined') return;
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  if (previousRects.size === 0 || typeof window === 'undefined') {
+    return;
+  }
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
 
   void nextTick(() => {
-    if (!navContainer.value || isDragging.value) return;
+    if (!navContainer.value || isDragging.value) {
+      return;
+    }
 
     const applyMove = ({ key, element }: { key: string, element: HTMLElement }) => {
       const previous = previousRects.get(key);
-      if (!previous) return;
+      if (!previous) {
+        return;
+      }
 
       const current = element.getBoundingClientRect();
       const deltaY = previous.top - current.top;
       const deltaX = previous.left - current.left;
-      if (Math.abs(deltaY) < 1 && Math.abs(deltaX) < 1) return;
+      if (Math.abs(deltaY) < 1 && Math.abs(deltaX) < 1) {
+        return;
+      }
 
       element.classList.add('sidebar-reorder-animating');
       element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
@@ -530,20 +604,26 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
 
     navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
       const id = element.dataset.sidebarChatId;
-      if (!id) return;
+      if (!id) {
+        return;
+      }
       applyMove({ key: `chat:${id}`, element });
     });
 
     navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
       const id = element.dataset.sidebarGroupId;
-      if (!id) return;
+      if (!id) {
+        return;
+      }
       applyMove({ key: `group:${id}`, element });
     });
   });
 }
 
 function syncLocalItems() {
-  if (isDragging.value || isInternalUpdate) return;
+  if (isDragging.value || isInternalUpdate) {
+    return;
+  }
   const previousRects = captureSidebarItemRects();
   // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(sidebarItems.value));
@@ -580,11 +660,17 @@ async function onDragEnd() {
 }
 
 function onDragOverGroup({ groupId }: { groupId: ChatGroupId }) {
-  if (!isDragging.value) return;
-  if (dragHoverGroup.value === groupId) return;
+  if (!isDragging.value) {
+    return;
+  }
+  if (dragHoverGroup.value === groupId) {
+    return;
+  }
 
   dragHoverGroup.value = groupId;
-  if (dragHoverTimeout) clearTimeout(dragHoverTimeout);
+  if (dragHoverTimeout) {
+    clearTimeout(dragHoverTimeout);
+  }
 
   dragHoverTimeout = setTimeout(() => {
     const group = chatGroups.value.find(g => g.id === groupId);
@@ -668,7 +754,9 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
       cancelButtonText: await ensureStrings.Sidebar__cancel(),
       confirmButtonVariant: 'danger',
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
   }
 
   await deleteChatGroup({ id: group.id });
@@ -711,7 +799,9 @@ async function handleDeleteChat({ id, groupId }: { id: ChatId, groupId: ChatGrou
     ? `/chat-group/${idToRaw({ id: groupId })}`
     : '/';
   await deleteChat({ id });
-  if (isCurrent) await router.push(redirectAfterDelete);
+  if (isCurrent) {
+    await router.push(redirectAfterDelete);
+  }
 }
 
 function startEditing({ id, title }: { id: ChatId, title: string | null }) {
@@ -726,26 +816,25 @@ async function saveRename() {
   editingId.value = null;
 }
 
-function startEditingChatGroup({ chatGroup }: { chatGroup: ChatGroup }) {
-  editingChatGroupId.value = chatGroup.id;
-  editingChatGroupName.value = chatGroup.name;
-}
-
-async function saveChatGroupRename() {
-  if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
-  }
-  editingChatGroupId.value = null;
+function startEditingChatGroup({ chatGroup, trigger }: { chatGroup: ChatGroup, trigger: HTMLElement | undefined }) {
+  setActiveFocusArea({ area: 'sidebar' });
+  renameRestoreFocusTo.value = trigger;
+  renamingChatGroup.value = { id: chatGroup.id, name: chatGroup.name };
+  activeActionGroupId.value = null;
 }
 
 async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
-  if (!newModelId) return;
+  if (!newModelId) {
+    return;
+  }
   await updateGlobalModel({ modelId: newModelId });
 }
 
 function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
   const group = sidebarItemsLocal.value.find(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
-  if (!group || group.type !== 'chat_group') return [];
+  if (!group || group.type !== 'chat_group') {
+    return [];
+  }
 
   const items = group.chatGroup.items;
   if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || items.length <= COMPACT_THRESHOLD) {
@@ -756,10 +845,14 @@ function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
 
 function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId, newItems: ChatSidebarItem[] }) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
-  if (groupIndex === -1) return;
+  if (groupIndex === -1) {
+    return;
+  }
 
   const group = sidebarItemsLocal.value[groupIndex];
-  if (!group || group.type !== 'chat_group') return;
+  if (!group || group.type !== 'chat_group') {
+    return;
+  }
 
   const fullList = group.chatGroup.items;
   if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || fullList.length <= COMPACT_THRESHOLD) {
@@ -815,13 +908,15 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
   if (
     editingId.value ||
-    editingChatGroupId.value ||
+    renamingChatGroup.value ||
     isCreatingChatGroup.value
   ) {
     return;
   }
 
-  if (visibleItems.value.length === 0) return;
+  if (visibleItems.value.length === 0) {
+    return;
+  }
 
   // Prioritize the ID we just navigated to, then group, then chat.
   // This prevents jumping back if the store hasn't updated currentChat yet.
@@ -957,7 +1052,9 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
 function newChatInGroupTitle(): string | undefined {
   const groupName = currentChatGroup.value?.name || lazyStrings.Sidebar__current_group();
-  if (groupName === undefined) return undefined;
+  if (groupName === undefined) {
+    return undefined;
+  }
   return lazyStrings.Sidebar__new_chat_in_group({ groupName });
 }
 
@@ -980,20 +1077,20 @@ defineExpose({
     </SidebarHeader>
 
     <PWAUpdateNotification />
+    <ChatGroupNameDialog v-if="renamingChatGroup" :chat-group="renamingChatGroup" :restore-focus-to="renameRestoreFocusTo" @close="renamingChatGroup = undefined" />
 
     <!-- Actions -->
     <div :tw-class="['py-2 space-y-2', isSidebarOpen ? 'px-4' : 'px-1']">
       <div :tw-class="['flex gap-2', { 'flex-col items-center': !isSidebarOpen }]">
         <button
           @click="handleNewChat({ groupId: undefined })"
-          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8']"
+          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 min-w-0 px-3 py-2 text-xs' : 'w-8 h-8']"
           data-testid="new-chat-button"
-          :title="!isSidebarOpen ? lazyStrings.SHARED__new_chat() : ''"
+          :title="newChatTitle"
         >
           <SquarePenIcon tw-class="w-4 h-4 shrink-0" />
           <template v-if="isSidebarOpen">
-            <span tw-class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
-            <span tw-class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
+            <span tw-class="truncate">{{ lazyStrings.SHARED__new_chat() }}</span>
           </template>
         </button>
         <button
@@ -1007,7 +1104,7 @@ defineExpose({
         </button>
         <button
           @click="useGlobalSearch().openSearch({})"
-          :tw-class="['bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
+          :tw-class="['shrink-0 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
           :title="lazyStrings.Sidebar__search_cmd_k()"
           data-testid="search-button"
         >
@@ -1016,7 +1113,7 @@ defineExpose({
         <button
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
-          tw-class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          tw-class="shrink-0 p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :title="lazyStrings.Sidebar__create_chat_group()"
           data-testid="create-chat-group-button"
         >
@@ -1074,7 +1171,7 @@ defineExpose({
           @start="onDragStart"
           @end="onDragEnd"
           ghost-class="sortable-ghost"
-          :tw-class="['space-y-1 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
+          :tw-class="['space-y-0 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
           :swap-threshold="0.5"
           :invert-swap="true"
           :scroll="true"
@@ -1102,33 +1199,23 @@ defineExpose({
                   <div tw-class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button
                       @click.stop="handleToggleChatGroupCollapse({ chatGroup: element.chatGroup })"
-                      tw-class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
+                      tw-class="p-1 -ml-1 -mr-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
                     >
                       <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" tw-class="w-3 h-3 flex-shrink-0" />
                     </button>
-                    <FolderIcon tw-class="w-4 h-4 text-blue-500/60" />
+                    <FolderIcon tw-class="w-4 h-4 shrink-0 text-blue-500/60" />
 
-                    <input
-                      v-if="editingChatGroupId === element.chatGroup.id"
-                      v-focus
-                      v-model="editingChatGroupName"
-                      @keydown.enter="$event => !$event.isComposing && saveChatGroupRename()"
-                      @keyup.esc="editingChatGroupId = null"
-                      @blur="saveChatGroupRename"
-                      @click.stop
-                      tw-class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
-                      data-testid="chat-group-rename-input"
-                    />
-                    <span v-else tw-class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
+                    <span tw-class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
 
-                  <div class="group-action-container touch-visible" :tw-class="['flex items-center', activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity']">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" tw-class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.Sidebar__rename_group()"><PencilIcon tw-class="w-3 h-3" /></button>
+                  <div class="group-action-container touch-visible" :tw-class="['flex items-center', activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 group-focus-within/folder:opacity-100 transition-opacity']">
+                    <button @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup, trigger: $event.currentTarget as HTMLElement })" tw-class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.ChatGroupNameDialog__rename_chat_group()" data-testid="rename-chat-group-button"><PencilIcon tw-class="w-3 h-3" /></button>
 
                     <ChatGroupActions
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
+                      @rename="trigger => startEditingChatGroup({ chatGroup: element.chatGroup, trigger })"
                       @duplicate="() => { duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup({ group: element.chatGroup }); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
@@ -1268,21 +1355,31 @@ defineExpose({
     <!-- Footer -->
     <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20', isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]']">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="px-1 space-y-2 duration-300">
-        <div tw-class="flex items-center justify-between px-1">
-          <label tw-class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
-            <BotIcon tw-class="w-3 h-3" />
-            {{ lazyStrings.Sidebar__default_model() }}
-          </label>
-        </div>
+      <div v-if="isSidebarOpen" class="animate-in fade-in" tw-class="px-1 duration-300">
         <ModelSelector
+          surface="sidebar"
           :model-value="settings.defaultModelId || ''"
           :models="sortedModels"
           :loading="isFetchingModels"
-          :disabled="settings.endpoint.type === 'browser_provided_lm'"
+          :model-selection="settings.endpoint.type === 'browser_provided_lm' ? 'unavailable' : 'available'"
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           :placeholder="lazyStrings.Sidebar__none()"
-        />
+        >
+          <template #trigger-label>{{ lazyStrings.Sidebar__default_model() }}</template>
+          <template v-if="globalReasoningLabel !== undefined" #trigger-summary>
+            <span data-testid="sidebar-reasoning-summary" :title="globalReasoningDescription"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }} </span><span data-testid="sidebar-reasoning-value">{{ globalReasoningLabel }}</span></span>
+          </template>
+          <template #unavailable>{{ lazyStrings.Sidebar__model_selection_is_unavailable_for_this_connection() }}</template>
+          <template #settings>
+            <ReasoningSettings
+              :selected-effort="settings.lmParameters?.reasoning.effort"
+              :disabled="reasoningSaveState === 'saving'"
+              surface="plain"
+              notice="inline-help"
+              @update:effort="handleGlobalReasoningChange({ effort: $event })"
+            />
+          </template>
+        </ModelSelector>
       </div>
 
       <div :tw-class="['flex items-center gap-2', { 'flex-col items-center': !isSidebarOpen }]">
@@ -1401,8 +1498,12 @@ defineExpose({
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .fade-in {
   animation-name: fade-in;

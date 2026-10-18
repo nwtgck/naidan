@@ -70,7 +70,9 @@ describe('bounded synchronous Production Provider trace', () => {
     trace.callbacks.onToolEvent({ id: toolCallId, event: { type: 'exit', exitCode: 0 } });
     trace.callbacks.onToolResult({ id: toolCallId, result });
     const snapshot = trace.snapshot();
-    call.toolName = 'mutated'; output.text = 'mutated'; result.content = 'mutated';
+    call.toolName = 'mutated';
+    output.text = 'mutated';
+    result.content = 'mutated';
     expect(snapshot.events.map(event => event.kind)).toEqual(['tool-call', 'tool-started', 'tool-output', 'tool-exit', 'tool-success']);
     expect(snapshot.events[0]).toMatchObject({ toolName: 'synthetic_echo', modelVisibleArguments: '{"text":"fixture"}' });
     expect(snapshot.events[2]).toMatchObject({ text: 'fixture-output', stream: 'stdout' });
@@ -102,7 +104,9 @@ describe('bounded synchronous Production Provider trace', () => {
     const trace = createProductionProviderTrace({ requestId: 'event-overflow', limits: { maximumEvents: 1, maximumCharacters: 100 } });
     const emitCallbacks: CallbackSource = async ({ onChunk }) => {
       onChunk({ chunk: 'kept' });
-      for (let index = 0; index < 100; index += 1) onChunk({ chunk: 'dropped' });
+      for (let index = 0; index < 100; index += 1) {
+        onChunk({ chunk: 'dropped' });
+      }
     };
     await expect(emitCallbacks(trace.callbacks)).resolves.toBeUndefined();
     const settled = trace.settle({ outcome: 'fulfilled', error: undefined });
@@ -134,7 +138,8 @@ describe('bounded synchronous Production Provider trace', () => {
     const trace = createProductionProviderTrace({ requestId: 'rejected-overflow', limits: { maximumEvents: 0, maximumCharacters: 0 } });
     const original = new Error('Synthetic provider rejection');
     const emitCallbacks: CallbackSource = async ({ onChunk }) => {
-      onChunk({ chunk: 'not retained' }); throw original;
+      onChunk({ chunk: 'not retained' });
+      throw original;
     };
     let caught: unknown;
     try {

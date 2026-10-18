@@ -263,7 +263,9 @@ The archive does not include model weights, account credentials, or saved chats.
 function csvCell({ value }: { value: string | number | undefined }): string {
   let text = value === undefined ? '' : String(value);
   // Metadata can be arbitrary text. Do not turn it into a spreadsheet formula.
-  if (/^[=+@\-\t\r]/.test(text)) text = `'${text}`;
+  if (/^[=+@\-\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -276,7 +278,10 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
   switch (snapshot.status) {
   case 'running': throw new Error('Stop measurement before exporting');
   case 'completed': case 'cancelled': break;
-  default: { const exhaustive: never = snapshot.status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = snapshot.status;
+    throw new Error(String(exhaustive));
+  }
   }
   const output = createReadableZipOutput({ highWaterMarkBytes: 256 * 1024 });
   const directory = createMemoryZipCentralDirectoryStore();
@@ -309,7 +314,9 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
         name: 'trials.jsonl',
         text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record }) => {
           const coverage = (() => {
-            if (!memoryDiagnostics) return undefined;
+            if (!memoryDiagnostics) {
+              return undefined;
+            }
             const { samples, droppedSamples, nativeAllocations, droppedNativeAllocations, nativeSettings, droppedNativeSettings, ...unhandled } = memoryDiagnostics;
             unhandled satisfies Record<PropertyKey, never>;
             return { samples: samples.length, droppedSamples, nativeAllocations: nativeAllocations.length, droppedNativeAllocations, nativeSettings: nativeSettings.length, droppedNativeSettings };
@@ -319,7 +326,9 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
       });
       const rows: (string | number | undefined)[][] = [['attempt', 'model', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error']];
       for (const trial of snapshot.trials) {
-        if (trial.memoryDiagnostics) await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, ...trial.memoryDiagnostics } }) });
+        if (trial.memoryDiagnostics) {
+          await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, ...trial.memoryDiagnostics } }) });
+        }
         const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
         rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.name, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,
@@ -330,27 +339,36 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
         await add({ name: `outputs/${trial.id}.json`, text: json({ value: { input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await add({ name: 'summary.csv', text: rows.map(row => row.map(value => csvCell({ value })).join(',')).join('\r\n') + '\r\n' });
-      await writer.finalize(); await output.close();
+      await writer.finalize();
+      await output.close();
     } catch (error) {
-      await output.abort({ reason: error }).catch(() => {}); throw error;
+      await output.abort({ reason: error }).catch(() => {});
+      throw error;
     } finally {
       await directory.dispose();
     }
   })();
   void completed.catch(() => {});
   const reader = output.stream.getReader();
-  const parts: Uint8Array<ArrayBuffer>[] = []; let bytes = 0;
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  let bytes = 0;
   try {
     while (true) {
-      const part = await reader.read(); if (part.done) break;
+      const part = await reader.read();
+      if (part.done) {
+        break;
+      }
       bytes += part.value.byteLength;
-      if (bytes > 128 * 1024 ** 2) throw new Error('Measurement archive exceeds 128 MiB');
+      if (bytes > 128 * 1024 ** 2) {
+        throw new Error('Measurement archive exceeds 128 MiB');
+      }
       parts.push(Uint8Array.from(part.value));
     }
     await completed;
     return new Blob(parts, { type: 'application/zip' });
   } finally {
-    await reader.cancel().catch(() => {}); reader.releaseLock();
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }
 

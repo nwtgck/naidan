@@ -58,7 +58,12 @@ function deferred() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); calls.audio.mockReset(); calls.audio.mockResolvedValue(audioResult()); calls.list.mockResolvedValue([]); calls.remove.mockResolvedValue(undefined); calls.release.mockResolvedValue(undefined);
+  vi.clearAllMocks();
+  calls.audio.mockReset();
+  calls.audio.mockResolvedValue(audioResult());
+  calls.list.mockResolvedValue([]);
+  calls.remove.mockResolvedValue(undefined);
+  calls.release.mockResolvedValue(undefined);
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -68,7 +73,8 @@ describe("generation RPC lifecycle", () => {
     const capabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
     calls.probe.mockResolvedValueOnce(capabilities);
     expect(await createWorkerApi().probeProfiles()).toEqual(capabilities);
-    expect(calls.generate).not.toHaveBeenCalled(); expect(calls.releaseSession).not.toHaveBeenCalled();
+    expect(calls.generate).not.toHaveBeenCalled();
+    expect(calls.releaseSession).not.toHaveBeenCalled();
   });
 
   it('releases idle native state and refuses cleanup while generation owns it', async () => {
@@ -78,69 +84,95 @@ describe("generation RPC lifecycle", () => {
     calls.releaseSession.mockClear();
     const blocked = deferred();
     calls.generate.mockImplementationOnce(async () => {
-      await blocked.promise; return completed();
+      await blocked.promise;
+      return completed();
     });
     const generating = api.generate(request({ generationId: 1 }), async () => {}, () => {});
     await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
     await expect(api.release()).rejects.toThrow('busy');
     expect(calls.releaseSession).not.toHaveBeenCalled();
-    blocked.resolve(); await generating;
+    blocked.resolve();
+    await generating;
     await api.release();
     expect(calls.releaseSession).toHaveBeenCalledOnce();
   });
 
   it("posts native callbacks immediately and drains their acknowledgements before RPC completion", async () => {
-    const blocked = deferred(); const events: string[] = [];
+    const blocked = deferred();
+    const events: string[] = [];
     calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
       onProgress({ progress: { phase: "prefill", completed: 2, total: 2 } });
-      await onEvent({ event: { type: "text", text: "first" } }); await onEvent({ event: { type: "text", text: "second" } });
+      await onEvent({ event: { type: "text", text: "first" } });
+      await onEvent({ event: { type: "text", text: "second" } });
       return completed();
     });
-    const api = createWorkerApi(); let settled = false;
+    const api = createWorkerApi();
+    let settled = false;
     const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
-      if (event.type === "text") events.push(event.text);
+      if (event.type === "text") {
+        events.push(event.text);
+      }
     },
     async ({ phase }) => {
-      events.push(phase); if (phase === "loading") await blocked.promise;
+      events.push(phase);
+      if (phase === "loading") {
+        await blocked.promise;
+      }
     }).then(() => {
       settled = true;
     });
     await vi.waitFor(() => expect(events).toEqual(["loading", "prefill", "first", "second"]));
-    expect(settled).toBe(false); blocked.resolve(); await pending;
-    expect(events).toEqual(["loading", "prefill", "first", "second"]); expect(settled).toBe(true);
+    expect(settled).toBe(false);
+    blocked.resolve();
+    await pending;
+    expect(events).toEqual(["loading", "prefill", "first", "second"]);
+    expect(settled).toBe(true);
   });
 
   it("targets cancellation by generation id, bypasses the held generation lane, and then accepts new work", async () => {
-    const blocked = deferred(); let signal: AbortSignal | undefined;
+    const blocked = deferred();
+    let signal: AbortSignal | undefined;
     calls.generate.mockImplementation(async args => {
-      signal = args.signal; await blocked.promise;
+      signal = args.signal;
+      await blocked.promise;
       return completed();
     });
-    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), async () => {}, () => {});
+    const api = createWorkerApi();
+    const pending = api.generate(request({ generationId: 1 }), async () => {}, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
-    await api.cancelGeneration({ generationId: 2 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 2 });
+    expect(signal?.aborted).toBe(false);
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow("busy");
-    await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(true);
-    blocked.resolve(); await pending;
+    await api.cancelGeneration({ generationId: 1 });
+    expect(signal?.aborted).toBe(true);
+    blocked.resolve();
+    await pending;
     calls.generate.mockImplementation(async args => {
       signal = args.signal;
       return completed();
     });
     await api.generate(request({ generationId: 2 }), async () => {}, () => {});
-    await api.cancelGeneration({ generationId: 1 }); expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 1 });
+    expect(signal?.aborted).toBe(false);
   });
 
   it("drains already accepted content after cancellation and waits for proxy acknowledgements", async () => {
-    const blocked = deferred(); const first = vi.fn(async () => blocked.promise); const chunk = vi.fn();
+    const blocked = deferred();
+    const first = vi.fn(async () => blocked.promise);
+    const chunk = vi.fn();
     calls.generate.mockImplementation(async ({ onProgress, onEvent }) => {
-      onProgress({ progress: { phase: "loading", completed: 0, total: 1 } }); await blocked.promise;
+      onProgress({ progress: { phase: "loading", completed: 0, total: 1 } });
+      await blocked.promise;
       await onEvent({ event: { type: "text", text: "accepted before cancellation" } });
       return completed();
     });
-    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 1 }), chunk, first);
+    const api = createWorkerApi();
+    const pending = api.generate(request({ generationId: 1 }), chunk, first);
     await vi.waitFor(() => expect(first).toHaveBeenCalledOnce());
-    await api.cancelGeneration({ generationId: 1 }); blocked.resolve(); await pending;
+    await api.cancelGeneration({ generationId: 1 });
+    blocked.resolve();
+    await pending;
     expect(chunk).toHaveBeenCalledWith({ event: { type: "text", text: "accepted before cancellation" } });
   });
 
@@ -157,7 +189,8 @@ describe("generation RPC lifecycle", () => {
   });
 
   it("invalidates resident weights before deleting their stored model", async () => {
-    const api = createWorkerApi(); const order: string[] = [];
+    const api = createWorkerApi();
+    const order: string[] = [];
     calls.release.mockImplementation(async () => {
       order.push("release");
     });
@@ -182,16 +215,26 @@ describe("generation RPC lifecycle", () => {
 
 describe('directory import RPC', () => {
   it('routes cancellation to the importer and rejects overlapping work', async () => {
-    const blocked = deferred(); let signal: AbortSignal | undefined;
+    const blocked = deferred();
+    let signal: AbortSignal | undefined;
     calls.importDirectory.mockImplementation(async (args: Parameters<typeof importModelDirectory>[0]) => {
-      signal = args.signal; await blocked.promise; if (signal?.aborted) throw new Error('llama.cpp browser: aborted'); return { id: 'user/Model', name: 'Model', size: 1, importedAt: 1 };
+      signal = args.signal;
+      await blocked.promise;
+      if (signal?.aborted) {
+        throw new Error('llama.cpp browser: aborted');
+      }
+      return { id: 'user/Model', name: 'Model', size: 1, importedAt: 1 };
     });
-    const api = createWorkerApi(); const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
+    const api = createWorkerApi();
+    const pending = api.importDirectory({ directory: { name: 'Model', files: [{ path: 'model.gguf', file: new File(['data'], 'model.gguf') }] }, generationId: 4 }, () => {});
     await vi.waitFor(() => expect(signal).toBeDefined());
     await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
-    await api.cancelGeneration({ generationId: 3 }); expect(signal?.aborted).toBe(false);
-    await api.cancelGeneration({ generationId: 4 }); expect(signal?.aborted).toBe(true);
-    blocked.resolve(); await expect(pending).rejects.toThrow('aborted');
+    await api.cancelGeneration({ generationId: 3 });
+    expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 4 });
+    expect(signal?.aborted).toBe(true);
+    blocked.resolve();
+    await expect(pending).rejects.toThrow('aborted');
   });
 });
 
@@ -200,15 +243,22 @@ describe('native diagnostic checkpoints', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // A resident core retains this callback, never a particular request preference.
     const residentPrintErr = () => logNativeDiagnostic({ message: 'encoding image slice...' });
-    const blocked = deferred(); const entered = deferred();
-    const api = createWorkerApi(); const receive = vi.fn();
+    const blocked = deferred();
+    const entered = deferred();
+    const api = createWorkerApi();
+    const receive = vi.fn();
     calls.generate.mockImplementationOnce(async () => {
       await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } });
-      residentPrintErr(); entered.resolve(); await blocked.promise;
+      residentPrintErr();
+      entered.resolve();
+      await blocked.promise;
       switch (outcome) {
       case 'success': case 'cancel': return completed();
       case 'failure': throw new Error('private failure');
-      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = outcome;
+        throw new Error(String(exhaustive));
+      }
       }
     });
     using _cleanupResource = {
@@ -220,30 +270,41 @@ describe('native diagnostic checkpoints', () => {
     const settled = pending.catch(() => undefined);
     await entered.promise;
     expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
-    if (outcome === 'cancel') await api.cancelGeneration({ generationId: 1 });
-    blocked.resolve(); await settled;
-    debug.mockClear(); residentPrintErr(); expect(debug).not.toHaveBeenCalled();
+    if (outcome === 'cancel') {
+      await api.cancelGeneration({ generationId: 1 });
+    }
+    blocked.resolve();
+    await settled;
+    debug.mockClear();
+    residentPrintErr();
+    expect(debug).not.toHaveBeenCalled();
     calls.generate.mockImplementation(async () => {
       await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } });
-      residentPrintErr(); return completed();
+      residentPrintErr();
+      return completed();
     });
     receive.mockClear();
     await api.generate({ ...request({ generationId: 2 }), debug: 'off' }, async () => {}, () => {}, receive);
-    expect(debug).not.toHaveBeenCalled(); expect(receive).toHaveBeenCalledTimes(2);
+    expect(debug).not.toHaveBeenCalled();
+    expect(receive).toHaveBeenCalledTimes(2);
     await api.generate({ ...request({ generationId: 3 }), debug: 'on' }, async () => {}, () => {}, receive);
     expect(readDiagnostics({ calls: debug.mock.calls }).filter(value => value.event === 'operation-start')).toHaveLength(2);
   });
 
   it('waits for the host to record the native stage before the operation runs', async () => {
-    const blocked = deferred(); let nativeEntered = false;
+    const blocked = deferred();
+    let nativeEntered = false;
     calls.generate.mockImplementation(async () => {
       await logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', tokens: 101 } });
-      nativeEntered = true; return completed();
+      nativeEntered = true;
+      return completed();
     });
     const receive = vi.fn(async () => blocked.promise);
     const pending = createWorkerApi().generate(request({ generationId: 1 }), async () => {}, () => {}, receive);
     await vi.waitFor(() => expect(receive).toHaveBeenCalledOnce());
-    expect(nativeEntered).toBe(false); blocked.resolve(); await pending;
+    expect(nativeEntered).toBe(false);
+    blocked.resolve();
+    await pending;
     expect(nativeEntered).toBe(true);
     await logOperation({ diagnostic: { event: 'operation-complete', stage: 'image-evaluate', statusCode: 0 } });
     expect(receive).toHaveBeenCalledOnce();
@@ -252,33 +313,46 @@ describe('native diagnostic checkpoints', () => {
 
 describe('single-file import RPC cancellation', () => {
   it('routes the request id to the importer and waits for rollback and callback acknowledgements', async () => {
-    const rollback = deferred(); const acknowledged = deferred(); let input: Parameters<typeof importStoredModel>[0] | undefined;
+    const rollback = deferred();
+    const acknowledged = deferred();
+    let input: Parameters<typeof importStoredModel>[0] | undefined;
     const model = { id: 'user/same-GGUF', name: 'same-GGUF', size: 7, importedAt: 1 };
     calls.import.mockImplementationOnce(async (args: Parameters<typeof importStoredModel>[0]) => {
-      input = args; args.onProgress({ progress: { phase: 'importing', completed: 1, total: 7 } });
+      input = args;
+      args.onProgress({ progress: { phase: 'importing', completed: 1, total: 7 } });
       await rollback.promise;
-      if (args.signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+      if (args.signal?.aborted) {
+        throw new LlamaCppBrowserError({ code: 'aborted' });
+      }
       return model;
     });
-    const file = new File(['fixture'], 'same.gguf'); const api = createWorkerApi(); const progress = vi.fn(() => acknowledged.promise);
+    const file = new File(['fixture'], 'same.gguf');
+    const api = createWorkerApi();
+    const progress = vi.fn(() => acknowledged.promise);
     const pending = api.importModel({ file, generationId: 4 }, progress);
     const rejected = expect(pending).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(input?.signal).toBeDefined());
     expect(input?.file).toBe(file);
-    await api.cancelGeneration({ generationId: 3 }); expect(input?.signal?.aborted).toBe(false);
-    await api.cancelGeneration({ generationId: 4 }); expect(input?.signal?.aborted).toBe(true);
-    input?.onProgress({ progress: { phase: 'importing', completed: 7, total: 7 } }); expect(progress).toHaveBeenCalledOnce();
+    await api.cancelGeneration({ generationId: 3 });
+    expect(input?.signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 4 });
+    expect(input?.signal?.aborted).toBe(true);
+    input?.onProgress({ progress: { phase: 'importing', completed: 7, total: 7 } });
+    expect(progress).toHaveBeenCalledOnce();
     await expect(api.importModel({ file, generationId: 5 }, () => {})).rejects.toThrow('busy');
     await expect(api.importDirectory({ directory: { name: 'Folder', files: [{ path: file.name, file }] }, generationId: 5 }, () => {})).rejects.toThrow('busy');
     await expect(api.generate(request({ generationId: 5 }), async () => {}, () => {})).rejects.toThrow('busy');
     rollback.resolve();
     await expect(api.release()).rejects.toThrow('busy');
-    acknowledged.resolve(); await rejected;
+    acknowledged.resolve();
+    await rejected;
     calls.import.mockImplementationOnce(async (args: Parameters<typeof importStoredModel>[0]) => {
-      input = args; return model;
+      input = args;
+      return model;
     });
     await expect(api.importModel({ file, generationId: 6 }, () => {})).resolves.toEqual(model);
-    await api.cancelGeneration({ generationId: 4 }); expect(input?.signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 4 });
+    expect(input?.signal?.aborted).toBe(false);
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid single-file cancellation id %s before touching storage', async generationId => {
@@ -298,41 +372,58 @@ describe('audio RPC ownership', () => {
   });
 
   it('drains progress acknowledgements before permitting another operation', async () => {
-    const gate = deferred(); calls.audio.mockImplementationOnce(async ({ onProgress }) => {
-      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
+    const gate = deferred();
+    calls.audio.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } });
+      return audioResult();
     });
-    const api = createWorkerApi(); let settled = false;
+    const api = createWorkerApi();
+    let settled = false;
     const pending = api.generateAudio(audioRequest({ generationId: 1 }), () => gate.promise, () => {}).then(() => {
       settled = true;
     });
-    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce()); expect(settled).toBe(false);
+    await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow('busy');
-    await expect(api.release()).rejects.toThrow('busy'); gate.resolve(); await pending; await api.release();
+    await expect(api.release()).rejects.toThrow('busy');
+    gate.resolve();
+    await pending;
+    await api.release();
     expect(calls.releaseSession).toHaveBeenCalledWith({ releaseRuntime: true });
   });
 
   it('targets audio cancellation by its ID and prevents chat/audio overlap', async () => {
-    const gate = deferred(); let signal: AbortSignal | undefined;
+    const gate = deferred();
+    let signal: AbortSignal | undefined;
     calls.audio.mockImplementationOnce(async args => {
-      signal = args.cancellationSignal; await gate.promise; return audioResult();
+      signal = args.cancellationSignal;
+      await gate.promise;
+      return audioResult();
     });
-    const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 7 }), () => {}, () => {});
+    const api = createWorkerApi();
+    const pending = api.generateAudio(audioRequest({ generationId: 7 }), () => {}, () => {});
     await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
     await expect(api.generateAudio(audioRequest({ generationId: 8 }), () => {}, () => {})).rejects.toThrow('busy');
-    await api.cancelGeneration({ generationId: 6 }); expect(signal?.aborted).toBe(false);
-    await api.cancelGeneration({ generationId: 7 }); expect(signal?.aborted).toBe(true); gate.resolve(); await pending;
+    await api.cancelGeneration({ generationId: 6 });
+    expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 7 });
+    expect(signal?.aborted).toBe(true);
+    gate.resolve();
+    await pending;
     expect(await api.generateAudio(audioRequest({ generationId: 8 }), () => {}, () => {})).toEqual(audioResult());
   });
 
   it('rejects invalid native results and releases the active operation slot', async () => {
-    calls.audio.mockResolvedValueOnce({ ...audioResult(), sampleRate: 0 }); const api = createWorkerApi();
+    calls.audio.mockResolvedValueOnce({ ...audioResult(), sampleRate: 0 });
+    const api = createWorkerApi();
     await expect(api.generateAudio(audioRequest({ generationId: 1 }), () => {}, () => {})).rejects.toThrow();
     expect(await api.generateAudio(audioRequest({ generationId: 2 }), () => {}, () => {})).toEqual(audioResult());
   });
 
   it('propagates callback failure after cleanup rather than leaking an occupied slot', async () => {
     calls.audio.mockImplementationOnce(async ({ onProgress }) => {
-      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } }); return audioResult();
+      onProgress({ progress: { phase: 'generating', completed: 1, total: 2 } });
+      return audioResult();
     });
     const api = createWorkerApi();
     await expect(api.generateAudio(audioRequest({ generationId: 1 }), () => Promise.reject(new Error('callback failed')), () => {})).rejects.toThrow('worker-failed');
@@ -342,30 +433,42 @@ describe('audio RPC ownership', () => {
 
 describe('request-scoped audio finishing', () => {
   it('finishes only the matching audio request without aborting its native operation', async () => {
-    const gate = deferred(); calls.audio.mockImplementationOnce(async () => {
-      await gate.promise; return { ...audioResult(), finishReason: 'user-stop' };
+    const gate = deferred();
+    calls.audio.mockImplementationOnce(async () => {
+      await gate.promise;
+      return { ...audioResult(), finishReason: 'user-stop' };
     });
-    const api = createWorkerApi(); const pending = api.generateAudio(audioRequest({ generationId: 71 }), () => {}, () => {});
+    const api = createWorkerApi();
+    const pending = api.generateAudio(audioRequest({ generationId: 71 }), () => {}, () => {});
     await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
-    const operation = calls.audio.mock.calls[0]![0]; expect(operation.shouldComplete?.()).toBe(false);
-    await api.finishAudioGeneration({ generationId: 70 }); expect(operation.shouldComplete?.()).toBe(false);
-    await api.finishAudioGeneration({ generationId: 71 }); expect(operation.shouldComplete?.()).toBe(true);
+    const operation = calls.audio.mock.calls[0]![0];
+    expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 70 });
+    expect(operation.shouldComplete?.()).toBe(false);
+    await api.finishAudioGeneration({ generationId: 71 });
+    expect(operation.shouldComplete?.()).toBe(true);
     expect(operation.cancellationSignal?.aborted).toBe(false);
-    gate.resolve(); expect(await pending).toMatchObject({ finishReason: 'user-stop' });
+    gate.resolve();
+    expect(await pending).toMatchObject({ finishReason: 'user-stop' });
     await api.finishAudioGeneration({ generationId: 71 });
     await api.generateAudio(audioRequest({ generationId: 72 }), () => {}, () => {});
     expect(calls.audio.mock.calls[1]![0].shouldComplete?.()).toBe(false);
   });
 
   it('does not finish or cancel a chat operation, including when its ID matches', async () => {
-    const gate = deferred(); calls.generate.mockImplementationOnce(async () => {
-      await gate.promise; return completed();
+    const gate = deferred();
+    calls.generate.mockImplementationOnce(async () => {
+      await gate.promise;
+      return completed();
     });
-    const api = createWorkerApi(); const pending = api.generate(request({ generationId: 91 }), async () => {}, () => {});
+    const api = createWorkerApi();
+    const pending = api.generate(request({ generationId: 91 }), async () => {}, () => {});
     await vi.waitFor(() => expect(calls.generate).toHaveBeenCalledOnce());
     await api.finishAudioGeneration({ generationId: 91 });
-    expect(calls.generate.mock.calls[0]![0].signal?.aborted).toBe(false); expect(calls.audio).not.toHaveBeenCalled();
-    gate.resolve(); await pending;
+    expect(calls.generate.mock.calls[0]![0].signal?.aborted).toBe(false);
+    expect(calls.audio).not.toHaveBeenCalled();
+    gate.resolve();
+    await pending;
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])('rejects invalid finish request ID %s', async generationId => {
@@ -376,21 +479,31 @@ describe('request-scoped audio finishing', () => {
 
 describe('preview control isolation', () => {
   it('targets only the owning audio operation, coalesces requests and keeps its lane until final output', async () => {
-    const gate = Promise.withResolvers<void>(); calls.audio.mockImplementationOnce(async () => {
-      await gate.promise; return audioResult();
+    const gate = Promise.withResolvers<void>();
+    calls.audio.mockImplementationOnce(async () => {
+      await gate.promise;
+      return audioResult();
     });
-    const api = createWorkerApi(); const onPreview = vi.fn(async () => {});
+    const api = createWorkerApi();
+    const onPreview = vi.fn(async () => {});
     const pending = api.generateAudio(audioRequest({ generationId: 101 }), () => {}, () => {}, onPreview);
     await vi.waitFor(() => expect(calls.audio).toHaveBeenCalledOnce());
     const operation = calls.audio.mock.calls[0]![0];
-    await api.requestAudioPreview({ generationId: 100, requestVersion: 9 }); expect(operation.preview?.requestedVersion()).toBe(0);
+    await api.requestAudioPreview({ generationId: 100, requestVersion: 9 });
+    expect(operation.preview?.requestedVersion()).toBe(0);
     await api.requestAudioPreview({ generationId: 101, requestVersion: 2 });
-    await api.requestAudioPreview({ generationId: 101, requestVersion: 1 }); expect(operation.preview?.requestedVersion()).toBe(2);
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 1 });
+    expect(operation.preview?.requestedVersion()).toBe(2);
     await operation.preview!.onPreview({ event: { requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } } });
-    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } }); expect(operation.cancellationSignal?.aborted).toBe(false); expect(operation.shouldComplete?.()).toBe(false);
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } });
+    expect(operation.cancellationSignal?.aborted).toBe(false);
+    expect(operation.shouldComplete?.()).toBe(false);
     await expect(api.generateAudio(audioRequest({ generationId: 102 }), () => {}, () => {})).rejects.toThrow('busy');
-    await api.finishAudioGeneration({ generationId: 101 }); await api.requestAudioPreview({ generationId: 101, requestVersion: 3 });
-    expect(operation.preview?.requestedVersion()).toBe(2); gate.resolve(); await pending;
+    await api.finishAudioGeneration({ generationId: 101 });
+    await api.requestAudioPreview({ generationId: 101, requestVersion: 3 });
+    expect(operation.preview?.requestedVersion()).toBe(2);
+    gate.resolve();
+    await pending;
     await api.requestAudioPreview({ generationId: 101, requestVersion: 4 });
     expect(operation.preview?.requestedVersion()).toBe(2);
   });
@@ -411,7 +524,8 @@ describe('preparation RPC ownership', () => {
       onProgress({ progress: { phase: 'loading', completed: 1, total: 1 } });
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     });
-    const api = createWorkerApi(); const progress = vi.fn(() => gate.promise);
+    const api = createWorkerApi();
+    const progress = vi.fn(() => gate.promise);
     const pending = api.prepareModel(preparation({ generationId: 401 }), progress);
     const rejected = expect(pending).rejects.toThrow('invalid-gguf');
     await vi.waitFor(() => expect(progress).toHaveBeenCalledOnce());
@@ -419,21 +533,31 @@ describe('preparation RPC ownership', () => {
     expect(calls.generate).not.toHaveBeenCalled();
     await expect(api.release()).rejects.toThrow('busy');
     await expect(api.prepareModel(preparation({ generationId: 402 }), () => {})).rejects.toThrow('busy');
-    gate.resolve(); await rejected; await api.release();
+    gate.resolve();
+    await rejected;
+    await api.release();
   });
 
   it('targets cancellation by operation identity while keeping the lane until native cleanup completes', async () => {
-    const gate = deferred(); let signal: AbortSignal | undefined;
+    const gate = deferred();
+    let signal: AbortSignal | undefined;
     calls.prepare.mockImplementationOnce(async args => {
-      signal = args.signal; await gate.promise; throw new LlamaCppBrowserError({ code: 'aborted' });
+      signal = args.signal;
+      await gate.promise;
+      throw new LlamaCppBrowserError({ code: 'aborted' });
     });
-    const api = createWorkerApi(); const pending = api.prepareModel(preparation({ generationId: 501 }), () => {});
+    const api = createWorkerApi();
+    const pending = api.prepareModel(preparation({ generationId: 501 }), () => {});
     const rejected = expect(pending).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(signal).toBeDefined());
-    await api.cancelGeneration({ generationId: 500 }); expect(signal?.aborted).toBe(false);
-    await api.cancelGeneration({ generationId: 501 }); expect(signal?.aborted).toBe(true);
+    await api.cancelGeneration({ generationId: 500 });
+    expect(signal?.aborted).toBe(false);
+    await api.cancelGeneration({ generationId: 501 });
+    expect(signal?.aborted).toBe(true);
     await expect(api.generate(request({ generationId: 502 }), async () => {}, () => {})).rejects.toThrow('busy');
-    gate.resolve(); await rejected; await api.release();
+    gate.resolve();
+    await rejected;
+    await api.release();
   });
 
   it('rejects accidental fake-conversation data before touching the session', async () => {
@@ -444,34 +568,50 @@ describe('preparation RPC ownership', () => {
 
 describe('generation progress mailbox integration', () => {
   it('bounds a blocked progress burst without dropping text and waits for the latest acknowledgement', async () => {
-    const first = deferred(); const latest = deferred(); const seen: number[] = []; const text: string[] = [];
+    const first = deferred();
+    const latest = deferred();
+    const seen: number[] = [];
+    const text: string[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress, onEvent }) => {
-      for (let completed = 1; completed <= 10000; completed++) onProgress({ progress: { phase: 'generating', completed, total: 10000 } });
+      for (let completed = 1; completed <= 10000; completed++) {
+        onProgress({ progress: { phase: 'generating', completed, total: 10000 } });
+      }
       await onEvent({ event: { type: 'text', text: 'first' } });
       await onEvent({ event: { type: 'text', text: 'last' } });
       return completed();
     });
-    const api = createWorkerApi(); let done = false;
+    const api = createWorkerApi();
+    let done = false;
     const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
-      if (event.type === 'text') text.push(event.text);
+      if (event.type === 'text') {
+        text.push(event.text);
+      }
     }, progress => {
-      seen.push(progress.completed); return seen.length === 1 ? first.promise : latest.promise;
+      seen.push(progress.completed);
+      return seen.length === 1 ? first.promise : latest.promise;
     }).then(value => {
-      done = true; return value;
+      done = true;
+      return value;
     });
     await vi.waitFor(() => expect(text).toEqual(['first', 'last']));
-    expect(seen).toEqual([1]); expect(done).toBe(false);
+    expect(seen).toEqual([1]);
+    expect(done).toBe(false);
     await expect(api.release()).rejects.toThrow('busy');
-    first.resolve(); await vi.waitFor(() => expect(seen).toEqual([1, 10000]));
+    first.resolve();
+    await vi.waitFor(() => expect(seen).toEqual([1, 10000]));
     expect(done).toBe(false);
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).rejects.toThrow('busy');
-    latest.resolve(); await expect(pending).resolves.toEqual(completed());
+    latest.resolve();
+    await expect(pending).resolves.toEqual(completed());
     calls.generate.mockResolvedValueOnce(completed());
     await expect(api.generate(request({ generationId: 2 }), async () => {}, () => {})).resolves.toEqual(completed());
   });
 
   it('starts loading and phase changes immediately without flushing stale prefill snapshots later', async () => {
-    const loading = deferred(); const prefill = deferred(); const generating = deferred(); const seen: string[] = [];
+    const loading = deferred();
+    const prefill = deferred();
+    const generating = deferred();
+    const seen: string[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
       onProgress({ progress: { phase: 'loading', completed: 0, total: 1 } });
       onProgress({ progress: { phase: 'loading', completed: 1, total: 1 } });
@@ -483,16 +623,24 @@ describe('generation progress mailbox integration', () => {
     const api = createWorkerApi();
     const pending = api.generate(request({ generationId: 1 }), async () => {}, progress => {
       seen.push(`${progress.phase}:${progress.completed}`);
-      if (progress.phase === 'loading') return loading.promise;
+      if (progress.phase === 'loading') {
+        return loading.promise;
+      }
       return progress.phase === 'prefill' ? prefill.promise : generating.promise;
     });
     await vi.waitFor(() => expect(seen).toEqual(['loading:0', 'loading:1', 'prefill:1', 'generating:1']));
-    generating.resolve(); prefill.resolve(); loading.resolve(); await pending;
+    generating.resolve();
+    prefill.resolve();
+    loading.resolve();
+    await pending;
     expect(seen).toEqual(['loading:0', 'loading:1', 'prefill:1', 'generating:1']);
   });
 
   it('cancels unsent progress but drains accepted text and already posted callbacks', async () => {
-    const gate = deferred(); const progressGate = deferred(); const seen: number[] = []; const text: string[] = [];
+    const gate = deferred();
+    const progressGate = deferred();
+    const seen: number[] = [];
+    const text: string[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress, onEvent }) => {
       onProgress({ progress: { phase: 'generating', completed: 1, total: 10 } });
       onProgress({ progress: { phase: 'generating', completed: 2, total: 10 } });
@@ -501,24 +649,34 @@ describe('generation progress mailbox integration', () => {
       onProgress({ progress: { phase: 'generating', completed: 3, total: 10 } });
       return completed();
     });
-    const api = createWorkerApi(); let done = false;
+    const api = createWorkerApi();
+    let done = false;
     const pending = api.generate(request({ generationId: 1 }), async ({ event }) => {
-      if (event.type === 'text') text.push(event.text);
+      if (event.type === 'text') {
+        text.push(event.text);
+      }
     }, progress => {
-      seen.push(progress.completed); return progressGate.promise;
+      seen.push(progress.completed);
+      return progressGate.promise;
     }).then(() => {
       done = true;
     });
     await vi.waitFor(() => expect(seen).toEqual([1]));
-    await api.cancelGeneration({ generationId: 1 }); gate.resolve();
-    await vi.waitFor(() => expect(text).toEqual(['accepted'])); expect(done).toBe(false);
-    progressGate.resolve(); await pending; expect(seen).toEqual([1]);
+    await api.cancelGeneration({ generationId: 1 });
+    gate.resolve();
+    await vi.waitFor(() => expect(text).toEqual(['accepted']));
+    expect(done).toBe(false);
+    progressGate.resolve();
+    await pending;
+    expect(seen).toEqual([1]);
   });
 
   it.each(['sync', 'async'] as const)('does not leak a %s progress callback failure into the next request', async failure => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
-      for (const completed of [1, 2, 3]) onProgress({ progress: { phase: 'generating', completed, total: 3 } });
+      for (const completed of [1, 2, 3]) {
+        onProgress({ progress: { phase: 'generating', completed, total: 3 } });
+      }
       return completed();
     });
     const api = createWorkerApi();
@@ -532,7 +690,10 @@ describe('generation progress mailbox integration', () => {
       switch (failure) {
       case 'sync': throw error;
       case 'async': return Promise.reject(error);
-      default: { const exhaustive: never = failure; throw new Error(exhaustive); }
+      default: {
+        const exhaustive: never = failure;
+        throw new Error(exhaustive);
+      }
       }
     })).rejects.toThrow('worker-failed');
     calls.generate.mockResolvedValueOnce(completed());
@@ -541,47 +702,64 @@ describe('generation progress mailbox integration', () => {
   });
 
   it('drains numeric callbacks even when the original loading callback queue has failed', async () => {
-    const gate = deferred(); const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const gate = deferred();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
       onProgress({ progress: { phase: 'loading', completed: 0, total: 1 } });
       onProgress({ progress: { phase: 'generating', completed: 1, total: 1 } });
       return completed();
     });
-    const api = createWorkerApi(); let done = false; const seen: string[] = [];
+    const api = createWorkerApi();
+    let done = false;
+    const seen: string[] = [];
     const pending = api.generate(request({ generationId: 1 }), async () => {}, progress => {
       seen.push(progress.phase);
-      if (progress.phase === 'loading') throw new Error('private loading detail');
+      if (progress.phase === 'loading') {
+        throw new Error('private loading detail');
+      }
       return gate.promise;
     }).catch(error => {
-      done = true; return error;
+      done = true;
+      return error;
     });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
-        gate.resolve(); await pending; log.mockRestore();
+        gate.resolve();
+        await pending;
+        log.mockRestore();
       },
     };
     await vi.waitFor(() => expect(seen).toEqual(['loading', 'generating']));
-    expect(done).toBe(false); await expect(api.release()).rejects.toThrow('busy');
-    gate.resolve(); expect(await pending).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
+    expect(done).toBe(false);
+    await expect(api.release()).rejects.toThrow('busy');
+    gate.resolve();
+    expect(await pending).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
   });
 
   it.each(['on', 'off'] as const)('reports only aggregate delivery counts when debug is %s', async debug => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const blocked = deferred(); const seen: number[] = [];
+    const blocked = deferred();
+    const seen: number[] = [];
     calls.generate.mockImplementationOnce(async ({ onProgress }) => {
-      for (let completed = 1; completed <= 33; completed++) onProgress({ progress: { phase: 'generating', completed, total: 33 } });
+      for (let completed = 1; completed <= 33; completed++) {
+        onProgress({ progress: { phase: 'generating', completed, total: 33 } });
+      }
       return completed();
     });
     const api = createWorkerApi();
     using _cleanupResource = {
       [Symbol.dispose]() {
-        blocked.resolve(); log.mockRestore();
+        blocked.resolve();
+        log.mockRestore();
       },
     };
     const pending = api.generate({ ...request({ generationId: 1 }), debug }, async () => {}, progress => {
-      seen.push(progress.completed); return blocked.promise;
+      seen.push(progress.completed);
+      return blocked.promise;
     });
-    await vi.waitFor(() => expect(seen).toEqual([1])); blocked.resolve(); await pending;
+    await vi.waitFor(() => expect(seen).toEqual([1]));
+    blocked.resolve();
+    await pending;
     const reports = readDiagnostics({ calls: log.mock.calls }).filter(item => item.event === 'generation-progress');
     if (debug === 'on') {
       expect(reports).toEqual([{
@@ -597,13 +775,17 @@ describe('generation progress mailbox integration', () => {
           peakPending: 1,
         },
       }]);
-    } else expect(reports).toEqual([]);
+    } else {
+      expect(reports).toEqual([]);
+    }
   });
 });
 
 describe('measured generation terminal reports', () => {
   it('collects bounded loading evidence with debug off and waits for summary delivery', async () => {
-    const api = createWorkerApi(); const summary = vi.fn(); const gate = deferred();
+    const api = createWorkerApi();
+    const summary = vi.fn();
+    const gate = deferred();
     summary.mockImplementation(async () => {
       await gate.promise;
     });
@@ -620,37 +802,50 @@ describe('measured generation terminal reports', () => {
     const pending = api.generate({ ...request({ generationId: 1 }), debug: 'off', measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, summary).then(() => {
       settled = true;
     });
-    await vi.waitFor(() => expect(summary).toHaveBeenCalledOnce()); expect(settled).toBe(false);
+    await vi.waitFor(() => expect(summary).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
     expect(summary.mock.calls[0]?.[0].diagnostic.performance.preparationEvents).toMatchObject([{ event: 'load-complete', elapsedMs: 45 }, { event: 'context-retry', contextTokens: 4096, batchTokens: 128 }]);
     expect(summary.mock.calls[0]?.[0].diagnostic.performance.modelReads).toEqual(modelReads);
-    gate.resolve(); await pending; await api.release();
+    gate.resolve();
+    await pending;
+    await api.release();
   });
 
   it('returns cooperative stop evidence even while generation rejects, then releases ownership', async () => {
-    const api = createWorkerApi(); const summary = vi.fn(); const gate = deferred();
+    const api = createWorkerApi();
+    const summary = vi.fn();
+    const gate = deferred();
     calls.generate.mockImplementationOnce(async ({ signal, onSummary }) => {
-      await gate.promise; expect(signal?.aborted).toBe(true);
+      await gate.promise;
+      expect(signal?.aborted).toBe(true);
       onSummary?.({ diagnostic: performanceReport({ outcome: 'aborted' }) });
       throw new LlamaCppBrowserError({ code: 'aborted' });
     });
     const pending = api.generate({ ...request({ generationId: 2 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, summary);
     const rejected = expect(pending).rejects.toThrow('aborted');
-    await api.cancelGeneration({ generationId: 2 }); gate.resolve(); await rejected;
-    expect(summary.mock.calls[0]?.[0].diagnostic.performance.outcome).toBe('aborted'); await api.release();
+    await api.cancelGeneration({ generationId: 2 });
+    gate.resolve();
+    await rejected;
+    expect(summary.mock.calls[0]?.[0].diagnostic.performance.outcome).toBe('aborted');
+    await api.release();
   });
 
   it('does not export measurement reports for an ordinary generation', async () => {
     calls.generate.mockImplementationOnce(async ({ onSummary }) => {
-      onSummary?.({ diagnostic: performanceReport() }); return completed();
+      onSummary?.({ diagnostic: performanceReport() });
+      return completed();
     });
-    const summary = vi.fn(); await createWorkerApi().generate(request({ generationId: 3 }), async () => {}, () => {}, undefined, summary);
+    const summary = vi.fn();
+    await createWorkerApi().generate(request({ generationId: 3 }), async () => {}, () => {}, undefined, summary);
     expect(summary).not.toHaveBeenCalled();
   });
 
   it('clears active ownership even if a malformed measurement report fails serialization', async () => {
     calls.generate.mockImplementationOnce(async ({ onSummary }) => {
-      const diagnostic = performanceReport(); diagnostic.elapsedMs = -1;
-      onSummary?.({ diagnostic }); return completed();
+      const diagnostic = performanceReport();
+      diagnostic.elapsedMs = -1;
+      onSummary?.({ diagnostic });
+      return completed();
     });
     const api = createWorkerApi();
     await expect(api.generate({ ...request({ generationId: 4 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, undefined, () => {})).rejects.toThrow();
@@ -659,7 +854,9 @@ describe('measured generation terminal reports', () => {
 });
 
 it.each([undefined, { sequence: 'fresh' as const }])('forwards safe native allocation metrics only for measurement %j', async measurement => {
-  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  const receive = vi.fn();
+  const post = vi.fn();
+  vi.stubGlobal('postMessage', post);
   calls.generate.mockImplementationOnce(async () => {
     for (const message of [
       'load_tensors: WebGPU model buffer size = 128.00 MiB',
@@ -667,7 +864,9 @@ it.each([undefined, { sequence: 'fresh' as const }])('forwards safe native alloc
       'llama_memory_recurrent: CPU RS buffer size = 8.00 MiB',
       'sched_reserve: WebGPU compute buffer size = 16.00 MiB',
       'llama_kv_cache: private-device KV buffer size = 64.00 MiB',
-    ]) logNativeDiagnostic({ message });
+    ]) {
+      logNativeDiagnostic({ message });
+    }
     return completed();
   });
   await createWorkerApi().generate({ ...request({ generationId: 100 }), debug: 'off', measurement }, async () => {}, () => {}, receive);
@@ -680,7 +879,8 @@ it.each([undefined, { sequence: 'fresh' as const }])('gates existing queue obser
   const device = observer.wrapDevice({ device: { queue: { submit() {} } } as unknown as GPUDevice, adapter: undefined });
   let submitCount: number | undefined;
   calls.generate.mockImplementationOnce(async () => {
-    device.queue.submit([]); submitCount = observer.snapshot()?.queue?.submitCount;
+    device.queue.submit([]);
+    submitCount = observer.snapshot()?.queue?.submitCount;
     return completed();
   });
   await createWorkerApi().generate({ ...request({ generationId: 101 }), debug: 'off', measurement }, async () => {}, () => {});
@@ -689,7 +889,9 @@ it.each([undefined, { sequence: 'fresh' as const }])('gates existing queue obser
 });
 
 it.each([undefined, { sequence: 'fresh' as const }])('forwards only bounded flash/context observations for measurement %j', async measurement => {
-  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  const receive = vi.fn();
+  const post = vi.fn();
+  vi.stubGlobal('postMessage', post);
   calls.generate.mockImplementationOnce(async () => {
     logDiagnostic({ diagnostic: { event: 'context-start' } });
     logNativeDiagnostic({ message: 'llama_context: flash_attn            = auto' });
@@ -712,7 +914,10 @@ it.each([undefined, { sequence: 'fresh' as const }])('forwards only bounded flas
 });
 
 it('forwards partial flash evidence before initialization failure without a terminal performance report', async () => {
-  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post); const summary = vi.fn();
+  const receive = vi.fn();
+  const post = vi.fn();
+  vi.stubGlobal('postMessage', post);
+  const summary = vi.fn();
   calls.generate.mockImplementationOnce(async () => {
     logDiagnostic({ diagnostic: { event: 'context-start' } });
     logNativeDiagnostic({ message: 'llama_context: flash_attn = auto' });
@@ -726,7 +931,9 @@ it('forwards partial flash evidence before initialization failure without a term
 });
 
 it.each([undefined, { sequence: 'fresh' as const }])('forwards loaded descriptors only for measurement %j', async measurement => {
-  const receive = vi.fn(); const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  const receive = vi.fn();
+  const post = vi.fn();
+  vi.stubGlobal('postMessage', post);
   calls.generate.mockImplementationOnce(async () => {
     logDiagnostic({ diagnostic: { event: 'native-info', loadedModelDescriptor: { source: 'loaded-model-native-api', parameterCount: '9007199254740993' } } });
     return completed();
@@ -755,7 +962,8 @@ it.each(['missing', 'throwing'] as const)('keeps generation and cleanup usable w
 });
 
 it('posts cooperative Stop observations before rejection without waiting for diagnostic callbacks', async () => {
-  const post = vi.fn(); vi.stubGlobal('postMessage', post);
+  const post = vi.fn();
+  vi.stubGlobal('postMessage', post);
   const receive = vi.fn(() => new Promise<void>(() => {}));
   const gate = deferred();
   calls.generate.mockImplementationOnce(async ({ signal }) => {
@@ -768,7 +976,9 @@ it('posts cooperative Stop observations before rejection without waiting for dia
   const api = createWorkerApi();
   const pending = api.generate({ ...request({ generationId: 109 }), measurement: { sequence: 'fresh' } }, async () => {}, () => {}, receive);
   const rejected = expect(pending).rejects.toThrow('aborted');
-  await api.cancelGeneration({ generationId: 109 }); gate.resolve(); await rejected;
+  await api.cancelGeneration({ generationId: 109 });
+  gate.resolve();
+  await rejected;
   expect(post.mock.calls.map(([diagnostic]) => diagnostic.event)).toEqual(['context-start', 'native-info']);
   expect(receive).not.toHaveBeenCalled();
   await expect(api.release()).resolves.toBeUndefined();

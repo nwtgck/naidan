@@ -174,8 +174,12 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
   }
 
   function requestedStop(): StopReason | undefined {
-    if (!isOpen()) return 'disposed';
-    if (abortReason !== undefined) return 'aborted';
+    if (!isOpen()) {
+      return 'disposed';
+    }
+    if (abortReason !== undefined) {
+      return 'aborted';
+    }
     return undefined;
   }
 
@@ -186,27 +190,42 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       case 'not-yet-started': break;
       case undefined: case 'scope-not-selected': case 'first-settlement-unavailable': case 'legacy-script-stopped':
       case 'runtime-unavailable': case 'aborted': case 'deadline': case 'disposed': continue;
-      default: { const exhaustive: never = request.notStartedReason; throw new Error('Unhandled request state: ' + exhaustive); }
+      default: {
+        const exhaustive: never = request.notStartedReason;
+        throw new Error('Unhandled request state: ' + exhaustive);
+      }
       }
       switch (reason) {
-      case 'runtime-unavailable': case 'disposed': request.notStartedReason = reason; break;
+      case 'runtime-unavailable': case 'disposed': request.notStartedReason = reason;
+        break;
       case 'aborted':
         switch (abortReason) {
-        case 'deadline': request.notStartedReason = 'deadline'; break;
-        case 'user-requested': request.notStartedReason = 'aborted'; break;
+        case 'deadline': request.notStartedReason = 'deadline';
+          break;
+        case 'user-requested': request.notStartedReason = 'aborted';
+          break;
         case undefined: throw new Error('Capture abort has no recorded reason');
-        default: { const exhaustive: never = abortReason; throw new Error('Unhandled abort reason: ' + exhaustive); }
+        default: {
+          const exhaustive: never = abortReason;
+          throw new Error('Unhandled abort reason: ' + exhaustive);
+        }
         }
         break;
-      case 'provider-rejected': case 'capture-incomplete': request.notStartedReason = 'legacy-script-stopped'; break;
-      default: { const exhaustive: never = reason; throw new Error('Unhandled stop reason: ' + exhaustive); }
+      case 'provider-rejected': case 'capture-incomplete': request.notStartedReason = 'legacy-script-stopped';
+        break;
+      default: {
+        const exhaustive: never = reason;
+        throw new Error('Unhandled stop reason: ' + exhaustive);
+      }
       }
     }
     return snapshot();
   }
 
   async function run(): Promise<ProductionProviderCaptureSnapshot> {
-    if (!isOpen()) throw new Error('Provider capture owner is terminally disposed');
+    if (!isOpen()) {
+      throw new Error('Provider capture owner is terminally disposed');
+    }
     const runStatus = runState.status;
     switch (runStatus) {
     case 'not-started': break;
@@ -221,11 +240,15 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
     let firstSettled: ProductionProviderSettledSnapshot | undefined;
     function retainFirstSettlement({ scenario, settled }: { scenario: CaptureScenario; settled: ProductionProviderSettledSnapshot }): void {
       switch (scenario) {
-      case 'first-turn': firstSettled = settled; break;
+      case 'first-turn': firstSettled = settled;
+        break;
       case 'continuity': case 'independent-next-input': case 'system-user': case 'supplied-history':
       case 'reasoning-none': case 'reasoning-low': case 'reasoning-medium': case 'reasoning-high':
       case 'natural-tool-minimal': case 'natural-tool-representative': case 'structured-tool-history': case 'image': break;
-      default: { const exhaustive: never = scenario; throw new Error('Unhandled settled scenario: ' + exhaustive); }
+      default: {
+        const exhaustive: never = scenario;
+        throw new Error('Unhandled settled scenario: ' + exhaustive);
+      }
       }
     }
     for (const request of requests) {
@@ -233,7 +256,9 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
       if (before !== undefined) {
         return stop({ reason: before });
       }
-      if (!isCaptureScenarioSelected({ plan, scenario: request.identity.scenario })) continue;
+      if (!isCaptureScenarioSelected({ plan, scenario: request.identity.scenario })) {
+        continue;
+      }
       if (version2 && request.identity.scenario === 'continuity' && !isCapturedContinuityAvailable({ settled: firstSettled })) {
         request.notStartedReason = 'first-settlement-unavailable';
         continue;
@@ -242,7 +267,9 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
         // The ordinary Provider may auto-load. Never let a later scenario repair
         // a lost runtime: only the initial request may trigger this owner's Load.
         const state = serviceOwner.service.getState();
-        if (state.status !== 'ready' || state.activeModelId !== modelId) return stop({ reason: 'runtime-unavailable' });
+        if (state.status !== 'ready' || state.activeModelId !== modelId) {
+          return stop({ reason: 'runtime-unavailable' });
+        }
       }
       request.input = captureScenarioInput({ scenario: request.identity.scenario, firstSettled });
       request.notStartedReason = undefined;
@@ -261,16 +288,23 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
         switch (result.type) {
         case 'error': throw result.error;
         case 'finished': case 'interrupted': break;
-        default: { const exhaustive: never = result; throw new Error('Unhandled capture result: ' + exhaustive); }
+        default: {
+          const exhaustive: never = result;
+          throw new Error('Unhandled capture result: ' + exhaustive);
+        }
         }
       } catch (error) {
         settled = request.trace.settle({ outcome: 'rejected', error });
         settledRequests += 1;
         activeRequest = undefined;
-        if (!version2) return stop({ reason: requestedStop() ?? 'provider-rejected' });
+        if (!version2) {
+          return stop({ reason: requestedStop() ?? 'provider-rejected' });
+        }
         retainFirstSettlement({ scenario: request.identity.scenario, settled });
         const after = requestedStop();
-        if (after !== undefined) return stop({ reason: after });
+        if (after !== undefined) {
+          return stop({ reason: after });
+        }
         continue;
       }
       settled = request.trace.settle({ outcome: 'fulfilled', error: undefined });
@@ -293,14 +327,18 @@ export function createProductionProviderCaptureOwner({ runId: inputRunId, modelI
   }
 
   function abort({ reason }: { reason: 'user-requested' | 'deadline' }): void {
-    if (!isOpen() || abortReason !== undefined) return;
+    if (!isOpen() || abortReason !== undefined) {
+      return;
+    }
     abortReason = z.enum(['user-requested', 'deadline']).parse(reason);
     record({ kind: 'abort-requested' });
     controller.abort();
   }
 
   function dispose(): Promise<void> {
-    if (disposalPromise !== undefined) return disposalPromise;
+    if (disposalPromise !== undefined) {
+      return disposalPromise;
+    }
     lifetime = 'closing';
     disposal = 'pending';
     record({ kind: 'dispose-requested' });

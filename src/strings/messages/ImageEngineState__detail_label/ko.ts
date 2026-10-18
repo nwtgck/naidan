@@ -4,6 +4,9 @@ export const ImageEngineState__detail_label = ({ detail }: { detail: "model" | "
   case "profile": return "런타임 프로필";
   case "source": return "아티팩트 소스";
   case "threads": return "실제 CPU 스레드 수";
-  default: { const exhaustive: never = detail; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = detail;
+    throw new Error(String(exhaustive));
+  }
   }
 };

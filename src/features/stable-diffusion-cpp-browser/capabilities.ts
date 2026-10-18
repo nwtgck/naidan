@@ -14,7 +14,9 @@ export function supportsJspi(): boolean {
 }
 
 export function initialProfile(): Artifact['profile'] {
-  if (supportsJspi()) return supportsMemory64() ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
+  if (supportsJspi()) {
+    return supportsMemory64() ? 'webgpu-wasm64-jspi' : 'webgpu-wasm32-jspi';
+  }
   return 'webgpu-wasm32-asyncify';
 }
 

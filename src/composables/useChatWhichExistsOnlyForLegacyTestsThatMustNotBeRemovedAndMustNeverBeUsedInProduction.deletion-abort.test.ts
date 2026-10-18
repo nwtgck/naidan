@@ -96,7 +96,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     expect(capturedOnClose).toBeDefined();
 
     // 4. Simulate toast timeout/dismiss
-    if (capturedOnClose) await capturedOnClose({ reason: 'timeout' });
+    if (capturedOnClose) {
+      await capturedOnClose({ reason: 'timeout' });
+    }
 
     // VERIFY: Now cleanup is executed
     expect(mockAbort).toHaveBeenCalled();
@@ -122,7 +124,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // 4. Simulate Undo click (reason: action)
-    if (capturedOnClose) await capturedOnClose({ reason: 'action' });
+    if (capturedOnClose) {
+      await capturedOnClose({ reason: 'action' });
+    }
 
     // VERIFY: Cleanup is skipped
     expect(mockAbort).not.toHaveBeenCalled();

@@ -16,16 +16,27 @@ export function createOutputPacing({ mode, now }: {
       switch (mode) {
       case 'per-token': return true;
       case 'coalesced': break;
-      default: { const exhaustive: never = mode; throw new Error(`Unknown output pacing: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = mode;
+        throw new Error(`Unknown output pacing: ${exhaustive}`);
       }
-      if (force) return true;
+      }
+      if (force) {
+        return true;
+      }
       // Native parsing depends on the cumulative text, not the token count.
       // A held stop prefix or an incomplete UTF-8 character needs no reparse.
-      if (outputLength === lastParsedLength) return false;
+      if (outputLength === lastParsedLength) {
+        return false;
+      }
       // Do not add a batching delay before the first visible event. A template
       // may consume many tokens before it exposes text, reasoning or a call.
-      if (!hasDelivered || outputLength < lastParsedLength) return true;
-      if (pendingTokens >= 8 || outputLength - lastParsedLength >= 4096) return true;
+      if (!hasDelivered || outputLength < lastParsedLength) {
+        return true;
+      }
+      if (pendingTokens >= 8 || outputLength - lastParsedLength >= 4096) {
+        return true;
+      }
       const elapsed = now() - lastParsedAt;
       // performance.now() is monotonic; an unusual/injected clock fails open.
       return elapsed >= 32 || elapsed < 0 || !Number.isFinite(elapsed);
@@ -36,9 +47,13 @@ export function createOutputPacing({ mode, now }: {
       // Start at parsing, not at delivery acknowledgement. Slow consumers must
       // not incur a fresh batching interval after they release backpressure.
       switch (mode) {
-      case 'coalesced': lastParsedAt = now(); break;
+      case 'coalesced': lastParsedAt = now();
+        break;
       case 'per-token': break;
-      default: { const exhaustive: never = mode; throw new Error(`Unknown output pacing: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = mode;
+        throw new Error(`Unknown output pacing: ${exhaustive}`);
+      }
       }
     },
     delivered(): void {

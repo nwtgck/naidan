@@ -6,7 +6,8 @@ export class AttemptError extends Error {
   constructor({ kind }: {
         kind: AttemptKind;
     }) {
-    super(`Piping attempt: ${kind}`); this.kind = kind;
+    super(`Piping attempt: ${kind}`);
+    this.kind = kind;
   }
 }
 export class Deadline {
@@ -26,12 +27,15 @@ export class Deadline {
     this.internalListener = () => this.internalController.abort(parent.reason);
     this.internalTimer = setTimeout(() => this.internalController.abort(new Error('Attempt deadline')), milliseconds);
     parent.addEventListener('abort', this.internalListener, { once: true });
-    if (parent.aborted)
+    if (parent.aborted) {
       this.internalListener();
+    }
   }
 
   dispose(): void {
-    clearTimeout(this.internalTimer); this.internalParent.removeEventListener('abort', this.internalListener); this.internalController.abort();
+    clearTimeout(this.internalTimer);
+    this.internalParent.removeEventListener('abort', this.internalListener);
+    this.internalController.abort();
   }
 }
 
@@ -43,13 +47,16 @@ export async function sleep({ milliseconds, signal }: {
   signal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const cleanup = () => {
-      clearTimeout(timer); signal.removeEventListener('abort', abort);
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
     };
     const abort = () => {
-      cleanup(); reject(signal.reason);
+      cleanup();
+      reject(signal.reason);
     };
     const timer = setTimeout(() => {
-      cleanup(); resolve();
+      cleanup();
+      resolve();
     }, milliseconds);
     signal.addEventListener('abort', abort, { once: true });
   });

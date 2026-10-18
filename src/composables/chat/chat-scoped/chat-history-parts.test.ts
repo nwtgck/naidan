@@ -35,7 +35,8 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
 vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({ sendMessageToTargetChat: state.sent }));
 vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortProcessingForChat: () => {
-    state.abort(); state.processing = false;
+    state.abort();
+    state.processing = false;
   },
 }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: state.opened }) }));
@@ -69,14 +70,24 @@ function fixture(): { chat: Chat, user: MessageNode, assistant: AssistantMessage
   const chat = reactive<Chat>({ id: toChatId({ raw: 'chat' }), title: 'Original', root: { items: [user] }, currentLeafId: assistant.id, createdAt: 1, updatedAt: 1, debugEnabled: false });
   state.current = chat;
   const actualUser = chat.root.items[0]!, actualAssistant = actualUser.replies.items[0]!;
-  if (actualAssistant.role !== 'assistant') throw new Error('Invalid fixture');
+  if (actualAssistant.role !== 'assistant') {
+    throw new Error('Invalid fixture');
+  }
   return { chat, user: actualUser, assistant: actualAssistant };
 }
 
 beforeEach(async () => {
-  await ensureAllStringsForTest({ locale: 'en' }); vi.clearAllMocks(); state.stored.clear(); state.fork = undefined; state.processing = false; state.persistBinary = false; state.saveFile.mockReset();
+  await ensureAllStringsForTest({ locale: 'en' });
+  vi.clearAllMocks();
+  state.stored.clear();
+  state.fork = undefined;
+  state.processing = false;
+  state.persistBinary = false;
+  state.saveFile.mockReset();
   state.save.mockImplementation(async ({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent }) => {
-    const next = updater({ current: state.stored.get(id) ?? null }); state.stored.set(id, next); return next;
+    const next = updater({ current: state.stored.get(id) ?? null });
+    state.stored.set(id, next);
+    return next;
   });
   state.metadata.mockImplementation(async ({ updater }: { updater: ({ current }: { current: ChatMeta | null }) => ChatMeta }) => updater({ current: null }));
 });
@@ -87,12 +98,18 @@ describe('parts history branches', () => {
     user.replies.items.push({ ...assistant, id: toMessageId({ raw: 'other' }), parts: [], replies: { items: [] } });
     const before = Array.from(getChatBranchIterator({ chat })).map(node => createChatMessageSnapshot({ node }));
     const forkId = await forkChatForChat({ chatId: chat.id, messageId: assistant.id });
-    expect(forkId).not.toBeNull(); const fork = state.fork!;
+    expect(forkId).not.toBeNull();
+    const fork = state.fork!;
     expect(Array.from(getChatBranchIterator({ chat: fork })).map(node => createChatMessageSnapshot({ node }))).toEqual(before);
     const copied = fork.root.items[0]!.replies.items[0]!;
-    expect(copied.createdAt).toBe(2); expect(copied.role === 'assistant' && copied.interruption).toEqual({ type: 'error', message: '記録済みの理由' });
+    expect(copied.createdAt).toBe(2);
+    expect(copied.role === 'assistant' && copied.interruption).toEqual({ type: 'error', message: '記録済みの理由' });
     expect(fork.root.items[0]!.replies.items).toHaveLength(1);
-    const part = copied.parts[1]; if (part?.type !== 'text') throw new Error('Missing body'); part.text = 'new';
+    const part = copied.parts[1];
+    if (part?.type !== 'text') {
+      throw new Error('Missing body');
+    }
+    part.text = 'new';
     expect(assistant.parts[1]).toMatchObject({ text: '<think>literal</think>A ', completeness: 'partial' });
     expect(state.opened).toHaveBeenCalledWith({ chatId: fork.id, leafId: undefined });
   });
@@ -102,17 +119,24 @@ describe('parts history branches', () => {
     const before = JSON.stringify(assistant);
     const edited = '<think>literal edit</think> B \n';
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: edited, lmParameters: undefined });
-    expect(user.replies.items).toHaveLength(2); const copy = user.replies.items[1]!;
-    expect(copy.id).not.toBe(assistant.id); expect(copy.parts).toEqual([{ type: 'text', text: edited, completeness: 'complete' }]);
+    expect(user.replies.items).toHaveLength(2);
+    const copy = user.replies.items[1]!;
+    expect(copy.id).not.toBe(assistant.id);
+    expect(copy.parts).toEqual([{ type: 'text', text: edited, completeness: 'complete' }]);
     expect(copy.role === 'assistant' && copy.interruption).toBeUndefined();
     expect(JSON.stringify(assistant)).toBe(before);
     expect(chat.currentLeafId).toBe(copy.id);
-    if (copy.lmParameters?.stop) copy.lmParameters.stop.push('changed');
+    if (copy.lmParameters?.stop) {
+      copy.lmParameters.stop.push('changed');
+    }
     expect(assistant.lmParameters?.stop).toEqual(['STOP']);
   });
 
   it('user resend forwards attachment parts and chosen parameters', async () => {
-    const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Wrong user');
+    const { chat, user } = fixture();
+    if (user.role !== 'user') {
+      throw new Error('Wrong user');
+    }
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'f', size: 1, mimeType: 'image/png', uploadedAt: 1, status: 'memory' as const, blob: new Blob(['x']) };
     user.parts.push({ type: 'attachment', attachment });
     const parameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' as const } };
@@ -121,17 +145,21 @@ describe('parts history branches', () => {
   });
 
   it('switching versions preserves original interruption and partial parts', async () => {
-    const { chat, user, assistant } = fixture(); const original = JSON.stringify(assistant);
+    const { chat, user, assistant } = fixture();
+    const original = JSON.stringify(assistant);
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: 'replacement', lmParameters: undefined });
     expect(user.replies.items).toHaveLength(2);
     await switchVersionForChat({ chatId: chat.id, messageId: assistant.id });
-    expect(chat.currentLeafId).toBe(assistant.id); expect(JSON.stringify(assistant)).toBe(original);
+    expect(chat.currentLeafId).toBe(assistant.id);
+    expect(JSON.stringify(assistant)).toBe(original);
   });
 
   it('waits for generation ownership to end before creating an edited branch', async () => {
-    const { chat, assistant } = fixture(); state.processing = true;
+    const { chat, assistant } = fixture();
+    state.processing = true;
     await editMessageForChat({ chatId: chat.id, messageId: assistant.id, newContent: 'replacement', lmParameters: undefined });
-    expect(state.abort).toHaveBeenCalledOnce(); expect(state.processing).toBe(false);
+    expect(state.abort).toHaveBeenCalledOnce();
+    expect(state.processing).toBe(false);
     expect(chat.currentLeafId).not.toBe(assistant.id);
   });
 
@@ -144,10 +172,13 @@ describe('parts history branches', () => {
     await commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user, assistant, tool], systemPrompt: prompt });
     expect(chat.root.items).toHaveLength(2);
     expect(JSON.stringify([chat.root.items[0]])).toBe(original);
-    const copiedUser = chat.root.items[1]!; const copiedAssistant = copiedUser.replies.items[0]!; const copiedTool = copiedAssistant.replies.items[0]!;
+    const copiedUser = chat.root.items[1]!;
+    const copiedAssistant = copiedUser.replies.items[0]!;
+    const copiedTool = copiedAssistant.replies.items[0]!;
     expect(copiedAssistant.parts).toEqual(assistant.parts);
     expect(copiedAssistant).toMatchObject({ createdAt: 2, interruption: { type: 'error', message: '記録済みの理由' } });
-    expect(copiedTool.parts).toEqual(tool.parts); expect(chat.currentLeafId).toBe(copiedTool.id);
+    expect(copiedTool.parts).toEqual(tool.parts);
+    expect(chat.currentLeafId).toBe(copiedTool.id);
     expect(state.stored.get(chat.id)!.root).toBe(chat.root);
     const updater = state.metadata.mock.calls.at(-1)![0].updater;
     expect(updater({ current: { ...chat, systemPrompt: undefined } }).systemPrompt).toEqual(prompt);
@@ -155,7 +186,9 @@ describe('parts history branches', () => {
 
   it('freezes message and prompt snapshots before persisting a memory attachment', async () => {
     const { chat, user, assistant } = fixture();
-    if (user.role !== 'user') throw new Error('Expected user');
+    if (user.role !== 'user') {
+      throw new Error('Expected user');
+    }
     const attachment = { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory' as const, blob: new Blob(['x']) };
     user.parts.push({ type: 'attachment', attachment });
     state.persistBinary = true;
@@ -167,23 +200,37 @@ describe('parts history branches', () => {
     const mutablePrompt: { behavior: 'append'; content: string } = { ...prompt };
     const pending = commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user, assistant], systemPrompt: mutablePrompt });
     expect(state.saveFile).toHaveBeenCalledOnce();
-    const body = user.parts[0]; if (body?.type !== 'text') throw new Error('Expected text'); body.text = 'later edit';
-    mutablePrompt.content = 'later prompt'; attachment.originalName = 'later.png';
-    finish(); await pending;
+    const body = user.parts[0];
+    if (body?.type !== 'text') {
+      throw new Error('Expected text');
+    }
+    body.text = 'later edit';
+    mutablePrompt.content = 'later prompt';
+    attachment.originalName = 'later.png';
+    finish();
+    await pending;
     const savedUser = chat.root.items[1]!;
     expect(savedUser.parts[0]).toMatchObject({ text: 'question' });
-    const savedImage = savedUser.parts[1]; if (savedImage?.type !== 'attachment') throw new Error('Expected image');
+    const savedImage = savedUser.parts[1];
+    if (savedImage?.type !== 'attachment') {
+      throw new Error('Expected image');
+    }
     expect(savedImage.attachment).toMatchObject({ status: 'persisted', originalName: 'x.png' });
     expect(savedImage.attachment).not.toHaveProperty('blob');
-    expect(attachment.status).toBe('memory'); expect(attachment.blob).toBeInstanceOf(Blob);
+    expect(attachment.status).toBe('memory');
+    expect(attachment.blob).toBeInstanceOf(Blob);
     expect(chat.systemPrompt).toEqual(prompt);
   });
 
   it('retains an unsaved attachment body if persistence fails', async () => {
-    const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Expected user');
+    const { chat, user } = fixture();
+    if (user.role !== 'user') {
+      throw new Error('Expected user');
+    }
     const blob = new Blob(['original']);
     user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: blob.size, uploadedAt: 1, status: 'memory', blob } });
-    state.persistBinary = true; state.saveFile.mockRejectedValueOnce(new Error('disk full'));
+    state.persistBinary = true;
+    state.saveFile.mockRejectedValueOnce(new Error('disk full'));
     using log = vi.spyOn(console, 'error').mockImplementation(() => {});
     await commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined });
     const copy = chat.root.items[1]!.parts[1];
@@ -195,12 +242,16 @@ describe('parts history branches', () => {
     const { chat, user } = fixture();
     state.save.mockRejectedValueOnce(new Error('content storage failure'));
     await expect(commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined })).rejects.toThrow('content storage failure');
-    expect(chat.root.items).toHaveLength(2); expect(chat.root.items[1]!.parts).toEqual(user.parts);
+    expect(chat.root.items).toHaveLength(2);
+    expect(chat.root.items[1]!.parts).toEqual(user.parts);
     expect(state.metadata).not.toHaveBeenCalled();
   });
 
   it('keeps an awaiting history commit bound to its original chat after navigation', async () => {
-    const { chat, user } = fixture(); if (user.role !== 'user') throw new Error('Expected user');
+    const { chat, user } = fixture();
+    if (user.role !== 'user') {
+      throw new Error('Expected user');
+    }
     user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) } });
     state.persistBinary = true;
     let finish!: () => void;
@@ -210,8 +261,10 @@ describe('parts history branches', () => {
     const pending = commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined });
     const other: Chat = reactive({ ...chat, id: toChatId({ raw: 'other' }), root: { items: [] } });
     state.current = other;
-    finish(); await pending;
-    expect(chat.root.items).toHaveLength(2); expect(other.root.items).toHaveLength(0);
+    finish();
+    await pending;
+    expect(chat.root.items).toHaveLength(2);
+    expect(other.root.items).toHaveLength(0);
     expect(state.save.mock.calls[0]![0].id).toEqual(chat.id);
   });
 });

@@ -73,13 +73,17 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 function walkFiles({ directory }: {
   directory: string;
 }): string[] {
-  if (!fs.existsSync(directory)) return [];
+  if (!fs.existsSync(directory)) {
+    return [];
+  }
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(directory, { withFileTypes: true })
       .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return [];
+    if (isErrnoException(error) && error.code === 'ENOENT') {
+      return [];
+    }
     throw error;
   }
   return entries.flatMap((entry) => {
@@ -116,7 +120,9 @@ function parseVueDescriptor({ source, filename }: {
   filename: string;
 }): SFCDescriptor {
   const { descriptor, errors } = parseSfc(source, { filename });
-  if (errors.length > 0) throw new Error(`${filename}: ${errors.map(String).join('; ')}`);
+  if (errors.length > 0) {
+    throw new Error(`${filename}: ${errors.map(String).join('; ')}`);
+  }
   return descriptor;
 }
 
@@ -125,7 +131,9 @@ function createVueScriptBlock({ block, filename, kind }: {
   filename: string;
   kind: VueScriptBlock['groupIdPrefix'];
 }): VueScriptBlock | undefined {
-  if (block === null) return undefined;
+  if (block === null) {
+    return undefined;
+  }
   return {
     source: block.content,
     sourceType: sourceTypeForVueScriptBlock({ lang: block.lang, filename }),
@@ -178,7 +186,9 @@ function candidateGroupsFromOccurrences({ occurrences, filename, groupIdPrefix }
       groups.push(group);
       groupByLocation.set(key, group);
     }
-    if (!group.candidates.includes(occurrence.candidate)) group.candidates.push(occurrence.candidate);
+    if (!group.candidates.includes(occurrence.candidate)) {
+      group.candidates.push(occurrence.candidate);
+    }
   }
   return groups;
 }
@@ -187,7 +197,9 @@ function collectVueTemplateGroups({ descriptor, filename }: {
   descriptor: SFCDescriptor;
   filename: string;
 }): SourceCandidateGroupBase[] {
-  if (descriptor.template === null) return [];
+  if (descriptor.template === null) {
+    return [];
+  }
   if (descriptor.template.src !== undefined) {
     throw new Error(`${filename}: External Vue template src files are not supported by static Tailwind analysis.`);
   }
@@ -230,7 +242,9 @@ function collectMacroGroupsFromSource({
   blockStart: SourcePosition;
   groupIdPrefix: string;
 }): SourceCandidateGroupBase[] {
-  if (!source.includes('virtual:naidan-tailwind')) return [];
+  if (!source.includes('virtual:naidan-tailwind')) {
+    return [];
+  }
   const result = transformTwCallsInModule({
     source,
     filename,
@@ -249,9 +263,15 @@ function sourceTypeForModule({ filename }: {
   filename: string;
 }): TwModuleSourceType {
   const extension = path.extname(filename);
-  if (extension === '.jsx') return 'jsx';
-  if (extension === '.tsx') return 'tsx';
-  if (['.js', '.mjs', '.cjs'].includes(extension)) return 'javascript';
+  if (extension === '.jsx') {
+    return 'jsx';
+  }
+  if (extension === '.tsx') {
+    return 'tsx';
+  }
+  if (['.js', '.mjs', '.cjs'].includes(extension)) {
+    return 'javascript';
+  }
   return 'typescript';
 }
 
@@ -316,7 +336,9 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
   const baseCandidateGroups: SourceCandidateGroupBase[] = [];
   const presentFiles = new Set(files);
   for (const cachedFile of cache.keys()) {
-    if (!presentFiles.has(cachedFile)) cache.delete(cachedFile);
+    if (!presentFiles.has(cachedFile)) {
+      cache.delete(cachedFile);
+    }
   }
   for (const file of files) {
     let source: string;
@@ -347,7 +369,9 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
       owners: ['initial'],
     }));
     for (const group of candidateGroups) {
-      for (const candidate of group.candidates) candidateOwners.set(candidate, new Set(['initial']));
+      for (const candidate of group.candidates) {
+        candidateOwners.set(candidate, new Set(['initial']));
+      }
     }
     return {
       projectRoot: absoluteProjectRoot,

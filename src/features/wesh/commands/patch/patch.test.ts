@@ -26,7 +26,9 @@ describe('wesh patch', () => {
   }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let directory = rootHandle;
     for (const segment of segments) {
@@ -42,7 +44,9 @@ describe('wesh patch', () => {
   async function readFile({ path }: { path: string }): Promise<string> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let directory = rootHandle;
     for (const segment of segments) {
@@ -215,7 +219,9 @@ three
     await writeFile({ path: 'new.txt', data: 'old\n' });
     const originalLstat = wesh.vfs.lstat.bind(wesh.vfs);
     vi.spyOn(wesh.vfs, 'lstat').mockImplementation(async ({ path }) => {
-      if (path === '/old.txt') throw new Error('Permission denied: /old.txt');
+      if (path === '/old.txt') {
+        throw new Error('Permission denied: /old.txt');
+      }
       return await originalLstat({ path });
     });
 
@@ -2782,7 +2788,9 @@ LAST
     });
     const originalEfficientRead = wesh.vfs.tryReadBlobEfficiently.bind(wesh.vfs);
     vi.spyOn(wesh.vfs, 'tryReadBlobEfficiently').mockImplementation(async ({ path }) => {
-      if (path === '/streamed.txt') return { kind: 'blob', blob };
+      if (path === '/streamed.txt') {
+        return { kind: 'blob', blob };
+      }
       return await originalEfficientRead({ path });
     });
 

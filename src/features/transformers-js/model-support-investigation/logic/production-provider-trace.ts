@@ -86,9 +86,13 @@ const unreadableField = Symbol('unreadable-field');
 // Never evaluate callback getters or enumerate arbitrary tool/error objects.
 // Proxies are not supported: a descriptor trap may fail, but cannot escape the sink.
 function ownData({ source, key }: { source: unknown; key: string }): unknown {
-  if ((typeof source !== 'object' && typeof source !== 'function') || source === null) throw unreadableField;
+  if ((typeof source !== 'object' && typeof source !== 'function') || source === null) {
+    throw unreadableField;
+  }
   const descriptor = Object.getOwnPropertyDescriptor(source, key);
-  if (descriptor === undefined || !('value' in descriptor)) throw unreadableField;
+  if (descriptor === undefined || !('value' in descriptor)) {
+    throw unreadableField;
+  }
   return descriptor.value;
 }
 
@@ -146,23 +150,32 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
   }
 
   function append({ project }: { project: ({ text }: { text: ({ value }: { value: unknown }) => string }) => EventPayload }): void {
-    if (failure !== undefined) return;
+    if (failure !== undefined) {
+      return;
+    }
     if (pendingEvents.length + events.length + lateEvents.length >= maximumEvents) {
       markIncomplete({ reason: 'event-limit' });
       return;
     }
     let characters = 0;
     function text({ value }: { value: unknown }): string {
-      if (typeof value !== 'string') throw unreadableField;
+      if (typeof value !== 'string') {
+        throw unreadableField;
+      }
       characters += value.length;
-      if (value.length > PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters || characters > maximumCharacters - retainedCharacters) throw characterLimit;
+      if (value.length > PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters || characters > maximumCharacters - retainedCharacters) {
+        throw characterLimit;
+      }
       return value;
     }
     try {
       const payload = project({ text });
       const event: ProductionProviderTraceEvent = Object.freeze({ ...payload, sequence, phase: settled === undefined ? 'before-settlement' : 'after-settlement' });
-      if (settled === undefined) pendingEvents.push(event);
-      else lateEvents.push(event);
+      if (settled === undefined) {
+        pendingEvents.push(event);
+      } else {
+        lateEvents.push(event);
+      }
       sequence += 1;
       retainedCharacters += characters;
     } catch (error) {
@@ -195,12 +208,16 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
         case 'started': return { kind: 'tool-started', toolCallId };
         case 'output': {
           const stream = ownData({ source: event, key: 'stream' });
-          if (stream !== 'stdout' && stream !== 'stderr') throw unreadableField;
+          if (stream !== 'stdout' && stream !== 'stderr') {
+            throw unreadableField;
+          }
           return { kind: 'tool-output', toolCallId, stream, text: text({ value: ownData({ source: event, key: 'text' }) }) };
         }
         case 'exit': {
           const exitCode = ownData({ source: event, key: 'exitCode' });
-          if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) throw unreadableField;
+          if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) {
+            throw unreadableField;
+          }
           return { kind: 'tool-exit', toolCallId, exitCode };
         }
         default: throw unreadableField;
@@ -216,7 +233,9 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
         case 'success': return { kind: 'tool-success', toolCallId, content: text({ value: ownData({ source: result, key: 'content' }) }) };
         case 'error': {
           const code = ownData({ source: result, key: 'code' });
-          if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') throw unreadableField;
+          if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') {
+            throw unreadableField;
+          }
           return { kind: 'tool-error', toolCallId, code, messageCapture: 'omitted-for-privacy' };
         }
         default: throw unreadableField;
@@ -233,9 +252,14 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     switch (format) {
     case 'production-provider-trace-v3': break;
     case 'production-provider-trace-v2': throw new Error('Parts observations require the parts trace format');
-    default: { const exhaustive: never = format; throw new Error('Unhandled trace format: ' + exhaustive); }
+    default: {
+      const exhaustive: never = format;
+      throw new Error('Unhandled trace format: ' + exhaustive);
     }
-    if (failure !== undefined) return;
+    }
+    if (failure !== undefined) {
+      return;
+    }
     const messageId = idToRaw({ id: message.id });
     if (assistantId !== messageId) {
       assistantId = messageId;
@@ -243,40 +267,57 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
       append({ project: ({ text }) => ({ kind: 'assistant_message', messageId: text({ value: messageId }) }) });
     }
     for (const [index, part] of message.parts.entries()) {
-      if (failure !== undefined) break;
+      if (failure !== undefined) {
+        break;
+      }
       const previous = partRevisions.get(part);
       // Capture IDs identify revisions within this observation. They are not
       // history fields, and remain stable if another part is inserted earlier.
       const id = previous?.part.id ?? `part_${partRevisions.size}`;
       switch (part.type) {
       case 'text': case 'reasoning': {
-        const { type, text: value, completeness, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-        if (previous?.index === index && previous.part.type === type && previous.part.text === value && previous.part.completeness === completeness) break;
-        append({ project: ({ text }) => ({ kind: 'part_text', messageId: text({ value: messageId }), partId: text({ value: id }), index, partType: type, text: text({ value }), completeness }) });
-        if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, text: value, completeness }) });
-        break;
+        const { type, text: value, completeness, ...rest } = part;
+rest satisfies Record<PropertyKey, never>;
+if (previous?.index === index && previous.part.type === type && previous.part.text === value && previous.part.completeness === completeness) {
+  break;
+}
+append({ project: ({ text }) => ({ kind: 'part_text', messageId: text({ value: messageId }), partId: text({ value: id }), index, partType: type, text: text({ value }), completeness }) });
+if (failure === undefined) {
+  partRevisions.set(part, { index, part: Object.freeze({ id, type, text: value, completeness }) });
+}
+break;
       }
       case 'tool_call': {
-        const { type, toolCall, ...rest } = part; rest satisfies Record<PropertyKey, never>;
-        const { id: callId, type: callType, function: fn, ...restCall } = toolCall; restCall satisfies Record<PropertyKey, never>;
-        const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
-        const rawId = idToRaw({ id: callId });
-        if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
-        append({
-          project: ({ text }) => ({
-            kind: 'part_call',
-            messageId: text({ value: messageId }),
-            partId: text({ value: id }),
-            index,
-            toolCallId: text({ value: rawId }),
-            toolName: text({ value: name }),
-            modelVisibleArguments: text({ value: args }),
-          }),
-        });
-        if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
-        break;
+        const { type, toolCall, ...rest } = part;
+rest satisfies Record<PropertyKey, never>;
+const { id: callId, type: callType, function: fn, ...restCall } = toolCall;
+restCall satisfies Record<PropertyKey, never>;
+const { name, arguments: args, ...restFunction } = fn;
+restFunction satisfies Record<PropertyKey, never>;
+const rawId = idToRaw({ id: callId });
+if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) {
+  break;
+}
+append({
+  project: ({ text }) => ({
+    kind: 'part_call',
+    messageId: text({ value: messageId }),
+    partId: text({ value: id }),
+    index,
+    toolCallId: text({ value: rawId }),
+    toolName: text({ value: name }),
+    modelVisibleArguments: text({ value: args }),
+  }),
+});
+if (failure === undefined) {
+  partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
+}
+break;
       }
-      default: { const exhaustive: never = part; throw new Error('Unhandled assistant part: ' + exhaustive); }
+      default: {
+        const exhaustive: never = part;
+        throw new Error('Unhandled assistant part: ' + exhaustive);
+      }
       }
     }
   }
@@ -285,13 +326,22 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     switch (format) {
     case 'production-provider-trace-v3': break;
     case 'production-provider-trace-v2': throw new Error('Generation results require the parts trace format');
-    default: { const exhaustive: never = format; throw new Error('Unhandled trace format: ' + exhaustive); }
+    default: {
+      const exhaustive: never = format;
+      throw new Error('Unhandled trace format: ' + exhaustive);
+    }
     }
     switch (result.type) {
-    case 'finished': append({ project: () => ({ kind: 'generation_finished', next: result.next }) }); break;
-    case 'interrupted': append({ project: () => ({ kind: 'generation_interrupted', reason: result.reason }) }); break;
-    case 'error': append({ project: () => ({ kind: 'generation_error', errorName: rejectionName({ error: result.error }) }) }); break;
-    default: { const exhaustive: never = result; throw new Error('Unhandled generation result: ' + exhaustive); }
+    case 'finished': append({ project: () => ({ kind: 'generation_finished', next: result.next }) });
+      break;
+    case 'interrupted': append({ project: () => ({ kind: 'generation_interrupted', reason: result.reason }) });
+      break;
+    case 'error': append({ project: () => ({ kind: 'generation_error', errorName: rejectionName({ error: result.error }) }) });
+      break;
+    default: {
+      const exhaustive: never = result;
+      throw new Error('Unhandled generation result: ' + exhaustive);
+    }
     }
   }
 
@@ -307,8 +357,10 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
       }
       let outcome: Outcome;
       switch (requestedOutcome) {
-      case 'fulfilled': outcome = Object.freeze({ status: 'fulfilled' }); break;
-      case 'rejected': outcome = Object.freeze({ status: 'rejected', errorName: rejectionName({ error }) }); break;
+      case 'fulfilled': outcome = Object.freeze({ status: 'fulfilled' });
+        break;
+      case 'rejected': outcome = Object.freeze({ status: 'rejected', errorName: rejectionName({ error }) });
+        break;
       default: {
         const exhaustive: never = requestedOutcome;
         throw new Error(`Unhandled Provider settlement: ${exhaustive}`);

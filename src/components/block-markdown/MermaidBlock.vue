@@ -21,7 +21,9 @@ mermaid.initialize({
 });
 
 async function render() {
-  if (!containerRef.value || !renderRef.value) return;
+  if (!containerRef.value || !renderRef.value) {
+    return;
+  }
 
   // Clear previous render without treating the Mermaid DSL as HTML.
   renderError.value = false;

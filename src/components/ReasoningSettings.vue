@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { computed, ref, onMounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
+import ReasoningSettingsHelp from './ReasoningSettingsHelp.vue';
 import type { Reasoning } from '@/01-models/types';
 
 defineOptions({
@@ -33,7 +34,8 @@ const props = defineProps<{
   leadingOptions?: readonly LeadingOption[],
   heading?: string | undefined,
   disabled?: boolean,
-  surface?: 'flat' | 'card',
+  surface?: 'flat' | 'card' | 'plain',
+  notice?: 'paragraph' | 'inline-help',
 }>();
 
 const emit = defineEmits<{
@@ -84,7 +86,11 @@ const effortOptions = computed<EffortOption[]>(() => {
 });
 
 const buttonRefs = ref<(HTMLElement | null)[]>([]);
+const containerRef = ref<HTMLElement>();
 const isInitialized = ref(false);
+let resizeObserver: ResizeObserver | undefined;
+let initializationTimer: ReturnType<typeof setTimeout> | undefined;
+let isUnmounted = false;
 const sliderStyle = ref({
   left: '0px',
   width: '0px',
@@ -93,37 +99,76 @@ const sliderStyle = ref({
 });
 
 function updateSlider({ immediate }: { immediate?: boolean }) {
+  if (isUnmounted) {
+    return;
+  }
   const index = effortOptions.value.findIndex(o => o.value === selectedValue.value);
   const el = buttonRefs.value[index];
   if (el) {
+    const left = el.offsetLeft;
+    const width = el.offsetWidth;
     sliderStyle.value = {
-      left: `${el.offsetLeft}px`,
-      width: `${el.offsetWidth}px`,
+      left: `${left}px`,
+      width: `${width}px`,
       opacity: 1,
       transitionDuration: (immediate || !isInitialized.value) ? '0ms' : '300ms',
     };
+    const container = containerRef.value;
+    if (surface.value === 'plain' && container && container.clientWidth > 0) {
+      if (left < container.scrollLeft) {
+        container.scrollLeft = left;
+      } else if (left + width > container.scrollLeft + container.clientWidth) {
+        container.scrollLeft = left + width - container.clientWidth;
+      }
+    }
   }
 }
 
 function setValue({ value }: { value: ReasoningSettingsValue }) {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   emit('update:value', value);
-  if (isReasoningEffort(value)) emit('update:effort', value);
+  if (isReasoningEffort(value)) {
+    emit('update:effort', value);
+  }
 }
 
 onMounted(() => {
   // First measurement: immediate without animation
   updateSlider({ immediate: true });
 
+  if (typeof ResizeObserver !== 'undefined' && containerRef.value) {
+    resizeObserver = new ResizeObserver(() => updateSlider({ immediate: true }));
+    resizeObserver.observe(containerRef.value);
+    for (const button of buttonRefs.value) {
+      if (button) {
+        resizeObserver.observe(button);
+      }
+    }
+  }
+
   // Mark as initialized after a short delay to ensure next changes are animated
-  setTimeout(() => {
+  initializationTimer = setTimeout(() => {
     isInitialized.value = true;
   }, 50);
 });
 
-// Monitor for selection changes or potential layout updates (e.g., resizing)
-watch([selectedValue, effortOptions], () => {
+onBeforeUnmount(() => {
+  isUnmounted = true;
+  resizeObserver?.disconnect();
+  if (initializationTimer !== undefined) {
+    clearTimeout(initializationTimer);
+  }
+});
+
+watch(selectedValue, () => {
   nextTick(() => updateSlider({}));
+});
+
+// Label and layout changes should align immediately rather than slide between geometries.
+watch([effortOptions, surface], () => {
+  nextTick(() => updateSlider({ immediate: true }));
 });
 
 
@@ -138,24 +183,28 @@ defineExpose({
 
 <template>
   <div
+    :class="{ 'reasoning-settings-plain': surface === 'plain' }"
     :tw-class="[
       surface === 'card'
         ? 'p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl'
-        : 'px-3 py-2 border-b dark:border-gray-700',
-      disabled ? 'opacity-50' : ''
+        : surface === 'plain' ? '' : 'px-3 py-2 border-b dark:border-gray-700',
+      disabled && surface !== 'plain' ? 'opacity-50' : ''
     ]"
   >
-    <div tw-class="flex items-center gap-2 mb-2">
+    <div :tw-class="['flex items-center gap-2', surface === 'plain' ? 'min-h-4 mb-0.5' : 'mb-2']">
       <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-      <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ headingLabel }}</span>
+      <span :tw-class="[surface === 'plain' ? 'text-xs font-medium text-gray-500 dark:text-gray-400' : 'text-[9px] font-bold text-gray-400 uppercase tracking-wider']">{{ headingLabel }}</span>
+      <ReasoningSettingsHelp v-if="notice === 'inline-help'" />
+      <slot name="heading-extra" />
     </div>
 
     <!-- Segmented Control Container -->
-    <div tw-class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div ref="containerRef" data-testid="reasoning-effort-options" class="reasoning-effort-options" :tw-class="['relative flex p-0.5 rounded-lg border bg-gray-100 dark:bg-gray-800 border-gray-200/50 dark:border-gray-700/50', surface === 'plain' ? 'items-center' : '']">
 
       <!-- Animated Slider Background -->
       <div
-        tw-class="absolute top-0.5 bottom-0.5 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+        data-testid="reasoning-effort-slider"
+        tw-class="absolute top-0.5 bottom-0.5 rounded-md transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600"
         :style="sliderStyle"
       ></div>
 
@@ -165,12 +214,21 @@ defineExpose({
         :key="String(opt.value)"
         :ref="el => buttonRefs[idx] = el as HTMLElement"
         :disabled="disabled"
+        :aria-pressed="selectedValue === opt.value"
         @click="setValue({ value: opt.value })"
-        :tw-class="['relative z-10 py-1 text-[10px] font-medium transition-colors truncate px-0.5 disabled:cursor-not-allowed',
+        :class="{
+          'reasoning-effort-source': surface === 'plain' && opt.width !== 'normal',
+          'reasoning-effort-explicit': surface === 'plain' && opt.width === 'normal'
+        }"
+        :tw-class="['relative z-10 font-medium transition-colors disabled:cursor-not-allowed',
+                    surface === 'plain'
+                      ? 'min-h-7 min-w-8 rounded-md px-2 py-1.5 text-xs leading-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30'
+                      : 'min-w-0 py-1 text-[10px] px-0.5',
                     selectedValue === opt.value
-                      ? 'text-blue-600 dark:text-blue-400 font-bold'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-                    opt.width === 'wide'
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-gray-500 dark:text-gray-400 enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700/40 enabled:hover:text-gray-700 dark:enabled:hover:text-gray-200',
+                    selectedValue === opt.value && surface !== 'plain' ? 'font-bold' : '',
+                    surface === 'plain' ? '' : opt.width === 'wide'
                       ? 'flex-[2.2]'
                       : opt.width === 'default'
                         ? 'flex-[1.4]'
@@ -179,17 +237,32 @@ defineExpose({
         :data-testid="`reasoning-effort-${opt.testId}`"
         :title="opt.label"
       >
-        {{ opt.shortLabel }}
+        <span tw-class="block min-w-0 truncate">{{ opt.shortLabel }}</span>
       </button>
     </div>
 
-    <div tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
+    <div v-if="notice !== 'inline-help'" tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
       {{ lazyStrings.ReasoningSettings__effort_levels_may_be_ignored_by_some_models() }}
     </div>
   </div>
 </template>
 
 <style scoped>
+.reasoning-settings-plain .reasoning-effort-options {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.reasoning-settings-plain .reasoning-effort-source {
+  flex: 1.4 1 auto;
+  min-width: 2rem;
+  max-width: 40%;
+}
+
+.reasoning-settings-plain .reasoning-effort-explicit {
+  flex: 1 0 auto;
+}
+
 /* Prevent jitter or incorrect positioning before slider initialization (opacity 0) */
 .transition-all {
   will-change: left, width;

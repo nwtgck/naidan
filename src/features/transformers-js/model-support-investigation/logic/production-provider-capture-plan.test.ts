@@ -33,7 +33,9 @@ describe('versioned fixed Provider capture inputs', () => {
       { id: 'capture_input_2', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
     ]);
     const first = provider[0]?.parts[0];
-    if (first?.type !== 'text') throw new Error('Missing text fixture');
+    if (first?.type !== 'text') {
+      throw new Error('Missing text fixture');
+    }
     first.text = 'mutated owned Provider copy';
     expect(input.messages[0]).toMatchObject({ content: 'Use the weather tool for Tokyo.' });
     expect(input.parameters.maxCompletionTokens).toBe(128);
@@ -53,7 +55,9 @@ describe('versioned fixed Provider capture inputs', () => {
     const messages = captureProviderMessages({ input });
     expect(messages[0]?.parts[0]).toEqual({ type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt, completeness: 'complete' });
     const part = messages[0]?.parts[1];
-    if (part?.type !== 'attachment' || part.attachment.status !== 'memory') throw new Error('Missing fixture Blob');
+    if (part?.type !== 'attachment' || part.attachment.status !== 'memory') {
+      throw new Error('Missing fixture Blob');
+    }
     expect(part.attachment.blob.size).toBe(68);
     expect(part.attachment.blob.type).toBe('image/png');
     const digest = await crypto.subtle.digest('SHA-256', await part.attachment.blob.arrayBuffer());

@@ -32,10 +32,14 @@ export function createOwnedImageEngine({ createClient }: {
     const previous = resident;
     resident = undefined;
     notify({ owner: previous });
-    if (active?.owner !== previous) notify({ owner: active?.owner });
+    if (active?.owner !== previous) {
+      notify({ owner: active?.owner });
+    }
   }
   function collect(): void {
-    if (owners.size || active || reservation) return;
+    if (owners.size || active || reservation) {
+      return;
+    }
     const retired = client;
     nativeGeneration++;
     client = undefined;
@@ -47,26 +51,37 @@ export function createOwnedImageEngine({ createClient }: {
     owners.add(owner);
     return {
       reserve({ signal }) {
-        signal.throwIfAborted(); owner.stop.signal.throwIfAborted();
-        if (reservation || active) throw new ImageEngineBusyError();
+        signal.throwIfAborted();
+        owner.stop.signal.throwIfAborted();
+        if (reservation || active) {
+          throw new ImageEngineBusyError();
+        }
         const token = {};
         let closing = false;
         function finish(): void {
-          if (reservation?.token !== token || !closing || active?.owner === owner) return;
-          signal.removeEventListener('abort', close); owner.stop.signal.removeEventListener('abort', close);
-          reservation = undefined; collect();
+          if (reservation?.token !== token || !closing || active?.owner === owner) {
+            return;
+          }
+          signal.removeEventListener('abort', close);
+          owner.stop.signal.removeEventListener('abort', close);
+          reservation = undefined;
+          collect();
         }
         function close(): void {
-          closing = true; finish();
+          closing = true;
+          finish();
         }
         reservation = { owner, token, close: finish };
-        signal.addEventListener('abort', close, { once: true }); owner.stop.signal.addEventListener('abort', close, { once: true });
+        signal.addEventListener('abort', close, { once: true });
+        owner.stop.signal.addEventListener('abort', close, { once: true });
         return { release: close };
       },
       async generate({ request, signal, onProgress, onPreview, onDiagnostic }) {
         owner.stop.signal.throwIfAborted();
         signal.throwIfAborted();
-        if (active || reservation && reservation.owner !== owner) throw new ImageEngineBusyError();
+        if (active || reservation && reservation.owner !== owner) {
+          throw new ImageEngineBusyError();
+        }
         const operation = { owner };
         active = operation;
         cacheGeneration++;
@@ -82,7 +97,9 @@ export function createOwnedImageEngine({ createClient }: {
               onReleased: () => {
               // A disposed native client may deliver a late event. It cannot
               // clear a replacement client's residency or notify its owner.
-                if (generation === nativeGeneration && client) released();
+                if (generation === nativeGeneration && client) {
+                  released();
+                }
               },
             });
           }
@@ -93,7 +110,9 @@ export function createOwnedImageEngine({ createClient }: {
             onPreview,
             onDiagnostic,
           });
-          if (!owner.stop.signal.aborted && (!('cancelled' in result) || result.modelResident)) resident = owner;
+          if (!owner.stop.signal.aborted && (!('cancelled' in result) || result.modelResident)) {
+            resident = owner;
+          }
           return result;
         } finally {
           // Even an implementation that ignores cancellation retains its slot
@@ -102,7 +121,9 @@ export function createOwnedImageEngine({ createClient }: {
             active = undefined;
             if (owner.stop.signal.aborted) {
               client?.release({ reason: 'page-exit' });
-              if (resident === owner) resident = undefined;
+              if (resident === owner) {
+                resident = undefined;
+              }
             }
           }
           reservation?.close();
@@ -110,31 +131,55 @@ export function createOwnedImageEngine({ createClient }: {
         }
       },
       cancel() {
-        if (!owner.stop.signal.aborted && active?.owner === owner) client?.cancel();
+        if (!owner.stop.signal.aborted && active?.owner === owner) {
+          client?.cancel();
+        }
       },
       updatePreview({ settings }) {
-        if (!owner.stop.signal.aborted && active?.owner === owner) client?.updatePreview({ settings });
+        if (!owner.stop.signal.aborted && active?.owner === owner) {
+          client?.updatePreview({ settings });
+        }
       },
       async inspectEngine() {
-        if (owner.stop.signal.aborted) return { status: 'unavailable', reason: 'released' };
-        if (active) return { status: 'unavailable', reason: 'busy' };
-        if (resident !== owner || !client) return { status: 'unavailable', reason: 'not-loaded' };
+        if (owner.stop.signal.aborted) {
+          return { status: 'unavailable', reason: 'released' };
+        }
+        if (active) {
+          return { status: 'unavailable', reason: 'busy' };
+        }
+        if (resident !== owner || !client) {
+          return { status: 'unavailable', reason: 'not-loaded' };
+        }
         const source = client, generation = cacheGeneration;
         const result = await source.inspectEngine();
-        if (owner.stop.signal.aborted || client !== source) return { status: 'unavailable', reason: 'released' };
-        if (active) return { status: 'unavailable', reason: 'busy' };
-        if (resident !== owner || generation !== cacheGeneration) return { status: 'unavailable', reason: 'not-loaded' };
+        if (owner.stop.signal.aborted || client !== source) {
+          return { status: 'unavailable', reason: 'released' };
+        }
+        if (active) {
+          return { status: 'unavailable', reason: 'busy' };
+        }
+        if (resident !== owner || generation !== cacheGeneration) {
+          return { status: 'unavailable', reason: 'not-loaded' };
+        }
         return result;
       },
       release({ reason } = {}) {
-        if (owner.stop.signal.aborted || active && active.owner !== owner || reservation && reservation.owner !== owner) return;
-        if (active?.owner !== owner && resident !== owner) return;
+        if (owner.stop.signal.aborted || active && active.owner !== owner || reservation && reservation.owner !== owner) {
+          return;
+        }
+        if (active?.owner !== owner && resident !== owner) {
+          return;
+        }
         client?.release({ reason });
-        if (resident === owner) resident = undefined;
+        if (resident === owner) {
+          resident = undefined;
+        }
         notify({ owner });
       },
       dispose() {
-        if (owner.stop.signal.aborted) return;
+        if (owner.stop.signal.aborted) {
+          return;
+        }
         owner.stop.abort();
         owners.delete(owner);
         if (resident === owner && !active) {

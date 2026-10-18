@@ -82,51 +82,77 @@ function summarizeNativeRecording({ native, refusedEpochs }: { native: Productio
       switch (epoch.lifetime.status) {
       case 'observed': return epoch.lifetime.value;
       case 'unavailable': return undefined;
-      default: { const exhaustive: never = epoch.lifetime; return exhaustive; }
+      default: {
+        const exhaustive: never = epoch.lifetime;
+        return exhaustive;
+      }
       }
     })();
     const capture = !refusedEpochs.has(epoch.workerEpoch) && epoch.collection.status === 'returned' && epoch.collection.result.status === 'captured' ? epoch.collection.result.capture : undefined;
-    if (capture === undefined) unavailableEpochCount++;
-    if (lifetime === undefined || lifetime.incompleteReasons.length > 0 || (capture !== undefined && capture.incompleteReasons.length > 0)) incompleteEpochCount++;
+    if (capture === undefined) {
+      unavailableEpochCount++;
+    }
+    if (lifetime === undefined || lifetime.incompleteReasons.length > 0 || (capture !== undefined && capture.incompleteReasons.length > 0)) {
+      incompleteEpochCount++;
+    }
     issuedNotObservedCallCount += lifetime?.issuedCalls.filter(issued => !capture?.calls.some(call => sameContext({ left: call.context, right: issued }))).length ?? 0;
-    if (capture === undefined) continue;
+    if (capture === undefined) {
+      continue;
+    }
     capturedCallCount += capture.calls.length;
     for (const call of capture.calls) {
       switch (call.loadIdentity.status) {
       case 'ready': break;
-      case 'not-observed': unobservedLoadCount++; break;
-      default: { const exhaustive: never = call.loadIdentity; return exhaustive; }
+      case 'not-observed': unobservedLoadCount++;
+        break;
+      default: {
+        const exhaustive: never = call.loadIdentity;
+        return exhaustive;
+      }
       }
       for (const invocation of call.invocations) {
         const events = capture.events.filter(event => sameContext({ left: event.identity, right: call.context }) && event.identity.nativeInvocationOrdinal === invocation.nativeInvocationOrdinal);
         const entered = events.some(event => event.kind === 'native-call' && event.phase === 'entering');
-        if (entered) enteredNativeInvocationCount++;
+        if (entered) {
+          enteredNativeInvocationCount++;
+        }
         const fulfilled = events.some(event => event.kind === 'native-call' && event.phase === 'fulfilled');
         const rejected = events.some(event => event.kind === 'native-call' && event.phase === 'rejected');
         if (!entered || (!fulfilled && !rejected)
           || !events.some(event => event.kind === 'settings')
           || !events.some(event => event.kind === 'inputs' && event.phase === 'native-kwargs')
           || (fulfilled && !events.some(event => event.kind === 'sequence'))
-          || invocation.stream.status !== 'available' || invocation.stream.restoration !== 'restored') incompleteInvocationCount++;
+          || invocation.stream.status !== 'available' || invocation.stream.restoration !== 'restored') {
+          incompleteInvocationCount++;
+        }
       }
     }
     for (const event of capture.events) {
       switch (event.kind) {
       // The recorder deliberately excludes live streamers/settings/KV objects
       // from tensor copying. Those fixed policy exclusions are not capture loss.
-      case 'inputs': unrecordedValueCount += event.values.filter(value => value.snapshot.status === 'not-recorded' && value.snapshot.reason !== 'excluded-field').length; break;
+      case 'inputs': unrecordedValueCount += event.values.filter(value => value.snapshot.status === 'not-recorded' && value.snapshot.reason !== 'excluded-field').length;
+        break;
       case 'sequence':
         switch (event.snapshot.status) {
         case 'captured': case 'scalar': case 'image-sizes': break;
-        case 'not-recorded': unrecordedValueCount++; break;
-        default: { const exhaustive: never = event.snapshot; return exhaustive; }
+        case 'not-recorded': unrecordedValueCount++;
+          break;
+        default: {
+          const exhaustive: never = event.snapshot;
+          return exhaustive;
+        }
         }
         break;
       case 'native-stream':
         switch (event.detail.kind) {
         case 'tokens': case 'finalized-text': case 'none': break;
-        case 'not-recorded': unrecordedValueCount++; break;
-        default: { const exhaustive: never = event.detail; return exhaustive; }
+        case 'not-recorded': unrecordedValueCount++;
+          break;
+        default: {
+          const exhaustive: never = event.detail;
+          return exhaustive;
+        }
         }
         break;
       case 'settings': {
@@ -135,13 +161,20 @@ function summarizeNativeRecording({ native, refusedEpochs }: { native: Productio
           kwargs.maxNewTokens, kwargs.temperature, kwargs.topP, kwargs.doSample, kwargs.returnDictInGenerate].filter(value => value.status === 'not-recorded').length;
         switch (kwargs.keys.status) {
         case 'complete': break;
-        case 'incomplete': unrecordedValueCount++; break;
-        default: { const exhaustive: never = kwargs.keys.status; return exhaustive; }
+        case 'incomplete': unrecordedValueCount++;
+          break;
+        default: {
+          const exhaustive: never = kwargs.keys.status;
+          return exhaustive;
+        }
         }
         break;
       }
       case 'native-call': case 'chunk': break;
-      default: { const exhaustive: never = event; return exhaustive; }
+      default: {
+        const exhaustive: never = event;
+        return exhaustive;
+      }
       }
     }
   }
@@ -168,37 +201,59 @@ function invalid(): never {
 }
 
 function scalar({ value }: { value: unknown }): void {
-  if (value !== undefined && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') invalid();
+  if (value !== undefined && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+    invalid();
+  }
 }
 
 function data({ value, key }: { value: unknown; key: string }): unknown {
-  if (value === null || typeof value !== 'object') return invalid();
+  if (value === null || typeof value !== 'object') {
+    return invalid();
+  }
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
-  if (descriptor === undefined || !('value' in descriptor)) return invalid();
+  if (descriptor === undefined || !('value' in descriptor)) {
+    return invalid();
+  }
   return descriptor.value as unknown;
 }
 
 function discriminant<Kind extends string>({ value, key, variants }: { value: unknown; key: string; variants: Record<Kind, true> }): Kind {
   const kind = data({ value, key });
-  if (typeof kind !== 'string' || !Object.hasOwn(variants, kind)) invalid();
+  if (typeof kind !== 'string' || !Object.hasOwn(variants, kind)) {
+    invalid();
+  }
   return kind as Kind;
 }
 
 // Exact mapped keys force review when any protocol field is added, including
 // optional fields. Values are inspected only after rejecting extra/accessor keys.
 function record<T>({ value, fields, optional }: { value: unknown; fields: { [Key in keyof T]-?: Check }; optional: readonly (keyof T)[] }): void {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid();
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    invalid();
+  }
   const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) invalid();
+  if (prototype !== Object.prototype && prototype !== null) {
+    invalid();
+  }
   const keys = Reflect.ownKeys(value);
-  if (keys.some(key => typeof key !== 'string' || !Object.hasOwn(fields, key))) invalid();
-  for (const key of keys) if (!('value' in Object.getOwnPropertyDescriptor(value, key)!)) invalid();
+  if (keys.some(key => typeof key !== 'string' || !Object.hasOwn(fields, key))) {
+    invalid();
+  }
+  for (const key of keys) {
+    if (!('value' in Object.getOwnPropertyDescriptor(value, key)!)) {
+      invalid();
+    }
+  }
   for (const key of Object.keys(fields) as (keyof T & string)[]) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined) {
-      if (!optional.includes(key)) invalid();
+      if (!optional.includes(key)) {
+        invalid();
+      }
     } else {
-      if (!('value' in descriptor)) invalid();
+      if (!('value' in descriptor)) {
+        invalid();
+      }
       fields[key]({ value: descriptor.value });
     }
   }
@@ -206,9 +261,15 @@ function record<T>({ value, fields, optional }: { value: unknown; fields: { [Key
 
 function array({ check, maximum }: { check: Check; maximum: number }): Check {
   return ({ value }) => {
-    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype || value.length > maximum) invalid();
-    if (Reflect.ownKeys(value).length !== value.length + 1) invalid();
-    for (let index = 0; index < value.length; ++index) check({ value: data({ value, key: String(index) }) });
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype || value.length > maximum) {
+      invalid();
+    }
+    if (Reflect.ownKeys(value).length !== value.length + 1) {
+      invalid();
+    }
+    for (let index = 0; index < value.length; ++index) {
+      check({ value: data({ value, key: String(index) }) });
+    }
   };
 }
 
@@ -219,10 +280,16 @@ const lengthGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteL
 const ordinaryLengthGetter = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength')!.get!;
 
 function byteView({ value }: { value: unknown }): Uint8Array<ArrayBuffer> {
-  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Uint8Array.prototype) invalid();
+  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Uint8Array.prototype) {
+    invalid();
+  }
   // Opaque binary leaf: never enumerate millions of numeric properties or copy
   // arbitrary attached properties. Intrinsics read only the exact byte window.
-  for (const key of ['buffer', 'byteOffset', 'byteLength', 'toJSON']) if (Object.hasOwn(value, key)) invalid();
+  for (const key of ['buffer', 'byteOffset', 'byteLength', 'toJSON']) {
+    if (Object.hasOwn(value, key)) {
+      invalid();
+    }
+  }
   const buffer = Reflect.apply(bufferGetter, value, []) as ArrayBuffer;
   Reflect.apply(ordinaryLengthGetter, buffer, []);
   return new Uint8Array(buffer, Reflect.apply(offsetGetter, value, []) as number, Reflect.apply(lengthGetter, value, []) as number);
@@ -236,15 +303,21 @@ function createDescriptorChecks() {
   const refusals = new Map<number, string>();
   const replacements = new Map<number, Native>();
   function charge({ kind, amount }: { kind: keyof typeof budget; amount: number }): void {
-    if (headersOnly) return;
+    if (headersOnly) {
+      return;
+    }
     const maxima = { nodes: 500000, text: 8 * 1024 * 1024, tensors: maximumTensorBytes, events: 4096, tokens: 262144 } satisfies Record<keyof typeof budget, number>;
     budget[kind] += amount;
-    if (budget[kind] > maxima[kind]) throw new ExportRefusal('native-export-budget');
+    if (budget[kind] > maxima[kind]) {
+      throw new ExportRefusal('native-export-budget');
+    }
   }
   function boundedScalar({ value }: { value: unknown }): void {
     scalar({ value });
     if (typeof value === 'string') {
-      if (value.length > 8 * 1024 * 1024) throw new ExportRefusal('native-export-budget');
+      if (value.length > 8 * 1024 * 1024) {
+        throw new ExportRefusal('native-export-budget');
+      }
       charge({ kind: 'text', amount: new TextEncoder().encode(value).byteLength });
     }
   }
@@ -252,7 +325,8 @@ function createDescriptorChecks() {
     return array({
       maximum,
       check: ({ value }) => {
-        charge({ kind: 'nodes', amount: 1 }); check({ value });
+        charge({ kind: 'nodes', amount: 1 });
+        check({ value });
       },
     });
   }
@@ -261,7 +335,8 @@ function createDescriptorChecks() {
   const loadIdentityCheck: Check = ({ value }) => {
   type Load = z.infer<typeof productionLoadIdentitySchema>;
   switch (discriminant<Load['status']>({ value, key: 'status', variants: { ready: true, 'not-observed': true } })) {
-  case 'not-observed': record<Extract<Load, { status: 'not-observed' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] }); break;
+  case 'not-observed': record<Extract<Load, { status: 'not-observed' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] });
+    break;
   case 'ready': record<Extract<Load, { status: 'ready' }>>({
     value,
     fields: {
@@ -274,8 +349,10 @@ function createDescriptorChecks() {
       requestedRevision: ({ value }) => {
       type Revision = Extract<Load, { status: 'ready' }>['requestedRevision'];
       switch (discriminant<Revision['status']>({ value, key: 'status', variants: { provided: true, omitted: true } })) {
-      case 'provided': record<Extract<Revision, { status: 'provided' }>>({ value, fields: { status: scalar, value: scalar }, optional: [] }); break;
-      case 'omitted': record<Extract<Revision, { status: 'omitted' }>>({ value, fields: { status: scalar }, optional: [] }); break;
+      case 'provided': record<Extract<Revision, { status: 'provided' }>>({ value, fields: { status: scalar, value: scalar }, optional: [] });
+        break;
+      case 'omitted': record<Extract<Revision, { status: 'omitted' }>>({ value, fields: { status: scalar }, optional: [] });
+        break;
       default: invalid();
       }
       },
@@ -284,7 +361,8 @@ function createDescriptorChecks() {
       sessionExecutionProvider: ({ value }) => record<Extract<Load, { status: 'ready' }>['sessionExecutionProvider']>({ value, fields: { status: scalar }, optional: [] }),
     },
     optional: [],
-  }); break;
+  });
+    break;
   default: invalid();
   }
   };
@@ -302,19 +380,26 @@ function createDescriptorChecks() {
         },
       },
       optional: [],
-    }); break;
-    case 'scalar': record<Extract<TensorSnapshot, { status: 'scalar' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedScalar, maximum: 8 }) }, optional: [] }); break;
-    case 'image-sizes': record<Extract<TensorSnapshot, { status: 'image-sizes' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedArray({ check: boundedScalar, maximum: 2 }), maximum: 8 }) }, optional: [] }); break;
-    case 'not-recorded': record<Extract<TensorSnapshot, { status: 'not-recorded' }>>({ value, fields: { status: boundedScalar, reason: boundedScalar }, optional: [] }); break;
+    });
+      break;
+    case 'scalar': record<Extract<TensorSnapshot, { status: 'scalar' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedScalar, maximum: 8 }) }, optional: [] });
+      break;
+    case 'image-sizes': record<Extract<TensorSnapshot, { status: 'image-sizes' }>>({ value, fields: { status: boundedScalar, values: boundedArray({ check: boundedArray({ check: boundedScalar, maximum: 2 }), maximum: 8 }) }, optional: [] });
+      break;
+    case 'not-recorded': record<Extract<TensorSnapshot, { status: 'not-recorded' }>>({ value, fields: { status: boundedScalar, reason: boundedScalar }, optional: [] });
+      break;
     default: invalid();
     }
   };
   const propertyCheck: Check = ({ value }) => {
   type Property = Settings['requested']['temperature'];
   switch (discriminant<Property['status']>({ value, key: 'status', variants: { omitted: true, undefined: true, null: true, value: true, 'not-recorded': true } })) {
-  case 'omitted': case 'undefined': case 'null': record<Extract<Property, { status: 'omitted' | 'undefined' | 'null' }>>({ value, fields: { status: boundedScalar }, optional: [] }); break;
-  case 'value': record<Extract<Property, { status: 'value' }>>({ value, fields: { status: boundedScalar, value: boundedScalar }, optional: [] }); break;
-  case 'not-recorded': record<Extract<Property, { status: 'not-recorded' }>>({ value, fields: { status: boundedScalar, reason: boundedScalar }, optional: [] }); break;
+  case 'omitted': case 'undefined': case 'null': record<Extract<Property, { status: 'omitted' | 'undefined' | 'null' }>>({ value, fields: { status: boundedScalar }, optional: [] });
+    break;
+  case 'value': record<Extract<Property, { status: 'value' }>>({ value, fields: { status: boundedScalar, value: boundedScalar }, optional: [] });
+    break;
+  case 'not-recorded': record<Extract<Property, { status: 'not-recorded' }>>({ value, fields: { status: boundedScalar, reason: boundedScalar }, optional: [] });
+    break;
   default: invalid();
   }
   };
@@ -341,9 +426,12 @@ function createDescriptorChecks() {
   const streamCheck: Check = ({ value }) => {
   type Stream = Native['calls'][number]['invocations'][number]['stream'];
   switch (discriminant<Stream['status']>({ value, key: 'status', variants: { 'not-attempted': true, available: true, unavailable: true } })) {
-  case 'not-attempted': record<Extract<Stream, { status: 'not-attempted' }>>({ value, fields: { status: scalar }, optional: [] }); break;
-  case 'available': record<Extract<Stream, { status: 'available' }>>({ value, fields: { status: scalar, restoration: scalar }, optional: [] }); break;
-  case 'unavailable': record<Extract<Stream, { status: 'unavailable' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] }); break;
+  case 'not-attempted': record<Extract<Stream, { status: 'not-attempted' }>>({ value, fields: { status: scalar }, optional: [] });
+    break;
+  case 'available': record<Extract<Stream, { status: 'available' }>>({ value, fields: { status: scalar, restoration: scalar }, optional: [] });
+    break;
+  case 'unavailable': record<Extract<Stream, { status: 'unavailable' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] });
+    break;
   default: invalid();
   }
   };
@@ -358,7 +446,8 @@ function createDescriptorChecks() {
       groups: boundedArray({
         check: boundedArray({
           check: ({ value }) => {
-            charge({ kind: 'tokens', amount: 1 }); boundedScalar({ value });
+            charge({ kind: 'tokens', amount: 1 });
+            boundedScalar({ value });
           },
           maximum: 65536,
         }),
@@ -366,10 +455,14 @@ function createDescriptorChecks() {
       }),
     },
     optional: [],
-  }); break;
-  case 'finalized-text': record<Extract<Detail, { kind: 'finalized-text' }>>({ value, fields: { kind: boundedScalar, text: boundedScalar, streamEnd: boundedScalar }, optional: [] }); break;
-  case 'none': record<Extract<Detail, { kind: 'none' }>>({ value, fields: { kind: boundedScalar }, optional: [] }); break;
-  case 'not-recorded': record<Extract<Detail, { kind: 'not-recorded' }>>({ value, fields: { kind: boundedScalar, reason: boundedScalar }, optional: [] }); break;
+  });
+    break;
+  case 'finalized-text': record<Extract<Detail, { kind: 'finalized-text' }>>({ value, fields: { kind: boundedScalar, text: boundedScalar, streamEnd: boundedScalar }, optional: [] });
+    break;
+  case 'none': record<Extract<Detail, { kind: 'none' }>>({ value, fields: { kind: boundedScalar }, optional: [] });
+    break;
+  case 'not-recorded': record<Extract<Detail, { kind: 'not-recorded' }>>({ value, fields: { kind: boundedScalar, reason: boundedScalar }, optional: [] });
+    break;
   default: invalid();
   }
   };
@@ -394,7 +487,11 @@ function createDescriptorChecks() {
         maximum: 4096,
         check: ({ value }) => {
           charge({ kind: 'events', amount: 1 });
-          const kind = data({ value, key: 'kind' }); if (typeof kind !== 'string' || !Object.hasOwn(eventChecks, kind)) invalid(); eventChecks[kind as Event['kind']]({ value });
+          const kind = data({ value, key: 'kind' });
+          if (typeof kind !== 'string' || !Object.hasOwn(eventChecks, kind)) {
+            invalid();
+          }
+          eventChecks[kind as Event['kind']]({ value });
         },
       }),
       incompleteReasons: array({ check: scalar, maximum: 32 }),
@@ -449,36 +546,54 @@ function createDescriptorChecks() {
   const resultCheck: Check = ({ value }) => {
     const loadObservationCheck: Check = ({ value }) => {
       function inspect({ value, depth }: { value: unknown; depth: number }): void {
-        if (depth > 8) invalid();
+        if (depth > 8) {
+          invalid();
+        }
         if (value === undefined || typeof value === 'string' || typeof value === 'number') {
-          scalar({ value }); return;
+          scalar({ value });
+          return;
         }
         if (Array.isArray(value)) {
-          array({ maximum: 256, check: ({ value }) => inspect({ value, depth: depth + 1 }) })({ value }); return;
+          array({ maximum: 256, check: ({ value }) => inspect({ value, depth: depth + 1 }) })({ value });
+          return;
         }
-        if (value === null || typeof value !== 'object') invalid();
+        if (value === null || typeof value !== 'object') {
+          invalid();
+        }
         const keys = Reflect.ownKeys(value);
-        if (keys.length > 20) invalid();
+        if (keys.length > 20) {
+          invalid();
+        }
         for (const key of keys) {
-          if (typeof key !== 'string') invalid();
+          if (typeof key !== 'string') {
+            invalid();
+          }
           inspect({ value: data({ value, key }), depth: depth + 1 });
         }
       }
       inspect({ value, depth: 0 });
-      if (value !== undefined) productionLoadObservationSchema.parse(value);
+      if (value !== undefined) {
+        productionLoadObservationSchema.parse(value);
+      }
     };
     switch (discriminant<GenerationCaptureReadResult['status']>({ value, key: 'status', variants: { captured: true, 'not-started': true, 'invalid-context': true, 'wrong-run': true, busy: true, 'already-taken': true } })) {
-    case 'captured': record<Extract<GenerationCaptureReadResult, { status: 'captured' }>>({ value, fields: { status: scalar, capture: nativeCheck, loadObservation: loadObservationCheck }, optional: ['loadObservation'] }); break;
-    case 'not-started': record<Extract<GenerationCaptureReadResult, { status: 'not-started' }>>({ value, fields: { status: scalar, loadObservation: loadObservationCheck }, optional: ['loadObservation'] }); break;
-    case 'invalid-context': case 'wrong-run': case 'busy': case 'already-taken': record<{ status: string }>({ value, fields: { status: scalar }, optional: [] }); break;
+    case 'captured': record<Extract<GenerationCaptureReadResult, { status: 'captured' }>>({ value, fields: { status: scalar, capture: nativeCheck, loadObservation: loadObservationCheck }, optional: ['loadObservation'] });
+      break;
+    case 'not-started': record<Extract<GenerationCaptureReadResult, { status: 'not-started' }>>({ value, fields: { status: scalar, loadObservation: loadObservationCheck }, optional: ['loadObservation'] });
+      break;
+    case 'invalid-context': case 'wrong-run': case 'busy': case 'already-taken': record<{ status: string }>({ value, fields: { status: scalar }, optional: [] });
+      break;
     default: invalid();
     }
   };
   const collectionCheck: Check = ({ value }) => {
     switch (discriminant<Epoch['collection']['status']>({ value, key: 'status', variants: { 'not-requested': true, pending: true, returned: true, failed: true, unavailable: true } })) {
-    case 'not-requested': case 'pending': record<Extract<Epoch['collection'], { status: 'not-requested' | 'pending' }>>({ value, fields: { status: scalar }, optional: [] }); break;
-    case 'returned': record<Extract<Epoch['collection'], { status: 'returned' }>>({ value, fields: { status: scalar, result: resultCheck }, optional: [] }); break;
-    case 'failed': case 'unavailable': record<Extract<Epoch['collection'], { status: 'failed' | 'unavailable' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] }); break;
+    case 'not-requested': case 'pending': record<Extract<Epoch['collection'], { status: 'not-requested' | 'pending' }>>({ value, fields: { status: scalar }, optional: [] });
+      break;
+    case 'returned': record<Extract<Epoch['collection'], { status: 'returned' }>>({ value, fields: { status: scalar, result: resultCheck }, optional: [] });
+      break;
+    case 'failed': case 'unavailable': record<Extract<Epoch['collection'], { status: 'failed' | 'unavailable' }>>({ value, fields: { status: scalar, reason: scalar }, optional: [] });
+      break;
     default: invalid();
     }
   };
@@ -499,10 +614,14 @@ function createDescriptorChecks() {
             try {
               checkEpoch({ value });
             } catch (error) {
-              if (!(error instanceof ExportRefusal)) throw error;
+              if (!(error instanceof ExportRefusal)) {
+                throw error;
+              }
               Object.assign(budget, before);
               const epoch = data({ value, key: 'workerEpoch' });
-              if (typeof epoch !== 'number') invalid();
+              if (typeof epoch !== 'number') {
+                invalid();
+              }
               const collection = data({ value, key: 'collection' });
               const result = data({ value: collection, key: 'result' });
               const capture = data({ value: result, key: 'capture' });
@@ -539,8 +658,10 @@ function createDescriptorChecks() {
         workerEpoch: scalar,
         lifetime: ({ value }) => {
           switch (discriminant<Epoch['lifetime']['status']>({ value, key: 'status', variants: { observed: true, unavailable: true } })) {
-          case 'observed': record<Extract<Epoch['lifetime'], { status: 'observed' }>>({ value, fields: { status: scalar, value: lifetimeCheck }, optional: [] }); break;
-          case 'unavailable': record<Extract<Epoch['lifetime'], { status: 'unavailable' }>>({ value, fields: { status: scalar }, optional: [] }); break;
+          case 'observed': record<Extract<Epoch['lifetime'], { status: 'observed' }>>({ value, fields: { status: scalar, value: lifetimeCheck }, optional: [] });
+            break;
+          case 'unavailable': record<Extract<Epoch['lifetime'], { status: 'unavailable' }>>({ value, fields: { status: scalar }, optional: [] });
+            break;
           default: invalid();
           }
         },
@@ -567,13 +688,17 @@ function snapshots({ event }: { event: Event }): TensorSnapshot[] {
   case 'inputs': return event.values.map(value => value.snapshot);
   case 'sequence': return [event.snapshot];
   case 'settings': case 'chunk': case 'native-call': case 'native-stream': return [];
-  default: { const exhaustive: never = event; return exhaustive; }
+  default: {
+    const exhaustive: never = event;
+    return exhaustive;
+  }
   }
 }
 
 function sameContext({ left, right }: { left: Native['calls'][number]['context']; right: Native['calls'][number]['context'] }): boolean {
-  const { runId, workerEpoch, requestId, generationCallId, ...rest } = left; rest satisfies Record<PropertyKey, never>;
-  return runId === right.runId && workerEpoch === right.workerEpoch && requestId === right.requestId && generationCallId === right.generationCallId;
+  const { runId, workerEpoch, requestId, generationCallId, ...rest } = left;
+rest satisfies Record<PropertyKey, never>;
+return runId === right.runId && workerEpoch === right.workerEpoch && requestId === right.requestId && generationCallId === right.generationCallId;
 }
 
 type CollectionProgress = {
@@ -587,30 +712,55 @@ type CollectionProgress = {
 
 function validateCollectionProgress({ snapshot, provider }: { snapshot: CollectionProgress; provider: ProductionProviderCaptureSnapshot }): void {
   if (snapshot.runId !== provider.runId || snapshot.epochs.length > snapshot.maximumWorkerEpochs
-    || (snapshot.unrecordedWorkerCreations > 0) !== snapshot.incompleteReasons.includes('epoch-limit')) invalid();
+    || (snapshot.unrecordedWorkerCreations > 0) !== snapshot.incompleteReasons.includes('epoch-limit')) {
+    invalid();
+  }
   switch (snapshot.phase) {
-  case 'not-requested': if (snapshot.epochs.some(epoch => epoch.collection.status !== 'not-requested')) invalid(); break;
+  case 'not-requested': if (snapshot.epochs.some(epoch => epoch.collection.status !== 'not-requested')) {
+    invalid();
+  }
+    break;
   case 'collecting': case 'finished': {
-    if (provider.run.status !== 'completed' && provider.run.status !== 'stopped') invalid();
+    if (provider.run.status !== 'completed' && provider.run.status !== 'stopped') {
+      invalid();
+    }
     let pending = 0;
     let remaining = false;
     for (const epoch of snapshot.epochs) {
       switch (epoch.collection.status) {
-      case 'pending': if (remaining || ++pending > 1) invalid(); remaining = true; break;
-      case 'not-requested': remaining = true; break;
-      case 'returned': case 'failed': case 'unavailable': case 'export-refused': if (remaining) invalid(); break;
-      default: { const exhaustive: never = epoch.collection.status; return exhaustive; }
+      case 'pending': if (remaining || ++pending > 1) {
+        invalid();
+      }
+        remaining = true;
+        break;
+      case 'not-requested': remaining = true;
+        break;
+      case 'returned': case 'failed': case 'unavailable': case 'export-refused': if (remaining) {
+        invalid();
+      }
+        break;
+      default: {
+        const exhaustive: never = epoch.collection.status;
+        return exhaustive;
+      }
       }
     }
-    if ((snapshot.phase === 'finished' && remaining) || (snapshot.phase === 'collecting' && pending !== 1)) invalid();
+    if ((snapshot.phase === 'finished' && remaining) || (snapshot.phase === 'collecting' && pending !== 1)) {
+      invalid();
+    }
     break;
   }
-  default: { const exhaustive: never = snapshot.phase; return exhaustive; }
+  default: {
+    const exhaustive: never = snapshot.phase;
+    return exhaustive;
+  }
   }
 }
 
 function validateEpochLifetime({ epoch, index, provider }: { epoch: Pick<Epoch, 'workerEpoch' | 'lifetime'>; index: number; provider: ProductionProviderCaptureSnapshot }): GenerationCaptureClientLifetime | undefined {
-  if (epoch.workerEpoch !== index + 1) invalid();
+  if (epoch.workerEpoch !== index + 1) {
+    invalid();
+  }
   switch (epoch.lifetime.status) {
   case 'unavailable': return undefined;
   case 'observed': {
@@ -618,10 +768,15 @@ function validateEpochLifetime({ epoch, index, provider }: { epoch: Pick<Epoch, 
     if (lifetime.runId !== provider.runId || lifetime.workerEpoch !== epoch.workerEpoch
       || lifetime.issuedCalls.some((call, index) => call.runId !== provider.runId || call.workerEpoch !== epoch.workerEpoch || call.generationCallId !== index + 1
         || !provider.requests.some(request => request.requestId === call.requestId && request.status !== 'not-started'))
-      || lifetime.loadRequests.some(load => load.requestedModelId !== provider.modelId)) invalid();
+      || lifetime.loadRequests.some(load => load.requestedModelId !== provider.modelId)) {
+      invalid();
+    }
     return lifetime;
   }
-  default: { const exhaustive: never = epoch.lifetime; return exhaustive; }
+  default: {
+    const exhaustive: never = epoch.lifetime;
+    return exhaustive;
+  }
   }
 }
 
@@ -629,52 +784,80 @@ function validateLoadObservation({ epoch, lifetime, provider }: { epoch: Epoch; 
   switch (epoch.collection.status) {
   case 'returned': break;
   case 'not-requested': case 'pending': case 'failed': case 'unavailable': return;
-  default: { const exhaustive: never = epoch.collection; throw new Error('Unknown native collection: ' + exhaustive); }
+  default: {
+    const exhaustive: never = epoch.collection;
+    throw new Error('Unknown native collection: ' + exhaustive);
+  }
   }
   const result = epoch.collection.result;
-  if (result.status !== 'captured' && result.status !== 'not-started') return;
+  if (result.status !== 'captured' && result.status !== 'not-started') {
+    return;
+  }
   const observation = result.loadObservation;
-  if (observation === undefined) return;
+  if (observation === undefined) {
+    return;
+  }
   validateCorrelatedLoadObservation({ observation, lifetime, provider, workerEpoch: epoch.workerEpoch });
 }
 
 function validateCorrelatedLoadObservation({ observation, lifetime, provider, workerEpoch }: {
   observation: ProductionLoadObservation; lifetime: GenerationCaptureClientLifetime | undefined; provider: ProductionProviderCaptureSnapshot; workerEpoch: number;
 }): void {
-  if (lifetime === undefined) invalid();
+  if (lifetime === undefined) {
+    invalid();
+  }
   switch (lifetime.session) {
   case 'active': break;
   case 'inactive': return invalid();
-  default: { const exhaustive: never = lifetime.session; throw new Error('Unknown receipt owner lifetime: ' + exhaustive); }
+  default: {
+    const exhaustive: never = lifetime.session;
+    throw new Error('Unknown receipt owner lifetime: ' + exhaustive);
+  }
   }
   const load = lifetime.loadRequests[observation.loadOrdinal - 1];
-  if (load === undefined || observation.owner.runId !== provider.runId || observation.owner.workerEpoch !== workerEpoch) invalid();
+  if (load === undefined || observation.owner.runId !== provider.runId || observation.owner.workerEpoch !== workerEpoch) {
+    invalid();
+  }
   switch (observation.outcome.status) {
   case 'accepted': {
     const receipt = observation.outcome.receipt;
     const revision = productionLoadReceiptRevisionOption({ option: receipt.loaderRevisionOption });
-    if (receipt.modelId !== normalizeTransformersJsProductionModelId({ modelId: load.requestedModelId })) invalid();
+    if (receipt.modelId !== normalizeTransformersJsProductionModelId({ modelId: load.requestedModelId })) {
+      invalid();
+    }
     const selection = load.revisionSelection;
     if (selection === undefined) {
       // Historical captures requested one pinned namespace. Never reinterpret
       // those bytes as cache discovery merely because the new API supports it.
-      if (revision !== load.requestedRevision) invalid();
+      if (revision !== load.requestedRevision) {
+        invalid();
+      }
     } else {
       switch (selection.kind) {
       case 'pinned':
-        if (selection.revision !== load.requestedRevision || revision !== selection.revision) invalid();
+        if (selection.revision !== load.requestedRevision || revision !== selection.revision) {
+          invalid();
+        }
         break;
       case 'discover-cached':
-        if (load.requestedRevision !== undefined) invalid();
+        if (load.requestedRevision !== undefined) {
+          invalid();
+        }
         // Discovery did not request a SHA; the actual accepted receipt owns it.
         break;
-      default: { const exhaustive: never = selection; return exhaustive; }
+      default: {
+        const exhaustive: never = selection;
+        return exhaustive;
+      }
       }
     }
     break;
   }
   case 'loading': case 'failed': case 'cleared': case 'not-recorded': break;
-  default: { const exhaustive: never = observation.outcome; return exhaustive; }
+  default: {
+    const exhaustive: never = observation.outcome;
+    return exhaustive;
+  }
   }
 }
 
@@ -690,11 +873,18 @@ export function readProductionProviderLoadObservations({ json, provider }: { jso
     switch (epoch.collection.status) {
     case 'returned': break;
     case 'not-requested': case 'pending': case 'failed': case 'unavailable': case 'export-refused': continue;
-    default: { const exhaustive: never = epoch.collection; throw new Error('Unknown encoded native collection: ' + exhaustive); }
+    default: {
+      const exhaustive: never = epoch.collection;
+      throw new Error('Unknown encoded native collection: ' + exhaustive);
+    }
     }
     const result = z.object({ status: z.string(), loadObservation: productionLoadObservationSchema.optional() }).passthrough().parse(epoch.collection.result);
-    if (result.loadObservation === undefined) continue;
-    if (result.status !== 'captured' && result.status !== 'not-started') invalid();
+    if (result.loadObservation === undefined) {
+      continue;
+    }
+    if (result.status !== 'captured' && result.status !== 'not-started') {
+      invalid();
+    }
     validateCorrelatedLoadObservation({ observation: result.loadObservation, lifetime: host, provider, workerEpoch: epoch.workerEpoch });
     observations.push(result.loadObservation);
   }
@@ -703,23 +893,32 @@ export function readProductionProviderLoadObservations({ json, provider }: { jso
 
 function validateCapturedCalls({ capture, lifetime, workerEpoch, provider }: { capture: Native; lifetime: GenerationCaptureClientLifetime | undefined; workerEpoch: number; provider: ProductionProviderCaptureSnapshot }): GenerationCaptureClientLifetime {
   if (lifetime === undefined || capture.runId !== provider.runId || capture.workerEpoch !== workerEpoch
-    || capture.calls.some(call => !lifetime.issuedCalls.some(issued => sameContext({ left: call.context, right: issued })))) invalid();
+    || capture.calls.some(call => !lifetime.issuedCalls.some(issued => sameContext({ left: call.context, right: issued })))) {
+    invalid();
+  }
   const successfulLoads = new Map<number, string>();
   for (const call of capture.calls) {
     switch (call.loadIdentity.status) {
     case 'not-observed': break;
     case 'ready': {
-      if (call.loadIdentity.cleanModelId !== normalizeTransformersJsProductionModelId({ modelId: provider.modelId })) invalid();
+      if (call.loadIdentity.cleanModelId !== normalizeTransformersJsProductionModelId({ modelId: provider.modelId })) {
+        invalid();
+      }
       // The strict schema owns every primitive field and its canonical key order.
       // Comparing its full output also covers future fields, without invoking
       // arbitrary input serialization or interpreting an unresolved fact.
       const identity = JSON.stringify(productionLoadIdentitySchema.parse(call.loadIdentity));
       const previous = successfulLoads.get(call.loadIdentity.workerLoadOrdinal);
-      if (previous !== undefined && previous !== identity) invalid();
+      if (previous !== undefined && previous !== identity) {
+        invalid();
+      }
       successfulLoads.set(call.loadIdentity.workerLoadOrdinal, identity);
       break;
     }
-    default: { const exhaustive: never = call.loadIdentity; return exhaustive; }
+    default: {
+      const exhaustive: never = call.loadIdentity;
+      return exhaustive;
+    }
     }
   }
   return lifetime;
@@ -732,7 +931,9 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
     const { preflight, nativeCollectionSchema, refusals } = createDescriptorChecks();
     const safeNative = preflight({ value: native });
     const modelId = data({ value: provider, key: 'modelId' });
-    if (typeof modelId !== 'string') invalid();
+    if (typeof modelId !== 'string') {
+      invalid();
+    }
     createProductionProviderCaptureEvidence({ capture: provider, runId: native.runId, modelId });
     const parsed = nativeCollectionSchema.parse(safeNative);
     validateCollectionProgress({ snapshot: parsed, provider });
@@ -745,25 +946,39 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
       const safeLifetime = lifetime === undefined ? epoch.lifetime : { status: 'observed' as const, value: { ...lifetime, loadRequests: lifetime.loadRequests.map(load => ({ ...load, requestedRevision: load.requestedRevision ?? undefinedValue })) } };
       const base = { workerEpoch: epoch.workerEpoch, lifetime: safeLifetime };
       const collection = epoch.collection;
-      if (collection.status !== 'returned' || collection.result.status !== 'captured') return { ...base, collection };
+      if (collection.status !== 'returned' || collection.result.status !== 'captured') {
+        return { ...base, collection };
+      }
       const capture = collection.result.capture;
       const capturedLifetime = validateCapturedCalls({ capture, lifetime, workerEpoch: epoch.workerEpoch, provider });
       const correlation = capturedLifetime.issuedCalls.map(context => ({ context, observation: capture.calls.some(call => sameContext({ left: call.context, right: context })) ? 'observed' : 'issued-not-observed' }));
       const refusal = refusals.get(epoch.workerEpoch);
-      if (refusal !== undefined) return { ...base, correlation, collection: { status: 'export-refused', reason: refusal } };
+      if (refusal !== undefined) {
+        return { ...base, correlation, collection: { status: 'export-refused', reason: refusal } };
+      }
       const unknownKey = hasUnknownNativeKeys({ capture });
       let bytes = 0;
-      for (const event of capture.events) for (const snapshot of snapshots({ event })) {
-        switch (snapshot.status) {
-        case 'captured': bytes += snapshot.byteLength; break;
-        case 'scalar': case 'image-sizes': case 'not-recorded': break;
-        default: { const exhaustive: never = snapshot; return exhaustive; }
+      for (const event of capture.events) {
+        for (const snapshot of snapshots({ event })) {
+          switch (snapshot.status) {
+          case 'captured': bytes += snapshot.byteLength;
+            break;
+          case 'scalar': case 'image-sizes': case 'not-recorded': break;
+          default: {
+            const exhaustive: never = snapshot;
+            return exhaustive;
+          }
+          }
         }
       }
-      if (unknownKey || bytes > maximumTensorBytes - retainedBytes) return { ...base, correlation, collection: { status: 'export-refused', reason: unknownKey ? 'unsupported-native-key' : 'run-tensor-byte-limit' } };
+      if (unknownKey || bytes > maximumTensorBytes - retainedBytes) {
+        return { ...base, correlation, collection: { status: 'export-refused', reason: unknownKey ? 'unsupported-native-key' : 'run-tensor-byte-limit' } };
+      }
       // The enclosing ZIP budget is separate from recorder/run refusal. Exceeding
       // it rejects the export, without omitting a model or copying its tensors.
-      if (bytes > enclosingBinaryBytes - retainedBytes) invalid();
+      if (bytes > enclosingBinaryBytes - retainedBytes) {
+        invalid();
+      }
       retainedBytes += bytes;
       function encodeTensor({ snapshot }: { snapshot: TensorSnapshot }) {
         switch (snapshot.status) {
@@ -778,30 +993,38 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
           return { status, dtype, dims, byteLength, bytes: reference };
         }
         case 'scalar': case 'image-sizes': case 'not-recorded': return snapshot;
-        default: { const exhaustive: never = snapshot; return exhaustive; }
+        default: {
+          const exhaustive: never = snapshot;
+          return exhaustive;
+        }
         }
       }
       const events = capture.events.map(event => {
         switch (event.kind) {
         case 'inputs': {
-          const { kind, identity, phase, values, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return {
-            kind,
-            identity,
-            phase,
-            values: values.map(({ name, snapshot, ...rest }) => {
-            rest satisfies Record<PropertyKey, never>; return { name, snapshot: encodeTensor({ snapshot }) };
-            }),
-          };
+          const { kind, identity, phase, values, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+return {
+  kind,
+  identity,
+  phase,
+  values: values.map(({ name, snapshot, ...rest }) => {
+            rest satisfies Record<PropertyKey, never>;
+            return { name, snapshot: encodeTensor({ snapshot }) };
+  }),
+};
         }
         case 'sequence': {
-          const { kind, identity, resultShape, snapshot, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return { kind, identity, resultShape, snapshot: encodeTensor({ snapshot }) };
+          const { kind, identity, resultShape, snapshot, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+return { kind, identity, resultShape, snapshot: encodeTensor({ snapshot }) };
         }
         case 'settings': {
-          const { kind, identity, value, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          const { requested, budget, kwargs, ...unhandled } = value; unhandled satisfies Record<PropertyKey, never>;
-          const { maxNewTokens, source, contextLimit, promptTokenCount, pastTokenCount, usedContextTokenCount, ...unhandledBudget } = budget;
+          const { kind, identity, value, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+const { requested, budget, kwargs, ...unhandled } = value;
+unhandled satisfies Record<PropertyKey, never>;
+const { maxNewTokens, source, contextLimit, promptTokenCount, pastTokenCount, usedContextTokenCount, ...unhandledBudget } = budget;
           unhandledBudget satisfies Record<PropertyKey, never>;
           const optional = ({ key, value }: { key: keyof typeof budget; value: number | undefined }) => Object.hasOwn(budget, key)
             ? { [key]: value ?? undefinedValue } : {};
@@ -823,18 +1046,24 @@ function prepareNativeEvidence({ native, provider, maximumBinaryBytes }: { nativ
           };
         }
         case 'native-stream': {
-          const { kind, identity, operation, phase, streamCallOrdinal, detail, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return { kind, identity, operation, phase, streamCallOrdinal, detail };
+          const { kind, identity, operation, phase, streamCallOrdinal, detail, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+return { kind, identity, operation, phase, streamCallOrdinal, detail };
         }
         case 'native-call': {
-          const { kind, identity, phase, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return { kind, identity, phase };
+          const { kind, identity, phase, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+return { kind, identity, phase };
         }
         case 'chunk': {
-          const { kind, identity, phase, text, ...rest } = event; rest satisfies Record<PropertyKey, never>;
-          return { kind, identity, phase, text };
+          const { kind, identity, phase, text, ...rest } = event;
+rest satisfies Record<PropertyKey, never>;
+return { kind, identity, phase, text };
         }
-        default: { const exhaustive: never = event; return exhaustive; }
+        default: {
+          const exhaustive: never = event;
+          return exhaustive;
+        }
         }
       });
       const { schemaVersion, runId, workerEpoch, byteOrder, limits, calls, incompleteReasons, unobserved, events: _sourceEvents, ...rest } = capture;
@@ -875,7 +1104,9 @@ async function sealPreparedNativeEvidence({ prepared }: { prepared: ReturnType<t
       referenceSchema.parse(reference);
     }
     const json = JSON.stringify(document, undefined, 2) + '\n';
-    if (json.length > PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS) invalid();
+    if (json.length > PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS) {
+      invalid();
+    }
     return freezeNativeSidecar({
       evidence: {
         path: PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH,
@@ -928,18 +1159,23 @@ export const PRODUCTION_PROVIDER_NATIVE_JSON_MAXIMUM_CHARACTERS = 32 * 1024 * 10
 // unknown keys until the authoritative native schema can reject them, rather
 // than stripping extensions during reference/undefined decoding.
 function jsonRecord({ value }: { value: unknown }): Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) invalid();
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    invalid();
+  }
   return value as Record<string, unknown>;
 }
 
 function jsonArray({ value, maximum }: { value: unknown; maximum: number }): unknown[] {
-  if (!Array.isArray(value) || value.length > maximum) invalid();
+  if (!Array.isArray(value) || value.length > maximum) {
+    invalid();
+  }
   return value;
 }
 
 function decodeOptionalNumber({ value }: { value: unknown }): unknown {
   if (typeof value === 'object' && value !== null) {
-    encodedUndefinedSchema.parse(value); return undefined;
+    encodedUndefinedSchema.parse(value);
+    return undefined;
   }
   return value;
 }
@@ -952,9 +1188,13 @@ function decodeLifetime({ value }: { value: unknown }): z.output<typeof epochSch
     const record = jsonRecord({ value: lifetime.value });
     const loadRequests = jsonArray({ value: record.loadRequests, maximum: 32 }).map(value => {
       const load = jsonRecord({ value });
-      if (!Object.hasOwn(load, 'requestedRevision')) invalid();
+      if (!Object.hasOwn(load, 'requestedRevision')) {
+        invalid();
+      }
       const revision = load.requestedRevision;
-      if (typeof revision === 'object' && revision !== null) encodedUndefinedSchema.parse(revision);
+      if (typeof revision === 'object' && revision !== null) {
+        encodedUndefinedSchema.parse(revision);
+      }
       return { ...load, requestedRevision: typeof revision === 'object' && revision !== null ? undefined : revision };
     });
     return epochSchema.shape.lifetime.parse({ ...lifetime, value: { ...record, loadRequests } });
@@ -976,7 +1216,9 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
   try {
     const modelId = data({ value: provider, key: 'modelId' });
     const runId = data({ value: provider, key: 'runId' });
-    if (typeof modelId !== 'string' || typeof runId !== 'string') invalid();
+    if (typeof modelId !== 'string' || typeof runId !== 'string') {
+      invalid();
+    }
     // Own the validated Provider view before any reader await can run caller code.
     const providerJson = createProductionProviderCaptureEvidence({ capture: provider, runId, modelId }).json;
     const validatedProvider = readProductionProviderCaptureEvidence({ json: providerJson, runId, modelId });
@@ -994,14 +1236,21 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
       case 'captured': {
         const reference = nativeBinaryReferenceSchema.parse(snapshot.bytes);
         const expectedPath = `generation-native/tensors/${String(pending.length + 1).padStart(6, '0')}.bin`;
-        if (reference.path !== expectedPath || snapshot.byteLength !== reference.byteLength) invalid();
+        if (reference.path !== expectedPath || snapshot.byteLength !== reference.byteLength) {
+          invalid();
+        }
         totalBytes += reference.byteLength;
-        if (totalBytes > maximumTensorBytes) invalid();
+        if (totalBytes > maximumTensorBytes) {
+          invalid();
+        }
         const target = { ...snapshot };
         pending.push({ reference, target });
         return target;
       }
-      default: { const exhaustive: never = status; return exhaustive; }
+      default: {
+        const exhaustive: never = status;
+        return exhaustive;
+      }
       }
     }
     function decodeEvent({ value }: { value: unknown }): unknown {
@@ -1011,7 +1260,8 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
       case 'inputs': return {
         ...event,
         values: jsonArray({ value: event.values, maximum: 64 }).map(value => {
-          const input = jsonRecord({ value }); return { ...input, snapshot: decodeTensor({ value: input.snapshot }) };
+          const input = jsonRecord({ value });
+          return { ...input, snapshot: decodeTensor({ value: input.snapshot }) };
         }),
       };
       case 'sequence': return { ...event, snapshot: decodeTensor({ value: event.snapshot }) };
@@ -1019,12 +1269,17 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
         const settings = jsonRecord({ value: event.value });
         const budget = { ...jsonRecord({ value: settings.budget }) };
         for (const key of ['maxNewTokens', 'contextLimit', 'promptTokenCount', 'usedContextTokenCount']) {
-          if (Object.hasOwn(budget, key)) budget[key] = decodeOptionalNumber({ value: budget[key] });
+          if (Object.hasOwn(budget, key)) {
+            budget[key] = decodeOptionalNumber({ value: budget[key] });
+          }
         }
         return { ...event, value: { ...settings, budget } };
       }
       case 'native-stream': case 'native-call': case 'chunk': return event;
-      default: { const exhaustive: never = kind; return exhaustive; }
+      default: {
+        const exhaustive: never = kind;
+        return exhaustive;
+      }
       }
     }
     const decodedEpochs = envelope.epochs.map((epoch, index) => {
@@ -1033,12 +1288,18 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
       const collection = epoch.collection;
       const base = { workerEpoch: epoch.workerEpoch, lifetime };
       const checkCorrelation = ({ capture }: { capture: Native | undefined }): void => {
-        if (host === undefined || epoch.correlation === undefined || epoch.correlation.length !== host.issuedCalls.length) invalid();
+        if (host === undefined || epoch.correlation === undefined || epoch.correlation.length !== host.issuedCalls.length) {
+          invalid();
+        }
         for (const [index, correlation] of epoch.correlation.entries()) {
-          if (!sameContext({ left: correlation.context, right: host.issuedCalls[index]! })) invalid();
+          if (!sameContext({ left: correlation.context, right: host.issuedCalls[index]! })) {
+            invalid();
+          }
           if (capture !== undefined) {
             const observed = capture.calls.some(call => sameContext({ left: call.context, right: correlation.context }));
-            if (correlation.observation !== (observed ? 'observed' : 'issued-not-observed')) invalid();
+            if (correlation.observation !== (observed ? 'observed' : 'issued-not-observed')) {
+              invalid();
+            }
           }
         }
       };
@@ -1051,7 +1312,9 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
       case 'returned': {
         const result = jsonRecord({ value: collection.result });
         if (result.status !== 'captured') {
-          if (epoch.correlation !== undefined) invalid();
+          if (epoch.correlation !== undefined) {
+            invalid();
+          }
           return { ...base, collection: { status: 'returned' as const, result: generationCaptureReadResultSchema.parse(result) } };
         }
         const returned = z.object({ status: z.literal('captured'), capture: z.unknown(), loadObservation: productionLoadObservationSchema.optional() }).strict().parse(result);
@@ -1063,24 +1326,36 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
           checkCorrelation({ capture: header.capture });
           break;
         case 'not-started': case 'already-taken': case 'wrong-run': case 'busy': case 'invalid-context': return invalid();
-        default: { const exhaustive: never = header; return exhaustive; }
+        default: {
+          const exhaustive: never = header;
+          return exhaustive;
+        }
         }
         const events = jsonArray({ value: capture.events, maximum: 4096 });
         totalEvents += events.length;
-        if (totalEvents > 4096) invalid();
+        if (totalEvents > 4096) {
+          invalid();
+        }
         return { ...base, collection: { status: 'returned' as const, result: { ...returned, capture: { ...capture, events: events.map(value => decodeEvent({ value })) } } } };
       }
       case 'not-requested': case 'pending': case 'failed': case 'unavailable':
-        if (epoch.correlation !== undefined) invalid();
+        if (epoch.correlation !== undefined) {
+          invalid();
+        }
         return { ...base, collection };
-      default: { const exhaustive: never = collection; return exhaustive; }
+      default: {
+        const exhaustive: never = collection;
+        return exhaustive;
+      }
       }
     });
     // Ordinal references and aggregate byte/event limits are checked before I/O.
     // The shared preflight below also checks expanded text/token/node budgets.
     for (const item of pending) {
       const bytes = byteView({ value: await readBinary({ reference: { ...item.reference } }) });
-      if (bytes.byteLength !== item.reference.byteLength) invalid();
+      if (bytes.byteLength !== item.reference.byteLength) {
+        invalid();
+      }
       item.target.bytes = bytes;
     }
     const { format: _format, sourceFormat, providerCapture: _providerCapture, limitations: _limitations, epochs: _epochs,
@@ -1097,18 +1372,25 @@ export async function verifyProductionProviderNativeEvidence({ json, provider, r
     };
     const checks = createDescriptorChecks();
     const checked = checks.preflight({ value: decoded });
-    if (checks.refusals.size !== 0) invalid();
+    if (checks.refusals.size !== 0) {
+      invalid();
+    }
     const validated = nativeCollectionSchema.parse(checked);
     for (const epoch of validated.epochs) {
       const lifetime = (() => {
         switch (epoch.lifetime.status) {
         case 'observed': return epoch.lifetime.value;
         case 'unavailable': return undefined;
-        default: { const exhaustive: never = epoch.lifetime; throw new Error('Unknown native lifetime: ' + exhaustive); }
+        default: {
+          const exhaustive: never = epoch.lifetime;
+          throw new Error('Unknown native lifetime: ' + exhaustive);
+        }
         }
       })();
       validateLoadObservation({ epoch, lifetime, provider: validatedProvider });
-      if (epoch.collection.status === 'returned' && epoch.collection.result.status === 'captured' && hasUnknownNativeKeys({ capture: epoch.collection.result.capture })) invalid();
+      if (epoch.collection.status === 'returned' && epoch.collection.result.status === 'captured' && hasUnknownNativeKeys({ capture: epoch.collection.result.capture })) {
+        invalid();
+      }
     }
     return { referencedPaths: pending.map(item => item.reference.path), summary: summarizeNativeRecording({ native: validated, refusedEpochs: new Set(envelope.epochs.filter(epoch => epoch.collection.status === 'export-refused').map(epoch => epoch.workerEpoch)) }) };
   } catch {
@@ -1124,7 +1406,8 @@ const nativeSidecarSchema = z.object({
   binaries: z.array(nativeBinaryReferenceSchema.extend({
     blob: z.custom<Blob>(value => {
       try {
-        nativeBlobSize({ value }); return true;
+        nativeBlobSize({ value });
+        return true;
       } catch {
         return false;
       }
@@ -1135,7 +1418,9 @@ const nativeSidecarSchema = z.object({
 function nativeBlobSize({ value }: { value: unknown }): number {
   // Blob is an opaque immutable leaf. Ignore attached properties and invoke no
   // instance getter, iterator, arrayBuffer, slice or serialization hook.
-  if (typeof value !== 'object' || value === null) invalid();
+  if (typeof value !== 'object' || value === null) {
+    invalid();
+  }
   // The intrinsic enforces the Blob internal brand, including genuine Blobs
   // from another realm. A matching public prototype alone proves nothing.
   return Reflect.apply(Object.getOwnPropertyDescriptor(Blob.prototype, 'size')!.get!, value, []) as number;
@@ -1196,9 +1481,13 @@ function parseNativeSidecar({ evidence }: { evidence: ProductionProviderNativeEv
     const { path, blob, byteLength, sha256: _sha256, ...unhandledBinary } = binary;
     unhandledBinary satisfies Record<PropertyKey, never>;
     if (path !== `generation-native/tensors/${String(index + 1).padStart(6, '0')}.bin`
-      || nativeBlobSize({ value: blob }) !== byteLength) invalid();
+      || nativeBlobSize({ value: blob }) !== byteLength) {
+      invalid();
+    }
     bytes += byteLength;
-    if (bytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) invalid();
+    if (bytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) {
+      invalid();
+    }
   }
   return parsed;
 }
@@ -1239,9 +1528,13 @@ export async function verifyProductionProviderNativeEvidenceSidecar({ evidence, 
   try {
     const parsed = parseNativeSidecar({ evidence });
     const maximum = z.number().int().nonnegative().safe().parse(maximumBinaryBytes);
-    if (parsed.binaries.reduce((total, binary) => total + binary.byteLength, 0) > maximum) invalid();
+    if (parsed.binaries.reduce((total, binary) => total + binary.byteLength, 0) > maximum) {
+      invalid();
+    }
     const index = nativeEvidenceEnvelopeSchema.parse(JSON.parse(parsed.json) as unknown);
-    if (index.phase !== parsed.summary.phase || index.epochs.filter(epoch => epoch.collection.status === 'export-refused').length !== parsed.summary.refusedEpochCount) invalid();
+    if (index.phase !== parsed.summary.phase || index.epochs.filter(epoch => epoch.collection.status === 'export-refused').length !== parsed.summary.refusedEpochCount) {
+      invalid();
+    }
     const owned = freezeNativeSidecar({ evidence: parsed });
     const binariesByPath = new Map(owned.binaries.map(binary => [binary.path, binary]));
     const verified = await verifyProductionProviderNativeEvidence({
@@ -1249,17 +1542,27 @@ export async function verifyProductionProviderNativeEvidenceSidecar({ evidence, 
       provider,
       readBinary: async ({ reference }) => {
         const binary = binariesByPath.get(reference.path);
-        if (binary === undefined || binary.byteLength !== reference.byteLength || binary.sha256 !== reference.sha256) invalid();
+        if (binary === undefined || binary.byteLength !== reference.byteLength || binary.sha256 !== reference.sha256) {
+          invalid();
+        }
         const bytes = new Uint8Array(await Reflect.apply(Blob.prototype.arrayBuffer, binary.blob, []) as ArrayBuffer);
-        if (bytes.byteLength !== binary.byteLength) invalid();
+        if (bytes.byteLength !== binary.byteLength) {
+          invalid();
+        }
         const digest = await crypto.subtle.digest('SHA-256', bytes);
         const sha256 = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
-        if (sha256 !== binary.sha256) invalid();
+        if (sha256 !== binary.sha256) {
+          invalid();
+        }
         return bytes;
       },
     });
-    if (verified.referencedPaths.length !== owned.binaries.length) invalid();
-    if (JSON.stringify(nativeRecordingSummarySchema.parse(owned.summary)) !== JSON.stringify(nativeRecordingSummarySchema.parse(verified.summary))) invalid();
+    if (verified.referencedPaths.length !== owned.binaries.length) {
+      invalid();
+    }
+    if (JSON.stringify(nativeRecordingSummarySchema.parse(owned.summary)) !== JSON.stringify(nativeRecordingSummarySchema.parse(verified.summary))) {
+      invalid();
+    }
     return owned;
   } catch {
     return invalid();

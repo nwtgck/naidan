@@ -9,14 +9,23 @@ export function createRpcProtocolAdvertisement(): Uint8Array<ArrayBuffer> {
 /** Absence is compatible; a present advertisement selects exactly this RPC profile.
  * Call only after transport authentication, never on discovery observations. */
 export function validateRpcProtocolAdvertisement({ bytes }: { bytes: Uint8Array }): void {
-  if (!(bytes instanceof Uint8Array) || !(bytes.buffer instanceof ArrayBuffer)) throw new TypeError('An owned RPC advertisement is required');
-  if (bytes.length === 0) return;
-  if (bytes.length > PROTOCOL_HEADER_BYTES) throw new NaidanRpcProtocolError({ diagnostic: { kind: 'malformed-advertisement', availableBytes: bytes.length } });
+  if (!(bytes instanceof Uint8Array) || !(bytes.buffer instanceof ArrayBuffer)) {
+    throw new TypeError('An owned RPC advertisement is required');
+  }
+  if (bytes.length === 0) {
+    return;
+  }
+  if (bytes.length > PROTOCOL_HEADER_BYTES) {
+    throw new NaidanRpcProtocolError({ diagnostic: { kind: 'malformed-advertisement', availableBytes: bytes.length } });
+  }
   const result = inspectProtocolHeader({ bytes });
   switch (result.kind) {
   case 'supported': return;
   case 'truncated-header': case 'wrong-protocol-magic': case 'invalid-protocol-version': case 'unsupported-protocol-version': throw new NaidanRpcProtocolError({ diagnostic: result });
-  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

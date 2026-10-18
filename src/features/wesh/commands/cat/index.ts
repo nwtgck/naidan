@@ -374,7 +374,9 @@ export const catCommandImplementation: WeshCommandImplementation = {
         } catch (e: unknown) {
           const shouldForwardSignal = (() => {
             const waitStatus = context.process.getWaitStatus();
-            if (waitStatus === undefined) return false;
+            if (waitStatus === undefined) {
+              return false;
+            }
 
             switch (waitStatus.kind) {
             case 'signaled':

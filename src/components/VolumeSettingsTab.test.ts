@@ -413,12 +413,12 @@ describe('VolumeSettingsTab - Add Folder mode selection', () => {
 
   it('clicking Add Folder shows the mode selector panel', async () => {
     const wrapper = await mountTab([]);
-    expect(wrapper.find('[data-testid="add-folder-mode-panel"]').exists()).toBe(false);
+    expect(document.querySelector('[data-testid="add-folder-mode-panel"]') !== null).toBe(false);
 
     await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find('[data-testid="add-folder-mode-panel"]').exists()).toBe(true);
+    expect(document.querySelector('[data-testid="add-folder-mode-panel"]') !== null).toBe(true);
   });
 
   it('choosing Read Only calls showDirectoryPicker with mode read and mounts readOnly', async () => {
@@ -435,7 +435,7 @@ describe('VolumeSettingsTab - Add Folder mode selection', () => {
     await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
     await wrapper.vm.$nextTick();
 
-    await wrapper.find('[data-testid="add-folder-read-only-btn"]').trigger('click');
+    document.querySelector<HTMLButtonElement>('[data-testid="add-folder-read-only-btn"]')!.click();
     await flushPromises();
 
     expect(mockPicker).toHaveBeenCalledWith({ mode: 'read' });
@@ -456,7 +456,7 @@ describe('VolumeSettingsTab - Add Folder mode selection', () => {
     await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
     await wrapper.vm.$nextTick();
 
-    await wrapper.find('[data-testid="add-folder-readwrite-btn"]').trigger('click');
+    document.querySelector<HTMLButtonElement>('[data-testid="add-folder-readwrite-btn"]')!.click();
     await flushPromises();
 
     expect(mockPicker).toHaveBeenCalledWith({ mode: 'readwrite' });

@@ -123,8 +123,9 @@ export async function runStash({ context, args }: {
               break;
             case 'following-required': {
               const value = rest[index + 1];
-              if (value === undefined)
+              if (value === undefined) {
                 throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+              }
               message = value;
               index += 1;
               break;
@@ -149,8 +150,9 @@ export async function runStash({ context, args }: {
         includeUntracked = true;
       } else if (arg === '--message') {
         const value = rest[index + 1];
-        if (value === undefined)
+        if (value === undefined) {
           throw new GitUsageError({ message: `option '${arg}' requires a value` });
+        }
         message = value;
         index += 1;
       } else if (arg.startsWith('--message=')) {
@@ -159,8 +161,9 @@ export async function runStash({ context, args }: {
         throw new GitUsageError({ message: `unknown option: ${arg}` });
       }
     }
-    if (pathOperands.length > 0)
+    if (pathOperands.length > 0) {
       throw new Error('stash push pathspecs are not supported yet');
+    }
     const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
     const created = await createStash({
       files: context.files,
@@ -179,8 +182,9 @@ export async function runStash({ context, args }: {
   }
   case 'list': {
     const listArgs = rest.at(-1) === '--' ? rest.slice(0, -1) : rest;
-    if (listArgs.length !== 0)
+    if (listArgs.length !== 0) {
       throw new Error('stash list arguments are not supported yet');
+    }
     for (const entry of await listStashes({ files: context.files, repository })) {
       await context.text().print({ text: `stash@{${entry.index}}: ${entry.message}\n` });
     }
@@ -322,8 +326,9 @@ export async function runStash({ context, args }: {
           }
           bodyOffset = analysis.nextBodyOffset;
         }
-      } else
+      } else {
         operands.push(arg);
+      }
     }
     if (operands.length > 1) {
       await context.text().error({ text: `Too many revisions specified: ${operands.map(operand => `'${operand}'`).join(' ')}\n` });
@@ -404,25 +409,30 @@ export async function runStash({ context, args }: {
         patchExplicitlyRequested = true;
         continue;
       }
-      if (parsingOptions && arg === '--no-color')
-        continue;
-      if (parsingOptions && arg === '--stat') {
-        showStat = true;
-        if (!patchExplicitlyRequested)
-          showPatch = false;
+      if (parsingOptions && arg === '--no-color') {
         continue;
       }
-      if (parsingOptions && arg.startsWith('-'))
+      if (parsingOptions && arg === '--stat') {
+        showStat = true;
+        if (!patchExplicitlyRequested) {
+          showPatch = false;
+        }
+        continue;
+      }
+      if (parsingOptions && arg.startsWith('-')) {
         throw new GitUsageError({ message: `unknown option: ${arg}` });
-      if (expression !== undefined)
+      }
+      if (expression !== undefined) {
         throw new Error('Too many revisions specified');
+      }
       expression = arg;
     }
     const stash = await resolveStash({ files: context.files, repository, expression });
     const commit = await readCommit({ files: context.files, repository, objectId: stash.objectId });
     const baseObjectId = commit.parentObjectIds[0];
-    if (baseObjectId === undefined)
+    if (baseObjectId === undefined) {
       throw new Error('stash commit has invalid parents');
+    }
     const stashShowConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
     const stashShowQuoteNonAscii = quoteNonAsciiFromConfig({ config: stashShowConfig });
     const detectRenames = getDiffRenamesConfigMode({ config: stashShowConfig }) !== 'disabled';

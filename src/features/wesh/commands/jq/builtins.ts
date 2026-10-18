@@ -118,7 +118,9 @@ function constrainRuntimeInputRequest({
   result: Extract<JqRuntimeResult, { ok: false }>,
   maximumValues: number,
 }): Extract<JqRuntimeResult, { ok: false }> {
-  if (result.inputRequest === undefined) return result;
+  if (result.inputRequest === undefined) {
+    return result;
+  }
   return {
     ...result,
     inputRequest: {
@@ -144,8 +146,12 @@ function appendMaterializedValues({
   target: JsonValue[],
   source: readonly JsonValue[],
 }): boolean {
-  if (source.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH - target.length) return false;
-  for (const value of source) target.push(value);
+  if (source.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH - target.length) {
+    return false;
+  }
+  for (const value of source) {
+    target.push(value);
+  }
   return true;
 }
 
@@ -172,7 +178,9 @@ function metadataWithoutNumberOrigin({
 }: {
   metadata: JqRuntimeInputMetadata,
 }): JqRuntimeInputMetadata {
-  if (metadata.numberOrigin === undefined) return metadata;
+  if (metadata.numberOrigin === undefined) {
+    return metadata;
+  }
   const { numberOrigin: _numberOrigin, ...source } = metadata;
   return source;
 }
@@ -184,7 +192,9 @@ function metadataWithNumberOrigin({
   metadata: JqRuntimeInputMetadata,
   numberOrigin: JqNumberOrigin | undefined,
 }): JqRuntimeInputMetadata {
-  if (metadata.numberOrigin === numberOrigin) return metadata;
+  if (metadata.numberOrigin === numberOrigin) {
+    return metadata;
+  }
   return numberOrigin === undefined
     ? metadataWithoutNumberOrigin({ metadata })
     : { ...metadataWithoutNumberOrigin({ metadata }), numberOrigin };
@@ -253,8 +263,12 @@ function formatJqHaltErrorInput({
   value: JsonValue,
   numberOrigin?: JqNumberOrigin,
 }): string {
-  if (value === null) return '';
-  if (typeof value === 'string') return value;
+  if (value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
   return `${stringifyJson({
     value,
     indentation: undefined,
@@ -270,8 +284,12 @@ function jqDiagnosticTypeName({
 }: {
   value: JsonValue,
 }): string {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
+  if (value === null) {
+    return 'null';
+  }
+  if (Array.isArray(value)) {
+    return 'array';
+  }
   return typeof value;
 }
 
@@ -280,7 +298,9 @@ function formatCsvField({
 }: {
   value: JsonValue,
 }): { ok: true, value: string } | { ok: false, message: string } {
-  if (value === null) return { ok: true, value: '' };
+  if (value === null) {
+    return { ok: true, value: '' };
+  }
   if (typeof value === 'string') {
     return { ok: true, value: `"${value.replaceAll('\0', '\\0').replaceAll('"', '""')}"` };
   }
@@ -346,20 +366,28 @@ function decodeBase64Text({
   let pendingBitCount = 0;
 
   for (const character of text) {
-    if (character === '=') break;
+    if (character === '=') {
+      break;
+    }
     const value = BASE64_ALPHABET.indexOf(character);
-    if (value < 0) return { ok: false, reason: 'invalid_data' };
+    if (value < 0) {
+      return { ok: false, reason: 'invalid_data' };
+    }
 
     pendingBits = (pendingBits << 6) | value;
     pendingBitCount += 6;
-    if (pendingBitCount < 8) continue;
+    if (pendingBitCount < 8) {
+      continue;
+    }
 
     pendingBitCount -= 8;
     bytes.push((pendingBits >>> pendingBitCount) & 0xff);
     pendingBits &= (1 << pendingBitCount) - 1;
   }
 
-  if (pendingBitCount === 6) return { ok: false, reason: 'trailing_byte' };
+  if (pendingBitCount === 6) {
+    return { ok: false, reason: 'trailing_byte' };
+  }
   return {
     ok: true,
     value: new TextDecoder().decode(Uint8Array.from(bytes)),
@@ -391,7 +419,9 @@ function formatShellScalar({
       message: `${Array.isArray(value) ? 'array' : 'object'} (${stringifyForFormat({ value })}) can not be escaped for shell`,
     };
   }
-  if (typeof value !== 'string') return { ok: true, value: stringifyForFormat({ value }) };
+  if (typeof value !== 'string') {
+    return { ok: true, value: stringifyForFormat({ value }) };
+  }
   return {
     ok: true,
     value: `'${value.replaceAll('\0', '\\0').replaceAll("'", "'\\''")}'`,
@@ -403,7 +433,9 @@ function formatTsvField({
 }: {
   value: JsonValue,
 }): { ok: true, value: string } | { ok: false, message: string } {
-  if (value === null) return { ok: true, value: '' };
+  if (value === null) {
+    return { ok: true, value: '' };
+  }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return { ok: true, value: stringifyForFormat({ value }) };
   }
@@ -718,7 +750,9 @@ function parseStrictNumber({
   value: string,
 }): { value: number, numberOrigin: JqNumberOrigin } | undefined {
   const trimmed = trimJqNumberWhitespace({ value });
-  if (trimmed.length === 0) return undefined;
+  if (trimmed.length === 0) {
+    return undefined;
+  }
   if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) {
     return undefined;
   }
@@ -746,7 +780,9 @@ function evaluateSingleOutput({
   evaluate: JqRuntimeFilterEvaluator,
 }): { ok: true, value: JsonValue, numberOrigin?: JqNumberOrigin } | { ok: false, error: JqRuntimeError } {
   const result = evaluate({ filter, input });
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
   if (result.outputs.length !== 1) {
     return { ok: false, error: { message: 'filter must yield exactly one value here' } };
   }
@@ -772,7 +808,9 @@ function evaluateOrderingKey({
   const result = evaluate({ filter, input, inputMetadata });
   // Ordering keys are internal to the aggregate builtin. jq does not expose
   // a successful key prefix when a later key output fails.
-  if (!result.ok) return clearRuntimeFailureOutputs({ result });
+  if (!result.ok) {
+    return clearRuntimeFailureOutputs({ result });
+  }
   return {
     ok: true,
     value: result.outputs.length === 1 ? result.outputs[0] ?? null : result.outputs,
@@ -799,7 +837,9 @@ function evaluateRegularExpression({
   }
   | { ok: false, error: JqRuntimeError } {
   const pattern = evaluateSingleOutput({ filter: patternFilter, input, evaluate });
-  if (!pattern.ok) return pattern;
+  if (!pattern.ok) {
+    return pattern;
+  }
   if (typeof pattern.value !== 'string') {
     return { ok: false, error: { message: 'regular expression pattern must be a string' } };
   }
@@ -807,7 +847,9 @@ function evaluateRegularExpression({
   let flags = '';
   if (flagsFilter !== undefined) {
     const evaluatedFlags = evaluateSingleOutput({ filter: flagsFilter, input, evaluate });
-    if (!evaluatedFlags.ok) return evaluatedFlags;
+    if (!evaluatedFlags.ok) {
+      return evaluatedFlags;
+    }
     if (typeof evaluatedFlags.value !== 'string') {
       return { ok: false, error: { message: 'regular expression flags must be a string' } };
     }
@@ -827,7 +869,9 @@ function createNamedCaptureObject({
 }): JsonValue {
   const captureObject = createJsonObject();
   for (const capture of match.captures) {
-    if (capture.name === null) continue;
+    if (capture.name === null) {
+      continue;
+    }
     defineJsonProperty({
       object: captureObject,
       key: capture.name,
@@ -895,7 +939,9 @@ function buildRegexReplacementOutputs({
   replacementFilter: JqFilter,
   evaluate: JqRuntimeFilterEvaluator,
 }): { ok: true, outputs: string[] } | { ok: false, error: JqRuntimeError } {
-  if (matches.length === 0) return { ok: true, outputs: [input] };
+  if (matches.length === 0) {
+    return { ok: true, outputs: [input] };
+  }
 
   const replacementStreams: string[][] = [];
   let replacementValueCount = 0;
@@ -907,7 +953,9 @@ function buildRegexReplacementOutputs({
     // A replacement filter is atomic for each match. jq discards any
     // replacement prefix when that filter later fails; those values are not
     // top-level sub/gsub outputs.
-    if (!evaluated.ok) return clearRuntimeFailureOutputs({ result: evaluated });
+    if (!evaluated.ok) {
+      return clearRuntimeFailureOutputs({ result: evaluated });
+    }
     for (const output of evaluated.outputs) {
       if (typeof output !== 'string') {
         return { ok: false, error: { message: 'replacement expression must produce strings' } };
@@ -915,7 +963,9 @@ function buildRegexReplacementOutputs({
     }
     // An empty replacement filter cancels the replacement expression rather
     // than deleting the matched text or suppressing the whole jq output.
-    if (evaluated.outputs.length === 0) return { ok: true, outputs: [input] };
+    if (evaluated.outputs.length === 0) {
+      return { ok: true, outputs: [input] };
+    }
     replacementValueCount += evaluated.outputs.length;
     if (replacementValueCount > JQ_MAX_MATERIALIZED_VALUE_LENGTH) {
       return {
@@ -1044,14 +1094,18 @@ function walkValue({
         break;
       }
       const mapped = mapper({ input: frame.value });
-      if (!mapped.ok) return clearRuntimeFailureOutputs({ result: mapped });
+      if (!mapped.ok) {
+        return clearRuntimeFailureOutputs({ result: mapped });
+      }
       completed.push(mapped.value);
       break;
     }
     case 'array': {
       const start = completed.length - frame.childCount;
       const mapped = mapper({ input: completed.splice(start, frame.childCount) });
-      if (!mapped.ok) return clearRuntimeFailureOutputs({ result: mapped });
+      if (!mapped.ok) {
+        return clearRuntimeFailureOutputs({ result: mapped });
+      }
       completed.push(mapped.value);
       break;
     }
@@ -1067,7 +1121,9 @@ function walkValue({
         });
       }
       const mapped = mapper({ input: mappedObject });
-      if (!mapped.ok) return mapped;
+      if (!mapped.ok) {
+        return mapped;
+      }
       completed.push(mapped.value);
       break;
     }
@@ -1113,7 +1169,9 @@ function recurseValues({
     const current = pending.pop()!;
     outputs.push(current);
     const next = evaluateNext({ input: current });
-    if (!next.ok) return { ok: false, error: next.error, outputs };
+    if (!next.ok) {
+      return { ok: false, error: next.error, outputs };
+    }
     for (let index = next.values.length - 1; index >= 0; index -= 1) {
       pending.push(next.values[index]!);
     }
@@ -1170,7 +1228,9 @@ function findIndices({
     let start = 0;
     while (start <= input.length - search.length) {
       const index = input.indexOf(search, start);
-      if (index === -1) break;
+      if (index === -1) {
+        break;
+      }
       indices.push(index);
       start = index + 1;
     }
@@ -1226,7 +1286,9 @@ function* iterateChildPaths({
     }
     return;
   }
-  if (value === null || typeof value !== 'object') return;
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
   for (const [key, nested] of jsonObjectEntries({ object: value })) {
     yield {
       path: [...current, key],
@@ -1400,7 +1462,9 @@ function readEntryField({
   names: readonly string[],
 }): { readonly key: string, readonly value: JsonValue } | undefined {
   for (const name of names) {
-    if (Object.hasOwn(entry, name)) return { key: name, value: entry[name]! };
+    if (Object.hasOwn(entry, name)) {
+      return { key: name, value: entry[name]! };
+    }
   }
   return undefined;
 }
@@ -1449,7 +1513,9 @@ function evaluateCount({
   name: string,
 }): { ok: true, value: number } | { ok: false, error: JqRuntimeError } {
   const evaluated = evaluateSingleOutput({ filter, input, evaluate });
-  if (!evaluated.ok) return evaluated;
+  if (!evaluated.ok) {
+    return evaluated;
+  }
   if (typeof evaluated.value !== 'number' || !Number.isInteger(evaluated.value) || evaluated.value < 0) {
     return { ok: false, error: { message: `${name} count must be a non-negative integer` } };
   }
@@ -1521,7 +1587,9 @@ function evaluateRepeatedCombinationCount({
   evaluate: JqRuntimeFilterEvaluator,
 }): { ok: true, value: number } | Extract<JqRuntimeResult, { ok: false }> {
   const evaluated = evaluate({ filter, input });
-  if (!evaluated.ok) return clearRuntimeFailureOutputs({ result: evaluated });
+  if (!evaluated.ok) {
+    return clearRuntimeFailureOutputs({ result: evaluated });
+  }
 
   // jq defines combinations(n) as `[range(n) | $dot] | combinations`.
   // A filter stream therefore contributes the concatenated lengths of all
@@ -1538,7 +1606,9 @@ function evaluateRepeatedCombinationCount({
       return { ok: false, error: { message: 'Range bounds must be numeric' } };
     }
     const contribution = value <= 0 ? 0 : Math.ceil(value);
-    if (contribution <= 0 || count >= saturationLimit) continue;
+    if (contribution <= 0 || count >= saturationLimit) {
+      continue;
+    }
     count = contribution >= saturationLimit - count
       ? saturationLimit
       : count + contribution;
@@ -1640,11 +1710,21 @@ function nextRepresentableNumber({
   from: number,
   toward: number,
 }): number {
-  if (Number.isNaN(from) || Number.isNaN(toward)) return Number.NaN;
-  if (Object.is(from, toward) || from === toward) return toward;
-  if (from === Number.POSITIVE_INFINITY) return Number.MAX_VALUE;
-  if (from === Number.NEGATIVE_INFINITY) return -Number.MAX_VALUE;
-  if (from === 0) return toward > 0 ? Number.MIN_VALUE : -Number.MIN_VALUE;
+  if (Number.isNaN(from) || Number.isNaN(toward)) {
+    return Number.NaN;
+  }
+  if (Object.is(from, toward) || from === toward) {
+    return toward;
+  }
+  if (from === Number.POSITIVE_INFINITY) {
+    return Number.MAX_VALUE;
+  }
+  if (from === Number.NEGATIVE_INFINITY) {
+    return -Number.MAX_VALUE;
+  }
+  if (from === 0) {
+    return toward > 0 ? Number.MIN_VALUE : -Number.MIN_VALUE;
+  }
 
   const buffer = new ArrayBuffer(8);
   const view = new DataView(buffer);
@@ -1665,9 +1745,15 @@ function splitFloatingPoint({
 }: {
   value: number,
 }): readonly [number, number] {
-  if (Number.isNaN(value)) return [Number.NaN, 0];
-  if (Math.abs(value) >= Number.MAX_VALUE) return [value, 0];
-  if (value === 0) return [value, 0];
+  if (Number.isNaN(value)) {
+    return [Number.NaN, 0];
+  }
+  if (Math.abs(value) >= Number.MAX_VALUE) {
+    return [value, 0];
+  }
+  if (value === 0) {
+    return [value, 0];
+  }
   const exponent = Math.floor(Math.log2(Math.abs(value))) + 1;
   return [value / Math.pow(2, exponent), exponent];
 }
@@ -1677,7 +1763,9 @@ function jqRoundTiesToEven({
 }: {
   value: number,
 }): number {
-  if (!Number.isFinite(value) || value === 0) return value;
+  if (!Number.isFinite(value) || value === 0) {
+    return value;
+  }
   const rounded = roundTiesToEven({ value });
   return rounded === 0 && value < 0 ? -0 : rounded;
 }
@@ -1689,8 +1777,12 @@ function roundTiesToEven({
 }): number {
   const lower = Math.floor(value);
   const fraction = value - lower;
-  if (fraction < 0.5) return lower;
-  if (fraction > 0.5) return lower + 1;
+  if (fraction < 0.5) {
+    return lower;
+  }
+  if (fraction > 0.5) {
+    return lower + 1;
+  }
   return Math.abs(lower % 2) === 0 ? lower : lower + 1;
 }
 
@@ -1717,11 +1809,15 @@ function createJqUtcDate({
 }
 
 function jqGmtime({ value }: { value: number }): JsonValue[] | undefined {
-  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
   const wholeSeconds = Math.trunc(value);
   const fractionalSecond = value - Math.floor(value);
   const date = new Date(wholeSeconds * 1_000);
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   const year = date.getUTCFullYear();
   const startOfYear = createJqUtcDate({
     year,
@@ -1731,7 +1827,9 @@ function jqGmtime({ value }: { value: number }): JsonValue[] | undefined {
     minute: 0,
     second: 0,
   });
-  if (startOfYear === undefined) return undefined;
+  if (startOfYear === undefined) {
+    return undefined;
+  }
   const startOfDay = createJqUtcDate({
     year,
     month: date.getUTCMonth(),
@@ -1740,7 +1838,9 @@ function jqGmtime({ value }: { value: number }): JsonValue[] | undefined {
     minute: 0,
     second: 0,
   });
-  if (startOfDay === undefined) return undefined;
+  if (startOfDay === undefined) {
+    return undefined;
+  }
   return [
     year,
     date.getUTCMonth(),
@@ -1754,11 +1854,15 @@ function jqGmtime({ value }: { value: number }): JsonValue[] | undefined {
 }
 
 function jqLocaltime({ value }: { value: number }): JsonValue[] | undefined {
-  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
   const wholeSeconds = Math.trunc(value);
   const fractionalSecond = value - Math.floor(value);
   const date = new Date(wholeSeconds * 1_000);
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   const year = date.getFullYear();
   const startOfYear = createJqUtcDate({
     year,
@@ -1776,7 +1880,9 @@ function jqLocaltime({ value }: { value: number }): JsonValue[] | undefined {
     minute: 0,
     second: 0,
   });
-  if (startOfYear === undefined || startOfDay === undefined) return undefined;
+  if (startOfYear === undefined || startOfDay === undefined) {
+    return undefined;
+  }
   return [
     year,
     date.getMonth(),
@@ -1812,7 +1918,9 @@ function createJqLocalDate({
 }
 
 function jqLocalMktime({ input }: { input: JsonValue }): number | undefined {
-  if (!Array.isArray(input) || input.length < 8) return undefined;
+  if (!Array.isArray(input) || input.length < 8) {
+    return undefined;
+  }
   const components = input.slice(0, 8);
   if (components.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
     return undefined;
@@ -1830,7 +1938,9 @@ function jqLocalMktime({ input }: { input: JsonValue }): number | undefined {
 }
 
 function jqMktime({ input }: { input: JsonValue }): number | undefined {
-  if (!Array.isArray(input) || input.length < 8) return undefined;
+  if (!Array.isArray(input) || input.length < 8) {
+    return undefined;
+  }
   const components = input.slice(0, 8);
   if (components.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
     return undefined;
@@ -1888,7 +1998,9 @@ function jqParsedDateTime({
     })();
     return converted === undefined ? undefined : converted as unknown as JqParsedDateTime;
   }
-  if (!Array.isArray(input) || input.length < 8) return undefined;
+  if (!Array.isArray(input) || input.length < 8) {
+    return undefined;
+  }
   const components = input.slice(0, 8);
   if (components.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
     return undefined;
@@ -1906,7 +2018,9 @@ function padJqDateNumber({
   fill?: '0' | ' ',
 }): string {
   const integer = Math.trunc(value);
-  if (integer < 0) return `-${String(Math.abs(integer)).padStart(Math.max(width - 1, 0), fill)}`;
+  if (integer < 0) {
+    return `-${String(Math.abs(integer)).padStart(Math.max(width - 1, 0), fill)}`;
+  }
   return String(integer).padStart(width, fill);
 }
 
@@ -2259,7 +2373,9 @@ function parseJqStrptime({
   for (let index = 0; index < expanded.length;) {
     const character = expanded[index]!;
     if (/\\s/u.test(character)) {
-      while (index < expanded.length && /\\s/u.test(expanded[index]!)) index += 1;
+      while (index < expanded.length && /\\s/u.test(expanded[index]!)) {
+        index += 1;
+      }
       pattern += '\\s+';
       continue;
     }
@@ -2269,7 +2385,9 @@ function parseJqStrptime({
       continue;
     }
     const token = expanded.slice(index, index + 2);
-    if (token.length < 2) return undefined;
+    if (token.length < 2) {
+      return undefined;
+    }
     const compiled = jqStrptimeToken({ token });
     if (compiled.action === undefined) {
       pattern += compiled.pattern;
@@ -2281,7 +2399,9 @@ function parseJqStrptime({
   }
   pattern += '$';
   const match = new RegExp(pattern, 'iu').exec(value);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
 
   const state: JqStrptimeState = {
     year: 1900,
@@ -2350,8 +2470,12 @@ function parseJqStrptime({
       minute: 0,
       second: 0,
     });
-    if (date === undefined || startOfYear === undefined) return undefined;
-    if (!state.weekdayExplicit) state.weekday = date.getUTCDay();
+    if (date === undefined || startOfYear === undefined) {
+      return undefined;
+    }
+    if (!state.weekdayExplicit) {
+      state.weekday = date.getUTCDay();
+    }
     if (!state.yearDayExplicit) {
       const startOfDay = createJqUtcDate({
         year: date.getUTCFullYear(),
@@ -2361,7 +2485,9 @@ function parseJqStrptime({
         minute: 0,
         second: 0,
       });
-      if (startOfDay === undefined) return undefined;
+      if (startOfDay === undefined) {
+        return undefined;
+      }
       state.yearDay = Math.floor((startOfDay.getTime() - startOfYear.getTime()) / 86_400_000);
     }
   }
@@ -2396,7 +2522,9 @@ function formatJqStrftime({
 function formatJqIsoDate({ value }: { value: number }): string | undefined {
   const milliseconds = Math.trunc(value) * 1000;
   const date = new Date(milliseconds);
-  if (Number.isNaN(date.getTime())) return undefined;
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
@@ -2408,7 +2536,9 @@ function formatJqIsoDate({ value }: { value: number }): string | undefined {
 
 function parseJqIsoDate({ value }: { value: string }): number | undefined {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/u.exec(value);
-  if (match === null) return undefined;
+  if (match === null) {
+    return undefined;
+  }
   const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match;
   const year = Number(yearText);
   const month = Number(monthText);
@@ -2446,7 +2576,9 @@ function appendJqStreamEvent({
   value: JsonValue | undefined,
   hasValue: boolean,
 }): boolean {
-  if (outputs.length >= JQ_MAX_MATERIALIZED_VALUE_LENGTH) return false;
+  if (outputs.length >= JQ_MAX_MATERIALIZED_VALUE_LENGTH) {
+    return false;
+  }
   const pathValue: JsonValue[] = [...path];
   outputs.push(hasValue ? [pathValue, value ?? null] : [pathValue]);
   return true;
@@ -2567,7 +2699,9 @@ export function parseJqStreamEvent({
     return { ok: false, message: 'stream event must contain a path' };
   }
   const parsed = parsePathArray({ value: rawPath });
-  if (!parsed.ok) return parsed;
+  if (!parsed.ok) {
+    return parsed;
+  }
   return {
     ok: true,
     event: {
@@ -2601,7 +2735,9 @@ export function jqSliceStart({
   length: number,
   value: JsonValue,
 }): { ok: true, start: number } | { ok: false, message: string } {
-  if (value === null) return { ok: true, start: 0 };
+  if (value === null) {
+    return { ok: true, start: 0 };
+  }
   if (typeof value !== 'number') {
     return { ok: false, message: 'Array/string slice indices must be integers' };
   }
@@ -2842,7 +2978,9 @@ function evaluateBuiltinRegexSplitStreams({
       });
     }
     const piecesByFlags: string[][] = [];
-    if (flagsResult.outputs.length === 0) piecesByFlags.push([input]);
+    if (flagsResult.outputs.length === 0) {
+      piecesByFlags.push([input]);
+    }
     for (const flags of flagsResult.outputs) {
       if (typeof flags !== 'string') {
         return {
@@ -3011,9 +3149,14 @@ function evaluateBuiltinArgumentStreams({
         }),
       });
       const failure = evaluateAt({ index: index + 1 });
-      if (previous === undefined) substitutedArguments.delete(argumentFilter);
-      else substitutedArguments.set(argumentFilter, previous);
-      if (failure !== undefined) return failure;
+      if (previous === undefined) {
+        substitutedArguments.delete(argumentFilter);
+      } else {
+        substitutedArguments.set(argumentFilter, previous);
+      }
+      if (failure !== undefined) {
+        return failure;
+      }
     }
     return argumentResult.ok
       ? undefined
@@ -3068,7 +3211,9 @@ function evaluateBuiltinSinglePass({
     const targets = targetResult.ok
       ? targetResult.outputs
       : runtimeFailureOutputs({ result: targetResult });
-    if (!targetResult.ok && targets.length === 0) return targetResult;
+    if (!targetResult.ok && targets.length === 0) {
+      return targetResult;
+    }
 
     const sourceResult = evaluate({ filter: sourceFilter, input });
     const sourceValues = sourceResult.ok
@@ -3079,8 +3224,12 @@ function evaluateBuiltinSinglePass({
         return { ok: true, outputs: [true] };
       }
     }
-    if (!targetResult.ok) return clearRuntimeFailureOutputs({ result: targetResult });
-    if (!sourceResult.ok) return clearRuntimeFailureOutputs({ result: sourceResult });
+    if (!targetResult.ok) {
+      return clearRuntimeFailureOutputs({ result: targetResult });
+    }
+    if (!sourceResult.ok) {
+      return clearRuntimeFailureOutputs({ result: sourceResult });
+    }
     return { ok: true, outputs: [false] };
   }
   case 'INDEX': {
@@ -3088,9 +3237,15 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'INDEX takes one or two arguments' } };
     }
     const sourceResult = (() => {
-      if (args.length === 2) return evaluate({ filter: args[0]!, input });
-      if (Array.isArray(input)) return { ok: true, outputs: [...input] } as const;
-      if (isJsonObject(input)) return { ok: true, outputs: jsonObjectValues({ object: input }) } as const;
+      if (args.length === 2) {
+        return evaluate({ filter: args[0]!, input });
+      }
+      if (Array.isArray(input)) {
+        return { ok: true, outputs: [...input] } as const;
+      }
+      if (isJsonObject(input)) {
+        return { ok: true, outputs: jsonObjectValues({ object: input }) } as const;
+      }
       return {
         ok: false,
         error: {
@@ -3098,7 +3253,9 @@ function evaluateBuiltinSinglePass({
         },
       } as const;
     })();
-    if (!sourceResult.ok) return clearRuntimeFailureOutputs({ result: sourceResult });
+    if (!sourceResult.ok) {
+      return clearRuntimeFailureOutputs({ result: sourceResult });
+    }
 
     const keyFilter = args.length === 2 ? args[1] : args[0];
     if (keyFilter === undefined) {
@@ -3123,7 +3280,9 @@ function evaluateBuiltinSinglePass({
           value: sourceValue,
         });
       }
-      if (!keys.ok) return clearRuntimeFailureOutputs({ result: keys });
+      if (!keys.ok) {
+        return clearRuntimeFailureOutputs({ result: keys });
+      }
     }
     return { ok: true, outputs: [indexed] };
   }
@@ -3133,7 +3292,9 @@ function evaluateBuiltinSinglePass({
     }
     const indexResult = evaluate({ filter: args[0], input });
     const indexes = indexResult.ok ? indexResult.outputs : runtimeFailureOutputs({ result: indexResult });
-    if (!indexResult.ok && indexes.length === 0) return indexResult;
+    if (!indexResult.ok && indexes.length === 0) {
+      return indexResult;
+    }
     const outputs: JsonValue[] = [];
 
     for (const indexValue of indexes) {
@@ -3141,7 +3302,9 @@ function evaluateBuiltinSinglePass({
         ? { kind: 'iterate', input: { kind: 'identity' }, optional: false }
         : args[1];
       const keyFilter = args.length === 2 ? args[1] : args[2];
-      if (keyFilter === undefined) throw new Error('jq JOIN key filter is missing');
+      if (keyFilter === undefined) {
+        throw new Error('jq JOIN key filter is missing');
+      }
       const sourceResult = evaluate({ filter: sourceFilter, input });
       const sourceValues = sourceResult.ok
         ? sourceResult.outputs
@@ -3158,7 +3321,9 @@ function evaluateBuiltinSinglePass({
           },
           input: sourceValue,
         });
-        if (!lookupResult.ok) return replaceRuntimeFailureOutputs({ result: lookupResult, outputs });
+        if (!lookupResult.ok) {
+          return replaceRuntimeFailureOutputs({ result: lookupResult, outputs });
+        }
         const pair: JsonValue[] = [sourceValue];
         if (!appendMaterializedValues({ target: pair, source: lookupResult.outputs })) {
           return {
@@ -3183,7 +3348,9 @@ function evaluateBuiltinSinglePass({
           continue;
         }
         const joinFilter = args[3];
-        if (joinFilter === undefined) throw new Error('jq JOIN expression is missing');
+        if (joinFilter === undefined) {
+          throw new Error('jq JOIN expression is missing');
+        }
         const joined = evaluate({ filter: joinFilter, input: pair });
         const joinedOutputs = joined.ok ? joined.outputs : runtimeFailureOutputs({ result: joined });
         if (!appendMaterializedValues({ target: outputs, source: joinedOutputs })) {
@@ -3192,10 +3359,16 @@ function evaluateBuiltinSinglePass({
             error: { message: `JOIN materialization exceeds limit ${JQ_MAX_MATERIALIZED_VALUE_LENGTH}` },
           };
         }
-        if (!joined.ok) return replaceRuntimeFailureOutputs({ result: joined, outputs });
+        if (!joined.ok) {
+          return replaceRuntimeFailureOutputs({ result: joined, outputs });
+        }
       }
-      if (!sourceResult.ok) return replaceRuntimeFailureOutputs({ result: sourceResult, outputs });
-      if (args.length === 2) outputs.push(collectedPairs);
+      if (!sourceResult.ok) {
+        return replaceRuntimeFailureOutputs({ result: sourceResult, outputs });
+      }
+      if (args.length === 2) {
+        outputs.push(collectedPairs);
+      }
     }
     return indexResult.ok
       ? { ok: true, outputs }
@@ -3257,7 +3430,9 @@ function evaluateBuiltinSinglePass({
     const fields: string[] = [];
     for (const value of input) {
       const field = formatCsvField({ value });
-      if (!field.ok) return { ok: false, error: { message: field.message } };
+      if (!field.ok) {
+        return { ok: false, error: { message: field.message } };
+      }
       fields.push(field.value);
     }
     return { ok: true, outputs: [fields.join(',')] };
@@ -3289,7 +3464,9 @@ function evaluateBuiltinSinglePass({
     const fields: string[] = [];
     for (const value of values) {
       const field = formatShellScalar({ value });
-      if (!field.ok) return { ok: false, error: { message: field.message } };
+      if (!field.ok) {
+        return { ok: false, error: { message: field.message } };
+      }
       fields.push(field.value);
     }
     return { ok: true, outputs: [fields.join(' ')] };
@@ -3315,7 +3492,9 @@ function evaluateBuiltinSinglePass({
     const fields: string[] = [];
     for (const value of input) {
       const field = formatTsvField({ value });
-      if (!field.ok) return { ok: false, error: { message: field.message } };
+      if (!field.ok) {
+        return { ok: false, error: { message: field.message } };
+      }
       fields.push(field.value);
     }
     return { ok: true, outputs: [fields.join('	')] };
@@ -3839,7 +4018,9 @@ function evaluateBuiltinSinglePass({
         const inspected = inspectPredicate({
           evaluated: evaluate({ filter: args[1], input: item }),
         });
-        if (inspected !== undefined) return inspected;
+        if (inspected !== undefined) {
+          return inspected;
+        }
       }
       if (!generated.ok) {
         return constrainRuntimeInputRequest({
@@ -3870,7 +4051,9 @@ function evaluateBuiltinSinglePass({
       const inspected = inspectPredicate({
         evaluated: evaluate({ filter: predicate, input: item }),
       });
-      if (inspected !== undefined) return inspected;
+      if (inspected !== undefined) {
+        return inspected;
+      }
     }
     return { ok: true, outputs: [exhaustedResult] };
   }
@@ -3882,7 +4065,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'bsearch input must be an array' } };
     }
     const needle = evaluateSingleOutput({ filter: args[0], input, evaluate });
-    if (!needle.ok) return needle;
+    if (!needle.ok) {
+      return needle;
+    }
     let low = 0;
     let high = input.length - 1;
     while (low <= high) {
@@ -3896,8 +4081,11 @@ function evaluateBuiltinSinglePass({
       if (compared === 0) {
         return { ok: true, outputs: [middle] };
       }
-      if (compared < 0) low = middle + 1;
-      else high = middle - 1;
+      if (compared < 0) {
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
     }
     return { ok: true, outputs: [-low - 1] };
   }
@@ -3954,7 +4142,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!count.ok) return count;
+    if (!count.ok) {
+      return count;
+    }
     return repeatedCombinationsOf({
       values: input,
       count: count.value,
@@ -3969,7 +4159,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'contains takes exactly one argument' } };
     }
     const evaluated = evaluate({ filter: expected, input });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     return {
       ok: true,
       outputs: [containsJson({ input, expected: evaluated.outputs[0] ?? null })],
@@ -3994,7 +4186,9 @@ function evaluateBuiltinSinglePass({
       expression: pathExpression,
       evaluateDynamicIndex: ({ filter: indexFilter, input: indexInput }) => {
         const evaluated = evaluate({ filter: indexFilter, input: indexInput });
-        if (evaluated.ok) return evaluated;
+        if (evaluated.ok) {
+          return evaluated;
+        }
         dynamicPathFailure = evaluated;
         return { ok: false, message: evaluated.error.message };
       },
@@ -4020,7 +4214,9 @@ function evaluateBuiltinSinglePass({
     }
     const evaluated = evaluate({ filter: argument, input });
     const values = evaluated.ok ? evaluated.outputs : runtimeFailureOutputs({ result: evaluated });
-    for (const value of values) emitStderr({ text: formatJqDebugValue({ value }) });
+    for (const value of values) {
+      emitStderr({ text: formatJqDebugValue({ value }) });
+    }
     return evaluated.ok
       ? { ok: true, outputs: [input] }
       : clearRuntimeFailureOutputs({ result: evaluated });
@@ -4030,14 +4226,18 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'delpaths takes exactly one argument' } };
     }
     const evaluated = evaluateSingleOutput({ filter: args[0], input, evaluate });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     if (!Array.isArray(evaluated.value)) {
       return { ok: false, error: { message: 'delpaths argument must be an array of paths' } };
     }
     const paths: JqPath[] = [];
     for (const rawPath of evaluated.value) {
       const parsed = parsePathArray({ value: rawPath });
-      if (!parsed.ok) return { ok: false, error: { message: parsed.message } };
+      if (!parsed.ok) {
+        return { ok: false, error: { message: parsed.message } };
+      }
       paths.push(toJqPath({ path: parsed.path }));
     }
     const deleted = applyPathDeletions({ root: input, paths });
@@ -4067,9 +4267,13 @@ function evaluateBuiltinSinglePass({
       };
     }
     const message = evaluateFirstOutput({ filter: args[0], input });
-    if (!message.ok) return message;
+    if (!message.ok) {
+      return message;
+    }
     const value = message.outputs[0];
-    if (value === undefined) return { ok: true, outputs: [] };
+    if (value === undefined) {
+      return { ok: true, outputs: [] };
+    }
     const metadata = metadataForRuntimeOutput({
       result: message,
       index: 0,
@@ -4130,7 +4334,9 @@ function evaluateBuiltinSinglePass({
     let depth = Number.POSITIVE_INFINITY;
     if (args[0] !== undefined) {
       const evaluated = evaluateSingleOutput({ filter: args[0], input, evaluate });
-      if (!evaluated.ok) return evaluated;
+      if (!evaluated.ok) {
+        return evaluated;
+      }
       if (typeof evaluated.value !== 'number' || !Number.isInteger(evaluated.value) || evaluated.value < 0) {
         return { ok: false, error: { message: 'flatten depth must be a non-negative integer' } };
       }
@@ -4229,9 +4435,13 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'getpath takes exactly one argument' } };
     }
     const evaluated = evaluateSingleOutput({ filter: args[0], input, evaluate });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     const parsed = parsePathArray({ value: evaluated.value });
-    if (!parsed.ok) return { ok: false, error: { message: parsed.message } };
+    if (!parsed.ok) {
+      return { ok: false, error: { message: parsed.message } };
+    }
     return { ok: true, outputs: [readPathValue({ input, path: parsed.path }) ?? null] };
   }
   case 'group_by': {
@@ -4254,7 +4464,9 @@ function evaluateBuiltinSinglePass({
         inputMetadata: metadataWithNumberOrigin({ metadata: inputMetadata, numberOrigin: entry.numberOrigin }),
         evaluate,
       });
-      if (!key.ok) return key;
+      if (!key.ok) {
+        return key;
+      }
       keyed.push({ key: key.value, keyOrigin: key.numberOrigin, item: entry });
     }
 
@@ -4300,9 +4512,13 @@ function evaluateBuiltinSinglePass({
     const codeFilter = args[0];
     if (codeFilter !== undefined) {
       const evaluated = evaluateFirstOutput({ filter: codeFilter, input });
-      if (!evaluated.ok) return evaluated;
+      if (!evaluated.ok) {
+        return evaluated;
+      }
       const codeValue = evaluated.outputs[0];
-      if (codeValue === undefined) return { ok: true, outputs: [] };
+      if (codeValue === undefined) {
+        return { ok: true, outputs: [] };
+      }
       if (typeof codeValue !== 'number') {
         return {
           ok: false,
@@ -4366,7 +4582,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!searched.ok) return searched;
+    if (!searched.ok) {
+      return searched;
+    }
     const indices = findIndices({
       input,
       search: searched.value,
@@ -4474,7 +4692,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     return {
       ok: true,
       outputs: [insideJson({ input, expected: evaluated.value })],
@@ -4492,7 +4712,9 @@ function evaluateBuiltinSinglePass({
     const outputs: JsonValue[] = [];
     const outputMetadata: JqRuntimeInputMetadata[] = [];
     for (let index = 0; index < predicateOutputs.length; index += 1) {
-      if (!truthy({ value: predicateOutputs[index]! })) continue;
+      if (!truthy({ value: predicateOutputs[index]! })) {
+        continue;
+      }
       outputs.push(input);
       outputMetadata.push(metadataWithNumberOrigin({
         metadata: metadataForRuntimeOutput({
@@ -4532,7 +4754,9 @@ function evaluateBuiltinSinglePass({
           : undefined,
       })[0]!;
       const mapped = evaluate({ filter: mapper, input: item, inputMetadata: itemMetadata });
-      if (!mapped.ok) return clearRuntimeFailureOutputs({ result: mapped });
+      if (!mapped.ok) {
+        return clearRuntimeFailureOutputs({ result: mapped });
+      }
       if (result.length + mapped.outputs.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH) {
         return {
           ok: false,
@@ -4581,7 +4805,9 @@ function evaluateBuiltinSinglePass({
           input: value,
           inputMetadata: valueMetadata,
         });
-        if (!mapped.ok) return clearRuntimeFailureOutputs({ result: mapped });
+        if (!mapped.ok) {
+          return clearRuntimeFailureOutputs({ result: mapped });
+        }
         const first = mapped.outputs[0];
         if (first !== undefined) {
           const targetIndex = result.length;
@@ -4618,7 +4844,9 @@ function evaluateBuiltinSinglePass({
         input: value,
         inputMetadata: valueMetadata,
       });
-      if (!mapped.ok) return mapped;
+      if (!mapped.ok) {
+        return mapped;
+      }
       const first = mapped.outputs[0];
       if (first !== undefined) {
         defineJsonProperty({ object: result, key, value: first });
@@ -4670,7 +4898,9 @@ function evaluateBuiltinSinglePass({
     if (typeof input !== 'number') {
       return { ok: false, error: { message: 'modf input must be a number' } };
     }
-    if (Number.isNaN(input)) return { ok: true, outputs: [[Number.NaN, Number.NaN]] };
+    if (Number.isNaN(input)) {
+      return { ok: true, outputs: [[Number.NaN, Number.NaN]] };
+    }
     if (Math.abs(input) >= Number.MAX_VALUE) {
       return { ok: true, outputs: [[input < 0 ? -0 : 0, input]] };
     }
@@ -4733,7 +4963,9 @@ function evaluateBuiltinSinglePass({
       expression: pathExpression,
       evaluateDynamicIndex: ({ filter: indexFilter, input: indexInput }) => {
         const evaluated = evaluate({ filter: indexFilter, input: indexInput });
-        if (evaluated.ok) return evaluated;
+        if (evaluated.ok) {
+          return evaluated;
+        }
         dynamicPathFailure = evaluated;
         return { ok: false, message: evaluated.error.message };
       },
@@ -4771,7 +5003,9 @@ function evaluateBuiltinSinglePass({
           : runtimeFailureOutputs({ result: evaluated });
         outputCount = 0;
         for (const value of predicateOutputs) {
-          if (truthy({ value })) outputCount += 1;
+          if (truthy({ value })) {
+            outputCount += 1;
+          }
         }
         for (let outputIndex = 0; outputIndex < outputCount; outputIndex += 1) {
           materializedSegmentCount += entry.path.length;
@@ -4818,7 +5052,9 @@ function evaluateBuiltinSinglePass({
       expression: pathExpression,
       evaluateDynamicIndex: ({ filter: indexFilter, input: indexInput }) => {
         const evaluated = evaluate({ filter: indexFilter, input: indexInput });
-        if (evaluated.ok) return evaluated;
+        if (evaluated.ok) {
+          return evaluated;
+        }
         dynamicPathFailure = evaluated;
         return { ok: false, message: evaluated.error.message };
       },
@@ -4832,8 +5068,12 @@ function evaluateBuiltinSinglePass({
     let root: JsonValue = null;
     for (const jqPath of materialized.paths) {
       const selected = readJqPathValue({ root: input, path: jqPath });
-      if (!selected.ok) return { ok: false, error: { message: selected.message } };
-      if (selected.skipped) continue;
+      if (!selected.ok) {
+        return { ok: false, error: { message: selected.message } };
+      }
+      if (selected.skipped) {
+        continue;
+      }
       const updated = applyPathUpdate({
         root,
         path: jqPath,
@@ -4843,7 +5083,9 @@ function evaluateBuiltinSinglePass({
           ...(selected.numberOrigin === undefined ? {} : { numberOrigin: selected.numberOrigin }),
         }),
       });
-      if (!updated.ok) return { ok: false, error: { message: updated.message } };
+      if (!updated.ok) {
+        return { ok: false, error: { message: updated.message } };
+      }
       root = updated.value;
     }
     return { ok: true, outputs: [root] };
@@ -4930,8 +5172,12 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
       operation: ({ left, right }) => {
-        if (!Number.isFinite(left) || right === 0 || Number.isNaN(right)) return Number.NaN;
-        if (!Number.isFinite(right)) return left;
+        if (!Number.isFinite(left) || right === 0 || Number.isNaN(right)) {
+          return Number.NaN;
+        }
+        if (!Number.isFinite(right)) {
+          return left;
+        }
         return left - roundTiesToEven({ value: left / right }) * right;
       },
     });
@@ -4942,8 +5188,12 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
       operation: ({ left, right }) => {
-        if (!Number.isFinite(left) || right === 0 || Number.isNaN(right)) return Number.NaN;
-        if (!Number.isFinite(right)) return left;
+        if (!Number.isFinite(left) || right === 0 || Number.isNaN(right)) {
+          return Number.NaN;
+        }
+        if (!Number.isFinite(right)) {
+          return left;
+        }
         return left - roundTiesToEven({ value: left / right }) * right;
       },
     });
@@ -5019,9 +5269,13 @@ function evaluateBuiltinSinglePass({
         }
         }
       })();
-      if (step === 0) return { ok: true, outputs: [] };
+      if (step === 0) {
+        return { ok: true, outputs: [] };
+      }
       const directionMatches = step > 0 ? start < end : start > end;
-      if (!directionMatches) return { ok: true, outputs: [] };
+      if (!directionMatches) {
+        return { ok: true, outputs: [] };
+      }
       const estimatedLength = Math.ceil(Math.abs((end - start) / step));
       if (
         !Number.isFinite(estimatedLength)
@@ -5057,12 +5311,16 @@ function evaluateBuiltinSinglePass({
       if (step > 0) {
         for (let value = start; value < end; value += step) {
           const appended = appendGeneratedValue({ value });
-          if (appended !== undefined) return appended;
+          if (appended !== undefined) {
+            return appended;
+          }
         }
       } else {
         for (let value = start; value > end; value += step) {
           const appended = appendGeneratedValue({ value });
-          if (appended !== undefined) return appended;
+          if (appended !== undefined) {
+            return appended;
+          }
         }
       }
       return { ok: true, outputs: [] };
@@ -5107,7 +5365,9 @@ function evaluateBuiltinSinglePass({
             ? argumentMetadata.numberOrigin
             : startNumberOrigin,
         });
-        if (!nested.ok) return nested;
+        if (!nested.ok) {
+          return nested;
+        }
       }
       return evaluated.ok
         ? { ok: true, outputs: [] }
@@ -5142,14 +5402,18 @@ function evaluateBuiltinSinglePass({
           }
           return evaluate({ filter: nextFilter, input: nestedInput });
         })();
-        if (!candidateValues.ok) return candidateValues;
+        if (!candidateValues.ok) {
+          return candidateValues;
+        }
         if (conditionFilter === undefined) {
           return { ok: true, values: candidateValues.outputs };
         }
         const values: JsonValue[] = [];
         for (const candidate of candidateValues.outputs) {
           const condition = evaluate({ filter: conditionFilter, input: candidate });
-          if (!condition.ok) return condition;
+          if (!condition.ok) {
+            return condition;
+          }
           if (condition.outputs.some((value) => truthy({ value }))) {
             values.push(candidate);
           }
@@ -5157,7 +5421,9 @@ function evaluateBuiltinSinglePass({
         return { ok: true, values };
       },
     });
-    if (!recursed.ok) return recursed;
+    if (!recursed.ok) {
+      return recursed;
+    }
     return { ok: true, outputs: recursed.values };
   }
   case 'length':
@@ -5172,8 +5438,12 @@ function evaluateBuiltinSinglePass({
     case 'boolean':
       return { ok: false, error: { message: 'length is not defined for booleans' } };
     case 'object':
-      if (input === null) return { ok: true, outputs: [0] };
-      if (Array.isArray(input)) return { ok: true, outputs: [input.length] };
+      if (input === null) {
+        return { ok: true, outputs: [0] };
+      }
+      if (Array.isArray(input)) {
+        return { ok: true, outputs: [input.length] };
+      }
       return { ok: true, outputs: [jsonObjectKeys({ object: input }).length] };
     default: {
       const _ex: never = input;
@@ -5236,7 +5506,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'join input must be an array' } };
     }
     const evaluated = evaluate({ filter: separatorFilter, input });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     const separator = evaluated.outputs[0];
     if (typeof separator !== 'string') {
       return { ok: false, error: { message: 'join separator must be a string' } };
@@ -5277,7 +5549,9 @@ function evaluateBuiltinSinglePass({
   case 'nth': {
     if (name === 'nth' && args.length === 1 && args[0] !== undefined) {
       const indexValue = evaluateSingleOutput({ filter: args[0], input, evaluate });
-      if (!indexValue.ok) return indexValue;
+      if (!indexValue.ok) {
+        return indexValue;
+      }
       if (typeof indexValue.value !== 'number' || !Number.isInteger(indexValue.value)) {
         return { ok: false, error: { message: 'nth index must be an integer' } };
       }
@@ -5296,7 +5570,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: `${name} takes exactly two arguments` } };
     }
     const count = evaluateCount({ filter: args[0], input, evaluate, name });
-    if (!count.ok) return count;
+    if (!count.ok) {
+      return count;
+    }
     const generated = evaluate({ filter: args[1], input });
     const generatedOutputs = generated.ok
       ? generated.outputs
@@ -5304,7 +5580,9 @@ function evaluateBuiltinSinglePass({
     switch (name) {
     case 'limit': {
       const outputs = generatedOutputs.slice(0, count.value);
-      if (generated.ok || outputs.length >= count.value) return { ok: true, outputs };
+      if (generated.ok || outputs.length >= count.value) {
+        return { ok: true, outputs };
+      }
       return constrainRuntimeInputRequest({
         result: replaceRuntimeFailureOutputs({ result: generated, outputs }),
         maximumValues: Math.max(count.value - outputs.length, 1),
@@ -5312,8 +5590,12 @@ function evaluateBuiltinSinglePass({
     }
     case 'nth': {
       const selected = generatedOutputs[count.value];
-      if (selected !== undefined) return { ok: true, outputs: [selected] };
-      if (generated.ok) return { ok: true, outputs: [] };
+      if (selected !== undefined) {
+        return { ok: true, outputs: [selected] };
+      }
+      if (generated.ok) {
+        return { ok: true, outputs: [] };
+      }
       return constrainRuntimeInputRequest({
         result: clearRuntimeFailureOutputs({ result: generated }),
         maximumValues: Math.max(count.value + 1 - generatedOutputs.length, 1),
@@ -5342,7 +5624,9 @@ function evaluateBuiltinSinglePass({
       filter: args[0],
       input,
     });
-    if (!outputs.ok) return clearRuntimeFailureOutputs({ result: outputs });
+    if (!outputs.ok) {
+      return clearRuntimeFailureOutputs({ result: outputs });
+    }
     const value = outputs.outputs.at(-1);
     return { ok: true, outputs: value === undefined ? [] : [value] };
   }
@@ -5359,7 +5643,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!prefix.ok) return prefix;
+    if (!prefix.ok) {
+      return prefix;
+    }
     if (typeof input !== 'string') {
       return { ok: false, error: { message: 'ltrimstr input must be a string' } };
     }
@@ -5379,7 +5665,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'endswith takes exactly one argument' } };
     }
     const evaluated = evaluate({ filter: suffix, input });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     const value = evaluated.outputs[0];
     if (typeof input !== 'string' || typeof value !== 'string') {
       return { ok: false, error: { message: 'endswith expects string input and argument' } };
@@ -5399,13 +5687,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: false,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     return { ok: true, outputs: [matches.length !== 0] };
   }
@@ -5422,13 +5714,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: regularExpression.compiled.requestedGlobal,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     return {
       ok: true,
@@ -5448,13 +5744,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: regularExpression.compiled.requestedGlobal,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     return {
       ok: true,
       outputs: matchResult.matches.map((match) => createNamedCaptureObject({ match })),
@@ -5473,18 +5773,24 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: true,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     return {
       ok: true,
       outputs: matches.map((match) => {
-        if (match.captures.length === 0) return match.text;
+        if (match.captures.length === 0) {
+          return match.text;
+        }
         return match.captures.map((capture) => capture.text);
       }),
     };
@@ -5502,13 +5808,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: true,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     const outputs: JsonValue[] = [];
     let cursor = 0;
@@ -5533,13 +5843,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: name === 'gsub' || regularExpression.compiled.requestedGlobal,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     return buildRegexReplacementOutputs({
       input,
@@ -5569,7 +5883,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!searched.ok) return searched;
+    if (!searched.ok) {
+      return searched;
+    }
     const indices = findIndices({
       input,
       search: searched.value,
@@ -5593,7 +5909,9 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!suffix.ok) return suffix;
+    if (!suffix.ok) {
+      return suffix;
+    }
     if (typeof input !== 'string') {
       return { ok: false, error: { message: 'rtrimstr input must be a string' } };
     }
@@ -5619,9 +5937,13 @@ function evaluateBuiltinSinglePass({
     const materializedValues = newValues.ok
       ? newValues.outputs
       : runtimeFailureOutputs({ result: newValues });
-    if (!newValues.ok && materializedValues.length === 0) return newValues;
+    if (!newValues.ok && materializedValues.length === 0) {
+      return newValues;
+    }
     const pathValue = evaluateSingleOutput({ filter: args[0], input, evaluate });
-    if (!pathValue.ok) return pathValue;
+    if (!pathValue.ok) {
+      return pathValue;
+    }
     const parsed = parsePathArray({ value: pathValue.value });
     if (!parsed.ok) {
       return {
@@ -5651,7 +5973,9 @@ function evaluateBuiltinSinglePass({
           numberOrigin: typeof value === 'number' ? valueMetadata.numberOrigin : undefined,
         }),
       });
-      if (!updated.ok) return { ok: false, error: { message: updated.message }, outputs, outputMetadata };
+      if (!updated.ok) {
+        return { ok: false, error: { message: updated.message }, outputs, outputMetadata };
+      }
       outputs.push(updated.value);
       outputMetadata.push(singleOutputMetadata({
         inputMetadata: valueMetadata,
@@ -5704,7 +6028,9 @@ function evaluateBuiltinSinglePass({
         inputMetadata: metadataWithNumberOrigin({ metadata: inputMetadata, numberOrigin: item.numberOrigin }),
         evaluate,
       });
-      if (!key.ok) return key;
+      if (!key.ok) {
+        return key;
+      }
       keyed.push({ key: key.value, keyOrigin: key.numberOrigin, item });
     }
 
@@ -5731,7 +6057,9 @@ function evaluateBuiltinSinglePass({
         input,
         evaluate,
       });
-      if (!separator.ok) return separator;
+      if (!separator.ok) {
+        return separator;
+      }
       if (typeof input !== 'string' || typeof separator.value !== 'string') {
         return { ok: false, error: { message: 'split expects string input and argument' } };
       }
@@ -5746,13 +6074,17 @@ function evaluateBuiltinSinglePass({
       input,
       evaluate,
     });
-    if (!regularExpression.ok) return regularExpression;
+    if (!regularExpression.ok) {
+      return regularExpression;
+    }
     const matchResult = evaluateRegularExpressionMatches({
       input,
       compiled: regularExpression.compiled,
       global: true,
     });
-    if (!matchResult.ok) return matchResult;
+    if (!matchResult.ok) {
+      return matchResult;
+    }
     const matches = matchResult.matches;
     const outputs: string[] = [];
     let cursor = 0;
@@ -5771,7 +6103,9 @@ function evaluateBuiltinSinglePass({
     if (!Array.isArray(input)) {
       return { ok: false, error: { message: `${name} input must be an array` } };
     }
-    if (input.length === 0) return { ok: true, outputs: [null] };
+    if (input.length === 0) {
+      return { ok: true, outputs: [null] };
+    }
     const entries = numberedArrayEntries({ input });
     let selected = entries[0]!;
     let selectedKey = evaluateOrderingKey({
@@ -5780,7 +6114,9 @@ function evaluateBuiltinSinglePass({
       inputMetadata: metadataWithNumberOrigin({ metadata: inputMetadata, numberOrigin: selected.numberOrigin }),
       evaluate,
     });
-    if (!selectedKey.ok) return selectedKey;
+    if (!selectedKey.ok) {
+      return selectedKey;
+    }
     for (const item of entries.slice(1)) {
       const itemKey = evaluateOrderingKey({
         filter: args[0],
@@ -5788,7 +6124,9 @@ function evaluateBuiltinSinglePass({
         inputMetadata: metadataWithNumberOrigin({ metadata: inputMetadata, numberOrigin: item.numberOrigin }),
         evaluate,
       });
-      if (!itemKey.ok) return itemKey;
+      if (!itemKey.ok) {
+        return itemKey;
+      }
       const comparison = compareJsonValues({
         left: itemKey.value,
         right: selectedKey.value,
@@ -5875,7 +6213,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'startswith takes exactly one argument' } };
     }
     const evaluated = evaluate({ filter: prefix, input });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     const value = evaluated.outputs[0];
     if (typeof input !== 'string' || typeof value !== 'string') {
       return { ok: false, error: { message: 'startswith expects string input and argument' } };
@@ -5929,7 +6269,9 @@ function evaluateBuiltinSinglePass({
         inputMetadata: metadataWithNumberOrigin({ metadata: inputMetadata, numberOrigin: item.numberOrigin }),
         evaluate,
       });
-      if (!key.ok) return key;
+      if (!key.ok) {
+        return key;
+      }
       keyed.push({ key: key.value, keyOrigin: key.numberOrigin, item });
     }
 
@@ -5948,7 +6290,9 @@ function evaluateBuiltinSinglePass({
         right: previousKey,
         leftOrigin: entry.keyOrigin,
         rightOrigin: previousKeyOrigin,
-      }) === 0) continue;
+      }) === 0) {
+        continue;
+      }
       uniqueItems.push(entry.item);
       previousKey = entry.key;
       previousKeyOrigin = entry.keyOrigin;
@@ -5972,7 +6316,9 @@ function evaluateBuiltinSinglePass({
         return { ok: false, error: { message: parsed.message }, outputs };
       }
       const { path, value, hasValue } = parsed.event;
-      if (compareJsonValues({ left: path.length, right: input }) <= 0) continue;
+      if (compareJsonValues({ left: path.length, right: input }) <= 0) {
+        continue;
+      }
       const sliced = jqSliceStart({ length: path.length, value: input });
       if (!sliced.ok) {
         return { ok: false, error: { message: sliced.message }, outputs };
@@ -6013,8 +6359,12 @@ function evaluateBuiltinSinglePass({
     if (args.length !== 0) {
       return { ok: false, error: { message: 'type does not take arguments' } };
     }
-    if (input === null) return { ok: true, outputs: ['null'] };
-    if (Array.isArray(input)) return { ok: true, outputs: ['array'] };
+    if (input === null) {
+      return { ok: true, outputs: ['null'] };
+    }
+    if (Array.isArray(input)) {
+      return { ok: true, outputs: ['array'] };
+    }
     switch (typeof input) {
     case 'boolean':
       return { ok: true, outputs: ['boolean'] };
@@ -6040,7 +6390,9 @@ function evaluateBuiltinSinglePass({
     const mappedEntries: JsonValue[] = [];
     for (const entry of entries) {
       const mapped = evaluate({ filter: args[0], input: entry });
-      if (!mapped.ok) return clearRuntimeFailureOutputs({ result: mapped });
+      if (!mapped.ok) {
+        return clearRuntimeFailureOutputs({ result: mapped });
+      }
       if (!appendMaterializedValues({ target: mappedEntries, source: mapped.outputs })) {
         return {
           ok: false,
@@ -6071,7 +6423,9 @@ function evaluateBuiltinSinglePass({
         evaluate,
       }),
     });
-    if (!walked.ok) return walked;
+    if (!walked.ok) {
+      return walked;
+    }
     return { ok: true, outputs: [walked.value] };
   }
   case 'has': {
@@ -6080,7 +6434,9 @@ function evaluateBuiltinSinglePass({
       return { ok: false, error: { message: 'has requires one argument' } };
     }
     const evaluated = evaluate({ filter: arg, input });
-    if (!evaluated.ok) return evaluated;
+    if (!evaluated.ok) {
+      return evaluated;
+    }
     const key = evaluated.outputs[0];
     if (key === undefined) {
       return { ok: true, outputs: [false] };

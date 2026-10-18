@@ -86,7 +86,9 @@ describe('nine-model historical metadata replay corpus', () => {
       targets: corpus.models.map(model => model.modelId),
       runTarget: async ({ target }) => {
         const fixture = corpus.models.find(model => model.modelId === target);
-        if (fixture === undefined) throw new Error(`Missing fixture: ${target}`);
+        if (fixture === undefined) {
+          throw new Error(`Missing fixture: ${target}`);
+        }
         const result = await replay({ fixture, configVariant: target === 'LiquidAI/LFM2.5-230M-ONNX' ? 'invalid' : 'captured' });
         const checkpoint = createInitialInvestigationCheckpoint({ modelId: target, runId: `fixture-${target}`, now: () => '2026-09-08T00:00:00.000Z' });
         // This status is only a metadata-fixture check, never model Load acceptance.

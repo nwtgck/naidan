@@ -67,7 +67,9 @@ function decodeEnvSplitEscape({
 }
 
 export function parseShellShebangLine({ firstLine }: { firstLine: string }): ParsedShellShebang | undefined {
-  if (!firstLine.startsWith('#!')) return undefined;
+  if (!firstLine.startsWith('#!')) {
+    return undefined;
+  }
 
   // Linux binfmt_script treats an existing NUL in its input buffer as the
   // terminator. Space/tab trimming is applied only when the parser supplies a
@@ -77,15 +79,23 @@ export function parseShellShebangLine({ firstLine }: { firstLine: string }): Par
   const nulIndex = firstLine.indexOf('\0');
   let lineEnd = nulIndex < 0 ? firstLine.length : nulIndex;
   if (nulIndex < 0) {
-    while (lineEnd > 2 && isShebangSeparator({ value: firstLine[lineEnd - 1] })) lineEnd -= 1;
+    while (lineEnd > 2 && isShebangSeparator({ value: firstLine[lineEnd - 1] })) {
+      lineEnd -= 1;
+    }
   }
 
   let index = 2;
-  while (index < lineEnd && isShebangSeparator({ value: firstLine[index] })) index += 1;
+  while (index < lineEnd && isShebangSeparator({ value: firstLine[index] })) {
+    index += 1;
+  }
 
   const interpreterStart = index;
-  while (index < lineEnd && !isShebangSeparator({ value: firstLine[index] })) index += 1;
-  if (index === interpreterStart) return undefined;
+  while (index < lineEnd && !isShebangSeparator({ value: firstLine[index] })) {
+    index += 1;
+  }
+  if (index === interpreterStart) {
+    return undefined;
+  }
 
   const interpreter = firstLine.slice(interpreterStart, index);
   if (index >= lineEnd) {
@@ -95,7 +105,9 @@ export function parseShellShebangLine({ firstLine }: { firstLine: string }): Par
     };
   }
 
-  while (index < lineEnd && isShebangSeparator({ value: firstLine[index] })) index += 1;
+  while (index < lineEnd && isShebangSeparator({ value: firstLine[index] })) {
+    index += 1;
+  }
   return {
     interpreter,
     optionalArgument: firstLine.slice(index, lineEnd),
@@ -105,11 +117,15 @@ export function parseShellShebangLine({ firstLine }: { firstLine: string }): Par
 export function splitEnvShebangArguments({ optionalArgument }: { optionalArgument: string }): string[] | undefined {
   const splitStringStart = (() => {
     if (optionalArgument.startsWith('-S')) {
-      if (optionalArgument.length === 2) return undefined;
+      if (optionalArgument.length === 2) {
+        return undefined;
+      }
       return isShebangSeparator({ value: optionalArgument[2] }) ? 3 : 2;
     }
     const longOptionPrefix = '--split-string=';
-    if (optionalArgument.startsWith(longOptionPrefix)) return longOptionPrefix.length;
+    if (optionalArgument.startsWith(longOptionPrefix)) {
+      return longOptionPrefix.length;
+    }
     return undefined;
   })();
   if (splitStringStart === undefined) {
@@ -136,7 +152,9 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
   };
 
   const flush = (): void => {
-    if (!hasCurrent) return;
+    if (!hasCurrent) {
+      return;
+    }
     args.push(currentParts.length === 1 ? currentParts[0] ?? '' : currentParts.join(''));
     currentParts.length = 0;
     hasCurrent = false;
@@ -144,7 +162,9 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
 
   for (let index = splitStringStart; index < optionalArgument.length; index += 1) {
     const character = optionalArgument[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'single':

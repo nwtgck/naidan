@@ -88,7 +88,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockRootItems.length = 0;
 
     vi.mocked(storageService.loadChat).mockImplementation(({ id }: any) => {
-      if (id === 'c1') return Promise.resolve({ id: toChatId({ raw: 'c1' }), title: 'C1', modelId: 'm1', root: { items: [] } } as any);
+      if (id === 'c1') {
+        return Promise.resolve({ id: toChatId({ raw: 'c1' }), title: 'C1', modelId: 'm1', root: { items: [] } } as any);
+      }
       return Promise.resolve(null);
     });
   });

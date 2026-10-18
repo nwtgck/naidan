@@ -46,9 +46,15 @@ export function rpcRegistrationFromDto({ value }: { value: unknown }): NaidanRpc
 function validateRegistrationIdentity({ id, peerPublicKey, localPublicKey, revision }: {
   id: string; peerPublicKey: string; localPublicKey: string; revision: number;
 }): void {
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw new Error('Invalid RPC registration identity');
-  if (![peerPublicKey, localPublicKey].every(key => /^[A-Za-z0-9_-]{43}$/.test(key))) throw new Error('Invalid RPC public key');
-  if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) throw new Error('Invalid RPC registration revision');
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(id)) {
+    throw new Error('Invalid RPC registration identity');
+  }
+  if (![peerPublicKey, localPublicKey].every(key => /^[A-Za-z0-9_-]{43}$/.test(key))) {
+    throw new Error('Invalid RPC public key');
+  }
+  if (!Number.isSafeInteger(revision) || revision < 0 || revision >= Number.MAX_SAFE_INTEGER) {
+    throw new Error('Invalid RPC registration revision');
+  }
 }
 
 export const TEST_ONLY = {

@@ -32,13 +32,18 @@ export function useAudioHistory() {
   }
   function remove({ id }: { id: number }): void {
     const entry = entries.value.find(entry => entry.id === id);
-    if (!entry) return;
+    if (!entry) {
+      return;
+    }
     entries.value = entries.value.filter(entry => entry.id !== id);
     URL.revokeObjectURL(entry.url);
   }
   function clear(): void {
-    const previous = entries.value; entries.value = [];
-    for (const entry of previous) URL.revokeObjectURL(entry.url);
+    const previous = entries.value;
+    entries.value = [];
+    for (const entry of previous) {
+      URL.revokeObjectURL(entry.url);
+    }
   }
   onScopeDispose(clear);
   return { entries, totalBytes, append, remove, clear, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };

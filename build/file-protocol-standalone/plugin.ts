@@ -79,7 +79,9 @@ export function createNaidanStandalonePlugin({
   releaseValidation,
   releasePackaging,
 }: NaidanStandalonePluginOptions): PluginOption {
-  if (!systemRuntimePath) throw new TypeError('systemRuntimePath is required');
+  if (!systemRuntimePath) {
+    throw new TypeError('systemRuntimePath is required');
+  }
   if (!Number.isFinite(startupSlowNoticeDelayMs) || startupSlowNoticeDelayMs < 0) {
     throw new TypeError('startupSlowNoticeDelayMs must be a non-negative finite number');
   }

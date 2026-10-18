@@ -8,6 +8,9 @@ export const ImageEngineState__memory_label = ({ measure }: { measure: "wasm" | 
   case "last-cpu-buffers": return "直近報告のCPU実行用バッファ";
   case "last-non-cpu-buffers": return "直近報告の非CPU実行用バッファ";
   case "last-unknown-buffers": return "直近報告の実行用バッファ（デバイス不明）";
-  default: { const exhaustive: never = measure; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = measure;
+    throw new Error(String(exhaustive));
+  }
   }
 };

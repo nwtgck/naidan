@@ -75,29 +75,43 @@ describe('parts to llama.cpp input', () => {
     const prepared = await prepareLlamaCppRequest({ ...request({ messages: [{ id, role: 'user', parts: [text({ value: 'before' }), attachment, text({ value: '' })] }] }), readBinaryObject: read });
     expect(prepared.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'before' }, { type: 'image', blob: expect.any(Blob) }, { type: 'text', text: '' }] }]);
     expect(read).not.toHaveBeenCalled();
-    if (attachment.attachment.status !== 'memory') throw new Error('Expected fixture blob.');
+    if (attachment.attachment.status !== 'memory') {
+      throw new Error('Expected fixture blob.');
+    }
     expect((prepared.messages[0]?.content as { blob?: Blob }[])[1]?.blob).toBe(attachment.attachment.blob);
   });
 
   it('resolves persisted images locally and fixes the whole request before the read waits', async () => {
-    const pending = Promise.withResolvers<Blob>(); const read = vi.fn(() => pending.promise);
-    const imagePart = image({ status: 'persisted' }); const toolPart = call();
+    const pending = Promise.withResolvers<Blob>();
+    const read = vi.fn(() => pending.promise);
+    const imagePart = image({ status: 'persisted' });
+    const toolPart = call();
     const messages: ChatMessage[] = [{ id, role: 'user', parts: [imagePart] }, { id, role: 'assistant', parts: [toolPart] }];
     const parameters = { ...EMPTY_LM_PARAMETERS, stop: [' stop '], reasoning: { effort: 'high' as const } };
     const tools = [{ name: 'calculator', description: '', parameters: { type: 'object', properties: { value: { type: 'number' } } } }];
     const controller = new AbortController();
     const operation = prepareLlamaCppRequest({ ...request({ messages }), parameters, tools, debug: 'on', signal: controller.signal, readBinaryObject: read });
-    toolPart.toolCall.function.arguments = '{}'; parameters.stop[0] = 'changed'; tools[0]!.parameters.properties.value.type = 'string'; messages.push({ id, role: 'user', parts: [] });
-    pending.resolve(new Blob(['png'])); const prepared = await operation;
-    expect(prepared.messages).toHaveLength(2); expect(prepared.messages[1]?.tool_calls?.[0]?.function.arguments).toBe(' { "value": 1.0 } ');
-    expect(prepared.stop).toEqual([' stop ']); expect(prepared.tools?.[0]?.function.parameters.properties).toEqual({ value: { type: 'number' } });
-    expect(prepared.reasoningEffort).toBe('high'); expect(prepared.debug).toBe('on');
-    expect(read).toHaveBeenCalledExactlyOnceWith({ binaryObjectId, signal: controller.signal });
+    toolPart.toolCall.function.arguments = '{}';
+    parameters.stop[0] = 'changed';
+tools[0]!.parameters.properties.value.type = 'string';
+messages.push({ id, role: 'user', parts: [] });
+pending.resolve(new Blob(['png']));
+const prepared = await operation;
+expect(prepared.messages).toHaveLength(2);
+expect(prepared.messages[1]?.tool_calls?.[0]?.function.arguments).toBe(' { "value": 1.0 } ');
+expect(prepared.stop).toEqual([' stop ']);
+expect(prepared.tools?.[0]?.function.parameters.properties).toEqual({ value: { type: 'number' } });
+expect(prepared.reasoningEffort).toBe('high');
+expect(prepared.debug).toBe('on');
+expect(read).toHaveBeenCalledExactlyOnceWith({ binaryObjectId, signal: controller.signal });
   });
 
   it('does not silently drop missing, unreadable, or nonimage attachments', async () => {
-    for (const status of ['missing', 'persisted'] as const) await expect(prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [image({ status })] }] }))).rejects.toThrow('unsupported-input');
-    const file = image({ status: 'memory' }); file.attachment.mimeType = 'application/pdf';
+    for (const status of ['missing', 'persisted'] as const) {
+      await expect(prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [image({ status })] }] }))).rejects.toThrow('unsupported-input');
+    }
+    const file = image({ status: 'memory' });
+    file.attachment.mimeType = 'application/pdf';
     await expect(prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [file] }] }))).rejects.toThrow('unsupported-input');
   });
 
@@ -134,7 +148,8 @@ describe('parts to llama.cpp input', () => {
       ...request({ messages: [{ id, role: 'user', parts: [image({ status: 'persisted' })] }] }),
       signal: controller.signal,
       readBinaryObject: async () => {
-        controller.abort(); return new Blob();
+        controller.abort();
+        return new Blob();
       },
     })).rejects.toThrow();
   });

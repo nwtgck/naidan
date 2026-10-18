@@ -159,7 +159,9 @@ export function parseResolvedPackModuleId({ id }: {
   version: string;
 } | undefined {
   const identity = parseResolvedPackModuleIdentity({ id });
-  if (identity === undefined) return undefined;
+  if (identity === undefined) {
+    return undefined;
+  }
   const locale = BOUNDARY_STRING_LOCALES.find((candidate) => candidate === identity.locale);
   if (locale === undefined) {
     throw new Error(`[naidan-boundary-strings] Unsupported locale "${identity.locale}".`);

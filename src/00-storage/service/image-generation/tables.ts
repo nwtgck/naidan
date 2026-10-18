@@ -10,7 +10,9 @@ import {
 import { createImageGenerationTable, imageGenerationDirectory, imageGenerationRawIdSchema } from './files';
 
 function assertSessionIdentity({ actual, expected }: { actual: string, expected: string }): void {
-  if (actual !== expected) throw new Error('Image Generation record belongs to a different session.');
+  if (actual !== expected) {
+    throw new Error('Image Generation record belongs to a different session.');
+  }
 }
 
 function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto }): ExperimentalImageGenerationRunSummaryDto {
@@ -28,7 +30,10 @@ function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto })
       switch (runtime.profile) {
       case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
       case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
-      default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = runtime;
+        throw new Error(String(exhaustive));
+      }
       }
     })(),
     requestedCount: seeds.length,
@@ -45,7 +50,10 @@ function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDt
       switch (confirmation) {
       case 'unconfirmed': return { confirmation };
       case 'confirmed': case undefined: return {};
-      default: { const exhaustive: never = confirmation; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = confirmation;
+        throw new Error(String(exhaustive));
+      }
       }
     })(),
     binaryObjectId,
@@ -76,7 +84,9 @@ export async function imageGenerationSessionDirectory({ directory, sessionId }: 
   let parent = directory;
   for (const name of ['sessions', sessionId.slice(-2).toLowerCase(), sessionId]) {
     const next = await imageGenerationDirectory({ parent, name, create: false });
-    if (!next) return undefined;
+    if (!next) {
+      return undefined;
+    }
     parent = next;
   }
   // A directory is not a session without a validated canonical session record.
@@ -96,7 +106,9 @@ export async function imageGenerationRunTable({ directory, sessionId, create }: 
     summarize: summarizeRun,
     unavailableRecord({ raw }) {
       const value = unavailableRunRpcRecord({ raw });
-      if (value !== undefined) assertSessionIdentity({ actual: value.sessionId, expected: sessionId });
+      if (value !== undefined) {
+        assertSessionIdentity({ actual: value.sessionId, expected: sessionId });
+      }
       return value;
     },
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),

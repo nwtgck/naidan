@@ -22,18 +22,23 @@ function create() {
   const changed = vi.fn();
   const wrapper = mount(defineComponent({
     setup() {
-      destination = useModelDownloadDestination({ blocked: () => false, changed }); return () => undefined;
+      destination = useModelDownloadDestination({ blocked: () => false, changed });
+      return () => undefined;
     },
   }));
-  wrappers.push(wrapper); return { destination: destination!, changed };
+  wrappers.push(wrapper);
+  return { destination: destination!, changed };
 }
 
 beforeEach(() => {
-  vi.clearAllMocks(); state.current = undefined;
+  vi.clearAllMocks();
+  state.current = undefined;
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
 });
 
 describe('download destination permission snapshots', () => {
@@ -41,7 +46,8 @@ describe('download destination permission snapshots', () => {
     const first = { kind: 'directory', name: 'First' } as FileSystemDirectoryHandle;
     const second = { kind: 'directory', name: 'Second' } as FileSystemDirectoryHandle;
     const permission = Promise.withResolvers<ModelDestination>();
-    state.current = first; state.permission.mockReturnValue(permission.promise);
+    state.current = first;
+    state.permission.mockReturnValue(permission.promise);
     const { destination } = create();
     const pending = destination.authorize({ destination: { kind: 'host', directoryId: 'root-a' } });
     expect(state.permission).toHaveBeenCalledWith({ id: 'root-a' });
@@ -58,10 +64,14 @@ describe('download destination permission snapshots', () => {
   });
 
   it('refreshes independent mounted sections after a shared registration permission change', async () => {
-    const first = create(); const second = create(); await flushPromises();
+    const first = create();
+    const second = create();
+    await flushPromises();
     state.refresh.mockClear();
-    window.dispatchEvent(new Event('naidan-host-model-directories-changed')); await flushPromises();
+    window.dispatchEvent(new Event('naidan-host-model-directories-changed'));
+    await flushPromises();
     expect(state.refresh).toHaveBeenCalledTimes(2);
-    expect(first.changed).toHaveBeenCalledOnce(); expect(second.changed).toHaveBeenCalledOnce();
+    expect(first.changed).toHaveBeenCalledOnce();
+    expect(second.changed).toHaveBeenCalledOnce();
   });
 });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { ChatId } from '@/01-models/ids';
 import { ensureStrings, lazyStrings } from '@/strings';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { InfoIcon } from 'lucide-vue-next';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
@@ -17,7 +18,18 @@ const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const chatTools = useChatTools();
 const { setNaidanSysfsAccessScope } = useChatWeshPreferences();
-const saveError = ref<string | undefined>(undefined);
+const errorsByOwner = ref(new Map<ChatId, string | undefined>());
+const pendingByOwner = ref(new Map<ChatId, number>());
+const saveError = computed(() => {
+  const id = currentChat.value?.id;
+  return id === undefined ? undefined : errorsByOwner.value.get(id);
+});
+const pending = computed(() => {
+  const id = currentChat.value?.id;
+  return id === undefined ? 0 : pendingByOwner.value.get(id) ?? 0;
+});
+const emit = defineEmits<{ (event: 'status', status: { pending: boolean, error: string | undefined, enabledCount: number }): void }>();
+
 
 function lmToolNameForKey({ key }: { key: BuiltinToolKey }): LmToolName {
   switch (key) {
@@ -38,7 +50,9 @@ function lmToolNameForKey({ key }: { key: BuiltinToolKey }): LmToolName {
 
 const toolConfigs = computed(() => {
   const chat = currentChat.value;
-  if (chat === null) return undefined;
+  if (chat === null) {
+    return undefined;
+  }
   return getActiveChatToolConfigs({
     chatId: chat.id,
     persistedToolConfigs: chat.toolConfigs,
@@ -47,7 +61,9 @@ const toolConfigs = computed(() => {
 
 const effectiveToolConfigs = computed(() => {
   const chat = currentChat.value;
-  if (chat === null) return [];
+  if (chat === null) {
+    return [];
+  }
   return getEffectiveToolConfigsForChat({ chat });
 });
 
@@ -58,18 +74,28 @@ const inheritanceLabelByKey = computed(() => ({
   'builtin.wesh': chatTools.getToolInheritanceLabel({ name: 'shell_execute' }),
 } as const));
 
+watch([saveError, pending, effectiveToolConfigs], () => emit('status', { pending: pending.value > 0, error: saveError.value, enabledCount: effectiveToolConfigs.value.filter(config => config.status === 'enabled').length }), { immediate: true });
+
 async function runToolUpdate({
   update,
 }: {
   update: () => Promise<void>,
 }): Promise<void> {
-  saveError.value = undefined;
+  const ownerId = currentChat.value?.id;
+  if (ownerId === undefined) {
+    return;
+  }
+  errorsByOwner.value.set(ownerId, undefined);
+  pendingByOwner.value.set(ownerId, (pendingByOwner.value.get(ownerId) ?? 0) + 1);
   try {
     await update();
   } catch (cause: unknown) {
-    saveError.value = cause instanceof Error
+    const message = cause instanceof Error
       ? cause.message
       : await ensureStrings.LmToolsSettings__failed_to_save_chat_tool_settings();
+    errorsByOwner.value.set(ownerId, message);
+  } finally {
+    pendingByOwner.value.set(ownerId, Math.max(0, (pendingByOwner.value.get(ownerId) ?? 1) - 1));
   }
 }
 

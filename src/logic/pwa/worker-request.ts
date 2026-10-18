@@ -11,18 +11,25 @@ function requestWorker<T>({ worker, signal, message, parse, failure }: {
 }): Promise<T> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
-      reject(new Error('The update runtime was stopped.')); return;
+      reject(new Error('The update runtime was stopped.'));
+      return;
     }
     const channel = new MessageChannel();
     let settled = false;
     const finish = ({ result }: { result: { value: T } | { error: unknown } }) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);
       channel.port1.close();
       channel.port2.close();
-      if ('error' in result) reject(result.error); else resolve(result.value);
+      if ('error' in result) {
+        reject(result.error);
+      } else {
+        resolve(result.value);
+      }
     };
     const abort = () => finish({ result: { error: new Error('The update runtime was stopped.') } });
     const timer = setTimeout(() => finish({ result: { error: new Error(failure) } }), 5000);
@@ -51,7 +58,9 @@ export function requestNetworkUpdate({ worker, signal }: { worker: ServiceWorker
     message: { type: USE_NETWORK_MESSAGE },
     failure: 'The current service worker did not enable network updating. Wait for offline preparation and retry.',
     parse({ data }) {
-      if (data !== USE_NETWORK_MESSAGE) throw new Error('The service worker could not enable network updating.');
+      if (data !== USE_NETWORK_MESSAGE) {
+        throw new Error('The service worker could not enable network updating.');
+      }
     },
   });
 }
@@ -64,7 +73,9 @@ export function requestBuildId({ worker, signal }: { worker: ServiceWorker; sign
     failure: 'The service worker did not identify its build.',
     parse({ data }) {
       if (!data || typeof data !== 'object' || !('type' in data) || data.type !== BUILD_ID_MESSAGE
-        || !('buildId' in data) || typeof data.buildId !== 'string' || !data.buildId.trim()) throw new Error('Invalid service worker build identity.');
+        || !('buildId' in data) || typeof data.buildId !== 'string' || !data.buildId.trim()) {
+        throw new Error('Invalid service worker build identity.');
+      }
       return data.buildId;
     },
   });
@@ -78,7 +89,9 @@ export function requestOfflineCompletion({ worker, buildId, signal }: { worker: 
     message: { type: COMPLETE_OFFLINE_MESSAGE, buildId },
     failure: 'The current service worker cannot safely finish offline preparation automatically. It will switch after its clients close.',
     parse({ data }) {
-      if (data !== COMPLETE_OFFLINE_MESSAGE) throw new Error('Offline completion was not accepted by the current service worker.');
+      if (data !== COMPLETE_OFFLINE_MESSAGE) {
+        throw new Error('Offline completion was not accepted by the current service worker.');
+      }
     },
   });
 }

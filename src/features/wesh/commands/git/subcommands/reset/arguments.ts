@@ -77,17 +77,20 @@ export function parseResetArguments({ args }: {
     policy: RESET_ARGV_POLICY,
   });
   const diagnostic = parsed.diagnostics[0];
-  if (diagnostic !== undefined)
+  if (diagnostic !== undefined) {
     throwResetDiagnostic({ args: optionAndRevisionArgs, diagnostic });
+  }
 
   const modeValue = parsed.optionValues.mode;
   const mode: ResetMode = modeValue === 'soft' || modeValue === 'hard' ? modeValue : 'mixed';
-  if (parsed.positionals.length > 1)
+  if (parsed.positionals.length > 1) {
     throw new Error('too many revisions');
+  }
   const revisionExpression = parsed.positionals[0] ?? 'HEAD';
   const pathOperands = operandsAfterSeparator.length > 0 ? operandsAfterSeparator : undefined;
-  if (pathOperands !== undefined && mode !== 'mixed')
+  if (pathOperands !== undefined && mode !== 'mixed') {
     throw new Error(`Cannot do ${mode} reset with paths.`);
+  }
   return { mode, revisionExpression, pathOperands };
 }
 

@@ -152,7 +152,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     });
 
     vi.mocked(storageService.loadChat).mockImplementation(({ id }) => {
-      if (currentChat.value?.id === id) return Promise.resolve(currentChat.value as any);
+      if (currentChat.value?.id === id) {
+        return Promise.resolve(currentChat.value as any);
+      }
       return Promise.resolve(null);
     });
   });
@@ -163,7 +165,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   const simulateExternalEvent = async (event: any) => {
-    if (!mocks.capturedListener) return;
+    if (!mocks.capturedListener) {
+      return;
+    }
     await mocks.capturedListener({ event });
     await Promise.resolve();
   };
@@ -1168,7 +1172,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const group = mockHierarchy.items[0];
     expect(group?.type).toBe('chat_group');
-    if (group?.type !== 'chat_group') throw new Error('Expected chat group');
+    if (group?.type !== 'chat_group') {
+      throw new Error('Expected chat group');
+    }
     expect(group.chat_ids).toEqual(['c2', 'c1', 'c3']);
     expect(mockHierarchy.items[1]?.id).toBe('top');
   });
@@ -1521,12 +1527,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
       // Ensure mock loadChat returns the chat we are about to delete
       vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
-        if (id === chat2Id) return {
-          ...c2,
-          root: { items: [] },
-          createdAt: 0,
-          debugEnabled: false,
-        } as Chat;
+        if (id === chat2Id) {
+          return {
+            ...c2,
+            root: { items: [] },
+            createdAt: 0,
+            debugEnabled: false,
+          } as Chat;
+        }
         return null;
       });
 

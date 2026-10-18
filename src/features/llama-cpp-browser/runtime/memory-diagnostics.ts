@@ -24,16 +24,25 @@ export function beginMemoryDiagnostics({ core, profile }: { core: ObservedCore, 
 export function sampleMemoryDiagnostics({ core, checkpoint }: { core: ObservedCore, checkpoint: MemoryCheckpoint }): void {
   try {
     const instance = instances.get(core);
-    if (!instance) return;
+    if (!instance) {
+      return;
+    }
     const timestamp = Date.now();
     const now = performance.now();
     switch (checkpoint) {
     case 'decode':
-      if (now - instance.lastDecode < 1000) return;
-      instance.lastDecode = now; break;
-    case 'runtime-released': instances.delete(core); break;
+      if (now - instance.lastDecode < 1000) {
+        return;
+      }
+      instance.lastDecode = now;
+      break;
+    case 'runtime-released': instances.delete(core);
+      break;
     case 'runtime-ready': case 'before-model-load': case 'model-loaded': case 'model-load-failed': case 'context-ready': case 'prefill-start': case 'prefill-complete': case 'generation-complete': case 'generation-interrupted': case 'generation-cleaned': case 'model-released': break;
-    default: { const exhaustive: never = checkpoint; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = checkpoint;
+      throw new Error(String(exhaustive));
+    }
     }
     // Never retain a view: memory.grow replaces the Emscripten heap view.
     const diagnostic: MemoryDiagnostic = {

@@ -17,38 +17,48 @@ function publication() {
 it('keeps cloned metadata and the original immutable bytes after a view detaches', async () => {
   const store = createPendingImageHistory({ maxEntries: 2, byteLimit: 100 });
   const source = reactive(publication()), save = vi.fn().mockRejectedValueOnce(new Error('full')).mockResolvedValue(undefined);
-  const listener = vi.fn(); const stop = store.subscribe({ listener });
+  const listener = vi.fn();
+  const stop = store.subscribe({ listener });
   const id = store.retain({ ...source, save });
-  const blob = source.files[0]!.blob; source.record.request.parameters.prompt = 'changed';
-  await expect(store.retry({ id })).rejects.toThrow('full'); stop();
-  const visible = store.list(); visible[0]!.record.request.parameters.prompt = 'mutated view';
-  expect(store.list()[0]?.record.request.parameters.prompt).toBe('a small tree');
-  await store.retry({ id });
-  expect(save).toHaveBeenCalledTimes(2);
-  expect(save.mock.calls[0]![0].publication).toBe(save.mock.calls[1]![0].publication);
-  expect(save.mock.calls[1]![0].publication.files[0].blob).toBe(blob);
-  expect(store.list()).toEqual([]);
+  const blob = source.files[0]!.blob;
+  source.record.request.parameters.prompt = 'changed';
+  await expect(store.retry({ id })).rejects.toThrow('full');
+  stop();
+  const visible = store.list();
+visible[0]!.record.request.parameters.prompt = 'mutated view';
+expect(store.list()[0]?.record.request.parameters.prompt).toBe('a small tree');
+await store.retry({ id });
+expect(save).toHaveBeenCalledTimes(2);
+expect(save.mock.calls[0]![0].publication).toBe(save.mock.calls[1]![0].publication);
+expect(save.mock.calls[1]![0].publication.files[0].blob).toBe(blob);
+expect(store.list()).toEqual([]);
 });
 
 it('coalesces retries, blocks discard while saving, and rejects a stale retry after discard', async () => {
   const store = createPendingImageHistory({ maxEntries: 2, byteLimit: 100 });
   const gate = Promise.withResolvers<void>(), save = vi.fn(() => gate.promise);
   const id = store.retain({ ...publication(), save });
-  const first = store.retry({ id }); expect(store.retry({ id })).toBe(first);
+  const first = store.retry({ id });
+  expect(store.retry({ id })).toBe(first);
   expect(() => store.discard({ id })).toThrow('finish');
-  const rejected = expect(first).rejects.toThrow('full'); gate.reject(new Error('full')); await rejected;
-  store.discard({ id }); await expect(store.retry({ id })).rejects.toThrow('discarded');
+  const rejected = expect(first).rejects.toThrow('full');
+  gate.reject(new Error('full'));
+  await rejected;
+  store.discard({ id });
+  await expect(store.retry({ id })).rejects.toThrow('discarded');
   expect(save).toHaveBeenCalledOnce();
 });
 
 it('limits admission, retains completed pixels, and never evicts an earlier failed image', () => {
   const store = createPendingImageHistory({ maxEntries: 1, byteLimit: 1 });
-  store.assertCapacity(); const source = publication();
+  store.assertCapacity();
+  const source = publication();
   const id = store.retain({ ...source, save: vi.fn() });
   expect(() => store.assertCapacity()).toThrow('Save or discard');
   expect(() => store.retain({ ...source, save: vi.fn() })).toThrow('already retained');
   expect(store.list()[0]?.files[0]?.blob).toBe(source.files[0]!.blob);
-  store.discard({ id }); store.assertCapacity();
+  store.discard({ id });
+  store.assertCapacity();
 });
 
 it('view listener errors cannot fail retention or completion', async () => {
@@ -59,5 +69,6 @@ it('view listener errors cannot fail retention or completion', async () => {
     },
   });
   const id = store.retain({ ...publication(), save: async () => {} });
-  await store.retry({ id }); expect(store.list()).toEqual([]);
+  await store.retry({ id });
+  expect(store.list()).toEqual([]);
 });

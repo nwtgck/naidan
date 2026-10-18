@@ -16,9 +16,13 @@ async function buildWorkerMounts(): Promise<WeshMount[]> {
   const { settings } = useSettings();
   const mounts: WeshMount[] = [];
   for (const mount of settings.value.mounts) {
-    if (mount.type !== 'volume') continue;
+    if (mount.type !== 'volume') {
+      continue;
+    }
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) continue;
+    if (!handle) {
+      continue;
+    }
     mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
   return mounts;

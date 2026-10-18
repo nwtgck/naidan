@@ -66,7 +66,9 @@ function handleReload() {
 }
 
 function openModelSupportInvestigation() {
-  if (!canOpenModelSupportInvestigation.value) return;
+  if (!canOpenModelSupportInvestigation.value) {
+    return;
+  }
   emit('openModelSupportInvestigation', '');
 }
 
@@ -187,8 +189,12 @@ defineExpose({
 
 <style scoped>
 @keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-spin-slow {

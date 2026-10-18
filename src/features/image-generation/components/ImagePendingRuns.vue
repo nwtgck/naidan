@@ -23,7 +23,9 @@ async function getImage({ binaryObjectId }: { binaryObjectId: BinaryObjectId }):
 
 async function download({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
   const blob = await getImage({ binaryObjectId });
-  if (blob) downloadBlob({ blob, filename: 'naidan-pending-image.png' });
+  if (blob) {
+    downloadBlob({ blob, filename: 'naidan-pending-image.png' });
+  }
 }
 
 async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
@@ -36,7 +38,9 @@ async function retry({ id }: { id: ImageGenerationId }): Promise<void> {
 }
 
 async function discard({ id }: { id: ImageGenerationId }): Promise<void> {
-  if (!await showConfirm({ message: await ensureStrings.ImagePendingRuns__discard_warning() })) return;
+  if (!await showConfirm({ message: await ensureStrings.ImagePendingRuns__discard_warning() })) {
+    return;
+  }
   try {
     imagePendingRuns.discard({ id });
   } catch (error) {

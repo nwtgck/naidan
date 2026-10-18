@@ -7,12 +7,15 @@ export function* iterateAttachmentParts({ nodes }: {
   const pending = [...nodes].reverse();
   while (pending.length > 0) {
     const node = pending.pop();
-    if (!node) break;
+    if (!node) {
+      break;
+    }
     switch (node.role) {
     case 'user':
       for (const part of node.parts) {
         switch (part.type) {
-        case 'attachment': yield part; break;
+        case 'attachment': yield part;
+          break;
         case 'text': break;
         default: {
           const _ex: never = part;
@@ -32,7 +35,9 @@ export function* iterateAttachmentParts({ nodes }: {
     }
     for (let index = node.replies.items.length - 1; index >= 0; index--) {
       const child = node.replies.items[index];
-      if (child) pending.push(child);
+      if (child) {
+        pending.push(child);
+      }
     }
   }
 }

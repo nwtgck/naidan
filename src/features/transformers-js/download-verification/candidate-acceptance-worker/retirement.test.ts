@@ -57,7 +57,9 @@ class AcceptanceWorker extends EventTarget {
   readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
   readonly first = workers.length === 0;
   terminate = vi.fn(() => {
-    if (this.first && retirementFailure !== undefined) throw retirementFailure.error;
+    if (this.first && retirementFailure !== undefined) {
+      throw retirementFailure.error;
+    }
     this.channel.port1.close();
     this.channel.port2.close();
   });
@@ -79,7 +81,9 @@ class AcceptanceWorker extends EventTarget {
           barrier.entered.resolve();
           await barrier.release.promise;
         }
-        if (this.first && firstOutcome === 'rejected') throw nativeFailure;
+        if (this.first && firstOutcome === 'rejected') {
+          throw nativeFailure;
+        }
         return { device: candidate.device, dtype: candidate.dtype };
       },
     }, this.endpoint);
@@ -88,7 +92,9 @@ class AcceptanceWorker extends EventTarget {
   }
 
   postMessage(message: unknown, transfer: Parameters<MessagePort['postMessage']>[1]) {
-    if (!this.startup.acceptHostMessage({ message })) this.channel.port1.postMessage(message, transfer);
+    if (!this.startup.acceptHostMessage({ message })) {
+      this.channel.port1.postMessage(message, transfer);
+    }
   }
 }
 
@@ -176,9 +182,13 @@ it('stops Production Download after accepted verification when the actual client
     (error: unknown) => ({ status: 'rejected' as const, error }),
   );
   expect(result).toMatchObject({ status: 'rejected', error: { name: 'DownloadAcceptanceWorkerRetirementError', cause: physicalFailure } });
-  if (result.status !== 'rejected') throw new Error('Expected retirement rejection');
+  if (result.status !== 'rejected') {
+    throw new Error('Expected retirement rejection');
+  }
   expect(result.error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(result.error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(result.error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(result.error.interruption).toBeUndefined();
   expect(result.error.verificationOutcome).toEqual({ status: 'fulfilled', device: 'webgpu', dtype: 'q4f16' });
   expect(prepareProductionRuntimeArtifacts).toHaveBeenCalledOnce();
@@ -205,9 +215,13 @@ it('stops Production Download after rejected verification when the actual client
     (error: unknown) => ({ status: 'rejected' as const, error }),
   );
   expect(result).toMatchObject({ status: 'rejected', error: { name: 'DownloadAcceptanceWorkerRetirementError', cause: physicalFailure } });
-  if (result.status !== 'rejected') throw new Error('Expected retirement rejection');
+  if (result.status !== 'rejected') {
+    throw new Error('Expected retirement rejection');
+  }
   expect(result.error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(result.error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(result.error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(result.error.interruption).toBeUndefined();
   expect(result.error.verificationOutcome).toEqual({ status: 'rejected', error: expect.objectContaining({ name: nativeFailure.name, message: nativeFailure.message }) });
   expect(prepareProductionRuntimeArtifacts).toHaveBeenCalledOnce();
@@ -224,7 +238,9 @@ it.each([undefined, null])('retains physical throw %s and shares the same failed
   await client.verifyDownloadedModelCandidate({ modelId, loadRevision: revision, candidate: { device: 'webgpu', dtype: 'q4f16' }, progressCallback: () => undefined });
   const error = await client.dispose().then(() => undefined, (error: unknown) => error);
   expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(Object.hasOwn(error, 'cause')).toBe(true);
   expect(error.cause).toBe(cause);
   await expect(client.dispose()).rejects.toBe(error);
@@ -256,7 +272,9 @@ it('keeps the original abort reason separately when physical stop also fails', a
   controller.abort(reason);
   const error = await settled;
   expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(error.cause).toBe(cause);
   expect(error.interruption).toEqual({ reason });
   expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
@@ -292,7 +310,9 @@ it('retains the original session failure when its physical termination also fail
   workers[0]!.dispatchEvent(new Event('error'));
   const error = await settled;
   expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(error.cause).toBe(cause);
   expect(error.verificationOutcome).toEqual({ status: 'rejected', error: expect.objectContaining({ name: 'ProductionWorkerLifecycleError', reason: 'worker-error' }) });
   expect(observations).toEqual([expect.objectContaining({ loadOutcome: 'failed', cleanupOutcome: 'failed', hostSettlement: 'rejected' })]);
@@ -415,7 +435,9 @@ it('shares physical retirement with restart during a held acceptance and never r
   const retirement = owner.service.restart();
   const error = await retirement.then(() => undefined, (error: unknown) => error);
   expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(error.cause).toBe(cause);
   expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
   expect(error.interruption?.reason).toBe(await running);
@@ -446,7 +468,9 @@ it('shares physical retirement with dispose during a held acceptance and never r
   const retirement = owner.dispose();
   const error = await retirement.then(() => undefined, (error: unknown) => error);
   expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) {
+    throw new Error('Missing retirement error');
+  }
   expect(error.cause).toBe(cause);
   expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
   expect(error.interruption?.reason).toBe(await running);

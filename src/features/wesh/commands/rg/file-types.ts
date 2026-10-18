@@ -42,7 +42,9 @@ export function compileRgTypeRules({ filters }: {
   const rules: RgGlobRule[] = [];
   for (const filter of filters) {
     const definition = RG_FILE_TYPE_MAP.get(filter.name);
-    if (definition === undefined) throw new Error(`unrecognized file type: ${filter.name}`);
+    if (definition === undefined) {
+      throw new Error(`unrecognized file type: ${filter.name}`);
+    }
     for (const pattern of definition.patterns) {
       rules.push(compileRgGlobRule({
         rawPattern: filter.exclude ? `!${pattern}` : pattern,

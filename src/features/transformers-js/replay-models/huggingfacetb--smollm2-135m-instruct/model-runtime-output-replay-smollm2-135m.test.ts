@@ -19,7 +19,8 @@ const modelId = "HuggingFaceTB/SmolLM2-135M-Instruct";
 installRawReplay({ evidence: undefined });
 
 afterEach(() => {
-  vi.doUnmock('@huggingface/transformers'); vi.resetModules();
+  vi.doUnmock('@huggingface/transformers');
+  vi.resetModules();
 });
 
 function assistant(): AssistantMessageNode {
@@ -30,7 +31,8 @@ function assistant(): AssistantMessageNode {
 // tokenizer. They do not supply missing recorded inference or execute weights.
 describe("SmolLM2 135M original tokenizer and structured standard generation", () => {
   it.each(['answer', 'partial', 'native_failure'] as const)('connects standard native %s to the local parts consumer', async shape => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const native = harness.runtime as unknown as typeof Tjs;
     const tokenizer = await native.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true });
     vi.doMock('@huggingface/transformers', () => harness.runtime);
@@ -38,15 +40,25 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const fragments = ['  <thi', 'nk>literal</th', 'ink>🙂\n', 'tail'];
     const generated = fragments.flatMap(text => tokenizer.encode(text, { add_special_tokens: false })).map(BigInt);
-    if (shape === 'answer') generated.push(BigInt(2));
-    const release = Promise.withResolvers<void>(); const nativeEnded = Promise.withResolvers<void>();
+    if (shape === 'answer') {
+      generated.push(BigInt(2));
+    }
+    const release = Promise.withResolvers<void>();
+    const nativeEnded = Promise.withResolvers<void>();
     const fault = new Error('Synthetic generation failure before streamer.end');
     const generate = vi.fn(async ({ streamer, input_ids, past_key_values }: { streamer: NativeStreamerType, input_ids: { data: Iterable<bigint> }, past_key_values: unknown }) => {
-      expect(streamer).toBeInstanceOf(NativeProtocolStreamer); expect(past_key_values).toBeNull();
-      streamer.put([[...input_ids.data]]); streamer.put([generated]);
-      if (shape !== 'native_failure') streamer.end();
-      nativeEnded.resolve(); await release.promise;
-      if (shape === 'native_failure') throw fault;
+      expect(streamer).toBeInstanceOf(NativeProtocolStreamer);
+      expect(past_key_values).toBeNull();
+      streamer.put([[...input_ids.data]]);
+      streamer.put([generated]);
+      if (shape !== 'native_failure') {
+        streamer.end();
+      }
+      nativeEnded.resolve();
+      await release.promise;
+      if (shape === 'native_failure') {
+        throw fault;
+      }
       return { past_key_values: null };
     });
     const model = {
@@ -55,7 +67,10 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
       _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config,
       generate,
     } as unknown as Context['model'];
-    const onChunk = vi.fn(); const onToolCalls = vi.fn(); const controller = new AbortController(); const node = assistant();
+    const onChunk = vi.fn();
+    const onToolCalls = vi.fn();
+    const controller = new AbortController();
+    const node = assistant();
     const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hel', completeness: 'complete' }, { type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
     const operation = consumeChatGeneration({
@@ -72,7 +87,8 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
               await queue.finish();
             },
           };
-          const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
+          const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId });
+          expect(strategy.kind).toBe('standard');
           await strategy.generate({
             model,
             tokenizer,
@@ -92,14 +108,20 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
         },
       }),
     });
-    let settled = false; void operation.then(() => {
+    let settled = false;
+    void operation.then(() => {
       settled = true;
     });
-    await nativeEnded.promise; await new Promise(resolve => setTimeout(resolve, 0)); expect(settled).toBe(false);
-    release.resolve(); const result = await operation;
+    await nativeEnded.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    release.resolve();
+    const result = await operation;
     expect(node.parts).toEqual([expect.objectContaining({ type: 'text', text: fragments.join(''), completeness: shape === 'answer' ? 'complete' : 'partial' })]);
     expect(result).toEqual(shape === 'answer' ? { type: 'finished', next: 'user' } : shape === 'partial' ? { type: 'interrupted', reason: 'unknown' } : { type: 'error', error: fault });
-    expect(onChunk).not.toHaveBeenCalled(); expect(onToolCalls).not.toHaveBeenCalled(); expect(generate).toHaveBeenCalledOnce();
+    expect(onChunk).not.toHaveBeenCalled();
+    expect(onToolCalls).not.toHaveBeenCalled();
+    expect(generate).toHaveBeenCalledOnce();
     const supplied = generate.mock.calls[0]![0];
     expect([...supplied.input_ids.data]).toEqual(tokenizer.encode(`\
 <|im_start|>system
@@ -108,20 +130,27 @@ You are a helpful AI assistant named SmolLM, trained by Hugging Face<|im_end|>
 Hello<|im_end|>
 <|im_start|>assistant
 `, { add_special_tokens: false }).map(BigInt));
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
   }, 20_000);
 
   it('preserves the stored text parts when the original template builds the next input', async () => {
-    const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
+    const archive = await archiveFor({ modelId });
+    const { harness } = await start({ archive, bodyPaths: [] });
     const native = harness.runtime as unknown as typeof Tjs;
     const tokenizer = await native.AutoTokenizer.from_pretrained(modelId, { revision: archive.summary.revision, local_files_only: true });
-    const node = assistant(); node.parts = [{ type: 'text', text: '  <think>literal</think>🙂\r\n', completeness: 'complete' }, { type: 'text', text: 'tail ', completeness: 'complete' }];
+    const node = assistant();
+    node.parts = [{ type: 'text', text: '  <think>literal</think>🙂\r\n', completeness: 'complete' }, { type: 'text', text: 'tail ', completeness: 'complete' }];
     const next: UserMessageNode = { id: toMessageId({ raw: 'u2' }), role: 'user', parts: [{ type: 'text', text: 'Next', completeness: 'complete' }], createdAt: 3, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
     node.replies.items.push(next);
     const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
     const content: ChatContent = { root: { items: [user] }, currentLeafId: next.id };
-    const storage = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'native-standard' });
-    await storage.saveChatContent({ id: chatId, content }); const loaded = await storage.loadChatContent({ id: chatId }); expect(loaded).not.toBeNull();
+    const storage = new MemoryStorageProvider();
+    const chatId = toChatId({ raw: 'native-standard' });
+    await storage.saveChatContent({ id: chatId, content });
+    const loaded = await storage.loadChatContent({ id: chatId });
+    expect(loaded).not.toBeNull();
     expect(await storage.loadChatContent({ id: toChatId({ raw: 'different-unsaved-chat' }) })).toBeNull();
     const expected = `\
 <|im_start|>system
@@ -142,6 +171,8 @@ Next<|im_end|>
       expect(actual).toBe(expected);
       expect(tokenizer.encode(actual as string, { add_special_tokens: false })).toEqual(tokenizer.encode(expected, { add_special_tokens: false }));
     }
-    expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
+    expect(harness.sessions).not.toHaveBeenCalled();
+    expect(harness.transport).not.toHaveBeenCalled();
+    expect(harness.bodyReads).toEqual([]);
   }, 20_000);
 });

@@ -21,7 +21,9 @@ function cancelPathEdit(): void {
 async function confirmPathEdit(): Promise<void> {
   isEditingPath.value = false;
   const parts = editPathValue.value.split('/').map(p => p.trim()).filter(Boolean);
-  if (parts.length === 0) return;
+  if (parts.length === 0) {
+    return;
+  }
 
   try {
     const startIdx = parts[0] === ctx.pathSegments[0]?.name ? 1 : 0;

@@ -25,12 +25,15 @@ export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string
         const base = new URL(server.config.base, 'http://localhost/').pathname;
         const start = `${base}${prefix}`;
         if (!pathname.startsWith(start)) {
-          next(); return;
+          next();
+          return;
         }
         const relative = pathname.slice(start.length);
         const bytes = files.get(relative);
         if (!bytes) {
-          res.statusCode = 404; res.end(); return;
+          res.statusCode = 404;
+          res.end();
+          return;
         }
         // The loader explicitly decompresses .gz. Do not add Content-Encoding.
         res.setHeader('Content-Type', relative.endsWith('.gz') ? 'application/gzip' : 'text/javascript');

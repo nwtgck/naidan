@@ -34,12 +34,16 @@ function directoryHandle({ directories = {}, files = {} }: {
   return {
     getDirectoryHandle: vi.fn(async (name: string) => {
       const directory = directories[name];
-      if (directory === undefined) throw new DOMException('missing directory', 'NotFoundError');
+      if (directory === undefined) {
+        throw new DOMException('missing directory', 'NotFoundError');
+      }
       return directory;
     }),
     getFileHandle: vi.fn(async (name: string) => {
       const file = files[name];
-      if (file === undefined) throw new DOMException('missing file', 'NotFoundError');
+      if (file === undefined) {
+        throw new DOMException('missing file', 'NotFoundError');
+      }
       return file;
     }),
     removeEntry: vi.fn(),

@@ -12,8 +12,11 @@ const target = resolveModelLaunchTarget({ input: catalog.repository, catalog }).
 const view = modelLaunchViewState({ chatId: toChatId({ raw: 'chat' }), input: `${catalog.repository}:Q4_K_M`, modelId: target.modelId, revision: 'a'.repeat(40) });
 
 beforeEach(() => {
-  vi.resetAllMocks(); io.folder.mockResolvedValue({}); io.journal.mockRejectedValue(new Error('missing'));
-  io.directories.mockResolvedValue([]); io.inspect.mockResolvedValue(catalog);
+  vi.resetAllMocks();
+  io.folder.mockResolvedValue({});
+  io.journal.mockRejectedValue(new Error('missing'));
+  io.directories.mockResolvedValue([]);
+  io.inspect.mockResolvedValue(catalog);
 });
 
 describe('DTO-free model launch restoration', () => {
@@ -21,7 +24,8 @@ describe('DTO-free model launch restoration', () => {
     const selection = { ...target.selection, revision: 'c'.repeat(40) };
     io.journal.mockResolvedValue({ selection });
     expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual({ ...target, selection });
-    expect(io.inspect).not.toHaveBeenCalled(); expect(io.directories).not.toHaveBeenCalled();
+    expect(io.inspect).not.toHaveBeenCalled();
+    expect(io.directories).not.toHaveBeenCalled();
   });
 
   it('rebuilds an installed selection from existing files while offline', async () => {
@@ -52,14 +56,21 @@ describe('DTO-free model launch restoration', () => {
   });
 
   it('cancels after a pending local lookup without issuing metadata requests', async () => {
-    const gate = Promise.withResolvers<unknown[]>(); const controller = new AbortController(); io.directories.mockReturnValue(gate.promise);
+    const gate = Promise.withResolvers<unknown[]>();
+    const controller = new AbortController();
+    io.directories.mockReturnValue(gate.promise);
     const pending = restoreModelLaunchTarget({ view, signal: controller.signal });
-    const rejected = expect(pending).rejects.toThrow(); await vi.waitFor(() => expect(io.directories).toHaveBeenCalledOnce());
-    controller.abort(); gate.resolve([]); await rejected; expect(io.inspect).not.toHaveBeenCalled();
+    const rejected = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(io.directories).toHaveBeenCalledOnce());
+    controller.abort();
+    gate.resolve([]);
+    await rejected;
+    expect(io.inspect).not.toHaveBeenCalled();
   });
 
   it('does nothing for an already cancelled request', async () => {
-    const controller = new AbortController(); controller.abort();
+    const controller = new AbortController();
+    controller.abort();
     await expect(restoreModelLaunchTarget({ view, signal: controller.signal })).rejects.toThrow();
     expect(io.folder).not.toHaveBeenCalled();
   });

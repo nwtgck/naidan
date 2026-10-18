@@ -90,7 +90,8 @@ describe('ordinary Download timing evidence', () => {
   it.each(['partial', 'final', 'batch'] as const)('preserves the previous operation independently of the current %s investigation', async mode => {
     const { run, recovery } = createInitialInvestigationCheckpoint({ modelId: 'org/current', runId: 'current-run', now: () => '2026-09-13T00:00:00.000Z' });
     if (mode === 'final') {
-      run.status = 'failed'; run.completedAt = '2026-09-13T00:00:01.000Z';
+      run.status = 'failed';
+      run.completedAt = '2026-09-13T00:00:01.000Z';
     }
     const worker = createModelSupportInvestigationEvidenceWorker();
     const source = snapshot();
@@ -99,7 +100,9 @@ describe('ordinary Download timing evidence', () => {
     const result = mode === 'batch'
       ? await worker.createBatchEvidence({ request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId: 'current-batch', items: [{ target: run.modelId, status: 'failed', run, recovery, error: undefined }] }), ordinaryDownloadTiming })
       : await worker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), ordinaryDownloadTiming });
-    if (mode !== 'batch') await verifyGeneratedEvidenceArchive({ blob: result.blob });
+    if (mode !== 'batch') {
+      await verifyGeneratedEvidenceArchive({ blob: result.blob });
+    }
     const archive = await openEvidenceArchive({ blob: result.blob });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {

@@ -46,13 +46,17 @@ function readParameterNameEnd({ text, startIndex }: { text: string, startIndex: 
   const firstCharacter = text[startIndex];
   if (isAsciiShellIdentifierStart({ value: firstCharacter })) {
     let index = startIndex + 1;
-    while (isAsciiShellIdentifierPart({ value: text[index] })) index += 1;
+    while (isAsciiShellIdentifierPart({ value: text[index] })) {
+      index += 1;
+    }
     return index;
   }
 
   if (firstCharacter !== undefined && firstCharacter >= '0' && firstCharacter <= '9') {
     let index = startIndex + 1;
-    while (text[index] !== undefined && text[index]! >= '0' && text[index]! <= '9') index += 1;
+    while (text[index] !== undefined && text[index]! >= '0' && text[index]! <= '9') {
+      index += 1;
+    }
     return index;
   }
 
@@ -144,7 +148,9 @@ function findUnescapedSlash({ text, startIndex }: { text: string, startIndex: nu
       index = constructEnd;
       continue;
     }
-    if (text[index] === '/') return index;
+    if (text[index] === '/') {
+      return index;
+    }
   }
   return -1;
 }
@@ -159,7 +165,9 @@ function unescapeSubstitutionReplacementSlashes({ replacement }: { replacement: 
     }
 
     let runEnd = index;
-    while (replacement[runEnd] === '\\') runEnd += 1;
+    while (replacement[runEnd] === '\\') {
+      runEnd += 1;
+    }
     if (replacement[runEnd] !== '/') {
       index = runEnd;
       continue;
@@ -192,7 +200,9 @@ function parseSubstitutionOperator({ rest }: { rest: string }): {
   pattern: string,
   replacement: string,
 } | undefined {
-  if (!rest.startsWith('/')) return undefined;
+  if (!rest.startsWith('/')) {
+    return undefined;
+  }
 
   let operator: ParameterSubstitutionOperator = 'first';
   let patternStart = 1;
@@ -235,7 +245,9 @@ export function parseParameterExpression({ expression }: { expression: string })
   }
 
   const identifierEnd = readParameterNameEnd({ text: expression, startIndex: 0 });
-  if (identifierEnd === undefined) return undefined;
+  if (identifierEnd === undefined) {
+    return undefined;
+  }
 
   const name = expression.slice(0, identifierEnd);
   const rest = expression.slice(identifierEnd);

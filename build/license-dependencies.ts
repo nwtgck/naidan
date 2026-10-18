@@ -32,7 +32,9 @@ type DependencyQueueItem = Readonly<{
 export function convertRollupLicenseDependency({ dependency }: {
   dependency: RollupLicenseDependency,
 }): BuildLicenseDependency | undefined {
-  if (dependency.name === null || dependency.version === null) return undefined;
+  if (dependency.name === null || dependency.version === null) {
+    return undefined;
+  }
   return {
     name: dependency.name,
     version: dependency.version,
@@ -42,8 +44,12 @@ export function convertRollupLicenseDependency({ dependency }: {
 }
 
 function compareStrings({ left, right }: { left: string, right: string }): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
   return 0;
 }
 
@@ -101,10 +107,14 @@ async function findInstalledPackageJson({ dependencyName, fromDirectory }: {
       await fs.access(packageJsonPath);
       return packageJsonPath;
     } catch (error) {
-      if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        throw error;
+      }
     }
     const parentDirectory = path.dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) return undefined;
+    if (parentDirectory === currentDirectory) {
+      return undefined;
+    }
     currentDirectory = parentDirectory;
   }
 }
@@ -113,8 +123,12 @@ function normalizeLicense({ packageJson }: { packageJson: PackageJson }): string
   const stringifyLicense = (license: z.infer<typeof legacyLicenseSchema>): string => (
     typeof license === 'string' ? license : license.type
   );
-  if (packageJson.license !== undefined) return stringifyLicense(packageJson.license);
-  if (packageJson.licenses === undefined || packageJson.licenses.length === 0) return null;
+  if (packageJson.license !== undefined) {
+    return stringifyLicense(packageJson.license);
+  }
+  if (packageJson.licenses === undefined || packageJson.licenses.length === 0) {
+    return null;
+  }
   return `(${packageJson.licenses.map(stringifyLicense).join(' OR ')})`;
 }
 
@@ -144,7 +158,9 @@ export async function collectDevelopmentLicenseDependencies({ root }: {
 
   while (queue.length > 0) {
     const item = queue.shift();
-    if (item === undefined) break;
+    if (item === undefined) {
+      break;
+    }
     const packageJsonPath = await findInstalledPackageJson({
       dependencyName: item.dependencyName,
       fromDirectory: item.fromDirectory,
@@ -162,7 +178,9 @@ export async function collectDevelopmentLicenseDependencies({ root }: {
       }
     }
     const canonicalPackageJsonPath = await fs.realpath(packageJsonPath);
-    if (visitedPackageJsonPaths.has(canonicalPackageJsonPath)) continue;
+    if (visitedPackageJsonPaths.has(canonicalPackageJsonPath)) {
+      continue;
+    }
     visitedPackageJsonPaths.add(canonicalPackageJsonPath);
 
     const packageJson = await readPackageJson({ packageJsonPath: canonicalPackageJsonPath });

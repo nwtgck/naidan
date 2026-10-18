@@ -21,7 +21,9 @@ export class GptOssOutputInterpreter {
 
   feed({ output }: { output: string }): void {
     const delta = this.parser.push({ token: output });
-    if (!delta) return;
+    if (!delta) {
+      return;
+    }
 
     switch (delta.type) {
     case "content": {
@@ -39,8 +41,12 @@ export class GptOssOutputInterpreter {
       }
 
       if (visibleChannel !== this.currentChannel) {
-        if (this.currentChannel === "analysis") this.onChunk({ chunk: "</think>" });
-        if (visibleChannel === "analysis") this.onChunk({ chunk: "<think>" });
+        if (this.currentChannel === "analysis") {
+          this.onChunk({ chunk: "</think>" });
+        }
+        if (visibleChannel === "analysis") {
+          this.onChunk({ chunk: "<think>" });
+        }
         this.currentChannel = visibleChannel;
       }
 

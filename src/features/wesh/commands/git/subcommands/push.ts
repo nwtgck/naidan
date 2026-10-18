@@ -94,7 +94,9 @@ export async function runPush({ context, args }: {
   const remoteName = operands[0] ?? configuredRemote ?? 'origin';
 
   if (deleteBranch) {
-    if (operands.length !== 2) throw new Error('usage: git push --delete <remote> <branch>');
+    if (operands.length !== 2) {
+      throw new Error('usage: git push --delete <remote> <branch>');
+    }
     const branchName = operands[1]!;
     const result = await deleteLocalRemoteBranch({
       files: context.files,
@@ -109,13 +111,19 @@ export async function runPush({ context, args }: {
     }
     return { exitCode: 0 };
   }
-  if (operands.length > 2) throw new Error('too many arguments');
-  if (currentBranch === undefined && operands.length < 2) throw new Error('You are not currently on a branch.');
+  if (operands.length > 2) {
+    throw new Error('too many arguments');
+  }
+  if (currentBranch === undefined && operands.length < 2) {
+    throw new Error('You are not currently on a branch.');
+  }
   const refspec = operands[1] ?? currentBranch!;
   const colonIndex = refspec.indexOf(':');
   const sourceBranch = (colonIndex < 0 ? refspec : refspec.slice(0, colonIndex)).replace(/^refs\/heads\//u, '');
   const destinationBranch = (colonIndex < 0 ? refspec : refspec.slice(colonIndex + 1)).replace(/^refs\/heads\//u, '');
-  if (sourceBranch.length === 0 || destinationBranch.length === 0) throw new Error(`invalid refspec '${refspec}'`);
+  if (sourceBranch.length === 0 || destinationBranch.length === 0) {
+    throw new Error(`invalid refspec '${refspec}'`);
+  }
   const result = await pushLocalBranch({
     files: context.files,
     repository,

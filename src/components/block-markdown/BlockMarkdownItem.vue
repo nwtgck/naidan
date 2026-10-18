@@ -21,7 +21,9 @@ const props = defineProps<{
 }>();
 
 const isTaskList = computed(() => {
-  if (props.token.type !== 'list') return false;
+  if (props.token.type !== 'list') {
+    return false;
+  }
   return (props.token as Tokens.List).items.some(item => item.task);
 });
 
@@ -29,9 +31,13 @@ const isTaskList = computed(() => {
 const SILENT_TYPES = new Set(['space', 'def', 'checkbox']);
 
 function lastRenderableIdx({ tokens }: { tokens: Array<{ type: string }> | undefined }): number {
-  if (!tokens || tokens.length === 0) return -1;
+  if (!tokens || tokens.length === 0) {
+    return -1;
+  }
   for (let i = tokens.length - 1; i >= 0; i--) {
-    if (!SILENT_TYPES.has(tokens[i]!.type)) return i;
+    if (!SILENT_TYPES.has(tokens[i]!.type)) {
+      return i;
+    }
   }
   return -1;
 }
@@ -57,7 +63,9 @@ function renderMarkedInlineHtml({
 
 function lastNonEmptyCellIdx({ row }: { row: Tokens.TableCell[] }): number {
   for (let i = row.length - 1; i >= 0; i--) {
-    if (row[i]!.text.trim() !== '') return i;
+    if (row[i]!.text.trim() !== '') {
+      return i;
+    }
   }
   return -1;
 }

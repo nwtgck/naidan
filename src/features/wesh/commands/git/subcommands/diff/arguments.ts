@@ -9,11 +9,13 @@ const DIFF_SHORT_ARGV_CATALOG = defineArgvCatalog<'unified-context'>({
 });
 
 function parseUnifiedContextLines({ value, option }: { value: string, option: string }): number {
-  if (!/^[0-9]+$/u.test(value))
+  if (!/^[0-9]+$/u.test(value)) {
     throw new GitUsageError({ message: `option '${option}' expects a non-negative integer` });
+  }
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isSafeInteger(parsed))
+  if (!Number.isSafeInteger(parsed)) {
     throw new GitUsageError({ message: `option '${option}' expects a non-negative integer` });
+  }
   return parsed;
 }
 
@@ -72,8 +74,9 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
         break;
       case 'following-required': {
         const value = args[index + 1];
-        if (value === undefined)
+        if (value === undefined) {
           throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+        }
         unifiedContextLines = parseUnifiedContextLines({ value, option: analysis.option });
         index += 1;
         break;
@@ -129,13 +132,19 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
     case '--no-ext-diff':
       break;
     default:
-      if (arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
+      if (arg.startsWith('-')) {
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
+      }
       revisions.push(arg);
       break;
     }
   }
-  if (cached && revisions.length > 1) throw new Error('too many revisions for --cached');
-  if (!cached && revisions.length > 2) throw new Error('too many revisions');
+  if (cached && revisions.length > 1) {
+    throw new Error('too many revisions for --cached');
+  }
+  if (!cached && revisions.length > 2) {
+    throw new Error('too many revisions');
+  }
   return { cached, nameOnly, nameStatus, stat, check, quiet, exitCode, nul, unifiedContextLines, wordDiff, binaryPatch, revisions, pathOperands };
 }
 

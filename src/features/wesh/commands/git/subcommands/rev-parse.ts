@@ -7,7 +7,9 @@ function relativePath({ from, to }: { from: string, to: string }): string {
   const fromParts = from.split('/').filter(Boolean);
   const toParts = to.split('/').filter(Boolean);
   let shared = 0;
-  while (shared < fromParts.length && shared < toParts.length && fromParts[shared] === toParts[shared]) shared += 1;
+  while (shared < fromParts.length && shared < toParts.length && fromParts[shared] === toParts[shared]) {
+    shared += 1;
+  }
   const parts = [...fromParts.slice(shared).map(() => '..'), ...toParts.slice(shared)];
   return parts.length === 0 ? '.' : parts.join('/');
 }
@@ -41,8 +43,9 @@ export async function runRevParse({ context, args }: {
     if (arg === '--') {
       if (!singleRevisionMode) {
         await context.text().print({ text: '--\n' });
-        for (const pathArgument of args.slice(index + 1))
+        for (const pathArgument of args.slice(index + 1)) {
           await context.text().print({ text: `${pathArgument}\n` });
+        }
       }
       break;
     }
@@ -103,18 +106,21 @@ export async function runRevParse({ context, args }: {
       continue;
     }
     if (arg.startsWith('-')) {
-      if (!singleRevisionMode)
+      if (!singleRevisionMode) {
         await context.text().print({ text: `${arg}\n` });
+      }
       continue;
     }
-    if (singleRevisionMode)
+    if (singleRevisionMode) {
       singleRevisionExpressions.push(arg);
-    else
+    } else {
       await printRevision({ expression: arg, outputLength: undefined });
+    }
   }
   if (singleRevisionMode) {
-    if (singleRevisionExpressions.length !== 1)
+    if (singleRevisionExpressions.length !== 1) {
       throw new Error('Needed a single revision');
+    }
     await printRevision({ expression: singleRevisionExpressions[0]!, outputLength: shortLength });
   }
   return { exitCode: 0 };

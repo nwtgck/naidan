@@ -52,7 +52,9 @@ export function useChatWeshPreferences() {
     chatId: ChatId | undefined,
     accessScope: NaidanSysfsAccessScope,
   }): Promise<void> => {
-    if (chatId === undefined) return;
+    if (chatId === undefined) {
+      return;
+    }
     await updateToolConfigsForChat({
       chatId,
       updater: ({ toolConfigs }) => {

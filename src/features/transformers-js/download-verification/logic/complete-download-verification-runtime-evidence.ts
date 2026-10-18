@@ -8,7 +8,9 @@ import { downloadAcceptanceTimingSchema, parseDownloadTiming, type DownloadAccep
 import type { CacheAcceptanceTimingEvidence } from '@/features/transformers-js/download-verification/evidence/cache-acceptance-timing';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
-  if (error instanceof Error) return { name: error.name, message: error.message };
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message };
+  }
   return { name: 'Error', message: String(error) };
 }
 
@@ -69,7 +71,9 @@ export async function completeDownloadVerificationRuntimeEvidence({
   const modelId = evidence.run.normalizedModelId;
   const repositoryResolvedRevision = evidence.run.resolvedRevision;
   const reportProgress: RuntimeAcceptanceProgressCallback = ({ progress }) => {
-    if (!signal?.aborted) onProgress?.({ progress });
+    if (!signal?.aborted) {
+      onProgress?.({ progress });
+    }
   };
 
   let runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence;
@@ -77,10 +81,13 @@ export async function completeDownloadVerificationRuntimeEvidence({
   let droppedObservations = 0;
   let acceptingTiming = true;
   const onTiming: DownloadTimingCallback = ({ observation }) => {
-    if (!acceptingTiming || signal?.aborted) return;
+    if (!acceptingTiming || signal?.aborted) {
+      return;
+    }
     const measured = parseDownloadTiming({ schema: downloadAcceptanceTimingSchema, value: observation });
     if (measured === undefined || observations.length === 128) {
-      droppedObservations++; return;
+      droppedObservations++;
+      return;
     }
     observations.push(measured);
   };

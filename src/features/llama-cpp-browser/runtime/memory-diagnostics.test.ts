@@ -22,7 +22,8 @@ describe('passive Wasm memory checkpoints', () => {
   });
 
   it('throttles decode samples without hiding phase boundaries or observer failures', () => {
-    vi.useFakeTimers(); vi.setSystemTime(10000);
+    vi.useFakeTimers();
+    vi.setSystemTime(10000);
     const core = { module: { HEAPU8: new Uint8Array(65536) } };
     const listener = vi.fn();
     const stopThrowing = subscribeMemoryDiagnostics({
@@ -32,12 +33,15 @@ describe('passive Wasm memory checkpoints', () => {
     });
     const stop = subscribeMemoryDiagnostics({ listener });
     beginMemoryDiagnostics({ core, profile: 'cpu-wasm32' });
-    for (let i = 0; i < 100; i++) sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
+    for (let i = 0; i < 100; i++) {
+      sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
+    }
     sampleMemoryDiagnostics({ core, checkpoint: 'prefill-complete' });
     vi.advanceTimersByTime(1000);
     sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
     expect(listener).toHaveBeenCalledTimes(4);
-    stop(); stopThrowing();
+    stop();
+    stopThrowing();
   });
 });
 

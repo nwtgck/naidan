@@ -87,7 +87,9 @@ export function isImageResponse({ content }: { content: string }): boolean {
  */
 export function parseImageRequest({ content }: { content: string }): ImageRequestParams | null {
   const match = content.match(/<!-- naidan_experimental_image_request (\{.*?\}) -->/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   try {
     const result = ImageRequestParamsSchema.safeParse(JSON.parse(match[1] || '{}'));
     if (!result.success) {
@@ -115,7 +117,9 @@ export function parseImageRequest({ content }: { content: string }): ImageReques
  */
 export function parseImageResponse({ content }: { content: string }): ImageResponseParams | null {
   const match = content.match(/<!-- naidan_experimental_image_response (\{.*?\}) -->/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   try {
     const result = ImageResponseParamsSchema.safeParse(JSON.parse(match[1] || '{}'));
     if (!result.success) {
@@ -225,7 +229,9 @@ export function getImageGenerationProgress({ content }: { content: string }): {
     } catch (e) { /* ignore parse errors */ }
   }
 
-  if (!response) return { totalCount: undefined, remainingCount: undefined, currentStep, totalSteps };
+  if (!response) {
+    return { totalCount: undefined, remainingCount: undefined, currentStep, totalSteps };
+  }
 
   const totalCount = response.count ?? 1;
 

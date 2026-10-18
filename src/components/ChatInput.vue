@@ -10,6 +10,7 @@ import {
 import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useChatTools } from '@/features/tools/composables/useChatTools';
@@ -38,13 +39,13 @@ const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import(
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/advanced-text-editor-v3/components/AdvancedTextEditorV3.vue') });
 
 import {
-  SquareIcon, Minimize2Icon, Maximize2Icon, SendIcon,
+  SquareIcon, Minimize2Icon, Maximize2Icon, ArrowUpIcon,
   XIcon, ImageIcon,
   ChevronDownIcon, ChevronUpIcon, Edit2Icon, FileEditIcon,
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, Chat, ChatGroup, LmParameters } from '@/01-models/types';
+import type { Attachment, Chat, ChatGroup, LmParameters, Reasoning } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, VolumeCopyOperationId, VolumeId } from '@/01-models/ids';
 
@@ -69,6 +70,9 @@ const props = defineProps<{
   resolvedLmParameters: LmParameters | undefined,
   inheritedModelId: string | undefined,
   inheritedModelSource: SettingsSource | undefined,
+  inheritedReasoningEffort?: Reasoning['effort'],
+  availableSpace?: { width: number, height: number },
+  presentation?: 'visible' | 'hidden',
   autoSendPrompt?: string,
   visibility: 'submerged' | 'peeking' | 'active',
   aboveInputVisibility: 'visible' | 'hidden',
@@ -88,6 +92,7 @@ const emit = defineEmits<{
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void,
   (e: 'update:isAnimatingHeight', value: boolean): void,
   (e: 'scroll-to-bottom', force?: boolean): void,
+  (e: 'layout-change'): void,
 }>();
 
 const titleActivity = useAutoTitleActivity();
@@ -187,13 +192,45 @@ const selectedReasoningEffort = chatMetadata.reasoningEffort({
   chatId,
 });
 
-function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
+const pendingReasoningChats = ref<Set<ChatId>>(new Set());
+let disposed = false;
+
+async function updateReasoningEffort({ effort }: { effort: Reasoning['effort'] }) {
+  const savingChatId = props.chatId;
+  if (pendingReasoningChats.value.has(savingChatId)) {
+    return;
+  }
   titleActivity.noteActivity();
-  void chatMetadata.updateReasoningEffort({
-    chatId: props.chatId,
-    effort,
-  });
+  pendingReasoningChats.value.add(savingChatId);
+  try {
+    await chatMetadata.updateReasoningEffort({ chatId: savingChatId, effort });
+  } catch {
+    const message = await ensureStrings.ChatInput__failed_to_save_reasoning();
+    if (!disposed && props.chatId === savingChatId) {
+      addToast({ message });
+    }
+  } finally {
+    pendingReasoningChats.value.delete(savingChatId);
+  }
 }
+
+const inheritedReasoningLabel = computed(() => {
+  const effort = props.inheritedReasoningEffort;
+  const label = (() => {
+    switch (effort) {
+    case undefined: return lazyStrings.ReasoningSettings__default();
+    case 'none': return lazyStrings.ReasoningSettings__off();
+    case 'low': return lazyStrings.ReasoningSettings__low();
+    case 'medium': return lazyStrings.ReasoningSettings__medium();
+    case 'high': return lazyStrings.ReasoningSettings__high();
+    default: {
+      const _ex: never = effort;
+      throw new Error(`Unhandled reasoning effort: ${_ex}`);
+    }
+    }
+  })();
+  return label === undefined ? undefined : lazyStrings.ChatInput__inherit_reasoning({ effort: label });
+});
 
 const selectedImageModel = computed(() => {
   return chatMedia.selectedImageModel.value;
@@ -204,7 +241,9 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
-  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+    return;
+  }
   await chatModels.fetchForChat({
     chatId: props.chatId,
   });
@@ -221,6 +260,21 @@ const chatMountList = chatMounts.getMounts({
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const rootElement = ref<HTMLElement | null>(null);
+const openPopup = ref<'model' | 'attach' | 'tools'>();
+
+function updatePopupState({ popup, open }: { popup: 'model' | 'attach' | 'tools', open: boolean }) {
+  if (open) {
+    openPopup.value = popup;
+    emit('update:visibility', 'active');
+  } else if (openPopup.value === popup) {
+    openPopup.value = undefined;
+  }
+}
+
+watch(chatId, () => {
+  openPopup.value = undefined;
+});
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
 type ActiveCopy = {
@@ -241,6 +295,7 @@ function openAdvancedEditor() {
 
 function closeAdvancedEditor() {
   isAdvancedEditorOpen.value = false;
+  focusInput();
 }
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
@@ -311,7 +366,9 @@ function closeImageEditor() {
 
 function saveEditedImage({ blob }: { blob: Blob }) {
   titleActivity.noteActivity();
-  if (!editingAttachment.value) return;
+  if (!editingAttachment.value) {
+    return;
+  }
 
   const index = attachments.value.findIndex(a => a.id === editingAttachmentId.value);
   if (index !== -1) {
@@ -370,11 +427,14 @@ watch(attachments, (newAtts) => {
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
+const sendShortcutLabel = isMac ? '⌘ Enter' : 'Ctrl + Enter';
 
 async function processFiles({ files }: { files: File[] }) {
   titleActivity.noteActivity();
   for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
+    if (!file.type.startsWith('image/')) {
+      continue;
+    }
 
     const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
@@ -406,7 +466,9 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
 }
 
 async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: string }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
     chatId: props.chatId,
@@ -414,7 +476,9 @@ async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: strin
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
   void storageService.getVolumeDirectoryHandle({ volumeId }).then(handle => {
-    if (handle) startVolumeExtensionScan({ volumeId, handle });
+    if (handle) {
+      startVolumeExtensionScan({ volumeId, handle });
+    }
   });
 }
 
@@ -422,7 +486,9 @@ async function attachCopyAsVolume({ entries, name }: {
   entries: Array<{ file: File, relativePath: string }>,
   name: string,
 }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const copyId = generateId<VolumeCopyOperationId>();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
@@ -456,7 +522,9 @@ async function attachCopyAsVolume({ entries, name }: {
 }
 
 async function attachLinkAsVolume() {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const releaseActivity = titleActivity.hold();
   try {
     // @ts-expect-error: File System Access API
@@ -478,7 +546,9 @@ async function attachLinkAsVolume() {
 
 // Handlers for ChatAttachMenu emits
 async function onAttachFilesSelected({ files }: { files: File[] }) {
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    return;
+  }
   if (files.every(f => f.type.startsWith('image/'))) {
     await processFiles({ files });
   } else {
@@ -505,7 +575,9 @@ async function collectFilesFromDirectoryEntry(
     const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
       reader.readEntries(resolve, reject),
     );
-    if (batch.length === 0) break;
+    if (batch.length === 0) {
+      break;
+    }
     allEntries.push(...batch);
   }
   const results: Array<{ file: File, relativePath: string }> = [];
@@ -529,7 +601,9 @@ async function collectFilesFromDirectoryEntry(
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
 async function processDropItems({ items }: { items: DataTransferItem[] }) {
   titleActivity.noteActivity();
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   const releaseActivity = titleActivity.hold();
   try {
@@ -541,7 +615,9 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
     // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
     const collected: DropCollected[] = [];
     for (const item of items) {
-      if (item.kind !== 'file') continue;
+      if (item.kind !== 'file') {
+        continue;
+      }
       if ('getAsFileSystemHandle' in item) {
         // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
         collected.push({
@@ -596,7 +672,9 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
       }
       case 'raw-file': {
         const file = c.item.getAsFile();
-        if (file) plainFiles.push(file);
+        if (file) {
+          plainFiles.push(file);
+        }
         break;
       }
       default: {
@@ -615,9 +693,13 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 }
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   const mounts = chatMountList.value;
-  if (mounts.length === 0) return;
+  if (mounts.length === 0) {
+    return;
+  }
 
   const { buildWorkerMountsForChat } = await loadChatWorkerMountsModule();
   const workerMounts = await buildWorkerMountsForChat({
@@ -643,11 +725,14 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
     if (vol.id === volumeId) {
-      volumeType = vol.type; break;
+      volumeType = vol.type;
+      break;
     }
   }
 
@@ -673,7 +758,9 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   }
 
   const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
   await chatMounts.removeMount({
     chatId: props.chatId,
     volumeId,
@@ -693,12 +780,15 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
 }
 
 async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId, readOnly: boolean }) {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
     if (vol.id === volumeId) {
-      volumeType = vol.type; break;
+      volumeType = vol.type;
+      break;
     }
   }
 
@@ -749,7 +839,9 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
 
 async function handlePaste({ event }: { event: ClipboardEvent }) {
   const items = event.clipboardData?.items;
-  if (!items) return;
+  if (!items) {
+    return;
+  }
 
   const files: File[] = [];
   for (let i = 0; i < items.length; i++) {
@@ -794,35 +886,51 @@ function adjustTextareaHeight({ force }: { force?: boolean }) {
 
     const currentScrollHeight = target.scrollHeight;
     const computedStyle = getComputedStyle(target);
-    const lineHeight = parseFloat(computedStyle.lineHeight);
-    const paddingTop = parseFloat(computedStyle.paddingTop);
-    const paddingBottom = parseFloat(computedStyle.paddingBottom);
-    const borderTop = parseFloat(computedStyle.borderTopWidth);
-    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
+    const lineHeight = parseFloat(computedStyle.lineHeight) || parseFloat(computedStyle.fontSize) * 1.5 || 24;
+    const paddingTop = parseFloat(computedStyle.paddingTop) || 0;
+    const paddingBottom = parseFloat(computedStyle.paddingBottom) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
     const verticalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
 
     const minHeight = lineHeight + verticalPadding;
     const maxSixLinesHeight = (lineHeight * 6) + verticalPadding;
+    const rootHeight = rootElement.value?.scrollHeight ?? 0;
+    const currentHeight = target.offsetHeight;
+    const overhead = Math.max(0, rootHeight - currentHeight);
+    const availableHeight = props.availableSpace?.height;
+    const maxAvailableHeight = availableHeight && availableHeight > 0
+      ? Math.max(minHeight, availableHeight - overhead - 8)
+      : Math.max(minHeight, window.innerHeight * 0.7);
+    const collapsedLimit = Math.min(maxSixLinesHeight, maxAvailableHeight);
 
     isOverLimit.value = currentScrollHeight > maxSixLinesHeight;
 
     let finalHeight: number;
     if (isMaximized.value) {
-      finalHeight = window.innerHeight * 0.7;
+      finalHeight = maxAvailableHeight;
     } else {
-      finalHeight = Math.max(minHeight, Math.min(currentScrollHeight, maxSixLinesHeight));
+      finalHeight = Math.max(minHeight, Math.min(currentScrollHeight, collapsedLimit));
     }
 
     target.style.height = finalHeight + 'px';
-    target.style.overflowY = (isMaximized.value ? currentScrollHeight > finalHeight : currentScrollHeight > maxSixLinesHeight) ? 'auto' : 'hidden';
+    target.style.overflowY = currentScrollHeight > finalHeight ? 'auto' : 'hidden';
 
-    if (!isAnimatingHeight.value) {
-      nextTick(() => emit('scroll-to-bottom', shouldForce));
-    }
+    // The parent measures overlap and following state before changing its reserve.
+    // A second near-bottom check after a shrinking reserve would jump readers.
+    nextTick(() => {
+      emit('layout-change');
+      if (shouldForce) {
+        emit('scroll-to-bottom', true);
+      }
+    });
   }
 }
 
 const handleWindowResize = () => adjustTextareaHeight({});
+
+watch(() => props.availableSpace, () => nextTick(() => adjustTextareaHeight({})), { deep: true });
+watch([() => activeCopies.value.length, () => chatMountList.value.length, () => attachments.value.length, () => props.aboveInputVisibility], () => nextTick(() => adjustTextareaHeight({})));
 
 function toggleMaximized() {
   if (textareaRef.value) {
@@ -870,7 +978,9 @@ function handleMouseLeave() {
   isHovered.value = false;
   switch (props.visibility) {
   case 'peeking':
-    emit('update:visibility', 'submerged');
+    if (openPopup.value === undefined) {
+      emit('update:visibility', 'submerged');
+    }
     break;
   case 'submerged':
   case 'active':
@@ -903,7 +1013,9 @@ function toggleSubmerged() {
 }
 
 async function handleGenerateImage() {
-  if (!chat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if (!chat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) {
+    return;
+  }
 
   const prompt = input.value;
   const currentAttachments = [...attachments.value];
@@ -931,12 +1043,22 @@ async function handleGenerateImage() {
   }
 }
 
+function handleSendShortcut({ event }: { event: KeyboardEvent }) {
+  if (!event.isComposing && event.keyCode !== 229) {
+    void handleSend();
+  }
+}
+
 async function handleSend() {
-  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) {
+    return;
+  }
   finishHomeIntroduction();
 
   if (isImageMode.value) {
-    if (props.isSubmissionEnabled === false) return;
+    if (props.isSubmissionEnabled === false) {
+      return;
+    }
     await handleGenerateImage();
     return;
   }
@@ -1065,7 +1187,9 @@ watch(
     () => props.autoSendPrompt,
   ],
   async ([chatValue, interaction]) => {
-    if (interaction !== 'enabled' || !chatValue) return;
+    if (interaction !== 'enabled' || !chatValue) {
+      return;
+    }
 
     /**
      * Model discovery must not delay textarea focus or URL-driven auto-send.
@@ -1076,7 +1200,9 @@ watch(
     void fetchModels();
 
     await nextTick();
-    if (!isInteractiveChatCurrent({ chatValue })) return;
+    if (!isInteractiveChatCurrent({ chatValue })) {
+      return;
+    }
 
     adjustTextareaHeight({ force: false });
     focusInput({
@@ -1084,8 +1210,12 @@ watch(
       visibilityPolicy: 'preserve',
     });
 
-    if (!props.autoSendPrompt || autoSendState.value === 'sent') return;
-    if (!isInteractiveChatCurrent({ chatValue })) return;
+    if (!props.autoSendPrompt || autoSendState.value === 'sent') {
+      return;
+    }
+    if (!isInteractiveChatCurrent({ chatValue })) {
+      return;
+    }
 
     autoSendState.value = 'sent';
     input.value = props.autoSendPrompt;
@@ -1102,6 +1232,7 @@ watch(
 useEventTargetListener(window, 'resize', handleWindowResize);
 
 onUnmounted(() => {
+  disposed = true;
   // Save final state
   chatDraft.saveDraft({
     chatId: props.chatId,
@@ -1143,7 +1274,9 @@ function focusInput({
   visibilityPolicy?: FocusInputVisibilityPolicy,
 } = {}) {
   const applyFocus = () => {
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      return;
+    }
     switch (activeFocusArea.value) {
     case 'sidebar':
     case 'search':
@@ -1205,6 +1338,8 @@ function focusInput({
 }
 
 defineExpose({
+  rootElement,
+  textareaElement: textareaRef,
   focus: focusInput,
   input,
   applySuggestion,
@@ -1229,6 +1364,9 @@ defineExpose({
 <template>
   <div
     v-if="chat"
+    ref="rootElement"
+    class="chat-composer"
+    :style="{ maxHeight: availableSpace && availableSpace.height > 0 ? `${availableSpace.height}px` : undefined }"
     @input.capture="titleActivity.noteActivity(); finishHomeIntroduction()"
     @keydown.capture="titleActivity.noteActivity"
     @pointerdown.capture="titleActivity.noteActivity"
@@ -1237,21 +1375,22 @@ defineExpose({
     @compositionstart.capture="titleActivity.beginComposition"
     @compositionend.capture="titleActivity.endComposition"
     @focusout.capture="titleActivity.endComposition"
-    :tw-class="['absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform', visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0']"
+    :tw-class="['absolute bottom-0 left-0 right-0 flex flex-col overflow-y-auto p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 will-change-transform', openPopup ? 'transition-none' : 'transition-transform duration-500 ease-in-out', visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0']"
   >
-    <!-- Glass Zone behind the input card (Full width blur) -->
-    <div class="glass-zone-mask" :tw-class="['absolute inset-0 -z-10', { 'opacity-0': visibility === 'submerged' }]"></div>
+    <!-- Keep the conversation legible around the floating composer. -->
+    <div class="composer-edge-fade" :tw-class="['absolute inset-x-0 bottom-0 h-16 -z-10', { 'opacity-0': visibility === 'submerged' }]"></div>
 
     <div
       v-if="props.aboveInputVisibility === 'visible'"
-      tw-class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto"
+      tw-class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto shrink-0 overflow-y-auto"
+      :style="{ maxHeight: availableSpace && availableSpace.height > 0 ? `${availableSpace.height * 0.5}px` : undefined }"
       data-testid="chat-input-above-slot"
     >
       <slot name="above-input"></slot>
     </div>
 
     <div
-      :tw-class="['max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col',
+      :tw-class="['max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:border-blue-400/80 dark:focus-within:border-blue-500/70 transition-colors duration-300 flex flex-col',
                   isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
                   visibility === 'submerged' ? 'cursor-pointer' : ''
       ]"
@@ -1259,200 +1398,228 @@ defineExpose({
       @mouseleave="handleMouseLeave"
       @click="visibility === 'submerged' ? handleFocus() : null"
     >
-      <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
-      <div tw-class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
-
-      <!-- Active copy progress bars -->
-      <div v-if="activeCopies.length > 0" tw-class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
-        <div
-          v-for="copy in activeCopies"
-          :key="idToRaw({ id: copy.id })"
-          tw-class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
-          data-testid="copy-progress"
-        >
-          <div tw-class="px-3 pt-3 pb-2.5">
-            <div tw-class="flex items-center justify-between mb-2">
-              <span tw-class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
-                <Loader2Icon tw-class="w-3.5 h-3.5 animate-spin shrink-0" />
-                {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
-              </span>
-              <div tw-class="flex items-center gap-3">
-                <span v-if="copy.progress" tw-class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-                  {{ copy.progress.processed }} / {{ copy.progress.total }}
+      <div
+        v-if="activeCopies.length > 0 || chatMountList.length > 0 || attachments.length > 0"
+        tw-class="overflow-y-auto shrink-0"
+        :style="{ maxHeight: availableSpace && availableSpace.height > 0 ? `${availableSpace.height * 0.3}px` : undefined }"
+      >
+        <!-- Active copy progress bars -->
+        <div v-if="activeCopies.length > 0" tw-class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
+          <div
+            v-for="copy in activeCopies"
+            :key="idToRaw({ id: copy.id })"
+            tw-class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
+            data-testid="copy-progress"
+          >
+            <div tw-class="px-3 pt-3 pb-2.5">
+              <div tw-class="flex items-center justify-between mb-2">
+                <span tw-class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                  <Loader2Icon tw-class="w-3.5 h-3.5 animate-spin shrink-0" />
+                  {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
                 </span>
-                <button
-                  @click="copy.abort.abort()"
-                  tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                  data-testid="copy-cancel-btn"
-                >
-                  {{ lazyStrings.ChatInput__cancel() }}
-                </button>
+                <div tw-class="flex items-center gap-3">
+                  <span v-if="copy.progress" tw-class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                    {{ copy.progress.processed }} / {{ copy.progress.total }}
+                  </span>
+                  <button
+                    @click="copy.abort.abort()"
+                    tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                    data-testid="copy-cancel-btn"
+                  >
+                    {{ lazyStrings.ChatInput__cancel() }}
+                  </button>
+                </div>
+              </div>
+              <div tw-class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+                <div
+                  tw-class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+                  :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
+                ></div>
               </div>
             </div>
-            <div tw-class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
-              <div
-                tw-class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
-                :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
-              ></div>
+          </div>
+        </div>
+
+        <!-- Folder/File Mounts attached to this chat -->
+        <div v-if="chatMountList.length > 0" tw-class="px-4 pt-2 pb-3" data-testid="chat-mounts-preview">
+          <MountBadgeList
+            :mounts="chatMountList"
+            path-trim-prefix="/home/user/"
+            :show-explorer="true"
+            @toggle-read-only="handleToggleMountReadOnly"
+            @remove="handleDetachMount"
+            @open-explorer="handleOpenMountExplorer"
+          />
+        </div>
+
+        <!-- Attachment Previews -->
+        <div v-if="attachments.length > 0" tw-class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
+          <div v-for="att in attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
+            <div class="bg-transparency-grid" tw-class="rounded-lg overflow-hidden" style="--grid-size: 10px;">
+              <img
+                :src="attachmentUrls.get(att.id)"
+                tw-class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
+              />
+            </div>
+            <div tw-class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
+              <button
+                @click="openImageEditor({ id: att.id })"
+                class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors"
+                :title="lazyStrings.ChatInput__edit_image()"
+              >
+                <Edit2Icon tw-class="w-3 h-3" />
+              </button>
+              <button
+                @click="removeAttachment({ id: att.id })"
+                class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors"
+                :title="lazyStrings.ChatInput__remove()"
+              >
+                <XIcon tw-class="w-3 h-3" />
+              </button>
             </div>
           </div>
         </div>
+
       </div>
 
-      <!-- Folder/File Mounts attached to this chat -->
-      <div v-if="chatMountList.length > 0" tw-class="px-4 pt-4" data-testid="chat-mounts-preview">
-        <MountBadgeList
-          :mounts="chatMountList"
-          path-trim-prefix="/home/user/"
-          :show-explorer="true"
-          @toggle-read-only="handleToggleMountReadOnly"
-          @remove="handleDetachMount"
-          @open-explorer="handleOpenMountExplorer"
-        />
-      </div>
+      <div tw-class="relative">
+        <textarea
+          ref="textareaRef"
+          v-model="input"
+          @input="adjustTextareaHeight({})"
+          @paste="handlePaste({ event: $event })"
+          @focus="handleFocus"
+          @blur="handleBlur"
+          @click="setActiveFocusArea({ area: 'chat' })"
+          @keydown.enter.ctrl.prevent="handleSendShortcut({ event: $event })"
+          @keydown.enter.meta.prevent="handleSendShortcut({ event: $event })"
+          @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
+          :placeholder="lazyStrings.ChatInput__type_a_message()"
+          rows="1"
+          tw-class="block w-full text-base pl-4 pr-20 py-2.5 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none min-h-11 transition-colors"
+          :class="{ 'animate-height': isAnimatingHeight }"
+          data-testid="chat-input"
+        ></textarea>
 
-      <!-- Attachment Previews -->
-      <div v-if="attachments.length > 0" tw-class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
-        <div v-for="att in attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
-          <div class="bg-transparency-grid" tw-class="rounded-lg overflow-hidden" style="--grid-size: 10px;">
-            <img
-              :src="attachmentUrls.get(att.id)"
-              tw-class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
-            />
-          </div>
-          <div tw-class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
-            <button
-              @click="openImageEditor({ id: att.id })"
-              class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors"
-              :title="lazyStrings.ChatInput__edit_image()"
-            >
-              <Edit2Icon tw-class="w-3 h-3" />
-            </button>
-            <button
-              @click="removeAttachment({ id: att.id })"
-              class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors"
-              :title="lazyStrings.ChatInput__remove()"
-            >
-              <XIcon tw-class="w-3 h-3" />
-            </button>
-          </div>
+        <!-- Control Buttons inside input area -->
+        <div tw-class="absolute right-2 top-1.5 flex items-center gap-0.5 z-20">
+          <button
+            v-if="isOverLimit || isMaximized"
+            @click.stop="toggleMaximized"
+            tw-class="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/50"
+            :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
+            :aria-label="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
+            :aria-expanded="isMaximized"
+            data-testid="maximize-button"
+          >
+            <Minimize2Icon v-if="isMaximized" tw-class="w-4 h-4" />
+            <Maximize2Icon v-else tw-class="w-4 h-4" />
+          </button>
+
+          <button
+            @click.stop="toggleSubmerged"
+            tw-class="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/50"
+            :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
+            :aria-label="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
+            data-testid="submerge-button"
+          >
+            <ChevronUpIcon v-if="visibility === 'submerged'" tw-class="w-4 h-4" />
+            <ChevronDownIcon v-else tw-class="w-4 h-4" />
+          </button>
+
         </div>
       </div>
 
-      <textarea
-        ref="textareaRef"
-        v-model="input"
-        @input="adjustTextareaHeight({})"
-        @paste="handlePaste({ event: $event })"
-        @focus="handleFocus"
-        @blur="handleBlur"
-        @click="setActiveFocusArea({ area: 'chat' })"
-        @keydown.enter.ctrl.prevent="handleSend"
-        @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
-        :placeholder="lazyStrings.ChatInput__type_a_message()"
-        tw-class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
-        :class="{ 'animate-height': isAnimatingHeight }"
-        data-testid="chat-input"
-      ></textarea>
-
-      <!-- Control Buttons inside input area -->
-      <div tw-class="absolute right-3 top-3 flex flex-col items-center gap-1.5 z-20">
-        <button
-          v-if="isOverLimit || isMaximized"
-          @click.stop="toggleMaximized"
-          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
-          data-testid="maximize-button"
-        >
-          <Minimize2Icon v-if="isMaximized" tw-class="w-4 h-4" />
-          <Maximize2Icon v-else tw-class="w-4 h-4" />
-        </button>
-
-        <button
-          @click.stop="toggleSubmerged"
-          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
-          data-testid="submerge-button"
-        >
-          <ChevronUpIcon v-if="visibility === 'submerged'" tw-class="w-4 h-4" />
-          <ChevronDownIcon v-else tw-class="w-4 h-4" />
-        </button>
-
-        <button
-          @click.stop="openAdvancedEditor"
-          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="lazyStrings.ChatInput__open_advanced_editor()"
-          data-testid="open-advanced-editor-button"
-        >
-          <FileEditIcon tw-class="w-4 h-4" />
-        </button>
-      </div>
-
-      <div :tw-class="['flex items-center justify-between px-4 pb-2', { 'pointer-events-none invisible': visibility === 'submerged' }]">
-        <div tw-class="flex items-center gap-2">
-          <div tw-class="w-[100px] sm:w-[180px]">
-            <ModelSelector
-              :model-value="chat.modelId"
-              @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
-              :models="sortedAvailableModels"
-              :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
-              :loading="fetchingModels"
-              allow-clear
-              @refresh="fetchModels"
-              data-testid="model-override-select"
-            />
-          </div>
-
-          <ChatAttachMenu
-            :has-file-system-access="hasFileSystemAccess"
-            @files-selected="onAttachFilesSelected({ files: $event })"
-            @folder-copy="(folderName, files) => onAttachFolderCopy({ folderName, files })"
-            @folder-link="attachLinkAsVolume"
-          />
-
-          <ChatToolsMenu
-            :can-generate-image="canGenerateImage && hasImageModel"
-            :is-processing="isChatStreaming"
-            :is-image-mode="isImageMode"
-            :is-think-active="selectedReasoningEffort !== undefined"
-            :selected-width="currentResolution.width"
-            :selected-height="currentResolution.height"
-            :selected-count="currentCount"
-            :selected-steps="currentSteps"
-            :selected-seed="currentSeed"
-            :selected-persist-as="currentPersistAs"
-            :available-image-models="availableImageModels"
-            :selected-image-model="selectedImageModel"
-            :selected-reasoning-effort="selectedReasoningEffort"
-            @toggle-image-mode="toggleImageMode"
-            @update:resolution="(width, height) => updateResolution({ width, height })"
-            @update:count="updateCount({ count: $event })"
-            @update:steps="updateSteps({ steps: $event })"
-            @update:seed="updateSeed({ seed: $event })"
-            @update:persist-as="updatePersistAs({ format: $event })"
-            @update:model="handleUpdateImageModel({ modelId: $event })"
-            @update:reasoning-effort="e => updateReasoningEffort({ effort: e })"
-          />
+      <div :tw-class="['flex items-center justify-between gap-1 px-2 pt-0.5 pb-1.5 rounded-b-2xl bg-gray-50/70 dark:bg-gray-900/20', { 'pointer-events-none invisible': visibility === 'submerged' }]">
+        <div tw-class="min-w-0 flex-1 max-w-xs">
+          <ModelSelector
+            :key="idToRaw({ id: chatId })"
+            surface="composer"
+            :disabled="visibility === 'submerged' || presentation === 'hidden'"
+            :model-value="chat.modelId"
+            @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
+            :models="sortedAvailableModels"
+            :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
+            :loading="fetchingModels"
+            allow-clear
+            @refresh="fetchModels"
+            @update:open="updatePopupState({ popup: 'model', open: $event })"
+            data-testid="model-override-select"
+          >
+            <template #settings>
+              <ReasoningSettings
+                :selected-effort="selectedReasoningEffort"
+                :default-label="inheritedReasoningLabel"
+                :disabled="pendingReasoningChats.has(chatId)"
+                surface="plain"
+                notice="inline-help"
+                @update:effort="updateReasoningEffort({ effort: $event })"
+              />
+            </template>
+          </ModelSelector>
         </div>
 
-        <button
-          @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
-          :disabled="!isChatStreaming && (!isSendActionEnabled || (!input.trim() && attachments.length === 0))"
-          tw-class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
-          :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
-        >
-          <template v-if="isChatStreaming">
-            <span tw-class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
-            <SquareIcon tw-class="w-4 h-4 fill-white text-white" />
-          </template>
-          <template v-else>
-            <span tw-class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
-            <ImageIcon v-if="isImageMode" tw-class="w-4 h-4 text-white" />
-            <SendIcon v-else tw-class="w-4 h-4" />
-          </template>
-        </button>
+        <div tw-class="shrink-0 flex items-center gap-1.5">
+          <div tw-class="flex items-center gap-0.5">
+            <ChatAttachMenu
+              :key="idToRaw({ id: chatId })"
+              surface="composer"
+              :disabled="visibility === 'submerged' || presentation === 'hidden'"
+              :has-file-system-access="hasFileSystemAccess"
+              @files-selected="onAttachFilesSelected({ files: $event })"
+              @folder-copy="(folderName, files) => onAttachFolderCopy({ folderName, files })"
+              @folder-link="attachLinkAsVolume"
+              @update:open="updatePopupState({ popup: 'attach', open: $event })"
+            />
+            <ChatToolsMenu
+              :key="idToRaw({ id: chatId })"
+              surface="composer"
+              :disabled="visibility === 'submerged' || presentation === 'hidden'"
+              :can-generate-image="canGenerateImage && hasImageModel"
+              :is-processing="isChatStreaming"
+              :is-image-mode="isImageMode"
+              :selected-width="currentResolution.width"
+              :selected-height="currentResolution.height"
+              :selected-count="currentCount"
+              :selected-steps="currentSteps"
+              :selected-seed="currentSeed"
+              :selected-persist-as="currentPersistAs"
+              :available-image-models="availableImageModels"
+              :selected-image-model="selectedImageModel"
+              @toggle-image-mode="toggleImageMode"
+              @update:resolution="(width, height) => updateResolution({ width, height })"
+              @update:count="updateCount({ count: $event })"
+              @update:steps="updateSteps({ steps: $event })"
+              @update:seed="updateSeed({ seed: $event })"
+              @update:persist-as="updatePersistAs({ format: $event })"
+              @update:model="handleUpdateImageModel({ modelId: $event })"
+              @update:open="updatePopupState({ popup: 'tools', open: $event })"
+            />
+            <button
+              @click.stop="openAdvancedEditor"
+              tw-class="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/50"
+              :title="lazyStrings.ChatInput__open_advanced_editor()"
+              :aria-label="lazyStrings.ChatInput__open_advanced_editor()"
+              data-testid="open-advanced-editor-button"
+            >
+              <FileEditIcon tw-class="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
+            :disabled="!isChatStreaming && (!isSendActionEnabled || (!input.trim() && attachments.length === 0))"
+            class="composer-send"
+            tw-class="shrink-0 w-9 h-9 flex items-center justify-center text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:shadow-none disabled:cursor-not-allowed transition-colors shadow-sm shadow-blue-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+            :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
+            :aria-label="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
+            :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
+          >
+            <SquareIcon v-if="isChatStreaming" tw-class="w-4 h-4 fill-current" />
+            <ImageIcon v-else-if="isImageMode" tw-class="w-4 h-4" />
+            <ArrowUpIcon v-else tw-class="w-4 h-4" :stroke-width="2.5" />
+            <span class="composer-shortcut" tw-class="text-xs font-normal whitespace-nowrap" aria-hidden="true">{{ isChatStreaming ? 'Esc' : sendShortcutLabel }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1491,6 +1658,25 @@ defineExpose({
 </template>
 
 <style scoped>
+.chat-composer {
+  container-type: inline-size;
+  container-name: chat-composer;
+}
+.composer-shortcut {
+  display: none;
+}
+@container chat-composer (min-width: 40rem) {
+  .composer-shortcut {
+    display: inline;
+  }
+  .composer-send {
+    width: auto;
+    min-width: 2.25rem;
+    padding-inline: 0.75rem;
+    gap: 0.5rem;
+  }
+}
+
 .animate-in {
   animation-fill-mode: forwards;
 }
@@ -1499,37 +1685,30 @@ defineExpose({
   transition: height 0.3s ease-in-out !important;
 }
 
-.glass-zone-mask {
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
-  /* Keep top 35% clear for a tighter focus around the actual input card */
-  mask-image: linear-gradient(to bottom, transparent, black 35%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 35%);
-  /* Start background fade later to match */
-  background: linear-gradient(
-    to bottom,
-    transparent 25%,
-    rgba(255, 255, 255, 0.5) 60%,
-    rgba(255, 255, 255, 1) 95%
-  );
+.composer-edge-fade {
+  background: linear-gradient(to bottom, transparent 25%, rgba(255, 255, 255, 0.5) 60%, white 95%);
 }
-
-.dark .glass-zone-mask {
-  background: linear-gradient(
-    to bottom,
-    transparent 25%,
-    rgba(17, 24, 39, 0.5) 60%,
-    rgba(17, 24, 39, 1) 95%
-  );
+.dark .composer-edge-fade {
+  background: linear-gradient(to bottom, transparent 25%, rgba(17, 24, 39, 0.5) 60%, rgb(17, 24, 39) 95%);
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes zoom-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .fade-in {
   animation-name: fade-in;

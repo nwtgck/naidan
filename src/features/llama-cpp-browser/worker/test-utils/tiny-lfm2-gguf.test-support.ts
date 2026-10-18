@@ -111,7 +111,9 @@ export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | un
     const bytes = new Uint8Array(shape.reduce((left, right) => left * right, 1) * 4);
     const view = new DataView(bytes.buffer);
     if (name.includes('norm.weight')) {
-      for (let index = 0; index < bytes.length; index += 4) view.setFloat32(index, 1, true);
+      for (let index = 0; index < bytes.length; index += 4) {
+        view.setFloat32(index, 1, true);
+      }
     }
     if (name === 'token_embd.weight') {
       for (let token = 0; token < vocab.length; token++) {
@@ -125,7 +127,9 @@ export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | un
     }
     // Q/K remain zero, so attention uniformly averages the retained prefix.
     if (name === 'blk.0.attn_v.weight' || name === 'blk.0.attn_output.weight') {
-      for (let index = 0; index < embedding; index++) view.setFloat32((index * embedding + index) * 4, 0.5, true);
+      for (let index = 0; index < embedding; index++) {
+        view.setFloat32((index * embedding + index) * 4, 0.5, true);
+      }
     }
     if (name === 'blk.1.shortconv.in_proj.weight') {
       for (let index = 0; index < embedding; index++) {
@@ -143,7 +147,9 @@ export function createTinyLfm2Gguf({ chatTemplate }: { chatTemplate: string | un
       }
     }
     if (name === 'blk.1.shortconv.out_proj.weight') {
-      for (let index = 0; index < embedding; index++) view.setFloat32((index * embedding + index) * 4, 0.75, true);
+      for (let index = 0; index < embedding; index++) {
+        view.setFloat32((index * embedding + index) * 4, 0.75, true);
+      }
     }
     payload.push(bytes);
     offset += bytes.length;

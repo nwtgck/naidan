@@ -10,7 +10,9 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: m
 vi.mock('@/utils/stream-download', () => ({ downloadBlob: mocks.download }));
 
 beforeEach(async () => {
-  vi.clearAllMocks(); mocks.confirm.mockResolvedValue(true); mocks.url.mockReturnValue('blob:pending');
+  vi.clearAllMocks();
+  mocks.confirm.mockResolvedValue(true);
+  mocks.url.mockReturnValue('blob:pending');
   const OriginalURL = URL;
   vi.stubGlobal('URL', class extends OriginalURL {
     static override createObjectURL = mocks.url; static override revokeObjectURL = mocks.revoke;
@@ -19,7 +21,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  for (const entry of pendingImageHistory.list()) pendingImageHistory.discard({ id: entry.record.id });
+  for (const entry of pendingImageHistory.list()) {
+    pendingImageHistory.discard({ id: entry.record.id });
+  }
   vi.unstubAllGlobals();
 });
 
@@ -38,26 +42,47 @@ async function pending() {
 }
 
 it('remounts, previews and downloads retained pixels, then retries the same save', async () => {
-  const value = await pending(); let wrapper = mount(ImagePendingHistory); await flushPromises();
+  const value = await pending();
+  let wrapper = mount(ImagePendingHistory);
+  await flushPromises();
   expect(wrapper.find('img').exists()).toBe(true);
-  await wrapper.get('[data-testid="pending-history-download"]').trigger('click'); await flushPromises();
+  await wrapper.get('[data-testid="pending-history-download"]').trigger('click');
+  await flushPromises();
   expect(mocks.download).toHaveBeenCalledWith(expect.objectContaining({ blob: value.output.files[0]!.blob }));
-  wrapper.unmount(); expect(mocks.revoke).toHaveBeenCalledWith('blob:pending'); expect(pendingImageHistory.list()).toHaveLength(1);
-  wrapper = mount(ImagePendingHistory); await flushPromises();
-  await wrapper.get('[data-testid="pending-history-retry"]').trigger('click'); await flushPromises();
-  expect(value.save).toHaveBeenCalledTimes(2); expect(value.save.mock.calls[1]![0].publication).toBe(value.save.mock.calls[0]![0].publication);
-  expect(wrapper.find('[data-testid="image-pending-history"]').exists()).toBe(false); wrapper.unmount();
+  wrapper.unmount();
+  expect(mocks.revoke).toHaveBeenCalledWith('blob:pending');
+  expect(pendingImageHistory.list()).toHaveLength(1);
+  wrapper = mount(ImagePendingHistory);
+  await flushPromises();
+  await wrapper.get('[data-testid="pending-history-retry"]').trigger('click');
+  await flushPromises();
+  expect(value.save).toHaveBeenCalledTimes(2);
+  expect(value.save.mock.calls[1]![0].publication).toBe(value.save.mock.calls[0]![0].publication);
+  expect(wrapper.find('[data-testid="image-pending-history"]').exists()).toBe(false);
+  wrapper.unmount();
 });
 
 it('requires confirmation, disables mutation during saving and invalidates discarded retry handles', async () => {
-  const value = await pending(); const wrapper = mount(ImagePendingHistory); await flushPromises();
-  const gate = Promise.withResolvers<void>(); value.save.mockReturnValueOnce(gate.promise);
-  const saving = pendingImageHistory.retry({ id: value.id }); await flushPromises();
+  const value = await pending();
+  const wrapper = mount(ImagePendingHistory);
+  await flushPromises();
+  const gate = Promise.withResolvers<void>();
+  value.save.mockReturnValueOnce(gate.promise);
+  const saving = pendingImageHistory.retry({ id: value.id });
+  await flushPromises();
   expect(wrapper.get('[data-testid="pending-history-retry"]').attributes('disabled')).toBeDefined();
   expect(wrapper.get('[data-testid="pending-history-discard"]').attributes('disabled')).toBeDefined();
-  const failed = expect(saving).rejects.toThrow('full'); gate.reject(new Error('full')); await failed; await flushPromises();
-  mocks.confirm.mockResolvedValueOnce(false); await wrapper.get('[data-testid="pending-history-discard"]').trigger('click'); await flushPromises();
+  const failed = expect(saving).rejects.toThrow('full');
+  gate.reject(new Error('full'));
+  await failed;
+  await flushPromises();
+  mocks.confirm.mockResolvedValueOnce(false);
+  await wrapper.get('[data-testid="pending-history-discard"]').trigger('click');
+  await flushPromises();
   expect(pendingImageHistory.list()).toHaveLength(1);
-  await wrapper.get('[data-testid="pending-history-discard"]').trigger('click'); await flushPromises();
-  expect(pendingImageHistory.list()).toEqual([]); await expect(pendingImageHistory.retry({ id: value.id })).rejects.toThrow('discarded'); wrapper.unmount();
+  await wrapper.get('[data-testid="pending-history-discard"]').trigger('click');
+  await flushPromises();
+  expect(pendingImageHistory.list()).toEqual([]);
+  await expect(pendingImageHistory.retry({ id: value.id })).rejects.toThrow('discarded');
+  wrapper.unmount();
 });

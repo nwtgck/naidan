@@ -33,13 +33,17 @@ export function findShellWordConstructEnd({
   if (text[startIndex] === '`') {
     return findBackquoteSubstitution({ text, startIndex })?.endIndex;
   }
-  if (text[startIndex] !== '$') return undefined;
+  if (text[startIndex] !== '$') {
+    return undefined;
+  }
 
   if (text[startIndex + 1] === '{') {
     const endIndex = findBracedParameterEnd({ text, startIndex });
     return endIndex < 0 ? undefined : endIndex;
   }
-  if (text[startIndex + 1] !== '(') return undefined;
+  if (text[startIndex + 1] !== '(') {
+    return undefined;
+  }
   const expression = text[startIndex + 2] === '('
     ? findBalancedArithmeticExpression({ text, startIndex })
     : findBalancedParenthesizedExpression({ text, startIndex: startIndex + 1 });
@@ -53,13 +57,21 @@ export function findShellAnsiCQuotedEnd({
   text: string,
   startIndex: number,
 }): number | undefined {
-  if (text[startIndex] !== '$' || text[startIndex + 1] !== "'") return undefined;
+  if (text[startIndex] !== '$' || text[startIndex + 1] !== "'") {
+    return undefined;
+  }
 
   for (let index = startIndex + 2; index < text.length; index += 1) {
     const character = text[index];
-    if (character === undefined) continue;
-    if (character === "'") return index;
-    if (character === '\\' && text[index + 1] !== undefined) index += 1;
+    if (character === undefined) {
+      continue;
+    }
+    if (character === "'") {
+      return index;
+    }
+    if (character === '\\' && text[index + 1] !== undefined) {
+      index += 1;
+    }
   }
   return undefined;
 }
@@ -75,7 +87,9 @@ function scanAnsiCQuotedDelimiterPart({
   value: string,
 } | undefined {
   const endIndex = findShellAnsiCQuotedEnd({ text, startIndex });
-  if (endIndex === undefined) return undefined;
+  if (endIndex === undefined) {
+    return undefined;
+  }
   return {
     endIndex,
     value: decodeShellAnsiCQuote({ text: text.slice(startIndex + 2, endIndex) }),
@@ -93,8 +107,12 @@ function scanHereDocumentDeclaration({
   pending: PendingHereDocument,
   quoted: boolean,
 } | undefined {
-  if (text[operatorIndex] !== '<' || text[operatorIndex + 1] !== '<') return undefined;
-  if (text[operatorIndex + 2] === '<') return undefined;
+  if (text[operatorIndex] !== '<' || text[operatorIndex + 1] !== '<') {
+    return undefined;
+  }
+  if (text[operatorIndex + 2] === '<') {
+    return undefined;
+  }
 
   const tabHandling = text[operatorIndex + 2] === '-'
     ? 'strip-leading' as const
@@ -112,7 +130,9 @@ function scanHereDocumentDeclaration({
     throw new Error(`Unhandled heredoc tab handling: ${_ex}`);
   }
   }
-  while (text[index] === ' ' || text[index] === '\t') index += 1;
+  while (text[index] === ' ' || text[index] === '\t') {
+    index += 1;
+  }
 
   const firstCharacter = text[index];
   if (
@@ -131,13 +151,17 @@ function scanHereDocumentDeclaration({
   let quoted = false;
 
   const appendLiteralUntil = ({ endIndex }: { endIndex: number }): void => {
-    if (literalStart < endIndex) delimiterParts.push(text.slice(literalStart, endIndex));
+    if (literalStart < endIndex) {
+      delimiterParts.push(text.slice(literalStart, endIndex));
+    }
     literalStart = endIndex;
   };
 
   for (; index < text.length; index += 1) {
     const character = text[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'single':
@@ -249,7 +273,9 @@ function scanHereDocumentDeclaration({
       appendLiteralUntil({ endIndex: index });
       const nextCharacter = text[index + 1];
       if (nextCharacter !== undefined) {
-        if (nextCharacter !== '\n') delimiterParts.push(nextCharacter);
+        if (nextCharacter !== '\n') {
+          delimiterParts.push(nextCharacter);
+        }
         index += 1;
       }
       literalStart = index + 1;
@@ -259,7 +285,9 @@ function scanHereDocumentDeclaration({
   appendLiteralUntil({ endIndex: index });
   const delimiter = delimiterParts.join('');
 
-  if (!consumed || mode !== 'unquoted') return undefined;
+  if (!consumed || mode !== 'unquoted') {
+    return undefined;
+  }
   return {
     endIndex: index - 1,
     pending: { delimiter, tabHandling },
@@ -346,10 +374,14 @@ function skipPendingHereDocumentBodies({
         foundDelimiter = true;
         break;
       }
-      if (lineEnd < 0) break;
+      if (lineEnd < 0) {
+        break;
+      }
       cursor = lineEnd + 1;
     }
-    if (!foundDelimiter) return undefined;
+    if (!foundDelimiter) {
+      return undefined;
+    }
   }
   return cursor;
 }
@@ -361,12 +393,16 @@ export function findBackquoteSubstitution({
   text: string,
   startIndex: number,
 }): BalancedShellExpression | undefined {
-  if (text[startIndex] !== '`') return undefined;
+  if (text[startIndex] !== '`') {
+    return undefined;
+  }
 
   let escaped = false;
   for (let index = startIndex + 1; index < text.length; index += 1) {
     const character = text[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     if (escaped) {
       escaped = false;
@@ -393,7 +429,9 @@ export function findBalancedParenthesizedExpression({
   text: string,
   startIndex: number,
 }): BalancedShellExpression | undefined {
-  if (text[startIndex] !== '(') return undefined;
+  if (text[startIndex] !== '(') {
+    return undefined;
+  }
 
   let depth = 0;
   let mode: ShellQuoteMode = 'unquoted';
@@ -401,11 +439,15 @@ export function findBalancedParenthesizedExpression({
   let pendingHereDocuments: PendingHereDocument[] | undefined;
   for (let index = startIndex; index < text.length; index += 1) {
     const character = text[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'single':
-      if (character === "'") mode = 'unquoted';
+      if (character === "'") {
+        mode = 'unquoted';
+      }
       continue;
     case 'double': {
       if (character === '"') {
@@ -441,7 +483,9 @@ export function findBalancedParenthesizedExpression({
       if (atWordStart) {
         while (index + 1 < text.length) {
           const nextCharacter = text[index + 1];
-          if (nextCharacter === '\n') break;
+          if (nextCharacter === '\n') {
+            break;
+          }
           index += 1;
         }
         atWordStart = true;
@@ -500,7 +544,9 @@ export function findBalancedParenthesizedExpression({
         newlineIndex: index,
         pending: pendingHereDocuments,
       });
-      if (nextIndex === undefined) return undefined;
+      if (nextIndex === undefined) {
+        return undefined;
+      }
       pendingHereDocuments = undefined;
       index = nextIndex - 1;
       atWordStart = true;
@@ -547,18 +593,24 @@ function findBalancedArithmeticBody({
   for (let index = contentStartIndex; index < text.length; index += 1) {
     const character = text[index];
     const nextCharacter = text[index + 1];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'single':
-      if (character === "'") mode = 'unquoted';
+      if (character === "'") {
+        mode = 'unquoted';
+      }
       continue;
     case 'double':
       if (character === '"') {
         mode = 'unquoted';
         continue;
       }
-      if (character === '\\') index += 1;
+      if (character === '\\') {
+        index += 1;
+      }
       continue;
     case 'unquoted':
       break;
@@ -637,7 +689,9 @@ function findBalancedArithmeticCommand({
   text: string,
   startIndex: number,
 }): BalancedShellExpression | undefined {
-  if (text[startIndex] !== '(' || text[startIndex + 1] !== '(') return undefined;
+  if (text[startIndex] !== '(' || text[startIndex + 1] !== '(') {
+    return undefined;
+  }
   return findBalancedArithmeticBody({
     text,
     contentStartIndex: startIndex + 2,
@@ -651,17 +705,23 @@ export function findBracedParameterEnd({
   text: string,
   startIndex: number,
 }): number {
-  if (text[startIndex] !== '$' || text[startIndex + 1] !== '{') return -1;
+  if (text[startIndex] !== '$' || text[startIndex + 1] !== '{') {
+    return -1;
+  }
 
   let depth = 1;
   let mode: ShellQuoteMode = 'unquoted';
   for (let index = startIndex + 2; index < text.length; index += 1) {
     const character = text[index];
-    if (character === undefined) continue;
+    if (character === undefined) {
+      continue;
+    }
 
     switch (mode) {
     case 'single':
-      if (character === "'") mode = 'unquoted';
+      if (character === "'") {
+        mode = 'unquoted';
+      }
       continue;
     case 'double':
       if (character === '"') {
@@ -679,7 +739,9 @@ export function findBracedParameterEnd({
           continue;
         }
       }
-      if (character !== '$') continue;
+      if (character !== '$') {
+        continue;
+      }
       break;
     case 'unquoted': {
       const ansiCQuotedEnd = findShellAnsiCQuotedEnd({ text, startIndex: index });
@@ -720,7 +782,9 @@ export function findBracedParameterEnd({
         text,
         startIndex: index + 1,
       });
-      if (processSubstitution !== undefined) index = processSubstitution.endIndex;
+      if (processSubstitution !== undefined) {
+        index = processSubstitution.endIndex;
+      }
       continue;
     }
     if (character === '$' && text[index + 1] === '{') {
@@ -730,7 +794,9 @@ export function findBracedParameterEnd({
     }
     if (character === '}') {
       depth -= 1;
-      if (depth === 0) return index;
+      if (depth === 0) {
+        return index;
+      }
     }
   }
   return -1;

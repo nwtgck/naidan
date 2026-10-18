@@ -36,10 +36,16 @@ const MERGE_FF_ARGV_CATALOG = defineArgvCatalog<'ff-only' | 'no-ff'>({
 });
 
 function resolveMergeControlAction({ token }: { token: string }): MergeControlAction | undefined {
-  if (!token.startsWith('--') || token.includes('=')) return undefined;
+  if (!token.startsWith('--') || token.includes('=')) {
+    return undefined;
+  }
   const name = token.slice(2);
-  if (name.length >= 3 && 'continue'.startsWith(name)) return 'continue';
-  if (name.length >= 2 && 'abort'.startsWith(name)) return 'abort';
+  if (name.length >= 3 && 'continue'.startsWith(name)) {
+    return 'continue';
+  }
+  if (name.length >= 2 && 'abort'.startsWith(name)) {
+    return 'abort';
+  }
   return undefined;
 }
 
@@ -48,8 +54,12 @@ function updateMergeFastForwardMode({
 }: {
   arg: string;
 }): MergeFastForwardMode | undefined {
-  if (arg === '--ff') return 'default';
-  if (!arg.startsWith('--')) return undefined;
+  if (arg === '--ff') {
+    return 'default';
+  }
+  if (!arg.startsWith('--')) {
+    return undefined;
+  }
   const analysis = analyzeArgvLongForm({
     token: arg,
     catalog: MERGE_FF_ARGV_CATALOG,
@@ -128,12 +138,14 @@ export async function runMerge({ context, args }: {
         continue;
       }
     }
-    if (parsingOptions && arg.startsWith('-'))
+    if (parsingOptions && arg.startsWith('-')) {
       throw new GitUsageError({ message: `unsupported merge option: ${arg}` });
+    }
     operands.push(arg);
   }
-  if (operands.length !== 1)
+  if (operands.length !== 1) {
     throw new Error('git merge requires exactly one revision');
+  }
   const repository = await discoverRepositoryFromContext({ context });
   const existingMergeState = await readMergeState({ files: context.files, repository });
   if (existingMergeState !== undefined) {
@@ -150,8 +162,9 @@ export async function runMerge({ context, args }: {
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (head.objectId === undefined) {
     throw new Error('cannot merge on an unborn branch');
+  }
   const targetExpression = operands[0]!;
   const targetObjectId = await resolveCommitRevision({ files: context.files, repository, expression: targetExpression });
   await readCommit({ files: context.files, repository, objectId: targetObjectId });

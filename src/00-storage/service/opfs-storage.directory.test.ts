@@ -16,7 +16,8 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
-        this.content = data; return Promise.resolve();
+        this.content = data;
+        return Promise.resolve();
       },
       close: () => Promise.resolve(),
     });
@@ -40,7 +41,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'directory') throw new Error(`Entry is not a directory: ${name}`);
+    if (entry?.kind !== 'directory') {
+      throw new Error(`Entry is not a directory: ${name}`);
+    }
     return entry;
   }
 
@@ -55,7 +58,9 @@ class MockFileSystemDirectoryHandle {
       }
     }
     const entry = this.entries.get(name);
-    if (entry?.kind !== 'file') throw new Error(`Entry is not a file: ${name}`);
+    if (entry?.kind !== 'file') {
+      throw new Error(`Entry is not a file: ${name}`);
+    }
     return entry;
   }
 

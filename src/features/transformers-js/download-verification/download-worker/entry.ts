@@ -72,7 +72,9 @@ function sanitizeDiagnosticText({ value }: { value: string }): string {
 }
 
 function serializeCause({ error }: { error: unknown }): TransformersJsProductionInvestigationError['cause'] {
-  if (!(error instanceof Error)) return undefined;
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
   return {
     name: error.name,
     message: sanitizeDiagnosticText({ value: error.message }),
@@ -134,7 +136,9 @@ async function removeIfPresent({ directory, name }: {
   try {
     await directory.removeEntry(name);
   } catch (error) {
-    if (!isNotFoundError({ error })) throw error;
+    if (!isNotFoundError({ error })) {
+      throw error;
+    }
   }
 }
 
@@ -142,14 +146,20 @@ async function completedByteLength({ path, lease }: { path: string; lease: OpfsF
   assertOpfsFileLease({ path, lease, mode: 'exclusive' });
   const parts = path.split('/');
   const fileName = parts.pop();
-  if (fileName === undefined || fileName.length === 0) return undefined;
+  if (fileName === undefined || fileName.length === 0) {
+    return undefined;
+  }
   let directory = await navigator.storage.getDirectory();
   for (const part of parts) {
-    if (part.length === 0) continue;
+    if (part.length === 0) {
+      continue;
+    }
     try {
       directory = await directory.getDirectoryHandle(part, { create: false });
     } catch (error) {
-      if (isNotFoundError({ error })) return undefined;
+      if (isNotFoundError({ error })) {
+        return undefined;
+      }
       throw error;
     }
   }
@@ -157,14 +167,20 @@ async function completedByteLength({ path, lease }: { path: string; lease: OpfsF
   try {
     await directory.getFileHandle(markerName, { create: false });
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
   try {
     const file = await (await directory.getFileHandle(fileName, { create: false })).getFile();
-    if (file.size > 0) return file.size;
+    if (file.size > 0) {
+      return file.size;
+    }
   } catch (error) {
-    if (!isNotFoundError({ error })) throw error;
+    if (!isNotFoundError({ error })) {
+      throw error;
+    }
   }
   await removeIfPresent({ directory, name: markerName });
   await removeIfPresent({ directory, name: fileName });
@@ -175,13 +191,19 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundary.
   async prepareModelRuntimeArtifacts(modelId, revision, progressCallback): Promise<TransformersJsRuntimeArtifactPreparationResult> {
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-    if (cleanModelId.startsWith('user/')) throw new Error('Runtime artifact preparation only supports public Hugging Face models');
+    if (cleanModelId.startsWith('user/')) {
+      throw new Error('Runtime artifact preparation only supports public Hugging Face models');
+    }
     if (!/^[0-9a-f]{40}$/iu.test(revision)) {
       throw new Error(`Runtime artifact preparation requires an exact 40-character Hugging Face revision SHA: ${revision}`);
     }
-    if (activeDownloadOperation !== undefined) throw new Error('Download Worker is busy or terminal; concurrent operations are forbidden');
+    if (activeDownloadOperation !== undefined) {
+      throw new Error('Download Worker is busy or terminal; concurrent operations are forbidden');
+    }
     const identity = `${cleanModelId}@${revision}`;
-    if (metadataIdentity !== undefined && metadataIdentity !== identity) throw new Error('A different metadata identity requires a fresh Worker');
+    if (metadataIdentity !== undefined && metadataIdentity !== identity) {
+      throw new Error('A different metadata identity requires a fresh Worker');
+    }
     metadataIdentity = identity;
     activeDownloadOperation = 'metadata';
     const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
@@ -209,7 +231,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundary.
   async prefetchUrls(urls, progressCallback): Promise<TransformersJsPrefetchResult> {
-    if (activeDownloadOperation !== undefined) throw new Error('Download Worker is busy or terminal; concurrent operations are forbidden');
+    if (activeDownloadOperation !== undefined) {
+      throw new Error('Download Worker is busy or terminal; concurrent operations are forbidden');
+    }
     activeDownloadOperation = 'prefetch';
     const progress = createDownloadProgressEmitter({ callback: ({ info }) => progressCallback(info) });
     try {
@@ -227,9 +251,12 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
       function fileTiming({ verified }: { verified: boolean }): DownloadFileTiming | undefined {
         const finished = measurement.read();
         lastFileFinished = finished;
-        if (saveMethod === undefined) return undefined;
+        if (saveMethod === undefined) {
+          return undefined;
+        }
         if (measuredFiles >= 128) {
-          droppedFiles++; return undefined;
+          droppedFiles++;
+          return undefined;
         }
         measuredFiles++;
         const admissionMs = measurement.elapsed({ start: fileStarted, end: fetchStarted ?? finished });
@@ -248,8 +275,12 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
       let receivedBytes = 0;
       let cumulativeSequence = 0;
       function cumulativeTiming(): ProgressInfo['downloadCumulativeTiming'] {
-        if (clockId === undefined) return 'unavailable';
-        if (firstFetchStartedAtMs === undefined) return undefined;
+        if (clockId === undefined) {
+          return 'unavailable';
+        }
+        if (firstFetchStartedAtMs === undefined) {
+          return undefined;
+        }
         const observedAtMs = measurement.read();
         if (observedAtMs === undefined || observedAtMs < firstFetchStartedAtMs
           || observedAtMs - firstFetchStartedAtMs > 7 * 24 * 60 * 60 * 1_000
@@ -276,7 +307,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           },
         });
       }
-      for (const url of urls) progress.publish({ info: { status: 'queued', file: fileNameFromUrl({ url }), loaded: 0 } });
+      for (const url of urls) {
+        progress.publish({ info: { status: 'queued', file: fileNameFromUrl({ url }), loaded: 0 } });
+      }
       for (const originalUrl of urls) {
         saveMethod = undefined;
         fileStarted = measurement.read();
@@ -308,7 +341,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
             fetchStarted = measurement.read();
             if (firstFetchStartedAtMs === undefined) {
               firstFetchStartedAtMs = fetchStarted;
-              if (fetchStarted === undefined) clockId = undefined;
+              if (fetchStarted === undefined) {
+                clockId = undefined;
+              }
             }
             response = await downloadFetch(originalUrl);
             responseReceived = measurement.read();
@@ -340,10 +375,14 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           const downloadTotalKind = response.type === 'cors' && response.headers.get('Content-Encoding')?.trim().toLowerCase() !== 'identity'
             ? 'unverified-http' as const : 'decoded-response' as const;
           const timing = () => {
-            if (clockId === undefined) return 'unavailable' as const;
+            if (clockId === undefined) {
+              return 'unavailable' as const;
+            }
             try {
               const observedAtMs = performance.now();
-              if (!Number.isFinite(observedAtMs) || observedAtMs < 0) throw new Error('Unavailable timing observation');
+              if (!Number.isFinite(observedAtMs) || observedAtMs < 0) {
+                throw new Error('Unavailable timing observation');
+              }
               return { clockId, requestId: currentRequestId, sequence: ++sequence, observedAtMs };
             } catch {
             // Only the timing observation is omitted; fetch/write failures keep
@@ -386,7 +425,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           }
           try {
             const verified = await completedByteLength({ path, lease });
-            if (verified === undefined || verified !== written) throw new Error(`Final OPFS verification failed for ${path}`);
+            if (verified === undefined || verified !== written) {
+              throw new Error(`Final OPFS verification failed for ${path}`);
+            }
             if (expected !== undefined && verified !== expected) {
               throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expected}, received ${verified}`);
             }
@@ -403,7 +444,9 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
             availability: 'wait',
             signal: undefined,
             run: async ({ lease }) => {
-              if (!lease.coordinated) return undefined;
+              if (!lease.coordinated) {
+                return undefined;
+              }
               saveMethod = 'direct';
               return await readCompletedOpfsSnapshot({ path, lease });
             },

@@ -200,7 +200,9 @@ export const teeCommandImplementation: WeshCommandImplementation = {
           case 'writer': {
             const output = { kind: 'writer', path: file, writer: writerResult.writer } as const;
             outputs.push(output);
-            if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
+            if (appendOutputIdentity !== undefined) {
+              appendOutputsByPath.set(appendOutputIdentity, output);
+            }
             break;
           }
           case 'fallback_required': {
@@ -215,7 +217,9 @@ export const teeCommandImplementation: WeshCommandImplementation = {
             });
             const output = { kind: 'handle', path: file, handle } as const;
             outputs.push(output);
-            if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
+            if (appendOutputIdentity !== undefined) {
+              appendOutputsByPath.set(appendOutputIdentity, output);
+            }
             break;
           }
           default: {
@@ -235,7 +239,9 @@ export const teeCommandImplementation: WeshCommandImplementation = {
           });
           const output = { kind: 'handle', path: file, handle } as const;
           outputs.push(output);
-          if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
+          if (appendOutputIdentity !== undefined) {
+            appendOutputsByPath.set(appendOutputIdentity, output);
+          }
         }
       } catch (error: unknown) {
         exitCode = 1;
@@ -275,7 +281,9 @@ export const teeCommandImplementation: WeshCommandImplementation = {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         await writeInputBlock({ buffer: value });
       }
     } finally {

@@ -41,8 +41,12 @@ export function createDownloadedModelCacheScope({ modelId, revision }: {
       // A local upload must not shadow any part of this HF operation.
       return undefined;
     }
-    if (url.origin !== 'https://huggingface.co' || url.username || url.password) return undefined;
-    if (url.pathname.startsWith(selectedPrefix)) return urlString;
+    if (url.origin !== 'https://huggingface.co' || url.username || url.password) {
+      return undefined;
+    }
+    if (url.pathname.startsWith(selectedPrefix)) {
+      return urlString;
+    }
     if (url.pathname.startsWith(mainPrefix)) {
       const repositoryPath = url.pathname.slice(mainPrefix.length);
       if (REVISION_INSENSITIVE_RUNTIME_METADATA_PATHS.some(path => path === repositoryPath)) {
@@ -59,9 +63,13 @@ export function createDownloadedModelCacheScope({ modelId, revision }: {
       | { kind: 'admitted', url: string, resourceKey: string }
       | { kind: 'outside-scope' }
       | { kind: 'unsupported-method' } {
-      if (typeof request !== 'string' && request.method !== 'GET') return { kind: 'unsupported-method' };
+      if (typeof request !== 'string' && request.method !== 'GET') {
+        return { kind: 'unsupported-method' };
+      }
       const url = scopedRequestUrl({ urlString: typeof request === 'string' ? request : request.url });
-      if (url === undefined) return { kind: 'outside-scope' };
+      if (url === undefined) {
+        return { kind: 'outside-scope' };
+      }
       // Compare only after namespace admission. Existing local URL spellings
       // may share one OPFS file; keep the lookup spelling and escaping intact.
       const resourceKey = urlToPath({ url });
@@ -105,7 +113,10 @@ export function createDownloadedModelReadOnlyCache({ modelId, revision, onMatchO
         break;
       }
       case 'outside-scope': case 'unsupported-method': break;
-      default: { const exhaustive: never = resolution; throw new Error('Unknown receipt cache scope: ' + exhaustive); }
+      default: {
+        const exhaustive: never = resolution;
+        throw new Error('Unknown receipt cache scope: ' + exhaustive);
+      }
       }
       const aliased = scopedUrl !== undefined && scopedUrl !== urlString;
       // Each invocation owns its original identity across concurrent matches.

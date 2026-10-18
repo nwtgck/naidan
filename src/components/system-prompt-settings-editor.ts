@@ -7,7 +7,9 @@ export function systemPromptUiModeFromValue({
 }: {
   systemPrompt: SystemPrompt | undefined,
 }): SystemPromptUiMode {
-  if (systemPrompt === undefined) return 'parent';
+  if (systemPrompt === undefined) {
+    return 'parent';
+  }
   switch (systemPrompt.behavior) {
   case 'override':
     return systemPrompt.content === null ? 'no_prompt' : 'replace';

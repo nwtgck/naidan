@@ -14,7 +14,9 @@ export function formatSettingsSourceLabel({
   source: SettingsSource | undefined,
 }): string | undefined {
   const resolvedValue = value || lazyStrings.formatSettingsSourceLabel__none();
-  if (resolvedValue === undefined) return undefined;
+  if (resolvedValue === undefined) {
+    return undefined;
+  }
   switch (source) {
   case 'chat':
     return lazyStrings.formatSettingsSourceLabel__value_from_chat({ value: resolvedValue });
@@ -29,6 +31,25 @@ export function formatSettingsSourceLabel({
     throw new Error(`Unhandled source: ${_ex}`);
   }
   }
+}
+
+/** Presentation only: owners still choose which raw reference/source is active. */
+export function settingsSourcePresentation({ source }: { source: SettingsSource | undefined }): { label: string | undefined, description: string | undefined } | undefined {
+  let label: string | undefined;
+  switch (source) {
+  case 'global': label = lazyStrings.SettingsSourceBadge__global();
+    break;
+  case 'chat_group': label = lazyStrings.SettingsSourceBadge__chat_group();
+    break;
+  case 'chat': label = lazyStrings.SettingsSourceBadge__same_chat();
+    break;
+  case undefined: return undefined;
+  default: {
+    const _ex: never = source;
+    return _ex;
+  }
+  }
+  return { label, description: lazyStrings.SettingsSourceBadge__follows_changes_to_source({ source: label }) };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

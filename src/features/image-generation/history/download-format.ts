@@ -5,7 +5,10 @@ export function imageDownloadMime({ format }: { format: ImageDownloadFormat }): 
   case 'png': return 'image/png';
   case 'webp': return 'image/webp';
   case 'jpeg': return 'image/jpeg';
-  default: { const exhaustive: never = format; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = format;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -16,7 +19,10 @@ export async function validateDownloadImage({ blob, format }: { blob: Blob, form
     case 'png': return [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value);
     case 'webp': return new TextDecoder().decode(bytes.subarray(0, 4)) === 'RIFF' && new TextDecoder().decode(bytes.subarray(8, 12)) === 'WEBP';
     case 'jpeg': return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    default: { const exhaustive: never = format; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = format;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   if (blob.type !== imageDownloadMime({ format }) || !signatureMatches) {
@@ -30,7 +36,10 @@ export async function convertDownloadImage({ png, format }: { png: Blob, format:
   switch (format) {
   case 'png': return png;
   case 'webp': case 'jpeg': break;
-  default: { const exhaustive: never = format; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = format;
+    throw new Error(String(exhaustive));
+  }
   }
   const canvas = document.createElement('canvas');
   const bitmap = await createImageBitmap(png);
@@ -38,12 +47,17 @@ export async function convertDownloadImage({ png, format }: { png: Blob, format:
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('Image conversion is unavailable in this browser');
+    if (!context) {
+      throw new Error('Image conversion is unavailable in this browser');
+    }
     context.drawImage(bitmap, 0, 0);
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(result => {
-        if (result) resolve(result);
-        else reject(new Error('The browser could not encode the downloaded image'));
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error('The browser could not encode the downloaded image'));
+        }
       }, imageDownloadMime({ format }), 1);
     });
     // Canvas is allowed to return PNG when an encoder is unsupported. Reject

@@ -28,7 +28,9 @@ function quoteAsciiByte({ byte }: { byte: number }): { text: string, escaped: bo
   case 0x5c:
     return { text: "\\\\", escaped: true };
   default:
-    if (byte < 0x20 || byte === 0x7f) return { text: octalEscape({ byte }), escaped: true };
+    if (byte < 0x20 || byte === 0x7f) {
+      return { text: octalEscape({ byte }), escaped: true };
+    }
     return { text: String.fromCharCode(byte), escaped: false };
   }
 }
@@ -53,7 +55,9 @@ export function quoteGitPath({ path, quoteNonAscii, quoteSpaces }: {
       continue;
     }
     quoted = true;
-    for (const byte of textEncoder.encode(character)) body += octalEscape({ byte });
+    for (const byte of textEncoder.encode(character)) {
+      body += octalEscape({ byte });
+    }
   }
   return quoted ? `"${body}"` : body;
 }
@@ -70,7 +74,9 @@ export function formatGitPatchPath({ path, prefix, quoteNonAscii, headerLabel }:
 }): string {
   const fullPath = `${prefix}/${path}`;
   const rendered = quoteGitPath({ path: fullPath, quoteNonAscii, quoteSpaces: false });
-  if (!headerLabel || rendered.startsWith('"')) return rendered;
+  if (!headerLabel || rendered.startsWith('"')) {
+    return rendered;
+  }
   return path.includes(' ') ? `${rendered}\t` : rendered;
 }
 

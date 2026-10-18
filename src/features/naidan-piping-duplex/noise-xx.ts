@@ -8,8 +8,9 @@ export type NaidanPipingIdentity = {
 
 export async function createNaidanPipingIdentity(): Promise<NaidanPipingIdentity> {
   const keys = await crypto.subtle.generateKey({ name: 'X25519' }, false, ['deriveBits']);
-  if (!('privateKey' in keys))
+  if (!('privateKey' in keys)) {
     throw new Error('Expected X25519 key pair');
+  }
   return { privateKey: keys.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey)) };
 }
 
@@ -60,7 +61,8 @@ export class NoiseCipher {
   }
 
   dispose(): void {
-    this.internalClosed = true; this.internalKey = undefined;
+    this.internalClosed = true;
+    this.internalKey = undefined;
   }
 
   async crypt({ operation, bytes, aad }: {
@@ -73,22 +75,27 @@ export class NoiseCipher {
     this.internalBusy = true;
     const nonce = this.internalNonce;
     const key = this.internalKey;
-    if (!key)
+    if (!key) {
       throw new Error('Cipher disposed');
+    }
     // Encryption failures consume the number and terminate this cipher.
-    if (isEncrypt({ operation }))
+    if (isEncrypt({ operation })) {
       this.internalNonce++;
+    }
     try {
       const params = { name: 'AES-GCM', iv: joinBytes({ parts: [new Uint8Array(4), u64({ value: nonce })] }), additionalData, tagLength: 128 };
       const result = new Uint8Array(await crypto.subtle[operation](params, key, input));
-      if (this.internalClosed)
+      if (this.internalClosed) {
         throw new Error('Cipher disposed');
-      if (!isEncrypt({ operation }))
+      }
+      if (!isEncrypt({ operation })) {
         this.internalNonce++;
+      }
       return result;
     } catch (error) {
-      if (isEncrypt({ operation }))
+      if (isEncrypt({ operation })) {
         this.internalClosed = true;
+      }
       throw error;
     } finally {
       this.internalBusy = false;
@@ -155,8 +162,9 @@ export class NoiseXX {
         privateKey: CryptoKey;
         publicKey: Uint8Array | undefined;
     }): Promise<void> {
-    if (!publicKey)
+    if (!publicKey) {
       throw new Error('Missing remote key');
+    }
     const peer = await crypto.subtle.importKey('raw', new Uint8Array(publicKey), 'X25519', false, []);
     const secret = new Uint8Array(await crypto.subtle.deriveBits({ name: 'X25519', public: peer }, privateKey, 256));
     try {
@@ -200,8 +208,9 @@ export class NoiseXX {
     }): Promise<Uint8Array<ArrayBuffer>> {
     requireValue({ condition: !this.internalBusy && !this.internalFailed && this.internalStep < 3, message: 'Handshake unavailable' });
     const identity = this.internalIdentity, ephemeral = this.internalEphemeral;
-    if (!identity || !ephemeral)
+    if (!identity || !ephemeral) {
       throw new Error('Handshake disposed');
+    }
     const initiator = isInitiator({ role: this.internalRole });
     const writeExpected = this.internalStep === 1 ? !initiator : initiator;
     requireValue({ condition: (isWrite({ operation })) === writeExpected, message: 'Wrong handshake flight' });
@@ -227,13 +236,15 @@ export class NoiseXX {
           await this.internalMixHash({ bytes: this.internalRemoteEphemeral });
         }
       }
-      if (this.internalStep === 1)
+      if (this.internalStep === 1) {
         await this.internalMixDh({ privateKey: ephemeral.privateKey, publicKey: this.internalRemoteEphemeral });
+      }
       if (this.internalStep > 0) {
-        if (isWrite({ operation }))
+        if (isWrite({ operation })) {
           output.push(await this.internalField({ operation: 'encrypt', bytes: identity.publicKey }));
-        else
+        } else {
           this.internalRemoteStatic = await this.internalField({ operation: 'decrypt', bytes: take({ count: 48 }) });
+        }
         const useEphemeral = (this.internalStep === 1) === initiator;
         await this.internalMixDh({
           privateKey: useEphemeral ? ephemeral.privateKey : identity.privateKey,
@@ -244,8 +255,9 @@ export class NoiseXX {
         operation: isWrite({ operation }) ? 'encrypt' : 'decrypt',
         bytes: isWrite({ operation }) ? input : input.slice(at),
       });
-      if (this.internalFailed)
+      if (this.internalFailed) {
         throw new Error('Handshake disposed');
+      }
       const message = isWrite({ operation }) ? joinBytes({ parts: [...output, payload] }) : payload;
       requireValue({ condition: message.length <= 512, message: 'Handshake message limit' });
       this.internalStep++;
@@ -264,8 +276,9 @@ export class NoiseXX {
         binding: Uint8Array;
         peerIdentity: Uint8Array;
     }> {
-    if (this.internalStep !== 3 || this.internalFailed || this.internalBusy || this.internalSplitUsed || !this.internalRemoteStatic)
+    if (this.internalStep !== 3 || this.internalFailed || this.internalBusy || this.internalSplitUsed || !this.internalRemoteStatic) {
       throw new Error('Handshake incomplete/consumed');
+    }
     this.internalSplitUsed = true;
     let first: Uint8Array | undefined, second: Uint8Array | undefined;
     try {
@@ -295,7 +308,10 @@ function isEncrypt({ operation }: { operation: 'encrypt' | 'decrypt' }): boolean
   switch (operation) {
   case 'encrypt': return true;
   case 'decrypt': return false;
-  default: { const unreachable: never = operation; throw new Error(`Invalid cipher operation: ${unreachable}`); }
+  default: {
+    const unreachable: never = operation;
+    throw new Error(`Invalid cipher operation: ${unreachable}`);
+  }
   }
 }
 
@@ -303,7 +319,10 @@ function isWrite({ operation }: { operation: 'write' | 'read' }): boolean {
   switch (operation) {
   case 'write': return true;
   case 'read': return false;
-  default: { const unreachable: never = operation; throw new Error(`Invalid handshake operation: ${unreachable}`); }
+  default: {
+    const unreachable: never = operation;
+    throw new Error(`Invalid handshake operation: ${unreachable}`);
+  }
   }
 }
 

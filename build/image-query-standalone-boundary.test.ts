@@ -46,10 +46,14 @@ globalThis.imageQueryClients = { createImageHistoryClient, createImageGeneration
       rolldownOptions: { output: { entryFileNames: 'assets/[name]-[hash].js', chunkFileNames: 'assets/[name]-[hash].js' } },
     },
   });
-  if (!('output' in result)) throw new Error('Expected one isolated build output.');
+  if (!('output' in result)) {
+    throw new Error('Expected one isolated build output.');
+  }
   const chunks = result.output.filter(item => item.type === 'chunk');
   const modules = chunks.flatMap(chunk => Object.keys(chunk.modules)).map(id => id.replaceAll('\\', '/'));
-  for (const worker of workers) expect(modules).toContain(worker.entry);
+  for (const worker of workers) {
+    expect(modules).toContain(worker.entry);
+  }
   expect(modules.some(id => id.endsWith('/image-generation/history/worker/impl.ts'))).toBe(true);
   expect(modules.some(id => id.endsWith('/image-generation/session/query-worker/impl.ts'))).toBe(true);
   const forbidden = modules.filter(id => /\/(?:llama-cpp-browser|transformers-js)\//u.test(id)
@@ -57,8 +61,12 @@ globalThis.imageQueryClients = { createImageHistoryClient, createImageGeneration
     || /(?:llama-cpp-browser-core|stable-diffusion-cpp-browser-core)/u.test(id));
   expect(forbidden).toEqual([]);
   expect(result.output.filter(item => /\.wasm(?:\.|$)/iu.test(item.fileName))).toEqual([]);
-  for (const chunk of chunks) expect(chunk.code).toContain('System.register(');
+  for (const chunk of chunks) {
+    expect(chunk.code).toContain('System.register(');
+  }
   const html = result.output.find(item => item.type === 'asset' && item.fileName === 'index.html');
-  if (!html || html.type !== 'asset') throw new Error('Missing standalone entry HTML.');
+  if (!html || html.type !== 'asset') {
+    throw new Error('Missing standalone entry HTML.');
+  }
   expect(String(html.source)).not.toContain('type="module"');
 }, 60000);

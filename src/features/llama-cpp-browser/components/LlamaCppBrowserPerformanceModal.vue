@@ -25,7 +25,10 @@ const phaseLabel = computed(() => {
   case 'prefill': return lazyStrings.llamaCppBrowser__prefill();
   case 'importing': return lazyStrings.llamaCppBrowser__importing();
   case 'generating': case 'decoding-audio': return lazyStrings.llamaCppBrowser__generating();
-  default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = phase;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
@@ -38,17 +41,22 @@ function numberText({ value }: { value: number | undefined }): string {
 }
 
 function close(): void {
-  view.stop(); dialog.value?.close(); emit('close');
+  view.stop();
+  dialog.value?.close();
+  emit('close');
 }
 
 async function syncOpen(): Promise<void> {
   await nextTick();
   if (props.isOpen) {
-    if (!dialog.value?.open) dialog.value?.showModal();
+    if (!dialog.value?.open) {
+      dialog.value?.showModal();
+    }
     heading.value?.focus();
     await view.refresh({ defaultModel: props.defaultModel });
   } else {
-    view.stop(); dialog.value?.close();
+    view.stop();
+    dialog.value?.close();
   }
 }
 
@@ -59,7 +67,8 @@ onMounted(() => {
   void syncOpen();
 });
 onBeforeUnmount(() => {
-  view.stop(); dialog.value?.close();
+  view.stop();
+  dialog.value?.close();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) });
 </script>

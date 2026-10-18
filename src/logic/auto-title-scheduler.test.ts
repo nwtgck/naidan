@@ -114,7 +114,8 @@ describe('automatic title scheduling', () => {
     const first = scheduler.hold();
     const second = scheduler.hold();
     await vi.advanceTimersByTimeAsync(10000);
-    first(); first();
+    first();
+    first();
     await vi.advanceTimersByTimeAsync(10000);
     expect(run).not.toHaveBeenCalled();
     second();

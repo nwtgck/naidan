@@ -11,22 +11,32 @@ const selectedTagId = ref<ImageGenerationTagId>();
 const tagsOpen = ref(false);
 
 function chooseTag({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const raw = event.target.value;
   selectedTagId.value = props.view.userTags.value.find(tag => idToRaw({ id: tag.id }) === raw)?.id;
 }
 
 async function tagImages({ assignment }: { assignment: 'add' | 'remove' }): Promise<void> {
   const tagId = selectedTagId.value;
-  if (!tagId || !props.view.userTags.value.some(tag => tag.id === tagId)) return;
+  if (!tagId || !props.view.userTags.value.some(tag => tag.id === tagId)) {
+    return;
+  }
   await props.view.curate({ items: props.items, action: { type: 'tag', tag: { type: 'user', tagId }, assignment } });
 }
 
 async function remove(): Promise<void> {
   const items = [...props.items], storeId = props.view.store.value?.storeId, sessionId = props.view.selectedSessionId.value;
-  if (!items.length || !storeId || props.view.mutation.value) return;
-  if (!await showConfirm({ title: await ensureStrings.imageGeneration__delete_images(), message: await ensureStrings.imageGeneration__delete_images_notice({ count: items.length }), confirmButtonVariant: 'danger', confirmButtonText: await ensureStrings.imageGeneration__delete_images() })) return;
-  if (props.view.store.value?.storeId !== storeId || props.view.selectedSessionId.value !== sessionId) return;
+  if (!items.length || !storeId || props.view.mutation.value) {
+    return;
+  }
+  if (!await showConfirm({ title: await ensureStrings.imageGeneration__delete_images(), message: await ensureStrings.imageGeneration__delete_images_notice({ count: items.length }), confirmButtonVariant: 'danger', confirmButtonText: await ensureStrings.imageGeneration__delete_images() })) {
+    return;
+  }
+  if (props.view.store.value?.storeId !== storeId || props.view.selectedSessionId.value !== sessionId) {
+    return;
+  }
   await props.view.curate({ items, action: { type: 'delete' } });
 }
 

@@ -15,25 +15,35 @@ export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
 
 export function findNodeInBranch({ items, targetId }: { items: MessageNode[], targetId: MessageId }): MessageNode | null {
   for (const item of items) {
-    if (toRaw(item).id === targetId) return item;
+    if (toRaw(item).id === targetId) {
+      return item;
+    }
     const found = findNodeInBranch({ items: item.replies.items, targetId });
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
   return null;
 }
 
 export function findParentInBranch({ items, childId }: { items: MessageNode[], childId: MessageId }): MessageNode | null {
   for (const item of items) {
-    if (toRaw(item).replies.items.some(child => toRaw(child).id === childId)) return item;
+    if (toRaw(item).replies.items.some(child => toRaw(child).id === childId)) {
+      return item;
+    }
     const found = findParentInBranch({ items: item.replies.items, childId });
-    if (found) return found;
+    if (found) {
+      return found;
+    }
   }
   return null;
 }
 
 export function* getChatBranchIterator({ chat }: { chat: ChatContent | Readonly<ChatContent> }): Generator<MessageNode> {
   const items = chat.root.items as MessageNode[];
-  if (items.length === 0) return;
+  if (items.length === 0) {
+    return;
+  }
 
   const targetId = chat.currentLeafId;
   const path: MessageNode[] = [];
@@ -44,12 +54,16 @@ export function* getChatBranchIterator({ chat }: { chat: ChatContent | Readonly<
     const stack: Array<{ node: MessageNode, parent: MessageNode | undefined }> = [];
     for (let index = items.length - 1; index >= 0; index--) {
       const node = items[index];
-      if (node !== undefined) stack.push({ node, parent: undefined });
+      if (node !== undefined) {
+        stack.push({ node, parent: undefined });
+      }
     }
 
     while (stack.length > 0) {
       const entry = stack.pop();
-      if (entry === undefined) continue;
+      if (entry === undefined) {
+        continue;
+      }
 
       parents.set(entry.node, entry.parent);
       if (toRaw(entry.node).id === targetId) {
@@ -60,7 +74,9 @@ export function* getChatBranchIterator({ chat }: { chat: ChatContent | Readonly<
       const replies = entry.node.replies.items;
       for (let index = replies.length - 1; index >= 0; index--) {
         const reply = replies[index];
-        if (reply !== undefined) stack.push({ node: reply, parent: entry.node });
+        if (reply !== undefined) {
+          stack.push({ node: reply, parent: entry.node });
+        }
       }
     }
 
@@ -88,7 +104,9 @@ export function* getChatBranchIterator({ chat }: { chat: ChatContent | Readonly<
 
 
 export function findDeepestLeaf({ node }: { node: MessageNode | Readonly<MessageNode> }): MessageNode {
-  if (node.replies.items.length === 0) return node as MessageNode;
+  if (node.replies.items.length === 0) {
+    return node as MessageNode;
+  }
   return findDeepestLeaf({ node: node.replies.items[node.replies.items.length - 1]! });
 }
 
@@ -108,11 +126,17 @@ export function getAllMessages({ chat }: { chat: Chat | Readonly<Chat> }): Messa
 }
 
 function findRestorationIndex({ items, prevId, nextId }: { items: SidebarItem[], prevId: string | null, nextId: string | null }): number {
-  if (items.length === 0) return 0;
+  if (items.length === 0) {
+    return 0;
+  }
   const prevIdx = prevId ? items.findIndex(item => item.id === prevId) : -1;
-  if (prevIdx !== -1) return prevIdx + 1;
+  if (prevIdx !== -1) {
+    return prevIdx + 1;
+  }
   const nextIdx = nextId ? items.findIndex(item => item.id === nextId) : -1;
-  if (nextIdx !== -1) return nextIdx;
+  if (nextIdx !== -1) {
+    return nextIdx;
+  }
   return 0;
 }
 

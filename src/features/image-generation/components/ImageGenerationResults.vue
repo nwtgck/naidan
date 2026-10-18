@@ -25,13 +25,19 @@ watch(maxResults, value => {
 });
 
 function editResultLimit({ event }: { event: Event }): void {
-  if (event.target instanceof HTMLInputElement) resultLimitDraft.value = event.target.value;
+  if (event.target instanceof HTMLInputElement) {
+    resultLimitDraft.value = event.target.value;
+  }
 }
 
 function commitResultLimit({ event }: { event: Event }): void {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
-  if (Number.isFinite(input.valueAsNumber)) maxResults.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  if (Number.isFinite(input.valueAsNumber)) {
+    maxResults.value = Math.min(100, Math.max(1, Math.trunc(input.valueAsNumber)));
+  }
   resultLimitDraft.value = String(maxResults.value);
   input.value = resultLimitDraft.value;
 }
@@ -46,11 +52,16 @@ const unfinishedImage = computed(() => failedImage.value || cancelledImage.value
 // run. Keep this card linked to the failure that produced it.
 const displayedFailure = computed(() => {
   const current = run.value;
-  if (!current) return failure.value;
+  if (!current) {
+    return failure.value;
+  }
   switch (current.status) {
   case 'failed': return current.failure;
   case 'running': case 'succeeded': case 'cancelled': return failure.value;
-  default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = current;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 // The outer execution section owns visibility; its first expansion should show diagnostics.
@@ -66,13 +77,17 @@ async function showDiagnostics(): Promise<void> {
 
 const viewerIndex = ref<number>();
 watch(() => props.active, active => {
-  if (!active) viewerIndex.value = undefined;
+  if (!active) {
+    viewerIndex.value = undefined;
+  }
 });
 watch(() => props.view.historySaving.supported.value, () => {
   viewerIndex.value = undefined;
 });
 watch(results, (current, previous) => {
-  if (viewerIndex.value === undefined) return;
+  if (viewerIndex.value === undefined) {
+    return;
+  }
   const selected = previous[viewerIndex.value];
   const nextIndex = current.findIndex(item => item.id === selected?.id);
   viewerIndex.value = nextIndex < 0 ? undefined : nextIndex;

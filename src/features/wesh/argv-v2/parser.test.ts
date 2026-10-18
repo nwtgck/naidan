@@ -1087,7 +1087,9 @@ describe('catalog standard argv parser', () => {
     for (let bodyOffset = 1; bodyOffset < bashArgs[0].length;) {
       const analysis = analyzeArgvShortForm({ token: bashArgs[0], bodyOffset, prefix: '-', catalog });
       expect(analysis.kind).toBe('matched');
-      if (analysis.kind !== 'matched') throw new Error(`unexpected analysis: ${JSON.stringify(analysis)}`);
+      if (analysis.kind !== 'matched') {
+        throw new Error(`unexpected analysis: ${JSON.stringify(analysis)}`);
+      }
       switch (analysis.value.kind) {
       case 'following-optional': {
         const following = bashArgs[followingArgvIndex];

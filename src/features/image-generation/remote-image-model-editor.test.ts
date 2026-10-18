@@ -51,7 +51,8 @@ it('distinguishes a host directory from both another directory and this device',
 });
 
 it('retains an explicit empty primary without manufacturing a valid request', () => {
-  const state = editor(); state.primary = undefined;
+  const state = editor();
+  state.primary = undefined;
   expect(remoteImageEditorReady({ editor: state })).toBe(false);
   expect(remoteImageSelectionFromEditor({ editor: state })).toBeUndefined();
 });

@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.55.0",
+  "version": "0.56.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,7 @@
     "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix",
+    "lint:fix": "eslint --fix",
     "build:docs": "npm run typecheck:docs && vite build --config docs/vite.config.ts",
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "test:docs": "vitest run --config docs/vitest.config.ts docs",
@@ -72,6 +72,7 @@
     "@vue/tsconfig": "^0.9.1",
     "@vue/typescript": "^1.8.20",
     "autoprefixer": "^10.5.2",
+    "css-tree": "^3.2.1",
     "eslint": "^10.5.0",
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.6.0",

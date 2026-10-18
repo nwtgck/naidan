@@ -39,7 +39,9 @@ export function jsonObjectKeys({
   object: JsonObject,
 }): string[] {
   const ordered = (object as OrderedJsonObject)[jqObjectKeyOrder];
-  if (ordered === undefined) return Object.keys(object);
+  if (ordered === undefined) {
+    return Object.keys(object);
+  }
   const keys: string[] = [];
   const seen = new Set<string>();
   for (const key of ordered) {
@@ -88,7 +90,9 @@ export function defineJsonProperty({
       const knownKeys = (object as OrderedJsonObject)[jqObjectKnownKeys];
       if (knownKeys === undefined || knownKeys.has(key)) {
         const staleIndex = ordered.indexOf(key);
-        if (staleIndex >= 0) ordered.splice(staleIndex, 1);
+        if (staleIndex >= 0) {
+          ordered.splice(staleIndex, 1);
+        }
       }
       ordered.push(key);
       knownKeys?.add(key);
@@ -111,8 +115,12 @@ export function describeJsonType({
 }: {
   value: JsonValue,
 }): 'null' | 'boolean' | 'number' | 'string' | 'array' | 'object' {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
+  if (value === null) {
+    return 'null';
+  }
+  if (Array.isArray(value)) {
+    return 'array';
+  }
   switch (typeof value) {
   case 'boolean':
     return 'boolean';
@@ -207,7 +215,9 @@ class JqDiagnosticPreviewWriter {
   }
 
   #appendByte({ value }: { value: number }): void {
-    if (this.full) return;
+    if (this.full) {
+      return;
+    }
     this.#bytes[this.#length] = value;
     this.#length += 1;
   }
@@ -270,7 +280,9 @@ function appendJqDiagnosticJsonString({
     writer.appendText({ text: value[offset]! });
     offset += 1;
   }
-  if (!writer.full) writer.appendText({ text: '"' });
+  if (!writer.full) {
+    writer.appendText({ text: '"' });
+  }
 }
 
 interface JqDiagnosticObjectKeyCursor {
@@ -308,7 +320,9 @@ function nextJqDiagnosticObjectKey({
     while (cursor.orderedIndex < cursor.ordered.length) {
       const key = cursor.ordered[cursor.orderedIndex]!;
       cursor.orderedIndex += 1;
-      if (cursor.seen.has(key) || !Object.hasOwn(cursor.object, key)) continue;
+      if (cursor.seen.has(key) || !Object.hasOwn(cursor.object, key)) {
+        continue;
+      }
       cursor.seen.add(key);
       cursor.emittedCount += 1;
       return key;
@@ -318,7 +332,9 @@ function nextJqDiagnosticObjectKey({
   while (cursor.fallbackIndex < cursor.fallbackKeys.length) {
     const key = cursor.fallbackKeys[cursor.fallbackIndex]!;
     cursor.fallbackIndex += 1;
-    if (cursor.seen.has(key)) continue;
+    if (cursor.seen.has(key)) {
+      continue;
+    }
     cursor.seen.add(key);
     cursor.emittedCount += 1;
     return key;
@@ -348,7 +364,9 @@ function stringifyJqDiagnosticPreview({
         writer.appendText({ text: ']' });
         continue;
       }
-      if (task.index > 0) writer.appendText({ text: ',' });
+      if (task.index > 0) {
+        writer.appendText({ text: ',' });
+      }
       pending.push({ kind: 'array', value: task.value, index: task.index + 1 });
       pending.push({
         kind: 'value',
@@ -363,7 +381,9 @@ function stringifyJqDiagnosticPreview({
         writer.appendText({ text: '}' });
         continue;
       }
-      if (task.cursor.emittedCount > 1) writer.appendText({ text: ',' });
+      if (task.cursor.emittedCount > 1) {
+        writer.appendText({ text: ',' });
+      }
       appendJqDiagnosticJsonString({ writer, value: key });
       writer.appendText({ text: ':' });
       pending.push({ kind: 'object', cursor: task.cursor });
@@ -480,7 +500,9 @@ export function cloneJson({
 }: {
   value: JsonValue,
 }): JsonValue {
-  if (value === null || typeof value !== 'object') return value;
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
 
   type JsonContainer = JsonValue[] | JsonObject;
   const createContainer = ({ source }: { source: JsonValue[] | JsonObject }): JsonContainer => (
@@ -537,9 +559,15 @@ export function toJqArithmeticNumber({
 }: {
   value: number,
 }): number {
-  if (Number.isNaN(value)) return value;
-  if (value >= Number.MAX_VALUE) return Number.POSITIVE_INFINITY;
-  if (value <= -Number.MAX_VALUE) return Number.NEGATIVE_INFINITY;
+  if (Number.isNaN(value)) {
+    return value;
+  }
+  if (value >= Number.MAX_VALUE) {
+    return Number.POSITIVE_INFINITY;
+  }
+  if (value <= -Number.MAX_VALUE) {
+    return Number.NEGATIVE_INFINITY;
+  }
   return value;
 }
 
@@ -548,8 +576,12 @@ export function normalizeJqArithmeticResult({
 }: {
   value: number,
 }): number {
-  if (value === Number.POSITIVE_INFINITY) return Number.MAX_VALUE;
-  if (value === Number.NEGATIVE_INFINITY) return -Number.MAX_VALUE;
+  if (value === Number.POSITIVE_INFINITY) {
+    return Number.MAX_VALUE;
+  }
+  if (value === Number.NEGATIVE_INFINITY) {
+    return -Number.MAX_VALUE;
+  }
   return value;
 }
 
@@ -587,18 +619,24 @@ function compareStrings({
   left: string,
   right: string,
 }): number {
-  if (left === right) return 0;
+  if (left === right) {
+    return 0;
+  }
 
   let leftOffset = 0;
   let rightOffset = 0;
   while (leftOffset < left.length && rightOffset < right.length) {
     const leftCodePoint = left.codePointAt(leftOffset)!;
     const rightCodePoint = right.codePointAt(rightOffset)!;
-    if (leftCodePoint !== rightCodePoint) return leftCodePoint < rightCodePoint ? -1 : 1;
+    if (leftCodePoint !== rightCodePoint) {
+      return leftCodePoint < rightCodePoint ? -1 : 1;
+    }
     leftOffset += leftCodePoint > 0xffff ? 2 : 1;
     rightOffset += rightCodePoint > 0xffff ? 2 : 1;
   }
-  if (leftOffset === left.length && rightOffset === right.length) return 0;
+  if (leftOffset === left.length && rightOffset === right.length) {
+    return 0;
+  }
   return leftOffset === left.length ? -1 : 1;
 }
 
@@ -607,12 +645,24 @@ function typeRank({
 }: {
   value: JsonValue,
 }): number {
-  if (value === null) return 0;
-  if (value === false) return 1;
-  if (value === true) return 2;
-  if (typeof value === 'number') return 3;
-  if (typeof value === 'string') return 4;
-  if (Array.isArray(value)) return 5;
+  if (value === null) {
+    return 0;
+  }
+  if (value === false) {
+    return 1;
+  }
+  if (value === true) {
+    return 2;
+  }
+  if (typeof value === 'number') {
+    return 3;
+  }
+  if (typeof value === 'string') {
+    return 4;
+  }
+  if (Array.isArray(value)) {
+    return 5;
+  }
   return 6;
 }
 
@@ -683,7 +733,9 @@ export function compareJsonValues({
       const leftKey = frame.leftKeys[frame.index]!;
       const rightKey = frame.rightKeys[frame.index]!;
       const keyComparison = compareStrings({ left: leftKey, right: rightKey });
-      if (keyComparison !== 0) return keyComparison;
+      if (keyComparison !== 0) {
+        return keyComparison;
+      }
       pending.push({
         kind: 'object',
         left: frame.left,
@@ -705,27 +757,43 @@ export function compareJsonValues({
     case 'value': {
       const leftRank = typeRank({ value: frame.left });
       const rightRank = typeRank({ value: frame.right });
-      if (leftRank !== rightRank) return leftRank < rightRank ? -1 : 1;
+      if (leftRank !== rightRank) {
+        return leftRank < rightRank ? -1 : 1;
+      }
 
-      if (frame.left === null || frame.right === null) continue;
+      if (frame.left === null || frame.right === null) {
+        continue;
+      }
       if (typeof frame.left === 'boolean' && typeof frame.right === 'boolean') {
-        if (frame.left !== frame.right) return frame.left ? 1 : -1;
+        if (frame.left !== frame.right) {
+          return frame.left ? 1 : -1;
+        }
         continue;
       }
       if (typeof frame.left === 'number' && typeof frame.right === 'number') {
         if (frame.leftOrigin !== undefined && frame.rightOrigin !== undefined) {
           const compared = compareJqNumberOrigins({ left: frame.leftOrigin, right: frame.rightOrigin });
-          if (compared !== 0) return compared;
+          if (compared !== 0) {
+            return compared;
+          }
           continue;
         }
-        if (Object.is(frame.left, frame.right) || frame.left === frame.right) continue;
-        if (Number.isNaN(frame.left)) return Number.isNaN(frame.right) ? 0 : -1;
-        if (Number.isNaN(frame.right)) return 1;
+        if (Object.is(frame.left, frame.right) || frame.left === frame.right) {
+          continue;
+        }
+        if (Number.isNaN(frame.left)) {
+          return Number.isNaN(frame.right) ? 0 : -1;
+        }
+        if (Number.isNaN(frame.right)) {
+          return 1;
+        }
         return frame.left < frame.right ? -1 : 1;
       }
       if (typeof frame.left === 'string' && typeof frame.right === 'string') {
         const compared = compareStrings({ left: frame.left, right: frame.right });
-        if (compared !== 0) return compared;
+        if (compared !== 0) {
+          return compared;
+        }
         continue;
       }
       if (Array.isArray(frame.left) && Array.isArray(frame.right)) {
@@ -779,16 +847,26 @@ export function jsonValuesEqual({
     const pair = pending.pop()!;
     if (typeof pair.left === 'number' && typeof pair.right === 'number') {
       if (pair.leftOrigin !== undefined && pair.rightOrigin !== undefined) {
-        if (compareJqNumberOrigins({ left: pair.leftOrigin, right: pair.rightOrigin }) !== 0) return false;
+        if (compareJqNumberOrigins({ left: pair.leftOrigin, right: pair.rightOrigin }) !== 0) {
+          return false;
+        }
         continue;
       }
-      if (Number.isNaN(pair.left) || Number.isNaN(pair.right)) return false;
-      if (Object.is(pair.left, pair.right) || pair.left === pair.right) continue;
+      if (Number.isNaN(pair.left) || Number.isNaN(pair.right)) {
+        return false;
+      }
+      if (Object.is(pair.left, pair.right) || pair.left === pair.right) {
+        continue;
+      }
       return false;
     }
-    if (pair.left === pair.right) continue;
+    if (pair.left === pair.right) {
+      continue;
+    }
     if (Array.isArray(pair.left) && Array.isArray(pair.right)) {
-      if (pair.left.length !== pair.right.length) return false;
+      if (pair.left.length !== pair.right.length) {
+        return false;
+      }
       for (let index = 0; index < pair.left.length; index += 1) {
         pending.push({
           left: pair.left[index]!,
@@ -802,9 +880,13 @@ export function jsonValuesEqual({
     if (isJsonObject(pair.left) && isJsonObject(pair.right)) {
       const leftKeys = jsonObjectKeys({ object: pair.left });
       const rightKeys = jsonObjectKeys({ object: pair.right });
-      if (leftKeys.length !== rightKeys.length) return false;
+      if (leftKeys.length !== rightKeys.length) {
+        return false;
+      }
       for (const key of leftKeys) {
-        if (!Object.hasOwn(pair.right, key)) return false;
+        if (!Object.hasOwn(pair.right, key)) {
+          return false;
+        }
         pending.push({
           left: pair.left[key]!,
           right: pair.right[key]!,
@@ -835,7 +917,9 @@ function escapeNonAscii({
       continue;
     }
 
-    if (unchangedStart < offset) chunks.push(text.slice(unchangedStart, offset));
+    if (unchangedStart < offset) {
+      chunks.push(text.slice(unchangedStart, offset));
+    }
     if (codePoint <= 0xffff) {
       chunks.push(`\\u${codePoint.toString(16).padStart(4, '0')}`);
     } else {
@@ -847,8 +931,12 @@ function escapeNonAscii({
     offset += width;
     unchangedStart = offset;
   }
-  if (unchangedStart === 0) return text;
-  if (unchangedStart < text.length) chunks.push(text.slice(unchangedStart));
+  if (unchangedStart === 0) {
+    return text;
+  }
+  if (unchangedStart < text.length) {
+    chunks.push(text.slice(unchangedStart));
+  }
   return chunks.join('');
 }
 
@@ -861,8 +949,12 @@ function stringifyJsonString({
 }
 
 function formatComputedJqNumber({ value }: { value: number }): string {
-  if (!Number.isFinite(value)) return 'null';
-  if (Object.is(value, -0)) return '-0';
+  if (!Number.isFinite(value)) {
+    return 'null';
+  }
+  if (Object.is(value, -0)) {
+    return '-0';
+  }
   const magnitude = Math.abs(value);
   const requiresScientific = magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e18);
   const formatted = requiresScientific ? value.toExponential() : String(value);
@@ -969,7 +1061,9 @@ function stringifyJsonValue({
         }
         {
           const keys = jsonObjectKeys({ object: nested });
-          if (sortKeys) keys.sort((left, right) => compareStrings({ left, right }));
+          if (sortKeys) {
+            keys.sort((left, right) => compareStrings({ left, right }));
+          }
           if (keys.length === 0) {
             chunks.push('{}');
           } else {

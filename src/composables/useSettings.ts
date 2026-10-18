@@ -13,6 +13,8 @@ import {
   type Endpoint,
   type EndpointType,
   DEFAULT_SETTINGS,
+  EMPTY_LM_PARAMETERS,
+  type Reasoning,
   type StorageType,
   type ProviderProfile,
   type UiLocale,
@@ -47,7 +49,9 @@ watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
 
 let globalDefaultRevision = 0;
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
-  if (next.modelId !== previous.modelId || !areEndpointsEqual({ left: next.endpoint, right: previous.endpoint })) globalDefaultRevision++;
+  if (next.modelId !== previous.modelId || !areEndpointsEqual({ left: next.endpoint, right: previous.endpoint })) {
+    globalDefaultRevision++;
+  }
 }, { flush: 'sync' });
 
 const _initialized = ref(false);
@@ -107,6 +111,7 @@ interface UseSettingsApi {
   fetchModels: ({ overrides }: { overrides?: Endpoint }) => Promise<string[]>,
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
+  updateGlobalReasoningEffort: ({ effort }: { effort: Reasoning['effort'] }) => Promise<void>,
   updateGlobalModelAndEndpoint: ({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
   }) => Promise<'applied' | 'changed'>,
@@ -155,7 +160,10 @@ storageService.subscribeToChanges({
           // boundary even when no saved Settings record exists yet.
             _settings.value = { ..._settings.value };
             break;
-          default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+          default: {
+            const unreachable: never = type;
+            throw new Error(String(unreachable));
+          }
           }
         }
       } catch (error) {
@@ -217,7 +225,10 @@ watch(
       switch (endpointType) {
       case 'llama_cpp_browser': return llamaCppBrowserService;
       case 'transformers_js': return transformersJsService;
-      default: { const exhaustive: never = endpointType; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = endpointType;
+        throw new Error(`Unhandled endpoint: ${exhaustive}`);
+      }
       }
     })();
     const unsubscribe = modelService.subscribeModelList({
@@ -278,8 +289,12 @@ export function useSettings(): UseSettingsApi {
   });
 
   async function init({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) {
-    if (_initialized.value) return;
-    if (initPromise) return initPromise;
+    if (_initialized.value) {
+      return;
+    }
+    if (initPromise) {
+      return initPromise;
+    }
     console.log("storageTypeOverride", storageTypeOverride);
 
     initPromise = (async () => {
@@ -573,10 +588,17 @@ export function useSettings(): UseSettingsApi {
     switch (outcome) {
     case 'changed': return outcome;
     case 'saved':
-      if (!isCurrent()) return 'changed';
-      if (savedSettings) _settings.value = savedSettings;
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      if (savedSettings) {
+        _settings.value = savedSettings;
+      }
       return outcome;
-    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
     }
   }
 
@@ -603,17 +625,23 @@ export function useSettings(): UseSettingsApi {
       && areEndpointsEqual({ left: current.endpoint, right: expected.endpoint })
       && canInitializeModelLaunchDefaults({ endpoint: current.endpoint, modelId: current.defaultModelId })
     );
-    if (!expected.storedMatches || !stillExpected({ current: _settings.value })) return 'changed';
+    if (!expected.storedMatches || !stillExpected({ current: _settings.value })) {
+      return 'changed';
+    }
     let applied = false;
     await storageService.updateSettings({
       updater: ({ current }) => {
         const base = current ?? _settings.value;
-        if (!stillExpected({ current: base })) return base;
+        if (!stillExpected({ current: base })) {
+          return base;
+        }
         applied = true;
         return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
       },
     });
-    if (!applied) return 'changed';
+    if (!applied) {
+      return 'changed';
+    }
     // A newer explicit in-memory selection must not be overwritten by the
     // completion of this write. It owns its own settings save.
     if (stillExpected({ current: _settings.value })) {
@@ -628,6 +656,20 @@ export function useSettings(): UseSettingsApi {
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
   }
 
+  async function updateGlobalReasoningEffort({ effort }: { effort: Reasoning['effort'] }) {
+    // Merge this single field against the latest persisted parameters. Do not
+    // publish an unsaved value or replace concurrent edits to other parameters.
+    await storageService.updateSettings({
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        const parameters = base.lmParameters ?? EMPTY_LM_PARAMETERS;
+        return { ...base, lmParameters: { ...parameters, reasoning: { ...parameters.reasoning, effort } } };
+      },
+    });
+    const parameters = _settings.value.lmParameters ?? EMPTY_LM_PARAMETERS;
+    _settings.value = { ..._settings.value, lmParameters: { ...parameters, reasoning: { ...parameters.reasoning, effort } } };
+  }
+
   /** Commit both default fields together, without optimistic half-updates. */
   async function updateGlobalModelAndEndpoint({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
@@ -635,7 +677,9 @@ export function useSettings(): UseSettingsApi {
     const matchesExpected = ({ current }: { current: Settings }): boolean => (
       current.defaultModelId === expected.modelId && areEndpointsEqual({ left: current.endpoint, right: expected.endpoint })
     );
-    if (!matchesExpected({ current: _settings.value })) return 'changed';
+    if (!matchesExpected({ current: _settings.value })) {
+      return 'changed';
+    }
     const nextEndpoint = cloneEndpoint({ endpoint });
     let applied = false;
     let observedDefault: { endpoint: Endpoint, modelId: string | undefined } | undefined;
@@ -653,7 +697,9 @@ export function useSettings(): UseSettingsApi {
     });
     if (!applied) {
       // Show the newly observed default before requesting another confirmation.
-      if (observedDefault) _settings.value = { ..._settings.value, endpoint: observedDefault.endpoint, defaultModelId: observedDefault.modelId };
+      if (observedDefault) {
+        _settings.value = { ..._settings.value, endpoint: observedDefault.endpoint, defaultModelId: observedDefault.modelId };
+      }
       return 'changed';
     }
     _settings.value = { ..._settings.value, endpoint: nextEndpoint, defaultModelId: modelId };
@@ -687,7 +733,9 @@ export function useSettings(): UseSettingsApi {
   }
 
   async function updateStorageType({ type }: { type: StorageType }) {
-    if (_settings.value.storageType === type) return;
+    if (_settings.value.storageType === type) {
+      return;
+    }
 
     _settings.value.storageType = type;
     await storageService.switchProvider({ type });
@@ -851,6 +899,7 @@ export function useSettings(): UseSettingsApi {
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,
+    updateGlobalReasoningEffort,
     updateGlobalEndpoint,
     updateGlobalModelAndEndpoint,
     updateSystemPrompt,

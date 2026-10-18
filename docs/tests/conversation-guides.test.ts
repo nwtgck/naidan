@@ -100,7 +100,9 @@ describe('conversation guides', () => {
     const { descriptor, errors } = parse(readFileSync(filename, 'utf8'), { filename: filename.pathname });
     expect(errors).toHaveLength(0);
     const style = descriptor.styles[0];
-    if (!style) throw new Error('Missing ChatGroupSettingsStep style');
+    if (!style) {
+      throw new Error('Missing ChatGroupSettingsStep style');
+    }
     const compiled = compileStyle({ source: style.content, filename: filename.pathname, id: 'data-v-test', scoped: true });
     expect(compiled.errors).toHaveLength(0);
     expect(compiled.code).toContain('html:has(#docs-pause-motion:checked) .stage-model .selected-value');

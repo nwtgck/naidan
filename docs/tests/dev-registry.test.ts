@@ -42,7 +42,9 @@ it('replaces the Docs child after compiler and island registry edits before serv
   configure(parent);
   expect(parent.watcher.add).toHaveBeenCalledWith(expect.arrayContaining(['/tmp/docs-bridge-probe/docs/islands/registry.ts']));
   const request = async (): Promise<string> => {
-    if (!middleware) throw new Error('Missing Docs bridge middleware');
+    if (!middleware) {
+      throw new Error('Missing Docs bridge middleware');
+    }
     let finish: ((body: string) => void) | undefined;
     const completed = new Promise<string>(resolve => {
       finish = resolve;

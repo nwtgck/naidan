@@ -21,10 +21,14 @@ export function createModelArtifactRequestBarrier({
   let quiescenceResolved = false;
 
   const schedule = () => {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     timer = setTimeout(() => {
       timer = undefined;
-      if (quiescenceResolved) return;
+      if (quiescenceResolved) {
+        return;
+      }
       quiescenceResolved = true;
       quiescence.resolve([...requests.values()].sort((left, right) => {
         const pathOrder = left.path.localeCompare(right.path);
@@ -42,7 +46,9 @@ export function createModelArtifactRequestBarrier({
       return pending.promise;
     },
     waitForQuiescence(): Promise<DownloadVerificationModelArtifactRequest[]> {
-      if (requests.size > 0 && !quiescenceResolved) schedule();
+      if (requests.size > 0 && !quiescenceResolved) {
+        schedule();
+      }
       return quiescence.promise;
     },
     stop({ reason }): void {
@@ -50,11 +56,15 @@ export function createModelArtifactRequestBarrier({
         clearTimeout(timer);
         timer = undefined;
       }
-      for (const reject of rejectors) reject(reason);
+      for (const reject of rejectors) {
+        reject(reason);
+      }
       rejectors.clear();
     },
     dispose(): void {
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       timer = undefined;
       rejectors.clear();
       if (!quiescenceResolved) {
@@ -66,9 +76,13 @@ export function createModelArtifactRequestBarrier({
 
 export function huggingFaceResolveArtifactRequest({ url }: { url: string }): DownloadVerificationModelArtifactRequest | undefined {
   const path = huggingFaceResolveArtifactPath({ url });
-  if (path === undefined) return undefined;
+  if (path === undefined) {
+    return undefined;
+  }
   const sanitizedUrl = sanitizeObservedUrl({ value: url });
-  if (sanitizedUrl === undefined) return undefined;
+  if (sanitizedUrl === undefined) {
+    return undefined;
+  }
   return { path, url: sanitizedUrl };
 }
 

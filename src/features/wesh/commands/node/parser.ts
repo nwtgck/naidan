@@ -136,7 +136,9 @@ function babelChildNodes({ node }: { node: BabelNode }): BabelNode[] {
       children.push(value);
       continue;
     }
-    if (!Array.isArray(value)) continue;
+    if (!Array.isArray(value)) {
+      continue;
+    }
     for (const item of value) {
       if (isBabelNode(item)) {
         children.push(item);
@@ -203,7 +205,9 @@ function findPostParseCompatibilityDiagnostic({
   const stack: BabelNode[] = [ast.program];
   while (stack.length > 0) {
     const node = stack.pop();
-    if (node === undefined) break;
+    if (node === undefined) {
+      break;
+    }
 
     switch (node.type) {
     case 'VariableDeclaration': {
@@ -212,7 +216,9 @@ function findPostParseCompatibilityDiagnostic({
       case 'using':
       case 'await using': {
         const diagnostic = unsupportedUsingDiagnostic({ node });
-        if (diagnostic !== undefined) return diagnostic;
+        if (diagnostic !== undefined) {
+          return diagnostic;
+        }
         break;
       }
       case 'var':
@@ -228,7 +234,9 @@ function findPostParseCompatibilityDiagnostic({
     }
     case 'RegExpLiteral': {
       const diagnostic = invalidRegExpDiagnostic({ node });
-      if (diagnostic !== undefined) return diagnostic;
+      if (diagnostic !== undefined) {
+        return diagnostic;
+      }
       break;
     }
     default:
@@ -310,9 +318,13 @@ function findWrapperBindingInPattern({
     return findWrapperBindingInPattern({ pattern: pattern.argument });
   case 'ArrayPattern':
     for (const element of pattern.elements) {
-      if (element === null) continue;
+      if (element === null) {
+        continue;
+      }
       const match = findWrapperBindingInPattern({ pattern: element });
-      if (match !== undefined) return match;
+      if (match !== undefined) {
+        return match;
+      }
     }
     return undefined;
   case 'ObjectPattern':
@@ -320,12 +332,16 @@ function findWrapperBindingInPattern({
       switch (property.type) {
       case 'RestElement': {
         const match = findWrapperBindingInPattern({ pattern: property.argument });
-        if (match !== undefined) return match;
+        if (match !== undefined) {
+          return match;
+        }
         break;
       }
       case 'ObjectProperty': {
         const match = findWrapperBindingInPattern({ pattern: property.value as LVal | PatternLike });
-        if (match !== undefined) return match;
+        if (match !== undefined) {
+          return match;
+        }
         break;
       }
       default: {

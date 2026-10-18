@@ -1,12 +1,19 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { mount } from '@vue/test-utils';
+import { mount, DOMWrapper, enableAutoUnmount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { computed, ref, nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/utils.test-support';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+
+enableAutoUnmount(afterEach);
+
+afterEach(() => {
+  document.body.innerHTML = '';
+  vi.useRealTimers();
+});
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -116,23 +123,19 @@ vi.mock('../../../00-storage/service', () => ({
   },
 }));
 
-// Mock Lucide icons
-vi.mock('lucide-vue-next', () => ({
-  SearchIcon: { render: () => null },
-  XIcon: { render: () => null },
-  Loader2Icon: { render: () => null },
-  MessageSquareIcon: { render: () => null },
-  CornerDownRightIcon: { render: () => null },
-  ClockIcon: { render: () => null },
-  GitBranchIcon: { render: () => null },
-  FolderIcon: { render: () => null },
-  FilterIcon: { render: () => null },
-  CheckIcon: { render: () => null },
-  EyeIcon: { render: () => null },
-}));
-
 // Mock scrollIntoView
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+async function openSelectMenu({ trigger }: { trigger: Pick<DOMWrapper<Element>, 'trigger' | 'attributes'> }): Promise<DOMWrapper<HTMLElement>> {
+  await nextTick();
+  await trigger.trigger('click');
+  await nextTick();
+  const menu = document.getElementById(trigger.attributes('aria-controls') ?? '');
+  if (!menu) {
+    throw new Error('Expected the select menu to be open');
+  }
+  return new DOMWrapper(menu);
+}
 
 // --- Tests ---
 
@@ -144,6 +147,8 @@ describe('GlobalSearchModal Component', () => {
     mockChatGroupIds.value = [];
     mockChatId.value = undefined;
     mockResults.value = [];
+    mockIsSearching.value = false;
+    mockIsScanningContent.value = false;
     mockActiveFocusArea.value = 'chat';
     mockGlobalSearchScope.value = 'title_only';
     mockGlobalSearchRoleFilter.value = 'all';
@@ -522,13 +527,15 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="scope-button-current_thread"]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-testid="role-filter-select"]').setValue('assistant');
+    const roleMenu = await openSelectMenu({ trigger: wrapper.get('[data-testid="role-filter-select"]') });
+    await roleMenu.get('[data-testid="settings-select-option-assistant"]').trigger('click');
 
     mockSearchContextSize.value = 4;
     await nextTick();
     const contextSelect = wrapper.get('[data-testid="search-context-size-select"]');
-    expect((contextSelect.element as HTMLSelectElement).value).toBe('4');
-    await contextSelect.setValue('5');
+    const contextMenu = await openSelectMenu({ trigger: contextSelect });
+    expect(contextMenu.get('[data-testid="settings-select-option-4"]').attributes('aria-selected')).toBe('true');
+    await contextMenu.get('[data-testid="settings-select-option-5"]').trigger('click');
 
     await wrapper.get('[data-testid="search-preview-mode-disabled"]').trigger('click');
 
@@ -692,15 +699,24 @@ describe('GlobalSearchModal Component', () => {
     vi.useRealTimers();
   });
 
-  it('should show role filters only for content search scopes', async () => {
+  it('preserves the role filter slot while making it unavailable in title-only search', async () => {
     const wrapper = mount(GlobalSearchModal);
-    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+    const field = wrapper.get('[data-testid="role-filter-field"]');
+    const trigger = wrapper.get('[data-testid="role-filter-select"]');
+    expect(field.attributes('aria-hidden')).toBe('true');
+    expect(field.attributes('inert')).toBeDefined();
+    expect(trigger.attributes('disabled')).toBeDefined();
 
     await wrapper.get('[data-testid="scope-button-all"]').trigger('click');
-    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
+    expect(field.attributes('aria-hidden')).toBe('false');
+    expect(field.attributes('inert')).toBeUndefined();
+    expect(trigger.attributes('disabled')).toBeUndefined();
 
     await wrapper.get('[data-testid="scope-button-title_only"]').trigger('click');
-    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="role-filter-field"]').element).toBe(field.element);
+    expect(field.attributes('aria-hidden')).toBe('true');
+    expect(field.attributes('inert')).toBeDefined();
+    expect(trigger.attributes('disabled')).toBeDefined();
   });
 
   it('should include role filter in search options', async () => {
@@ -713,7 +729,8 @@ describe('GlobalSearchModal Component', () => {
     expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
 
     mockSearch.mockClear();
-    await wrapper.get('[data-testid="role-filter-select"]').setValue('user');
+    const roleMenu = await openSelectMenu({ trigger: wrapper.get('[data-testid="role-filter-select"]') });
+    await roleMenu.get('[data-testid="settings-select-option-user"]').trigger('click');
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       options: expect.objectContaining({
@@ -721,6 +738,62 @@ describe('GlobalSearchModal Component', () => {
         roleFilter: 'user',
       }),
     }));
+  });
+
+  it.each([1, 3, 'full'] as const)('persists the %s context choice from the custom menu', async size => {
+    const wrapper = mount(GlobalSearchModal);
+    const trigger = wrapper.get('[data-testid="search-context-size-select"]');
+    const menu = await openSelectMenu({ trigger });
+    await menu.get(`[data-testid="settings-select-option-${size}"]`).trigger('click');
+
+    expect(mockSetSearchContextSize).toHaveBeenCalledExactlyOnceWith({ size });
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+  });
+
+  it('closes only the custom menu on Escape and returns focus to its trigger', async () => {
+    const wrapper = mount(GlobalSearchModal, { attachTo: document.body });
+    const trigger = wrapper.get('[data-testid="search-context-size-select"]');
+    const menu = await openSelectMenu({ trigger });
+    expect(document.activeElement).toBe(menu.get('[role="option"][aria-selected="true"]').element);
+
+    await menu.trigger('keydown', { key: 'Escape' });
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger.element);
+    expect(mockCloseSearch).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Escape' });
+    expect(mockCloseSearch).toHaveBeenCalledOnce();
+  });
+
+  it('closes the role menu on title-only search and preserves the role when enabled again', async () => {
+    mockGlobalSearchScope.value = 'all';
+    mockGlobalSearchRoleFilter.value = 'user';
+    const wrapper = mount(GlobalSearchModal);
+    const trigger = wrapper.get('[data-testid="role-filter-select"]');
+    const menu = await openSelectMenu({ trigger });
+    const assistant = menu.get('[data-testid="settings-select-option-assistant"]');
+
+    await wrapper.get('[data-testid="scope-button-title_only"]').trigger('click');
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(menu.attributes('aria-hidden')).toBe('true');
+    await assistant.trigger('click');
+    expect(mockSetGlobalSearchRoleFilter).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="scope-button-current_thread"]').trigger('click');
+    const reopenedMenu = await openSelectMenu({ trigger });
+    expect(reopenedMenu.get('[data-testid="settings-select-option-user"]').attributes('aria-selected')).toBe('true');
+    expect(mockGlobalSearchRoleFilter.value).toBe('user');
+  });
+
+  it('removes an open custom menu when the search modal closes', async () => {
+    const wrapper = mount(GlobalSearchModal);
+    await openSelectMenu({ trigger: wrapper.get('[data-testid="search-context-size-select"]') });
+    expect(document.querySelector('[role="listbox"][data-open="true"]')).not.toBeNull();
+
+    mockIsSearchOpen.value = false;
+    await nextTick();
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(mockSetSearchContextSize).not.toHaveBeenCalled();
   });
 
   it('should persist query and select it on reopen', async () => {

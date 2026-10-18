@@ -22,7 +22,9 @@ function joinExpandedFieldParts({
   parts: readonly WeshExpandedFieldPart[],
 }): string {
   let text = '';
-  for (const part of parts) text += part.text;
+  for (const part of parts) {
+    text += part.text;
+  }
   return text;
 }
 

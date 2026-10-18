@@ -10,14 +10,17 @@ const root = '/naidan-storage/experimental/image-generation';
 const annotationsPath = `${root}/sessions/aa/session-aa/annotations/00/asset-00.json`;
 
 beforeEach(() => {
-  fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
+  fs = createImageGenerationStorageHarness();
+  vi.stubGlobal('Blob', NodeBlob);
 });
 
 afterEach(() => vi.unstubAllGlobals());
 
 async function ready({ count, finish }: { count: number, finish: boolean }) {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
-  if (!catalog) throw new Error('Missing test catalog.');
+  if (!catalog) {
+    throw new Error('Missing test catalog.');
+  }
   const store = { storageType: 'opfs' as const, storeId: catalog.id };
   const session = generationSessionFixture({ id: 'session-aa' });
   await service.saveImageGenerationSession({ store, session, expectedRevision: undefined });
@@ -25,8 +28,12 @@ async function ready({ count, finish }: { count: number, finish: boolean }) {
   await service.createImageGenerationRun({ store, run, writeInputs: async () => {} });
   await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
   const assets = Array.from({ length: count }, (_, index) => generationAssetFixture({ id: `asset-${index.toString().padStart(2, '0')}`, run, index }));
-  for (const asset of assets) await service.commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
-  if (finish) await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 1, execution: { type: 'completed', finishedAt: 100 } });
+  for (const asset of assets) {
+    await service.commitImageGenerationAsset({ store, asset, writeImages: async () => {} });
+  }
+  if (finish) {
+    await service.updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, expectedRevision: 1, execution: { type: 'completed', finishedAt: 100 } });
+  }
   const asset = assets[0]!;
   return { store, catalog, session, run, assets, asset, key: { store, sessionId: session.id, assetId: asset.id } };
 }
@@ -102,7 +109,9 @@ describe('image archive and global tag identity', () => {
     const h = await ready({ count: 64, finish: true });
     const items = await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id });
     expect(items).toHaveLength(64);
-    for (const item of items) await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: item.id, expectedRevision: item.annotations.revision, state: 'archived' });
+    for (const item of items) {
+      await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: item.id, expectedRevision: item.annotations.revision, state: 'archived' });
+    }
     expect((await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id })).every(item => item.annotations.state === 'archived')).toBe(true);
   });
 
@@ -135,11 +144,15 @@ describe('image archive and global tag identity', () => {
     const tagId = toImageGenerationTagId({ raw: 'tag-aa' });
     const catalog = { ...h.catalog, revision: 1, tags: [{ id: tagId, name: '夜景🌃', state: 'active' as const, createdAt: 1, updatedAt: 1 }] };
     await service.saveImageGenerationCatalog({ store: h.store, catalog, expectedRevision: 0 });
-    for (const image of [h.asset, asset]) await service.setImageGenerationAssetTags({ store: h.store, sessionId: image.sessionId, assetId: image.id, expectedRevision: 0, assignedAt: 1, tags: [{ type: 'user', tagId }] });
+    for (const image of [h.asset, asset]) {
+      await service.setImageGenerationAssetTags({ store: h.store, sessionId: image.sessionId, assetId: image.id, expectedRevision: 0, assignedAt: 1, tags: [{ type: 'user', tagId }] });
+    }
     const written = fs.writes.length;
     await service.saveImageGenerationCatalog({ store: h.store, catalog: { ...catalog, revision: 2, tags: [{ ...catalog.tags[0]!, name: '採用候補🟦', updatedAt: 2 }] }, expectedRevision: 1 });
     expect(fs.writes.slice(written)).toEqual([`${root}/catalog.json`]);
-    for (const image of [h.asset, asset]) expect((await service.loadImageGenerationAssetAnnotations({ store: h.store, sessionId: image.sessionId, assetId: image.id }))?.tags[0]?.tag).toEqual({ type: 'user', tagId });
+    for (const image of [h.asset, asset]) {
+      expect((await service.loadImageGenerationAssetAnnotations({ store: h.store, sessionId: image.sessionId, assetId: image.id }))?.tags[0]?.tag).toEqual({ type: 'user', tagId });
+    }
     const current = await service.loadImageGenerationCatalog({ store: h.store });
     await service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 });
     expect((await service.loadImageGenerationCatalog({ store: h.store })).tags).toHaveLength(2);
@@ -235,7 +248,8 @@ it('preserves recovery confirmation through canonical storage and refuses its re
   await service.createImageGenerationRun({ store: h.store, run, writeInputs: async () => {} });
   await service.updateImageGenerationRunExecution({ store: h.store, sessionId: h.session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
   const asset = generationAssetFixture({ id: 'asset-recovered', run, index: 0 });
-  asset.result = { ...asset.result, confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined }; asset.previews = [];
+  asset.result = { ...asset.result, confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined };
+  asset.previews = [];
   await service.commitImageGenerationAsset({ store: h.store, asset, writeImages: async () => {} });
   const key = { store: h.store, sessionId: h.session.id, assetId: asset.id };
   expect((await service.loadImageGenerationAsset(key))?.result.confirmation).toBe('unconfirmed');

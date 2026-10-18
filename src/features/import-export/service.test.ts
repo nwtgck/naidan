@@ -149,12 +149,14 @@ describe('ImportExportService', () => {
       });
       const reloaded = await provider.loadSettings();
       expect(reloaded?.endpoint.type).toBe('unsupported_experimental_endpoint');
-      expect(reloaded?.systemPrompt).toBe('Keep this prompt'); expect(reloaded?.defaultModelId).toBe('keep-model');
+      expect(reloaded?.systemPrompt).toBe('Keep this prompt');
+      expect(reloaded?.defaultModelId).toBe('keep-model');
       expect(JSON.parse(localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:settings`)!).endpoint).toEqual({ type: 'experimental_type' });
     }
     await provider.saveSettings({ settings: createValidSettings() });
     const kept = await provider.loadSettings();
-    const zip = new JSZip(); zip.file('export-manifest.json', '{}');
+    const zip = new JSZip();
+    zip.file('export-manifest.json', '{}');
     zip.file('settings.json', JSON.stringify({ ...createValidSettingsDto(), endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'naidan_rpc', future: 'must not replace' } } } }));
     await service.executeImport({
       zipFile: await zip.generateAsync({ type: 'blob' }),
@@ -168,14 +170,16 @@ describe('ImportExportService', () => {
   });
 
   it('keeps a structurally unsupported imported image destination unavailable without preserving its raw block', async () => {
-    localStorage.clear(); const provider = new LocalStorageProvider();
+    localStorage.clear();
+    const provider = new LocalStorageProvider();
     mockStorage.loadSettings.mockImplementation(() => provider.loadSettings());
     mockStorage.clearAll.mockImplementation(() => provider.clearAll());
     mockStorage.updateSettings.mockImplementation(async ({ updater }) => provider.saveSettings({ settings: await updater({ current: await provider.loadSettings() }) }));
     const editor = { components: [], loras: [] };
     const entries = [{ registrationId: 'legacy-A', peerPublicKey: 'A'.repeat(43), editor }, { registrationId: 'registration-B', peerPublicKey: 'B'.repeat(43), editor }, { registrationId: 'legacy-C', peerPublicKey: 'C'.repeat(43), editor }];
     const route = { kind: 'naidan_rpc', registration: { registrationId: 'legacy-A' } };
-    const zip = new JSZip(); zip.file('export-manifest.json', '{}');
+    const zip = new JSZip();
+    zip.file('export-manifest.json', '{}');
     zip.file('settings.json', JSON.stringify({ ...createValidSettingsDto(), experimental: { locale: 'ja', browserImageGeneration: { width: 768, remoteModelEditors: entries, inferenceLocation: route } } }));
     await service.executeImport({
       zipFile: await zip.generateAsync({ type: 'blob' }),
@@ -256,7 +260,9 @@ describe('ImportExportService', () => {
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -308,7 +314,9 @@ describe('ImportExportService', () => {
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -350,7 +358,9 @@ describe('ImportExportService', () => {
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -493,7 +503,9 @@ describe('ImportExportService', () => {
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -613,7 +625,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
 
@@ -690,7 +704,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
 
@@ -729,7 +745,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -796,7 +814,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -830,7 +850,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -905,7 +927,9 @@ ${JSON.stringify({
       const reader = stream.getReader();
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value!);
       }
       const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
@@ -1083,7 +1107,9 @@ ${JSON.stringify({
       const chatChunk = chunks.find(c => c.type === 'chat');
       expect(mockStorage.restore).toHaveBeenCalledOnce();
       expect(chunks.filter(chunk => chunk.type === 'chat')).toHaveLength(1);
-      if (chatChunk?.type !== 'chat') throw new Error('Expected the imported chat');
+      if (chatChunk?.type !== 'chat') {
+        throw new Error('Expected the imported chat');
+      }
       expect(chatChunk.data.id).toBe(NEW_UUID);
       expect(chatChunk.data.root?.items).toHaveLength(1);
       const parentNode = chatChunk.data.root?.items[0];
@@ -1168,7 +1194,9 @@ ${JSON.stringify({
       const chatChunk = chunks.find(c => c.type === 'chat');
       expect(mockStorage.restore).toHaveBeenCalledOnce();
       expect(chunks.filter(chunk => chunk.type === 'chat')).toHaveLength(1);
-      if (chatChunk?.type !== 'chat') throw new Error('Expected the imported chat');
+      if (chatChunk?.type !== 'chat') {
+        throw new Error('Expected the imported chat');
+      }
       expect(chatChunk.data.id).toBe(NEW_UUID);
       expect(chatChunk.data.root?.items).toHaveLength(1);
       const node = chatChunk.data.root?.items[0];

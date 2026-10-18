@@ -44,7 +44,9 @@ beforeEach(async () => {
   initialized.value = true;
   host.capture.mockReturnValue(() => true);
   host.update.mockImplementation(async ({ isCurrent, updater }) => {
-    if (!isCurrent()) return 'changed';
+    if (!isCurrent()) {
+      return 'changed';
+    }
     settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
     return 'saved';
   });
@@ -152,7 +154,9 @@ describe('persisted chat context controls', () => {
     host.capture.mockReturnValue(() => current);
     host.update.mockImplementationOnce(async ({ isCurrent, updater }) => {
       await pending.promise;
-      if (!isCurrent()) return 'changed';
+      if (!isCurrent()) {
+        return 'changed';
+      }
       settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
       return 'saved';
     });

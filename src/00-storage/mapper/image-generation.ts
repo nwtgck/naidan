@@ -24,14 +24,18 @@ export function imageGenerationDraftToDomain({ dto }: { dto: ExperimentalImageGe
 }
 
 export function imageGenerationTranslationToDto({ value }: { value: ImageGenerationTranslationOverride | undefined }): ExperimentalImageGenerationTranslationOverrideDto | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
   return ExperimentalImageGenerationTranslationOverrideSchemaDto.parse({ endpoint: endpoint && endpointToDto({ endpoint }), modelId, lmParameters: lmParametersToDto({ domain: lmParameters }) });
 }
 
 export function imageGenerationTranslationToDomain({ value }: { value: ExperimentalImageGenerationTranslationOverrideDto | undefined }): ImageGenerationTranslationOverride | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
   return { endpoint: endpoint && endpointToDomain({ dto: endpoint }), modelId, lmParameters: lmParametersToDomain({ dto: lmParameters }) };
@@ -105,7 +109,10 @@ export function imageGenerationTagReferenceToDto({ tag }: { tag: ImageGeneration
   switch (tag.type) {
   case 'system': return { ...tag };
   case 'user': return { ...tag, tagId: idToRaw({ id: tag.tagId }) };
-  default: { const exhaustive: never = tag; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = tag;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -113,7 +120,10 @@ export function imageGenerationTagReferenceToDomain({ dto }: { dto: Experimental
   switch (dto.type) {
   case 'system': return { ...dto };
   case 'user': return { ...dto, tagId: toImageGenerationTagId({ raw: dto.tagId }) };
-  default: { const exhaustive: never = dto; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = dto;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

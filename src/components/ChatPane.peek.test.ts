@@ -264,13 +264,18 @@ describe('ChatPane Peek Mode Specifications', () => {
 
     const scrollContainer = wrapper.get('[data-testid="scroll-container"]');
 
-    // Default padding (active)
-    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('300px');
+    const input = wrapper.getComponent(ChatInput);
+    scrollContainer.element.getBoundingClientRect = () => new DOMRect(0, 100, 800, 600);
+    input.element.getBoundingClientRect = () => new DOMRect(0, 560, 800, 140);
+    await input.trigger('transitionend');
+    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('148px');
 
     // Submerge
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
     await nextTick();
-    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('48px');
+    input.element.getBoundingClientRect = () => new DOMRect(0, 668, 800, 140);
+    await input.trigger('transitionend');
+    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('40px');
   });
 
   it('resets maximized state when submerging', async () => {
@@ -316,14 +321,18 @@ describe('ChatPane Peek Mode Specifications', () => {
     expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
   });
 
-  it('contains a hit area extension for stable hover detection', async () => {
+  it('keeps the composer active while interacting with a teleported popup', async () => {
     wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
 
-    const hitArea = wrapper.find('[data-testid="hit-area-extension"]');
-    expect(hitArea.exists()).toBe(true);
-    expect(hitArea.classes()).toContain('-bottom-16');
+    await wrapper.get('[data-testid="submerge-button"]').trigger('click');
+    const card = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    await card.trigger('mouseenter');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('peeking');
+    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    await card.trigger('mouseleave');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
   });
 });

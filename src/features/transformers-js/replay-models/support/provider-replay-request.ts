@@ -55,17 +55,23 @@ export async function createProviderRequestReplayWithOwnedCacheControl({ createN
 }
 
 async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imagePlatform, nativeController }: { catalog: RequestReplayArguments['catalog'], caseIds: RequestReplayArguments['caseIds'], artifactPaths: RequestReplayArguments['artifactPaths'], imagePlatform: RequestReplayArguments['imagePlatform'], nativeController: ProviderRequestNativeController | undefined }): Promise<ProviderRequestReplay> {
-  if (caseIds.length === 0 || new Set(caseIds).size !== caseIds.length) throw new Error('Missing or duplicate explicit native request plan');
+  if (caseIds.length === 0 || new Set(caseIds).size !== caseIds.length) {
+    throw new Error('Missing or duplicate explicit native request plan');
+  }
   const selected = caseIds.map(caseId => readProviderRequestEvidence({ catalog, caseId }));
   const context = selected[0]!.context;
   for (const { context: resource, evidence } of selected) {
     expect(resource).toEqual(context);
-    if (evidence.request === undefined || evidence.invocations.length === 0 || evidence.inputGaps.length !== 0 || evidence.unavailableOutputOrdinals.length !== 0) throw new Error('Missing output is not a successful native replay');
+    if (evidence.request === undefined || evidence.invocations.length === 0 || evidence.inputGaps.length !== 0 || evidence.unavailableOutputOrdinals.length !== 0) {
+      throw new Error('Missing output is not a successful native replay');
+    }
   }
   const metadata = readModelFixture({ modelId: context.modelId });
   expect(metadata.summary.revision).toBe(context.metadataRevision);
   expect(context.metadata.map(row => row.path).sort()).toEqual([...metadata.files.keys()].sort());
-  for (const row of context.metadata) expect(createHash('sha256').update(metadata.files.get(row.path)!).digest('hex'), row.path).toBe(row.sha256);
+  for (const row of context.metadata) {
+    expect(createHash('sha256').update(metadata.files.get(row.path)!).digest('hex'), row.path).toBe(row.sha256);
+  }
   let requestOrdinal = 0;
   let nativeCalls = 0;
   let completedNativeCalls = 0;
@@ -79,12 +85,16 @@ async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imag
     artifacts: artifactPaths.map(path => ({ path, bytes: createSyntheticModelBody({ modelId: context.modelId, revision: context.metadataRevision, path }) })),
     generate: async ({ options, runtime, model }) => {
       ++nativeCalls;
-      if (active === undefined) throw new Error('Native invocation outside an explicitly begun request');
+      if (active === undefined) {
+        throw new Error('Native invocation outside an explicitly begun request');
+      }
       const localOrdinal = ++active.attempted;
       const { evidence, parameters } = active;
       const caseId = evidence.caseId;
       const invocation = evidence.invocations.find(item => item.localOrdinal === localOrdinal);
-      if (invocation === undefined) throw new Error(`Unrecorded extra native invocation: ${caseId}/${localOrdinal}`);
+      if (invocation === undefined) {
+        throw new Error(`Unrecorded extra native invocation: ${caseId}/${localOrdinal}`);
+      }
       const { localOrdinal: ordinal, ...facts } = invocation;
       const call = { invocation: { ...facts, scenario: caseId, callOrdinal: ordinal }, options, runtime, modelConfig: model.config, parameters };
       const cacheControl = nativeController?.cacheForInvocation({ caseId, localOrdinal, call });
@@ -100,30 +110,45 @@ async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imag
   return {
     ...harness,
     beginNativeRequest({ caseId, parameters }) {
-      if (active !== undefined) throw new Error('End the preceding native request before beginning another');
+      if (active !== undefined) {
+        throw new Error('End the preceding native request before beginning another');
+      }
       const next = selected[requestOrdinal];
-      if (next === undefined || next.evidence.caseId !== caseId) throw new Error('Native request differs from its explicit plan');
-      if (requestOrdinal > 0) expect(harness.service.getState().status, 'no repair Load between public requests').toBe('ready');
+      if (next === undefined || next.evidence.caseId !== caseId) {
+        throw new Error('Native request differs from its explicit plan');
+      }
+      if (requestOrdinal > 0) {
+        expect(harness.service.getState().status, 'no repair Load between public requests').toBe('ready');
+      }
       // The native gate owns these three requested controls, not the whole
       // public request. Keep an independent snapshot before chat can mutate its
       // caller-owned options; Production must never move the expected value.
       active = { evidence: next.evidence, parameters: Object.freeze(nativeParameterSnapshotSchema.parse(parameters)), attempted: 0, completed: 0 };
     },
     endNativeRequest() {
-      if (active === undefined) throw new Error('No active native request');
+      if (active === undefined) {
+        throw new Error('No active native request');
+      }
       expect(active.attempted, `${active.evidence.caseId}/attempted native inventory`).toBe(active.evidence.invocations.length);
       expect(active.completed, `${active.evidence.caseId}/completed native inventory`).toBe(active.evidence.invocations.length);
       active = undefined;
       ++requestOrdinal;
     },
     endRejectedRequest({ outcome }) {
-      if (active === undefined) throw new Error('No active request');
+      if (active === undefined) {
+        throw new Error('No active request');
+      }
       // A current unsupported-input result does not replay or validate the
       // historical output. Model tests own the exact reason and unchanged input.
       switch (outcome.status) {
-      case 'fulfilled': expect(outcome.result, 'explicit current rejection, not absent output').toMatchObject({ type: 'error' }); break;
-      case 'rejected': expect(outcome.error, 'observed operation rejection').toBeInstanceOf(Error); break;
-      default: { const exhaustive: never = outcome; throw new Error(`Unhandled rejection observation: ${exhaustive}`); }
+      case 'fulfilled': expect(outcome.result, 'explicit current rejection, not absent output').toMatchObject({ type: 'error' });
+        break;
+      case 'rejected': expect(outcome.error, 'observed operation rejection').toBeInstanceOf(Error);
+        break;
+      default: {
+        const exhaustive: never = outcome;
+        throw new Error(`Unhandled rejection observation: ${exhaustive}`);
+      }
       }
       expect(active.attempted, `${active.evidence.caseId}/no rejected native invocation`).toBe(0);
       expect(active.completed, `${active.evidence.caseId}/no rejected native output`).toBe(0);

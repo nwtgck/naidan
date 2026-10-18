@@ -970,12 +970,13 @@ const values = [1,2,3];`;
     expect(ruleConfig.plugins['local-rules-object-layout'].rules['object-layout']).toBe(rule);
   });
 
-  it('is enabled in the actual Naidan configuration alongside the existing indent rule', async () => {
+  it('is enabled in the actual Naidan configuration alongside safe indentation', async () => {
     const eslint = new ESLint();
     for (const filePath of ['src/utils/promise.ts', 'src/App.vue']) {
       const effective = await eslint.calculateConfigForFile(filePath);
       expect(effective.rules[ruleId]).toEqual([2]);
-      expect(effective.rules.indent).toEqual([1, 2]);
+      expect(effective.rules.indent[0]).toBe(0);
+      expect(effective.rules['local-rules-statement-layout/indent']).toEqual([1, 2]);
       expect(effective.rules['max-len'][0]).toBe(0);
       expect(effective.rules['comma-dangle'][0]).toBe(0);
     }

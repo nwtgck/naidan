@@ -30,9 +30,13 @@ export function createProductionLoadReceiptSlot() {
       const token = generation;
       const parsed = (() => {
         try {
-          if (typeof owner !== 'object' || owner === null) return undefined;
+          if (typeof owner !== 'object' || owner === null) {
+            return undefined;
+          }
           const descriptors = Object.getOwnPropertyDescriptors(owner);
-          if (Reflect.ownKeys(descriptors).length !== 2 || !Object.hasOwn(descriptors.runId ?? {}, 'value') || !Object.hasOwn(descriptors.workerEpoch ?? {}, 'value')) return undefined;
+          if (Reflect.ownKeys(descriptors).length !== 2 || !Object.hasOwn(descriptors.runId ?? {}, 'value') || !Object.hasOwn(descriptors.workerEpoch ?? {}, 'value')) {
+            return undefined;
+          }
           return productionLoadReceiptOwnerSchema.safeParse({ runId: descriptors.runId?.value, workerEpoch: descriptors.workerEpoch?.value });
         } catch {
           return undefined;
@@ -48,26 +52,38 @@ export function createProductionLoadReceiptSlot() {
       let finished = false;
       return {
         finish({ receipt }: { receipt: ProductionLoadReceipt | undefined }) {
-          if (finished) return;
+          if (finished) {
+            return;
+          }
           finished = true;
           active--;
-          if (token !== generation || active !== 0 || observation === undefined) return;
+          if (token !== generation || active !== 0 || observation === undefined) {
+            return;
+          }
           observation = { ...observation, outcome: receipt === undefined ? { status: 'not-recorded' } : { status: 'accepted', receipt } };
         },
         fail() {
-          if (finished) return;
+          if (finished) {
+            return;
+          }
           finished = true;
           active--;
-          if (token === generation && active === 0 && observation !== undefined) observation = { ...observation, outcome: { status: 'failed' } };
+          if (token === generation && active === 0 && observation !== undefined) {
+            observation = { ...observation, outcome: { status: 'failed' } };
+          }
         },
       };
     },
     clear() {
       generation++;
-      if (observation !== undefined) observation = { ...observation, outcome: { status: 'cleared' } };
+      if (observation !== undefined) {
+        observation = { ...observation, outcome: { status: 'cleared' } };
+      }
     },
     snapshot({ owner }: { owner: ProductionLoadReceiptOwner }): ProductionLoadObservation | undefined {
-      if (observation === undefined || observation.owner.runId !== owner.runId || observation.owner.workerEpoch !== owner.workerEpoch) return undefined;
+      if (observation === undefined || observation.owner.runId !== owner.runId || observation.owner.workerEpoch !== owner.workerEpoch) {
+        return undefined;
+      }
       return productionLoadObservationSchema.parse(observation);
     },
   };

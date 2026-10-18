@@ -131,13 +131,17 @@ function parseAdditive({ state, depth }: { state: ParserState, depth: number }):
   }> = [];
   while (true) {
     const token = currentToken({ state });
-    if (token.type !== 'operator' || (token.value !== '+' && token.value !== '-')) break;
+    if (token.type !== 'operator' || (token.value !== '+' && token.value !== '-')) {
+      break;
+    }
     advanceToken({ state });
     const operand = parseMultiplicative({ state, depth });
     tail.push({ operator: token.value, operatorSpan: token.span, operand });
     registerAstItem({ state, span: token.span });
   }
-  if (tail.length === 0) return head;
+  if (tail.length === 0) {
+    return head;
+  }
   const last = tail[tail.length - 1]!;
   return {
     type: 'sequence',
@@ -157,13 +161,17 @@ function parseMultiplicative({ state, depth }: { state: ParserState, depth: numb
   }> = [];
   while (true) {
     const token = currentToken({ state });
-    if (token.type !== 'operator' || (token.value !== '*' && token.value !== '/' && token.value !== '%')) break;
+    if (token.type !== 'operator' || (token.value !== '*' && token.value !== '/' && token.value !== '%')) {
+      break;
+    }
     advanceToken({ state });
     const operand = parseUnary({ state, depth });
     tail.push({ operator: token.value, operatorSpan: token.span, operand });
     registerAstItem({ state, span: token.span });
   }
-  if (tail.length === 0) return head;
+  if (tail.length === 0) {
+    return head;
+  }
   const last = tail[tail.length - 1]!;
   return {
     type: 'sequence',
@@ -194,7 +202,9 @@ function parseUnary({ state, depth }: { state: ParserState, depth: number }): Ca
 function parsePower({ state, depth }: { state: ParserState, depth: number }): CalculatorExpression {
   const base = parsePrimary({ state, depth });
   const token = currentToken({ state });
-  if (token.type !== 'operator' || token.value !== '^') return base;
+  if (token.type !== 'operator' || token.value !== '^') {
+    return base;
+  }
   advanceToken({ state });
   const exponent = parseUnary({ state, depth: depth + 1 });
   registerAstItem({ state, span: token.span });
@@ -236,7 +246,9 @@ function parsePrimary({ state, depth }: { state: ParserState, depth: number }): 
         }
         arguments_.push(parseExpression({ state, depth: depth + 1 }));
         const separator = currentToken({ state });
-        if (!isCommaToken(separator)) break;
+        if (!isCommaToken(separator)) {
+          break;
+        }
         advanceToken({ state });
         if (isRightParenthesisToken(currentToken({ state }))) {
           failCalculatorInput({

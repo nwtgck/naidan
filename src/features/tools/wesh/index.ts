@@ -80,7 +80,9 @@ export function createWeshTool({
       let executionId: string | undefined;
       let cancellationPromise: Promise<void> | undefined;
       try {
-        if (signal?.aborted) throw new Error('Generation aborted');
+        if (signal?.aborted) {
+          throw new Error('Generation aborted');
+        }
         const validated = WeshArgsSchema.parse(args);
 
         let stdoutText = '';

@@ -26,7 +26,9 @@ const destination = { kind: 'host' as const, directoryId: 'root-1' };
 
 async function directory(): Promise<MemoryDirectory> {
   let folder = root;
-  for (const name of ['owner', 'repo', 'nested']) folder = await folder.getDirectoryHandle(name, { create: true });
+  for (const name of ['owner', 'repo', 'nested']) {
+    folder = await folder.getDirectoryHandle(name, { create: true });
+  }
   return folder;
 }
 
@@ -44,33 +46,39 @@ function serve({ offset }: { offset: number }): void {
     headers: new Headers(offset ? { 'Content-Range': `bytes ${offset}-31/32` } : {}),
     body: new ReadableStream({
       start(controller) {
-        controller.enqueue(bytes.slice(offset)); controller.close();
+        controller.enqueue(bytes.slice(offset));
+        controller.close();
       },
     }),
   });
 }
 
 beforeEach(() => {
-  root = new MemoryDirectory('models'); opfs = new MemoryDirectory('opfs');
+  root = new MemoryDirectory('models');
+  opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
-  fetch.mockReset(); serve({ offset: 0 });
+  fetch.mockReset();
+  serve({ offset: 0 });
   vi.stubGlobal('navigator', {
     storage: { getDirectory: async () => opfs },
     locks: {
       request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-        options.signal?.throwIfAborted(); await run();
+        options.signal?.throwIfAborted();
+        await run();
       },
     },
   });
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals(); vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('host image model storage', () => {
   it('reads markerless user files directly under owner/repository and never creates receipts', async () => {
-    const folder = await directory(), handle = await folder.getFileHandle('model.gguf', { create: true }); handle.data = bytes;
+    const folder = await directory(), handle = await folder.getFileHandle('model.gguf', { create: true });
+    handle.data = bytes;
     const before = [...folder.children.keys()];
     const repositories = await listHostImageRepositories({ directories: [{ id: 'root-1', name: 'models' }, { id: 'root-2', name: 'models' }], signal: undefined });
     expect(repositories.map(repo => repo.id)).toEqual(['host/root-1/owner/repo', 'host/root-2/owner/repo']);
@@ -82,7 +90,9 @@ describe('host image model storage', () => {
 
   it('hides known pending host files while leaving unrelated files readable', async () => {
     const folder = await directory();
-    for (const name of ['model.gguf', 'other.gguf', '.model.gguf.pending']) (await folder.getFileHandle(name, { create: true })).data = bytes;
+    for (const name of ['model.gguf', 'other.gguf', '.model.gguf.pending']) {
+      (await folder.getFileHandle(name, { create: true })).data = bytes;
+    }
     const result = await listHostImageRepositories({ directories: [{ id: 'root-1', name: 'models' }], signal: undefined });
     expect(result[0]?.files.map(entry => entry.path)).toEqual(['nested/other.gguf']);
     expect(result[0]?.issues).toEqual([{ path: 'nested/model.gguf', message: 'Download is incomplete. Resume the catalog download.' }]);
@@ -96,7 +106,9 @@ describe('host image model storage', () => {
 
   it('keeps OPFS remote files hidden without their completion receipt', async () => {
     let folder = opfs;
-    for (const name of ['models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create: true });
+    for (const name of ['models', 'huggingface.co', 'owner', 'repo', 'resolve', 'main']) {
+      folder = await folder.getDirectoryHandle(name, { create: true });
+    }
     (await folder.getFileHandle('model.gguf', { create: true })).data = bytes;
     const result = await listImageRepositories({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
@@ -128,7 +140,9 @@ describe('host image model storage', () => {
       headers: new Headers(),
       body: new ReadableStream({
         start(stream) {
-          stream.enqueue(bytes.slice(0, 16)); stream.enqueue(bytes.slice(16)); stream.close();
+          stream.enqueue(bytes.slice(0, 16));
+          stream.enqueue(bytes.slice(16));
+          stream.close();
         },
       }),
     });
@@ -138,7 +152,9 @@ describe('host image model storage', () => {
       fetch,
       signal: controller.signal,
       report({ progress }) {
-        if (progress.phase === 'transferring' && progress.bytes === 16) controller.abort();
+        if (progress.phase === 'transferring' && progress.bytes === 16) {
+          controller.abort();
+        }
       },
     })).rejects.toThrow();
     const folder = await directory();

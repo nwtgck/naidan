@@ -32,7 +32,9 @@ vi.mock('../00-storage/service', () => ({
     }),
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       const cloned = JSON.parse(JSON.stringify(chat));
       const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
@@ -44,7 +46,9 @@ vi.mock('../00-storage/service', () => ({
     }),
     loadChatMeta: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mockChatStorage.get(id);
-      if (!chat) return null;
+      if (!chat) {
+        return null;
+      }
       const cloned = JSON.parse(JSON.stringify(chat));
       const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
@@ -53,7 +57,9 @@ vi.mock('../00-storage/service', () => ({
     updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mockChatStorage.get(id) || null;
       const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
-      if (updatedMeta === undefined) return;
+      if (updatedMeta === undefined) {
+        return;
+      }
       if (current) {
         const full = { ...current, ...updatedMeta };
         mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -597,7 +603,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       signal,
       run: async ({ signal }) => {
         await pA;
-        if (signal?.aborted) throw new Error('Aborted');
+        if (signal?.aborted) {
+          throw new Error('Aborted');
+        }
         return { type: 'finished', next: 'user' };
       },
     }));
@@ -618,7 +626,9 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         await new Promise<void>((_, reject) => {
           const abortErr = new Error('Aborted');
           abortErr.name = 'AbortError';
-          if (signal?.aborted) return reject(abortErr);
+          if (signal?.aborted) {
+            return reject(abortErr);
+          }
           signal?.addEventListener('abort', () => reject(abortErr));
         });
         return { type: 'finished', next: 'user' };

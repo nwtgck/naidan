@@ -17,16 +17,22 @@ function key({ path, cacheRevision }: { path: string; cacheRevision: string }) {
 
 function recordedReceipt() {
   const recorder = createProductionLoadReceiptRecorder({ modelId, revision });
-  for (const path of required) recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+  for (const path of required) {
+    recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+  }
   const receipt = recorder.finish({ ...completion, plannedRequiredPaths: [...required] });
-  if (receipt === undefined) throw new Error('Expected a complete scoped receipt fixture');
+  if (receipt === undefined) {
+    throw new Error('Expected a complete scoped receipt fixture');
+  }
   return receipt;
 }
 
 describe('Production offline Load receipt recorder', () => {
   it('records scoped cache matches separately from the Loader option and body-consumption claims', () => {
     const recorder = createProductionLoadReceiptRecorder({ modelId: `hf.co/${modelId}`, revision });
-    for (const path of [...required, 'tokenizer.json', 'config.json']) recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    for (const path of [...required, 'tokenizer.json', 'config.json']) {
+      recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    }
     recorder.observe({ resourceKey: key({ path: 'optional.json', cacheRevision: revision }), result: 'miss' });
     const receipt = recorder.finish({ ...completion, plannedRequiredPaths: [...required] });
     expect(receipt).toMatchObject({
@@ -44,7 +50,9 @@ describe('Production offline Load receipt recorder', () => {
 
   it.each([undefined, 'main'] as const)('preserves an explicitly omitted or main Loader option: %s', loaderRevision => {
     const recorder = createProductionLoadReceiptRecorder({ modelId, revision: loaderRevision });
-    for (const path of required) recorder.observe({ resourceKey: key({ path, cacheRevision: 'main' }), result: 'hit' });
+    for (const path of required) {
+      recorder.observe({ resourceKey: key({ path, cacheRevision: 'main' }), result: 'hit' });
+    }
     const receipt = recorder.finish({ ...completion, plannedRequiredPaths: [...required] });
     expect(receipt?.loaderRevisionOption).toEqual(loaderRevision === undefined ? { status: 'omitted' } : { status: 'provided', value: 'main' });
     expect(receipt?.cacheLookup.revision).toBe('main');
@@ -65,7 +73,9 @@ describe('Production offline Load receipt recorder', () => {
   ])('refuses foreign or malformed hit namespaces permanently: %s', resourceKey => {
     const recorder = createProductionLoadReceiptRecorder({ modelId, revision });
     recorder.observe({ resourceKey, result: 'hit' });
-    for (const path of required) recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    for (const path of required) {
+      recorder.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    }
     expect(recorder.finish({ ...completion, plannedRequiredPaths: [...required] })).toBeUndefined();
   });
 
@@ -75,13 +85,17 @@ describe('Production offline Load receipt recorder', () => {
     mixed.observe({ resourceKey: key({ path: required[1]!, cacheRevision: 'b'.repeat(40) }), result: 'hit' });
     expect(mixed.finish({ ...completion, plannedRequiredPaths: [...required] })).toBeUndefined();
     const optionMismatch = createProductionLoadReceiptRecorder({ modelId, revision: undefined });
-    for (const path of required) optionMismatch.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    for (const path of required) {
+      optionMismatch.observe({ resourceKey: key({ path, cacheRevision: revision }), result: 'hit' });
+    }
     expect(optionMismatch.finish({ ...completion, plannedRequiredPaths: [...required] })).toBeUndefined();
   });
 
   it('bounds unique hits without penalizing repeated matches at the limit', () => {
     const recorder = createProductionLoadReceiptRecorder({ modelId, revision });
-    for (let index = 0; index < 256; index++) recorder.observe({ resourceKey: key({ path: `file-${index}.json`, cacheRevision: revision }), result: 'hit' });
+    for (let index = 0; index < 256; index++) {
+      recorder.observe({ resourceKey: key({ path: `file-${index}.json`, cacheRevision: revision }), result: 'hit' });
+    }
     recorder.observe({ resourceKey: key({ path: 'file-0.json', cacheRevision: revision }), result: 'hit' });
     expect(recorder.finish({ ...completion, plannedRequiredPaths: ['file-0.json'] })?.cacheLookup.hitPaths).toHaveLength(256);
     recorder.observe({ resourceKey: key({ path: 'overflow.json', cacheRevision: revision }), result: 'hit' });
@@ -108,12 +122,20 @@ describe('Load response receipt extraction', () => {
     let requestedModel = modelId;
     let requestedRevision = revision;
     switch (mismatch) {
-    case 'model': requestedModel = 'fixture/other'; break;
-    case 'revision': requestedRevision = 'b'.repeat(40); break;
-    case 'device': value.device = 'webgpu'; break;
-    case 'dtype': value.dtype = 'q4f16'; break;
-    case 'shape': value.receipt.cacheLookup.hitPaths = []; break;
-    default: { const exhaustive: never = mismatch; throw new Error('Unexpected Load response mismatch: ' + exhaustive); }
+    case 'model': requestedModel = 'fixture/other';
+      break;
+    case 'revision': requestedRevision = 'b'.repeat(40);
+      break;
+    case 'device': value.device = 'webgpu';
+      break;
+    case 'dtype': value.dtype = 'q4f16';
+      break;
+    case 'shape': value.receipt.cacheLookup.hitPaths = [];
+      break;
+    default: {
+      const exhaustive: never = mismatch;
+      throw new Error('Unexpected Load response mismatch: ' + exhaustive);
+    }
     }
     expect(readProductionLoadResultReceipt({ value, modelId: requestedModel, revision: requestedRevision })).toBeUndefined();
   });
@@ -123,9 +145,14 @@ describe('Load response receipt extraction', () => {
     const value = { device: 'wasm', dtype: 'q4', receipt };
     const getter = vi.fn(() => location === 'response' ? receipt : [...required]);
     switch (location) {
-    case 'response': Object.defineProperty(value, 'receipt', { get: getter, enumerable: true }); break;
-    case 'nested-receipt': Object.defineProperty(receipt.cacheLookup, 'hitPaths', { get: getter, enumerable: true }); break;
-    default: { const exhaustive: never = location; throw new Error('Unexpected getter location: ' + exhaustive); }
+    case 'response': Object.defineProperty(value, 'receipt', { get: getter, enumerable: true });
+      break;
+    case 'nested-receipt': Object.defineProperty(receipt.cacheLookup, 'hitPaths', { get: getter, enumerable: true });
+      break;
+    default: {
+      const exhaustive: never = location;
+      throw new Error('Unexpected getter location: ' + exhaustive);
+    }
     }
     expect.soft(readProductionLoadResultReceipt({ value, modelId, revision })).toBeUndefined();
     expect(getter).not.toHaveBeenCalled();

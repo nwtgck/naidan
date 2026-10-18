@@ -21,11 +21,15 @@ it('rechecks the organization after model deletion and preserves a repository cr
           child = directory({ path: `${path}/${name}` });
           children.set(name, child);
         }
-        if (child === undefined) throw new DOMException('Synthetic missing directory', 'NotFoundError');
+        if (child === undefined) {
+          throw new DOMException('Synthetic missing directory', 'NotFoundError');
+        }
         return child;
       },
       async removeEntry(name: string) {
-        if (!children.delete(name)) throw new DOMException('Synthetic missing directory', 'NotFoundError');
+        if (!children.delete(name)) {
+          throw new DOMException('Synthetic missing directory', 'NotFoundError');
+        }
         removed.push(`${path}/${name}`);
       },
       async *entries() {

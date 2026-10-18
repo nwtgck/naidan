@@ -17,12 +17,16 @@ function opfsDirectory({ node }: { node: DirectoryNode }): FileSystemDirectoryHa
     name: '',
     getDirectoryHandle: vi.fn(async (name: string) => {
       const child = node[name];
-      if (child === undefined || isFileNode(child)) throw new DOMException('Missing', 'NotFoundError');
+      if (child === undefined || isFileNode(child)) {
+        throw new DOMException('Missing', 'NotFoundError');
+      }
       return opfsDirectory({ node: child });
     }),
     getFileHandle: vi.fn(async (name: string) => {
       const child = node[name];
-      if (child === undefined || !isFileNode(child)) throw new DOMException('Missing', 'NotFoundError');
+      if (child === undefined || !isFileNode(child)) {
+        throw new DOMException('Missing', 'NotFoundError');
+      }
       const encoded = new TextEncoder().encode(child.bytes);
       return {
         kind: 'file',
@@ -90,7 +94,9 @@ describe('createDownloadedModelReadOnlyCache', () => {
       'https://huggingface.co/LiquidAI/LFM2.5-230M-ONNX/resolve/main/config.json',
       'https://huggingface.co/LiquidAI/LFM2.5-230M-ONNX/resolve/exact-suffix/config.json',
     ];
-    for (const url of deniedUrls) await expect(cache.match(url)).resolves.toBeUndefined();
+    for (const url of deniedUrls) {
+      await expect(cache.match(url)).resolves.toBeUndefined();
+    }
     expect(getDirectory).not.toHaveBeenCalled();
     expect(onMatchObservation).toHaveBeenCalledTimes(deniedUrls.length);
     expect(onMatchObservation.mock.calls.every(([call]) => call.observation.result === 'miss')).toBe(true);

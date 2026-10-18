@@ -54,7 +54,9 @@ function takeExactRenameSource({ queue, destinationPath }: {
   const sameBasenameIndexes = queue.basenameIndexes.get(basename);
   if (sameBasenameIndexes !== undefined) {
     let offset = queue.basenameOffsets.get(basename) ?? 0;
-    while (offset < sameBasenameIndexes.length && queue.usedIndexes.has(sameBasenameIndexes[offset]!)) offset += 1;
+    while (offset < sameBasenameIndexes.length && queue.usedIndexes.has(sameBasenameIndexes[offset]!)) {
+      offset += 1;
+    }
     queue.basenameOffsets.set(basename, offset + 1);
     const sourceIndex = sameBasenameIndexes[offset];
     if (sourceIndex !== undefined) {
@@ -68,7 +70,9 @@ function takeExactRenameSource({ queue, destinationPath }: {
     queue.nextSourceOffset += 1;
   }
   const sourceIndex = queue.sourceIndexes[queue.nextSourceOffset];
-  if (sourceIndex === undefined) return undefined;
+  if (sourceIndex === undefined) {
+    return undefined;
+  }
   queue.nextSourceOffset += 1;
   queue.usedIndexes.add(sourceIndex);
   return sourceIndex;
@@ -100,7 +104,9 @@ export function findExactRenames({ deleted, added }: {
     });
     for (const destination of group.added) {
       const sourceIndex = takeExactRenameSource({ queue, destinationPath: destination.path });
-      if (sourceIndex === undefined) break;
+      if (sourceIndex === undefined) {
+        break;
+      }
       const source = group.deleted[sourceIndex]!;
       matches.push({
         sourcePath: source.path,
@@ -139,7 +145,9 @@ function isRegularFileMode({ mode }: { mode: number }): boolean {
 function isGitBinaryContent({ bytes }: { bytes: Uint8Array }): boolean {
   const limit = Math.min(bytes.byteLength, GIT_BINARY_PROBE_BYTE_LIMIT);
   for (let index = 0; index < limit; index += 1) {
-    if (bytes[index] === 0) return true;
+    if (bytes[index] === 0) {
+      return true;
+    }
   }
   return false;
 }
@@ -161,14 +169,20 @@ function gitRenameSpanCounts({ bytes }: { bytes: Uint8Array }): Map<number, numb
 
   for (let index = 0; index < bytes.byteLength; index += 1) {
     const value = bytes[index]!;
-    if (isText && value === 0x0d && index + 1 < bytes.byteLength && bytes[index + 1] === 0x0a) continue;
+    if (isText && value === 0x0d && index + 1 < bytes.byteLength && bytes[index + 1] === 0x0a) {
+      continue;
+    }
     const previous1 = accumulated1;
     accumulated1 = (((accumulated1 << 7) ^ (accumulated2 >>> 25)) + value) >>> 0;
     accumulated2 = ((accumulated2 << 7) ^ (previous1 >>> 25)) >>> 0;
     spanLength += 1;
-    if (spanLength >= 64 || value === 0x0a) commitSpan();
+    if (spanLength >= 64 || value === 0x0a) {
+      commitSpan();
+    }
   }
-  if (spanLength > 0) commitSpan();
+  if (spanLength > 0) {
+    commitSpan();
+  }
   return counts;
 }
 
@@ -179,7 +193,9 @@ function cachedGitRenameSpanCounts({ candidate, cache }: {
   cache: GitRenameSpanCountCache,
 }): Map<number, number> {
   const cached = cache.get(candidate);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const counts = gitRenameSpanCounts({ bytes: candidate.bytes });
   cache.set(candidate, counts);
   return counts;
@@ -190,14 +206,20 @@ function estimateGitRenameSimilarityScoreWithCache({ source, destination, spanCo
   destination: GitSimilarityRenameCandidate,
   spanCountCache: GitRenameSpanCountCache,
 }): number {
-  if (!isRegularFileMode({ mode: source.mode }) || !isRegularFileMode({ mode: destination.mode })) return 0;
+  if (!isRegularFileMode({ mode: source.mode }) || !isRegularFileMode({ mode: destination.mode })) {
+    return 0;
+  }
   const sourceSize = source.bytes.byteLength;
   const destinationSize = destination.bytes.byteLength;
-  if (sourceSize === 0 || destinationSize === 0) return 0;
+  if (sourceSize === 0 || destinationSize === 0) {
+    return 0;
+  }
   const maximumSize = Math.max(sourceSize, destinationSize);
   const baseSize = Math.min(sourceSize, destinationSize);
   const sizeDelta = maximumSize - baseSize;
-  if (maximumSize * (GIT_RENAME_MAX_SCORE - GIT_RENAME_DEFAULT_SCORE) < sizeDelta * GIT_RENAME_MAX_SCORE) return 0;
+  if (maximumSize * (GIT_RENAME_MAX_SCORE - GIT_RENAME_DEFAULT_SCORE) < sizeDelta * GIT_RENAME_MAX_SCORE) {
+    return 0;
+  }
 
   const sourceCounts = cachedGitRenameSpanCounts({ candidate: source, cache: spanCountCache });
   const destinationCounts = cachedGitRenameSpanCounts({ candidate: destination, cache: spanCountCache });
@@ -242,9 +264,15 @@ function compareGitRenameScoreCandidates({ left, right }: {
   left: GitRenameScoreCandidate | undefined,
   right: GitRenameScoreCandidate | undefined,
 }): number {
-  if (left === undefined) return right === undefined ? 0 : 1;
-  if (right === undefined) return -1;
-  if (left.score !== right.score) return right.score - left.score;
+  if (left === undefined) {
+    return right === undefined ? 0 : 1;
+  }
+  if (right === undefined) {
+    return -1;
+  }
+  if (left.score !== right.score) {
+    return right.score - left.score;
+  }
   return right.nameScore - left.nameScore;
 }
 
@@ -294,14 +322,18 @@ function exactRenameMatches({ deleted, added }: {
     const destination = added[destinationIndex]!;
     const identity = exactRenameContentIdentity({ objectId: destination.objectId, mode: destination.mode });
     const sourceIndexes = sourceIndexesByIdentity.get(identity);
-    if (sourceIndexes === undefined) continue;
+    if (sourceIndexes === undefined) {
+      continue;
+    }
     let queue = queuesByIdentity.get(identity);
     if (queue === undefined) {
       queue = createExactRenameSourceQueue({ candidates: deleted, sourceIndexes });
       queuesByIdentity.set(identity, queue);
     }
     const sourceIndex = takeExactRenameSource({ queue, destinationPath: destination.path });
-    if (sourceIndex === undefined) continue;
+    if (sourceIndex === undefined) {
+      continue;
+    }
     usedDeleted.add(sourceIndex);
     usedAdded.add(destinationIndex);
     matches.push({
@@ -331,12 +363,18 @@ export function findGitRenameMatches({ deleted, added, renameLimit }: {
   for (let sourceIndex = 0; sourceIndex < remainingDeleted.length; sourceIndex += 1) {
     const source = remainingDeleted[sourceIndex]!;
     const basename = gitPathBasename({ path: source.path });
-    if (sourceBasenames.get(basename) !== sourceIndex) continue;
+    if (sourceBasenames.get(basename) !== sourceIndex) {
+      continue;
+    }
     const destinationIndex = destinationBasenames.get(basename);
-    if (destinationIndex === undefined || destinationIndex < 0 || basenameUsedAdded.has(destinationIndex)) continue;
+    if (destinationIndex === undefined || destinationIndex < 0 || basenameUsedAdded.has(destinationIndex)) {
+      continue;
+    }
     const destination = remainingAdded[destinationIndex]!;
     const score = estimateGitRenameSimilarityScoreWithCache({ source, destination, spanCountCache });
-    if (score < GIT_RENAME_BASENAME_SCORE) continue;
+    if (score < GIT_RENAME_BASENAME_SCORE) {
+      continue;
+    }
     basenameUsedDeleted.add(sourceIndex);
     basenameUsedAdded.add(destinationIndex);
     matches.push({ sourcePath: source.path, destinationPath: destination.path, score });
@@ -344,8 +382,12 @@ export function findGitRenameMatches({ deleted, added, renameLimit }: {
   remainingDeleted = remainingDeleted.filter((_candidate, index) => !basenameUsedDeleted.has(index));
   remainingAdded = remainingAdded.filter((_candidate, index) => !basenameUsedAdded.has(index));
 
-  if (remainingDeleted.length === 0 || remainingAdded.length === 0) return matches;
-  if (renameLimit > 0 && remainingDeleted.length * remainingAdded.length > renameLimit * renameLimit) return matches;
+  if (remainingDeleted.length === 0 || remainingAdded.length === 0) {
+    return matches;
+  }
+  if (renameLimit > 0 && remainingDeleted.length * remainingAdded.length > renameLimit * renameLimit) {
+    return matches;
+  }
 
   const matrix: Array<GitRenameScoreCandidate | undefined> = [];
   for (let destinationIndex = 0; destinationIndex < remainingAdded.length; destinationIndex += 1) {
@@ -372,8 +414,12 @@ export function findGitRenameMatches({ deleted, added, renameLimit }: {
   const usedDeleted = new Set<number>();
   const usedAdded = new Set<number>();
   for (const { candidate } of ranked) {
-    if (candidate.score < GIT_RENAME_DEFAULT_SCORE) break;
-    if (usedDeleted.has(candidate.sourceIndex) || usedAdded.has(candidate.destinationIndex)) continue;
+    if (candidate.score < GIT_RENAME_DEFAULT_SCORE) {
+      break;
+    }
+    if (usedDeleted.has(candidate.sourceIndex) || usedAdded.has(candidate.destinationIndex)) {
+      continue;
+    }
     usedDeleted.add(candidate.sourceIndex);
     usedAdded.add(candidate.destinationIndex);
     matches.push({
@@ -389,11 +435,15 @@ export function findUnambiguousSimilarityRename({ deleted, added }: {
   deleted: readonly GitSimilarityRenameCandidate[],
   added: readonly GitSimilarityRenameCandidate[],
 }): GitSimilarityRenameMatch | undefined {
-  if (deleted.length !== 1 || added.length !== 1) return undefined;
+  if (deleted.length !== 1 || added.length !== 1) {
+    return undefined;
+  }
   const source = deleted[0]!;
   const destination = added[0]!;
   const score = estimateGitRenameSimilarityScore({ source, destination });
-  if (score < GIT_RENAME_DEFAULT_SCORE) return undefined;
+  if (score < GIT_RENAME_DEFAULT_SCORE) {
+    return undefined;
+  }
   return { sourcePath: source.path, destinationPath: destination.path, score };
 }
 

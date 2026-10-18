@@ -24,23 +24,38 @@ const relativeTime = computed(() => {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (seconds < 5) return lazyStrings.RelativeTime__just_now();
-  if (seconds < 60) return lazyStrings.RelativeTime__seconds_ago({ seconds });
-  if (minutes < 60) return lazyStrings.RelativeTime__minutes_ago({ minutes });
-  if (hours < 24) return lazyStrings.RelativeTime__hours_ago({ hours });
-  if (days < 7) return lazyStrings.RelativeTime__days_ago({ days });
+  if (seconds < 5) {
+    return lazyStrings.RelativeTime__just_now();
+  }
+  if (seconds < 60) {
+    return lazyStrings.RelativeTime__seconds_ago({ seconds });
+  }
+  if (minutes < 60) {
+    return lazyStrings.RelativeTime__minutes_ago({ minutes });
+  }
+  if (hours < 24) {
+    return lazyStrings.RelativeTime__hours_ago({ hours });
+  }
+  if (days < 7) {
+    return lazyStrings.RelativeTime__days_ago({ days });
+  }
 
   return timeFormatter.value.format(new Date(props.timestamp));
 });
 
 const scheduleUpdate = () => {
-  if (timer) clearTimeout(timer);
+  if (timer) {
+    clearTimeout(timer);
+  }
 
   const diff = Date.now() - props.timestamp;
   let nextDelay = 60000; // Default 1 minute
 
-  if (diff < 60000) nextDelay = 10000; // 10 seconds if less than a minute
-  else if (diff < 3600000) nextDelay = 30000; // 30 seconds if less than an hour
+  if (diff < 60000) {
+    nextDelay = 10000; // 10 seconds if less than a minute
+  } else if (diff < 3600000) {
+    nextDelay = 30000; // 30 seconds if less than an hour
+  }
 
   timer = setTimeout(() => {
     now.value = Date.now();
@@ -53,7 +68,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (timer) clearTimeout(timer);
+  if (timer) {
+    clearTimeout(timer);
+  }
 });
 
 

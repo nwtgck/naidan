@@ -69,8 +69,11 @@ describe('standalone package locale contract', () => {
     Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, 'ja');
     using _cleanupResource = {
       [Symbol.dispose]() {
-        if (previous === undefined) Reflect.deleteProperty(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME);
-        else Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, previous);
+        if (previous === undefined) {
+          Reflect.deleteProperty(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME);
+        } else {
+          Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, previous);
+        }
       },
     };
     expect(TEST_ONLY.resolveStandalonePackageLocaleFromWorkerGlobal({

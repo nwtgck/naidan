@@ -47,7 +47,9 @@ export function useFileExplorerSelection() {
       }
       const anchorIdx = allEntries.findIndex(e => e.name === anchor);
       const targetIdx = allEntries.findIndex(e => e.name === name);
-      if (anchorIdx === -1 || targetIdx === -1) break;
+      if (anchorIdx === -1 || targetIdx === -1) {
+        break;
+      }
       const from = Math.min(anchorIdx, targetIdx);
       const to = Math.max(anchorIdx, targetIdx);
       const rangeNames = allEntries.slice(from, to + 1).map(e => e.name);
@@ -97,7 +99,9 @@ export function useFileExplorerSelection() {
     allEntries: FileExplorerEntry[],
     extend: boolean,
   }): void {
-    if (allEntries.length === 0) return;
+    if (allEntries.length === 0) {
+      return;
+    }
     const focus = selectionState.value.focusName;
     const currentIdx = focus ? allEntries.findIndex(e => e.name === focus) : -1;
 
@@ -116,7 +120,9 @@ export function useFileExplorerSelection() {
     }
 
     const nextEntry = allEntries[nextIdx];
-    if (!nextEntry) return;
+    if (!nextEntry) {
+      return;
+    }
 
     if (extend) {
       applySelection({ action: { type: 'range', name: nextEntry.name, allEntries } });

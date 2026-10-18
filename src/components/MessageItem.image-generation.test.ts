@@ -320,7 +320,9 @@ describe('MessageItem Image Generation', () => {
     await flushPromises();
     for (let i = 0; i < 40; i++) {
       await nextTick();
-      if (wrapper.find('.naidan-generated-image img').exists()) break;
+      if (wrapper.find('.naidan-generated-image img').exists()) {
+        break;
+      }
       await new Promise(r => setTimeout(r, 20));
     }
 
@@ -375,7 +377,9 @@ describe('MessageItem Image Generation', () => {
     // Wait for hydration
     for (let i = 0; i < 20; i++) {
       await nextTick();
-      if (wrapper.find('.naidan-generated-image img').exists()) break;
+      if (wrapper.find('.naidan-generated-image img').exists()) {
+        break;
+      }
       await new Promise(r => setTimeout(r, 20));
     }
 
@@ -536,7 +540,9 @@ describe('MessageItem Image Generation', () => {
     // 1. Wait for first hydration
     for (let i = 0; i < 40; i++) {
       await nextTick();
-      if (wrapper.find('img.naidan-clickable-img').exists()) break;
+      if (wrapper.find('img.naidan-clickable-img').exists()) {
+        break;
+      }
       await new Promise(r => setTimeout(r, 20));
     }
 
@@ -558,7 +564,9 @@ describe('MessageItem Image Generation', () => {
     // 3. Wait for re-hydration
     for (let i = 0; i < 40; i++) {
       await nextTick();
-      if (wrapper.find('img.naidan-clickable-img').exists()) break;
+      if (wrapper.find('img.naidan-clickable-img').exists()) {
+        break;
+      }
       await new Promise(r => setTimeout(r, 20));
     }
 

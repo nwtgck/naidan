@@ -4,7 +4,8 @@ import { imageDirectoriesFromDrop, imageDirectoryFromFiles } from './repository-
 
 function localFile({ path }: { path: string }): File {
   const file = new File(['data'], path.split('/').at(-1)!);
-  Object.defineProperty(file, 'webkitRelativePath', { value: path }); return file;
+  Object.defineProperty(file, 'webkitRelativePath', { value: path });
+  return file;
 }
 
 it('keeps a repository working tree, including metadata and tokenizer files, but not Git objects', () => {
@@ -24,7 +25,9 @@ it('captures directory entries synchronously and reads every readEntries batch',
   const transfer = { items: [{ kind: 'file', webkitGetAsEntry: get }], files: [] } as unknown as DataTransfer;
   const pending = imageDirectoriesFromDrop({ transfer, signal: undefined });
   expect(get).toHaveBeenCalledTimes(1);
-  const entries = await pending; expect(readEntries).toHaveBeenCalledTimes(3); expect(entries[0]!.files).toHaveLength(2);
+  const entries = await pending;
+  expect(readEntries).toHaveBeenCalledTimes(3);
+  expect(entries[0]!.files).toHaveLength(2);
 });
 
 it('preserves roots in FileList fallback and rejects partial/opaque directory drops', async () => {
@@ -47,6 +50,8 @@ it('cancels traversal before a delayed entry batch can become a stored repositor
     }),
   };
   const transfer = { items: [{ kind: 'file', webkitGetAsEntry: () => folder }], files: [] } as unknown as DataTransfer;
-  const pending = imageDirectoriesFromDrop({ transfer, signal: controller.signal }); controller.abort(); finish?.([]);
+  const pending = imageDirectoriesFromDrop({ transfer, signal: controller.signal });
+  controller.abort();
+  finish?.([]);
   await expect(pending).rejects.toThrow();
 });

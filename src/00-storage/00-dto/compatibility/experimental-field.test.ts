@@ -62,7 +62,9 @@ describe('intentional experimental field recovery', () => {
     });
     const endpoint = { type: 'experimental_type', experimental: { endpoint: { type: 'future_remote', ref: 'id' } } };
     const parsed = outer.parse({ endpoint })!;
-    if (parsed.endpoint?.type !== 'experimental_type') throw new Error('Expected the experimental endpoint envelope');
+    if (parsed.endpoint?.type !== 'experimental_type') {
+      throw new Error('Expected the experimental endpoint envelope');
+    }
     expect(parsed.endpoint.experimental?.endpoint).toBeUndefined();
     expect(parsed.endpoint.experimental?.unreadable).toEqual({ endpoint: { type: 'future_remote', ref: 'id' } });
   });

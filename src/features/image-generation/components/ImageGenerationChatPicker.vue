@@ -31,28 +31,43 @@ const choices = computed(() => sidebarItems.value.flatMap<SidebarItem>(item => {
     const items = item.chatGroup.items.filter(child => groupMatch || matches({ title: child.chat.title }));
     return groupMatch || items.length ? [{ ...item, chatGroup: { ...item.chatGroup, items } }] : [];
   }
-  default: { const exhaustive: never = item; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = item;
+    throw new Error(String(exhaustive));
+  }
   }
 }));
 watch([() => props.selected, sidebarItems], () => {
   for (const item of sidebarItems.value) {
-    if (item.type === 'chat_group' && item.chatGroup.items.some(child => child.chat.id === props.selected)) expanded.value.add(item.chatGroup.id);
+    if (item.type === 'chat_group' && item.chatGroup.items.some(child => child.chat.id === props.selected)) {
+      expanded.value.add(item.chatGroup.id);
+    }
   }
 }, { immediate: true });
 
 function toggle({ groupId }: { groupId: ChatGroupId }): void {
-  if (expanded.value.has(groupId)) expanded.value.delete(groupId);
-  else expanded.value.add(groupId);
+  if (expanded.value.has(groupId)) {
+    expanded.value.delete(groupId);
+  } else {
+    expanded.value.add(groupId);
+  }
 }
 
 async function create({ groupId }: { groupId: ChatGroupId | undefined }): Promise<void> {
-  if (creating.value || props.disabled) return;
-  creating.value = true; failure.value = '';
+  if (creating.value || props.disabled) {
+    return;
+  }
+  creating.value = true;
+  failure.value = '';
   try {
     const chat = await createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined });
-    if (chat && !disposed && !props.disabled) emit('select', chat.id);
+    if (chat && !disposed && !props.disabled) {
+      emit('select', chat.id);
+    }
   } catch (error) {
-    if (!disposed) failure.value = error instanceof Error ? error.message : String(error);
+    if (!disposed) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
     creating.value = false;
   }

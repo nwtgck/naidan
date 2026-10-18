@@ -129,7 +129,8 @@ export async function startApp({ startupState, settingsStore, router, navigation
   });
   const disposeRpcAutomaticConnections = startRpcAutomaticConnections();
   return () => {
-    disposeRpcAutomaticConnections(); disposeGlobalSettingsQuerySync();
+    disposeRpcAutomaticConnections();
+    disposeGlobalSettingsQuerySync();
   };
 }
 

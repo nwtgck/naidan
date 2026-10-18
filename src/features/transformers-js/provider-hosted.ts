@@ -36,7 +36,9 @@ class HostedTransformersJsProvider implements LmProvider {
     const controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
-    if (signal?.aborted) abort();
+    if (signal?.aborted) {
+      abort();
+    }
     let callbackCompleted = false;
     try {
       await this.service.runInferenceOperation({
@@ -57,7 +59,9 @@ class HostedTransformersJsProvider implements LmProvider {
             }
             throw error;
           }
-          if (failure !== undefined) throw failure.error;
+          if (failure !== undefined) {
+            throw failure.error;
+          }
           callbackCompleted = true;
         },
       });
@@ -65,7 +69,9 @@ class HostedTransformersJsProvider implements LmProvider {
       // The lane rejects an ordinary cancellation at release. If the callback
       // already consumed and recorded that interruption, do not replace it with
       // another failure. Revoked runtimes and callback failures still propagate.
-      if (!(callbackCompleted && signal?.aborted && error instanceof Error && error.name === 'AbortError')) throw error;
+      if (!(callbackCompleted && signal?.aborted && error instanceof Error && error.name === 'AbortError')) {
+        throw error;
+      }
     } finally {
       signal?.removeEventListener('abort', abort);
     }

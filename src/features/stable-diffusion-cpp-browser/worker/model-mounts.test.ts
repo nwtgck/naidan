@@ -13,7 +13,8 @@ it('keeps a single 20-GiB GGUF with Unicode/spaces intact on the old core', asyn
   const fixture = ggufFixture({ name: '重み 20GB.gguf', tensors: [tensor({ name: 'weight', shape: [1] })], metadata: {}, extraBytes: 20 * 1024 ** 3 });
   const input = { file: fixture.file, path: 'weights/重み 20GB.gguf' };
   const plan = await validateModelMounts({ input, reader: fixtureReader, capabilities: 0 });
-  expect(plan.path).toBe(input.path); expect(plan.files).toEqual([{ path: input.path, file: fixture.file }]);
+  expect(plan.path).toBe(input.path);
+  expect(plan.files).toEqual([{ path: input.path, file: fixture.file }]);
   const source = createModelFileSource({ file: fixture.file, reader: fixtureReader, cache: createModelFileReadCache({ pageBytes: MODEL_FILE_PAGE_BYTES, capacityBytes: MODEL_FILE_CACHE_BYTES }) });
   expect(source.size).toBe(fixture.file.size);
   const output = new Uint8Array(9 * 1024 * 1024);

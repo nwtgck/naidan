@@ -25,7 +25,9 @@ function normalized({ text }: { text: string }): string {
 
 function snippet({ paragraphs, terms }: { paragraphs: string[]; terms: string[] }): string {
   const paragraph = paragraphs.find(item => terms.some(term => normalized({ text: item }).includes(term))) ?? paragraphs[0] ?? '';
-  if (paragraph.length <= 170) return paragraph;
+  if (paragraph.length <= 170) {
+    return paragraph;
+  }
   const start = Math.max(0, normalized({ text: paragraph }).indexOf(terms[0] ?? '') - 45);
   const excerpt = paragraph.slice(start, start + 170).trim();
   return `${start > 0 ? '…' : ''}${excerpt}${start + 170 < paragraph.length ? '…' : ''}`;
@@ -38,11 +40,17 @@ function rankedMatches({ index, terms }: { index: SearchIndex; terms: string[] }
     const paragraphs = entry.paragraphs.map(text => normalized({ text }));
     let score = 0;
     for (const term of terms) {
-      if (title === term) score += 100;
-      else if (title.includes(term)) score += 35;
-      else if (headings.some(text => text.includes(term))) score += 16;
-      else if (paragraphs.some(text => text.includes(term))) score += 3;
-      else return [];
+      if (title === term) {
+        score += 100;
+      } else if (title.includes(term)) {
+        score += 35;
+      } else if (headings.some(text => text.includes(term))) {
+        score += 16;
+      } else if (paragraphs.some(text => text.includes(term))) {
+        score += 3;
+      } else {
+        return [];
+      }
     }
     return [{ ...entry, score, snippet: snippet({ paragraphs: entry.paragraphs, terms }) }];
   }).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
@@ -50,9 +58,13 @@ function rankedMatches({ index, terms }: { index: SearchIndex; terms: string[] }
 
 function japaneseIntentTerms({ query }: { query: string }): string[] | undefined {
   const sentence = query.replace(/[。！？!?]+$/u, '').replace(/です$/u, '');
-  if (!sentence.endsWith('たい')) return undefined;
+  if (!sentence.endsWith('たい')) {
+    return undefined;
+  }
   return sentence.split(/[をがはにでへと\s]+/u).filter(Boolean).map(clause => {
-    if (clause === 'たい' || clause === 'したい') return '';
+    if (clause === 'たい' || clause === 'したい') {
+      return '';
+    }
     return clause.endsWith('したい') && clause.length > 4 ? clause.slice(0, -3) : clause;
   }).filter(Boolean);
 }
@@ -65,7 +77,9 @@ function hasProminentTerm({ entry, term }: { entry: SearchEntry; term: string })
 export function searchDocs({ index, query }: { index: SearchIndex; query: string }): SearchResult[] {
   const text = normalized({ text: query });
   const terms = text.split(' ').filter(Boolean);
-  if (!terms.length) return [];
+  if (!terms.length) {
+    return [];
+  }
   const intentTerms = (() => {
     switch (index.locale) {
     case 'ja': return japaneseIntentTerms({ query: text });
@@ -76,14 +90,24 @@ export function searchDocs({ index, query }: { index: SearchIndex; query: string
     }
     }
   })();
-  if (intentTerms !== undefined && (!intentTerms[0] || intentTerms[0].length < 2)) return [];
+  if (intentTerms !== undefined && (!intentTerms[0] || intentTerms[0].length < 2)) {
+    return [];
+  }
   const exact = rankedMatches({ index, terms });
-  if (exact.length || intentTerms === undefined) return exact;
+  if (exact.length || intentTerms === undefined) {
+    return exact;
+  }
   const head = intentTerms[0];
-  if (!head) return [];
+  if (!head) {
+    return [];
+  }
   const matches = rankedMatches({ index, terms: intentTerms }).filter(entry => hasProminentTerm({ entry, term: head }));
-  if (matches.length) return matches.slice(0, 5);
-  if (head.length < 3) return [];
+  if (matches.length) {
+    return matches.slice(0, 5);
+  }
+  if (head.length < 3) {
+    return [];
+  }
   return rankedMatches({ index, terms: [head] }).filter(entry => hasProminentTerm({ entry, term: head })).slice(0, 5);
 }
 
@@ -91,7 +115,9 @@ export function purposeDocs({ index }: { index: SearchIndex }): Pick<SearchResul
   return PURPOSE_PAGES.map(page => {
     const href = docsHref({ locale: index.locale, page });
     const entry = index.entries.find(item => item.href === href);
-    if (!entry) throw new Error(`Missing Docs purpose guide: ${href}`);
+    if (!entry) {
+      throw new Error(`Missing Docs purpose guide: ${href}`);
+    }
     return { href, title: entry.title, snippet: entry.description };
   });
 }
@@ -99,7 +125,9 @@ export function purposeDocs({ index }: { index: SearchIndex }): Pick<SearchResul
 export function parseSearchIndex({ value, locale }: { value: unknown; locale: DocsLocale }): SearchIndex {
   const index = searchIndexSchema.refine(candidate => candidate.locale === locale).parse(value);
   const validHrefs = new Set(DOCS_PAGES.map(page => docsHref({ locale, page: page.id })));
-  if (index.entries.some(item => !validHrefs.has(item.href))) throw new Error('Invalid Docs search index href');
+  if (index.entries.some(item => !validHrefs.has(item.href))) {
+    throw new Error('Invalid Docs search index href');
+  }
   if (index.entries.length !== validHrefs.size || new Set(index.entries.map(item => item.href)).size !== index.entries.length) {
     throw new Error('Incomplete Docs search index');
   }

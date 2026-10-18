@@ -8,12 +8,16 @@ type ModelDownloadDestination = NonNullable<LlamaCppBrowserSettings['modelDownlo
 type ModelDownloadDestinationDto = NonNullable<LlamaCppBrowserSettingsDto['modelDownloadDestination']>;
 
 export const llamaCppBrowserSettingsToDomain = ({ dto }: { dto: LlamaCppBrowserSettingsDto | undefined }): LlamaCppBrowserSettings | undefined => {
-  if (dto === undefined) return undefined;
+  if (dto === undefined) {
+    return undefined;
+  }
   const { modelDownloadDestination, contextTokens, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
 
   const destination = (() => {
-    if (modelDownloadDestination === undefined) return undefined;
+    if (modelDownloadDestination === undefined) {
+      return undefined;
+    }
     switch (modelDownloadDestination.kind) {
     case 'opfs': {
       const { kind, ...unhandledDestination } = modelDownloadDestination;
@@ -25,7 +29,10 @@ export const llamaCppBrowserSettingsToDomain = ({ dto }: { dto: LlamaCppBrowserS
       unhandledDestination satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ModelDownloadDestination, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }) });
     }
-    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = modelDownloadDestination;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
 
@@ -33,12 +40,16 @@ export const llamaCppBrowserSettingsToDomain = ({ dto }: { dto: LlamaCppBrowserS
 };
 
 export const llamaCppBrowserSettingsToDto = ({ domain }: { domain: LlamaCppBrowserSettings | undefined }): LlamaCppBrowserSettingsDto | undefined => {
-  if (domain === undefined) return undefined;
+  if (domain === undefined) {
+    return undefined;
+  }
   const { modelDownloadDestination, contextTokens, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
 
   const destination = (() => {
-    if (modelDownloadDestination === undefined) return undefined;
+    if (modelDownloadDestination === undefined) {
+      return undefined;
+    }
     switch (modelDownloadDestination.kind) {
     case 'opfs': {
       const { kind, ...unhandledDestination } = modelDownloadDestination;
@@ -50,7 +61,10 @@ export const llamaCppBrowserSettingsToDto = ({ domain }: { domain: LlamaCppBrows
       unhandledDestination satisfies Record<PropertyKey, never>;
       return exactObject<Extract<ModelDownloadDestinationDto, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }) });
     }
-    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = modelDownloadDestination;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
 

@@ -19,26 +19,37 @@ function lexical({ left, right }: { left: string, right: string }): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function quantizationFirstLabel({ variant, quantization }: { variant: string, quantization: string | undefined }): string {
+  const token = quantization === undefined ? undefined : new RegExp(`(?:^|[-_.])${quantization}(?=[-.]|$)`, 'i');
+  const qualifier = token ? variant.replace(token, '').replace(/^[-_.]+|[-_.]+$/g, '') : variant;
+  return quantization && qualifier ? `${quantization} · ${qualifier}` : quantization ?? variant;
+}
+
+export function matchesQuantizationChoice({ choice, variant }: { choice: QuantizationChoice, variant: string }): boolean {
+  // Previously displayed labels were also accepted as explicit input.
+  return choice.label === variant || quantizationFirstLabel({ variant: choice.label, quantization: choice.quantization }) === variant;
+}
+
 export function quantizationChoices({ repository, models }: { repository: string, models: ModelCandidate[] }): QuantizationChoice[] {
   return models.map(model => {
     const path = model.files[0]!.path;
     const quantization = quantizationName({ path });
     const variant = variantLabel({ repository, path });
-    // Download choices lead with the quantization. Public model names still
-    // use the complete variant, including directories and unknown modifiers.
-    const token = quantization === undefined ? undefined : new RegExp(`(?:^|[-_.])${quantization}(?=[-.]|$)`, 'i');
-    const qualifier = token ? variant.replace(token, '').replace(/^[-_.]+|[-_.]+$/g, '') : variant;
-    const label = quantization && qualifier ? `${quantization} · ${qualifier}` : quantization ?? variant;
-    return { id: path, label, quantization, models: [model] };
+    // Keep the existing preference and tie-break order independent of display
+    // labels, which retain the complete variant in its original order.
+    const sortLabel = quantizationFirstLabel({ variant, quantization });
+    return { choice: { id: path, label: variant, quantization, models: [model] }, sortLabel };
   }).sort((a, b) => {
-    const rank = ({ choice }: { choice: QuantizationChoice }): number => {
-      if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) return quantizationPreference.indexOf(choice.quantization);
+    const rank = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => {
+      if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) {
+        return quantizationPreference.indexOf(choice.quantization);
+      }
       // Unknown 4-bit schemes still precede higher/lower-bit defaults without enumerating vendor variants.
-      return /(?:^|[-_.])(?:I?Q|MXFP|NVFP)4(?:[-_.]|$)/i.test(choice.label) ? 7.5 : quantizationPreference.length;
+      return /(?:^|[-_.])(?:I?Q|MXFP|NVFP)4(?:[-_.]|$)/i.test(sortLabel) ? 7.5 : quantizationPreference.length;
     };
-    const ordinary = ({ choice }: { choice: QuantizationChoice }): number => choice.label.split('/').at(-1)?.toUpperCase() === choice.quantization ? 0 : 1;
-    return Number(artifactRole({ path: a.id }) === 'auxiliary') - Number(artifactRole({ path: b.id }) === 'auxiliary') || rank({ choice: a }) - rank({ choice: b }) || ordinary({ choice: a }) - ordinary({ choice: b }) || lexical({ left: a.label, right: b.label }) || lexical({ left: a.id, right: b.id });
-  });
+    const ordinary = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => sortLabel.split('/').at(-1)?.toUpperCase() === choice.quantization ? 0 : 1;
+    return Number(artifactRole({ path: a.choice.id }) === 'auxiliary') - Number(artifactRole({ path: b.choice.id }) === 'auxiliary') || rank(a) - rank(b) || ordinary(a) - ordinary(b) || lexical({ left: a.sortLabel, right: b.sortLabel }) || lexical({ left: a.choice.id, right: b.choice.id });
+  }).map(({ choice }) => choice);
 }
 
 function projectorFamily({ path }: { path: string }): string {
@@ -50,7 +61,8 @@ function projectorFamily({ path }: { path: string }): string {
 export function rankedProjectors<T extends { path: string }>({ files }: { files: T[] }): T[] {
   const preference = ['Q8_0', 'F16', 'BF16', 'F32', 'Q8_1', ...quantizationPreference];
   const rank = ({ path }: { path: string }): number => {
-    const quantization = quantizationName({ path }); return quantization === undefined || !preference.includes(quantization) ? preference.length : preference.indexOf(quantization);
+    const quantization = quantizationName({ path });
+    return quantization === undefined || !preference.includes(quantization) ? preference.length : preference.indexOf(quantization);
   };
   return [...files].sort((a, b) => rank(a) - rank(b) || lexical({ left: a.path, right: b.path }));
 }
@@ -63,13 +75,21 @@ export function projectorChoices({ files }: { files: RepositoryFile[] }): { file
 }
 
 export function preferredProjector({ files }: { files: RepositoryFile[] }): RepositoryFile | undefined {
-  if (files.length === 1) return files[0];
-  if (!files.length || new Set(files.map(file => projectorFamily({ path: file.path }))).size !== 1) return undefined;
+  if (files.length === 1) {
+    return files[0];
+  }
+  if (!files.length || new Set(files.map(file => projectorFamily({ path: file.path }))).size !== 1) {
+    return undefined;
+  }
   const preference = ['Q8_0', 'F16', 'BF16', 'F32', 'Q8_1', ...quantizationPreference];
   const ranked = files.map(file => ({ file, quantization: quantizationName({ path: file.path }) }));
-  if (ranked.some(entry => entry.quantization === undefined || !preference.includes(entry.quantization))) return undefined;
+  if (ranked.some(entry => entry.quantization === undefined || !preference.includes(entry.quantization))) {
+    return undefined;
+  }
   ranked.sort((a, b) => preference.indexOf(a.quantization!) - preference.indexOf(b.quantization!));
-  if (ranked[0]?.quantization === ranked[1]?.quantization) return undefined;
+  if (ranked[0]?.quantization === ranked[1]?.quantization) {
+    return undefined;
+  }
   return ranked[0]?.file;
 }
 

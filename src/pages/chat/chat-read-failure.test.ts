@@ -58,7 +58,9 @@ vi.mock('@/components/ChatPane.vue', () => ({
       const draft = ref('');
       watch(() => props.autoSendPrompt, async () => {
         await nextTick();
-        if (!props.autoSendPrompt) return;
+        if (!props.autoSendPrompt) {
+          return;
+        }
         mockSend({ chatId: props.chatId, content: props.autoSendPrompt });
         emit('auto-sent');
       }, { immediate: true });

@@ -42,7 +42,9 @@ export interface CreatedCommit {
 
 export function parseCommitAuthor({ value }: { value: string }): GitCommitAuthor {
   const match = /^(.*) <([^>]*)> ([0-9]+ [+-][0-9]{4})$/u.exec(value);
-  if (match === null) throw new Error(`invalid commit author: ${value}`);
+  if (match === null) {
+    throw new Error(`invalid commit author: ${value}`);
+  }
   return { identity: { name: match[1]!, email: match[2]! }, timestamp: match[3]! };
 }
 
@@ -105,17 +107,24 @@ export async function readCommit({ files, repository, objectId, objectReadCache 
   }
   const text = textDecoder.decode(object.body);
   const separatorIndex = text.indexOf('\n\n');
-  if (separatorIndex < 0) throw new Error(`corrupt commit ${objectId}`);
+  if (separatorIndex < 0) {
+    throw new Error(`corrupt commit ${objectId}`);
+  }
   const headers = text.slice(0, separatorIndex).split('\n');
   let treeObjectId: string | undefined;
   const parentObjectIds: string[] = [];
   let author: string | undefined;
   let committer: string | undefined;
   for (const header of headers) {
-    if (header.startsWith('tree ')) treeObjectId = header.slice(5);
-    else if (header.startsWith('parent ')) parentObjectIds.push(header.slice(7));
-    else if (header.startsWith('author ')) author = header.slice(7);
-    else if (header.startsWith('committer ')) committer = header.slice(10);
+    if (header.startsWith('tree ')) {
+      treeObjectId = header.slice(5);
+    } else if (header.startsWith('parent ')) {
+      parentObjectIds.push(header.slice(7));
+    } else if (header.startsWith('author ')) {
+      author = header.slice(7);
+    } else if (header.startsWith('committer ')) {
+      committer = header.slice(10);
+    }
   }
   if (treeObjectId === undefined || author === undefined || committer === undefined) {
     throw new Error(`corrupt commit ${objectId}: required header is missing`);
@@ -135,9 +144,13 @@ export async function readCachedCommit({ files, repository, objectId, cache }: {
   objectId: string,
   cache: GitCommitCache | undefined,
 }): Promise<ParsedCommit> {
-  if (cache === undefined) return readCommit({ files, repository, objectId });
+  if (cache === undefined) {
+    return readCommit({ files, repository, objectId });
+  }
   const cached = cache.get(objectId);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined) {
+    return cached;
+  }
   const commit = await readCommit({ files, repository, objectId, objectReadCache: cache.objectReadCache });
   cache.set(objectId, commit);
   return commit;

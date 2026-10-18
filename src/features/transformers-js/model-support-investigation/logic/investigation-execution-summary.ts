@@ -15,7 +15,9 @@ export function investigationExecutionSummary({ run, recovery }: {
   // Legacy run.status/completedAt describe the most recent partial boundary.
   // Neither a passed boundary nor a valid ZIP proves the selected run ended.
   // Completion authority is the coordinator's recovery state, never readiness.
-  if (recovery === undefined) return executionSummarySchema.parse({ schemaVersion: 1, state: 'unknown' });
+  if (recovery === undefined) {
+    return executionSummarySchema.parse({ schemaVersion: 1, state: 'unknown' });
+  }
   switch (recovery.status) {
   case 'running':
   case 'interrupted': return executionSummarySchema.parse({ schemaVersion: 1, state: recovery.status });

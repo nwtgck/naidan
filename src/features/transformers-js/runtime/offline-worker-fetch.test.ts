@@ -10,7 +10,9 @@ async function loopbackServer({ listener }: { listener: RequestListener }) {
     server.listen(0, '127.0.0.1', resolve);
   });
   const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('Expected loopback TCP address');
+  if (address === null || typeof address === 'string') {
+    throw new Error('Expected loopback TCP address');
+  }
   return {
     origin: `http://127.0.0.1:${address.port}`,
     close: async () => {
@@ -87,7 +89,8 @@ describe('createDownloadedModelWorkerFetch', () => {
     });
     const outcome = await guarded(`${server.origin}${runtimePath}`).then(
       async response => {
-        await response.text(); return undefined;
+        await response.text();
+        return undefined;
       },
       (error: unknown) => error,
     );
@@ -126,7 +129,8 @@ describe('createDownloadedModelWorkerFetch', () => {
     });
     const outcome = await guarded(`${allowed.origin}${runtimePath}`, { redirect: 'follow' }).then(
       async response => {
-        await response.text(); return undefined;
+        await response.text();
+        return undefined;
       },
       (error: unknown) => error,
     );

@@ -36,8 +36,10 @@ async function request<T>({ name, mode, availability, signal, run }: {
 }): Promise<T> {
   let options: LockOptions;
   switch (availability) {
-  case 'immediate': options = { mode, ifAvailable: true }; break;
-  case 'wait': options = { mode, ...(signal === undefined ? {} : { signal }) }; break;
+  case 'immediate': options = { mode, ifAvailable: true };
+    break;
+  case 'wait': options = { mode, ...(signal === undefined ? {} : { signal }) };
+    break;
   default: {
     const exhaustive: never = availability;
     throw new Error(`Unhandled OPFS availability: ${exhaustive}`);
@@ -45,7 +47,9 @@ async function request<T>({ name, mode, availability, signal, run }: {
   }
   signal?.throwIfAborted();
   return await navigator.locks.request(name, options, async lock => {
-    if (lock === null) throw new OpfsResourceBusyError();
+    if (lock === null) {
+      throw new OpfsResourceBusyError();
+    }
     signal?.throwIfAborted();
     return await run();
   });
@@ -82,7 +86,9 @@ export async function withOpfsFileLease<T>({ path, mode, availability, signal, r
       state.active = false;
     }
   };
-  if (!coordinated) return await execute();
+  if (!coordinated) {
+    return await execute();
+  }
   // Local imports use models/user/<model>; remote paths include host/org/repo.
   const model = modelNamespace({ parts });
   return await request({
@@ -107,10 +113,16 @@ export async function withOpfsModelDeletion<T>({ modelPath, run }: {
 }): Promise<T> {
   const parts = canonicalParts({ path: modelPath });
   const depth = parts[1] === 'user' || parts[1] === 'local' ? 3 : 4;
-  if (parts.length !== depth) throw new Error('Model deletion requires its complete model directory path');
+  if (parts.length !== depth) {
+    throw new Error('Model deletion requires its complete model directory path');
+  }
   const model = modelNamespace({ parts });
-  if (model !== parts.join('/')) throw new Error('Model deletion requires its model directory path');
-  if (!supportsOpfsCoordination()) return await run();
+  if (model !== parts.join('/')) {
+    throw new Error('Model deletion requires its model directory path');
+  }
+  if (!supportsOpfsCoordination()) {
+    return await run();
+  }
   return await request({
     name: rootKey,
     mode: 'shared',
@@ -131,15 +143,21 @@ export async function readCompletedOpfsSnapshot({ path, lease }: {
   assertOpfsFileLease({ lease, path, mode: 'shared' });
   const parts = canonicalParts({ path });
   const name = parts.pop();
-  if (name === undefined) throw new Error('Missing model filename');
+  if (name === undefined) {
+    throw new Error('Missing model filename');
+  }
   try {
     let directory = await navigator.storage.getDirectory();
-    for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: false });
+    for (const part of parts) {
+      directory = await directory.getDirectoryHandle(part, { create: false });
+    }
     await directory.getFileHandle(`.${name}.complete`, { create: false });
     const file = await (await directory.getFileHandle(name, { create: false })).getFile();
     return file.size > 0 ? file : undefined;
   } catch (error) {
-    if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+    if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -148,7 +166,9 @@ export async function readCompletedOpfsSnapshot({ path, lease }: {
  * cleanup. It must never upgrade a root shared lease while holding it.
  */
 export async function withOpfsRootDeletion<T>({ run }: { run: () => Promise<T> }): Promise<T> {
-  if (!supportsOpfsCoordination()) return await run();
+  if (!supportsOpfsCoordination()) {
+    return await run();
+  }
   return await request({ name: rootKey, mode: 'exclusive', availability: 'wait', signal: undefined, run });
 }
 

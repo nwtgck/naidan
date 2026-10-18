@@ -10,11 +10,14 @@ it('streams a readable archive containing exact source bytes and Unicode metadat
   const png = new Blob([new Uint8Array([137, 80, 78, 71, 0, 255])], { type: 'image/png' });
   const source = new Blob(['{"title":"雨の夜景","prompt":"映画的"}'], { type: 'application/json' });
   const archive = createImageGenerationArchive({ snapshot: { metadata: [{ path: 'session.json', blob: source }], binaries: [{ id: toBinaryObjectId({ raw: 'image-aa' }), blob: png }] }, exportedAt: 1700000000000 });
-  const blob = await new Response(archive.stream).blob(); await archive.completed;
+  const blob = await new Response(archive.stream).blob();
+  await archive.completed;
   const reader = new StreamingZipReader({ source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec() });
   const files = new Map<string, Uint8Array>();
   try {
-    for await (const entry of reader.entries()) files.set(entry.name, new Uint8Array(await new Response(await reader.openEntry({ entry })).arrayBuffer()));
+    for await (const entry of reader.entries()) {
+      files.set(entry.name, new Uint8Array(await new Response(await reader.openEntry({ entry })).arrayBuffer()));
+    }
   } finally {
     await reader.close();
   }
@@ -27,5 +30,6 @@ it('streams a readable archive containing exact source bytes and Unicode metadat
 it('settles the writer when the consumer cancels while image bytes are blocked by backpressure', async () => {
   const archive = createImageGenerationArchive({ snapshot: { metadata: [], binaries: [{ id: toBinaryObjectId({ raw: 'image-aa' }), blob: new Blob([new Uint8Array(2 * 1024 * 1024)], { type: 'image/png' }) }] }, exportedAt: 1700000000000 });
   const result = expect(archive.completed).rejects.toBeDefined();
-  await archive.stream.cancel(new Error('user cancelled')); await result;
+  await archive.stream.cancel(new Error('user cancelled'));
+  await result;
 });

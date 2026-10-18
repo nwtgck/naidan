@@ -40,7 +40,9 @@ async function transformOutputChunkToSystemJsInPlace({
     sourceMaps: false,
     plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
   });
-  if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
+  if (!transformed?.code) {
+    throw new Error(`No SystemJS transform output for ${output.fileName}`);
+  }
   if (!transformed.code.includes('System.register(')) {
     throw new Error(`SystemJS transform did not emit System.register for ${output.fileName}`);
   }

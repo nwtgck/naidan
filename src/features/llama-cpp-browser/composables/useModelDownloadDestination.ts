@@ -34,11 +34,19 @@ export function useModelDownloadDestination({ blocked, changed }: {
   const { settings, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
   const registrationFailure = ref(false);
   const revision = ref(0);
+  let adding: { revision: number, isCurrent: () => boolean } | undefined;
   const host = useHostModelDirectories({
     blocked,
     stopDownload: async ({ id }) => getDownloadQueue().stopDirectory({ directoryId: id }),
+    added: async ({ id }) => {
+      if (adding?.revision === destinationRevision && adding.isCurrent()) {
+        await persistDestination({ id, kind: 'host' });
+      }
+    },
     changed: async () => {
-      registrationFailure.value = false; revision.value++; changed();
+      registrationFailure.value = false;
+      revision.value++;
+      changed();
       window.dispatchEvent(new Event(registrationChangeEvent));
     },
     failed: () => {
@@ -54,11 +62,16 @@ export function useModelDownloadDestination({ blocked, changed }: {
   });
   const destination = computed<ModelDestination>(() => {
     const stored = settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination;
-    if (pending.value) return pending.value.destination;
+    if (pending.value) {
+      return pending.value.destination;
+    }
     switch (stored?.kind) {
     case undefined: case 'opfs': return { kind: 'opfs' };
     case 'host': return { kind: 'host', directoryId: idToRaw({ id: stored.directoryId }) };
-    default: { const exhaustive: never = stored; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = stored;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   const selectedId = computed(() => {
@@ -66,24 +79,33 @@ export function useModelDownloadDestination({ blocked, changed }: {
     switch (target.kind) {
     case 'opfs': return 'opfs';
     case 'host': return target.directoryId;
-    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   const failure = computed(() => registrationFailure.value || pending.value?.status === 'failed');
-  async function selectDestination({ id, kind }: { id: string, kind?: 'opfs' | 'host' }): Promise<void> {
-    if (blocked() || host.view.busy.value) return;
+  async function persistDestination({ id, kind }: { id: string, kind: 'opfs' | 'host' | undefined }): Promise<void> {
     const requestedKind = kind ?? (id === 'opfs' ? 'opfs' : 'host');
     let requested: ModelDestination;
     let storedDestination: NonNullable<LlamaCppBrowserSettings['modelDownloadDestination']>;
     switch (requestedKind) {
     case 'opfs':
-      requested = { kind: 'opfs' }; storedDestination = { kind: 'opfs' };
+      requested = { kind: 'opfs' };
+      storedDestination = { kind: 'opfs' };
       break;
     case 'host':
-      if (!host.view.supported.value || !host.registrations().some(entry => entry.id === id)) return;
-      requested = { kind: 'host', directoryId: id }; storedDestination = { kind: 'host', directoryId: toHostModelDirectoryId({ raw: id }) };
+      if (!host.view.supported.value || !host.registrations().some(entry => entry.id === id)) {
+        return;
+      }
+      requested = { kind: 'host', directoryId: id };
+      storedDestination = { kind: 'host', directoryId: toHostModelDirectoryId({ raw: id }) };
       break;
-    default: { const exhaustive: never = requestedKind; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = requestedKind;
+      throw new Error(String(exhaustive));
+    }
     }
     const requestRevision = ++destinationRevision;
     let isStorageCurrent: () => boolean;
@@ -108,9 +130,14 @@ export function useModelDownloadDestination({ blocked, changed }: {
       });
       switch (outcome) {
       case 'saved': case 'changed':
-        if (destinationIntent.value?.revision === requestRevision) destinationIntent.value = undefined;
+        if (destinationIntent.value?.revision === requestRevision) {
+          destinationIntent.value = undefined;
+        }
         break;
-      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = outcome;
+        throw new Error(String(exhaustive));
+      }
       }
     } catch {
       if (destinationIntent.value?.revision === requestRevision) {
@@ -119,16 +146,39 @@ export function useModelDownloadDestination({ blocked, changed }: {
       }
     }
   }
+  async function selectDestination({ id, kind }: { id: string, kind?: 'opfs' | 'host' }): Promise<void> {
+    if (!blocked() && !host.view.busy.value) {
+      await persistDestination({ id, kind });
+    }
+  }
+  async function add(): Promise<void> {
+    if (blocked() || host.view.busy.value || !host.view.supported.value) {
+      return;
+    }
+    try {
+      adding = { revision: ++destinationRevision, isCurrent: captureExperimentalStorage() };
+      await host.view.add();
+    } catch {
+      registrationFailure.value = true;
+    } finally {
+      adding = undefined;
+    }
+  }
   const unavailable = computed(() => {
-    if (pending.value) return true;
+    if (pending.value) {
+      return true;
+    }
     const target = destination.value;
     switch (target.kind) {
     case 'opfs': return false;
     case 'host': {
       const entry = host.view.entries.value.find(entry => entry.id === target.directoryId);
-      return !host.view.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
+      return !host.view.supported.value || !entry || !host.currentHandle({ id: target.directoryId }) || ['missing', 'error', 'unsupported'].includes(entry.access);
     }
-    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
     }
   });
   function label({ destination: target }: { destination: ModelDestination }): string {
@@ -138,7 +188,10 @@ export function useModelDownloadDestination({ blocked, changed }: {
       const entry = host.view.entries.value.find(entry => entry.id === target.directoryId);
       return entry ? hostModelDirectoryLabel({ id: entry.id, name: entry.name, entries: host.view.entries.value }) : target.directoryId;
     }
-    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   async function authorize({ destination: requested }: { destination: ModelDestination }): Promise<AuthorizedModelDestination> {
@@ -148,33 +201,44 @@ export function useModelDownloadDestination({ blocked, changed }: {
     case 'opfs': return { destination: { kind: 'opfs' }, expectedRoot: undefined };
     case 'host': {
       const expectedRoot = host.currentHandle({ id: requested.directoryId });
-      if (!expectedRoot) throw new Error('Reconnect this model directory before downloading');
+      if (!expectedRoot) {
+        throw new Error('Reconnect this model directory before downloading');
+      }
       const authorized = await host.hostDownloadDestination({ id: requested.directoryId });
       return { destination: authorized, expectedRoot };
     }
-    default: { const exhaustive: never = requested; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = requested;
+      throw new Error(String(exhaustive));
+    }
     }
   }
   async function refresh(): Promise<void> {
-    await host.refresh(); revision.value++;
+    await host.refresh();
+    revision.value++;
   }
   function refreshOnFocus(): void {
     void refresh();
   }
   function registrationsChanged(): void {
-    void refresh(); changed();
+    void refresh();
+    changed();
   }
   watch(() => host.registrations(), () => {
-    void refresh(); changed();
+    void refresh();
+    changed();
   }, { deep: true });
   onMounted(() => {
-    window.addEventListener('focus', refreshOnFocus); window.addEventListener(registrationChangeEvent, registrationsChanged); void refresh();
+    window.addEventListener('focus', refreshOnFocus);
+    window.addEventListener(registrationChangeEvent, registrationsChanged);
+    void refresh();
   });
   onUnmounted(() => {
-    window.removeEventListener('focus', refreshOnFocus); window.removeEventListener(registrationChangeEvent, registrationsChanged);
+    window.removeEventListener('focus', refreshOnFocus);
+    window.removeEventListener(registrationChangeEvent, registrationsChanged);
   });
   return {
-    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination },
+    view: { ...host.view, destination: selectedId, destinationKind: computed(() => destination.value.kind), selectDestination, add },
     destination,
     unavailable,
     authorize,
@@ -187,6 +251,7 @@ export function useModelDownloadDestination({ blocked, changed }: {
 
 export const TEST_ONLY = {
   reset() {
-    destinationIntent.value = undefined; destinationRevision++;
+    destinationIntent.value = undefined;
+    destinationRevision++;
   },
 };

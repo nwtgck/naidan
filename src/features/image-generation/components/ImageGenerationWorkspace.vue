@@ -39,8 +39,11 @@ watch([view.initialized, view.busy], () => {
 });
 
 async function drainSessionRoute(): Promise<void> {
-  if (!view.initialized.value || view.busy.value || !pendingSession) return;
-  const request = pendingSession; pendingSession = undefined;
+  if (!view.initialized.value || view.busy.value || !pendingSession) {
+    return;
+  }
+  const request = pendingSession;
+  pendingSession = undefined;
   await view.selectSession({ sessionId: request.id });
 }
 
@@ -53,7 +56,9 @@ const assistantOpen = computed(() => view.assistantVisibility.value === 'open');
 const inputId = useId(), exporting = ref(false), exportFailure = ref('');
 const assistantVisited = ref(false);
 watch(assistantOpen, value => {
-  if (value) assistantVisited.value = true;
+  if (value) {
+    assistantVisited.value = true;
+  }
 }, { immediate: true });
 
 async function setAssistantOpen({ open }: { open: boolean }): Promise<void> {
@@ -69,26 +74,43 @@ const draftLabel = computed(() => {
   case 'dirty': return lazyStrings.imageGeneration__draft_dirty();
   case 'saving': return lazyStrings.imageGeneration__draft_saving();
   case 'failed': return lazyStrings.imageGeneration__draft_failed();
-  default: { const exhaustive: never = view.draftStatus.value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = view.draftStatus.value;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
 function editCount({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   const value = event.target.valueAsNumber;
-  if (Number.isInteger(value) && value >= 1 && value <= IMAGE_GENERATION_MAX_RUN_IMAGES) count.value = value;
+  if (Number.isInteger(value) && value >= 1 && value <= IMAGE_GENERATION_MAX_RUN_IMAGES) {
+    count.value = value;
+  }
   event.target.value = String(count.value);
 }
 
 async function exportSession(): Promise<void> {
   const store = view.store.value, session = view.currentSession.value;
-  if (!store || !session || exporting.value || props.generation.busy.value) return;
-  if (!await showConfirm({ title: await ensureStrings.imageGeneration__export_session(), message: await ensureStrings.imageGeneration__export_notice() })) return;
-  if (view.store.value?.storeId !== store.storeId || view.selectedSessionId.value !== session.id) return;
-  exporting.value = true; exportFailure.value = '';
-  const abort = new AbortController(); exportAbort = abort;
+  if (!store || !session || exporting.value || props.generation.busy.value) {
+    return;
+  }
+  if (!await showConfirm({ title: await ensureStrings.imageGeneration__export_session(), message: await ensureStrings.imageGeneration__export_notice() })) {
+    return;
+  }
+  if (view.store.value?.storeId !== store.storeId || view.selectedSessionId.value !== session.id) {
+    return;
+  }
+  exporting.value = true;
+  exportFailure.value = '';
+  const abort = new AbortController();
+  exportAbort = abort;
   try {
-    if (!await view.flushDraft()) throw new Error(await ensureStrings.imageGeneration__saving_required());
+    if (!await view.flushDraft()) {
+      throw new Error(await ensureStrings.imageGeneration__saving_required());
+    }
     const snapshot = await storageService.captureImageGenerationExport({ store, sessionId: session.id });
     abort.signal.throwIfAborted();
     const archive = createImageGenerationArchive({ snapshot, exportedAt: Date.now() });
@@ -98,7 +120,8 @@ async function exportSession(): Promise<void> {
     exportFailure.value = abort.signal.aborted ? await ensureStrings.imageGeneration__export_cancelled() : error instanceof Error ? error.message : String(error);
   } finally {
     if (exportAbort === abort) {
-      exportAbort = undefined; exporting.value = false;
+      exportAbort = undefined;
+      exporting.value = false;
     }
   }
 }
@@ -106,12 +129,15 @@ async function exportSession(): Promise<void> {
 const unsafeToLeave = computed(() => props.generation.busy.value || view.hasPendingSave.value || exporting.value || view.draftStatus.value !== 'saved');
 onBeforeRouteLeave(async to => {
   // All nested model, diagnostic and session locations share this runtime owner.
-  if (to.matched.some(record => record.path === '/image-generation')) return true;
+  if (to.matched.some(record => record.path === '/image-generation')) {
+    return true;
+  }
   await view.flushDraft();
   return !unsafeToLeave.value || await showConfirm({ message: await ensureStrings.imageGeneration__leave_warning() });
 });
 onScopeDispose(() => {
-  unregister(); exportAbort?.abort();
+  unregister();
+  exportAbort?.abort();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view, assistantOpen } }) || {}) });
 </script>

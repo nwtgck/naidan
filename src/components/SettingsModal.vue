@@ -1,26 +1,24 @@
 <script setup lang="ts">
 import type { ApplyDefaultModel } from '@/features/llama-cpp-browser/default-model';
+import { localModelChatGroupName } from '@/features/llama-cpp-browser/chat-group-name';
+import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
+import type { LocalModel } from '@/features/llama-cpp-browser/types';
+import { idToRaw, type ChatGroupId, type ChatId } from '@/01-models/ids';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
-import { ref, watch, computed, nextTick, defineAsyncComponent } from 'vue';
+import { ref, watch, computed, nextTick, defineAsyncComponent, onUnmounted } from 'vue';
 import { useModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { storageService } from '@/00-storage/service';
 import type { Settings } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
-import {
-  XIcon, GlobeIcon,
-  DatabaseIcon, Settings2Icon, BookmarkPlusIcon,
-  CpuIcon, InfoIcon,
-  ChefHatIcon,
-  DownloadIcon, BrainCircuitIcon,
-  FolderIcon,
-  FileIcon, WrenchIcon,
-} from 'lucide-vue-next';
+import { XIcon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
@@ -38,8 +36,8 @@ const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () =>
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
-import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
-import LanguageSelector from './LanguageSelector.vue';
+import SettingsNavigation from './SettingsNavigation.vue';
+import type { SettingsNavigationTab as Tab } from './settings-navigation';
 
 import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm
 import { useLayout } from '@/composables/useLayout';
@@ -64,6 +62,7 @@ const { settings, updateGlobalModelAndEndpoint, availableModels: rawAvailableMod
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
 const chatOrganization = useChatOrganization();
+const chatLifecycle = useChatLifecycle();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
@@ -71,11 +70,15 @@ const { isFeatureEnabled } = useFeatureFlags();
 provideHuggingFaceSession();
 const modelPresetState = useModelPreset();
 const modelPreset = computed(() => {
-  const preset = modelPresetState?.value; const target = preset?.target;
+  const preset = modelPresetState?.value;
+  const target = preset?.target;
   switch (target) {
   case 'settings': return preset;
   case undefined: case 'onboarding': return undefined;
-  default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = target;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const route = useRoute();
@@ -112,7 +115,10 @@ const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) =>
     break;
   }
   case 'changed': break;
-  default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = result;
+    throw new Error(String(exhaustive));
+  }
   }
   return result;
 };
@@ -122,6 +128,100 @@ const hasUnsavedConnectionChanges = computed(() => {
   const initial = JSON.parse(initialFormState.value || '{}');
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
+
+// Retain only confirmed successes so a failed next step can be retried without
+// creating another group or chat. The storage operations are not a transaction.
+const pendingLocalChatGroups = new Map<string, { chatGroupId: ChatGroupId, chatId: ChatId | undefined }>();
+let localChatGroupRequestVersion = 0;
+let creatingLocalChatGroup = false;
+watch([() => props.isOpen, () => props.suspended, () => route.fullPath], () => {
+  localChatGroupRequestVersion++;
+}, { flush: 'sync' });
+onUnmounted(() => {
+  localChatGroupRequestVersion++;
+});
+
+async function createLocalModelChatGroup({ model, signal }: { model: LocalModel, signal: AbortSignal }): Promise<void> {
+  if (creatingLocalChatGroup || !props.isOpen || props.suspended || signal.aborted) {
+    return;
+  }
+  creatingLocalChatGroup = true;
+  const version = localChatGroupRequestVersion;
+  const isCurrent = () => version === localChatGroupRequestVersion && props.isOpen && !props.suspended && !signal.aborted;
+  try {
+    if (!await confirmDiscardConnectionChanges({ isCurrent }) || !isCurrent()) {
+      return;
+    }
+    // Check after the discard dialog: the selected file may have disappeared
+    // while the user was deciding. Listing never initializes or downloads it.
+    const models = await llamaCppBrowserService.listModels({ signal });
+    if (!isCurrent()) {
+      return;
+    }
+    const available = models.find(entry => entry.id === model.id);
+    if (!available) {
+      throw new Error('Local model unavailable');
+    }
+    let pendingChatGroup = pendingLocalChatGroups.get(model.id);
+    if (pendingChatGroup) {
+      const chatGroupId = pendingChatGroup.chatGroupId;
+      const chatGroup = await storageService.loadChatGroup({ id: chatGroupId });
+      const hierarchy = await storageService.loadHierarchy();
+      if (!isCurrent()) {
+        return;
+      }
+      const hierarchyChatGroup = hierarchy.items.filter(item => item.type === 'chat_group').find(item => item.id === chatGroupId);
+      if (!chatGroup || chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== available.name || !hierarchyChatGroup || (pendingChatGroup.chatId !== undefined && !hierarchyChatGroup.chat_ids.includes(pendingChatGroup.chatId))) {
+        pendingLocalChatGroups.delete(model.id);
+        throw new Error('Previously created chat group changed');
+      }
+      if (pendingChatGroup.chatId) {
+        const chat = await storageService.loadChat({ id: pendingChatGroup.chatId });
+        if (!isCurrent()) {
+          return;
+        }
+        if (!chat || chat.groupId !== pendingChatGroup.chatGroupId || chat.endpoint !== undefined || chat.modelId !== undefined) {
+          pendingLocalChatGroups.delete(model.id);
+          throw new Error('Previously created chat changed');
+        }
+      }
+    }
+    if (!pendingChatGroup) {
+      const chatGroupId = await chatOrganization.createChatGroup({
+        name: localModelChatGroupName({ model: available }),
+        options: { endpoint: { type: 'llama_cpp_browser' }, modelId: available.name },
+      });
+      pendingChatGroup = { chatGroupId, chatId: undefined };
+      pendingLocalChatGroups.set(model.id, pendingChatGroup);
+    }
+    if (!isCurrent()) {
+      return;
+    }
+    if (!pendingChatGroup.chatId) {
+      const chat = await chatLifecycle.createChatWithoutSelecting({ groupId: pendingChatGroup.chatGroupId, modelId: undefined, systemPrompt: undefined });
+      if (!chat) {
+        throw new Error('Chat creation is already in progress');
+      }
+      pendingChatGroup.chatId = chat.id;
+    }
+    if (!isCurrent()) {
+      return;
+    }
+    // The chat route selects it and closes Settings. Do not also emit close,
+    // which would start a second navigation back to the previous screen.
+    const failure = await router.push(`/chat/${idToRaw({ id: pendingChatGroup.chatId })}`);
+    if (failure) {
+      throw new Error('Could not open the created chat');
+    }
+    pendingLocalChatGroups.delete(model.id);
+  } catch (error) {
+    if (isCurrent()) {
+      throw error;
+    }
+  } finally {
+    creatingLocalChatGroup = false;
+  }
+}
 
 async function handleImportRecipes({ recipes }: { recipes: { newName: string, matchedModelId?: string, recipe: ChatGroupRecipe }[] }) {
   try {
@@ -154,28 +254,51 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
 }
 
 // Tab State
-type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'llama_cpp_browser' | 'storage' | 'binary_objects' | 'volumes' | 'naidan_rpc' | 'developer' | 'about';
 const isRpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
 const activeTab = computed({
   get: () => {
     const queryTab = route.query.settings as string;
     if (queryTab) {
-      if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
-      if (queryTab === 'provider-profiles') return 'profiles';
-      if (queryTab === 'transformers-js') return 'transformers_js';
-      if (queryTab === 'llama-cpp-browser') return 'llama_cpp_browser';
-      if (queryTab === 'binary-objects') return 'binary_objects';
-      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
+      if (queryTab === 'naidan-rpc' || queryTab === 'naidan_rpc') {
+        return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
+      }
+      if (queryTab === 'provider-profiles') {
+        return 'profiles';
+      }
+      if (queryTab === 'transformers-js') {
+        return 'transformers_js';
+      }
+      if (queryTab === 'llama-cpp-browser') {
+        return 'llama_cpp_browser';
+      }
+      if (queryTab === 'binary-objects') {
+        return 'binary_objects';
+      }
+      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) {
+        return 'connection';
+      }
       return (queryTab as Tab);
     }
     const tab = (route.params as { tab?: string }).tab;
-    if (tab === 'naidan-rpc' || tab === 'naidan_rpc') return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
-    if (tab === 'provider-profiles') return 'profiles';
-    if (tab === 'transformers-js') return 'transformers_js';
-    if (tab === 'llama-cpp-browser') return 'llama_cpp_browser';
-    if (tab === 'binary-objects') return 'binary_objects';
-    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
+    if (tab === 'naidan-rpc' || tab === 'naidan_rpc') {
+      return isRpcEnabled.value ? 'naidan_rpc' : 'connection';
+    }
+    if (tab === 'provider-profiles') {
+      return 'profiles';
+    }
+    if (tab === 'transformers-js') {
+      return 'transformers_js';
+    }
+    if (tab === 'llama-cpp-browser') {
+      return 'llama_cpp_browser';
+    }
+    if (tab === 'binary-objects') {
+      return 'binary_objects';
+    }
+    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) {
+      return 'connection';
+    }
     return (tab as Tab) || 'connection';
   },
   set: (val) => {
@@ -195,18 +318,23 @@ const activeTab = computed({
   },
 });
 
-async function handleCancel() {
+async function confirmDiscardConnectionChanges({ isCurrent }: { isCurrent: () => boolean }): Promise<boolean> {
   if (hasUnsavedConnectionChanges.value) {
-    const confirmed = await showConfirm({
+    const options = {
       title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
       message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
       confirmButtonText: await ensureStrings.SettingsModal__discard(),
       cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
-    });
-    if (confirmed) {
-      emit('close');
-    }
-  } else {
+    };
+    return isCurrent() ? showConfirm(options) : false;
+  }
+  return true;
+}
+
+async function handleCancel() {
+  const version = localChatGroupRequestVersion;
+  const isCurrent = () => props.isOpen && version === localChatGroupRequestVersion;
+  if (await confirmDiscardConnectionChanges({ isCurrent }) && isCurrent()) {
     emit('close');
   }
 }
@@ -242,150 +370,26 @@ defineExpose({
   <Transition name="modal">
     <div v-if="isOpen" data-testid="settings-modal" tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6">
       <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 relative">
-        <!-- Persistent Close Button (Top Right) -->
-        <button
-          @click="handleCancel"
-          tw-class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-          data-testid="setting-close-x"
+        <SettingsNavigation
+          :active-tab="activeTab"
+          :is-volumes-feature-enabled="isVolumesFeatureEnabled"
+          :is-rpc-enabled="isRpcEnabled"
+          :is-hosted-mode="isHostedMode"
+          :portable-app-download="portableAppDownload"
+          @select="activeTab = $event"
         >
-          <XIcon tw-class="w-5 h-5" />
-        </button>
-
-        <!-- Sidebar (Tabs) -->
-        <aside tw-class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
-          <!-- Header -->
-          <div tw-class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
-            <div tw-class="flex items-center gap-3">
-              <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <Settings2Icon tw-class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
-              </div>
-              <h2 tw-class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
-            </div>
-            <LanguageSelector />
-          </div>
-
-          <!-- Navigation -->
-          <nav class="no-scrollbar" tw-class="flex-1 overflow-x-auto md:overflow-y-auto p-3 md:p-4 flex md:flex-col gap-1.5 min-h-0 overscroll-contain">
+          <template #close>
             <button
-              @click="activeTab = 'connection'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-connection"
+              type="button"
+              @click="handleCancel"
+              :aria-label="lazyStrings.SHARED__cancel()"
+              tw-class="absolute top-[10px] right-3 z-10 grid h-10 w-10 shrink-0 place-items-center rounded-xl text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 md:top-4 md:right-4 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+              data-testid="setting-close-x"
             >
-              <GlobeIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__connection() }}
+              <XIcon aria-hidden="true" tw-class="h-5 w-5" />
             </button>
-            <button
-              @click="activeTab = 'tools'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'tools' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-tools"
-            >
-              <WrenchIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__tools() }}
-            </button>
-            <button
-              @click="activeTab = 'profiles'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-profiles"
-            >
-              <BookmarkPlusIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__provider_profiles() }}
-            </button>
-            <button
-              @click="activeTab = 'llama_cpp_browser'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'llama_cpp_browser' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-llama-cpp-browser"
-            >
-              <BrainCircuitIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__llama_cpp_browser() }}
-            </button>
-            <button
-              @click="activeTab = 'transformers_js'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-transformers-js"
-            >
-              <BrainCircuitIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__transformers_js() }}
-            </button>
-            <button
-              @click="activeTab = 'recipes'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-recipes"
-            >
-              <ChefHatIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__recipes() }}
-            </button>
-            <button
-              @click="activeTab = 'storage'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-storage"
-            >
-              <DatabaseIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__storage() }}
-            </button>
-            <button
-              @click="activeTab = 'binary_objects'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-files"
-            >
-              <FileIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__files() }}
-            </button>
-            <button
-              v-if="isVolumesFeatureEnabled"
-              @click="activeTab = 'volumes'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'volumes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-volumes"
-            >
-              <FolderIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__folders() }}
-            </button>
-            <button
-              v-if="isRpcEnabled"
-              @click="activeTab = 'naidan_rpc'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'naidan_rpc' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-naidan-rpc"
-            >
-              <CpuIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.naidanRpc__title() }}
-            </button>
-            <button
-              @click="activeTab = 'developer'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-developer"
-            >
-              <CpuIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__developer() }}
-            </button>
-            <button
-              @click="activeTab = 'about'"
-              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
-              data-testid="tab-about"
-            >
-              <InfoIcon tw-class="w-4 h-4" />
-              {{ lazyStrings.SettingsModal__about() }}
-            </button>
-          </nav>
-
-          <!-- Settings Footer -->
-          <div tw-class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex items-center gap-3">
-            <div tw-class="w-28 shrink-0">
-              <ThemeToggle />
-            </div>
-
-            <a
-              v-if="isHostedMode"
-              :href="portableAppDownload.href"
-              :download="portableAppDownload.fileName"
-              tw-class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
-              data-testid="sidebar-download-button"
-            >
-              <DownloadIcon tw-class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
-              <div tw-class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
-                {{ lazyStrings.SettingsModal__standalone() }}
-              </div>
-            </a>
-          </div>
-        </aside>
+          </template>
+        </SettingsNavigation>
 
         <!-- Main Content Area -->
         <main data-settings-main tw-class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
@@ -418,7 +422,7 @@ defineExpose({
                 <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
-                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" />
+                <LlamaCppBrowserManager :suspended="props.suspended" :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
                 <section tw-class="mt-8 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
                   <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
                   <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>
@@ -470,14 +474,6 @@ defineExpose({
 
 
 <style scoped>
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
 /* Modal Transition */
 .modal-enter-active,
 .modal-leave-active {
@@ -504,8 +500,12 @@ defineExpose({
   animation-fill-mode: forwards;
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 @keyframes zoom-in {
   from {
@@ -518,8 +518,12 @@ defineExpose({
   }
 }
 @keyframes slide-in-from-bottom {
-  from { transform: translateY(15px); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(15px);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .fade-in {
   animation-name: fade-in;

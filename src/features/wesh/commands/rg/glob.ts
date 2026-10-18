@@ -32,7 +32,9 @@ function globBodyToRegex({ glob }: { glob: string }): string {
     }
     if (char === '[') {
       const close = glob.indexOf(']', index + 1);
-      if (close === -1) throw new Error("unclosed character class; missing ']'");
+      if (close === -1) {
+        throw new Error("unclosed character class; missing ']'");
+      }
       const body = glob.slice(index + 1, close);
       const normalizedBody = body.startsWith('!') ? `^${body.slice(1)}` : body;
       result += `[${normalizedBody}]`;
@@ -80,7 +82,9 @@ export function matchesRgGlobRules({
   let accepted = !rules.some((rule) => !rule.exclude);
   for (const rule of rules) {
     const candidate = rule.basenameOnly ? basename({ path: relativePath }) : relativePath;
-    if (rule.regex.test(candidate)) accepted = !rule.exclude;
+    if (rule.regex.test(candidate)) {
+      accepted = !rule.exclude;
+    }
   }
   return accepted;
 }

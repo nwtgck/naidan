@@ -34,12 +34,16 @@ function capabilities({ recommended }: { recommended: ProfileCapabilities['recom
 
 function publishProfiles({ state }: { state: ProfileState }): void {
   profileState = state;
-  for (const listener of profileListeners) listener({ state });
+  for (const listener of profileListeners) {
+    listener({ state });
+  }
 }
 
 function publishOptions({ profile }: { profile: RuntimeOptions['profile'] }): void {
   options = { profile };
-  for (const listener of optionsListeners) listener({ options });
+  for (const listener of optionsListeners) {
+    listener({ options });
+  }
 }
 
 function mountWarning({ enabled }: { enabled: Ref<boolean> }): VueWrapper {
@@ -56,7 +60,9 @@ function mountWarning({ enabled }: { enabled: Ref<boolean> }): VueWrapper {
 async function runScheduledProbe(): Promise<void> {
   await nextTick();
   const call = vi.mocked(scheduleIdleTask).mock.calls.at(-1);
-  if (!call) throw new Error('Expected a scheduled capability probe');
+  if (!call) {
+    throw new Error('Expected a scheduled capability probe');
+  }
   await call[0].task();
   await nextTick();
 }
@@ -67,13 +73,15 @@ beforeEach(() => {
   options = { profile: 'auto' };
   profileState = { status: 'idle' };
   service.subscribeOptions.mockImplementation(({ listener }) => {
-    optionsListeners.add(listener); listener({ options });
+    optionsListeners.add(listener);
+    listener({ options });
     return () => {
       optionsListeners.delete(listener);
     };
   });
   service.subscribeProfiles.mockImplementation(({ listener }) => {
-    profileListeners.add(listener); listener({ state: profileState });
+    profileListeners.add(listener);
+    listener({ state: profileState });
     return () => {
       profileListeners.delete(listener);
     };
@@ -87,7 +95,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const wrapper of wrappers.splice(0)) wrapper.unmount();
+  for (const wrapper of wrappers.splice(0)) {
+    wrapper.unmount();
+  }
   expect(optionsListeners.size).toBe(0);
   expect(profileListeners.size).toBe(0);
   expect(service.prepareModel).not.toHaveBeenCalled();

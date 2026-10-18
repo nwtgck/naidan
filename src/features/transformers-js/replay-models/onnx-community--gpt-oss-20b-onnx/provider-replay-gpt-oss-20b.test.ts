@@ -112,7 +112,9 @@ function createOwnedToolControl({ mutations, boundaries }: {
         expect(call.options.past_key_values, `${caseId}/fresh public request`).toBeNull();
         if (caseId === 'structured-tool-history') {
           const previous = controls.get('natural-tool-representative');
-          if (previous === undefined) throw new Error('Independent tool history requires the preceding completed tool request');
+          if (previous === undefined) {
+            throw new Error('Independent tool history requires the preceding completed tool request');
+          }
           expect(call.options.past_key_values).not.toBe(previous.pastKeyValues);
           expect(call.invocation.settings.budget.pastTokenCount).toBe(0);
         }
@@ -120,23 +122,30 @@ function createOwnedToolControl({ mutations, boundaries }: {
       }
       expect(localOrdinal).toBe(2);
       const control = controls.get(caseId);
-      if (control === undefined) throw new Error('Missing this request\'s actual preceding native result');
+      if (control === undefined) {
+        throw new Error('Missing this request\'s actual preceding native result');
+      }
       expect(call.options.past_key_values).toBe(control.pastKeyValues);
       if (mutations === 'verify') {
-        if (!call.options.streamer) throw new Error('Missing actual native streamer');
+        if (!call.options.streamer) {
+          throw new Error('Missing actual native streamer');
+        }
         const put = vi.spyOn(call.options.streamer, 'put');
         const end = vi.spyOn(call.options.streamer, 'end');
         using _cleanupResource = {
           [Symbol.dispose]() {
-            put.mockRestore(); end.mockRestore();
+            put.mockRestore();
+            end.mockRestore();
           },
         };
         const verifyRejection = ({ value, reason }: { value: OwnedReplayCacheControl; reason: string }) => {
           expect(() => replayCapturedFullInvocationWithOwnedCache({ ...call, cacheControl: value })).toThrow(reason);
-          expect(put, reason).not.toHaveBeenCalled(); expect(end, reason).not.toHaveBeenCalled();
+          expect(put, reason).not.toHaveBeenCalled();
+          expect(end, reason).not.toHaveBeenCalled();
         };
         verifyRejection({ value: { ...control, pastKeyValues: new call.runtime.DynamicCache() }, reason: 'owned cache identity' });
-        const previous = BigInt64Array.from(control.previousSequence.data, BigInt); previous[0] = 999n;
+        const previous = BigInt64Array.from(control.previousSequence.data, BigInt);
+        previous[0] = 999n;
         verifyRejection({ value: { ...control, previousSequence: new call.runtime.Tensor('int64', previous, control.previousSequence.dims) }, reason: 'previous returned sequence prefix' });
         const length = control.pastKeyValues.get_seq_length();
         vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length + 1);
@@ -152,13 +161,16 @@ function createOwnedToolControl({ mutations, boundaries }: {
           invocation: { ...call.invocation, settings: { ...call.invocation.settings, budget: { ...budget, usedContextTokenCount: budget.promptTokenCount + length } } },
         })).toThrow('independent budget');
         expect(() => replayCapturedFullInvocation(call)).toThrow('past-token-count');
-        expect(put).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled();
+        expect(put).not.toHaveBeenCalled();
+        expect(end).not.toHaveBeenCalled();
         boundaries.push(`${caseId}/rejected-identity-length-prefix-double-count`);
       }
       return control;
     },
     completeResult({ caseId, localOrdinal, result, runtime }) {
-      if (localOrdinal !== 1 || caseId === 'structured-tool-history') return result;
+      if (localOrdinal !== 1 || caseId === 'structured-tool-history') {
+        return result;
+      }
       expect(['natural-tool-minimal', 'natural-tool-representative']).toContain(caseId);
       // Source-derived synthetic KV only: the real returned Tensor supplies
       // the prefix, and this native cache object supplies identity and length.
@@ -288,7 +300,9 @@ describe('GPT-OSS 20B Provider / basic', () => {
   it("user-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "user-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'GPT-OSS actual input verified; generation not replayed';
     const nativeInputs: Array<{
       templateSha256: string; rendered: unknown;
@@ -371,7 +385,9 @@ describe('GPT-OSS 20B Provider / basic', () => {
   it("system-user-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'GPT-OSS actual input verified; generation not replayed';
     const nativeInputs: Array<{
       templateSha256: string; rendered: unknown;
@@ -457,7 +473,9 @@ describe('GPT-OSS 20B Provider / basic', () => {
   it("multi-turn-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'GPT-OSS actual input verified; generation not replayed';
     const nativeInputs: Array<{
       templateSha256: string; rendered: unknown;
@@ -697,7 +715,9 @@ describe('GPT-OSS 20B Provider / system', () => {
 describe('GPT-OSS 20B Provider / history', () => {
   it('renders recorded assistant history with absent tool_calls but rejects the own undefined property added by the adapter', async () => {
     const scenario = inputEvidence.cases.find(candidate => candidate.caseId === 'multi-turn-generation');
-    if (!scenario) throw new Error('Missing captured GPT-OSS history input');
+    if (!scenario) {
+      throw new Error('Missing captured GPT-OSS history input');
+    }
     const replay = await createGptOssReplay();
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
@@ -795,7 +815,9 @@ describe('GPT-OSS 20B Provider / independent', () => {
   it('keeps an independent next input free of prior analysis in the same null-KV loaded runtime', async () => {
     const captures: ProviderChatCapture[] = [];
     const firstInput = inputEvidence.cases.find(item => item.caseId === 'user-generation');
-    if (!firstInput) throw new Error('Missing captured GPT-OSS user input');
+    if (!firstInput) {
+      throw new Error('Missing captured GPT-OSS user input');
+    }
     expect(firstInput.messages).toEqual([{ role: 'user', content: 'Template probe user message.' }]);
     expect(firstInput.renderedText.split('Template probe user message.')).toHaveLength(2);
     const nextMessages: ChatMessage[] = [textMessage({ id: 'message_0', role: 'user', text: 'A separate synthetic conversation.' })];
@@ -857,7 +879,9 @@ describe('GPT-OSS 20B Provider / independent', () => {
       })),
       generate: async context => {
         const next = invocations.shift();
-        if (!next) throw new Error('Unexpected extra inference in independent GPT-OSS input replay');
+        if (!next) {
+          throw new Error('Unexpected extra inference in independent GPT-OSS input replay');
+        }
         return next(context);
       },
     });
@@ -1408,9 +1432,13 @@ describe('GPT-OSS 20B Provider / tools', () => {
           { type: 'tool_call', toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
         ],
       });
-      if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
+      if (callAssistant?.role !== 'assistant') {
+        throw new Error('Expected the tool-calling assistant');
+      }
       const toolCallPart = callAssistant.parts.find(part => part.type === 'tool_call');
-      if (toolCallPart?.type !== 'tool_call') throw new Error('Expected a structured tool call');
+      if (toolCallPart?.type !== 'tool_call') {
+        throw new Error('Expected a structured tool call');
+      }
       expect(toolCallPart.toolCall.id).not.toBe('');
       expect(toolResult).toMatchObject({
         role: 'tool',
@@ -1487,7 +1515,9 @@ Let me know if you’d like more details or a forecast!`,
   it("tools-generation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
@@ -1512,7 +1542,9 @@ type lookup_weather = (_: {
 } // namespace functions`;
     const userHeader = '<|start|>user<|message|>';
     const noToolsSource = inputEvidence.cases.find(item => item.caseId === 'user-generation');
-    if (!noToolsSource) throw new Error('Missing captured native system scaffold');
+    if (!noToolsSource) {
+      throw new Error('Missing captured native system scaffold');
+    }
     expect(noToolsSource.renderedText.split(userHeader)).toHaveLength(2);
     expect(scenario.renderedText.split(userHeader)).toHaveLength(2);
     const expectedRenderedText = noToolsSource.renderedText.split(userHeader)[0]
@@ -1692,7 +1724,9 @@ type lookup_weather = (_: {
   it("tool-result-continuation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
-    if (scenario === undefined) throw new Error('Missing pinned native input case');
+    if (scenario === undefined) {
+      throw new Error('Missing pinned native input case');
+    }
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
@@ -1735,7 +1769,9 @@ type lookup_weather = (_: {
 } // namespace functions`;
     const userHeader = '<|start|>user<|message|>';
     const noToolsSource = inputEvidence.cases.find(item => item.caseId === 'user-generation');
-    if (!noToolsSource) throw new Error('Missing captured native system scaffold');
+    if (!noToolsSource) {
+      throw new Error('Missing captured native system scaffold');
+    }
     expect(noToolsSource.renderedText.split(userHeader)).toHaveLength(2);
     expect(scenario.renderedText.split(userHeader)).toHaveLength(2);
     const expectedRenderedText = noToolsSource.renderedText.split(userHeader)[0]
@@ -2403,7 +2439,9 @@ Here’s the current weather in Tokyo:
       expectedLoadReceipt: undefined,
       artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
       completeResult: ({ callOrdinal, runtime, result }) => {
-        if (callOrdinal !== 10 && callOrdinal !== 12) return result;
+        if (callOrdinal !== 10 && callOrdinal !== 12) {
+          return result;
+        }
         // Source-derived control only: native KV bytes were not captured. The
         // actual cache class supplies identity; only observed length is synthetic.
         const cache = new runtime.DynamicCache();
@@ -2424,7 +2462,9 @@ Here’s the current weather in Tokyo:
           requestInput: request.input,
           expectedEventsBeforeGap,
           verifyInput: ({ options, runtime, tokenizer, model }) => {
-            if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing corrected GPT input');
+            if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) {
+              throw new Error('Missing corrected GPT input');
+            }
             // Old calls 11/13 omitted an unconsumed terminal token; call 14
             // additionally belonged to another public chat. None is an oracle
             // for the corrected native input, even though the old run fulfilled.

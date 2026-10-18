@@ -32,7 +32,9 @@ export function parseXargsStandardInput({
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (escaping) {
       current += char;
@@ -239,17 +241,25 @@ export function parseXargsLineInput({
     }
 
     continuedLine = '';
-    if (isXargsLogicalBlankLine({ text: normalizedLine })) continue;
+    if (isXargsLogicalBlankLine({ text: normalizedLine })) {
+      continue;
+    }
 
     const parsed = parseXargsStandardInput({ text: normalizedLine });
-    if (!parsed.ok) return parsed;
-    if (parsed.items.length === 0) continue;
+    if (!parsed.ok) {
+      return parsed;
+    }
+    if (parsed.items.length === 0) {
+      continue;
+    }
     lines.push(parsed.items);
   }
 
   if (continuedLine.length > 0) {
     const parsed = parseXargsStandardInput({ text: continuedLine });
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     if (parsed.items.length > 0) {
       lines.push(parsed.items);
     }
@@ -264,7 +274,9 @@ export function parseXargsInsertInput({
   text: string,
 }): { ok: true, items: string[] } | { ok: false, message: string } {
   const normalized = text.replace(/^[ \t]+/, '');
-  if (normalized.length === 0) return { ok: true, items: [] };
+  if (normalized.length === 0) {
+    return { ok: true, items: [] };
+  }
 
   let current = '';
   let quote: '"' | '\'' | undefined;
@@ -272,7 +284,9 @@ export function parseXargsInsertInput({
 
   for (let index = 0; index < normalized.length; index += 1) {
     const char = normalized[index];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
 
     if (char === '\0') {
       current += char;

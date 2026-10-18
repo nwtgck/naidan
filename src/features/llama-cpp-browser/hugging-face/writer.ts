@@ -24,55 +24,84 @@ export type DownloadWriterApi = {
 };
 
 export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
-  let folder: FileSystemDirectoryHandle | undefined; let journal: DownloadJournal | undefined;
+  let folder: FileSystemDirectoryHandle | undefined;
+  let journal: DownloadJournal | undefined;
   let comparison: File | undefined;
   let target: ModelDestination = { kind: 'opfs' };
-  let access: DownloadFileAccess | undefined; let index: number | undefined;
-  let position = 0; let checkpointPosition = 0; let checkpointTime = 0;
-  let currentReader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>> | undefined; let stopped = false;
+  let access: DownloadFileAccess | undefined;
+  let index: number | undefined;
+  let position = 0;
+  let checkpointPosition = 0;
+  let checkpointTime = 0;
+  let currentReader: ReadableStreamDefaultReader<Uint8Array<ArrayBuffer>> | undefined;
+  let stopped = false;
   const checkpointWhileOpen = (): boolean => {
     const mode = access?.checkpointMode;
     switch (mode) {
     case 'periodic': case undefined: return true;
     case 'on-close': return false;
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
     }
   };
   const checkpoint = async (): Promise<void> => {
-    if ((!access && !comparison) || index === undefined || !folder || !journal) return;
-    await access?.flush(); journal.bytes[index] = position;
-    await writeJournal({ folder, journal }); checkpointPosition = position; checkpointTime = performance.now();
+    if ((!access && !comparison) || index === undefined || !folder || !journal) {
+      return;
+    }
+    await access?.flush();
+    journal.bytes[index] = position;
+    await writeJournal({ folder, journal });
+    checkpointPosition = position;
+    checkpointTime = performance.now();
   };
   const close = async (): Promise<void> => {
     try {
       await checkpoint();
     } finally {
-      await access?.close(); access = undefined; comparison = undefined; index = undefined;
+      await access?.close();
+      access = undefined;
+      comparison = undefined;
+      index = undefined;
     }
   };
   const api: WorkerServerApi<DownloadWriterApi> = {
     verifyStorage,
     async begin({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<BeginDownloadResult> {
       target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
-      selection = selectionSchema.parse(selection); resolveModelFiles({ files: selection.files });
-      if (selection.files.filter(file => isProjector({ path: file.path })).length > 1) throw new Error('Only one projector can be downloaded');
+      selection = selectionSchema.parse(selection);
+      resolveModelFiles({ files: selection.files });
+      if (selection.files.filter(file => isProjector({ path: file.path })).length > 1) {
+        throw new Error('Only one projector can be downloaded');
+      }
       folder = await repositoryFolder({ repository: selection.repository, create: true, destination: target });
       // Never let our repository journal claim another engine's pending file.
       // Check every selected marker before creating any ownership metadata.
-      if (isHostDestination(target)) for (let index = 0; index < selection.files.length; index++) {
-        await hostDownloadMarker({ folder, selection, index, action: 'check' });
+      if (isHostDestination(target)) {
+        for (let index = 0; index < selection.files.length; index++) {
+          await hostDownloadMarker({ folder, selection, index, action: 'check' });
+        }
       }
       try {
         journal = await readJournal({ folder });
-        if (JSON.stringify(journal.selection) !== JSON.stringify(selection)) return { status: 'conflict', reason: 'different-download' };
+        if (JSON.stringify(journal.selection) !== JSON.stringify(selection)) {
+          return { status: 'conflict', reason: 'different-download' };
+        }
       } catch (error) {
-        if (!isMissing({ error })) throw error;
+        if (!isMissing({ error })) {
+          throw error;
+        }
         const contents = await scanDeletionTree({ folder });
         const existing = new Map(contents.files.map(file => [file.path, file]));
         const projectors = contents.files.filter(file => isProjector({ path: file.path }) && /\.gguf$/i.test(file.path));
         const requestedProjector = selection.files.find(file => isProjector({ path: file.path }));
-        if (requestedProjector && projectors.some(file => file.path !== requestedProjector.path)) return { status: 'conflict', reason: 'projector-conflict' };
-        if (requestedProjector && existing.has(requestedProjector.path) && existing.get(requestedProjector.path)!.size !== requestedProjector.size) return { status: 'conflict', reason: 'projector-conflict' };
+        if (requestedProjector && projectors.some(file => file.path !== requestedProjector.path)) {
+          return { status: 'conflict', reason: 'projector-conflict' };
+        }
+        if (requestedProjector && existing.has(requestedProjector.path) && existing.get(requestedProjector.path)!.size !== requestedProjector.size) {
+          return { status: 'conflict', reason: 'projector-conflict' };
+        }
         const reused = selection.files.map(file => existing.has(file.path));
         // Multimodal is opt-in: adding its file after a text-only install must
         // not overwrite (or trust by size alone) the already installed model.
@@ -84,8 +113,12 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
         const mainFiles = selection.files.filter(file => !isProjector({ path: file.path }));
         const hasCompleteMainSet = mainFiles.every(file => existing.get(file.path)?.size === file.size);
         const comparesInstalledMain = addsProjector && hasCompleteMainSet;
-        if (selection.files.some((file, index) => reused[index] && (existing.get(file.path)!.size !== file.size || (!isProjector({ path: file.path }) && !comparesInstalledMain)))) return { status: 'conflict', reason: 'existing-files' };
-        if (!isHostDestination(target) && !contents.files.length) await pruneEmptyDirectories({ folder, directories: contents.directories });
+        if (selection.files.some((file, index) => reused[index] && (existing.get(file.path)!.size !== file.size || (!isProjector({ path: file.path }) && !comparesInstalledMain)))) {
+          return { status: 'conflict', reason: 'existing-files' };
+        }
+        if (!isHostDestination(target) && !contents.files.length) {
+          await pruneEmptyDirectories({ folder, directories: contents.directories });
+        }
         journal = { version: 1, selection, reused, bytes: selection.files.map(() => 0), complete: selection.files.map(() => false) };
         await writeJournal({ folder, journal });
       }
@@ -93,16 +126,24 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
         const file = selection.files[i]!;
         if (journal.reused?.[i]) {
           // Recheck every byte against the pinned source on each resumed attempt.
-          journal.bytes[i] = 0; journal.complete[i] = false; continue;
+          journal.bytes[i] = 0;
+          journal.complete[i] = false;
+          continue;
         }
         const handle = await selectedFile({ folder, path: file.path, create: true });
-        if (isHostDestination(target)) await hostDownloadMarker({ folder, selection, index: i, action: 'create' });
+        if (isHostDestination(target)) {
+          await hostDownloadMarker({ folder, selection, index: i, action: 'create' });
+        }
         const sync = await openDownloadAccess({ handle, kind: target.kind, offset: journal.bytes[i]! });
         try {
-          const actual = sync.getSize(); const recorded = journal.bytes[i]!;
-          if (actual < recorded || actual > file.size) throw new Error('Download file differs from its journal');
+          const actual = sync.getSize();
+          const recorded = journal.bytes[i]!;
+          if (actual < recorded || actual > file.size) {
+            throw new Error('Download file differs from its journal');
+          }
           if (actual !== recorded) {
-            await sync.truncate({ size: recorded }); await sync.flush();
+            await sync.truncate({ size: recorded });
+            await sync.flush();
           }
         } finally {
           await sync.close();
@@ -112,88 +153,152 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
       return { status: 'ready', journal: journalSchema.parse(journal) };
     },
     async open({ fileIndex, start }: { fileIndex: number, start: number }): Promise<void> {
-      z.number().int().nonnegative().parse(fileIndex); z.number().int().nonnegative().parse(start);
-      if (!folder || !journal || access || comparison || fileIndex >= journal.selection.files.length) throw new Error('Invalid download writer state');
-      if (start !== 0 && start !== journal.bytes[fileIndex]) throw new Error('Invalid download offset');
+      z.number().int().nonnegative().parse(fileIndex);
+      z.number().int().nonnegative().parse(start);
+      if (!folder || !journal || access || comparison || fileIndex >= journal.selection.files.length) {
+        throw new Error('Invalid download writer state');
+      }
+      if (start !== 0 && start !== journal.bytes[fileIndex]) {
+        throw new Error('Invalid download offset');
+      }
       const handle = await selectedFile({ folder, path: journal.selection.files[fileIndex]!.path, create: false });
       if (journal.reused?.[fileIndex]) {
-        if (start !== 0) throw new Error('Shared file verification must start at zero');
+        if (start !== 0) {
+          throw new Error('Shared file verification must start at zero');
+        }
         comparison = await handle.getFile();
-        if (comparison.size !== journal.selection.files[fileIndex]!.size) throw new Error(isProjector({ path: journal.selection.files[fileIndex]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
-      } else access = await openDownloadAccess({ handle, kind: target.kind, offset: start });
-      stopped = false; index = fileIndex; position = start; checkpointPosition = start; checkpointTime = performance.now();
-      await access?.truncate({ size: start }); journal.complete[fileIndex] = false;
-      if (checkpointWhileOpen()) await checkpoint();
+        if (comparison.size !== journal.selection.files[fileIndex]!.size) {
+          throw new Error(isProjector({ path: journal.selection.files[fileIndex]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
+        }
+      } else {
+        access = await openDownloadAccess({ handle, kind: target.kind, offset: start });
+      }
+      stopped = false;
+      index = fileIndex;
+      position = start;
+      checkpointPosition = start;
+      checkpointTime = performance.now();
+      await access?.truncate({ size: start });
+      journal.complete[fileIndex] = false;
+      if (checkpointWhileOpen()) {
+        await checkpoint();
+      }
     },
     async append({ bytes }: { bytes: Uint8Array<ArrayBuffer> }): Promise<number> {
-      if (!(bytes instanceof Uint8Array) || bytes.byteLength > 1024 * 1024 || (!access && !comparison) || index === undefined || !journal) throw new Error('Invalid download chunk');
-      if (position + bytes.byteLength > journal.selection.files[index]!.size) throw new Error('Download exceeds expected size');
+      if (!(bytes instanceof Uint8Array) || bytes.byteLength > 1024 * 1024 || (!access && !comparison) || index === undefined || !journal) {
+        throw new Error('Invalid download chunk');
+      }
+      if (position + bytes.byteLength > journal.selection.files[index]!.size) {
+        throw new Error('Download exceeds expected size');
+      }
       if (comparison) {
         const stored = new Uint8Array(await comparison.slice(position, position + bytes.length).arrayBuffer());
-        if (stored.length !== bytes.length || stored.some((byte, offset) => byte !== bytes[offset])) throw new Error(isProjector({ path: journal.selection.files[index]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
+        if (stored.length !== bytes.length || stored.some((byte, offset) => byte !== bytes[offset])) {
+          throw new Error(isProjector({ path: journal.selection.files[index]!.path }) ? sharedProjectorConflictMessage : existingModelConflictMessage);
+        }
         position += bytes.length;
       }
       let offset = 0;
       while (access && offset < bytes.length) {
         const count = await access.write({ bytes: bytes.subarray(offset), at: position });
-        if (count <= 0) throw new Error('Download write made no progress'); offset += count; position += count;
+        if (count <= 0) {
+          throw new Error('Download write made no progress');
+        }
+        offset += count;
+        position += count;
       }
-      if (checkpointWhileOpen() && (position - checkpointPosition >= 8 * 1024 * 1024 || performance.now() - checkpointTime >= 2000)) await checkpoint();
+      if (checkpointWhileOpen() && (position - checkpointPosition >= 8 * 1024 * 1024 || performance.now() - checkpointTime >= 2000)) {
+        await checkpoint();
+      }
       return position;
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callbacks must be top-level arguments.
     async consume({ stream }: { stream: ReadableStream<Uint8Array<ArrayBuffer>> }, onProgress: ({ position }: { position: number }) => Promise<void>): Promise<void> {
-      if ((!access && !comparison) || currentReader) throw new Error('Invalid download writer state');
-      const reader = stream.getReader(); currentReader = reader; let reportedAt = 0;
+      if ((!access && !comparison) || currentReader) {
+        throw new Error('Invalid download writer state');
+      }
+      const reader = stream.getReader();
+      currentReader = reader;
+      let reportedAt = 0;
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (stopped) throw new DOMException('Download paused', 'AbortError');
-          if (done) break;
+          if (stopped) {
+            throw new DOMException('Download paused', 'AbortError');
+          }
+          if (done) {
+            break;
+          }
           for (let offset = 0; offset < value.byteLength; offset += 1024 * 1024) {
-            if (stopped) throw new DOMException('Download paused', 'AbortError');
+            if (stopped) {
+              throw new DOMException('Download paused', 'AbortError');
+            }
             await api.append({ bytes: value.subarray(offset, offset + 1024 * 1024) });
           }
           if (performance.now() - reportedAt > 150) {
-            await onProgress({ position }); reportedAt = performance.now();
+            await onProgress({ position });
+            reportedAt = performance.now();
           }
         }
-        if (stopped) throw new DOMException('Download paused', 'AbortError');
-        await api.finishFile(); await onProgress({ position });
+        if (stopped) {
+          throw new DOMException('Download paused', 'AbortError');
+        }
+        await api.finishFile();
+        await onProgress({ position });
       } catch (error) {
-        await reader.cancel().catch(() => {}); throw error;
+        await reader.cancel().catch(() => {});
+        throw error;
       } finally {
-        reader.releaseLock(); currentReader = undefined;
+        reader.releaseLock();
+        currentReader = undefined;
         // Comlink delivers a remote function; release its callback port after EOF or cancellation.
         releaseWorkerRemote({ remote: onProgress as WorkerRemote<typeof onProgress> });
       }
     },
     async stop(): Promise<void> {
-      stopped = true; await currentReader?.cancel();
+      stopped = true;
+      await currentReader?.cancel();
     },
     async finishFile(): Promise<void> {
-      if ((!access && !comparison) || index === undefined || !journal || !folder || position !== journal.selection.files[index]!.size) throw new Error('Incomplete download');
-      await checkpoint(); journal.complete[index] = true; await writeJournal({ folder, journal });
-      await access?.close(); access = undefined; comparison = undefined; index = undefined;
+      if ((!access && !comparison) || index === undefined || !journal || !folder || position !== journal.selection.files[index]!.size) {
+        throw new Error('Incomplete download');
+      }
+      await checkpoint();
+      journal.complete[index] = true;
+      await writeJournal({ folder, journal });
+      await access?.close();
+      access = undefined;
+      comparison = undefined;
+      index = undefined;
     },
     async pause(): Promise<void> {
       await close();
     },
     async finish(): Promise<void> {
-      if (!folder || !journal || access || comparison || !journal.complete.every(Boolean)) throw new Error('Incomplete download');
+      if (!folder || !journal || access || comparison || !journal.complete.every(Boolean)) {
+        throw new Error('Incomplete download');
+      }
       const files = isHostDestination(target)
         ? await Promise.all(journal.selection.files.map(async expected => {
           const handle = await selectedFile({ folder: folder!, path: expected.path, create: false });
           return { path: expected.path, handle, file: await handle.getFile() };
         }))
         : (await readModelFiles({ folder, prefix: '' })).filter(file => journal!.selection.files.some(expected => expected.path === file.path));
-      if (files.length !== journal.selection.files.length) throw new Error('Download file set changed');
+      if (files.length !== journal.selection.files.length) {
+        throw new Error('Download file set changed');
+      }
       for (const file of files) {
-        if (!journal.selection.files.some(expected => expected.path === file.path && expected.size === file.file.size) || !await validGguf({ file: file.file })) throw new Error('Invalid downloaded GGUF');
+        if (!journal.selection.files.some(expected => expected.path === file.path && expected.size === file.file.size) || !await validGguf({ file: file.file })) {
+          throw new Error('Invalid downloaded GGUF');
+        }
       }
       resolveModelFiles({ files });
-      if (isHostDestination(target)) for (let index = 0; index < journal.selection.files.length; index++) {
-        if (!journal.reused?.[index]) await hostDownloadMarker({ folder, selection: journal.selection, index, action: 'remove' });
+      if (isHostDestination(target)) {
+        for (let index = 0; index < journal.selection.files.length; index++) {
+          if (!journal.reused?.[index]) {
+            await hostDownloadMarker({ folder, selection: journal.selection, index, action: 'remove' });
+          }
+        }
       }
       await folder.removeEntry(pendingName);
     },

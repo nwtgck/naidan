@@ -23,7 +23,9 @@ it('keeps peer management and image RPC copy translated and independently regist
       // They still need independent locale implementations and catalog registrations.
       const intentionallyMatchesEnglish = key === 'naidanRpc__title'
         || (key === 'NaidanRpcTab__method_details' && locale === 'de');
-      if (locale !== 'en' && !intentionallyMatchesEnglish) expect(source.trim(), key + '/' + locale).not.toBe(english.trim());
+      if (locale !== 'en' && !intentionallyMatchesEnglish) {
+        expect(source.trim(), key + '/' + locale).not.toBe(english.trim());
+      }
     }
   }
 });

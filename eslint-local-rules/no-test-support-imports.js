@@ -11,35 +11,62 @@ export const rule = {
   create(context) {
     // Processors may name a virtual script *.test.ts; permissions belong to the physical file.
     const filename = context.physicalFilename ?? context.filename;
-    if (isTestFile({ filename }) || isTestSupportFile({ filename })) return {};
+    if (isTestFile({ filename }) || isTestSupportFile({ filename })) {
+      return {};
+    }
     const sourceCode = context.sourceCode;
     const check = node => {
       const value = staticString({ node, sourceCode });
-      if (typeof value === 'string' && isTestOnlyModule({ value })) context.report({ node, messageId: 'forbidden' });
+      if (typeof value === 'string' && isTestOnlyModule({ value })) {
+        context.report({ node, messageId: 'forbidden' });
+      }
     };
     const visitors = {
-      ImportDeclaration(node) { check(node.source); },
-      ExportNamedDeclaration(node) { check(node.source); },
-      ExportAllDeclaration(node) { check(node.source); },
-      ImportExpression(node) { check(node.source); },
-      TSImportType(node) { check(node.source); },
-      TSExternalModuleReference(node) { check(node.expression); },
+      ImportDeclaration(node) {
+        check(node.source);
+      },
+      ExportNamedDeclaration(node) {
+        check(node.source);
+      },
+      ExportAllDeclaration(node) {
+        check(node.source);
+      },
+      ImportExpression(node) {
+        check(node.source);
+      },
+      TSImportType(node) {
+        check(node.source);
+      },
+      TSExternalModuleReference(node) {
+        check(node.expression);
+      },
       CallExpression(node) {
         const callee = node.callee;
-        if (['require', 'importScripts'].includes(builtinName({ node: callee, sourceCode }))) node.arguments.forEach(check);
-        if (callee.type === 'MemberExpression' && propertyName({ node: callee, sourceCode }) === 'addModule') check(node.arguments[0]);
+        if (['require', 'importScripts'].includes(builtinName({ node: callee, sourceCode }))) {
+          node.arguments.forEach(check);
+        }
+        if (callee.type === 'MemberExpression' && propertyName({ node: callee, sourceCode }) === 'addModule') {
+          check(node.arguments[0]);
+        }
         if (callee.type === 'MemberExpression' && builtinName({ node: callee.object, sourceCode }) === 'require'
-          && propertyName({ node: callee, sourceCode }) === 'resolve') check(node.arguments[0]);
+          && propertyName({ node: callee, sourceCode }) === 'resolve') {
+          check(node.arguments[0]);
+        }
         if (callee.type === 'MemberExpression' && ['glob', 'globEager'].includes(propertyName({ node: callee, sourceCode }))
           && callee.object.type === 'MetaProperty' && callee.object.meta.name === 'import') {
           const argument = node.arguments[0];
-          if (argument?.type === 'ArrayExpression') argument.elements.forEach(check);
-          else check(argument);
+          if (argument?.type === 'ArrayExpression') {
+            argument.elements.forEach(check);
+          } else {
+            check(argument);
+          }
         }
       },
       NewExpression(node) {
         // URL literals include Worker, SharedWorker and worklet entry paths.
-        if (['URL', 'Worker', 'SharedWorker'].includes(builtinName({ node: node.callee, sourceCode }))) check(node.arguments[0]);
+        if (['URL', 'Worker', 'SharedWorker'].includes(builtinName({ node: node.callee, sourceCode }))) {
+          check(node.arguments[0]);
+        }
       },
     };
     return sourceCode.parserServices?.defineTemplateBodyVisitor

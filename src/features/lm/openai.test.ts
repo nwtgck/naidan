@@ -486,7 +486,9 @@ data: [DONE]
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
-          if (chunk === 'A') controller.abort();
+          if (chunk === 'A') {
+            controller.abort();
+          }
         },
         signal: controller.signal,
       });

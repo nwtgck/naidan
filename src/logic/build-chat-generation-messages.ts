@@ -17,7 +17,9 @@ export function buildChatGenerationMessages({ chat, excludedMessageId, systemPro
   const messages: ChatMessage[] = systemPromptMessages.map((text, index) => {
     // These request-local IDs are not persisted and do not become model content.
     let raw = `system_prompt_${index}`;
-    while (usedIds.has(raw)) raw += '_';
+    while (usedIds.has(raw)) {
+      raw += '_';
+    }
     usedIds.add(raw);
     return {
       id: toMessageId({ raw }),

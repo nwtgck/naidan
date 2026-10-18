@@ -48,7 +48,9 @@ class MemoryDirectoryHandle {
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MemoryDirectoryHandle> {
     const existing = this.directories.get(name);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     if (options?.create === true) {
       const created = new MemoryDirectoryHandle();
       this.directories.set(name, created);
@@ -59,7 +61,9 @@ class MemoryDirectoryHandle {
 
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MemoryFileHandle> {
     const existing = this.files.get(name);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     if (options?.create === true) {
       const created = new MemoryFileHandle();
       this.files.set(name, created);
@@ -69,7 +73,9 @@ class MemoryDirectoryHandle {
   }
 
   async removeEntry(name: string): Promise<void> {
-    if (this.files.delete(name) || this.directories.delete(name)) return;
+    if (this.files.delete(name) || this.directories.delete(name)) {
+      return;
+    }
     throw notFound();
   }
 }
@@ -105,7 +111,9 @@ describe('OPFS writes', () => {
     const path = 'models/huggingface.co/org/repo/model.onnx';
     // Seed an unmarked partial file, not a complete file replacement.
     let directory = root;
-    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) {
+      directory = await directory.getDirectoryHandle(name, { create: true });
+    }
     const file = await directory.getFileHandle('model.onnx', { create: true });
     file.bytes = Uint8Array.of(9);
     const create = file.createWritable.bind(file);
@@ -161,7 +169,9 @@ describe('OPFS writes', () => {
   it('preserves a writer setup failure when an unowned response cancellation never acknowledges', async () => {
     const path = 'models/huggingface.co/org/repo/model.onnx';
     let directory = root;
-    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) {
+      directory = await directory.getDirectoryHandle(name, { create: true });
+    }
     const file = await directory.getFileHandle('model.onnx', { create: true });
     const failure = new DOMException('Synthetic writer setup failure', 'QuotaExceededError');
     vi.spyOn(file, 'createWritable').mockRejectedValue(failure);
@@ -201,7 +211,9 @@ describe('OPFS writes', () => {
   it('awaits the owned writable abort after pipe setup fails before releasing the lease', async () => {
     const path = 'models/huggingface.co/org/repo/model.onnx';
     let directory = root;
-    for (const name of ['models', 'huggingface.co', 'org', 'repo']) directory = await directory.getDirectoryHandle(name, { create: true });
+    for (const name of ['models', 'huggingface.co', 'org', 'repo']) {
+      directory = await directory.getDirectoryHandle(name, { create: true });
+    }
     const file = await directory.getFileHandle('model.onnx', { create: true });
     const abortEntered = Promise.withResolvers<void>();
     const releaseAbort = Promise.withResolvers<void>();
@@ -332,10 +344,12 @@ describe('OPFS writes', () => {
     let settled = false;
     const outcome = writeToOpfs({ path: 'models/rejected.onnx', response }).then(
       () => {
-        settled = true; return undefined;
+        settled = true;
+        return undefined;
       },
       (error: unknown) => {
-        settled = true; return error;
+        settled = true;
+        return error;
       },
     );
     await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS - 1);
@@ -351,7 +365,9 @@ describe('OPFS writes', () => {
     const directory = {
       getDirectoryHandle: vi.fn(),
       getFileHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
-        if (name === 'model.onnx' && options?.create === true) return unwritableHandle;
+        if (name === 'model.onnx' && options?.create === true) {
+          return unwritableHandle;
+        }
         throw notFound();
       }),
     };
@@ -423,8 +439,11 @@ describe('OPFS writes', () => {
     let pulls = 0;
     const source = new ReadableStream<Uint8Array>({
       pull(controller) {
-        if (pulls++ === 0) controller.enqueue(Uint8Array.of(1));
-        else controller.error(new Error('Fixture transfer interrupted'));
+        if (pulls++ === 0) {
+          controller.enqueue(Uint8Array.of(1));
+        } else {
+          controller.error(new Error('Fixture transfer interrupted'));
+        }
       },
     });
     await expect(writeToOpfsWithStaging({ path, response: new Response(source) }))

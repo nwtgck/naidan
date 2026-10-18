@@ -427,7 +427,9 @@ printf 'ok\\n'
       }) {
         positions.push(position);
         const bytesRead = Math.min(7, length, bytes.length - position);
-        if (bytesRead <= 0) return { bytesRead: 0 };
+        if (bytesRead <= 0) {
+          return { bytesRead: 0 };
+        }
         buffer.set(bytes.subarray(position, position + bytesRead), offset);
         return { bytesRead };
       },

@@ -221,10 +221,14 @@ function calculateLineHeights() {
 
   const textarea = textareaRef.value;
   const win = textarea.ownerDocument.defaultView || window;
-  if (!win || typeof win.getComputedStyle !== 'function') return;
+  if (!win || typeof win.getComputedStyle !== 'function') {
+    return;
+  }
 
   const style = win.getComputedStyle(textarea);
-  if (!style) return;
+  if (!style) {
+    return;
+  }
 
   const width = textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const font = style.font;
@@ -248,9 +252,13 @@ function calculateLineHeights() {
   ghost.style.lineHeight = lineHeightStr;
 
   const heights = lines.value.map(line => {
-    if (line === '') return lineHeight;
+    if (line === '') {
+      return lineHeight;
+    }
     ghost.textContent = line;
-    if (line.length === 0) ghost.textContent = '\u200b';
+    if (line.length === 0) {
+      ghost.textContent = '\u200b';
+    }
     return ghost.clientHeight || lineHeight;
   });
 
@@ -269,7 +277,9 @@ watch([linesForLayout, wrapMode], () => {
     lineHeights.value = [];
     return;
   case 'wrap-on':
-    if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+    if (lineHeightDebounceTimer) {
+      clearTimeout(lineHeightDebounceTimer);
+    }
     lineHeightDebounceTimer = setTimeout(() => {
       calculateLineHeights();
     }, 100);
@@ -283,7 +293,9 @@ watch([linesForLayout, wrapMode], () => {
 
 function recordHistory({ newLines }: { newLines: string[] }) {
   const current = history.value[historyIndex.value];
-  if (current && current.length === newLines.length && current.every((l, i) => l === newLines[i])) return;
+  if (current && current.length === newLines.length && current.every((l, i) => l === newLines[i])) {
+    return;
+  }
 
   if (historyIndex.value < history.value.length - 1) {
     history.value = history.value.slice(0, historyIndex.value + 1);
@@ -387,7 +399,9 @@ async function performSearch() {
 
 function highlightMatch({ index }: { index: number }) {
   const match = searchMatches.value[index];
-  if (!match || !textareaRef.value) return;
+  if (!match || !textareaRef.value) {
+    return;
+  }
 
   const el = textareaRef.value;
   el.focus();
@@ -399,19 +413,25 @@ function highlightMatch({ index }: { index: number }) {
 }
 
 function nextMatch() {
-  if (searchMatches.value.length === 0) return;
+  if (searchMatches.value.length === 0) {
+    return;
+  }
   searchIndex.value = (searchIndex.value + 1) % searchMatches.value.length;
   highlightMatch({ index: searchIndex.value });
 }
 
 function prevMatch() {
-  if (searchMatches.value.length === 0) return;
+  if (searchMatches.value.length === 0) {
+    return;
+  }
   searchIndex.value = (searchIndex.value - 1 + searchMatches.value.length) % searchMatches.value.length;
   highlightMatch({ index: searchIndex.value });
 }
 
 async function handleReplace({ mode }: { mode: 'single' | 'all' }) {
-  if (!findText.value) return;
+  if (!findText.value) {
+    return;
+  }
   isReplaceBusy.value = true;
 
   try {
@@ -433,7 +453,9 @@ async function handleReplace({ mode }: { mode: 'single' | 'all' }) {
     }
     case 'single': {
       const el = textareaRef.value;
-      if (!el) return;
+      if (!el) {
+        return;
+      }
       const response = await client.replaceSingle({
         request: {
           text: fullText.value,
@@ -477,7 +499,9 @@ async function handleReplace({ mode }: { mode: 'single' | 'all' }) {
 // --- Cmd+D "Multi-Edit Mode" Implementation ---
 async function handleCmdD() {
   const el = textareaRef.value;
-  if (!el) return;
+  if (!el) {
+    return;
+  }
 
   isMultiEditBusy.value = true;
   try {
@@ -551,11 +575,17 @@ watch(multiEditReplacement, async (newVal) => {
 // --- Emacs Keybindings ---
 function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
   // Only handle Ctrl+key (not Cmd on Mac for Emacs bindings)
-  if (!event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (!event.ctrlKey || event.metaKey || event.altKey) {
+    return false;
+  }
 
   const el = textareaRef.value;
-  if (!el) return false;
-  if (document.activeElement !== el) return false;
+  if (!el) {
+    return false;
+  }
+  if (document.activeElement !== el) {
+    return false;
+  }
 
   const text = fullText.value;
   const pos = el.selectionStart;
@@ -572,7 +602,9 @@ function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
     // Move to end of line
     event.preventDefault();
     let lineEnd = text.indexOf('\n', pos);
-    if (lineEnd === -1) lineEnd = text.length;
+    if (lineEnd === -1) {
+      lineEnd = text.length;
+    }
     el.setSelectionRange(lineEnd, lineEnd);
     return true;
   }
@@ -589,10 +621,14 @@ function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
     const currentLineStart = text.lastIndexOf('\n', pos - 1) + 1;
     const col = pos - currentLineStart;
     let nextLineStart = text.indexOf('\n', pos);
-    if (nextLineStart === -1) return true; // Already on last line
+    if (nextLineStart === -1) {
+      return true;
+    } // Already on last line
     nextLineStart += 1;
     let nextLineEnd = text.indexOf('\n', nextLineStart);
-    if (nextLineEnd === -1) nextLineEnd = text.length;
+    if (nextLineEnd === -1) {
+      nextLineEnd = text.length;
+    }
     const target = Math.min(nextLineStart + col, nextLineEnd);
     el.setSelectionRange(target, target);
     return true;
@@ -601,7 +637,9 @@ function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
     // Move to previous line (up)
     event.preventDefault();
     const curLineStart = text.lastIndexOf('\n', pos - 1) + 1;
-    if (curLineStart === 0) return true; // Already on first line
+    if (curLineStart === 0) {
+      return true;
+    } // Already on first line
     const col2 = pos - curLineStart;
     const prevLineEnd = curLineStart - 1; // the \n before this line
     const prevLineStart = text.lastIndexOf('\n', prevLineEnd - 1) + 1;
@@ -613,7 +651,9 @@ function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
     // Kill from cursor to end of line
     event.preventDefault();
     let lineEnd = text.indexOf('\n', pos);
-    if (lineEnd === -1) lineEnd = text.length;
+    if (lineEnd === -1) {
+      lineEnd = text.length;
+    }
     // If cursor is already at end of line, kill the newline itself
     if (lineEnd === pos && pos < text.length) {
       lineEnd = pos + 1;
@@ -646,9 +686,13 @@ function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
     event.preventDefault();
     let wordStart = pos;
     // Skip whitespace backward
-    while (wordStart > 0 && /\s/.test(text[wordStart - 1] || '')) wordStart--;
+    while (wordStart > 0 && /\s/.test(text[wordStart - 1] || '')) {
+      wordStart--;
+    }
     // Skip word characters backward
-    while (wordStart > 0 && /\S/.test(text[wordStart - 1] || '')) wordStart--;
+    while (wordStart > 0 && /\S/.test(text[wordStart - 1] || '')) {
+      wordStart--;
+    }
     killRing = text.substring(wordStart, pos);
     const before = text.substring(0, wordStart);
     const after = text.substring(pos);
@@ -722,8 +766,10 @@ function handleScroll() {
 function toggleWrap() {
   const current = wrapMode.value;
   switch (current) {
-  case 'wrap-on': wrapMode.value = 'wrap-off'; break;
-  case 'wrap-off': wrapMode.value = 'wrap-on'; break;
+  case 'wrap-on': wrapMode.value = 'wrap-off';
+    break;
+  case 'wrap-off': wrapMode.value = 'wrap-on';
+    break;
   default: {
     const _ex: never = current;
     throw new Error(`Unhandled wrap mode: ${_ex}`);
@@ -733,11 +779,15 @@ function toggleWrap() {
 
 // --- Handle textarea input (line-based update) ---
 function handleInput() {
-  if (!textareaRef.value) return;
+  if (!textareaRef.value) {
+    return;
+  }
   const newText = textareaRef.value.value;
   fullText.value = newText;
 
-  if (historyTimeout) clearTimeout(historyTimeout);
+  if (historyTimeout) {
+    clearTimeout(historyTimeout);
+  }
 
   const currentMode = localMode.value;
   switch (currentMode) {
@@ -769,7 +819,9 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
   // Emacs keybindings (Ctrl only, not Cmd on Mac)
   // Check before other shortcuts. Ctrl+F and Ctrl+D are excluded (handled below as search/multi-edit).
   if (event.ctrlKey && !event.metaKey && !event.altKey && event.key !== 'f' && event.key !== 'd' && event.key !== 'z') {
-    if (handleEmacsKeydown({ event })) return;
+    if (handleEmacsKeydown({ event })) {
+      return;
+    }
   }
 
   if (isMod && event.key === 'f') {
@@ -783,7 +835,9 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
     nextTick(() => {
       const findInput = document.querySelector('[data-testid="find-input"]') as HTMLInputElement;
       findInput?.focus();
-      if (selection) findInput?.select();
+      if (selection) {
+        findInput?.select();
+      }
     });
   }
   if (isMod && event.key === 'd') {
@@ -792,8 +846,11 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
   }
   if (isMod && event.key === 'z') {
     event.preventDefault();
-    if (event.shiftKey) handleRedo();
-    else handleUndo();
+    if (event.shiftKey) {
+      handleRedo();
+    } else {
+      handleUndo();
+    }
   }
   if (event.key === 'Escape') {
     if (isMultiEditMode.value) {
@@ -832,8 +889,12 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  if (historyTimeout) clearTimeout(historyTimeout);
-  if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+  if (historyTimeout) {
+    clearTimeout(historyTimeout);
+  }
+  if (lineHeightDebounceTimer) {
+    clearTimeout(lineHeightDebounceTimer);
+  }
   if (ghostElement && ghostElement.parentNode) {
     ghostElement.parentNode.removeChild(ghostElement);
   }
@@ -1235,8 +1296,14 @@ textarea::selection {
 }
 
 @keyframes slide-in-from-left {
-  from { transform: translateX(-10px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .slide-in-from-left-2 {

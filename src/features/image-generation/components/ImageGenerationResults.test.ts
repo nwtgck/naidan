@@ -13,7 +13,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
+  wrapper?.unmount();
+  wrapper = undefined;
   vi.unstubAllGlobals();
 });
 
@@ -74,10 +75,13 @@ it('keeps result images while typing a larger retention limit, including when an
   });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      stop(); gallery.clear();
+      stop();
+      gallery.clear();
     },
   };
-  for (let i = 0; i < 5; i++) add();
+  for (let i = 0; i < 5; i++) {
+    add();
+  }
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
   const input = wrapper.get<HTMLInputElement>('[data-testid="image-result-limit"]');
   for (const draft of ['1', '10', '100']) {
@@ -92,7 +96,9 @@ it('keeps result images while typing a larger retention limit, including when an
   expect(gallery.entries()).toHaveLength(8);
   await input.trigger('change');
   expect(view.maxResults.value).toBe(100);
-  for (let i = 0; i < 94; i++) add();
+  for (let i = 0; i < 94; i++) {
+    add();
+  }
   expect(gallery.entries()).toHaveLength(100);
   await input.setValue('2');
   expect(view.maxResults.value).toBe(2);
@@ -115,7 +121,9 @@ it.each(['card', 'viewer'])('keeps an existing result downloadable from its %s a
     return { status: 'downloaded' as const };
   });
   wrapper = mount(ImageGenerationResults, { props: { view, active: true }, global: { stubs: { Teleport: true } } });
-  if (location === 'viewer') await wrapper.get('[data-testid="image-generated-result"] button').trigger('click');
+  if (location === 'viewer') {
+    await wrapper.get('[data-testid="image-generated-result"] button').trigger('click');
+  }
   const menu = () => wrapper!.get(location === 'viewer' ? '[data-testid="image-viewer"] [data-testid="image-download-menu"]' : '[data-testid="image-result-download"]');
   const download = () => menu().get<HTMLButtonElement>('[data-testid="image-download-default"]');
   expect(download().element.disabled).toBe(false);
@@ -176,16 +184,19 @@ it('keeps the successful image downloadable when history saving fails and retrie
   await flushPromises();
   await wrapper.get('[data-testid="image-result-download"] [data-testid="image-download-options"]').trigger('click');
   const metadata = document.querySelector<HTMLInputElement>('[data-testid="image-download-metadata"]')!;
-  metadata.checked = true; metadata.dispatchEvent(new Event('change', { bubbles: true }));
+  metadata.checked = true;
+  metadata.dispatchEvent(new Event('change', { bubbles: true }));
   document.querySelector<HTMLButtonElement>('[data-testid="image-download-confirm"]')!.click();
   await flushPromises();
   expect(view.downloadResult).toHaveBeenLastCalledWith({ resultId: 1, format: 'png', includeMetadata: true });
   await wrapper.get('[data-testid="image-history-retry-save"]').trigger('click');
   expect(view.historySaving.retry).toHaveBeenCalledTimes(1);
-  view.historySaving.status.value = 'saved'; await flushPromises();
+  view.historySaving.status.value = 'saved';
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-history-save-failed"]').exists()).toBe(false);
   expect(wrapper.get('[data-testid="image-history-saving"]').text()).toContain('Saved to My images');
-  view.historySaving.status.value = 'idle'; await flushPromises();
+  view.historySaving.status.value = 'idle';
+  await flushPromises();
   expect(wrapper.get('[data-testid="image-history-pending-saves"]').text()).toContain('Unsaved generations: 1');
   expect(wrapper.find('[data-testid="image-history-save-failed"]').exists()).toBe(false);
 });
@@ -273,7 +284,8 @@ it('keeps the animation canvas through live preview and caps the final image at 
   const view = useImageGeneration();
   view.busy = computed(() => busy.value);
   view.supported = computed(() => true);
-  view.parameters.value.width = 768; view.parameters.value.height = 512;
+  view.parameters.value.width = 768;
+  view.parameters.value.height = 512;
   const oldResult = { id: 1, url: 'blob:old', parameters: { ...view.parameters.value }, modelVersion: 'fixture', uniformOutput: false, elapsedMs: 100 };
   view.results.value = [oldResult];
   const oldPreview = { type: 'naidan-image-preview-v1' as const, runId: 1, revision: 0, step: 2, steps: 8, mode: 'projection' as const, width: 32, height: 16, url: 'blob:old-preview', id: 1, elapsedMs: 100 };
@@ -285,7 +297,8 @@ it('keeps the animation canvas through live preview and caps the final image at 
     view.latestRun.value = { status: 'running', width: 768, height: 512 };
     busy.value = true;
   };
-  start(); await flushPromises();
+  start();
+  await flushPromises();
   const grid = wrapper.get('[data-testid="image-result-grid"]');
   expect(grid.element.firstElementChild?.getAttribute('data-testid')).toBe('image-pending-result');
   expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
@@ -309,23 +322,32 @@ it('keeps the animation canvas through live preview and caps the final image at 
   expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:final');
   expect(wrapper.get('[data-testid="image-result-canvas"]').attributes('style')).toContain('max-width: min(768px, 97.5vh)');
   expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(2);
-  view.results.value = [oldResult]; await flushPromises();
+  view.results.value = [oldResult];
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
-  view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult]; await flushPromises();
-  busy.value = false; await flushPromises();
-  start(); await flushPromises();
+  view.results.value = [{ ...oldResult, id: 2, url: 'blob:final' }, oldResult];
+  await flushPromises();
+  busy.value = false;
+  await flushPromises();
+  start();
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
   // Removing an older completed image must not look like completion of this run.
-  view.results.value = [oldResult]; await flushPromises();
+  view.results.value = [oldResult];
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(true);
   await wrapper.setProps({ active: false });
   expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
   await wrapper.setProps({ active: true });
-  view.stopping.value = true; await flushPromises();
+  view.stopping.value = true;
+  await flushPromises();
   expect(wrapper.get('[data-testid="image-generation-progress"]').attributes('data-running')).toBe('false');
-  busy.value = false; view.stopping.value = false; view.cancelled.value = true;
-  view.latestRun.value = { status: 'cancelled', width: 768, height: 512 }; await flushPromises();
+  busy.value = false;
+  view.stopping.value = false;
+  view.cancelled.value = true;
+  view.latestRun.value = { status: 'cancelled', width: 768, height: 512 };
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.findAll('[data-testid="image-generated-result"]')).toHaveLength(1);
   expect(grid.element.firstElementChild?.getAttribute('data-testid')).toBe('image-cancelled-result');
@@ -333,10 +355,13 @@ it('keeps the animation canvas through live preview and caps the final image at 
   expect(wrapper.find('[data-testid="image-failure-diagnostics"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="image-previous-results"]').exists()).toBe(true);
   expect(wrapper.get('[data-testid="image-generated-result"] img').attributes('src')).toBe('blob:old');
-  start(); await flushPromises();
+  start();
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-cancelled-result"]').exists()).toBe(false);
-  view.failure.value = 'generation failed'; busy.value = false;
-  view.latestRun.value = { status: 'failed', failure: 'generation failed', width: 768, height: 512 }; await flushPromises();
+  view.failure.value = 'generation failed';
+  busy.value = false;
+  view.latestRun.value = { status: 'failed', failure: 'generation failed', width: 768, height: 512 };
+  await flushPromises();
   expect(wrapper.find('[data-testid="image-pending-result"]').exists()).toBe(false);
   expect(wrapper.find('[data-testid="image-failed-result"]').exists()).toBe(true);
 });
@@ -354,23 +379,34 @@ it('caps a small final image at its generated dimensions while preserving viewer
 
 it('edits the next history policy during generation or saving, while protecting restoration and unsupported storage', async () => {
   const view = useImageGeneration(), busy = ref(false), supported = ref(true), restoring = ref(false);
-  view.busy = computed(() => busy.value); view.historySaving.supported = computed(() => supported.value);
+  view.busy = computed(() => busy.value);
+  view.historySaving.supported = computed(() => supported.value);
   view.draftDisabled = computed(() => restoring.value);
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
   const toggle = wrapper.get<HTMLInputElement>('[data-testid="image-save-history"]');
-  await toggle.setValue(false); expect(view.historySaving.enabled.value).toBe(false);
-  busy.value = true; await flushPromises();
-  expect(toggle.element.disabled).toBe(false); expect(toggle.element.checked).toBe(false);
-  expect(wrapper.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
-  await toggle.setValue(true); expect(view.historySaving.enabled.value).toBe(true);
-  busy.value = false; await flushPromises();
+  await toggle.setValue(false);
+  expect(view.historySaving.enabled.value).toBe(false);
+  busy.value = true;
+  await flushPromises();
   expect(toggle.element.disabled).toBe(false);
-  view.historySaving.status.value = 'saving'; await flushPromises();
+  expect(toggle.element.checked).toBe(false);
+  expect(wrapper.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
+  await toggle.setValue(true);
+  expect(view.historySaving.enabled.value).toBe(true);
+  busy.value = false;
+  await flushPromises();
+  expect(toggle.element.disabled).toBe(false);
+  view.historySaving.status.value = 'saving';
+  await flushPromises();
   expect(toggle.element.disabled).toBe(false);
   expect(wrapper.get('[data-testid="image-history-next-generation"]').text()).toContain('next generation');
-  restoring.value = true; await flushPromises(); expect(toggle.element.disabled).toBe(true);
+  restoring.value = true;
+  await flushPromises();
+  expect(toggle.element.disabled).toBe(true);
   restoring.value = false;
-  supported.value = false; await flushPromises(); expect(toggle.element.disabled).toBe(true);
+  supported.value = false;
+  await flushPromises();
+  expect(toggle.element.disabled).toBe(true);
 });
 
 it('opens diagnostics inside the workspace execution disclosure without changing the legacy full view default', async () => {

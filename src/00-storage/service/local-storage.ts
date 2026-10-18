@@ -56,8 +56,11 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
-    if (registry === undefined) localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
-    else localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));
+    if (registry === undefined) {
+      localStorage.removeItem(KEY_NAIDAN_RPC_REGISTRY);
+    } else {
+      localStorage.setItem(KEY_NAIDAN_RPC_REGISTRY, JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry)));
+    }
   }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
@@ -84,7 +87,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
   private loadUnhydratedChatContent({ id }: { id: ChatId }): ChatContent | null {
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
-    if (rawContent === null) return null;
+    if (rawContent === null) {
+      return null;
+    }
 
     // A stored but unreadable record must not become a new, empty conversation
     // when a caller performs a read-update-write operation.
@@ -105,7 +110,9 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_META_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) metas.push(ChatMetaSchemaDto.parse(JSON.parse(raw)));
+        if (raw) {
+          metas.push(ChatMetaSchemaDto.parse(JSON.parse(raw)));
+        }
       }
     }
     return metas;
@@ -117,7 +124,9 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_GROUP_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) groups.push(ChatGroupSchemaDto.parse(JSON.parse(raw)));
+        if (raw) {
+          groups.push(ChatGroupSchemaDto.parse(JSON.parse(raw)));
+        }
       }
     }
     return groups;
@@ -127,7 +136,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
     const raw = localStorage.getItem(KEY_HIERARCHY);
-    if (!raw) return { items: [] };
+    if (!raw) {
+      return { items: [] };
+    }
     return HierarchySchemaDto.parse(JSON.parse(raw));
   }
 
@@ -148,7 +159,9 @@ export class LocalStorageProvider extends IStorageProvider {
       const att = part.attachment;
       switch (att.status) {
       case 'memory':
-        if (att.blob) this.blobCache.set(att.id, att.blob);
+        if (att.blob) {
+          this.blobCache.set(att.id, att.blob);
+        }
         break;
       case 'persisted':
       case 'missing':
@@ -170,14 +183,18 @@ export class LocalStorageProvider extends IStorageProvider {
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
     const meta = rawMeta === null ? null : ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
     const content = rawContent === null ? null : ChatContentSchemaDto.parse(JSON.parse(rawContent));
-    if (meta === null || content === null) return null;
+    if (meta === null || content === null) {
+      return null;
+    }
     const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
     // Resolve groupId from hierarchy
     const hierarchy = await this.loadHierarchy();
     if (hierarchy) {
       const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) chat.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        chat.groupId = toChatGroupId({ raw: group.id });
+      }
     }
 
     this.restoreBlobs({ nodes: chat.root.items });
@@ -187,20 +204,26 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
-    if (rawMeta === null) return null;
+    if (rawMeta === null) {
+      return null;
+    }
     const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
     // Resolve groupId from hierarchy
     const hierarchy = await this.loadHierarchy();
     if (hierarchy) {
       const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) meta.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        meta.groupId = toChatGroupId({ raw: group.id });
+      }
     }
     return meta;
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     const content = this.loadUnhydratedChatContent({ id });
-    if (content === null) return null;
+    if (content === null) {
+      return null;
+    }
 
     this.restoreBlobs({ nodes: content.root.items });
     return content;
@@ -223,7 +246,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
     const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     try {
       const { hierarchy, allMetas } = await promiseAllKeyed({
         hierarchy: this.loadHierarchy(),
@@ -262,7 +287,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadSettings(): Promise<Settings | null> {
     const raw = localStorage.getItem(KEY_SETTINGS);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     try {
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
     } catch (error) {
@@ -353,7 +380,9 @@ export class LocalStorageProvider extends IStorageProvider {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith(LSP_STORAGE_PREFIX)) keysToRemove.push(key);
+      if (key?.startsWith(LSP_STORAGE_PREFIX)) {
+        keysToRemove.push(key);
+      }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
     this.blobCache.clear();
@@ -376,7 +405,9 @@ export class LocalStorageProvider extends IStorageProvider {
     const contentStream = async function* (this: LocalStorageProvider) {
       for (const m of rawMetas) {
         const chat = await this.loadChat({ id: toChatId({ raw: m.id }) });
-        if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
+        if (chat) {
+          yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
+        }
       }
     };
 
@@ -401,13 +432,21 @@ export class LocalStorageProvider extends IStorageProvider {
     const { structure, contentStream } = snapshot;
 
     // 1. Restore Structural Metadata (skeleton)
-    if (structure.settings) await this.saveSettings({ settings: structure.settings });
-    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    if (structure.settings) {
+      await this.saveSettings({ settings: structure.settings });
+    }
+    if (structure.hierarchy) {
+      await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    }
     if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
+      for (const meta of structure.chatMetas) {
+        await this.saveChatMeta({ meta });
+      }
     }
     if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
+      for (const group of structure.chatGroups) {
+        await this.saveChatGroup({ chatGroup: group });
+      }
     }
 
     // 2. Restore Heavy Content (trees)

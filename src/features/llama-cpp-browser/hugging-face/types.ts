@@ -23,7 +23,9 @@ export class DownloadConflictError extends Error {
   readonly reason: DownloadConflict;
 
   constructor({ reason }: { reason: DownloadConflict }) {
-    super('Model download conflicts with existing data'); this.name = 'DownloadConflictError'; this.reason = reason;
+    super('Model download conflicts with existing data');
+    this.name = 'DownloadConflictError';
+    this.reason = reason;
   }
 }
 export const progressSchema = z.object({ phase: z.enum(['transferring', 'verifying']), currentFileIndex: z.number().int().nonnegative().optional(), processed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), completed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();

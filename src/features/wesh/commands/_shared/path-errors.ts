@@ -61,14 +61,22 @@ export function getPathErrorReason({
     return 'Not a directory';
   }
   if (error instanceof DOMException) {
-    if (error.name === 'NotFoundError') return 'No such file or directory';
-    if (error.name === 'TypeMismatchError') return 'Not a directory';
+    if (error.name === 'NotFoundError') {
+      return 'No such file or directory';
+    }
+    if (error.name === 'TypeMismatchError') {
+      return 'Not a directory';
+    }
   }
   if (!(error instanceof Error)) {
     return undefined;
   }
-  if (error.name === 'NotFoundError') return 'No such file or directory';
-  if (error.name === 'TypeMismatchError') return 'Not a directory';
+  if (error.name === 'NotFoundError') {
+    return 'No such file or directory';
+  }
+  if (error.name === 'TypeMismatchError') {
+    return 'Not a directory';
+  }
   if (
     error.message === 'No such file or directory'
     || error.message.startsWith('No such file or directory:')

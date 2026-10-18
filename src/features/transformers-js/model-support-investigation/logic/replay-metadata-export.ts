@@ -10,14 +10,18 @@ export async function addReplayMetadataToEvidenceFiles({ files, summary, sidecar
   sidecars: InvestigationReplayMetadataSidecar[] | undefined,
 }): Promise<void> {
   if (summary === undefined) {
-    if ((sidecars?.length ?? 0) > 0) throw new Error('Replay metadata sidecars require an identity summary');
+    if ((sidecars?.length ?? 0) > 0) {
+      throw new Error('Replay metadata sidecars require an identity summary');
+    }
     return;
   }
   const validated = replayMetadataSummarySchema.parse(summary);
   const attachments = replayMetadataSidecarsSchema.parse(sidecars ?? []);
   const paths = new Set<string>();
   for (const attachment of attachments) {
-    if (paths.has(attachment.path)) throw new Error('Duplicate replay metadata sidecar');
+    if (paths.has(attachment.path)) {
+      throw new Error('Duplicate replay metadata sidecar');
+    }
     paths.add(attachment.path);
     const file = validated.files.find(item => item.path === attachment.path && item.status === 'collected');
     if (file === undefined || attachment.blob.size !== file.byteLength || attachment.blob.size > REPLAY_METADATA_FILE_BYTES) {
@@ -25,7 +29,9 @@ export async function addReplayMetadataToEvidenceFiles({ files, summary, sidecar
     }
     const bytes = new Uint8Array(await attachment.blob.arrayBuffer());
     validateReplayMetadataContent({ path: attachment.path, bytes });
-    if (await replayMetadataSha256({ bytes }) !== file.sha256) throw new Error('Replay metadata sidecar hash mismatch');
+    if (await replayMetadataSha256({ bytes }) !== file.sha256) {
+      throw new Error('Replay metadata sidecar hash mismatch');
+    }
     setEvidenceFile({ files, path: `replay-metadata/files/${attachment.path}`, content: bytes });
   }
   setEvidenceFile({

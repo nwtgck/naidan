@@ -209,7 +209,9 @@ function createRetryHarness(): Readonly<{
     }
 
     delete(url: string): boolean {
-      if (deleted.has(url)) return false;
+      if (deleted.has(url)) {
+        return false;
+      }
       deleted.add(url);
       deletedUrls.push(url);
       return true;

@@ -69,7 +69,9 @@ function metadataWithNumberOrigin({
   metadata: JqRuntimeInputMetadata,
   numberOrigin: JqNumberOrigin | undefined,
 }): JqRuntimeInputMetadata {
-  if (metadata.numberOrigin === numberOrigin) return metadata;
+  if (metadata.numberOrigin === numberOrigin) {
+    return metadata;
+  }
   const { numberOrigin: _previousNumberOrigin, ...sourceMetadata } = metadata;
   return numberOrigin === undefined
     ? sourceMetadata
@@ -253,7 +255,9 @@ export function constrainInputRequest({
   maximumValues: number,
 }): Extract<JqRuntimeResult, { ok: false }> {
   const requested = result.inputRequest;
-  if (requested === undefined) return result;
+  if (requested === undefined) {
+    return result;
+  }
   return {
     ...result,
     inputRequest: {
@@ -280,7 +284,9 @@ function takeRuntimeInputs({
     && (maximumValues === undefined || outputs.length < maximumValues)
   ) {
     const entry = context.inputState.entries[context.inputState.index];
-    if (entry === undefined) break;
+    if (entry === undefined) {
+      break;
+    }
     context.inputState.index += 1;
     context.inputState.currentMetadata = {
       filename: entry.filename,
@@ -347,8 +353,12 @@ function jqValueTypeName({
 }: {
   value: JsonValue,
 }): 'array' | 'boolean' | 'null' | 'number' | 'object' | 'string' {
-  if (value === null) return 'null';
-  if (Array.isArray(value)) return 'array';
+  if (value === null) {
+    return 'null';
+  }
+  if (Array.isArray(value)) {
+    return 'array';
+  }
   switch (typeof value) {
   case 'boolean':
     return 'boolean';
@@ -516,7 +526,9 @@ function recursiveMerge({
     const entry = frame.rightEntries[frame.nextEntryIndex];
     if (entry === undefined) {
       stack.pop();
-      if (frame.parent === undefined) return frame.merged;
+      if (frame.parent === undefined) {
+        return frame.merged;
+      }
       defineJsonProperty({
         object: frame.parent.merged,
         key: frame.parent.key,
@@ -585,8 +597,12 @@ function evaluateBinaryPair({
   case 'ge':
     return { ok: true, value: compareJsonValues({ left, right, leftOrigin, rightOrigin }) >= 0 };
   case 'add': {
-    if (left === null) return { ok: true, value: right, ...(rightOrigin === undefined ? {} : { numberOrigin: rightOrigin }) };
-    if (right === null) return { ok: true, value: left, ...(leftOrigin === undefined ? {} : { numberOrigin: leftOrigin }) };
+    if (left === null) {
+      return { ok: true, value: right, ...(rightOrigin === undefined ? {} : { numberOrigin: rightOrigin }) };
+    }
+    if (right === null) {
+      return { ok: true, value: left, ...(leftOrigin === undefined ? {} : { numberOrigin: leftOrigin }) };
+    }
     if (typeof left === 'number' && typeof right === 'number') {
       return {
         ok: true,
@@ -635,7 +651,9 @@ function evaluateBinaryPair({
           leftOrigin: itemOrigin,
           rightOrigin: getJsonChildNumberOrigin({ container: right, key: rightIndex }),
         }));
-        if (excluded) continue;
+        if (excluded) {
+          continue;
+        }
         const targetIndex = value.length;
         value.push(item);
         setJsonChildNumberOrigin({ container: value, key: targetIndex, origin: itemOrigin });
@@ -655,8 +673,12 @@ function evaluateBinaryPair({
     }
     if (typeof left === 'string' && typeof right === 'number') {
       const count = Math.trunc(right);
-      if (count < 0) return { ok: true, value: null };
-      if (left.length === 0 || count === 0) return { ok: true, value: '' };
+      if (count < 0) {
+        return { ok: true, value: null };
+      }
+      if (left.length === 0 || count === 0) {
+        return { ok: true, value: '' };
+      }
       if (!Number.isFinite(count) || count > Math.floor(JQ_MAX_MATERIALIZED_VALUE_LENGTH / left.length)) {
         return runtimeError({
           message: `string multiplication exceeds materialization limit ${JQ_MAX_MATERIALIZED_VALUE_LENGTH}`,
@@ -667,8 +689,12 @@ function evaluateBinaryPair({
     }
     if (typeof right === 'string' && typeof left === 'number') {
       const count = Math.trunc(left);
-      if (count < 0) return { ok: true, value: null };
-      if (right.length === 0 || count === 0) return { ok: true, value: '' };
+      if (count < 0) {
+        return { ok: true, value: null };
+      }
+      if (right.length === 0 || count === 0) {
+        return { ok: true, value: '' };
+      }
       if (!Number.isFinite(count) || count > Math.floor(JQ_MAX_MATERIALIZED_VALUE_LENGTH / right.length)) {
         return runtimeError({
           message: `string multiplication exceeds materialization limit ${JQ_MAX_MATERIALIZED_VALUE_LENGTH}`,
@@ -684,7 +710,9 @@ function evaluateBinaryPair({
   }
   case 'div': {
     if (typeof left === 'number' && typeof right === 'number') {
-      if (right === 0) return runtimeError({ message: formatJqArithmeticError({ operator: 'div', left, right, leftOrigin, rightOrigin }), value: undefined });
+      if (right === 0) {
+        return runtimeError({ message: formatJqArithmeticError({ operator: 'div', left, right, leftOrigin, rightOrigin }), value: undefined });
+      }
       return {
         ok: true,
         value: normalizeJqArithmeticResult({
@@ -700,7 +728,9 @@ function evaluateBinaryPair({
   case 'mod':
     if (typeof left === 'number' && typeof right === 'number') {
       const integerRight = Math.trunc(right);
-      if (integerRight === 0) return runtimeError({ message: formatJqArithmeticError({ operator: 'mod', left, right, leftOrigin, rightOrigin }), value: undefined });
+      if (integerRight === 0) {
+        return runtimeError({ message: formatJqArithmeticError({ operator: 'mod', left, right, leftOrigin, rightOrigin }), value: undefined });
+      }
       const remainder = Math.trunc(left) % integerRight;
       return { ok: true, value: Object.is(remainder, -0) ? 0 : remainder };
     }
@@ -804,7 +834,9 @@ function checkRequiredLeftSpineDepth({
       }
       }
     })();
-    if (left === undefined) return { ok: true };
+    if (left === undefined) {
+      return { ok: true };
+    }
     additionalDepth += 1;
     if (context.depth + additionalDepth > context.limits.maxDepth) {
       return runtimeError({ message: 'maximum jq evaluation depth exceeded', value: undefined });
@@ -835,8 +867,12 @@ function appendJqValues({
   source: readonly JsonValue[],
   maximum: number,
 }): boolean {
-  if (source.length > maximum - target.length) return false;
-  for (const value of source) target.push(value);
+  if (source.length > maximum - target.length) {
+    return false;
+  }
+  for (const value of source) {
+    target.push(value);
+  }
   return true;
 }
 
@@ -903,7 +939,9 @@ export function evaluateJqFilter({
   const resultWithStderr: JqRuntimeResult = state.stderr.length === 0
     ? result
     : { ...result, stderr: [...state.stderr] };
-  if (inputState !== undefined || resultWithStderr.outputMetadata === undefined) return resultWithStderr;
+  if (inputState !== undefined || resultWithStderr.outputMetadata === undefined) {
+    return resultWithStderr;
+  }
   const { outputMetadata: _discardedOutputMetadata, ...publicResult } = resultWithStderr;
   return publicResult;
 }
@@ -962,8 +1000,12 @@ function jqCountValue({
       value: undefined,
     });
   }
-  if (value === 0) return { ok: true, value: 0 };
-  if (!Number.isFinite(value)) return { ok: true, value: Number.POSITIVE_INFINITY };
+  if (value === 0) {
+    return { ok: true, value: 0 };
+  }
+  if (!Number.isFinite(value)) {
+    return { ok: true, value: Number.POSITIVE_INFINITY };
+  }
   return { ok: true, value: Math.ceil(value) };
 }
 
@@ -989,9 +1031,13 @@ function visitJqCountedGeneratorOutputs({
     context: nestedContext,
     consume: ({ value: rawCount }) => {
       const parsed = jqCountValue({ value: rawCount, name });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       const count = parsed.value;
-      if (name === 'limit' && count === 0) return { ok: true, stopped: false };
+      if (name === 'limit' && count === 0) {
+        return { ok: true, stopped: false };
+      }
 
       let generatedIndex = 0;
       let outerStopped = false;
@@ -1005,7 +1051,9 @@ function visitJqCountedGeneratorOutputs({
             return { ok: true, stopped: false };
           }
           const visited = consume({ value, metadata });
-          if (!visited.ok) return visited;
+          if (!visited.ok) {
+            return visited;
+          }
           if (visited.stopped) {
             outerStopped = true;
             return visited;
@@ -1017,7 +1065,9 @@ function visitJqCountedGeneratorOutputs({
           };
         },
       });
-      if (!generated.ok) return generated;
+      if (!generated.ok) {
+        return generated;
+      }
       return { ok: true, stopped: outerStopped };
     },
   });
@@ -1118,7 +1168,9 @@ function jqIterativeBranchYieldsAtMostOneOutput({
 }: {
   filter: JqFilter,
 }): boolean {
-  if (jqFilterYieldsAtMostOneOutput({ filter })) return true;
+  if (jqFilterYieldsAtMostOneOutput({ filter })) {
+    return true;
+  }
   switch (filter.kind) {
   case 'array':
     return true;
@@ -1164,11 +1216,15 @@ function jqIterativeBranchYieldsAtMostOneOutput({
     return jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.left })
       && jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.right });
   case 'call':
-    if (filter.name === 'error' && filter.args.length <= 1) return true;
+    if (filter.name === 'error' && filter.args.length <= 1) {
+      return true;
+    }
     if (filter.args.length === 0) {
       return JQ_ITERATIVE_SINGLE_OUTPUT_ZERO_ARGUMENT_BUILTINS.has(filter.name);
     }
-    if (filter.name === 'first' && filter.args.length === 1) return true;
+    if (filter.name === 'first' && filter.args.length === 1) {
+      return true;
+    }
     if (filter.name === 'split' && filter.args.length === 1 && filter.args[0] !== undefined) {
       return jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.args[0] });
     }
@@ -1206,17 +1262,23 @@ function jqAtomicCommaBranches({
   const branches: JqFilter[] = [];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current === undefined) break;
+    if (current === undefined) {
+      break;
+    }
     switch (current.kind) {
     case 'comma':
       pending.push(current.right, current.left);
       continue;
     default:
-      if (!jqIterativeBranchYieldsAtMostOneOutput({ filter: current })) return undefined;
+      if (!jqIterativeBranchYieldsAtMostOneOutput({ filter: current })) {
+        return undefined;
+      }
       branches.push(current);
       break;
     }
-    if (branches.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH) return undefined;
+    if (branches.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH) {
+      return undefined;
+    }
   }
   return branches;
 }
@@ -1308,10 +1370,14 @@ function jqFilterMayBreakLabel({
   const pending: JqFilter[] = [filter];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current === undefined) break;
+    if (current === undefined) {
+      break;
+    }
     switch (current.kind) {
     case 'break':
-      if (current.id === labelId) return true;
+      if (current.id === labelId) {
+        return true;
+      }
       break;
     case 'identity':
     case 'variable':
@@ -1320,7 +1386,9 @@ function jqFilterMayBreakLabel({
     case 'string':
       for (const part of current.parts) {
         const interpolationFilter = jqStringInterpolationFilter({ part });
-        if (interpolationFilter !== undefined) pending.push(interpolationFilter);
+        if (interpolationFilter !== undefined) {
+          pending.push(interpolationFilter);
+        }
       }
       break;
     case 'array':
@@ -1329,7 +1397,9 @@ function jqFilterMayBreakLabel({
     case 'object':
       for (const entry of current.entries) {
         const keyFilter = jqObjectKeyFilter({ key: entry.key });
-        if (keyFilter !== undefined) pending.push(keyFilter);
+        if (keyFilter !== undefined) {
+          pending.push(keyFilter);
+        }
         pending.push(entry.value);
       }
       break;
@@ -1344,8 +1414,12 @@ function jqFilterMayBreakLabel({
       break;
     case 'slice':
       pending.push(current.input);
-      if (current.start !== undefined) pending.push(current.start);
-      if (current.end !== undefined) pending.push(current.end);
+      if (current.start !== undefined) {
+        pending.push(current.start);
+      }
+      if (current.end !== undefined) {
+        pending.push(current.end);
+      }
       break;
     case 'optional':
       pending.push(current.body);
@@ -1399,12 +1473,16 @@ function jqSingleOutputCommaBranches({
   filter: JqFilter,
 }): readonly JqFilter[] | undefined {
   const direct = jqAtomicCommaBranches({ filter });
-  if (direct !== undefined) return direct;
+  if (direct !== undefined) {
+    return direct;
+  }
 
   switch (filter.kind) {
   case 'comma': {
     const leftBranches = jqSingleOutputCommaBranches({ filter: filter.left });
-    if (leftBranches === undefined) return undefined;
+    if (leftBranches === undefined) {
+      return undefined;
+    }
     const rightBranches = jqSingleOutputCommaBranches({ filter: filter.right });
     if (rightBranches === undefined
       || leftBranches.length > JQ_MAX_MATERIALIZED_VALUE_LENGTH - rightBranches.length) {
@@ -1423,7 +1501,9 @@ function jqSingleOutputCommaBranches({
   case 'binary': {
     if (jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.left })) {
       const rightBranches = jqSingleOutputCommaBranches({ filter: filter.right });
-      if (rightBranches !== undefined) return rightBranches.map(right => ({ ...filter, right }));
+      if (rightBranches !== undefined) {
+        return rightBranches.map(right => ({ ...filter, right }));
+      }
     }
     const pairwiseOperator = filter.operator === 'eq'
       || filter.operator === 'ne'
@@ -1437,7 +1517,9 @@ function jqSingleOutputCommaBranches({
       || filter.operator === 'div'
       || filter.operator === 'mod';
     const replaySafeRight = filter.right.kind === 'literal' || filter.right.kind === 'variable';
-    if (!pairwiseOperator || !replaySafeRight) return undefined;
+    if (!pairwiseOperator || !replaySafeRight) {
+      return undefined;
+    }
     const leftBranches = jqSingleOutputCommaBranches({ filter: filter.left });
     return leftBranches?.map(left => ({ ...filter, left }));
   }
@@ -1449,7 +1531,9 @@ function jqSingleOutputCommaBranches({
     return predicateBranches?.map(predicate => ({ ...filter, args: [predicate] }));
   }
   case 'pipe': {
-    if (!jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.right })) return undefined;
+    if (!jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.right })) {
+      return undefined;
+    }
     const leftBranches = jqSingleOutputCommaBranches({ filter: filter.left });
     return leftBranches?.map(left => ({ kind: 'pipe', left, right: filter.right }));
   }
@@ -1463,7 +1547,9 @@ function jqSingleOutputCommaBranches({
         body: filter.body,
       }));
     }
-    if (!jqIterativeReplaySafeSingleOutput({ filter: filter.binding })) return undefined;
+    if (!jqIterativeReplaySafeSingleOutput({ filter: filter.binding })) {
+      return undefined;
+    }
     const bodyBranches = jqSingleOutputCommaBranches({ filter: filter.body });
     return bodyBranches?.map(body => ({
       kind: 'bind',
@@ -1489,14 +1575,24 @@ function jqSingleOutputCommaBranches({
     let streamEntryIndex = -1;
     for (let index = 0; index < filter.entries.length; index += 1) {
       const entry = filter.entries[index]!;
-      if (!jqIterativeReplaySafeObjectKey({ key: entry.key })) return undefined;
-      if (jqIterativeBranchYieldsAtMostOneOutput({ filter: entry.value })) continue;
-      if (streamEntryIndex !== -1) return undefined;
+      if (!jqIterativeReplaySafeObjectKey({ key: entry.key })) {
+        return undefined;
+      }
+      if (jqIterativeBranchYieldsAtMostOneOutput({ filter: entry.value })) {
+        continue;
+      }
+      if (streamEntryIndex !== -1) {
+        return undefined;
+      }
       streamEntryIndex = index;
     }
-    if (streamEntryIndex < 0) return undefined;
+    if (streamEntryIndex < 0) {
+      return undefined;
+    }
     for (let index = 0; index < streamEntryIndex; index += 1) {
-      if (!jqIterativeReplaySafeSingleOutput({ filter: filter.entries[index]!.value })) return undefined;
+      if (!jqIterativeReplaySafeSingleOutput({ filter: filter.entries[index]!.value })) {
+        return undefined;
+      }
     }
     const streamEntry = filter.entries[streamEntryIndex]!;
     const valueBranches = jqSingleOutputCommaBranches({ filter: streamEntry.value });
@@ -1518,11 +1614,17 @@ function jqSingleOutputCommaBranches({
     const [streamInterpolationIndex] = streamInterpolationIndexes;
     if (streamInterpolationIndexes.length === 1 && streamInterpolationIndex !== undefined) {
       for (const interpolationIndex of interpolationIndexes) {
-        if (interpolationIndex === streamInterpolationIndex) continue;
+        if (interpolationIndex === streamInterpolationIndex) {
+          continue;
+        }
         const interpolationFilter = jqStringInterpolationFilter({ part: filter.parts[interpolationIndex]! });
-        if (interpolationFilter === undefined) return undefined;
+        if (interpolationFilter === undefined) {
+          return undefined;
+        }
         if (interpolationIndex > streamInterpolationIndex) {
-          if (!jqIterativeReplaySafeSingleOutput({ filter: interpolationFilter })) return undefined;
+          if (!jqIterativeReplaySafeSingleOutput({ filter: interpolationFilter })) {
+            return undefined;
+          }
         } else if (!jqIterativeBranchYieldsAtMostOneOutput({ filter: interpolationFilter })) {
           return undefined;
         }
@@ -1530,7 +1632,9 @@ function jqSingleOutputCommaBranches({
       const interpolationFilter = jqStringInterpolationFilter({
         part: filter.parts[streamInterpolationIndex]!,
       });
-      if (interpolationFilter === undefined) return undefined;
+      if (interpolationFilter === undefined) {
+        return undefined;
+      }
       const interpolationBranches = jqSingleOutputCommaBranches({ filter: interpolationFilter });
       return interpolationBranches?.map(branch => ({
         kind: 'string',
@@ -1539,12 +1643,16 @@ function jqSingleOutputCommaBranches({
           : part),
       }));
     }
-    if (streamInterpolationIndexes.length < 2) return undefined;
+    if (streamInterpolationIndexes.length < 2) {
+      return undefined;
+    }
     let variants: JqStringPart[][] = [filter.parts.map(part => ({ ...part }))];
     for (let position = interpolationIndexes.length - 1; position >= 0; position -= 1) {
       const interpolationIndex = interpolationIndexes[position]!;
       const interpolationFilter = jqStringInterpolationFilter({ part: filter.parts[interpolationIndex]! });
-      if (interpolationFilter === undefined) return undefined;
+      if (interpolationFilter === undefined) {
+        return undefined;
+      }
       const branches = jqSingleOutputCommaBranches({ filter: interpolationFilter })
         ?? (jqIterativeBranchYieldsAtMostOneOutput({ filter: interpolationFilter })
           ? [interpolationFilter]
@@ -1590,10 +1698,14 @@ function jqIterativeRangeArgumentBranchSafe({
 }: {
   filter: JqFilter,
 }): boolean {
-  if (jqIterativeReplaySafeSingleOutput({ filter })) return true;
+  if (jqIterativeReplaySafeSingleOutput({ filter })) {
+    return true;
+  }
   switch (filter.kind) {
   case 'call':
-    if (filter.name === 'empty' && filter.args.length === 0) return true;
+    if (filter.name === 'empty' && filter.args.length === 0) {
+      return true;
+    }
     return filter.name === 'error'
       && (filter.args.length === 0
         || (filter.args.length === 1
@@ -1640,7 +1752,9 @@ function jqIterativeRangeArgumentBranchSingleOutput({
 }: {
   filter: JqFilter,
 }): boolean {
-  if (jqIterativeRangeArgumentBranchSafe({ filter })) return true;
+  if (jqIterativeRangeArgumentBranchSafe({ filter })) {
+    return true;
+  }
   return filter.kind === 'call' && filter.name === 'input' && filter.args.length === 0;
 }
 
@@ -1650,13 +1764,17 @@ function jqIterativeRangeArgumentBranches({
   filter: JqFilter,
 }): readonly JqFilter[] | undefined {
   const reusable = jqSingleOutputCommaBranches({ filter });
-  if (reusable !== undefined) return reusable;
+  if (reusable !== undefined) {
+    return reusable;
+  }
 
   const pending: JqFilter[] = [filter];
   const branches: JqFilter[] = [];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current === undefined) break;
+    if (current === undefined) {
+      break;
+    }
     switch (current.kind) {
     case 'comma':
       pending.push(current.right, current.left);
@@ -1689,7 +1807,9 @@ function jqIterativeRangeArgumentBranches({
     case 'foreach':
     case 'assign':
     case 'update':
-      if (!jqIterativeRangeArgumentBranchSingleOutput({ filter: current })) return undefined;
+      if (!jqIterativeRangeArgumentBranchSingleOutput({ filter: current })) {
+        return undefined;
+      }
       branches.push(current);
       break;
     default: {
@@ -1716,7 +1836,9 @@ function jqIterativeRangePlan({
     || filter.name !== 'range'
     || filter.args.length < 1
     || filter.args.length > 3
-  ) return undefined;
+  ) {
+    return undefined;
+  }
   if (filter.args.every(argument => jqFilterYieldsAtMostOneOutput({ filter: argument }))) {
     return {
       filter,
@@ -1727,7 +1849,9 @@ function jqIterativeRangePlan({
   const argumentBranches: JqFilter[][] = [];
   for (const argument of filter.args) {
     const branches = jqIterativeRangeArgumentBranches({ filter: argument });
-    if (branches === undefined || branches.length === 0) return undefined;
+    if (branches === undefined || branches.length === 0) {
+      return undefined;
+    }
     argumentBranches.push([...branches]);
   }
   return { filter, argumentBranches };
@@ -1766,7 +1890,9 @@ function jqSmallLiteralRangeOutputCount({
 }: {
   filter: Extract<JqFilter, { kind: 'call' }>,
 }): number | undefined {
-  if (filter.name !== 'range' || filter.args.length === 0 || filter.args.length > 3) return undefined;
+  if (filter.name !== 'range' || filter.args.length === 0 || filter.args.length > 3) {
+    return undefined;
+  }
   const numericArgs: number[] = [];
   for (const argument of filter.args) {
     if (argument.kind !== 'literal' || typeof argument.value !== 'number' || !Number.isFinite(argument.value)) {
@@ -1782,7 +1908,9 @@ function jqSmallLiteralRangeOutputCount({
     default: return [0, 0, 0] as const;
     }
   })();
-  if (step === 0 || (step > 0 ? start >= end : start <= end)) return 0;
+  if (step === 0 || (step > 0 ? start >= end : start <= end)) {
+    return 0;
+  }
   const estimated = Math.ceil(Math.abs((end - start) / step));
   return Number.isFinite(estimated) && estimated <= JQ_MAX_ITERATIVE_LITERAL_RANGE_OUTPUTS
     ? estimated
@@ -1809,7 +1937,9 @@ function jqIterativeCommaBranchPlan({
       : undefined;
   case 'label': {
     const bodyPlan = jqIterativeCommaBranchPlan({ filter: filter.body });
-    if (bodyPlan === undefined || bodyPlan.suppressBreakLabelId !== undefined) return undefined;
+    if (bodyPlan === undefined || bodyPlan.suppressBreakLabelId !== undefined) {
+      return undefined;
+    }
     return {
       branches: bodyPlan.branches,
       suppressFailure: bodyPlan.suppressFailure,
@@ -1827,7 +1957,9 @@ function jqIterativeCommaBranchPlan({
       };
   }
   case 'trycatch': {
-    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) return undefined;
+    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) {
+      return undefined;
+    }
     const bodyPlan = jqIterativeCommaBranchPlan({ filter: filter.body });
     return bodyPlan === undefined
       ? undefined
@@ -1851,7 +1983,9 @@ function jqIterativeConditionAtomicBranches({
   const branches: JqFilter[] = [];
   while (pending.length > 0) {
     const current = pending.pop();
-    if (current === undefined) break;
+    if (current === undefined) {
+      break;
+    }
     switch (current.kind) {
     case 'comma':
       pending.push(current.right, current.left);
@@ -1860,7 +1994,9 @@ function jqIterativeConditionAtomicBranches({
       const directInput = current.kind === 'call'
         && current.name === 'input'
         && current.args.length === 0;
-      if (!directInput && !jqIterativeBranchYieldsAtMostOneOutput({ filter: current })) return undefined;
+      if (!directInput && !jqIterativeBranchYieldsAtMostOneOutput({ filter: current })) {
+        return undefined;
+      }
       branches.push(current);
       break;
     }
@@ -1881,7 +2017,9 @@ function jqIterativeConditionCommaBranchPlan({
   switch (filter.kind) {
   case 'label': {
     const bodyPlan = jqIterativeConditionCommaBranchPlan({ filter: filter.body });
-    if (bodyPlan === undefined || bodyPlan.suppressBreakLabelId !== undefined) return undefined;
+    if (bodyPlan === undefined || bodyPlan.suppressBreakLabelId !== undefined) {
+      return undefined;
+    }
     return {
       branches: bodyPlan.branches,
       suppressFailure: bodyPlan.suppressFailure,
@@ -1899,7 +2037,9 @@ function jqIterativeConditionCommaBranchPlan({
       };
   }
   case 'trycatch': {
-    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) return undefined;
+    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) {
+      return undefined;
+    }
     const bodyPlan = jqIterativeConditionCommaBranchPlan({ filter: filter.body });
     return bodyPlan === undefined
       ? undefined
@@ -1930,7 +2070,9 @@ function jqIterativeBindBodyPlan({
     const directInput = filter.binding.kind === 'call'
       && filter.binding.name === 'input'
       && filter.binding.args.length === 0;
-    if (!directInput && !jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.binding })) return undefined;
+    if (!directInput && !jqIterativeBranchYieldsAtMostOneOutput({ filter: filter.binding })) {
+      return undefined;
+    }
     const bodyPlan = jqIterativeCommaBranchPlan({ filter: filter.body });
     return bodyPlan === undefined
       ? undefined
@@ -1971,7 +2113,9 @@ function jqIterativeConditionBindPlan({
       };
   }
   case 'trycatch': {
-    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) return undefined;
+    if (!jqFilterIsStaticallyEmptyOutput({ filter: filter.catchBranch })) {
+      return undefined;
+    }
     const inner = jqIterativeConditionBindPlan({ filter: filter.body });
     return inner === undefined
       ? undefined
@@ -1987,7 +2131,9 @@ function jqIterativeConditionBindPlan({
       inner === undefined
       || inner.bodyPlan.suppressBreakLabelId !== undefined
       || inner.suppressBindingBreakLabelId !== undefined
-    ) return undefined;
+    ) {
+      return undefined;
+    }
     return {
       ...inner,
       bodyPlan: { ...inner.bodyPlan, suppressBreakLabelId: filter.id },
@@ -2008,7 +2154,9 @@ function jqIterativePlanSuppressesFailure({
   suppressBreakLabelId: number | undefined,
   result: Extract<JqRuntimeResult, { readonly ok: false }>,
 }): boolean {
-  if (result.inputRequest !== undefined || result.error.halt !== undefined) return false;
+  if (result.inputRequest !== undefined || result.error.halt !== undefined) {
+    return false;
+  }
   return suppressFailure
     || (suppressBreakLabelId !== undefined && result.error.breakLabelId === suppressBreakLabelId);
 }
@@ -2094,8 +2242,12 @@ function visitJqFilterOutputsWithContext({
       metadata,
       nestedContext,
     });
-    if (!evaluated.ok) return { ok: false, result: clearFailureOutputs({ result: evaluated }) };
-    if (evaluated.outputs.length === 0) return { ok: true, output: undefined };
+    if (!evaluated.ok) {
+      return { ok: false, result: clearFailureOutputs({ result: evaluated }) };
+    }
+    if (evaluated.outputs.length === 0) {
+      return { ok: true, output: undefined };
+    }
     if (evaluated.outputs.length !== 1) {
       return {
         ok: false,
@@ -2163,7 +2315,9 @@ function visitJqFilterOutputsWithContext({
           fallback: fallbackMetadata,
         }),
       });
-      if (!visited.ok || visited.stopped) return visited;
+      if (!visited.ok || visited.stopped) {
+        return visited;
+      }
     }
     return evaluated.ok
       ? { ok: true, stopped: false }
@@ -2171,7 +2325,9 @@ function visitJqFilterOutputsWithContext({
   };
 
   const structuralLimit = checkLimits({ context });
-  if (!structuralLimit.ok) return structuralLimit;
+  if (!structuralLimit.ok) {
+    return structuralLimit;
+  }
   const nestedContext: JqRuntimeContext = {
     ...context,
     depth: context.depth + 1,
@@ -2279,7 +2435,9 @@ function visitJqFilterOutputsWithContext({
         });
       }
       const part = filter.parts[partIndex];
-      if (part === undefined) throw new Error('jq string part index mismatch');
+      if (part === undefined) {
+        throw new Error('jq string part index mismatch');
+      }
       switch (part.kind) {
       case 'text':
         return visitParts({
@@ -2521,7 +2679,9 @@ function visitJqFilterOutputsWithContext({
                 value: child,
               }),
             });
-            if (!visited.ok || visited.stopped) return visited;
+            if (!visited.ok || visited.stopped) {
+              return visited;
+            }
           }
           return { ok: true, stopped: false };
         }
@@ -2536,7 +2696,9 @@ function visitJqFilterOutputsWithContext({
                 value: child,
               }),
             });
-            if (!visited.ok || visited.stopped) return visited;
+            if (!visited.ok || visited.stopped) {
+              return visited;
+            }
           }
           return { ok: true, stopped: false };
         }
@@ -2555,7 +2717,9 @@ function visitJqFilterOutputsWithContext({
         while (stack.length > 0) {
           const current = stack.pop()!;
           const visited = consume(current);
-          if (!visited.ok || visited.stopped) return visited;
+          if (!visited.ok || visited.stopped) {
+            return visited;
+          }
           if (Array.isArray(current.value)) {
             for (let index = current.value.length - 1; index >= 0; index -= 1) {
               const child = current.value[index]!;
@@ -2595,7 +2759,9 @@ function visitJqFilterOutputsWithContext({
       context: nestedContext,
       consume,
     });
-    if (!left.ok || left.stopped) return left;
+    if (!left.ok || left.stopped) {
+      return left;
+    }
     return visitJqFilterOutputsWithContext({
       filter: filter.right,
       input,
@@ -2622,7 +2788,9 @@ function visitJqFilterOutputsWithContext({
       context: nestedContext,
       consume,
     });
-    if (attempted.ok) return attempted;
+    if (attempted.ok) {
+      return attempted;
+    }
     if (attempted.inputRequest !== undefined || attempted.error.halt !== undefined) {
       return attempted;
     }
@@ -2635,7 +2803,9 @@ function visitJqFilterOutputsWithContext({
       context: nestedContext,
       consume,
     });
-    if (attempted.ok) return attempted;
+    if (attempted.ok) {
+      return attempted;
+    }
     if (attempted.inputRequest !== undefined || attempted.error.halt !== undefined) {
       return attempted;
     }
@@ -2737,12 +2907,16 @@ function visitJqFilterOutputsWithContext({
         input,
         context: nestedContext,
         consume: ({ value, metadata }) => {
-          if (!truthy({ value })) return { ok: true, stopped: false };
+          if (!truthy({ value })) {
+            return { ok: true, stopped: false };
+          }
           foundTruthy = true;
           return consume({ value, metadata });
         },
       });
-      if (!left.ok || left.stopped || foundTruthy) return left;
+      if (!left.ok || left.stopped || foundTruthy) {
+        return left;
+      }
       return visitJqFilterOutputsWithContext({
         filter: filter.right,
         input,
@@ -2775,7 +2949,9 @@ function visitJqFilterOutputsWithContext({
             leftOrigin: leftMetadata.numberOrigin,
             rightOrigin: rightMetadata.numberOrigin,
           });
-          if (!pair.ok) return pair;
+          if (!pair.ok) {
+            return pair;
+          }
           return consume({
             value: pair.value,
             metadata: metadataWithNumberOrigin({
@@ -2866,7 +3042,9 @@ function visitJqFilterOutputsWithContext({
             input: indexInput,
             context: assignmentNestedContext,
           });
-          if (evaluated.ok) return evaluated;
+          if (evaluated.ok) {
+            return evaluated;
+          }
           dynamicPathFailure = evaluated;
           return { ok: false, message: evaluated.error.message };
         },
@@ -2903,7 +3081,9 @@ function visitJqFilterOutputsWithContext({
                   : undefined,
               }),
             });
-            if (!assigned.ok) return runtimeError({ message: assigned.message, value: undefined });
+            if (!assigned.ok) {
+              return runtimeError({ message: assigned.message, value: undefined });
+            }
             assignedRoot = assigned.value;
             assignedRootOrigin = assigned.numberOrigin;
           }
@@ -2928,7 +3108,9 @@ function visitJqFilterOutputsWithContext({
       }
       }
     })();
-    if (compoundOperator === undefined) return visitEvaluated();
+    if (compoundOperator === undefined) {
+      return visitEvaluated();
+    }
     let dynamicPathFailure: Extract<JqRuntimeResult, { ok: false }> | undefined;
     const materialized = materializeJqPathExpression({
       root: input,
@@ -2939,7 +3121,9 @@ function visitJqFilterOutputsWithContext({
           input: indexInput,
           context: nestedContext,
         });
-        if (evaluated.ok) return evaluated;
+        if (evaluated.ok) {
+          return evaluated;
+        }
         dynamicPathFailure = evaluated;
         return { ok: false, message: evaluated.error.message };
       },
@@ -2958,8 +3142,12 @@ function visitJqFilterOutputsWithContext({
         let updatedRootOrigin = context.inputState.currentMetadata.numberOrigin;
         for (const path of materialized.paths) {
           const current = readJqPathValue({ root: updatedRoot, path });
-          if (!current.ok) return runtimeError({ message: current.message, value: undefined });
-          if (current.skipped) continue;
+          if (!current.ok) {
+            return runtimeError({ message: current.message, value: undefined });
+          }
+          if (current.skipped) {
+            continue;
+          }
           const pair = evaluateBinaryPair({
             operator: compoundOperator,
             left: current.value ?? null,
@@ -2967,7 +3155,9 @@ function visitJqFilterOutputsWithContext({
             leftOrigin: current.numberOrigin,
             rightOrigin: rightMetadata.numberOrigin,
           });
-          if (!pair.ok) return pair;
+          if (!pair.ok) {
+            return pair;
+          }
           const updated = applyPathUpdate({
             root: updatedRoot,
             path,
@@ -2977,7 +3167,9 @@ function visitJqFilterOutputsWithContext({
               numberOrigin: pair.numberOrigin,
             }),
           });
-          if (!updated.ok) return runtimeError({ message: updated.message, value: undefined });
+          if (!updated.ok) {
+            return runtimeError({ message: updated.message, value: undefined });
+          }
           updatedRoot = updated.value;
           updatedRootOrigin = updated.numberOrigin;
         }
@@ -3036,7 +3228,9 @@ function visitJqFilterOutputsWithContext({
             if (scopedContext.inputState.index === previousIndex) {
               scopedContext.inputState.currentMetadata = previousMetadata;
             }
-            if (!updated.ok) return clearFailureOutputs({ result: updated });
+            if (!updated.ok) {
+              return clearFailureOutputs({ result: updated });
+            }
             const lastUpdated = updated.outputs.at(-1) ?? null;
             const lastUpdatedMetadata = updated.outputs.length === 0
               ? metadataWithNumberOrigin({
@@ -3053,7 +3247,9 @@ function visitJqFilterOutputsWithContext({
             return { ok: true, stopped: false };
           },
         });
-        if (!generated.ok) return clearFailureOutputs({ result: generated });
+        if (!generated.ok) {
+          return clearFailureOutputs({ result: generated });
+        }
         return consume({ value: state, metadata: stateMetadata });
       },
     });
@@ -3071,7 +3267,9 @@ function visitJqFilterOutputsWithContext({
           metadata: initialMetadata,
           nestedContext,
           nestedConsume: ({ value: generatedValue, metadata: generatedMetadata }) => {
-            if (state === undefined) return { ok: true, stopped: false };
+            if (state === undefined) {
+              return { ok: true, stopped: false };
+            }
             const scopedContext: JqRuntimeContext = {
               ...nestedContext,
               variables: {
@@ -3103,7 +3301,9 @@ function visitJqFilterOutputsWithContext({
             if (scopedContext.inputState.index === previousIndex) {
               scopedContext.inputState.currentMetadata = previousMetadata;
             }
-            if (!updated.ok) return clearFailureOutputs({ result: updated });
+            if (!updated.ok) {
+              return clearFailureOutputs({ result: updated });
+            }
             let lastUpdatedMetadata: JqRuntimeInputMetadata | undefined;
             for (let updatedIndex = 0; updatedIndex < updated.outputs.length; updatedIndex += 1) {
               const updatedState = updated.outputs[updatedIndex]!;
@@ -3119,7 +3319,9 @@ function visitJqFilterOutputsWithContext({
                 metadata: updatedMetadata,
                 nestedContext: scopedContext,
               });
-              if (!extracted.ok || extracted.stopped) return extracted;
+              if (!extracted.ok || extracted.stopped) {
+                return extracted;
+              }
             }
             state = updated.outputs.at(-1);
             if (state !== undefined && lastUpdatedMetadata !== undefined) {
@@ -3180,8 +3382,11 @@ function visitJqFilterOutputsWithContext({
               const previous = evaluatedArguments.get(argumentFilter);
               evaluatedArguments.set(argumentFilter, { value, metadata });
               const visited = visitArgument({ index: index + 1 });
-              if (previous === undefined) evaluatedArguments.delete(argumentFilter);
-              else evaluatedArguments.set(argumentFilter, previous);
+              if (previous === undefined) {
+                evaluatedArguments.delete(argumentFilter);
+              } else {
+                evaluatedArguments.set(argumentFilter, previous);
+              }
               return visited;
             },
           });
@@ -3247,7 +3452,9 @@ function visitJqFilterOutputsWithContext({
               fallback: builtinInputMetadata,
             }),
           });
-          if (!visited.ok || visited.stopped) return visited;
+          if (!visited.ok || visited.stopped) {
+            return visited;
+          }
         }
         return evaluated.ok
           ? { ok: true, stopped: false }
@@ -3274,9 +3481,13 @@ function visitJqFilterOutputsWithContext({
     }
     case 'path': {
       const argument = filter.args[0];
-      if (filter.args.length !== 1 || argument === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || argument === undefined) {
+        return visitEvaluated();
+      }
       const pathExpression = extractPathExpression({ filter: argument });
-      if (pathExpression === undefined) return visitEvaluated();
+      if (pathExpression === undefined) {
+        return visitEvaluated();
+      }
 
       const requiresStreamingPathVisitor = (() => {
         const pending: JqPathExpression[] = [pathExpression];
@@ -3286,7 +3497,9 @@ function visitJqFilterOutputsWithContext({
           case 'path':
             break;
           case 'sequence':
-            for (const item of expression.items) pending.push(item);
+            for (const item of expression.items) {
+              pending.push(item);
+            }
             break;
           case 'append':
             pending.push(expression.parent);
@@ -3313,7 +3526,9 @@ function visitJqFilterOutputsWithContext({
             message: 'static jq path unexpectedly requested a dynamic index',
           }),
         });
-        if (!materialized.ok) return runtimeError({ message: materialized.message, value: undefined });
+        if (!materialized.ok) {
+          return runtimeError({ message: materialized.message, value: undefined });
+        }
         for (const path of materialized.paths) {
           const visited = consume({
             value: path.segments.map(segment => {
@@ -3334,7 +3549,9 @@ function visitJqFilterOutputsWithContext({
             }),
             metadata: nestedContext.inputState.currentMetadata,
           });
-          if (!visited.ok || visited.stopped) return visited;
+          if (!visited.ok || visited.stopped) {
+            return visited;
+          }
         }
         return { ok: true, stopped: false };
       }
@@ -3388,7 +3605,9 @@ function visitJqFilterOutputsWithContext({
         case 'sequence': {
           const visitItem = ({ index }: { index: number }): JqRuntimeOutputVisitResult => {
             const item = expression.items[index];
-            if (item === undefined) return { ok: true, stopped: false };
+            if (item === undefined) {
+              return { ok: true, stopped: false };
+            }
             const visited = visitPathExpression({ expression: item, pathConsume });
             return !visited.ok || visited.stopped
               ? visited
@@ -3409,15 +3628,21 @@ function visitJqFilterOutputsWithContext({
             expression: expression.parent,
             pathConsume: ({ path, metadata }) => {
               const parent = readJqPathValue({ root: input, path });
-              if (!parent.ok) return runtimeError({ message: parent.message, value: undefined });
-              if (parent.skipped) return { ok: true, stopped: false };
+              if (!parent.ok) {
+                return runtimeError({ message: parent.message, value: undefined });
+              }
+              if (parent.skipped) {
+                return { ok: true, stopped: false };
+              }
               if (Array.isArray(parent.value)) {
                 for (let index = 0; index < parent.value.length; index += 1) {
                   const visited = pathConsume({
                     path: appendSegment({ path, segment: { kind: 'index', index, optional: false } }),
                     metadata,
                   });
-                  if (!visited.ok || visited.stopped) return visited;
+                  if (!visited.ok || visited.stopped) {
+                    return visited;
+                  }
                 }
                 return { ok: true, stopped: false };
               }
@@ -3427,7 +3652,9 @@ function visitJqFilterOutputsWithContext({
                     path: appendSegment({ path, segment: { kind: 'field', key, optional: false } }),
                     metadata,
                   });
-                  if (!visited.ok || visited.stopped) return visited;
+                  if (!visited.ok || visited.stopped) {
+                    return visited;
+                  }
                 }
                 return { ok: true, stopped: false };
               }
@@ -3451,7 +3678,9 @@ function visitJqFilterOutputsWithContext({
               return { ok: true, stopped: false };
             },
           });
-          if (!parentVisit.ok || parentVisit.stopped) return parentVisit;
+          if (!parentVisit.ok || parentVisit.stopped) {
+            return parentVisit;
+          }
           return visitWithMetadata({
             filter: expression.index,
             input,
@@ -3460,8 +3689,12 @@ function visitJqFilterOutputsWithContext({
             nestedConsume: ({ value: indexValue, metadata }) => {
               for (const parentEntry of parents) {
                 const parent = readJqPathValue({ root: input, path: parentEntry.path });
-                if (!parent.ok) return runtimeError({ message: parent.message, value: undefined });
-                if (parent.skipped) continue;
+                if (!parent.ok) {
+                  return runtimeError({ message: parent.message, value: undefined });
+                }
+                if (parent.skipped) {
+                  continue;
+                }
                 let segment: JqPathSegment | undefined;
                 if (
                   (parent.value === undefined || parent.value === null)
@@ -3492,12 +3725,16 @@ function visitJqFilterOutputsWithContext({
                     value: undefined,
                   });
                 }
-                if (segment === undefined) continue;
+                if (segment === undefined) {
+                  continue;
+                }
                 const visited = pathConsume({
                   path: appendSegment({ path: parentEntry.path, segment }),
                   metadata,
                 });
-                if (!visited.ok || visited.stopped) return visited;
+                if (!visited.ok || visited.stopped) {
+                  return visited;
+                }
               }
               return { ok: true, stopped: false };
             },
@@ -3518,7 +3755,9 @@ function visitJqFilterOutputsWithContext({
               return { ok: true, stopped: false };
             },
           });
-          if (!parentVisit.ok || parentVisit.stopped) return parentVisit;
+          if (!parentVisit.ok || parentVisit.stopped) {
+            return parentVisit;
+          }
 
           const visitBound = ({
             boundFilter,
@@ -3542,7 +3781,9 @@ function visitJqFilterOutputsWithContext({
               metadata: nestedContext.inputState.currentMetadata,
               nestedContext,
               nestedConsume: ({ value, metadata }) => {
-                if (value === null) return boundConsume({ value: undefined, metadata });
+                if (value === null) {
+                  return boundConsume({ value: undefined, metadata });
+                }
                 if (typeof value !== 'number') {
                   return runtimeError({
                     message: 'Array/string slice indices must be integers',
@@ -3561,15 +3802,21 @@ function visitJqFilterOutputsWithContext({
               boundConsume: ({ value: end, metadata: endMetadata }) => {
                 for (const parentEntry of parents) {
                   const parent = readJqPathValue({ root: input, path: parentEntry.path });
-                  if (!parent.ok) return runtimeError({ message: parent.message, value: undefined });
-                  if (parent.skipped) continue;
+                  if (!parent.ok) {
+                    return runtimeError({ message: parent.message, value: undefined });
+                  }
+                  if (parent.skipped) {
+                    continue;
+                  }
                   if (
                     parent.value !== undefined
                     && parent.value !== null
                     && !Array.isArray(parent.value)
                     && typeof parent.value !== 'string'
                   ) {
-                    if (expression.optional) continue;
+                    if (expression.optional) {
+                      continue;
+                    }
                     return runtimeError({ message: 'cannot slice non-array/string', value: undefined });
                   }
                   const visited = pathConsume({
@@ -3583,7 +3830,9 @@ function visitJqFilterOutputsWithContext({
                       ? endMetadata
                       : startMetadata,
                   });
-                  if (!visited.ok || visited.stopped) return visited;
+                  if (!visited.ok || visited.stopped) {
+                    return visited;
+                  }
                 }
                 return { ok: true, stopped: false };
               },
@@ -3676,7 +3925,9 @@ function visitJqFilterOutputsWithContext({
     case 'strflocaltime':
     case 'strptime':
     case 'startswith': {
-      if (filter.args.length !== 1 || filter.args[0] === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || filter.args[0] === undefined) {
+        return visitEvaluated();
+      }
       return visitBuiltinArgumentStreams({ argumentFilters: [filter.args[0]], materializeRemainingArgumentStreams: false });
     }
     case 'atan2':
@@ -3707,7 +3958,9 @@ function visitJqFilterOutputsWithContext({
       });
     }
     case 'paths': {
-      if (filter.args.length > 1) return visitEvaluated();
+      if (filter.args.length > 1) {
+        return visitEvaluated();
+      }
       const predicate = filter.args[0];
       if (predicate !== undefined) {
         // jq evaluates the root predicate for effects even though `paths` never
@@ -3719,7 +3972,9 @@ function visitJqFilterOutputsWithContext({
           input,
           context: nestedContext,
         });
-        if (!rootPredicate.ok) return clearFailureOutputs({ result: rootPredicate });
+        if (!rootPredicate.ok) {
+          return clearFailureOutputs({ result: rootPredicate });
+        }
       }
 
       let materializedSegmentCount = 0;
@@ -3740,7 +3995,9 @@ function visitJqFilterOutputsWithContext({
         };
         if (predicate === undefined) {
           const visited = emitPath();
-          if (!visited.ok || visited.stopped) return visited;
+          if (!visited.ok || visited.stopped) {
+            return visited;
+          }
           continue;
         }
         // Child predicates are themselves streams. A consumer can stop after a
@@ -3755,13 +4012,17 @@ function visitJqFilterOutputsWithContext({
             ? emitPath()
             : { ok: true, stopped: false },
         });
-        if (!evaluated.ok || evaluated.stopped) return evaluated;
+        if (!evaluated.ok || evaluated.stopped) {
+          return evaluated;
+        }
       }
       return { ok: true, stopped: false };
     }
     case 'JOIN': {
       const indexFilter = filter.args[0];
-      if (indexFilter === undefined) return visitEvaluated();
+      if (indexFilter === undefined) {
+        return visitEvaluated();
+      }
       if (filter.args.length === 2 && filter.args[1] !== undefined) {
         // Each index value produces one collected result for the implicit .[]
         // source, so an outer consumer may stop before a later index value.
@@ -3772,7 +4033,9 @@ function visitJqFilterOutputsWithContext({
       }
       const sourceFilter = filter.args[1];
       const keyFilter = filter.args[2];
-      if (sourceFilter === undefined || keyFilter === undefined) return visitEvaluated();
+      if (sourceFilter === undefined || keyFilter === undefined) {
+        return visitEvaluated();
+      }
       if (filter.args.length === 3) {
         // Index is outer and source is inner. The key filter remains atomic for
         // each source item because all key outputs are part of one JOIN pair.
@@ -3782,7 +4045,9 @@ function visitJqFilterOutputsWithContext({
         });
       }
       const projectionFilter = filter.args[3];
-      if (filter.args.length !== 4 || projectionFilter === undefined) return visitEvaluated();
+      if (filter.args.length !== 4 || projectionFilter === undefined) {
+        return visitEvaluated();
+      }
 
       return visitJqFilterOutputsWithContext({
         filter: indexFilter,
@@ -3855,7 +4120,9 @@ function visitJqFilterOutputsWithContext({
                   },
                   consume,
                 });
-                if (!projected.ok || projected.stopped) return projected;
+                if (!projected.ok || projected.stopped) {
+                  return projected;
+                }
               }
               return joined.ok
                 ? { ok: true, stopped: false }
@@ -3892,7 +4159,9 @@ function visitJqFilterOutputsWithContext({
       return visitEvaluated();
     }
     case 'fromstream': {
-      if (filter.args.length !== 1 || filter.args[0] === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || filter.args[0] === undefined) {
+        return visitEvaluated();
+      }
       let root: JsonValue = null;
       return visitJqFilterOutputsWithContext({
         filter: filter.args[0],
@@ -3900,7 +4169,9 @@ function visitJqFilterOutputsWithContext({
         context: nestedContext,
         consume: ({ value: streamValue, metadata }) => {
           const parsed = parseJqStreamEvent({ event: streamValue });
-          if (!parsed.ok) return runtimeError({ message: parsed.message, value: undefined });
+          if (!parsed.ok) {
+            return runtimeError({ message: parsed.message, value: undefined });
+          }
           const { path, value, hasValue } = parsed.event;
           if (hasValue) {
             const streamEventValue = value ?? null;
@@ -3912,11 +4183,15 @@ function visitJqFilterOutputsWithContext({
               });
             }
             const updated = applyJqStreamValue({ root, path, value: streamEventValue });
-            if (!updated.ok) return runtimeError({ message: updated.message, value: undefined });
+            if (!updated.ok) {
+              return runtimeError({ message: updated.message, value: undefined });
+            }
             root = updated.value;
             return { ok: true, stopped: false };
           }
-          if (path.length !== 1) return { ok: true, stopped: false };
+          if (path.length !== 1) {
+            return { ok: true, stopped: false };
+          }
           const completed = root;
           root = null;
           return consume({
@@ -3927,20 +4202,26 @@ function visitJqFilterOutputsWithContext({
       });
     }
     case 'truncate_stream': {
-      if (filter.args.length !== 1 || filter.args[0] === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || filter.args[0] === undefined) {
+        return visitEvaluated();
+      }
       return visitJqFilterOutputsWithContext({
         filter: filter.args[0],
         input,
         context: nestedContext,
         consume: ({ value: streamValue, metadata }) => {
           const parsed = parseJqStreamEvent({ event: streamValue });
-          if (!parsed.ok) return runtimeError({ message: parsed.message, value: undefined });
+          if (!parsed.ok) {
+            return runtimeError({ message: parsed.message, value: undefined });
+          }
           const { path, value, hasValue } = parsed.event;
           if (compareJsonValues({ left: path.length, right: input }) <= 0) {
             return { ok: true, stopped: false };
           }
           const sliced = jqSliceStart({ length: path.length, value: input });
-          if (!sliced.ok) return runtimeError({ message: sliced.message, value: undefined });
+          if (!sliced.ok) {
+            return runtimeError({ message: sliced.message, value: undefined });
+          }
           const outputPath: JsonValue[] = path.slice(sliced.start);
           return consume({
             value: hasValue ? [outputPath, value ?? null] : [outputPath],
@@ -3950,7 +4231,9 @@ function visitJqFilterOutputsWithContext({
       });
     }
     case 'walk': {
-      if (filter.args.length !== 1 || filter.args[0] === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || filter.args[0] === undefined) {
+        return visitEvaluated();
+      }
       const mapper = filter.args[0];
 
       const visitWalkOutputs = ({
@@ -4042,7 +4325,9 @@ function visitJqFilterOutputsWithContext({
                 return { ok: true, stopped: true };
               },
             });
-            if (!visited.ok) return visited;
+            if (!visited.ok) {
+              return visited;
+            }
             if (firstOutput !== undefined) {
               defineJsonProperty({ object: mappedObject, key, value: firstOutput.value });
               if (typeof firstOutput.value === 'number') {
@@ -4068,7 +4353,9 @@ function visitJqFilterOutputsWithContext({
       });
     }
     case 'inputs': {
-      if (filter.args.length !== 0) return visitEvaluated();
+      if (filter.args.length !== 0) {
+        return visitEvaluated();
+      }
       while (true) {
         const taken = takeRuntimeInputs({
           context: nestedContext,
@@ -4086,14 +4373,22 @@ function visitJqFilterOutputsWithContext({
               fallback: fallbackMetadata,
             }),
           });
-          if (!visited.ok || visited.stopped) return visited;
+          if (!visited.ok || visited.stopped) {
+            return visited;
+          }
         }
-        if (!taken.ok) return clearFailureOutputs({ result: taken });
-        if (outputs.length === 0) return { ok: true, stopped: false };
+        if (!taken.ok) {
+          return clearFailureOutputs({ result: taken });
+        }
+        if (outputs.length === 0) {
+          return { ok: true, stopped: false };
+        }
       }
     }
     case 'select': {
-      if (filter.args.length !== 1 || filter.args[0] === undefined) return visitEvaluated();
+      if (filter.args.length !== 1 || filter.args[0] === undefined) {
+        return visitEvaluated();
+      }
       return visitJqFilterOutputsWithContext({
         filter: filter.args[0],
         input,
@@ -4110,7 +4405,9 @@ function visitJqFilterOutputsWithContext({
       });
     }
     case 'range': {
-      if (filter.args.length === 0 || filter.args.length > 3) return visitEvaluated();
+      if (filter.args.length === 0 || filter.args.length > 3) {
+        return visitEvaluated();
+      }
       const visitArgument = ({
         argumentIndex,
         values,
@@ -4141,7 +4438,9 @@ function visitJqFilterOutputsWithContext({
             }
             }
           })();
-          if (step === 0) return { ok: true, stopped: false };
+          if (step === 0) {
+            return { ok: true, stopped: false };
+          }
           const outputMetadata = metadataWithNumberOrigin({ metadata, numberOrigin: undefined });
           let generatedCount = 0;
           const emitRangeValue = ({ value }: { value: number }): JqRuntimeOutputVisitResult => {
@@ -4160,18 +4459,24 @@ function visitJqFilterOutputsWithContext({
           if (step > 0) {
             for (let value = start; value < end; value += step) {
               const visited = emitRangeValue({ value });
-              if (!visited.ok || visited.stopped) return visited;
+              if (!visited.ok || visited.stopped) {
+                return visited;
+              }
             }
           } else {
             for (let value = start; value > end; value += step) {
               const visited = emitRangeValue({ value });
-              if (!visited.ok || visited.stopped) return visited;
+              if (!visited.ok || visited.stopped) {
+                return visited;
+              }
             }
           }
           return { ok: true, stopped: false };
         }
         const argument = filter.args[argumentIndex];
-        if (argument === undefined) throw new Error(`Missing jq range argument ${argumentIndex}`);
+        if (argument === undefined) {
+          throw new Error(`Missing jq range argument ${argumentIndex}`);
+        }
         return visitWithMetadata({
           filter: argument,
           input,
@@ -4205,9 +4510,13 @@ function visitJqFilterOutputsWithContext({
           context: nestedContext,
           consume,
         });
-        if (!repeated.ok || repeated.stopped) return repeated;
+        if (!repeated.ok || repeated.stopped) {
+          return repeated;
+        }
         const iterationLimit = checkLimits({ context: nestedContext });
-        if (!iterationLimit.ok) return iterationLimit;
+        if (!iterationLimit.ok) {
+          return iterationLimit;
+        }
       }
     }
     case 'while':
@@ -4233,16 +4542,22 @@ function visitJqFilterOutputsWithContext({
         let stateMetadata = context.inputState.currentMetadata;
         while (true) {
           const iterationLimit = checkLimits({ context: nestedContext });
-          if (!iterationLimit.ok) return iterationLimit;
+          if (!iterationLimit.ok) {
+            return iterationLimit;
+          }
           const condition = evaluateWithMetadata({
             filter: conditionFilter,
             input: stateInput,
             metadata: stateMetadata,
             nestedContext,
           });
-          if (!condition.ok) return condition;
+          if (!condition.ok) {
+            return condition;
+          }
           const conditionValue = condition.outputs[0];
-          if (conditionValue === undefined) return { ok: true, stopped: false };
+          if (conditionValue === undefined) {
+            return { ok: true, stopped: false };
+          }
           const conditionMetadata = metadataForResultOutput({
             result: condition,
             index: 0,
@@ -4252,12 +4567,16 @@ function visitJqFilterOutputsWithContext({
           const shouldAdvance = isWhile ? conditionIsTruthy : !conditionIsTruthy;
           if (shouldAdvance && isWhile) {
             const emitted = consume({ value: stateInput, metadata: stateMetadata });
-            if (!emitted.ok || emitted.stopped) return emitted;
+            if (!emitted.ok || emitted.stopped) {
+              return emitted;
+            }
           }
           if (!shouldAdvance) {
             if (!isWhile) {
               const emitted = consume({ value: stateInput, metadata: stateMetadata });
-              if (!emitted.ok || emitted.stopped) return emitted;
+              if (!emitted.ok || emitted.stopped) {
+                return emitted;
+              }
             }
             return { ok: true, stopped: false };
           }
@@ -4267,9 +4586,13 @@ function visitJqFilterOutputsWithContext({
             metadata: conditionMetadata,
             nestedContext,
           });
-          if (!updated.ok) return updated;
+          if (!updated.ok) {
+            return updated;
+          }
           const nextInput = updated.outputs[0];
-          if (nextInput === undefined) return { ok: true, stopped: false };
+          if (nextInput === undefined) {
+            return { ok: true, stopped: false };
+          }
           stateInput = nextInput;
           stateMetadata = metadataForResultOutput({
             result: updated,
@@ -4416,11 +4739,15 @@ function visitJqFilterOutputsWithContext({
         }];
         while (tasks.length > 0) {
           const task = tasks.pop();
-          if (task === undefined) break;
+          if (task === undefined) {
+            break;
+          }
           switch (task.kind) {
           case 'state': {
             const iterationLimit = checkLimits({ context: nestedContext });
-            if (!iterationLimit.ok) return iterationLimit;
+            if (!iterationLimit.ok) {
+              return iterationLimit;
+            }
             const restoreIndex = nestedContext.inputState.index;
             const restoreMetadata = nestedContext.inputState.currentMetadata;
             const conditionGroup = nextConditionGroup;
@@ -4438,7 +4765,9 @@ function visitJqFilterOutputsWithContext({
               });
               break;
             }
-            if (conditionPlan === undefined) throw new Error('Missing jq while/until condition plan');
+            if (conditionPlan === undefined) {
+              throw new Error('Missing jq while/until condition plan');
+            }
             for (let branchIndex = conditionBranches.length - 1; branchIndex >= 0; branchIndex -= 1) {
               tasks.push({
                 kind: 'condition_branch',
@@ -4455,7 +4784,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'condition_bind': {
-            if (conditionBindPlan === undefined) throw new Error('Missing jq iterative bind condition plan');
+            if (conditionBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind condition plan');
+            }
             const binding = evaluateWithMetadata({
               filter: conditionBindPlan.binding,
               input: task.stateInput,
@@ -4479,7 +4810,9 @@ function visitJqFilterOutputsWithContext({
               });
             }
             const boundValue = outputs[0];
-            if (boundValue === undefined) break;
+            if (boundValue === undefined) {
+              break;
+            }
             const boundMetadata = metadataForResultOutput({
               result: binding,
               index: 0,
@@ -4503,7 +4836,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'condition_bound_branch': {
-            if (conditionBindPlan === undefined) throw new Error('Missing jq iterative bind condition plan');
+            if (conditionBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind condition plan');
+            }
             const condition = evaluateWithMetadata({
               filter: task.branch,
               input: task.stateInput,
@@ -4527,7 +4862,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'condition_bound_branch'
                     || sibling.conditionGroup !== task.conditionGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -4573,7 +4910,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'condition_branch'
                     || sibling.conditionGroup !== task.conditionGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -4605,12 +4944,16 @@ function visitJqFilterOutputsWithContext({
             const shouldAdvance = isWhile ? conditionIsTruthy : !conditionIsTruthy;
             if (shouldAdvance && isWhile) {
               const emitted = consume({ value: task.stateInput, metadata: task.stateMetadata });
-              if (!emitted.ok || emitted.stopped) return emitted;
+              if (!emitted.ok || emitted.stopped) {
+                return emitted;
+              }
             }
             if (!shouldAdvance) {
               if (!isWhile) {
                 const emitted = consume({ value: task.stateInput, metadata: task.stateMetadata });
-                if (!emitted.ok || emitted.stopped) return emitted;
+                if (!emitted.ok || emitted.stopped) {
+                  return emitted;
+                }
               }
               break;
             }
@@ -4645,7 +4988,9 @@ function visitJqFilterOutputsWithContext({
               });
               break;
             }
-            if (updatePlan === undefined) throw new Error('Missing jq while/until update plan');
+            if (updatePlan === undefined) {
+              throw new Error('Missing jq while/until update plan');
+            }
             for (let index = updateBranches.length - 1; index >= 0; index -= 1) {
               tasks.push({
                 kind: 'update_branch',
@@ -4661,7 +5006,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'update_bind': {
-            if (updateBindPlan === undefined) throw new Error('Missing jq iterative bind update plan');
+            if (updateBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind update plan');
+            }
             const binding = evaluateWithMetadata({
               filter: updateBindPlan.binding,
               input: task.stateInput,
@@ -4681,7 +5028,9 @@ function visitJqFilterOutputsWithContext({
               });
             }
             const boundValue = outputs[0];
-            if (boundValue === undefined) break;
+            if (boundValue === undefined) {
+              break;
+            }
             const boundMetadata = metadataForResultOutput({
               result: binding,
               index: 0,
@@ -4705,7 +5054,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'update_bound_branch': {
-            if (updateBindPlan === undefined) throw new Error('Missing jq iterative bind update plan');
+            if (updateBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind update plan');
+            }
             const updated = evaluateWithMetadata({
               filter: task.branch,
               input: task.stateInput,
@@ -4729,7 +5080,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'update_bound_branch'
                     || sibling.updateGroup !== task.updateGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -4755,7 +5108,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'update_range_argument': {
-            if (iterativeRangeUpdatePlan === undefined) throw new Error('Missing jq iterative range update plan');
+            if (iterativeRangeUpdatePlan === undefined) {
+              throw new Error('Missing jq iterative range update plan');
+            }
             const branches = iterativeRangeUpdatePlan.argumentBranches[task.argumentIndex];
             const branch = branches?.[task.branchIndex];
             if (branches === undefined || branch === undefined) {
@@ -4779,7 +5134,9 @@ function visitJqFilterOutputsWithContext({
             if (task.branchIndex + 1 < branches.length) {
               tasks.push({ ...task, branchIndex: task.branchIndex + 1 });
             }
-            if (evaluated.output === undefined) break;
+            if (evaluated.output === undefined) {
+              break;
+            }
             const numericArgs = [...task.numericArgs, evaluated.output.value];
             const startNumberOrigin = task.argumentIndex === 0
               && iterativeRangeUpdatePlan.filter.args.length >= 2
@@ -4851,7 +5208,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'update_branch'
                     || sibling.updateGroup !== task.updateGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -4932,7 +5291,9 @@ function visitJqFilterOutputsWithContext({
           const shouldAdvance = isWhile ? conditionIsTruthy : !conditionIsTruthy;
           if (shouldAdvance && isWhile) {
             const emitted = consume({ value: stateInput, metadata: stateMetadata });
-            if (!emitted.ok || emitted.stopped) return emitted;
+            if (!emitted.ok || emitted.stopped) {
+              return emitted;
+            }
           }
           if (shouldAdvance) {
             const advanced = visitWithMetadata({
@@ -4946,10 +5307,14 @@ function visitJqFilterOutputsWithContext({
                 stateContext,
               }),
             });
-            if (!advanced.ok || advanced.stopped) return advanced;
+            if (!advanced.ok || advanced.stopped) {
+              return advanced;
+            }
           } else if (!isWhile) {
             const emitted = consume({ value: stateInput, metadata: stateMetadata });
-            if (!emitted.ok || emitted.stopped) return emitted;
+            if (!emitted.ok || emitted.stopped) {
+              return emitted;
+            }
           }
         }
         return condition.ok
@@ -4976,7 +5341,9 @@ function visitJqFilterOutputsWithContext({
         while (stack.length > 0) {
           const current = stack.pop()!;
           const emitted = consume({ value: current.value, metadata: current.metadata });
-          if (!emitted.ok || emitted.stopped) return emitted;
+          if (!emitted.ok || emitted.stopped) {
+            return emitted;
+          }
           const children = Array.isArray(current.value)
             ? current.value
             : isJsonObject(current.value)
@@ -4995,18 +5362,26 @@ function visitJqFilterOutputsWithContext({
         let stateMetadata = context.inputState.currentMetadata;
         while (true) {
           const iterationLimit = checkLimits({ context: nestedContext });
-          if (!iterationLimit.ok) return iterationLimit;
+          if (!iterationLimit.ok) {
+            return iterationLimit;
+          }
           const emitted = consume({ value: stateInput, metadata: stateMetadata });
-          if (!emitted.ok || emitted.stopped) return emitted;
+          if (!emitted.ok || emitted.stopped) {
+            return emitted;
+          }
           const advanced = evaluateWithMetadata({
             filter: nextFilter,
             input: stateInput,
             metadata: stateMetadata,
             nestedContext,
           });
-          if (!advanced.ok) return advanced;
+          if (!advanced.ok) {
+            return advanced;
+          }
           const nextInput = advanced.outputs[0];
-          if (nextInput === undefined) return { ok: true, stopped: false };
+          if (nextInput === undefined) {
+            return { ok: true, stopped: false };
+          }
           const nextMetadata = metadataForResultOutput({
             result: advanced,
             index: 0,
@@ -5019,7 +5394,9 @@ function visitJqFilterOutputsWithContext({
               metadata: nextMetadata,
               nestedContext,
             });
-            if (!condition.ok) return condition;
+            if (!condition.ok) {
+              return condition;
+            }
             if (!condition.outputs.some((candidate) => truthy({ value: candidate }))) {
               return { ok: true, stopped: false };
             }
@@ -5193,13 +5570,19 @@ function visitJqFilterOutputsWithContext({
         }];
         while (tasks.length > 0) {
           const task = tasks.pop();
-          if (task === undefined) break;
+          if (task === undefined) {
+            break;
+          }
           switch (task.kind) {
           case 'state': {
             const iterationLimit = checkLimits({ context: nestedContext });
-            if (!iterationLimit.ok) return iterationLimit;
+            if (!iterationLimit.ok) {
+              return iterationLimit;
+            }
             const emitted = consume({ value: task.stateInput, metadata: task.stateMetadata });
-            if (!emitted.ok || emitted.stopped) return emitted;
+            if (!emitted.ok || emitted.stopped) {
+              return emitted;
+            }
             const restoreIndex = nestedContext.inputState.index;
             const restoreMetadata = nestedContext.inputState.currentMetadata;
             const nextGroup = nextGroupId;
@@ -5231,7 +5614,9 @@ function visitJqFilterOutputsWithContext({
               });
               break;
             }
-            if (nextPlan === undefined) throw new Error('Missing jq recurse next plan');
+            if (nextPlan === undefined) {
+              throw new Error('Missing jq recurse next plan');
+            }
             for (let branchIndex = nextPlan.branches.length - 1; branchIndex >= 0; branchIndex -= 1) {
               tasks.push({
                 kind: 'next_branch',
@@ -5247,7 +5632,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'next_bind': {
-            if (nextBindPlan === undefined) throw new Error('Missing jq iterative bind next plan');
+            if (nextBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind next plan');
+            }
             const binding = evaluateWithMetadata({
               filter: nextBindPlan.binding,
               input: task.stateInput,
@@ -5267,7 +5654,9 @@ function visitJqFilterOutputsWithContext({
               });
             }
             const boundValue = outputs[0];
-            if (boundValue === undefined) break;
+            if (boundValue === undefined) {
+              break;
+            }
             const boundMetadata = metadataForResultOutput({
               result: binding,
               index: 0,
@@ -5291,7 +5680,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'next_bound_branch': {
-            if (nextBindPlan === undefined) throw new Error('Missing jq iterative bind next plan');
+            if (nextBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind next plan');
+            }
             const advanced = evaluateWithMetadata({
               filter: task.branch,
               input: task.stateInput,
@@ -5315,7 +5706,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'next_bound_branch'
                     || sibling.nextGroup !== task.nextGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -5400,7 +5793,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'next_range_argument': {
-            if (iterativeRangeNextPlan === undefined) throw new Error('Missing jq iterative range next plan');
+            if (iterativeRangeNextPlan === undefined) {
+              throw new Error('Missing jq iterative range next plan');
+            }
             const branches = iterativeRangeNextPlan.argumentBranches[task.argumentIndex];
             const branch = branches?.[task.branchIndex];
             if (branches === undefined || branch === undefined) {
@@ -5424,7 +5819,9 @@ function visitJqFilterOutputsWithContext({
             if (task.branchIndex + 1 < branches.length) {
               tasks.push({ ...task, branchIndex: task.branchIndex + 1 });
             }
-            if (evaluated.output === undefined) break;
+            if (evaluated.output === undefined) {
+              break;
+            }
             const numericArgs = [...task.numericArgs, evaluated.output.value];
             const startNumberOrigin = task.argumentIndex === 0
               && iterativeRangeNextPlan.filter.args.length >= 2
@@ -5496,7 +5893,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'next_branch'
                     || sibling.nextGroup !== task.nextGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -5570,7 +5969,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'condition_bind': {
-            if (conditionBindPlan === undefined) throw new Error('Missing jq iterative bind condition plan');
+            if (conditionBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind condition plan');
+            }
             const binding = evaluateWithMetadata({
               filter: conditionBindPlan.binding,
               input: task.nextInput,
@@ -5594,7 +5995,9 @@ function visitJqFilterOutputsWithContext({
               });
             }
             const boundValue = outputs[0];
-            if (boundValue === undefined) break;
+            if (boundValue === undefined) {
+              break;
+            }
             const boundMetadata = metadataForResultOutput({
               result: binding,
               index: 0,
@@ -5618,7 +6021,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'condition_bound_branch': {
-            if (conditionBindPlan === undefined) throw new Error('Missing jq iterative bind condition plan');
+            if (conditionBindPlan === undefined) {
+              throw new Error('Missing jq iterative bind condition plan');
+            }
             const condition = evaluateWithMetadata({
               filter: task.branch,
               input: task.nextInput,
@@ -5642,7 +6047,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'condition_bound_branch'
                     || sibling.conditionGroup !== task.conditionGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -5655,7 +6062,9 @@ function visitJqFilterOutputsWithContext({
               }
             }
             for (let outputIndex = outputs.length - 1; outputIndex >= 0; outputIndex -= 1) {
-              if (!truthy({ value: outputs[outputIndex]! })) continue;
+              if (!truthy({ value: outputs[outputIndex]! })) {
+                continue;
+              }
               tasks.push({
                 kind: 'state',
                 stateInput: task.nextInput,
@@ -5672,7 +6081,9 @@ function visitJqFilterOutputsWithContext({
             break;
           }
           case 'condition_range_argument': {
-            if (iterativeRangeConditionPlan === undefined) throw new Error('Missing jq iterative range condition plan');
+            if (iterativeRangeConditionPlan === undefined) {
+              throw new Error('Missing jq iterative range condition plan');
+            }
             const branches = iterativeRangeConditionPlan.argumentBranches[task.argumentIndex];
             const branch = branches?.[task.branchIndex];
             if (branches === undefined || branch === undefined) {
@@ -5696,7 +6107,9 @@ function visitJqFilterOutputsWithContext({
             if (task.branchIndex + 1 < branches.length) {
               tasks.push({ ...task, branchIndex: task.branchIndex + 1 });
             }
-            if (evaluated.output === undefined) break;
+            if (evaluated.output === undefined) {
+              break;
+            }
             const numericArgs = [...task.numericArgs, evaluated.output.value];
             const nextArgumentIndex = task.argumentIndex + 1;
             if (nextArgumentIndex < iterativeRangeConditionPlan.argumentBranches.length) {
@@ -5765,7 +6178,9 @@ function visitJqFilterOutputsWithContext({
                   if (
                     sibling?.kind !== 'condition_branch'
                     || sibling.conditionGroup !== task.conditionGroup
-                  ) break;
+                  ) {
+                    break;
+                  }
                   tasks.pop();
                 }
               } else {
@@ -5779,7 +6194,9 @@ function visitJqFilterOutputsWithContext({
             }
             for (let outputIndex = outputs.length - 1; outputIndex >= 0; outputIndex -= 1) {
               const conditionValue = outputs[outputIndex]!;
-              if (!truthy({ value: conditionValue })) continue;
+              if (!truthy({ value: conditionValue })) {
+                continue;
+              }
               tasks.push({
                 kind: 'state',
                 stateInput: task.nextInput,
@@ -5833,7 +6250,9 @@ function visitJqFilterOutputsWithContext({
         stateContext: JqRuntimeContext,
       }): JqRuntimeOutputVisitResult => {
         const emitted = consume({ value: stateInput, metadata: stateMetadata });
-        if (!emitted.ok || emitted.stopped) return emitted;
+        if (!emitted.ok || emitted.stopped) {
+          return emitted;
+        }
         if (nextFilter === undefined) {
           for (const child of (Array.isArray(stateInput)
             ? stateInput
@@ -5845,7 +6264,9 @@ function visitJqFilterOutputsWithContext({
               stateMetadata,
               stateContext,
             });
-            if (!childVisited.ok || childVisited.stopped) return childVisited;
+            if (!childVisited.ok || childVisited.stopped) {
+              return childVisited;
+            }
           }
           return { ok: true, stopped: false };
         }
@@ -5916,7 +6337,9 @@ function evaluateLazyStreamConsumerCall({
     maximumOutputs: number,
     selectedIndex: number | undefined,
   }): JqRuntimeResult => {
-    if (maximumOutputs === 0) return { ok: true, outputs: [] };
+    if (maximumOutputs === 0) {
+      return { ok: true, outputs: [] };
+    }
     const outputs: JsonValue[] = [];
     const outputMetadata: JqRuntimeInputMetadata[] = [];
     const visited = visitJqFilterOutputsWithContext({
@@ -5996,8 +6419,12 @@ function evaluateLazyStreamConsumerCall({
           targetMetadata,
         }),
       });
-    if (matched) return { ok: true, outputs: [true] };
-    if (!visited.ok) return clearFailureOutputs({ result: visited });
+    if (matched) {
+      return { ok: true, outputs: [true] };
+    }
+    if (!visited.ok) {
+      return clearFailureOutputs({ result: visited });
+    }
     return { ok: true, outputs: [false] };
   }
   case 'limit':
@@ -6022,14 +6449,20 @@ function evaluateLazyStreamConsumerCall({
         return { ok: true, stopped: false };
       },
     });
-    if (visited.ok) return { ok: true, outputs, outputMetadata };
+    if (visited.ok) {
+      return { ok: true, outputs, outputMetadata };
+    }
     return replaceFailureOutputs({ result: visited, outputs, outputMetadata });
   }
   case 'path': {
     const argument = filter.args[0];
-    if (filter.args.length !== 1 || argument === undefined) return undefined;
+    if (filter.args.length !== 1 || argument === undefined) {
+      return undefined;
+    }
     const expression = extractPathExpression({ filter: argument });
-    if (expression === undefined) return undefined;
+    if (expression === undefined) {
+      return undefined;
+    }
     const outputs: JsonValue[] = [];
     const outputMetadata: JqRuntimeInputMetadata[] = [];
     const visited = visitJqFilterOutputsWithContext({
@@ -6050,10 +6483,14 @@ function evaluateLazyStreamConsumerCall({
       : replaceFailureOutputs({ result: visited, outputs, outputMetadata });
   }
   case 'first':
-    if (filter.args.length !== 1 || filter.args[0] === undefined) return undefined;
+    if (filter.args.length !== 1 || filter.args[0] === undefined) {
+      return undefined;
+    }
     return collect({ generator: filter.args[0], maximumOutputs: 1, selectedIndex: 0 });
   case 'last': {
-    if (filter.args.length !== 1 || filter.args[0] === undefined) return undefined;
+    if (filter.args.length !== 1 || filter.args[0] === undefined) {
+      return undefined;
+    }
     let lastValue: JsonValue | undefined;
     let lastMetadata: JqRuntimeInputMetadata | undefined;
     const visited = visitJqFilterOutputsWithContext({
@@ -6066,7 +6503,9 @@ function evaluateLazyStreamConsumerCall({
         return { ok: true, stopped: false };
       },
     });
-    if (!visited.ok) return clearFailureOutputs({ result: visited });
+    if (!visited.ok) {
+      return clearFailureOutputs({ result: visited });
+    }
     if (lastValue === undefined) {
       return {
         ok: true,
@@ -6084,7 +6523,9 @@ function evaluateLazyStreamConsumerCall({
     };
   }
   case 'isempty': {
-    if (filter.args.length !== 1 || filter.args[0] === undefined) return undefined;
+    if (filter.args.length !== 1 || filter.args[0] === undefined) {
+      return undefined;
+    }
     let found = false;
     const visited = visitJqFilterOutputsWithContext({
       filter: filter.args[0],
@@ -6139,16 +6580,24 @@ function evaluateLazyStreamConsumerCall({
         if (context.inputState.index === previousIndex) {
           context.inputState.currentMetadata = previousMetadata;
         }
-        if (!predicate.ok || decided) return predicate;
+        if (!predicate.ok || decided) {
+          return predicate;
+        }
         return { ok: true, stopped: false };
       },
     });
-    if (decided) return { ok: true, outputs: [decisiveTruthiness] };
-    if (!generated.ok) return generated;
+    if (decided) {
+      return { ok: true, outputs: [decisiveTruthiness] };
+    }
+    if (!generated.ok) {
+      return generated;
+    }
     return { ok: true, outputs: [!decisiveTruthiness] };
   }
   case 'recurse': {
-    if (filter.args.length > 2) return undefined;
+    if (filter.args.length > 2) {
+      return undefined;
+    }
     const outputs: JsonValue[] = [];
     const outputMetadata: JqRuntimeInputMetadata[] = [];
     const visited = visitJqFilterOutputsWithContext({
@@ -6164,11 +6613,15 @@ function evaluateLazyStreamConsumerCall({
         return { ok: true, stopped: false };
       },
     });
-    if (visited.ok) return { ok: true, outputs, outputMetadata };
+    if (visited.ok) {
+      return { ok: true, outputs, outputMetadata };
+    }
     return replaceFailureOutputs({ result: visited, outputs, outputMetadata });
   }
   case 'walk':
-    if (filter.args.length !== 1 || filter.args[0] === undefined) return undefined;
+    if (filter.args.length !== 1 || filter.args[0] === undefined) {
+      return undefined;
+    }
     // `walk(f)` can expose a mapper stream at the completed node while child
     // containers remain atomic. Reuse the command-layer output visitor even
     // at top level so late mapper failures retain exactly the prefixes jq has
@@ -6189,7 +6642,9 @@ function evaluateLazyStreamConsumerCall({
           return { ok: true, stopped: false };
         },
       });
-      if (visited.ok) return { ok: true, outputs, outputMetadata };
+      if (visited.ok) {
+        return { ok: true, outputs, outputMetadata };
+      }
       return replaceFailureOutputs({ result: visited, outputs, outputMetadata });
     }
   case 'while':
@@ -6209,7 +6664,9 @@ function evaluateLazyStreamConsumerCall({
         return { ok: true, stopped: false };
       },
     });
-    if (visited.ok) return { ok: true, outputs, outputMetadata };
+    if (visited.ok) {
+      return { ok: true, outputs, outputMetadata };
+    }
     return replaceFailureOutputs({ result: visited, outputs, outputMetadata });
   }
   default:
@@ -6227,7 +6684,9 @@ function evaluateJqFilterWithContext({
   context: JqRuntimeContext,
 }): JqRuntimeResult {
   const limit = checkLimits({ context });
-  if (!limit.ok) return limit;
+  if (!limit.ok) {
+    return limit;
+  }
 
   const nestedContext: JqRuntimeContext = {
     ...context,
@@ -6276,7 +6735,9 @@ function evaluateJqFilterWithContext({
       const structuralLimit = checkLimits({
         context: { ...nestedContext, depth: nestedContext.depth + depth },
       });
-      if (!structuralLimit.ok) return structuralLimit;
+      if (!structuralLimit.ok) {
+        return structuralLimit;
+      }
       const left = visitUpdateOutputs({
         filter: updateFilter.left,
         input: updateInput,
@@ -6296,13 +6757,17 @@ function evaluateJqFilterWithContext({
       const structuralLimit = checkLimits({
         context: { ...nestedContext, depth: nestedContext.depth + depth },
       });
-      if (!structuralLimit.ok) return structuralLimit;
+      if (!structuralLimit.ok) {
+        return structuralLimit;
+      }
       return visitUpdateOutputs({
         filter: updateFilter.left,
         input: updateInput,
         depth: depth + 1,
         consume: ({ value, metadata }) => {
-          if (metadata !== undefined) context.inputState.currentMetadata = metadata;
+          if (metadata !== undefined) {
+            context.inputState.currentMetadata = metadata;
+          }
           return visitUpdateOutputs({
             filter: updateFilter.right,
             input: value,
@@ -6328,7 +6793,9 @@ function evaluateJqFilterWithContext({
               fallback: fallbackMetadata,
             }),
         });
-        if (!consumed.ok || consumed.found) return consumed;
+        if (!consumed.ok || consumed.found) {
+          return consumed;
+        }
       }
       return evaluated.ok ? { ok: true, found: false } : evaluated;
     }
@@ -6345,7 +6812,9 @@ function evaluateJqFilterWithContext({
       consume: ({ value, metadata }) => ({ ok: true, found: true, value, metadata }),
       depth: 0,
     });
-    if (!visited.ok) return visited;
+    if (!visited.ok) {
+      return visited;
+    }
     return {
       ok: true,
       outputs: visited.found ? [visited.value] : [],
@@ -6380,7 +6849,9 @@ function evaluateJqFilterWithContext({
     if (nestedContext.inputState.index === previousIndex) {
       nestedContext.inputState.currentMetadata = previousMetadata;
     }
-    if (!visited.ok) return visited;
+    if (!visited.ok) {
+      return visited;
+    }
     return {
       ok: true,
       outputs: firstValue === undefined ? [] : [firstValue],
@@ -6425,7 +6896,9 @@ function evaluateJqFilterWithContext({
 
     while (tasks.length > 0) {
       const task = tasks.pop();
-      if (task === undefined) throw new Error('jq try evaluation task stack is empty');
+      if (task === undefined) {
+        throw new Error('jq try evaluation task stack is empty');
+      }
       switch (task.kind) {
       case 'evaluate':
         switch (task.filter.kind) {
@@ -6451,7 +6924,9 @@ function evaluateJqFilterWithContext({
         break;
       case 'comma_after_left': {
         const left = results.pop();
-        if (left === undefined) throw new Error('jq try comma left result is missing');
+        if (left === undefined) {
+          throw new Error('jq try comma left result is missing');
+        }
         if (!left.ok) {
           results.push(left);
           break;
@@ -6462,7 +6937,9 @@ function evaluateJqFilterWithContext({
       }
       case 'comma_after_right': {
         const right = results.pop();
-        if (right === undefined) throw new Error('jq try comma right result is missing');
+        if (right === undefined) {
+          throw new Error('jq try comma right result is missing');
+        }
         const outputs = [...task.leftOutputs];
         const appended = appendRuntimeOutputs({ target: outputs, source: right.outputs, context });
         if (!appended.ok) {
@@ -6476,7 +6953,9 @@ function evaluateJqFilterWithContext({
       }
       case 'pipe_after_left': {
         const left = results.pop();
-        if (left === undefined) throw new Error('jq try pipe left result is missing');
+        if (left === undefined) {
+          throw new Error('jq try pipe left result is missing');
+        }
         const firstInput = left.outputs[0];
         if (firstInput === undefined) {
           results.push(left.ok
@@ -6496,7 +6975,9 @@ function evaluateJqFilterWithContext({
       }
       case 'pipe_after_right': {
         const right = results.pop();
-        if (right === undefined) throw new Error('jq try pipe right result is missing');
+        if (right === undefined) {
+          throw new Error('jq try pipe right result is missing');
+        }
         const appended = appendRuntimeOutputs({ target: task.outputs, source: right.outputs, context });
         if (!appended.ok) {
           results.push({ ok: false, outputs: task.outputs, error: appended.error });
@@ -6584,7 +7065,9 @@ function evaluateJqFilterWithContext({
     }];
     while (tasks.length > 0) {
       const task = tasks.pop();
-      if (task === undefined) throw new Error('jq string task stack underflow');
+      if (task === undefined) {
+        throw new Error('jq string task stack underflow');
+      }
       switch (task.kind) {
       case 'evaluate': {
         if (task.partIndex < 0) {
@@ -6595,7 +7078,9 @@ function evaluateJqFilterWithContext({
           break;
         }
         const part = filter.parts[task.partIndex];
-        if (part === undefined) throw new Error('jq string part index mismatch');
+        if (part === undefined) {
+          throw new Error('jq string part index mismatch');
+        }
         switch (part.kind) {
         case 'text':
           tasks.push({
@@ -6824,7 +7309,9 @@ function evaluateJqFilterWithContext({
           const start = startValue === null ? undefined : startValue;
           const end = endValue === null ? undefined : endValue;
           if ((start !== undefined && typeof start !== 'number') || (end !== undefined && typeof end !== 'number')) {
-            if (filter.optional) continue;
+            if (filter.optional) {
+              continue;
+            }
             return replaceFailureOutputs({
               result: runtimeError({ message: 'slice bounds must be numbers or null', value: undefined }),
               outputs,
@@ -6975,7 +7462,9 @@ function evaluateJqFilterWithContext({
   }
   case 'pipe': {
     const structuralLimit = checkRequiredLeftSpineDepth({ filter, context, kind: 'pipe' });
-    if (!structuralLimit.ok) return structuralLimit;
+    if (!structuralLimit.ok) {
+      return structuralLimit;
+    }
     const left = evaluate({ filter: filter.left, input });
     const leftOutputs = left.ok ? left.outputs : failureOutputs({ result: left });
     const leftFallbackMetadata = context.inputState.currentMetadata;
@@ -7014,7 +7503,9 @@ function evaluateJqFilterWithContext({
       const rightOutputs = right.ok ? right.outputs : failureOutputs({ result: right });
       const rightFallbackMetadata = context.inputState.currentMetadata;
       const appended = appendRuntimeOutputs({ target: outputs, source: rightOutputs, context });
-      if (!appended.ok) return appended;
+      if (!appended.ok) {
+        return appended;
+      }
       appendRuntimeMetadata({
         target: outputMetadata,
         result: right,
@@ -7032,9 +7523,13 @@ function evaluateJqFilterWithContext({
   }
   case 'comma': {
     const structuralLimit = checkRequiredLeftSpineDepth({ filter, context, kind: 'comma' });
-    if (!structuralLimit.ok) return structuralLimit;
+    if (!structuralLimit.ok) {
+      return structuralLimit;
+    }
     const left = evaluate({ filter: filter.left, input });
-    if (!left.ok) return left;
+    if (!left.ok) {
+      return left;
+    }
     const leftFallbackMetadata = context.inputState.currentMetadata;
     const right = evaluate({ filter: filter.right, input });
     const outputs = [...left.outputs];
@@ -7048,7 +7543,9 @@ function evaluateJqFilterWithContext({
     const rightOutputs = right.ok ? right.outputs : failureOutputs({ result: right });
     const rightFallbackMetadata = context.inputState.currentMetadata;
     const appended = appendRuntimeOutputs({ target: outputs, source: rightOutputs, context });
-    if (!appended.ok) return appended;
+    if (!appended.ok) {
+      return appended;
+    }
     appendRuntimeMetadata({
       target: outputMetadata,
       result: right,
@@ -7068,7 +7565,9 @@ function evaluateJqFilterWithContext({
         const structuralLimit = checkLimits({
           context: { ...context, depth: context.depth + conditionalDepth },
         });
-        if (!structuralLimit.ok) return structuralLimit;
+        if (!structuralLimit.ok) {
+          return structuralLimit;
+        }
       }
       const branchContext: JqRuntimeContext = {
         ...context,
@@ -7118,7 +7617,9 @@ function evaluateJqFilterWithContext({
         const branchOutputs = branch.ok ? branch.outputs : failureOutputs({ result: branch });
         const branchFallbackMetadata = context.inputState.currentMetadata;
         const appended = appendRuntimeOutputs({ target: outputs, source: branchOutputs, context });
-        if (!appended.ok) return appended;
+        if (!appended.ok) {
+          return appended;
+        }
         appendRuntimeMetadata({
           target: outputMetadata,
           result: branch,
@@ -7142,7 +7643,9 @@ function evaluateJqFilterWithContext({
       result = attempted;
       break;
     }
-    if (attempted.inputRequest !== undefined || attempted.error.halt !== undefined) return attempted;
+    if (attempted.inputRequest !== undefined || attempted.error.halt !== undefined) {
+      return attempted;
+    }
     if (attempted.error.metadata !== undefined) {
       context.inputState.currentMetadata = attempted.error.metadata;
     }
@@ -7158,7 +7661,9 @@ function evaluateJqFilterWithContext({
     }
     const outputs = [...attempted.outputs];
     const appended = appendRuntimeOutputs({ target: outputs, source: caught.outputs, context });
-    if (!appended.ok) return appended;
+    if (!appended.ok) {
+      return appended;
+    }
     result = { ok: true, outputs };
     break;
   }
@@ -7166,7 +7671,9 @@ function evaluateJqFilterWithContext({
     const array: JsonValue[] = [];
     for (const item of filter.items) {
       const itemResult = evaluate({ filter: item, input });
-      if (!itemResult.ok) return clearFailureOutputs({ result: itemResult });
+      if (!itemResult.ok) {
+        return clearFailureOutputs({ result: itemResult });
+      }
       const startIndex = array.length;
       if (!appendJqValues({
         target: array,
@@ -7208,7 +7715,9 @@ function evaluateJqFilterWithContext({
     let pendingFailure: Extract<JqRuntimeResult, { ok: false }> | undefined;
 
     for (const entry of filter.entries) {
-      if (objects.length === 0) break;
+      if (objects.length === 0) {
+        break;
+      }
       const next: ObjectFrame[] = [];
       let entryFailure: Extract<JqRuntimeResult, { ok: false }> | undefined;
 
@@ -7322,7 +7831,9 @@ function evaluateJqFilterWithContext({
       }
 
       objects = next;
-      if (entryFailure !== undefined) pendingFailure = entryFailure;
+      if (entryFailure !== undefined) {
+        pendingFailure = entryFailure;
+      }
     }
 
     const outputs = objects.map(({ value }) => value);
@@ -7410,7 +7921,9 @@ function evaluateJqFilterWithContext({
   }
   case 'binary': {
     const structuralLimit = checkRequiredLeftSpineDepth({ filter, context, kind: 'binary' });
-    if (!structuralLimit.ok) return structuralLimit;
+    if (!structuralLimit.ok) {
+      return structuralLimit;
+    }
     const left = evaluate({ filter: filter.left, input });
     const leftOutputs = left.ok ? left.outputs : failureOutputs({ result: left });
     const leftFallbackMetadata = context.inputState.currentMetadata;
@@ -7479,7 +7992,9 @@ function evaluateJqFilterWithContext({
       const outputMetadata: JqRuntimeInputMetadata[] = [];
       for (let index = 0; index < leftOutputs.length; index += 1) {
         const value = leftOutputs[index]!;
-        if (!truthy({ value })) continue;
+        if (!truthy({ value })) {
+          continue;
+        }
         truthyOutputs.push(value);
         outputMetadata.push(metadataForResultOutput({
           result: left,
@@ -7628,7 +8143,9 @@ function evaluateJqFilterWithContext({
         case 'bind': {
           if (!task.limitChecked) {
             const structuralLimit = checkLimits({ context: task.context });
-            if (!structuralLimit.ok) return structuralLimit;
+            if (!structuralLimit.ok) {
+              return structuralLimit;
+            }
           }
           const bindNestedContext: JqRuntimeContext = {
             ...task.context,
@@ -7742,7 +8259,9 @@ function evaluateJqFilterWithContext({
       }
       case 'after_body': {
         const scoped = results.pop();
-        if (scoped === undefined) throw new Error('jq binding result stack is empty');
+        if (scoped === undefined) {
+          throw new Error('jq binding result stack is empty');
+        }
         const scopedOutputs = scoped.ok ? scoped.outputs : failureOutputs({ result: scoped });
         const scopedFallbackMetadata = task.continuation.nestedContext.inputState.currentMetadata;
         const appended = appendRuntimeOutputs({
@@ -7750,7 +8269,9 @@ function evaluateJqFilterWithContext({
           source: scopedOutputs,
           context: task.continuation.outputContext,
         });
-        if (!appended.ok) return appended;
+        if (!appended.ok) {
+          return appended;
+        }
         appendRuntimeMetadata({
           target: task.continuation.outputMetadata,
           result: scoped,
@@ -7862,7 +8383,9 @@ function evaluateJqFilterWithContext({
     while (assignmentFilter.kind === 'assign') {
       if (!limitChecked) {
         const structuralLimit = checkLimits({ context: assignmentContext });
-        if (!structuralLimit.ok) return structuralLimit;
+        if (!structuralLimit.ok) {
+          return structuralLimit;
+        }
       }
       const assignmentNestedContext: JqRuntimeContext = {
         ...assignmentContext,
@@ -7878,7 +8401,9 @@ function evaluateJqFilterWithContext({
             input: indexInput,
             context: assignmentNestedContext,
           });
-          if (evaluated.ok) return evaluated;
+          if (evaluated.ok) {
+            return evaluated;
+          }
           dynamicPathFailure = evaluated;
           return { ok: false, message: evaluated.error.message };
         },
@@ -7924,7 +8449,9 @@ function evaluateJqFilterWithContext({
               numberOrigin: typeof value === 'number' ? valueMetadata.numberOrigin : undefined,
             }),
           });
-          if (!assigned.ok) return runtimeError({ message: assigned.message, value: undefined });
+          if (!assigned.ok) {
+            return runtimeError({ message: assigned.message, value: undefined });
+          }
           assignedRoot = assigned.value;
           assignedRootOrigin = assigned.numberOrigin;
         }
@@ -7954,7 +8481,9 @@ function evaluateJqFilterWithContext({
       expression: filter.pathExpression,
       evaluateDynamicIndex: ({ filter: indexFilter, input: indexInput }) => {
         const evaluated = evaluate({ filter: indexFilter, input: indexInput });
-        if (evaluated.ok) return evaluated;
+        if (evaluated.ok) {
+          return evaluated;
+        }
         dynamicPathFailure = evaluated;
         return { ok: false, message: evaluated.error.message };
       },
@@ -7983,8 +8512,12 @@ function evaluateJqFilterWithContext({
       const deletionPaths = [];
       for (const path of materialized.paths) {
         const current = readJqPathValue({ root: updatedRoot, path });
-        if (!current.ok) return runtimeError({ message: current.message, value: undefined });
-        if (current.skipped) continue;
+        if (!current.ok) {
+          return runtimeError({ message: current.message, value: undefined });
+        }
+        if (current.skipped) {
+          continue;
+        }
         context.inputState.currentMetadata = metadataWithNumberOrigin({
           metadata: context.inputState.currentMetadata,
           numberOrigin: current.numberOrigin,
@@ -7993,7 +8526,9 @@ function evaluateJqFilterWithContext({
           filter: filter.value,
           input: current.value ?? null,
         });
-        if (!evaluated.ok) return evaluated;
+        if (!evaluated.ok) {
+          return evaluated;
+        }
         const first = evaluated.outputs[0];
         if (evaluated.outputMetadata?.[0] !== undefined) {
           updatedMetadata = evaluated.outputMetadata[0];
@@ -8012,7 +8547,9 @@ function evaluateJqFilterWithContext({
             numberOrigin: typeof first === 'number' ? firstMetadata.numberOrigin : undefined,
           }),
         });
-        if (!updated.ok) return runtimeError({ message: updated.message, value: undefined });
+        if (!updated.ok) {
+          return runtimeError({ message: updated.message, value: undefined });
+        }
         updatedRoot = updated.value;
       }
       const deleted = applyPathDeletions({ root: updatedRoot, paths: deletionPaths });
@@ -8047,7 +8584,9 @@ function evaluateJqFilterWithContext({
             outputMetadata,
           });
         }
-        if (current.skipped) continue;
+        if (current.skipped) {
+          continue;
+        }
         const pair = evaluateBinaryPair({
           operator: compoundOperator,
           left: current.value ?? null,
@@ -8055,7 +8594,9 @@ function evaluateJqFilterWithContext({
           leftOrigin: current.numberOrigin,
           rightOrigin: rightMetadata.numberOrigin,
         });
-        if (!pair.ok) return replaceFailureOutputs({ result: pair, outputs, outputMetadata });
+        if (!pair.ok) {
+          return replaceFailureOutputs({ result: pair, outputs, outputMetadata });
+        }
         const updated = applyPathUpdate({
           root: updatedRoot,
           path,
@@ -8095,7 +8636,9 @@ function evaluateJqFilterWithContext({
   }
   }
 
-  if (!result.ok) return result;
+  if (!result.ok) {
+    return result;
+  }
   const outputLimit = checkOutputLimit({ outputs: result.outputs, context });
   return outputLimit.ok ? result : outputLimit;
 }

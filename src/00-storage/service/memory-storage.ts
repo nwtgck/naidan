@@ -79,7 +79,9 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   private loadUnhydratedChatContent({ id }: { id: ChatId }): ChatContent | null {
     const rawContent = this.chatContents.get(id);
-    if (!rawContent) return null;
+    if (!rawContent) {
+      return null;
+    }
 
     try {
       return chatContentToDomain({
@@ -127,7 +129,9 @@ export class MemoryStorageProvider extends IStorageProvider {
       const att = part.attachment;
       switch (att.status) {
       case 'memory':
-        if (att.blob) this.blobCache.set(att.id, att.blob);
+        if (att.blob) {
+          this.blobCache.set(att.id, att.blob);
+        }
         break;
       case 'persisted':
       case 'missing':
@@ -147,7 +151,9 @@ export class MemoryStorageProvider extends IStorageProvider {
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     const rawMeta = this.chatMetas.get(id);
     const rawContent = this.chatContents.get(id);
-    if (!rawMeta || !rawContent) return null;
+    if (!rawMeta || !rawContent) {
+      return null;
+    }
 
     try {
       const meta = ChatMetaSchemaDto.parse(rawMeta);
@@ -156,7 +162,9 @@ export class MemoryStorageProvider extends IStorageProvider {
 
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) chat.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        chat.groupId = toChatGroupId({ raw: group.id });
+      }
 
       this.restoreBlobs({ nodes: chat.root.items });
 
@@ -168,12 +176,16 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     const rawMeta = this.chatMetas.get(id);
-    if (!rawMeta) return null;
+    if (!rawMeta) {
+      return null;
+    }
     try {
       const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(rawMeta) });
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-      if (group) meta.groupId = toChatGroupId({ raw: group.id });
+      if (group) {
+        meta.groupId = toChatGroupId({ raw: group.id });
+      }
       return meta;
     } catch {
       return null;
@@ -182,7 +194,9 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     const content = this.loadUnhydratedChatContent({ id });
-    if (content === null) return null;
+    if (content === null) {
+      return null;
+    }
 
     this.restoreBlobs({ nodes: content.root.items });
     return content;
@@ -205,7 +219,9 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
     const raw = this.chatGroups.get(id);
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     try {
       const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
       return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
@@ -358,7 +374,9 @@ export class MemoryStorageProvider extends IStorageProvider {
       // 1. Stream all chats
       for (const id of this.chatMetas.keys()) {
         const chat = await this.loadChat({ id });
-        if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
+        if (chat) {
+          yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
+        }
       }
 
       // 2. Stream all binary objects
@@ -395,13 +413,21 @@ export class MemoryStorageProvider extends IStorageProvider {
   async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     const { structure, contentStream } = snapshot;
 
-    if (structure.settings) await this.saveSettings({ settings: structure.settings });
-    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    if (structure.settings) {
+      await this.saveSettings({ settings: structure.settings });
+    }
+    if (structure.hierarchy) {
+      await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
+    }
     if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
+      for (const meta of structure.chatMetas) {
+        await this.saveChatMeta({ meta });
+      }
     }
     if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
+      for (const group of structure.chatGroups) {
+        await this.saveChatGroup({ chatGroup: group });
+      }
     }
 
     for await (const chunk of contentStream) {

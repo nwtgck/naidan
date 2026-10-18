@@ -33,12 +33,16 @@ function toDirectoryHandle({ value }: { value: FakeDirectory }): FileSystemDirec
     name: 'fake',
     async getDirectoryHandle(name: string) {
       const child = value.children[name];
-      if (child?.kind !== 'directory') throw new DOMException('Not found', 'NotFoundError');
+      if (child?.kind !== 'directory') {
+        throw new DOMException('Not found', 'NotFoundError');
+      }
       return toDirectoryHandle({ value: child });
     },
     async getFileHandle(name: string) {
       const child = value.children[name];
-      if (child?.kind !== 'file') throw new DOMException('Not found', 'NotFoundError');
+      if (child?.kind !== 'file') {
+        throw new DOMException('Not found', 'NotFoundError');
+      }
       return {
         kind: 'file',
         name,
@@ -59,10 +63,14 @@ function storageRoot({ revision, repositoryPath, bytes }: {
 }): FileSystemDirectoryHandle {
   const pathParts = repositoryPath.split('/');
   const fileName = pathParts.pop();
-  if (fileName === undefined) throw new Error('repositoryPath must name a file');
+  if (fileName === undefined) {
+    throw new Error('repositoryPath must name a file');
+  }
   let current: FakeHandle = file({ bytes });
   current = directory({ children: { [fileName]: current } });
-  for (const part of pathParts.reverse()) current = directory({ children: { [part]: current } });
+  for (const part of pathParts.reverse()) {
+    current = directory({ children: { [part]: current } });
+  }
   return toDirectoryHandle({
     value: directory({
       children: {
@@ -156,7 +164,9 @@ function rangedFetch({ bytes }: { bytes: Uint8Array }): typeof fetch {
     }
     const range = new Headers(init?.headers).get('Range');
     const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
-    if (match === null) throw new Error(`Unexpected range: ${range}`);
+    if (match === null) {
+      throw new Error(`Unexpected range: ${range}`);
+    }
     const start = Number(match[1]);
     const end = Number(match[2]);
     const body = bytes.slice(start, end + 1);
@@ -218,7 +228,9 @@ describe('verifyModelCacheProvenance', () => {
     const bytes = Uint8Array.from({ length: 100 }, (_, index) => index);
     let transportBodyCancelled = false;
     const repositoryFetch = vi.fn<typeof fetch>(async (_input, init) => {
-      if (init?.method === 'HEAD') return new Response(null, { status: 405 });
+      if (init?.method === 'HEAD') {
+        return new Response(null, { status: 405 });
+      }
       const range = new Headers(init?.headers).get('Range');
       if (range === 'bytes=0-0') {
         return new Response(new ReadableStream({
@@ -240,7 +252,9 @@ describe('verifyModelCacheProvenance', () => {
         });
       }
       const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
-      if (match === null) throw new Error(`Unexpected range: ${range}`);
+      if (match === null) {
+        throw new Error(`Unexpected range: ${range}`);
+      }
       const start = Number(match[1]);
       const end = Number(match[2]);
       const body = bytes.slice(start, end + 1);
@@ -332,7 +346,9 @@ describe('verifyModelCacheProvenance', () => {
     const bytes = Uint8Array.from({ length: 100 }, (_, index) => index);
     let cancelled = false;
     const repositoryFetch = vi.fn<typeof fetch>(async (_input, init) => {
-      if (init?.method === 'HEAD') return new Response(null, { status: 200 });
+      if (init?.method === 'HEAD') {
+        return new Response(null, { status: 200 });
+      }
       return new Response(new ReadableStream({
         start(controller) {
           controller.enqueue(new Uint8Array(101));

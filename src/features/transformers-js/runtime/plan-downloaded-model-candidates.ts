@@ -66,7 +66,9 @@ export async function planDownloadedModelCandidates({
     try {
       selectedPaths = await getModelFiles({ candidate });
     } catch (error) {
-      if (!(error instanceof ProductionResourceCandidateError)) throw error;
+      if (!(error instanceof ProductionResourceCandidateError)) {
+        throw error;
+      }
       entries.push({
         status: 'planning-failed',
         candidate,
@@ -88,7 +90,9 @@ export async function planDownloadedModelCandidates({
         missingPaths.add(repositoryPath);
         continue;
       }
-      if (existing === true) continue;
+      if (existing === true) {
+        continue;
+      }
 
       const response = await modelCache.match(downloadedModelResourceUrl({
         modelId,
@@ -98,8 +102,12 @@ export async function planDownloadedModelCandidates({
       }));
       const complete = response !== undefined;
       pathCompleteness.set(repositoryPath, complete);
-      if (response !== undefined) await response.body?.cancel();
-      if (!complete) missingPaths.add(repositoryPath);
+      if (response !== undefined) {
+        await response.body?.cancel();
+      }
+      if (!complete) {
+        missingPaths.add(repositoryPath);
+      }
     }
     const missingModelPaths = requiredModelPaths.filter(path => missingPaths.has(path));
     const missingRuntimePaths = requiredRuntimePaths.filter(path => missingPaths.has(path));

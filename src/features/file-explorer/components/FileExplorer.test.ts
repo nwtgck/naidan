@@ -62,7 +62,9 @@ class MockExplorerDirectory implements ExplorerDirectory {
 
   async subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory> {
     const existing = this._entries.get(name);
-    if (existing instanceof MockExplorerDirectory) return existing;
+    if (existing instanceof MockExplorerDirectory) {
+      return existing;
+    }
     const d = new MockExplorerDirectory(name);
     this._entries.set(name, d);
     return d;

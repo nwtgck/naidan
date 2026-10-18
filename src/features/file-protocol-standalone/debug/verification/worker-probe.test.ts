@@ -82,7 +82,9 @@ function createTrackedFactory<Api>({ runtime, workerName, events }: {
     let active = true;
     const worker = {
       terminate() {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
         active = false;
         for (const target of [runtime, byName]) {
           target.workersTerminated += 1;
@@ -194,7 +196,9 @@ home
       createWeshSession: vi.fn(),
       readDiagnostics: () => snapshot(runtime),
       runHighlightProbe: async ({ session, source }) => {
-        if (idOf(session) === 0) throw new Error('synthetic first Highlight failure');
+        if (idOf(session) === 0) {
+          throw new Error('synthetic first Highlight failure');
+        }
         return { resolvedLanguage: 'json', htmlLength: source.length };
       },
       runWeshProbe: vi.fn(),
@@ -349,7 +353,8 @@ home
         return { executionId: 'execution-1' };
       }),
       awaitExecution: vi.fn(async () => {
-        events.push('await'); return { exitCode: 0 };
+        events.push('await');
+        return { exitCode: 0 };
       }),
       disposeExecution: vi.fn(async () => {
         events.push('dispose-execution');

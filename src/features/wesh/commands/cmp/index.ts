@@ -249,14 +249,20 @@ export const cmpCommandImplementation: WeshCommandImplementation = {
       parsed,
       findSemanticIssue: ({ parsed: candidate }) => {
         for (const occurrence of candidate.occurrences) {
-          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
+          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') {
+            continue;
+          }
           if (occurrence.key === 'limit') {
             const result = parseCmpByteCount({ value: occurrence.value, option: '--bytes' });
-            if (!result.ok) return result.message;
+            if (!result.ok) {
+              return result.message;
+            }
           }
           if (occurrence.key === 'ignoreInitial') {
             const result = parseCmpIgnoreInitial({ value: occurrence.value });
-            if (!result.ok) return result.message;
+            if (!result.ok) {
+              return result.message;
+            }
           }
         }
         return undefined;

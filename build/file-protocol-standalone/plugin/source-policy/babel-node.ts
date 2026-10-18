@@ -12,8 +12,12 @@ export function isBabelNodeType<T extends Node['type']>(
 }
 
 export function staticMemberPropertyName(node: Node | null | undefined): string | null {
-  if (!node) return null;
-  if ((node.type === 'MemberExpression' || node.type === 'OptionalMemberExpression') && !node.computed && node.property.type === 'Identifier') return node.property.name;
+  if (!node) {
+    return null;
+  }
+  if ((node.type === 'MemberExpression' || node.type === 'OptionalMemberExpression') && !node.computed && node.property.type === 'Identifier') {
+    return node.property.name;
+  }
   if (node.type === 'MemberExpression' && node.computed && node.property.type === 'StringLiteral') {
     return typeof node.property.value === 'string' ? node.property.value : null;
   }

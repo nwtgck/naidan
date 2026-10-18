@@ -37,7 +37,9 @@ export function inspectProtocolHeader({ bytes, maxBytes }: {
     throw new RangeError('Finite body limit must be a safe integer of at least 13 bytes');
   }
   // Check the containing phase's cap before inspecting or copying any header/body bytes.
-  if (bytes.byteLength > maxBytes) return { kind: 'oversized-message' };
+  if (bytes.byteLength > maxBytes) {
+    return { kind: 'oversized-message' };
+  }
   if (bytes.byteLength < PROTOCOL_HEADER_BYTES) {
     return { kind: 'truncated-header', availableBytes: bytes.byteLength };
   }
@@ -46,8 +48,12 @@ export function inspectProtocolHeader({ bytes, maxBytes }: {
   }
   // The version starts at an unaligned offset, potentially within a larger buffer.
   const version = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(9, true);
-  if ((version & 0x7fffffff) === 0) return { kind: 'invalid-protocol-version', version };
-  if (version !== PROTOCOL_VERSION) return { kind: 'unsupported-protocol-version', version };
+  if ((version & 0x7fffffff) === 0) {
+    return { kind: 'invalid-protocol-version', version };
+  }
+  if (version !== PROTOCOL_VERSION) {
+    return { kind: 'unsupported-protocol-version', version };
+  }
   return { kind: 'supported', version };
 }
 

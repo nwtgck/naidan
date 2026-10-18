@@ -7,7 +7,9 @@ import type { DownloadWriterApi } from './writer';
 import type { DownloadWriterClient } from './writer-client';
 
 export async function createDownloadWriterClient({ signal }: { signal: AbortSignal }): Promise<DownloadWriterClient> {
-  if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+  if (signal.aborted) {
+    throw new LlamaCppBrowserError({ code: 'aborted' });
+  }
   const start = async (): Promise<DownloadWriterClient> => {
     const session = await createStandaloneWorkerSession<DownloadWriterApi>({ createWorker: createStandaloneWorker });
     try {
@@ -30,12 +32,16 @@ export async function createDownloadWriterClient({ signal }: { signal: AbortSign
   const cancellation = Promise.withResolvers<never>();
   const abort = (): void => cancellation.reject(new LlamaCppBrowserError({ code: 'aborted' }));
   signal.addEventListener('abort', abort, { once: true });
-  if (signal.aborted) abort();
+  if (signal.aborted) {
+    abort();
+  }
   let handedOff = false;
   try {
     const client = await Promise.race([starting, cancellation.promise]);
     // Cancellation can win after startup settles but before this continuation.
-    if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+    if (signal.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
     handedOff = true;
     return client;
   } finally {

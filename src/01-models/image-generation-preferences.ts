@@ -25,12 +25,18 @@ export function areImageInferenceLocationsEqual({ left, right }: { left: ImageIn
   case 'local': return right.kind === 'local';
   case 'unavailable': return right.kind === 'unavailable';
   case 'naidan_rpc': break;
-  default: { const exhaustive: never = left; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = left;
+    throw new Error(String(exhaustive));
+  }
   }
   switch (right.kind) {
   case 'local': case 'unavailable': return false;
   case 'naidan_rpc': break;
-  default: { const exhaustive: never = right; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = right;
+    throw new Error(String(exhaustive));
+  }
   }
   return left.registration?.registrationId === right.registration?.registrationId && left.registration?.peerPublicKey === right.registration?.peerPublicKey;
 }

@@ -288,7 +288,9 @@ it('propagates local-probe I/O without classifying it as an exact required failu
   const cause = new DOMException('Local namespace is inaccessible', 'NotReadableError');
   const { operation } = setup({
     match: async request => {
-      if (request !== requiredUrl) throw cause;
+      if (request !== requiredUrl) {
+        throw cause;
+      }
       return new Response('core');
     },
   });
@@ -365,7 +367,8 @@ it('permits metadata-only inspection and cancellation of an unplanned ONNX cache
 it('rejects an unplanned model body before reading bytes and retains its terminal failure', async () => {
   const url = `https://huggingface.co/${modelId}/resolve/${revision}/onnx/model_q4f16.onnx_data`;
   const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
-    controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+    controller.enqueue(new Uint8Array([1, 2, 3]));
+    controller.close();
   });
   const { operation, fetch } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
   await using _cleanupResource = {
@@ -374,7 +377,9 @@ it('rejects an unplanned model body before reading bytes and retains its termina
     },
   };
   const response = await operation.cache.match(url);
-  if (response === undefined) throw new Error('Synthetic unplanned cache hit was lost');
+  if (response === undefined) {
+    throw new Error('Synthetic unplanned cache hit was lost');
+  }
   const outcome = await response.arrayBuffer().then(
     bytes => ({ status: 'read' as const, bytes: bytes.byteLength }),
     (error: unknown) => ({ status: 'failed' as const, error }),
@@ -382,7 +387,9 @@ it('rejects an unplanned model body before reading bytes and retains its termina
   expect(fetch).not.toHaveBeenCalled();
   expect(pull, JSON.stringify({ outcome })).not.toHaveBeenCalled();
   expect(outcome.status).toBe('failed');
-  if (outcome.status !== 'failed' || !(outcome.error instanceof Error)) throw new Error('Unplanned body consumption must fail with a typed Error');
+  if (outcome.status !== 'failed' || !(outcome.error instanceof Error)) {
+    throw new Error('Unplanned body consumption must fail with a typed Error');
+  }
   expect(classifyProductionAcceptanceError({ error: outcome.error })).toBe('terminal');
   expect(outcome.error.message).toContain(url);
   expect(operation.assertHealthy).toThrow(outcome.error);
@@ -402,7 +409,8 @@ it('keeps query and fragment out of the required resource identity', async () =>
 
 it('does not read a later planned body after an unplanned body has poisoned the operation', async () => {
   const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
-    controller.enqueue(new Uint8Array([1])); controller.close();
+    controller.enqueue(new Uint8Array([1]));
+    controller.close();
   });
   const { operation } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
   await using _cleanupResource = {

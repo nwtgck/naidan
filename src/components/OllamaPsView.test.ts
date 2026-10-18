@@ -87,6 +87,29 @@ describe('OllamaPsView', () => {
     expect(wrapper.text()).toContain('Kept indefinitely');
   });
 
+  it('keeps the settings presentation to one disclosure with the same lazy requests and refresh', async () => {
+    const listRunningModels = vi.fn().mockResolvedValue([runningModel]);
+    const wrapper = mount(OllamaPsView, { props: { provider: createProvider({ listRunningModels, unloadModel: vi.fn() }), endpointUrl: 'http://localhost:11434', presentation: 'settings' } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.get('[data-testid="ollama-ps-toggle"]').text()).toContain('Loaded models');
+    expect(wrapper.text()).not.toContain('Models currently using system or video memory');
+    expect(listRunningModels).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="ollama-ps-toggle"]').trigger('click');
+    await flushPromises();
+    expect(listRunningModels).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('qwen3:8b');
+    expect(wrapper.find('[data-testid="ollama-model-0-unload"]').exists()).toBe(true);
+    listRunningModels.mockResolvedValueOnce([]);
+    await wrapper.get('[data-testid="ollama-ps-refresh"]').trigger('click');
+    await flushPromises();
+    expect(listRunningModels).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="ollama-ps-empty"]').exists()).toBe(true);
+  });
+
   it('shows endpoint guidance without making a request', async () => {
     const listRunningModels = vi.fn();
     const wrapper = mount(OllamaPsView, {

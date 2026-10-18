@@ -13,15 +13,23 @@ function withinRawTimingBudget({ value }: { value: unknown }): boolean {
   let nodes = 0;
   let characters = 0;
   function visit({ item, depth }: { item: unknown; depth: number }): boolean {
-    if (++nodes > 65_536 || depth > 12) return false;
+    if (++nodes > 65_536 || depth > 12) {
+      return false;
+    }
     if (typeof item === 'string') {
       characters += item.length;
       return item.length <= 256 && characters <= 524_288;
     }
-    if (item === null || typeof item !== 'object') return true;
-    if (Array.isArray(item)) return item.length <= 128 && item.every(child => visit({ item: child, depth: depth + 1 }));
+    if (item === null || typeof item !== 'object') {
+      return true;
+    }
+    if (Array.isArray(item)) {
+      return item.length <= 128 && item.every(child => visit({ item: child, depth: depth + 1 }));
+    }
     const keys = Object.keys(item);
-    if (keys.length > 32) return false;
+    if (keys.length > 32) {
+      return false;
+    }
     return keys.every(key => {
       const property = Object.getOwnPropertyDescriptor(item, key);
       return property !== undefined && 'value' in property && visit({ item: property.value, depth: depth + 1 });
@@ -136,7 +144,9 @@ export const downloadTimingSnapshotSchema = z.preprocess(value => withinRawTimin
   records: z.array(operationSchema).max(8),
 }).superRefine((value, context) => {
   const scalars = value.records.reduce((sum, record) => sum + record.observations.reduce((count, observation) => count + observationScalarCount({ observation }), 0), 0);
-  if (scalars > 1_024 || JSON.stringify(value).length > 524_288) context.addIssue({ code: 'custom', message: 'Download timing retention budget exceeded' });
+  if (scalars > 1_024 || JSON.stringify(value).length > 524_288) {
+    context.addIssue({ code: 'custom', message: 'Download timing retention budget exceeded' });
+  }
 }));
 export type DownloadTimingSnapshot = z.infer<typeof downloadTimingSnapshotSchema>;
 
@@ -153,7 +163,9 @@ export function parseDownloadTiming<T>({ schema, value }: { schema: z.ZodType<T>
 export function publishDownloadTiming({ callback, observation }: { callback: DownloadTimingCallback | undefined; observation: DownloadTimingObservation }): void {
   try {
     const parsed = parseDownloadTiming({ schema: downloadTimingObservationSchema, value: observation });
-    if (parsed !== undefined) void Promise.resolve(callback?.({ observation: parsed })).catch(() => undefined);
+    if (parsed !== undefined) {
+      void Promise.resolve(callback?.({ observation: parsed })).catch(() => undefined);
+    }
   } catch {
     // This callback observes an already owned operation, never controls it.
   }
@@ -169,21 +181,29 @@ export function createDownloadMeasurementClock() {
   return {
     clockId,
     read(): number | undefined {
-      if (!valid) return undefined;
+      if (!valid) {
+        return undefined;
+      }
       try {
         const now = performance.now();
-        if (!Number.isFinite(now) || now < 0 || now > Number.MAX_SAFE_INTEGER || (last !== undefined && now < last)) throw new Error('Invalid observation clock');
+        if (!Number.isFinite(now) || now < 0 || now > Number.MAX_SAFE_INTEGER || (last !== undefined && now < last)) {
+          throw new Error('Invalid observation clock');
+        }
         last = now;
         return now;
       } catch {
-        valid = false; return undefined;
+        valid = false;
+        return undefined;
       }
     },
     elapsed({ start, end }: { start: number | undefined; end: number | undefined }): number | undefined {
-      if (!valid || start === undefined || end === undefined) return undefined;
+      if (!valid || start === undefined || end === undefined) {
+        return undefined;
+      }
       const result = duration.safeParse(end - start);
       if (!result.success) {
-        valid = false; return undefined;
+        valid = false;
+        return undefined;
       }
       return result.data;
     },
@@ -290,25 +310,34 @@ export function createDownloadTimingCollector() {
       };
       sequence++;
       if (records.length === 8) {
-        records.shift(); droppedOperations++;
+        records.shift();
+        droppedOperations++;
       }
       records.push(record);
       let active = true;
       let scalarCount = 0;
       return {
         observe({ observation }: { observation: DownloadTimingObservation }): void {
-          if (!active || record.outcome !== 'running' || !records.includes(record)) return;
+          if (!active || record.outcome !== 'running' || !records.includes(record)) {
+            return;
+          }
           const parsed = parseDownloadTiming({ schema: downloadTimingObservationSchema, value: observation });
           const cost = parsed === undefined ? 1 : observationScalarCount({ observation: parsed });
           if (parsed === undefined || scalarCount + cost > 128 || JSON.stringify(record).length + JSON.stringify(parsed).length > 60_000) {
-            record.truncated = true; record.droppedObservations++; return;
+            record.truncated = true;
+            record.droppedObservations++;
+            return;
           }
           scalarCount += cost;
           record.observations.push(parsed);
-          if (parsed.kind === 'prefetch' && parsed.droppedFiles > 0) record.truncated = true;
+          if (parsed.kind === 'prefetch' && parsed.droppedFiles > 0) {
+            record.truncated = true;
+          }
         },
         finish({ outcome }: { outcome: Exclude<DownloadTimingSnapshot['records'][number]['outcome'], 'running'> }): void {
-          if (!active || record.outcome !== 'running') return;
+          if (!active || record.outcome !== 'running') {
+            return;
+          }
           active = false;
           record.outcome = outcome;
           record.wallMs = clock.elapsed({ start: started, end: clock.read() });

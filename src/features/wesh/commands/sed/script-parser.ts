@@ -34,7 +34,9 @@ function parseLineNumberAddress({
 }: {
   value: string;
 }): SedAddress | undefined {
-  if (!/^\d+$/.test(value)) return undefined;
+  if (!/^\d+$/.test(value)) {
+    return undefined;
+  }
   const lineNumber = parseSedUnsigned64Decimal({ value });
   if (lineNumber === 0n) {
     return { kind: "zero" };
@@ -116,7 +118,9 @@ function parseAddress({
 
   if (script[index] === "/" || script[index] === "\\") {
     const parsed = parseRegexLiteral({ script, index, state });
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     return {
       ok: true,
       address: { kind: "regex", regex: parsed.regex },
@@ -166,7 +170,9 @@ function parseSubstituteCommand({
     unterminatedMessage: "unterminated substitute command",
     sourceBoundaryIndices: state.sourceBoundaryIndices,
   });
-  if (!patternOperand.ok) return patternOperand;
+  if (!patternOperand.ok) {
+    return patternOperand;
+  }
 
   let cursor = patternOperand.nextIndex;
   const pattern = patternOperand.source;
@@ -180,7 +186,9 @@ function parseSubstituteCommand({
       return { ok: false, message: "unterminated substitute command" };
     }
     const char = script[cursor];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
     if (!escaped && char === "\n") {
       return { ok: false, message: "unterminated substitute command" };
     }
@@ -210,7 +218,9 @@ function parseSubstituteCommand({
   let sawOccurrence = false;
   while (cursor < script.length) {
     const char = script[cursor];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
     if (char === "g") {
       if (sawGlobal) {
         return { ok: false, message: "multiple 'g' options to 's' command" };
@@ -250,7 +260,9 @@ function parseSubstituteCommand({
         index: cursor + 1,
         command: "w",
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       writePath = parsed.path;
       cursor = parsed.nextIndex;
       break;
@@ -366,7 +378,9 @@ function parseDelimitedSedText({
       return { ok: false, message: `unterminated ${label} command` };
     }
     const char = script[cursor];
-    if (char === undefined) break;
+    if (char === undefined) {
+      break;
+    }
     if (!escaped && char === "\n") {
       return { ok: false, message: `unterminated ${label} command` };
     }
@@ -470,7 +484,9 @@ function parseTranslateCommand({
     label: "translate",
     sourceBoundaryIndices,
   });
-  if (!source.ok) return source;
+  if (!source.ok) {
+    return source;
+  }
 
   const target = parseDelimitedSedText({
     script,
@@ -478,7 +494,9 @@ function parseTranslateCommand({
     label: "translate",
     sourceBoundaryIndices,
   });
-  if (!target.ok) return target;
+  if (!target.ok) {
+    return target;
+  }
 
   const delimiter = script[index + 1];
   if (delimiter === undefined) {
@@ -559,7 +577,9 @@ function parseTextCommand({
       };
     }
   } else {
-    while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+    while (script[cursor] === " " || script[cursor] === "\t") {
+      cursor += 1;
+    }
     if (script[cursor] === undefined) {
       return { ok: false, message: `expected \\ after '${label[0]}' command` };
     }
@@ -568,7 +588,9 @@ function parseTextCommand({
   let text = "";
   while (cursor < script.length) {
     const char = script[cursor];
-    if (char === undefined || char === "\n") break;
+    if (char === undefined || char === "\n") {
+      break;
+    }
     if (char !== "\\") {
       text += char;
       cursor += 1;
@@ -582,7 +604,9 @@ function parseTextCommand({
     }
     if (escaped === "\n") {
       cursor += 2;
-      if (text.length > 0 || cursor < script.length) text += "\n";
+      if (text.length > 0 || cursor < script.length) {
+        text += "\n";
+      }
       continue;
     }
 
@@ -630,12 +654,16 @@ function parseExecuteCommand({
   characterLocaleMode: WeshCharacterLocaleMode;
 }): { ok: true; command: SedCommand; nextIndex: number } {
   let cursor = index + 1;
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
 
   let command = "";
   while (cursor < script.length) {
     const char = script[cursor];
-    if (char === undefined || char === "\n") break;
+    if (char === undefined || char === "\n") {
+      break;
+    }
     if (char !== "\\") {
       command += char;
       cursor += 1;
@@ -713,11 +741,17 @@ function parseOptionalSedUnsignedDecimal({
   | { ok: true; valueText: string | undefined; nextIndex: number }
   | { ok: false; message: string } {
   let cursor = index;
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
   const start = cursor;
-  while (/^[0-9]$/.test(script[cursor] ?? "")) cursor += 1;
+  while (/^[0-9]$/.test(script[cursor] ?? "")) {
+    cursor += 1;
+  }
   const valueText = cursor === start ? undefined : script.slice(start, cursor);
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
   const trailing = script[cursor];
   if (
     trailing !== undefined &&
@@ -743,7 +777,9 @@ function parseOptionalSedListWidth({
   | { ok: true; value: number | undefined; nextIndex: number }
   | { ok: false; message: string } {
   const parsed = parseOptionalSedUnsignedDecimal({ script, index, label });
-  if (!parsed.ok) return parsed;
+  if (!parsed.ok) {
+    return parsed;
+  }
   if (parsed.valueText === undefined) {
     return { ok: true, value: undefined, nextIndex: parsed.nextIndex };
   }
@@ -767,7 +803,9 @@ function parseSedLabelOperand({
   | { ok: true; label: string | undefined; nextIndex: number }
   | { ok: false; message: string } {
   let cursor = index;
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
   const start = cursor;
   while (
     cursor < script.length &&
@@ -777,8 +815,9 @@ function parseSedLabelOperand({
     script[cursor] !== " " &&
     script[cursor] !== "\t" &&
     script[cursor] !== "#"
-  )
+  ) {
     cursor += 1;
+  }
   const label = script.slice(start, cursor);
   if (label.length === 0) {
     switch (requirement) {
@@ -807,9 +846,13 @@ function parseSedFileOperand({
   | { ok: true; path: string; nextIndex: number }
   | { ok: false; message: string } {
   let cursor = index;
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
   const start = cursor;
-  while (cursor < script.length && script[cursor] !== "\n") cursor += 1;
+  while (cursor < script.length && script[cursor] !== "\n") {
+    cursor += 1;
+  }
   const path = script.slice(start, cursor);
   if (path.length === 0) {
     return { ok: false, message: `missing filename in ${command} command` };
@@ -932,7 +975,9 @@ function validateSedCommandBoundary({
   index: number;
 }): { ok: true; nextIndex: number } | { ok: false; message: string } {
   let cursor = index;
-  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  while (script[cursor] === " " || script[cursor] === "\t") {
+    cursor += 1;
+  }
   const trailing = script[cursor];
   if (
     trailing === undefined
@@ -961,10 +1006,14 @@ function parseSedScript({
 
   while (index < script.length) {
     index = skipSeparators({ script, index });
-    if (index >= script.length) break;
+    if (index >= script.length) {
+      break;
+    }
 
     if (script[index] === "#") {
-      while (index < script.length && script[index] !== "\n") index += 1;
+      while (index < script.length && script[index] !== "\n") {
+        index += 1;
+      }
       continue;
     }
 
@@ -974,7 +1023,9 @@ function parseSedScript({
       state,
       allowRelative: false,
     });
-    if (!firstAddress.ok) return firstAddress;
+    if (!firstAddress.ok) {
+      return firstAddress;
+    }
     const address = firstAddress.address;
     index = firstAddress.nextIndex;
 
@@ -1004,7 +1055,9 @@ function parseSedScript({
       index = secondAddress.nextIndex;
     }
 
-    while (script[index] === " " || script[index] === "\t") index += 1;
+    while (script[index] === " " || script[index] === "\t") {
+      index += 1;
+    }
 
     const hasInvalidZeroStep =
       address?.kind === "lineStep" && address.first === 0n && address.step === 0n;
@@ -1022,11 +1075,15 @@ function parseSedScript({
     if (script[index] === "!") {
       negated = true;
       index += 1;
-      while (script[index] === " " || script[index] === "\t") index += 1;
+      while (script[index] === " " || script[index] === "\t") {
+        index += 1;
+      }
     }
 
     const commandChar = script[index];
-    if (commandChar === undefined) break;
+    if (commandChar === undefined) {
+      break;
+    }
 
     let requiresCommandBoundary = true;
     switch (commandChar) {
@@ -1039,7 +1096,9 @@ function parseSedScript({
         negated,
         state,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       if (parsed.command.writePath !== undefined) {
         compileEffects.writePaths.push(parsed.command.writePath);
       }
@@ -1061,7 +1120,9 @@ function parseSedScript({
         index: index + 1,
         label: "list width",
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push({
         kind: "list",
         address,
@@ -1121,7 +1182,9 @@ function parseSedScript({
         index: index + 1,
         command: commandChar,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       const selection = { address, rangeEnd, negated };
       if (commandChar === "w" || commandChar === "W") {
         compileEffects.writePaths.push(parsed.path);
@@ -1194,7 +1257,9 @@ function parseSedScript({
         index: index + 1,
         label: "quit status",
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push({
         kind: "quit",
         address,
@@ -1215,7 +1280,9 @@ function parseSedScript({
         index: index + 1,
         requirement: "required",
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push({
         kind: "label",
         address: undefined,
@@ -1235,7 +1302,9 @@ function parseSedScript({
         index: index + 1,
         requirement: "optional",
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       const selection = { address, rangeEnd, negated };
       switch (commandChar) {
       case "b":
@@ -1287,11 +1356,13 @@ function parseSedScript({
         return { ok: false, message: "unexpected '}'" };
       }
       const startIndex = groupStartIndices.pop();
-      if (startIndex === undefined)
+      if (startIndex === undefined) {
         return { ok: false, message: "unexpected '}'" };
+      }
       const startCommand = commands[startIndex];
-      if (startCommand === undefined)
+      if (startCommand === undefined) {
         throw new Error("Invalid sed group parser state");
+      }
       switch (startCommand.kind) {
       case "groupStart":
         startCommand.endIndex = commands.length;
@@ -1354,7 +1425,9 @@ function parseSedScript({
         characterLocaleMode: state.characterLocaleMode,
         sourceBoundaryIndices: state.sourceBoundaryIndices,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push(parsed.command);
       index = parsed.nextIndex;
       break;
@@ -1369,7 +1442,9 @@ function parseSedScript({
         negated,
         characterLocaleMode: state.characterLocaleMode,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push(parsed.command);
       index = parsed.nextIndex;
       break;
@@ -1384,7 +1459,9 @@ function parseSedScript({
         negated,
         characterLocaleMode: state.characterLocaleMode,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push(parsed.command);
       index = parsed.nextIndex;
       break;
@@ -1399,7 +1476,9 @@ function parseSedScript({
         negated,
         characterLocaleMode: state.characterLocaleMode,
       });
-      if (!parsed.ok) return parsed;
+      if (!parsed.ok) {
+        return parsed;
+      }
       commands.push(parsed.command);
       index = parsed.nextIndex;
       break;
@@ -1413,7 +1492,9 @@ function parseSedScript({
 
     if (requiresCommandBoundary) {
       const boundary = validateSedCommandBoundary({ script, index });
-      if (!boundary.ok) return boundary;
+      if (!boundary.ok) {
+        return boundary;
+      }
       index = boundary.nextIndex;
     }
   }

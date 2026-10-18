@@ -203,7 +203,9 @@ function createBufferedByteWriter({
   let length = 0;
 
   const flush = async (): Promise<void> => {
-    if (length === 0) return;
+    if (length === 0) {
+      return;
+    }
     await writeAll({ handle, bytes: buffer.subarray(0, length) });
     length = 0;
   };
@@ -315,7 +317,9 @@ function findStringsPreHelpSemanticIssue({
   const minimum = parseMinimumLength({
     value: (parsed.optionValues.minimumLength as string | undefined) ?? '4',
   });
-  if (!minimum.ok) return minimum.message;
+  if (!minimum.ok) {
+    return minimum.message;
+  }
 
   const radix = parsed.optionValues.radix;
   if (typeof radix === 'string' && !['o', 'octal', 'd', 'decimal', 'x', 'hex'].includes(radix)) {
@@ -442,7 +446,9 @@ export const stringsCommandImplementation: WeshCommandImplementation = {
 
           const flushRun = async (): Promise<void> => {
             const runLength = run.getCharacterLength();
-            if (runLength === 0) return;
+            if (runLength === 0) {
+              return;
+            }
             if (runLength < minimumLengthParsed.value) {
               run.reset();
               return;

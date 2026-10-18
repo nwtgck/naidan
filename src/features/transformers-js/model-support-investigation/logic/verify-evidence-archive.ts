@@ -81,11 +81,15 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   archive: EvidenceArchiveReader,
 }): Promise<VerifiedEvidenceArchive> {
   const manifestFile = await archive.read({ path: "manifest.json" });
-  if (manifestFile === undefined) throw new Error("Evidence archive is missing manifest.json");
+  if (manifestFile === undefined) {
+    throw new Error("Evidence archive is missing manifest.json");
+  }
   const manifest = manifestSchema.parse(JSON.parse(await manifestFile.text()) as unknown);
   await verifyOrdinaryDownloadTimingEvidence({ archive, association: { kind: 'investigation-run', runId: manifest.runId } });
   const assessmentFile = await archive.read({ path: "package-assessment.json" });
-  if (assessmentFile === undefined) throw new Error("Evidence archive is missing package-assessment.json");
+  if (assessmentFile === undefined) {
+    throw new Error("Evidence archive is missing package-assessment.json");
+  }
   const assessment = packageAssessmentSchema.parse(JSON.parse(await assessmentFile.text()) as unknown);
   const packageStatus = (() => {
     switch (assessment.status) {
@@ -119,7 +123,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
     const maximumBytes = entry.path === ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH ? ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES
       : entry.path === CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH ? 256 * 1024 : undefined;
     const file = await archive.read({ path: entry.path, maximumBytes });
-    if (file === undefined) throw new Error(`Evidence archive is missing manifest path: ${entry.path}`);
+    if (file === undefined) {
+      throw new Error(`Evidence archive is missing manifest path: ${entry.path}`);
+    }
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (bytes.byteLength !== entry.byteLength) {
       throw new Error(`Evidence archive byte length mismatch: ${entry.path}`);
@@ -145,18 +151,28 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   }).parse(JSON.parse(await runFile.text()) as unknown);
   const summaryFile = await archive.read({ path: PRODUCTION_PROVIDER_INVESTIGATION_SUMMARY_EVIDENCE_PATH });
   if (summaryFile !== undefined || run?.productionProviderInvestigation !== undefined) {
-    if (run === undefined || run.productionProviderInvestigation === undefined || summaryFile === undefined) throw new Error('Evidence archive is missing its Production investigation summary owner');
-    if (run.runId !== manifest.runId) throw new Error('Evidence archive Production investigation summary run mismatch');
+    if (run === undefined || run.productionProviderInvestigation === undefined || summaryFile === undefined) {
+      throw new Error('Evidence archive is missing its Production investigation summary owner');
+    }
+    if (run.runId !== manifest.runId) {
+      throw new Error('Evidence archive Production investigation summary run mismatch');
+    }
     readProductionProviderInvestigationSummaryEvidence({ json: await summaryFile.text(), runId: run.runId, modelId: run.modelId });
   }
   if (providerFile !== undefined || nativePaths.length > 0 || run?.productionProviderCapture !== undefined || run?.productionProviderNativeCapture !== undefined) {
-    if (run === undefined || run.productionProviderCapture === undefined || providerFile === undefined) throw new Error('Evidence archive is missing its Production capture owner');
-    if (run.runId !== manifest.runId) throw new Error('Evidence archive Production capture run mismatch');
+    if (run === undefined || run.productionProviderCapture === undefined || providerFile === undefined) {
+      throw new Error('Evidence archive is missing its Production capture owner');
+    }
+    if (run.runId !== manifest.runId) {
+      throw new Error('Evidence archive Production capture run mismatch');
+    }
     const provider = readProductionProviderCaptureEvidence({ json: await providerFile.text(), runId: run.runId, modelId: run.modelId });
     if (nativePaths.length > 0 || run.productionProviderNativeCapture !== undefined) {
       const indexPath = PRODUCTION_PROVIDER_NATIVE_EVIDENCE_PATH;
       const nativeFile = await archive.read({ path: indexPath });
-      if (nativeFile === undefined || run.productionProviderNativeCapture === undefined) throw new Error('Evidence archive is missing its native capture index or run reference');
+      if (nativeFile === undefined || run.productionProviderNativeCapture === undefined) {
+        throw new Error('Evidence archive is missing its native capture index or run reference');
+      }
       const manifestByPath = new Map(manifest.files.map(entry => [entry.path, entry]));
       const { referencedPaths } = await verifyProductionProviderNativeEvidence({
         json: await nativeFile.text(),
@@ -167,7 +183,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
             throw new Error('Evidence archive native reference does not match its manifest');
           }
           const file = await archive.read({ path: reference.path });
-          if (file === undefined) throw new Error('Evidence archive native reference is missing');
+          if (file === undefined) {
+            throw new Error('Evidence archive native reference is missing');
+          }
           // The outer manifest has already verified these exact ZIP bytes.
           return new Uint8Array(await file.arrayBuffer());
         },
@@ -186,7 +204,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
   const runtimeTimingFile = await archive.read({ path: CACHE_ACCEPTANCE_TIMING_EVIDENCE_PATH, maximumBytes: 256 * 1024 });
   const runtimeTiming = download?.runtimeCompletion?.runtimeTiming;
   if (runtimeTimingFile !== undefined || runtimeTiming !== undefined) {
-    if (runtimeTimingFile === undefined || runtimeTimingFile.size > 256 * 1024) throw new Error('Missing or oversized cache acceptance timing');
+    if (runtimeTimingFile === undefined || runtimeTimingFile.size > 256 * 1024) {
+      throw new Error('Missing or oversized cache acceptance timing');
+    }
     const timing = cacheAcceptanceTimingEvidenceSchema.parse(JSON.parse(await runtimeTimingFile.text()) as unknown);
     if (run === undefined || timing.runId !== manifest.runId || timing.modelId !== run.modelId
       || !['reused-production-cache', 'cache-only-unavailable', 'cache-reuse-failed'].includes(acceptanceSource ?? '')) {
@@ -200,7 +220,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
     throw new Error('Provider Load acceptance document does not match its run owner');
   }
   if (download?.runtimeCompletion?.source === 'ordinary-provider-load') {
-    if (run === undefined || summaryFile === undefined || download.mode !== 'runtime-complete') throw new Error('Provider Load acceptance is missing its investigation owner');
+    if (run === undefined || summaryFile === undefined || download.mode !== 'runtime-complete') {
+      throw new Error('Provider Load acceptance is missing its investigation owner');
+    }
     const projection = downloadRuntimeAcceptanceIdentityInputSchema.parse(run.downloadEvidence);
     const actual = ordinaryProviderRuntimeCompletionSchema.parse(download.runtimeCompletion);
     const provider = providerFile === undefined ? undefined : readProductionProviderCaptureEvidence({ json: await providerFile.text(), runId: run.runId, modelId: run.modelId });
@@ -212,8 +234,12 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
       summary,
       nativeJson: await nativeFile?.text(),
     }));
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Provider Load acceptance does not match its captured Load owner');
-    if (acceptanceFile === undefined) throw new Error('Provider Load acceptance document is missing');
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error('Provider Load acceptance does not match its captured Load owner');
+    }
+    if (acceptanceFile === undefined) {
+      throw new Error('Provider Load acceptance document is missing');
+    }
     const expectedDocument = {
       schemaVersion: 1,
       status: actual.status,
@@ -229,7 +255,9 @@ export async function verifyGeneratedEvidenceFiles({ archive }: {
     };
     // Object order is not evidence. Parsing into the expected shape also refuses
     // extra acceptance fields that could silently claim unobserved independent work.
-    if (JSON.stringify(providerAcceptanceDocumentSchema.parse(acceptanceDocument)) !== JSON.stringify(providerAcceptanceDocumentSchema.parse(expectedDocument))) throw new Error('Provider Load acceptance document does not match its run');
+    if (JSON.stringify(providerAcceptanceDocumentSchema.parse(acceptanceDocument)) !== JSON.stringify(providerAcceptanceDocumentSchema.parse(expectedDocument))) {
+      throw new Error('Provider Load acceptance document does not match its run');
+    }
   }
 
   return {

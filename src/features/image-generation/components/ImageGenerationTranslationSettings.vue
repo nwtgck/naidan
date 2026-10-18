@@ -27,13 +27,21 @@ const isSessionScope = computed(() => {
   switch (props.scope) {
   case 'session': return true;
   case 'workspace': return false;
-  default: { const exhaustive: never = props.scope; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = props.scope;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const owner = computed(() => [props.scope, props.workspace.store.value?.storeId, isSessionScope.value ? props.workspace.selectedSessionId.value : undefined] as const);
 const stored = computed(() => isSessionScope.value ? props.workspace.currentSession.value?.translation : props.workspace.catalog.value?.preferences.translation);
 watch(() => JSON.stringify([owner.value, stored.value]), () => {
-  epoch++; controller?.abort(); loading.value = false; models.value = []; failure.value = ''; saved.value = false;
+  epoch++;
+  controller?.abort();
+  loading.value = false;
+  models.value = [];
+  failure.value = '';
+  saved.value = false;
   draft.value = cloneImagePromptTranslationOverride({ value: stored.value }) ?? { endpoint: undefined, modelId: undefined, lmParameters: undefined };
 }, { immediate: true });
 const effective = computed(() => resolveImagePromptTranslation({
@@ -46,25 +54,42 @@ const endpointTypes = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformer
 const endpointOptions = computed(() => endpointTypes.filter(value => value !== 'naidan_rpc' || rpcEnabled.value));
 
 function endpointChoice({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const raw = event.target.value;
   const value = endpointTypes.find(option => option === raw);
-  if (!value) return;
-  if (value === 'naidan_rpc' && !rpcEnabled.value) return;
+  if (!value) {
+    return;
+  }
+  if (value === 'naidan_rpc' && !rpcEnabled.value) {
+    return;
+  }
   switch (value) {
-  case 'naidan_rpc': draft.value.endpoint = { type: 'naidan_rpc', registrationId: undefined }; break;
-  case 'inherit': draft.value.endpoint = undefined; break;
-  case 'openai': case 'ollama': draft.value.endpoint = { type: value, url: '', httpHeaders: undefined }; break;
-  case 'transformers_js': case 'llama_cpp_browser': case 'browser_provided_lm': draft.value.endpoint = { type: value }; break;
-  default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+  case 'naidan_rpc': draft.value.endpoint = { type: 'naidan_rpc', registrationId: undefined };
+    break;
+  case 'inherit': draft.value.endpoint = undefined;
+    break;
+  case 'openai': case 'ollama': draft.value.endpoint = { type: value, url: '', httpHeaders: undefined };
+    break;
+  case 'transformers_js': case 'llama_cpp_browser': case 'browser_provided_lm': draft.value.endpoint = { type: value };
+    break;
+  default: {
+    const exhaustive: never = value;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 function profileChoice({ event }: { event: Event }): void {
-  if (!(event.target instanceof HTMLSelectElement)) return;
+  if (!(event.target instanceof HTMLSelectElement)) {
+    return;
+  }
   const raw = event.target.value;
   const profile = settings.value.providerProfiles.find(item => idToRaw({ id: item.id }) === raw);
-  if (profile) draft.value = { endpoint: cloneEndpoint({ endpoint: profile.endpoint }), modelId: profile.defaultModelId, lmParameters: cloneLmParameters({ lmParameters: profile.lmParameters }) };
+  if (profile) {
+    draft.value = { endpoint: cloneEndpoint({ endpoint: profile.endpoint }), modelId: profile.defaultModelId, lmParameters: cloneLmParameters({ lmParameters: profile.lmParameters }) };
+  }
   event.target.value = '';
 }
 
@@ -74,7 +99,9 @@ const httpEndpoint = computed(() => {
 });
 
 function addHeader(): void {
-  if (httpEndpoint.value) (httpEndpoint.value.httpHeaders ??= []).push(['', '']);
+  if (httpEndpoint.value) {
+    (httpEndpoint.value.httpHeaders ??= []).push(['', '']);
+  }
 }
 
 function changeReasoning({ effort }: { effort: Reasoning['effort'] }): void {
@@ -83,36 +110,57 @@ function changeReasoning({ effort }: { effort: Reasoning['effort'] }): void {
 }
 
 function changeModel({ event }: { event: Event }): void {
-  if (event.target instanceof HTMLInputElement) draft.value.modelId = event.target.value || undefined;
+  if (event.target instanceof HTMLInputElement) {
+    draft.value.modelId = event.target.value || undefined;
+  }
 }
 
 watch(() => JSON.stringify(draft.value), () => {
   saved.value = false;
 });
 watch(() => JSON.stringify(effective.value.endpoint), () => {
-  epoch++; controller?.abort(); loading.value = false; models.value = [];
+  epoch++;
+  controller?.abort();
+  loading.value = false;
+  models.value = [];
 }, { flush: 'sync' });
 
 async function fetchModels(): Promise<void> {
-  if (saving.value || props.workspace.busy.value) return;
-  controller?.abort(); const abort = new AbortController(); controller = abort;
-  const token = ++epoch; loading.value = true; failure.value = '';
+  if (saving.value || props.workspace.busy.value) {
+    return;
+  }
+  controller?.abort();
+  const abort = new AbortController();
+  controller = abort;
+  const token = ++epoch;
+  loading.value = true;
+  failure.value = '';
   try {
     const endpoint: Endpoint = cloneEndpoint({ endpoint: effective.value.endpoint });
     const provider = await loadLmProvider({ endpoint, fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled' });
     abort.signal.throwIfAborted();
     const values = await provider.listModels({ signal: abort.signal });
-    if (!disposed && token === epoch) models.value = values;
+    if (!disposed && token === epoch) {
+      models.value = values;
+    }
   } catch (error) {
-    if (!disposed && token === epoch && !abort.signal.aborted) failure.value = error instanceof Error ? error.message : String(error);
+    if (!disposed && token === epoch && !abort.signal.aborted) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
-    if (!disposed && token === epoch) loading.value = false;
+    if (!disposed && token === epoch) {
+      loading.value = false;
+    }
   }
 }
 
 async function save(): Promise<void> {
-  if (saving.value || props.workspace.busy.value) return;
-  saving.value = true; failure.value = ''; saved.value = false;
+  if (saving.value || props.workspace.busy.value) {
+    return;
+  }
+  saving.value = true;
+  failure.value = '';
+  saved.value = false;
   const ownerKey = JSON.stringify(owner.value), submitted = JSON.stringify(draft.value);
   const stillCurrent = () => !disposed && JSON.stringify(owner.value) === ownerKey && JSON.stringify(draft.value) === submitted;
   const value = cloneImagePromptTranslationOverride({ value: draft.value });
@@ -124,18 +172,24 @@ async function save(): Promise<void> {
       saved.value = success;
       if (!success) {
         const message = props.workspace.failure.value || await ensureStrings.imageGeneration__translation_settings_not_saved();
-        if (stillCurrent()) failure.value = message;
+        if (stillCurrent()) {
+          failure.value = message;
+        }
       }
     }
   } catch (error) {
-    if (stillCurrent()) failure.value = error instanceof Error ? error.message : String(error);
+    if (stillCurrent()) {
+      failure.value = error instanceof Error ? error.message : String(error);
+    }
   } finally {
     saving.value = false;
   }
 }
 
 onScopeDispose(() => {
-  disposed = true; epoch++; controller?.abort();
+  disposed = true;
+  epoch++;
+  controller?.abort();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>

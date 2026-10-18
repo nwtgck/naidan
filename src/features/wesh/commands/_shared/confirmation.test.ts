@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { TEST_ONLY } from './confirmation';
 
 async function* inputChunks(chunks: readonly string[]): AsyncGenerator<string> {
-  for (const chunk of chunks) yield chunk;
+  for (const chunk of chunks) {
+    yield chunk;
+  }
 }
 
 describe('interactive confirmation', () => {

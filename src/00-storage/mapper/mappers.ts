@@ -121,7 +121,9 @@ const titleModelToDomain = ({
 }: {
   model: 'same_scope' | { id: string },
 }): 'same_scope' | { id: string } => {
-  if (model === 'same_scope') return 'same_scope';
+  if (model === 'same_scope') {
+    return 'same_scope';
+  }
 
   const { id, ...unhandled } = model;
   unhandled satisfies Record<PropertyKey, never>;
@@ -153,7 +155,9 @@ const titleLmParametersToDomain = ({
 }: {
   dto: 'same_scope' | LmParametersDto,
 }): 'same_scope' | LmParameters => {
-  if (dto === 'same_scope') return 'same_scope';
+  if (dto === 'same_scope') {
+    return 'same_scope';
+  }
   return lmParametersToDomain({ dto }) ?? EMPTY_LM_PARAMETERS;
 };
 
@@ -168,7 +172,9 @@ const titleLmParametersToDto = ({
 }: {
   lmParameters: 'same_scope' | LmParameters,
 }): 'same_scope' | LmParametersDto => {
-  if (lmParameters === 'same_scope') return 'same_scope';
+  if (lmParameters === 'same_scope') {
+    return 'same_scope';
+  }
   return lmParametersToDto({ domain: lmParameters }) ?? emptyLmParametersDto();
 };
 
@@ -184,7 +190,9 @@ const settingsTitleGenerationToDomain = ({
   dto: SettingsDto,
 }): SettingsTitleGeneration => {
   if ('titleGeneration' in dto) {
-    if (dto.titleGeneration === 'disabled') return 'disabled';
+    if (dto.titleGeneration === 'disabled') {
+      return 'disabled';
+    }
 
     const {
       endpoint,
@@ -209,7 +217,9 @@ const settingsTitleGenerationToDomain = ({
     });
   }
 
-  if (dto.autoTitleEnabled === false) return 'disabled';
+  if (dto.autoTitleEnabled === false) {
+    return 'disabled';
+  }
 
   return exactObject<Exclude<SettingsTitleGeneration, 'disabled'>>()({
     endpoint: 'same_scope',
@@ -254,8 +264,12 @@ const scopedTitleGenerationToDomain = ({
     }
   }
 
-  if (dto.autoTitleEnabled === false) return 'disabled';
-  if (dto.autoTitleEnabled === undefined && dto.titleModelId === undefined) return 'inherit';
+  if (dto.autoTitleEnabled === false) {
+    return 'disabled';
+  }
+  if (dto.autoTitleEnabled === undefined && dto.titleModelId === undefined) {
+    return 'inherit';
+  }
 
   return exactObject<Exclude<ScopedTitleGeneration, 'disabled' | 'inherit'>>()({
     endpoint: 'same_scope',
@@ -269,7 +283,9 @@ const settingsTitleGenerationToDto = ({
 }: {
   titleGeneration: SettingsTitleGeneration,
 }): SettingsDtoV2['titleGeneration'] => {
-  if (titleGeneration === 'disabled') return 'disabled';
+  if (titleGeneration === 'disabled') {
+    return 'disabled';
+  }
 
   const {
     endpoint,
@@ -708,7 +724,9 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
 export const lmParametersToDomain = (
   { dto }: { dto: LmParametersDto | undefined },
 ): LmParameters | undefined => {
-  if (!dto) return undefined;
+  if (!dto) {
+    return undefined;
+  }
 
   const lmParameters: LmParameters = {
     ...EMPTY_LM_PARAMETERS,
@@ -765,7 +783,9 @@ export const lmParametersToDto = (
   { domain }: { domain: LmParameters | undefined },
 ): LmParametersDto | undefined => {
   const normalized = normalizeLmParameters({ lmParameters: domain });
-  if (normalized === undefined) return undefined;
+  if (normalized === undefined) {
+    return undefined;
+  }
 
   const reasoningDto: NonNullable<LmParametersDto['reasoning']> = { effort: undefined };
   const dto: LmParametersDto = {
@@ -873,7 +893,9 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       case 'naidan_rpc': {
         const { type, registrationId, ...rest } = endpoint;
         rest satisfies Record<PropertyKey, never>;
-        if (registrationId !== undefined && !/^[A-Za-z0-9_-]{8,128}$/.test(registrationId)) return { type: 'unsupported_experimental_endpoint', persistedType: type };
+        if (registrationId !== undefined && !/^[A-Za-z0-9_-]{8,128}$/.test(registrationId)) {
+          return { type: 'unsupported_experimental_endpoint', persistedType: type };
+        }
         return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
           type,
           registrationId: registrationId === undefined ? undefined : toNaidanRpcRegistrationId({ raw: registrationId }),
@@ -1440,7 +1462,9 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const { id, role, content, attachments: _attachments, timestamp, thinking, modelId, lmParameters, toolCalls, results: _results, parts: _parts, replies, experimental: _experimental , ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     const parts: AssistantMessageNode['parts'] = [];
-    if (thinking !== undefined) parts.push({ type: 'reasoning', text: thinking, completeness: 'complete' });
+    if (thinking !== undefined) {
+      parts.push({ type: 'reasoning', text: thinking, completeness: 'complete' });
+    }
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     toolCalls?.forEach(call => parts.push({ type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
     return exactObject<AssistantMessageNode>()({
@@ -1493,7 +1517,9 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
 
 export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
   // The schema rejects a present but invalid parts key before this boundary.
-  if (dto.parts === undefined) return legacyMessageNodeToDomain({ dto });
+  if (dto.parts === undefined) {
+    return legacyMessageNodeToDomain({ dto });
+  }
   switch (dto.role) {
   case 'user': {
     const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
@@ -1817,7 +1843,9 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
     case 'system': break;
     case 'user':
     case 'assistant':
-      if (node.lmParameters === undefined) node.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } };
+      if (node.lmParameters === undefined) {
+        node.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } };
+      }
       break;
     default: {
       const _ex: never = node;
@@ -1829,7 +1857,9 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
     const next = nodes[i + 1];
-    if (current && next) current.replies.items.push(next);
+    if (current && next) {
+      current.replies.items.push(next);
+    }
   }
   return { items: nodes[0] ? [nodes[0]] : [] };
 }
@@ -2075,7 +2105,9 @@ export const buildSidebarItemsFromHierarchy = (
     switch (node.type) {
     case 'chat': {
       const meta = metaMap.get(node.id);
-      if (!meta) return null;
+      if (!meta) {
+        return null;
+      }
       return {
         id: `chat:${idToRaw({ id: node.id })}`,
         type: 'chat',
@@ -2084,12 +2116,16 @@ export const buildSidebarItemsFromHierarchy = (
     }
     case 'chat_group': {
       const groupMeta = groupMap.get(node.id);
-      if (!groupMeta) return null;
+      if (!groupMeta) {
+        return null;
+      }
 
       const nestedItems: ChatSidebarItem[] = node.chat_ids
         .map(cid => {
           const m = metaMap.get(cid);
-          if (!m) return null;
+          if (!m) {
+            return null;
+          }
           return {
             id: `chat:${idToRaw({ id: cid })}`,
             type: 'chat' as const,
@@ -2119,12 +2155,16 @@ export const buildSidebarItemsFromHierarchy = (
 type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
 
 const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
-  if (dto === undefined) return undefined;
+  if (dto === undefined) {
+    return undefined;
+  }
   const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
-    if (modelDownloadDestination === undefined) return undefined;
+    if (modelDownloadDestination === undefined) {
+      return undefined;
+    }
     switch (modelDownloadDestination.kind) {
     case 'opfs': {
       const { kind, ...unhandledDestination } = modelDownloadDestination;
@@ -2136,17 +2176,24 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
       unhandledDestination satisfies Record<PropertyKey, never>;
       return exactObject<Extract<NonNullable<BrowserImageGenerationSettings['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: toHostModelDirectoryId({ raw: directoryId }) });
     }
-    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = modelDownloadDestination;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const mappedDownload = (() => {
-    if (imageDownload === undefined) return undefined;
+    if (imageDownload === undefined) {
+      return undefined;
+    }
     const { format, metadata, ...unhandledDownload } = imageDownload;
     unhandledDownload satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationSettings['imageDownload']>>()({ format, metadata });
   })();
   const mappedPreview = (() => {
-    if (preview === undefined) return undefined;
+    if (preview === undefined) {
+      return undefined;
+    }
     const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
@@ -2164,7 +2211,8 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     preview: mappedPreview,
     inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
     remoteModelEditors: remoteModelEditors?.flatMap(dto => {
-      const value = remoteImageModelEditorPreferenceToDomain({ dto }); return value === undefined ? [] : [value];
+      const value = remoteImageModelEditorPreferenceToDomain({ dto });
+      return value === undefined ? [] : [value];
     }),
     keepPreviews,
     maxPreviews,
@@ -2174,12 +2222,16 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
 };
 
 const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
-  if (domain === undefined) return undefined;
+  if (domain === undefined) {
+    return undefined;
+  }
   const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
-    if (modelDownloadDestination === undefined) return undefined;
+    if (modelDownloadDestination === undefined) {
+      return undefined;
+    }
     switch (modelDownloadDestination.kind) {
     case 'opfs': {
       const { kind, ...unhandledDestination } = modelDownloadDestination;
@@ -2191,17 +2243,24 @@ const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGeneratio
       unhandledDestination satisfies Record<PropertyKey, never>;
       return exactObject<Extract<NonNullable<BrowserImageGenerationDto['modelDownloadDestination']>, { kind: 'host' }>>()({ kind, directoryId: idToRaw({ id: directoryId }) });
     }
-    default: { const exhaustive: never = modelDownloadDestination; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = modelDownloadDestination;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
   const mappedDownload = (() => {
-    if (imageDownload === undefined) return undefined;
+    if (imageDownload === undefined) {
+      return undefined;
+    }
     const { format, metadata, ...unhandledDownload } = imageDownload;
     unhandledDownload satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationDto['imageDownload']>>()({ format, metadata });
   })();
   const mappedPreview = (() => {
-    if (preview === undefined) return undefined;
+    if (preview === undefined) {
+      return undefined;
+    }
     const { enabled, mode, interval, startStep, maxEdge, ...unhandledPreview } = preview;
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
@@ -2271,7 +2330,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     unhandledExperimental satisfies Record<PropertyKey, never>;
 
     const globalSearchDomain = (() => {
-      if (globalSearch === undefined) return undefined;
+      if (globalSearch === undefined) {
+        return undefined;
+      }
 
       const {
         scope,
@@ -2394,7 +2455,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     unhandledExperimental satisfies Record<PropertyKey, never>;
 
     const globalSearchDto = (() => {
-      if (globalSearch === undefined) return undefined;
+      if (globalSearch === undefined) {
+        return undefined;
+      }
 
       const {
         scope,
@@ -2425,7 +2488,10 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         switch (naidanRpc) {
         case 'enabled': return 'enabled';
         case 'disabled': case undefined: return undefined;
-        default: { const exhaustive: never = naidanRpc; return exhaustive; }
+        default: {
+          const exhaustive: never = naidanRpc;
+          return exhaustive;
+        }
         }
       })(),
       fakeLm: fakeLmToExperimentalDto({

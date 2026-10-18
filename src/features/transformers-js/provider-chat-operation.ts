@@ -33,20 +33,26 @@ export async function generateScopedMessage({ scope, request, signal, onEvent, c
 }): Promise<void> {
   const { messages, model, parameters, tools, readBinaryObject, debug: _debug, signal: _requestSignal, ...unhandled } = request;
   unhandled satisfies Record<PropertyKey, never>;
-  scope.assertActive(); signal.throwIfAborted();
+  scope.assertActive();
+  signal.throwIfAborted();
   // Resolve only local conversation binaries before touching the loaded model.
   const prepared = await prepareInferenceRequest({ messages, parameters, tools, readBinaryObject, signal });
-  scope.assertActive(); signal.throwIfAborted();
+  scope.assertActive();
+  signal.throwIfAborted();
   const state = scope.getState();
   if (state.activeModelId !== model || state.status !== 'ready') {
     switch (state.status) {
     case 'loading': throw new Error('Engine is busy. Please wait for the current operation to finish.');
     case 'idle': case 'ready': case 'error': break;
-    default: { const exhaustive: never = state.status; throw new Error(`Unhandled runtime status: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = state.status;
+      throw new Error(`Unhandled runtime status: ${exhaustive}`);
+    }
     }
     await scope.loadDownloadedModel({ modelId: model });
   }
-  scope.assertActive(); signal.throwIfAborted();
+  scope.assertActive();
+  signal.throwIfAborted();
   await scope.generateMessage({ ...prepared, onEvent, continuationOwner });
 }
 
@@ -64,7 +70,10 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
     switch (phase) {
     case 'open': return;
     case 'closed': throw new Error('The chat operation is closed.');
-    default: { const exhaustive: never = phase; throw new Error(`Unhandled chat operation state: ${exhaustive}`); }
+    default: {
+      const exhaustive: never = phase;
+      throw new Error(`Unhandled chat operation state: ${exhaustive}`);
+    }
     }
   }
 
@@ -74,14 +83,18 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
     let claimed = false;
     return {
       [Symbol.asyncIterator](): AsyncIterator<ChatGenerationItem> {
-        if (claimed) throw new Error('A generation stream can only be consumed once.');
+        if (claimed) {
+          throw new Error('A generation stream can only be consumed once.');
+        }
         claimed = true;
         const local = new AbortController();
         const sourceSignals = [...new Set([scope.signal, signal].filter(value => value !== undefined))];
         const relays = sourceSignals.map(source => {
           const abort = () => local.abort(source.reason);
           source.addEventListener('abort', abort, { once: true });
-          if (source.aborted) abort();
+          if (source.aborted) {
+            abort();
+          }
           return () => source.removeEventListener('abort', abort);
         });
         const items = createInferenceGeneration({
@@ -89,13 +102,17 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
           generate: async ({ onEvent, signal }) => {
             assertOpen();
             scope.assertActive();
-            if (generating) throw new Error('The chat operation already has an active generation.');
+            if (generating) {
+              throw new Error('The chat operation already has an active generation.');
+            }
             generating = true;
             // Child abandonment must interrupt this owner, never whatever runtime
             // happens to be current after an old callback completes.
             const abort = () => controller.abort(signal.reason);
             signal.addEventListener('abort', abort, { once: true });
-            if (signal.aborted) abort();
+            if (signal.aborted) {
+              abort();
+            }
             try {
               await generateScopedMessage({ scope, request, signal, onEvent, continuationOwner });
             } finally {
@@ -106,7 +123,9 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
         });
         const inner = items[Symbol.asyncIterator]();
         const detach = () => {
-          for (const remove of relays) remove();
+          for (const remove of relays) {
+            remove();
+          }
           iterators.delete(iterator);
         };
         const iterator: AsyncIterator<ChatGenerationItem> = {
@@ -114,21 +133,27 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
             try {
               assertOpen();
               const next = await inner.next();
-              if (next.done) detach();
+              if (next.done) {
+                detach();
+              }
               return next;
             } catch (error) {
               // A rejected read (for example, concurrent next calls) does not
               // settle the producer or its unread children. Keep ownership so
               // close can return the iterator and release bounded delivery.
-              failures.push(error); throw error;
+              failures.push(error);
+              throw error;
             }
           },
           async return() {
             try {
-              if (inner.return) await inner.return();
+              if (inner.return) {
+                await inner.return();
+              }
               return { done: true, value: undefined };
             } catch (error) {
-              failures.push(error); throw error;
+              failures.push(error);
+              throw error;
             } finally {
               detach();
             }
@@ -150,8 +175,12 @@ export function createScopedChat({ scope, controller, continuationOwner }: {
           await iterator.return?.();
         } catch { /* Recorded by the iterator above. */ }
       }));
-      if (failures.length === 1) throw failures[0];
-      if (failures.length > 1) throw new AggregateError(failures, 'Closing chat generation streams failed.');
+      if (failures.length === 1) {
+        throw failures[0];
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(failures, 'Closing chat generation streams failed.');
+      }
     },
   };
 }

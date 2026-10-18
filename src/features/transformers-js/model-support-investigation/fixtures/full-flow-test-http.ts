@@ -19,9 +19,13 @@ export function createInvestigationFullFlowTestHttp({ models, assets, externalNe
   ]);
   const repositories = models.map(model => {
     const fixture = readModelFixture({ modelId: model.modelId });
-    if (fixture.summary.revision !== model.revision) throw new Error('Full control fixture revision mismatch');
+    if (fixture.summary.revision !== model.revision) {
+      throw new Error('Full control fixture revision mismatch');
+    }
     const files = new Map(fixture.files);
-    for (const artifact of fixture.repository.files) files.set(artifact.path, createSyntheticModelBody({ modelId: model.modelId, revision: model.revision, path: artifact.path }));
+    for (const artifact of fixture.repository.files) {
+      files.set(artifact.path, createSyntheticModelBody({ modelId: model.modelId, revision: model.revision, path: artifact.path }));
+    }
     // A revision-advance control changes only the remote commit identity. The
     // repository-owned metadata bytes and independently seeded OPFS stay intact.
     return {
@@ -39,8 +43,12 @@ export function createInvestigationFullFlowTestHttp({ models, assets, externalNe
     const range = request.headers.get('range') ?? undefined;
     requests.push({ url, method, range });
     const runtime = runtimeBytes.get(url);
-    if (runtime !== undefined && method === 'GET') return new Response(runtime.bytes, { headers: { 'Content-Type': runtime.type } });
-    if (assets.manifestUrl !== undefined && url === assets.manifestUrl && method === 'GET') return new Response(JSON.stringify(HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST), { headers: { 'Content-Type': 'application/json' } });
+    if (runtime !== undefined && method === 'GET') {
+      return new Response(runtime.bytes, { headers: { 'Content-Type': runtime.type } });
+    }
+    if (assets.manifestUrl !== undefined && url === assets.manifestUrl && method === 'GET') {
+      return new Response(JSON.stringify(HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST), { headers: { 'Content-Type': 'application/json' } });
+    }
     switch (externalNetworkPolicy) {
     case 'deny': break;
     case 'allow': {
@@ -56,28 +64,48 @@ export function createInvestigationFullFlowTestHttp({ models, assets, externalNe
           }), { headers: { 'Content-Type': 'application/json' } });
         }
         const prefix = `https://huggingface.co/${repository.modelId}/resolve/${repository.revision}/`;
-        if (!url.startsWith(prefix)) continue;
+        if (!url.startsWith(prefix)) {
+          continue;
+        }
         const path = url.slice(prefix.length);
-        if (repository.absent.has(path) && method === 'GET') return new Response('Recorded absent metadata', { status: 404 });
+        if (repository.absent.has(path) && method === 'GET') {
+          return new Response('Recorded absent metadata', { status: 404 });
+        }
         const bytes = repository.files.get(path);
-        if (bytes === undefined) continue;
+        if (bytes === undefined) {
+          continue;
+        }
         const headers = { 'Content-Type': path.endsWith('.json') ? 'application/json' : 'application/octet-stream', 'Content-Length': String(bytes.byteLength), 'Accept-Ranges': 'bytes' };
-        if (method === 'HEAD') return new Response(undefined, { headers });
-        if (method !== 'GET') continue;
+        if (method === 'HEAD') {
+          return new Response(undefined, { headers });
+        }
+        if (method !== 'GET') {
+          continue;
+        }
         if (range !== undefined) {
           const match = /^bytes=(\d+)-(\d+)$/u.exec(range);
-          if (match === null) continue;
-          const start = Number(match[1]); const end = Math.min(Number(match[2]), bytes.byteLength - 1);
-          if (start > end || end - start + 1 > 32 * 1024) continue;
+          if (match === null) {
+            continue;
+          }
+          const start = Number(match[1]);
+          const end = Math.min(Number(match[2]), bytes.byteLength - 1);
+          if (start > end || end - start + 1 > 32 * 1024) {
+            continue;
+          }
           return new Response(bytes.slice(start, end + 1), { status: 206, headers: { ...headers, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${bytes.byteLength}` } });
         }
         // Even this finite test server refuses full model bodies. The actual
         // investigation transport must express HEAD or bounded-range authority.
-        if (!path.startsWith('onnx/')) return new Response(Uint8Array.from(bytes), { headers });
+        if (!path.startsWith('onnx/')) {
+          return new Response(Uint8Array.from(bytes), { headers });
+        }
       }
       break;
     }
-    default: { const exhaustive: never = externalNetworkPolicy; throw new Error('Unknown fixture network policy: ' + exhaustive); }
+    default: {
+      const exhaustive: never = externalNetworkPolicy;
+      throw new Error('Unknown fixture network policy: ' + exhaustive);
+    }
     }
     unknown.push(`${method} ${url} ${range ?? ''}`);
     throw new Error(`Unprovided Full fixture HTTP request: ${method} ${url}`);

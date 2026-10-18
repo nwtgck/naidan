@@ -161,7 +161,9 @@ describe('useChatDisplayFlow', () => {
 
     const node = messages.value[0]!;
     const part = node.parts.find(part => part.type === 'text');
-    if (part?.type !== 'text') throw new Error('Missing text part');
+    if (part?.type !== 'text') {
+      throw new Error('Missing text part');
+    }
     part.text = '<think>thought</think>';
     isProcessingRef.value = false;
     await nextTick();

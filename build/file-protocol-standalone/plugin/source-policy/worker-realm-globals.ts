@@ -29,7 +29,9 @@ function invertAvailabilityState(state: AvailabilityState): AvailabilityState {
 }
 
 function mergeAvailabilityAnd(left: AvailabilityState, right: AvailabilityState): AvailabilityState {
-  if (left === right) return left;
+  if (left === right) {
+    return left;
+  }
   switch (left) {
   case 'unknown': return right;
   case 'available':
@@ -75,16 +77,28 @@ export const DEFAULT_UI_ONLY_GLOBALS = Object.freeze([
 
 
 function guardExpressionUiGlobalState(test: Node | null | undefined, name: string, safeGuardIdentifiers: ReadonlySet<string> = new Set()): AvailabilityState {
-  if (!test) return 'unknown';
+  if (!test) {
+    return 'unknown';
+  }
   if (isBabelNodeType(test, 'Identifier')) {
-    if (safeGuardIdentifiers.has(`${name}:available:${test.name}`)) return 'available';
-    if (safeGuardIdentifiers.has(`${name}:unavailable:${test.name}`)) return 'unavailable';
+    if (safeGuardIdentifiers.has(`${name}:available:${test.name}`)) {
+      return 'available';
+    }
+    if (safeGuardIdentifiers.has(`${name}:unavailable:${test.name}`)) {
+      return 'unavailable';
+    }
     return 'unknown';
   }
   const literalValue = (node: Node | null | undefined): string | boolean | null | undefined | symbol => {
-    if (isBabelNodeType(node, 'StringLiteral') || node?.type === 'BooleanLiteral') return node.value;
-    if (isBabelNodeType(node, 'NullLiteral')) return null;
-    if (node?.type === 'Identifier' && node.name === 'undefined') return undefined;
+    if (isBabelNodeType(node, 'StringLiteral') || node?.type === 'BooleanLiteral') {
+      return node.value;
+    }
+    if (isBabelNodeType(node, 'NullLiteral')) {
+      return null;
+    }
+    if (node?.type === 'Identifier' && node.name === 'undefined') {
+      return undefined;
+    }
     return Symbol.for('not-a-literal');
   };
   const isTypeofTarget = (node: Node | null | undefined): boolean => node?.type === 'UnaryExpression'
@@ -92,7 +106,9 @@ function guardExpressionUiGlobalState(test: Node | null | undefined, name: strin
     && node.argument?.type === 'Identifier'
     && node.argument.name === name;
   const isGlobalObjectTarget = (node: Node | null | undefined): boolean => {
-    if (node?.type !== 'MemberExpression' && node?.type !== 'OptionalMemberExpression') return false;
+    if (node?.type !== 'MemberExpression' && node?.type !== 'OptionalMemberExpression') {
+      return false;
+    }
     return node.object?.type === 'Identifier'
       && ['globalThis', 'self'].includes(node.object.name)
       && staticMemberPropertyName(node) === name;
@@ -101,12 +117,16 @@ function guardExpressionUiGlobalState(test: Node | null | undefined, name: strin
     const nested = guardExpressionUiGlobalState(test.argument, name, safeGuardIdentifiers);
     return invertAvailabilityState(nested);
   }
-  if (isGlobalObjectTarget(test)) return 'available';
+  if (isGlobalObjectTarget(test)) {
+    return 'available';
+  }
   if (test.type === 'CallExpression'
     && test.callee?.type === 'Identifier'
     && test.callee.name === 'Boolean'
     && test.arguments.length === 1
-    && isGlobalObjectTarget(test.arguments[0])) return 'available';
+    && isGlobalObjectTarget(test.arguments[0])) {
+    return 'available';
+  }
   if (isBabelNodeType(test, 'LogicalExpression')) {
     const left = guardExpressionUiGlobalState(test.left, name, safeGuardIdentifiers);
     const right = guardExpressionUiGlobalState(test.right, name, safeGuardIdentifiers);
@@ -121,7 +141,9 @@ function guardExpressionUiGlobalState(test: Node | null | undefined, name: strin
       return 'unknown';
     }
   }
-  if (!isBabelNodeType(test, 'BinaryExpression')) return 'unknown';
+  if (!isBabelNodeType(test, 'BinaryExpression')) {
+    return 'unknown';
+  }
   switch (test.operator) {
   case 'in':
     return literalValue(test.left) === name
@@ -140,16 +162,32 @@ function guardExpressionUiGlobalState(test: Node | null | undefined, name: strin
   const leftLiteral = literalValue(test.left);
   const rightLiteral = literalValue(test.right);
   if (isTypeofTarget(test.left)) {
-    if (['!=', '!=='].includes(test.operator) && rightLiteral === 'undefined') return 'available';
-    if (['==', '==='].includes(test.operator) && typeof rightLiteral === 'string' && ['object', 'function'].includes(rightLiteral)) return 'available';
-    if (['==', '==='].includes(test.operator) && rightLiteral === 'undefined') return 'unavailable';
-    if (['!=', '!=='].includes(test.operator) && typeof rightLiteral === 'string' && ['object', 'function'].includes(rightLiteral)) return 'unavailable';
+    if (['!=', '!=='].includes(test.operator) && rightLiteral === 'undefined') {
+      return 'available';
+    }
+    if (['==', '==='].includes(test.operator) && typeof rightLiteral === 'string' && ['object', 'function'].includes(rightLiteral)) {
+      return 'available';
+    }
+    if (['==', '==='].includes(test.operator) && rightLiteral === 'undefined') {
+      return 'unavailable';
+    }
+    if (['!=', '!=='].includes(test.operator) && typeof rightLiteral === 'string' && ['object', 'function'].includes(rightLiteral)) {
+      return 'unavailable';
+    }
   }
   if (isTypeofTarget(test.right)) {
-    if (['!=', '!=='].includes(test.operator) && leftLiteral === 'undefined') return 'available';
-    if (['==', '==='].includes(test.operator) && typeof leftLiteral === 'string' && ['object', 'function'].includes(leftLiteral)) return 'available';
-    if (['==', '==='].includes(test.operator) && leftLiteral === 'undefined') return 'unavailable';
-    if (['!=', '!=='].includes(test.operator) && typeof leftLiteral === 'string' && ['object', 'function'].includes(leftLiteral)) return 'unavailable';
+    if (['!=', '!=='].includes(test.operator) && leftLiteral === 'undefined') {
+      return 'available';
+    }
+    if (['==', '==='].includes(test.operator) && typeof leftLiteral === 'string' && ['object', 'function'].includes(leftLiteral)) {
+      return 'available';
+    }
+    if (['==', '==='].includes(test.operator) && leftLiteral === 'undefined') {
+      return 'unavailable';
+    }
+    if (['!=', '!=='].includes(test.operator) && typeof leftLiteral === 'string' && ['object', 'function'].includes(leftLiteral)) {
+      return 'unavailable';
+    }
   }
   if (isGlobalObjectTarget(test.left) && (rightLiteral === undefined || rightLiteral === null)) {
     return ['!=', '!=='].includes(test.operator) ? 'available' : 'unavailable';
@@ -168,9 +206,13 @@ function isDeferredFromModuleEvaluation(referencePath: NodePath): boolean {
   let current = referencePath;
   while (current.parentPath) {
     current = current.parentPath;
-    if (current.isFunction()) return true;
+    if (current.isFunction()) {
+      return true;
+    }
     if ((current.isClassProperty?.() || current.isClassPrivateProperty?.() || current.isClassAccessorProperty?.())
-      && current.node.static !== true) return true;
+      && current.node.static !== true) {
+      return true;
+    }
   }
   return false;
 }
@@ -187,7 +229,9 @@ function isTypeOnlyReference(referencePath: NodePath): boolean {
         'TSSatisfiesExpression',
         'TSTypeAssertion',
       ].includes(parent.node.type) && current.key === 'expression';
-      if (!runtimeExpressionWrapper) return true;
+      if (!runtimeExpressionWrapper) {
+        return true;
+      }
     }
     current = parent;
   }
@@ -199,17 +243,29 @@ function pathIsInsideGuardedBranch(referencePath: NodePath, name: string, code: 
   while (current.parentPath) {
     const parent = current.parentPath;
     if (parent.isIfStatement() && current.key === 'consequent'
-      && guardExpressionMentionsUiGlobal(parent.node.test, name, code, safeGuardIdentifiers)) return true;
+      && guardExpressionMentionsUiGlobal(parent.node.test, name, code, safeGuardIdentifiers)) {
+      return true;
+    }
     if (parent.isIfStatement() && current.key === 'alternate'
-      && guardExpressionUiGlobalState(parent.node.test, name, safeGuardIdentifiers) === 'unavailable') return true;
+      && guardExpressionUiGlobalState(parent.node.test, name, safeGuardIdentifiers) === 'unavailable') {
+      return true;
+    }
     if (parent.isLogicalExpression({ operator: '&&' }) && current.key === 'right'
-      && guardExpressionMentionsUiGlobal(parent.node.left, name, code, safeGuardIdentifiers)) return true;
+      && guardExpressionMentionsUiGlobal(parent.node.left, name, code, safeGuardIdentifiers)) {
+      return true;
+    }
     if (parent.isLogicalExpression({ operator: '||' }) && current.key === 'right'
-      && guardExpressionUiGlobalState(parent.node.left, name, safeGuardIdentifiers) === 'unavailable') return true;
+      && guardExpressionUiGlobalState(parent.node.left, name, safeGuardIdentifiers) === 'unavailable') {
+      return true;
+    }
     if (parent.isConditionalExpression() && current.key === 'consequent'
-      && guardExpressionMentionsUiGlobal(parent.node.test, name, code, safeGuardIdentifiers)) return true;
+      && guardExpressionMentionsUiGlobal(parent.node.test, name, code, safeGuardIdentifiers)) {
+      return true;
+    }
     if (parent.isConditionalExpression() && current.key === 'alternate'
-      && guardExpressionUiGlobalState(parent.node.test, name, safeGuardIdentifiers) === 'unavailable') return true;
+      && guardExpressionUiGlobalState(parent.node.test, name, safeGuardIdentifiers) === 'unavailable') {
+      return true;
+    }
     current = parent;
   }
   return false;
@@ -220,11 +276,15 @@ function globalObjectPropertyChain(node: Node | null | undefined): GlobalObjectP
   let current = node;
   while (current?.type === 'MemberExpression' || current?.type === 'OptionalMemberExpression') {
     const propertyName = staticMemberPropertyName(current);
-    if (!propertyName) return null;
+    if (!propertyName) {
+      return null;
+    }
     segments.unshift({ name: propertyName, optional: current.optional === true });
     current = current.object;
   }
-  if (current?.type !== 'Identifier' || !['globalThis', 'self'].includes(current.name)) return null;
+  if (current?.type !== 'Identifier' || !['globalThis', 'self'].includes(current.name)) {
+    return null;
+  }
   return { root: current.name, segments };
 }
 
@@ -252,8 +312,12 @@ function unwrapTypeScriptExpression(node: Node | null | undefined): Node | null 
 }
 
 function aliasAvailabilityState(test: Node | null | undefined, aliasName: string): AvailabilityState {
-  if (!test) return 'unknown';
-  if (isBabelNodeType(test, 'Identifier') && test.name === aliasName) return 'available';
+  if (!test) {
+    return 'unknown';
+  }
+  if (isBabelNodeType(test, 'Identifier') && test.name === aliasName) {
+    return 'available';
+  }
   if (test.type === 'UnaryExpression' && test.operator === '!') {
     const nested = aliasAvailabilityState(test.argument, aliasName);
     return invertAvailabilityState(nested);
@@ -263,7 +327,9 @@ function aliasAvailabilityState(test: Node | null | undefined, aliasName: string
     && test.callee.name === 'Boolean'
     && test.arguments.length === 1
     && test.arguments[0]?.type === 'Identifier'
-    && test.arguments[0].name === aliasName) return 'available';
+    && test.arguments[0].name === aliasName) {
+    return 'available';
+  }
   if (isBabelNodeType(test, 'LogicalExpression')) {
     const left = aliasAvailabilityState(test.left, aliasName);
     const right = aliasAvailabilityState(test.right, aliasName);
@@ -295,17 +361,29 @@ function pathIsInsideAliasGuardedBranch(referencePath: NodePath, aliasName: stri
   while (current.parentPath) {
     const parent = current.parentPath;
     if (parent.isIfStatement() && current.key === 'consequent'
-      && aliasAvailabilityState(parent.node.test, aliasName) === 'available') return true;
+      && aliasAvailabilityState(parent.node.test, aliasName) === 'available') {
+      return true;
+    }
     if (parent.isIfStatement() && current.key === 'alternate'
-      && aliasAvailabilityState(parent.node.test, aliasName) === 'unavailable') return true;
+      && aliasAvailabilityState(parent.node.test, aliasName) === 'unavailable') {
+      return true;
+    }
     if (parent.isLogicalExpression({ operator: '&&' }) && current.key === 'right'
-      && aliasAvailabilityState(parent.node.left, aliasName) === 'available') return true;
+      && aliasAvailabilityState(parent.node.left, aliasName) === 'available') {
+      return true;
+    }
     if (parent.isLogicalExpression({ operator: '||' }) && current.key === 'right'
-      && aliasAvailabilityState(parent.node.left, aliasName) === 'unavailable') return true;
+      && aliasAvailabilityState(parent.node.left, aliasName) === 'unavailable') {
+      return true;
+    }
     if (parent.isConditionalExpression() && current.key === 'consequent'
-      && aliasAvailabilityState(parent.node.test, aliasName) === 'available') return true;
+      && aliasAvailabilityState(parent.node.test, aliasName) === 'available') {
+      return true;
+    }
     if (parent.isConditionalExpression() && current.key === 'alternate'
-      && aliasAvailabilityState(parent.node.test, aliasName) === 'unavailable') return true;
+      && aliasAvailabilityState(parent.node.test, aliasName) === 'unavailable') {
+      return true;
+    }
     current = parent;
   }
   return false;
@@ -326,9 +404,13 @@ function findWorkerRealmGlobalReferences(
   const safeGuardIdentifiers = new Set<string>();
   const globalObjectAliases = new Map<string, string>();
   for (const statement of ast.program?.body ?? []) {
-    if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') continue;
+    if (statement.type !== 'VariableDeclaration' || statement.kind !== 'const') {
+      continue;
+    }
     for (const declaration of statement.declarations) {
-      if (!declaration.init) continue;
+      if (!declaration.init) {
+        continue;
+      }
       if (isBabelNodeType(declaration.id, 'Identifier')) {
         for (const name of targetGlobals) {
           const state = guardExpressionUiGlobalState(declaration.init, name);
@@ -351,20 +433,26 @@ function findWorkerRealmGlobalReferences(
           globalObjectAliases.set(declaration.id.name, chain.segments[0].name);
         } else if (isBabelNodeType(initializer, 'Identifier')) {
           const aliasedGlobal = globalObjectAliases.get(initializer.name);
-          if (aliasedGlobal !== undefined) globalObjectAliases.set(declaration.id.name, aliasedGlobal);
+          if (aliasedGlobal !== undefined) {
+            globalObjectAliases.set(declaration.id.name, aliasedGlobal);
+          }
         }
       } else if (declaration.id?.type === 'ObjectPattern'
         && declaration.init.type === 'Identifier'
         && ['globalThis', 'self'].includes(declaration.init.name)) {
         for (const property of declaration.id.properties) {
-          if (!isBabelNodeType(property, 'ObjectProperty') || property.computed) continue;
+          if (!isBabelNodeType(property, 'ObjectProperty') || property.computed) {
+            continue;
+          }
           const targetName = isBabelNodeType(property.key, 'Identifier')
             ? property.key.name
             : isBabelNodeType(property.key, 'StringLiteral')
               ? property.key.value
               : null;
           const aliasName = isBabelNodeType(property.value, 'Identifier') ? property.value.name : null;
-          if (targetName !== null && targetGlobals.has(targetName) && aliasName) globalObjectAliases.set(aliasName, targetName);
+          if (targetName !== null && targetGlobals.has(targetName) && aliasName) {
+            globalObjectAliases.set(aliasName, targetName);
+          }
         }
       }
     }
@@ -374,7 +462,9 @@ function findWorkerRealmGlobalReferences(
   const seen = new Set<string>();
   function record(node: Node, name: string, accessKind: string): void {
     const key = `${node.start}:${node.end}:${name}:${accessKind}`;
-    if (seen.has(key)) return;
+    if (seen.has(key)) {
+      return;
+    }
     seen.add(key);
     references.push({
       name,
@@ -418,28 +508,52 @@ function findWorkerRealmGlobalReferences(
           }
         }
       }
-      if (!targetGlobals.has(name) || !referencePath.isReferencedIdentifier()) return;
-      if (isTypeOnlyReference(referencePath)) return;
-      if (referencePath.scope.getBinding(name)) return;
-      if (isDeferredFromModuleEvaluation(referencePath)) return;
-      if (referencePath.parentPath?.isUnaryExpression({ operator: 'typeof' })) return;
-      if (pathIsInsideGuardedBranch(referencePath, name, code, safeGuardIdentifiers)) return;
+      if (!targetGlobals.has(name) || !referencePath.isReferencedIdentifier()) {
+        return;
+      }
+      if (isTypeOnlyReference(referencePath)) {
+        return;
+      }
+      if (referencePath.scope.getBinding(name)) {
+        return;
+      }
+      if (isDeferredFromModuleEvaluation(referencePath)) {
+        return;
+      }
+      if (referencePath.parentPath?.isUnaryExpression({ operator: 'typeof' })) {
+        return;
+      }
+      if (pathIsInsideGuardedBranch(referencePath, name, code, safeGuardIdentifiers)) {
+        return;
+      }
       record(referencePath.node, name, 'unbound-identifier');
     },
     'MemberExpression|OptionalMemberExpression'(referencePath) {
-      if (!isOutermostMemberPath(referencePath) || isDeferredFromModuleEvaluation(referencePath)) return;
+      if (!isOutermostMemberPath(referencePath) || isDeferredFromModuleEvaluation(referencePath)) {
+        return;
+      }
       const chain = globalObjectPropertyChain(referencePath.node);
-      if (!chain || chain.segments.length === 0) return;
+      if (!chain || chain.segments.length === 0) {
+        return;
+      }
       const [target, firstDereference] = chain.segments;
-      if (!targetGlobals.has(target.name)) return;
+      if (!targetGlobals.has(target.name)) {
+        return;
+      }
       const parent = referencePath.parentPath;
       const directInvocation = chain.segments.length === 1
         && ((parent?.isCallExpression?.() || parent?.isOptionalCallExpression?.() || parent?.isNewExpression?.())
           && parent.node.callee === referencePath.node);
       const immediatelyDereferenced = chain.segments.length >= 2 && firstDereference?.optional !== true;
-      if (!directInvocation && !immediatelyDereferenced) return;
-      if (parent?.isOptionalCallExpression?.() && parent.node.optional === true) return;
-      if (pathIsInsideGuardedBranch(referencePath, target.name, code, safeGuardIdentifiers)) return;
+      if (!directInvocation && !immediatelyDereferenced) {
+        return;
+      }
+      if (parent?.isOptionalCallExpression?.() && parent.node.optional === true) {
+        return;
+      }
+      if (pathIsInsideGuardedBranch(referencePath, target.name, code, safeGuardIdentifiers)) {
+        return;
+      }
       record(referencePath.node, target.name, directInvocation ? 'global-object-call' : 'global-object-dereference');
     },
   });
@@ -467,11 +581,17 @@ export function createWorkerRealmGlobalGuardPlugin({
     name: 'naidan-file-protocol-standalone-worker-realm-global-guard',
     enforce: 'pre',
     transform(code, id) {
-      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) return null;
-      if (!uiOnlyGlobalLexicalPattern.test(code)) return null;
+      if (id.startsWith('\0') || !/\.[cm]?[jt]sx?(?:\?|$)/u.test(id)) {
+        return null;
+      }
+      if (!uiOnlyGlobalLexicalPattern.test(code)) {
+        return null;
+      }
       const sourcePath = id.split('?', 1)[0];
       const references = findWorkerRealmGlobalReferences(code, sourcePath, { uiOnlyGlobals });
-      if (references.length > 0) referencesByModule.set(sourcePath, references);
+      if (references.length > 0) {
+        referencesByModule.set(sourcePath, references);
+      }
       return null;
     },
     generateBundle(_options, bundle) {
@@ -503,7 +623,9 @@ export function createWorkerRealmGlobalGuardPlugin({
           );
           const diagnostic = { ...record, allowed };
           diagnostics.workerRealmGlobalReferences.push(diagnostic);
-          if (!allowed) failures.push(diagnostic);
+          if (!allowed) {
+            failures.push(diagnostic);
+          }
         });
       }
       diagnostics.workerRealmGlobalReferences.sort(

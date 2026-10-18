@@ -26,7 +26,8 @@ it('does not trust a second frame header hidden after the first scan', () => {
   const marker = bytes.findIndex((value, at) => value === 0xff && bytes[at + 1] === 0xc0);
   const length = new DataView(bytes.buffer).getUint16(marker + 2);
   const second = [...bytes.subarray(marker, marker + 2 + length)];
-  second[7] = 0x20; second[8] = 0;
+  second[7] = 0x20;
+  second[8] = 0;
   expect(() => peerImageDimensions({ bytes: spliceBeforeEnd({ inserted: second }), mimeType: 'image/jpeg' })).toThrow();
 });
 

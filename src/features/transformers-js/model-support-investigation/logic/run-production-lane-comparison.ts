@@ -84,7 +84,9 @@ export async function runProductionLaneComparison({
     if (runtimeCompletion !== undefined) {
       switch (runtimeCompletion.status) {
       case 'accepted': {
-        if (observedCandidate !== undefined) return [observedCandidate] as const;
+        if (observedCandidate !== undefined) {
+          return [observedCandidate] as const;
+        }
         const selected = runtimeCompletion.selectedCandidate;
         return selected === undefined ? undefined : [selected] as const;
       }
@@ -127,14 +129,18 @@ export async function runProductionLaneComparison({
 
   const toolResultContinuation = (() => {
     const probe = referenceAttempt?.toolProtocolProbe;
-    if (probe === undefined) return undefined;
+    if (probe === undefined) {
+      return undefined;
+    }
     switch (probe.status) {
     case "failed":
     case "unavailable":
       return undefined;
     case "observed": {
       const roundTrip = probe.toolResultTemplateRoundTrip;
-      if (roundTrip === undefined) return undefined;
+      if (roundTrip === undefined) {
+        return undefined;
+      }
       switch (roundTrip.status) {
       case "failed":
       case "unavailable":
@@ -234,7 +240,9 @@ export async function runProductionLaneComparison({
         ? "Production Lane evidence collected; Reference comparison unavailable"
         : "Reference and Production Lane evidence collected";
   } catch (error) {
-    if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
+    if (isModelSupportInvestigationUserInterruptedError({ error })) {
+      throw error;
+    }
     const serialized = serializeInvestigationError({ error });
     updatedRun.productionLane = {
       status: "failed",

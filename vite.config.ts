@@ -43,7 +43,7 @@ import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
 import { createPWABuild } from './build/pwa';
-import { readAppSource } from './build/app-source';
+import { readAppSourceForConfig } from './build/app-source';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -126,7 +126,9 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
     console.log('  \u231B Compressing WASM files to .gz...');
     const distDir = path.resolve(__dirname, outDir);
 
-    if (!fs.existsSync(distDir)) return;
+    if (!fs.existsSync(distDir)) {
+      return;
+    }
 
     const processDirectory = async (dir: string) => {
       const entries = await fs.promises.readdir(dir, { withFileTypes: true });
@@ -214,7 +216,12 @@ export default defineConfig(({ mode, command }) => {
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
       __APP_VERSION__: JSON.stringify(pkg.version),
-      __APP_SOURCE__: JSON.stringify(readAppSource({ rootDir: __dirname })),
+      __APP_SOURCE__: JSON.stringify(readAppSourceForConfig({
+        mode,
+        executionContext: process.env.VITEST === 'true' ? 'vitest' : 'vite',
+        rootDir: __dirname,
+        environment: process.env,
+      })),
     },
     resolve: {
       alias: [
@@ -299,7 +306,9 @@ export default defineConfig(({ mode, command }) => {
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {
-          if (isStandalone) standaloneCollectedLicenseDependencies = dependencies;
+          if (isStandalone) {
+            standaloneCollectedLicenseDependencies = dependencies;
+          }
         },
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),

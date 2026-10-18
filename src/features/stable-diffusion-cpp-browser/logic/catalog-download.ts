@@ -23,8 +23,12 @@ function notify({ report, progress }: { report: Report, progress: CatalogDownloa
  */
 export async function downloadImageRecipe({ files, signal, onProgress, fetch, destination }: { files: ImageRecipeDownloadRequest['files'], signal: ImageRecipeDownloadRequest['signal'], onProgress: ImageRecipeDownloadRequest['onProgress'], fetch: CatalogFetch, destination?: ImageRecipeDownloadRequest['destination'] }): Promise<void> {
   z.array(imageDownloadSourceSchema).min(1).max(16).parse(files);
-  if (new Set(files.map(file => `${file.repository}/${file.path}`)).size !== files.length) throw new Error('Duplicate catalog file');
-  if (!navigator.locks || (destination?.kind !== 'host' && !navigator.storage?.getDirectory)) throw new Error('Safe model download storage is unavailable');
+  if (new Set(files.map(file => `${file.repository}/${file.path}`)).size !== files.length) {
+    throw new Error('Duplicate catalog file');
+  }
+  if (!navigator.locks || (destination?.kind !== 'host' && !navigator.storage?.getDirectory)) {
+    throw new Error('Safe model download storage is unavailable');
+  }
   const planned = [];
   for (const [index, file] of files.entries()) {
     notify({
@@ -45,7 +49,9 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
     planned.push(await imageFileIdentity({ file, signal, fetch }));
   }
   const total = planned.reduce((sum, file) => sum + file.size, 0);
-  if (!Number.isSafeInteger(total)) throw new Error('Catalog total exceeds exact byte accounting');
+  if (!Number.isSafeInteger(total)) {
+    throw new Error('Catalog total exceeds exact byte accounting');
+  }
   let completed = 0, processed = 0;
   for (const [index, file] of planned.entries()) {
     let reported = -Infinity, fileProcessed = 0;
@@ -56,7 +62,9 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
       destination,
       report: ({ progress }) => {
         fileProcessed = progress.processed;
-        if (performance.now() - reported < 150 && progress.bytes !== file.size) return;
+        if (performance.now() - reported < 150 && progress.bytes !== file.size) {
+          return;
+        }
         reported = performance.now();
         notify({
           report: onProgress,
@@ -75,7 +83,8 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
         });
       },
     });
-    completed += file.size; processed += fileProcessed;
+    completed += file.size;
+    processed += fileProcessed;
     notify({
       report: onProgress,
       progress: {

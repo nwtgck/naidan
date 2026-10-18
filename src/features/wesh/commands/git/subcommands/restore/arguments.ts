@@ -80,8 +80,9 @@ export function parseRestoreArguments({ args }: {
     case 'source':
       switch (occurrence.value.kind) {
       case 'inline':
-        if (occurrence.value.rawValue.length === 0)
+        if (occurrence.value.rawValue.length === 0) {
           throw new GitUsageError({ message: "option '--source' requires a value" });
+        }
         sourceExpression = occurrence.value.rawValue;
         break;
       case 'next-argv':
@@ -105,8 +106,9 @@ export function parseRestoreArguments({ args }: {
   const staged = parsed.optionValues.staged === true;
   const worktree = parsed.optionValues.worktree === true || !staged;
   const operands = [...parsed.positionals];
-  if (operands.length === 0)
+  if (operands.length === 0) {
     throw new Error('you must specify path(s) to restore');
+  }
   return { staged, worktree, sourceExpression, operands };
 }
 

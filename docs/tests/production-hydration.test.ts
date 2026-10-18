@@ -13,12 +13,16 @@ import { createSiteFixture, parsePage } from './site.test-support';
 // Verify the emitted public asset before signaling load; existing HTML links stay untouched.
 function serveEmittedStylesheetEvents({ document, dist }: { document: Document; dist: string }) {
   const dom = document.defaultView;
-  if (!dom) throw new Error('Missing page window');
+  if (!dom) {
+    throw new Error('Missing page window');
+  }
   const loaded: string[] = [];
   const observer = new dom.MutationObserver(records => {
     for (const record of records) {
       for (const node of record.addedNodes) {
-        if (!(node instanceof dom.HTMLLinkElement) || node.rel !== 'stylesheet') continue;
+        if (!(node instanceof dom.HTMLLinkElement) || node.rel !== 'stylesheet') {
+          continue;
+        }
         const asset = new URL(node.href).pathname;
         if (!/^\/docs\/assets\/[A-Za-z0-9_-]+\.css$/u.test(asset)) {
           node.dispatchEvent(new dom.Event('error'));
@@ -45,12 +49,16 @@ describe('emitted production island', () => {
     using page = parsePage({ html: await readFile(path.join(dist, 'en/chat-branching/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const root = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
-    if (!source || !root) throw new Error('Missing production branching island');
+    if (!source || !root) {
+      throw new Error('Missing production branching island');
+    }
     expect(parseBranchingPayload({ serialized: root.getAttribute('data-docs-props') ?? '' })).toEqual({ locale: 'en' });
     root.setAttribute('data-docs-props', JSON.stringify({ locale: 'fr' }));
     const staticHtml = root.innerHTML;
     const dom = page.document.defaultView;
-    if (!dom) throw new Error('Missing page window');
+    if (!dom) {
+      throw new Error('Missing page window');
+    }
     for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLButtonElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
       vi.stubGlobal(name, name === 'window' ? dom : name === 'document' ? page.document : dom[name]);
     }
@@ -77,12 +85,16 @@ describe('emitted production island', () => {
     using page = parsePage({ html: await readFile(path.join(dist, locale, 'chat-branching/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const staticRoot = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
-    if (!source || !staticRoot) throw new Error('Missing production branching island');
+    if (!source || !staticRoot) {
+      throw new Error('Missing production branching island');
+    }
     expect(parseBranchingPayload({ serialized: staticRoot.getAttribute('data-docs-props') ?? '' })).toEqual({ locale });
     await prepareBranchingMessages({ locale });
     const { messages } = readBranchingMessages({ locale });
     const dom = page.document.defaultView;
-    if (!dom) throw new Error('Missing page window');
+    if (!dom) {
+      throw new Error('Missing page window');
+    }
     for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLButtonElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
       vi.stubGlobal(name, name === 'window' ? dom : name === 'document' ? page.document : dom[name]);
     }
@@ -99,13 +111,17 @@ describe('emitted production island', () => {
     };
     const section = ({ id }: { id: string }): HTMLElement => {
       const element = root.querySelector<HTMLElement>(`[data-testid="branch-method-${id}"]`);
-      if (!element) throw new Error(`Missing method section: ${id}`);
+      if (!element) {
+        throw new Error(`Missing method section: ${id}`);
+      }
       return element;
     };
     const resend = section({ id: 'resend' });
     const button = ({ id }: { id: string }): HTMLButtonElement => {
       const element = resend.querySelector(`[data-testid="${id}"]`);
-      if (!(element instanceof HTMLButtonElement)) throw new Error(`Missing button: ${id}`);
+      if (!(element instanceof HTMLButtonElement)) {
+        throw new Error(`Missing button: ${id}`);
+      }
       return element;
     };
     const reply = () => resend.querySelector('[data-testid="branch-reply"]');

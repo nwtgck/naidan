@@ -118,14 +118,56 @@ describe('useSettings Initialization and Bootstrap', () => {
     vi.unstubAllGlobals();
   });
 
+  it('merges global reasoning into the latest persisted parameters without fetching models', async () => {
+    const { settings, updateGlobalReasoningEffort, TEST_ONLY } = useSettings();
+    const initial: Settings = { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3 } };
+    TEST_ONLY.__testOnlySetSettings({ newSettings: initial });
+    mocks.loadSettings.mockResolvedValue({ ...initial, lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.8, maxCompletionTokens: 123 } });
+    await updateGlobalReasoningEffort({ effort: 'high' });
+    const updater = mocks.updateSettings.mock.calls.at(-1)![0].updater;
+    const saved = await updater({ current: await mocks.loadSettings() });
+    expect(saved.lmParameters).toMatchObject({ temperature: 0.8, maxCompletionTokens: 123, reasoning: { effort: 'high' } });
+    expect(settings.value.lmParameters).toMatchObject({ temperature: 0.3, reasoning: { effort: 'high' } });
+    expect(mockListModels).not.toHaveBeenCalled();
+    await updateGlobalReasoningEffort({ effort: undefined });
+    expect(settings.value.lmParameters?.reasoning.effort).toBeUndefined();
+  });
+
+  it('does not publish failed global reasoning saves and can retry them', async () => {
+    const { settings, updateGlobalReasoningEffort, TEST_ONLY } = useSettings();
+    TEST_ONLY.__testOnlySetSettings({ newSettings: { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } } } });
+    mocks.updateSettings.mockRejectedValueOnce(new Error('Write failed'));
+    await expect(updateGlobalReasoningEffort({ effort: 'high' })).rejects.toThrow('Write failed');
+    expect(settings.value.lmParameters?.reasoning.effort).toBe('low');
+    await updateGlobalReasoningEffort({ effort: 'high' });
+    expect(settings.value.lmParameters?.reasoning.effort).toBe('high');
+  });
+
+  it('preserves another parameter edited while a reasoning save is pending', async () => {
+    const { settings, updateGlobalReasoningEffort, TEST_ONLY } = useSettings();
+    TEST_ONLY.__testOnlySetSettings({ newSettings: { ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'local', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.2 } } });
+    const completed = Promise.withResolvers<void>();
+    mocks.updateSettings.mockImplementationOnce(async ({ updater }) => {
+      await updater({ current: { ...settings.value, lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.8 } } });
+      await completed.promise;
+    });
+    const saving = updateGlobalReasoningEffort({ effort: 'high' });
+    TEST_ONLY.__testOnlySetSettings({ newSettings: { ...settings.value, lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.9 } } });
+    completed.resolve();
+    await saving;
+    expect(settings.value.lmParameters).toMatchObject({ temperature: 0.9, reasoning: { effort: 'high' } });
+  });
+
   it('republishes the editor storage boundary after migration removes the saved Settings record', async () => {
-    const { init, settings } = useSettings(); await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
     const previous = settings.value;
     mocks.loadSettings.mockResolvedValue(null);
     await synchronizeSettings({ event: { type: 'settings', timestamp: 1 } });
     expect(settings.value).toBe(previous);
     await synchronizeSettings({ event: { type: 'migration', timestamp: 2 } });
-    expect(settings.value).not.toBe(previous); expect(settings.value).toEqual(previous);
+    expect(settings.value).not.toBe(previous);
+    expect(settings.value).toEqual(previous);
     expect(mocks.updateSettings).not.toHaveBeenCalled();
   });
 

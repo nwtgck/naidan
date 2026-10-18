@@ -50,7 +50,9 @@ it.each([0, 256, 1024])('scales only the delivered preview surface (maxEdge=%i),
     constructor() {}
   });
   const output = await encodeImagePixels({ image: { pixels: new Uint8ClampedArray(512 * 256 * 4), width: 512, height: 256 }, maxEdge });
-  expect(output.width).toBe(maxEdge === 256 ? 256 : 512); expect(output.height).toBe(maxEdge === 256 ? 128 : 256);
-  expect(sizes[0]).toEqual([512, 256]); expect(put).toHaveBeenCalledTimes(1);
+  expect(output.width).toBe(maxEdge === 256 ? 256 : 512);
+  expect(output.height).toBe(maxEdge === 256 ? 128 : 256);
+  expect(sizes[0]).toEqual([512, 256]);
+  expect(put).toHaveBeenCalledTimes(1);
   expect(draw).toHaveBeenCalledTimes(maxEdge === 256 ? 1 : 0);
 });

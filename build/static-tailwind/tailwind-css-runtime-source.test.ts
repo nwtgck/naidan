@@ -15,7 +15,9 @@ function createFixture() {
     },
   });
   function flushScheduled() {
-    while (callbacks.length > 0) callbacks.shift()?.();
+    while (callbacks.length > 0) {
+      callbacks.shift()?.();
+    }
   }
   return { callbacks, dom, registry, flushScheduled };
 }

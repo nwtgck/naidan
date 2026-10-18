@@ -36,7 +36,9 @@ describe('wesh stat', () => {
   }): Promise<MockFileSystemFileHandle> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined) throw new Error('path must include a file name');
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
 
     let directory = rootHandle;
     for (const segment of segments) {
@@ -47,7 +49,9 @@ describe('wesh stat', () => {
     const writable = await handle.createWritable();
     await writable.write(data);
     await writable.close();
-    if (mtime !== undefined) handle.lastModified = mtime;
+    if (mtime !== undefined) {
+      handle.lastModified = mtime;
+    }
     return handle;
   }
 
@@ -403,7 +407,9 @@ describe('wesh stat', () => {
 
   it('does not add a duplicate alternate-form prefix for zero permissions', () => {
     const compiled = compileStatFormat({ format: '%#a', escapeMode: 'literal' });
-    if (!compiled.ok) throw new Error(compiled.message);
+    if (!compiled.ok) {
+      throw new Error(compiled.message);
+    }
 
     const output = collectChunks({
       chunks: renderCompiledStatFormatChunks({

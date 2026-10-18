@@ -38,7 +38,8 @@ beforeEach(async () => {
   downloads = [];
   vi.stubGlobal('URL', class extends URL {
     static override createObjectURL = vi.fn((blob: Blob) => {
-      downloads.push(blob); return 'blob:benchmark-archive';
+      downloads.push(blob);
+      return 'blob:benchmark-archive';
     });
     static override revokeObjectURL = vi.fn();
   });
@@ -65,8 +66,10 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  scope?.stop(); scope = undefined;
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  scope?.stop();
+  scope = undefined;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function setup() {
@@ -77,7 +80,9 @@ function setup() {
   generation.acquireBenchmark = () => true;
   scope = effectScope();
   const bench = scope.run(() => useImageBenchmark({ generation }));
-  if (!bench) throw new Error('Expected an active benchmark scope');
+  if (!bench) {
+    throw new Error('Expected an active benchmark scope');
+  }
   bench.protocol.value = { ...bench.protocol.value, cooldownSeconds: 0, repeats: 1 };
   const file = new File(['original input'], 'input.png', { type: 'image/png' });
   const stream = vi.spyOn(file, 'stream').mockImplementation(() => {
@@ -90,18 +95,25 @@ function setup() {
 
 async function exportedManifest() {
   const blob = downloads.at(-1);
-  if (!blob) throw new Error('Expected a downloaded benchmark ZIP');
+  if (!blob) {
+    throw new Error('Expected a downloaded benchmark ZIP');
+  }
   const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()), { checkCRC32: true });
   const entry = zip.file('manifest.json');
-  if (!entry) throw new Error('Expected the benchmark manifest');
+  if (!entry) {
+    throw new Error('Expected the benchmark manifest');
+  }
   return manifestSchema.parse(JSON.parse(await entry.async('string')));
 }
 
 it.each(['reuse', 'save'])('waits for the current history %s before acquiring the generation owner', async action => {
   const { bench, generation } = setup();
   const acquire = vi.spyOn(generation, 'acquireBenchmark');
-  if (action === 'reuse') generation.historyActions.busy.value = true;
-  else generation.historySaving.status.value = 'saving';
+  if (action === 'reuse') {
+    generation.historyActions.busy.value = true;
+  } else {
+    generation.historySaving.status.value = 'saving';
+  }
   expect(bench.canStart.value).toBe(false);
   await bench.start();
   expect(acquire).not.toHaveBeenCalled();

@@ -21,7 +21,9 @@ describe('awaitWithAbort', () => {
     const signal = controller.signal;
     const originalAddEventListener = signal.addEventListener.bind(signal);
     vi.spyOn(signal, 'addEventListener').mockImplementation((type, listener, options) => {
-      if (type === 'abort') controller.abort(new Error('registration race'));
+      if (type === 'abort') {
+        controller.abort(new Error('registration race'));
+      }
       originalAddEventListener(type, listener, options);
     });
 

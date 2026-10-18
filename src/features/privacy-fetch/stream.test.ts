@@ -82,13 +82,34 @@ describe('Hugging Face privacy policy', () => {
 });
 
 describe('privacy stream transport', () => {
+  it('fetches public llama.cpp searches without credentials or a referrer through the privacy stream', async () => {
+    const searchUrl = 'https://huggingface.co/api/models?apps=llama.cpp&sort=trendingScore&search=qwen&limit=20&expand%5B%5D=pipeline_tag&expand%5B%5D=gguf&expand%5B%5D=safetensors&expand%5B%5D=downloads&expand%5B%5D=likes&expand%5B%5D=lastModified&cursor=opaque%3D';
+    const { fetchMock, buffer } = mockResponse({
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('[]'));
+          controller.close();
+        },
+      }),
+      status: 200,
+      headers: {},
+      responseUrl: searchUrl,
+    });
+    const controller = new AbortController();
+    const response = await privacyFetchStream({ request: { url: searchUrl, signal: controller.signal } });
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(searchUrl, { method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal, headers: undefined });
+    expect(buffer).not.toHaveBeenCalled();
+    expect(new TextDecoder().decode((await response.body.getReader().read()).value)).toBe('[]');
+  });
+
   it('transfers the readable stream when both realms support it', async () => {
     vi.mocked(getReadableStreamTransferSupport).mockResolvedValue('supported');
     const bytes = new Uint8Array(300 * 1024).fill(9);
     const { buffer } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(bytes); controller.close();
+          controller.enqueue(bytes);
+          controller.close();
         },
       }),
       status: 206,
@@ -119,7 +140,8 @@ describe('privacy stream transport', () => {
     const { buffer, fetchMock } = mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array([4, 5])); controller.close();
+          controller.enqueue(new Uint8Array([4, 5]));
+          controller.close();
         },
       }),
       status: 206,
@@ -143,7 +165,8 @@ describe('privacy stream transport', () => {
     mockResponse({
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode('{}')); controller.close();
+          controller.enqueue(new TextEncoder().encode('{}'));
+          controller.close();
         },
       }),
       status: 200,
@@ -188,7 +211,9 @@ describe('privacy stream transport', () => {
     const { buffer } = mockResponse({
       body: new ReadableStream({
         pull(controller) {
-          reads++; controller.enqueue(new Uint8Array(300 * 1024).fill(7)); controller.close();
+          reads++;
+          controller.enqueue(new Uint8Array(300 * 1024).fill(7));
+          controller.close();
         },
       }, { highWaterMark: 0 }),
       status,

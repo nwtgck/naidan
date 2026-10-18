@@ -30,8 +30,9 @@ describe("wesh grep", () => {
   }) {
     const segments = path.split("/").filter(Boolean);
     const fileName = segments.pop();
-    if (fileName === undefined)
+    if (fileName === undefined) {
       throw new Error("path must include a file name");
+    }
 
     let dir = rootHandle;
     for (const segment of segments) {

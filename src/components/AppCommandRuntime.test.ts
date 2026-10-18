@@ -157,7 +157,8 @@ describe('AppCommandRuntime', () => {
     mockChats.value = [];
     currentRoute.query = { 'llama-cpp-browser-model': 'hf.co/owner/repo:Q4_K_M', q: 'do not auto-send' };
     mountRuntime();
-    await flushPromises(); await nextTick();
+    await flushPromises();
+    await nextTick();
     expect(mockCreateNewChat).not.toHaveBeenCalled();
     expect(mockCreateChatGroup).not.toHaveBeenCalled();
     expect(mockRouterPush).not.toHaveBeenCalled();

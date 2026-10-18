@@ -56,9 +56,13 @@ export type ImageGenerationSession = {
 
 export function compareImageGenerationSessions({ a, b }: { a: ImageGenerationSession, b: ImageGenerationSession }): number {
   const order = (b.activityOrder ?? 0) - (a.activityOrder ?? 0);
-  if (order) return order;
+  if (order) {
+    return order;
+  }
   const timestamp = b.updatedAt - a.updatedAt;
-  if (timestamp) return timestamp;
+  if (timestamp) {
+    return timestamp;
+  }
   const left = idToRaw({ id: a.id }), right = idToRaw({ id: b.id });
   return left < right ? -1 : left > right ? 1 : 0;
 }
@@ -191,7 +195,10 @@ export function imageGenerationTagReferenceKey({ tag }: { tag: ImageGenerationTa
   switch (tag.type) {
   case 'system': return `system:${tag.key}`;
   case 'user': return `user:${idToRaw({ id: tag.tagId })}`;
-  default: { const exhaustive: never = tag; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = tag;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -203,7 +210,9 @@ const seedSchema = z.string().max(19).regex(/^(0|[1-9][0-9]*)$/)
 export function planImageGenerationSeeds({ baseSeed, count }: { baseSeed: string, count: number }): string[] {
   const first = BigInt(seedSchema.parse(baseSeed));
   z.number().int().min(1).max(IMAGE_GENERATION_MAX_RUN_IMAGES).parse(count);
-  if (first + BigInt(count - 1) > 9223372036854775807n) throw new Error('The image seed plan exceeds the signed 64-bit range.');
+  if (first + BigInt(count - 1) > 9223372036854775807n) {
+    throw new Error('The image seed plan exceeds the signed 64-bit range.');
+  }
   return Array.from({ length: count }, (_, index) => String(first + BigInt(index)));
 }
 
@@ -214,16 +223,25 @@ export function canTransitionImageGenerationRun({ from, to }: { from: ImageGener
     switch (to) {
     case 'running': case 'cancelled': case 'failed': case 'interrupted': return true;
     case 'queued': case 'completed': return false;
-    default: { const exhaustive: never = to; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = to;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'running':
     switch (to) {
     case 'completed': case 'cancelled': case 'failed': case 'interrupted': return true;
     case 'queued': case 'running': return false;
-    default: { const exhaustive: never = to; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = to;
+      throw new Error(String(exhaustive));
+    }
     }
   case 'completed': case 'cancelled': case 'failed': case 'interrupted': return false;
-  default: { const exhaustive: never = from; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = from;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

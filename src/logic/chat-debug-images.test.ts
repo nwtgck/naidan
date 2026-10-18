@@ -25,9 +25,11 @@ it('inspects each text independently without reading reasoning or joining parts'
 
 it('keeps repeated image occurrences distinct and leaves raw text untouched', () => {
   const value = message({ parts: [{ type: 'text', text: '<think>literal</think>' + block + block, completeness: 'partial' }] });
-  const before = structuredClone(value); const result = inspectDebugImages({ message: value });
+  const before = structuredClone(value);
+  const result = inspectDebugImages({ message: value });
   expect(result.images.map(i => i.image.binaryObjectId)).toEqual(['binary', 'binary']);
-  expect(new Set(result.images.map(i => i.key)).size).toBe(2); expect(value).toEqual(before);
+  expect(new Set(result.images.map(i => i.key)).size).toBe(2);
+  expect(value).toEqual(before);
 });
 
 it('reports malformed or invalid metadata without treating it as an image', () => {
@@ -44,5 +46,7 @@ not-json
       completeness: 'partial',
     }],
   });
-  const result = inspectDebugImages({ message: value }); expect(result.images).toEqual([]); expect(result.errors).toHaveLength(2);
+  const result = inspectDebugImages({ message: value });
+  expect(result.images).toEqual([]);
+  expect(result.errors).toHaveLength(2);
 });

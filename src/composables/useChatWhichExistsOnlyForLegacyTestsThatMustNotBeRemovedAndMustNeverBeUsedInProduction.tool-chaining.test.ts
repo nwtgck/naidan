@@ -446,10 +446,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     const toolMessage = activeMessages.value.find((message) => message.role === 'tool');
     expect(toolMessage?.role).toBe('tool');
-    if (toolMessage?.role !== 'tool') throw new Error('Expected a persisted Tool Result message.');
+    if (toolMessage?.role !== 'tool') {
+      throw new Error('Expected a persisted Tool Result message.');
+    }
     const result = toolMessage.parts[0]?.result;
     expect(result?.status).toBe('success');
-    if (result?.status !== 'success') throw new Error('Expected a successful Tool Result.');
+    if (result?.status !== 'success') {
+      throw new Error('Expected a successful Tool Result.');
+    }
     expect(result.content.type).toBe('binary_object');
   });
 });

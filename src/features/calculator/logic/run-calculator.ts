@@ -69,7 +69,9 @@ export function runCalculator({ input, output = CALCULATOR_DEFAULT_OUTPUT_POLICY
       };
       return { status: 'error', diagnostic, text: formatCalculatorDiagnostic({ source: input, diagnostic }) };
     }
-    if (!(error instanceof CalculatorInputFailure)) throw error;
+    if (!(error instanceof CalculatorInputFailure)) {
+      throw error;
+    }
     return {
       status: 'error',
       diagnostic: error.diagnostic,

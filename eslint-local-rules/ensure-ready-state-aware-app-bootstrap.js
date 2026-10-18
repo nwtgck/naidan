@@ -42,16 +42,22 @@ export const rule = {
           }
         }
 
-        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppBootstrap') return;
+        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppBootstrap') {
+          return;
+        }
         const argument = node.arguments[0];
-        if (argument?.type !== 'ObjectExpression') return;
+        if (argument?.type !== 'ObjectExpression') {
+          return;
+        }
         const bootstrapProperty = argument.properties.find((property) => (
           property.type === 'Property'
           && !property.computed
           && ((property.key.type === 'Identifier' && property.key.name === 'bootstrap')
             || (property.key.type === 'Literal' && property.key.value === 'bootstrap'))
         ));
-        if (bootstrapProperty?.type !== 'Property') return;
+        if (bootstrapProperty?.type !== 'Property') {
+          return;
+        }
         if (bootstrapProperty.value.type === 'Identifier') {
           bootstrapFunctionName = bootstrapProperty.value.name;
         }

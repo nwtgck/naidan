@@ -31,6 +31,7 @@ type PsRequestState =
 const props = defineProps<{
   provider: OllamaProvider,
   endpointUrl: string | undefined,
+  presentation?: 'default' | 'settings',
 }>();
 
 const { addToast } = useToast();
@@ -483,25 +484,25 @@ defineExpose({
 
 <template>
   <div
-    tw-class="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50/50 shadow-sm dark:border-gray-800 dark:bg-gray-800/30"
+    :tw-class="presentation === 'settings' ? 'overflow-hidden border-t border-gray-200/70 dark:border-gray-800' : 'overflow-hidden rounded-3xl border border-gray-100 bg-gray-50/50 shadow-sm dark:border-gray-800 dark:bg-gray-800/30'"
     data-testid="ollama-ps-view"
   >
-    <div tw-class="flex items-center gap-2 bg-white/60 px-4 py-3.5 dark:bg-gray-900/25 sm:px-5">
+    <div :tw-class="presentation === 'settings' ? 'flex min-h-14 items-center gap-2' : 'flex items-center gap-2 bg-white/60 px-4 py-3.5 dark:bg-gray-900/25 sm:px-5'">
       <button
         type="button"
-        tw-class="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+        :tw-class="['flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30', presentation === 'settings' && 'min-h-14']"
         :aria-expanded="isExpanded"
         aria-controls="ollama-running-models-content"
         data-testid="ollama-ps-toggle"
         @click="togglePanel"
       >
-        <span tw-class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-white text-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <span :tw-class="presentation === 'settings' ? 'shrink-0 text-gray-400' : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-white text-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-800'">
           <MemoryStickIcon tw-class="h-4 w-4" />
         </span>
 
         <span tw-class="min-w-0 flex-1">
           <span tw-class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span tw-class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.OllamaPsView__running_models() }}</span>
+            <span :tw-class="presentation === 'settings' ? 'text-sm font-medium text-gray-700 dark:text-gray-200' : 'text-sm font-bold text-gray-800 dark:text-gray-100'">{{ presentation === 'settings' ? lazyStrings.OllamaPsView__loaded_models() : lazyStrings.OllamaPsView__running_models() }}</span>
             <span
               tw-class="text-[10px] font-bold text-gray-400"
               aria-live="polite"
@@ -510,7 +511,7 @@ defineExpose({
               {{ statusLabel }}
             </span>
           </span>
-          <span tw-class="mt-0.5 block text-[11px] font-medium leading-4 text-gray-400">
+          <span v-if="presentation !== 'settings'" tw-class="mt-0.5 block text-[11px] font-medium leading-4 text-gray-400">
             {{ lazyStrings.OllamaPsView__models_currently_using_system_or_video_memory() }}
           </span>
         </span>

@@ -76,7 +76,10 @@ function tagToWire({ value }: { value: z.output<typeof tag> }): z.input<typeof t
   switch (value.type) {
   case 'system': return { type: 'system', key: value.key };
   case 'user': return { type: 'user', tagId: idToRaw({ id: value.tagId }) };
-  default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = value;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
@@ -84,7 +87,10 @@ export function generationQueryToWire({ value }: { value: ImageGenerationQuery }
   switch (value.store.storageType) {
   case 'opfs': break;
   case 'memory': case 'local': throw new Error('Image Generation queries require OPFS.');
-  default: { const exhaustive: never = value.store.storageType; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = value.store.storageType;
+    throw new Error(String(exhaustive));
+  }
   }
   return {
     store: { storageType: value.store.storageType, storeId: idToRaw({ id: value.store.storeId }) },

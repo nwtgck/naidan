@@ -23,13 +23,18 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
     readIdentity: () => naidanRpcStorage.readIdentity(),
     list: () => naidanRpcStorage.list(),
     async remember({ ...args }: { access: Parameters<typeof naidanRpcStorage.remember>[0]['access'], registration: Parameters<typeof naidanRpcStorage.remember>[0]['registration'], identity: Parameters<typeof naidanRpcStorage.remember>[0]['identity'] }) {
-      const access = await naidanRpcStorage.remember(args); control.registryChanged(); return access;
+      const access = await naidanRpcStorage.remember(args);
+      control.registryChanged();
+      return access;
     },
     async update({ ...args }: { access: Parameters<typeof naidanRpcStorage.update>[0]['access'], registration: Parameters<typeof naidanRpcStorage.update>[0]['registration'], expectedRevision: Parameters<typeof naidanRpcStorage.update>[0]['expectedRevision'] }) {
-      const revision = await naidanRpcStorage.update(args); control.registryChanged(); return revision;
+      const revision = await naidanRpcStorage.update(args);
+      control.registryChanged();
+      return revision;
     },
     async remove({ ...args }: { access: Parameters<typeof naidanRpcStorage.remove>[0]['access'], id: Parameters<typeof naidanRpcStorage.remove>[0]['id'], expectedRevision: Parameters<typeof naidanRpcStorage.remove>[0]['expectedRevision'] }) {
-      await naidanRpcStorage.remove(args); control.registryChanged();
+      await naidanRpcStorage.remove(args);
+      control.registryChanged();
     },
   };
   const manager: NaidanPeerManager = new NaidanPeerManager({
@@ -43,17 +48,24 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
           const unregister = control.registerOwner({
             ownerId: nanoid(),
             stop: () => {
-              stopping(); return manager.setEnabled({ enabled: false });
+              stopping();
+              return manager.setEnabled({ enabled: false });
             },
           });
           let released = false;
           return {
             release() {
-              if (released) return; released = true; unregister(); lease.release();
+              if (released) {
+                return;
+              }
+              released = true;
+              unregister();
+              lease.release();
             },
           };
         } catch (error) {
-          lease.release(); throw error;
+          lease.release();
+          throw error;
         }
       },
       open: openPipingRpc,

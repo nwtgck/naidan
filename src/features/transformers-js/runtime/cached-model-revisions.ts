@@ -38,8 +38,12 @@ function isNotFoundError({ error }: { error: unknown }): boolean {
 }
 
 function revisionKind({ revision }: { revision: string }): DownloadVerificationCachedRevisionKind {
-  if (revision === 'main') return 'legacy-main';
-  if (/^[0-9a-f]{40}$/iu.test(revision)) return 'immutable-sha';
+  if (revision === 'main') {
+    return 'legacy-main';
+  }
+  if (/^[0-9a-f]{40}$/iu.test(revision)) {
+    return 'immutable-sha';
+  }
   return 'other';
 }
 
@@ -58,7 +62,9 @@ async function getResolveDirectory({
     }
     return await directory.getDirectoryHandle('resolve', { create: false });
   } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
     throw error;
   }
 }
@@ -81,7 +87,9 @@ async function inspectRevisionDirectory({
       const path = relativePath.length === 0 ? name : `${relativePath}/${name}`;
       switch (handle.kind) {
       case 'file': {
-        if (isOpfsStagingFileName({ fileName: name })) break;
+        if (isOpfsStagingFileName({ fileName: name })) {
+          break;
+        }
         if (name.startsWith('.') && name.endsWith('.complete')) {
           markers.add(path);
           break;
@@ -119,10 +127,18 @@ async function inspectRevisionDirectory({
     const markerPath = parent.length === 0
       ? `.${fileName}.complete`
       : `${parent}/.${fileName}.complete`;
-    if (!markers.has(markerPath)) incompleteFileCount++;
-    if (file.size === 0) zeroByteFileCount++;
-    if (file.isWeightFile) weightFileCount++;
-    if (file.isWeightFile && file.size > 0 && markers.has(markerPath)) committedWeightFileCount++;
+    if (!markers.has(markerPath)) {
+      incompleteFileCount++;
+    }
+    if (file.size === 0) {
+      zeroByteFileCount++;
+    }
+    if (file.isWeightFile) {
+      weightFileCount++;
+    }
+    if (file.isWeightFile && file.size > 0 && markers.has(markerPath)) {
+      committedWeightFileCount++;
+    }
     totalBytes += file.size;
     lastModified = Math.max(lastModified, file.lastModified);
   }
@@ -155,7 +171,9 @@ export async function inspectDownloadVerificationCachedRevisions({
 }): Promise<DownloadVerificationCachedRevisionInventory> {
   const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
   const resolveDirectory = await getResolveDirectory({ storageRoot, normalizedModelId });
-  if (resolveDirectory === undefined) return { modelId, normalizedModelId, revisions: [] };
+  if (resolveDirectory === undefined) {
+    return { modelId, normalizedModelId, revisions: [] };
+  }
 
   const revisions: DownloadVerificationCachedRevision[] = [];
   for await (const [revision, handle] of resolveDirectory.entries()) {

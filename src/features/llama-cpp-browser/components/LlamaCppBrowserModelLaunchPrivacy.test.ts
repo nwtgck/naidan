@@ -38,6 +38,7 @@ describe('browser model privacy disclosure', () => {
     const second = mount({ components: { LlamaCppBrowserModelLaunchPrivacy }, template: '<div><LlamaCppBrowserModelLaunchPrivacy /><LlamaCppBrowserModelLaunchPrivacy /></div>' });
     const controls = second.findAll('summary').map(summary => summary.attributes('aria-controls'));
     expect(new Set(controls).size).toBe(2);
-    first.unmount(); second.unmount();
+    first.unmount();
+    second.unmount();
   });
 });

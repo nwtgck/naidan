@@ -17,15 +17,19 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
   if (prompt.endsWith(`\
 <|im_start|>assistant
 <think>
-`)) phase = 'reasoning';
-  else if (prompt.endsWith(`\
+`)) {
+    phase = 'reasoning';
+  } else if (prompt.endsWith(`\
 <|im_start|>assistant
 <think>
 
 </think>
 
-`) || prompt.endsWith('<|im_start|>assistant\n')) phase = 'body';
-  else throw new Error('Unsupported Qwen generation prefix.');
+`) || prompt.endsWith('<|im_start|>assistant\n')) {
+    phase = 'body';
+  } else {
+    throw new Error('Unsupported Qwen generation prefix.');
+  }
   let active: { index: number, kind: 'text' | 'reasoning' } | undefined;
   let nextIndex = 0;
   let thoughtHeaderPending = false;
@@ -40,21 +44,32 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
   let settled = false;
 
   function assertWritable(): void {
-    if (settled || terminal !== undefined) throw new Error('Qwen content arrived after completion.');
+    if (settled || terminal !== undefined) {
+      throw new Error('Qwen content arrived after completion.');
+    }
   }
   function open({ kind }: { kind: 'text' | 'reasoning' }): void {
-    if (active !== undefined) throw new Error('Qwen opened overlapping content.');
+    if (active !== undefined) {
+      throw new Error('Qwen opened overlapping content.');
+    }
     active = { index: nextIndex++, kind };
     emit({ event: { type: 'part_start', index: active.index, kind } });
   }
   function delta({ text }: { text: string }): void {
-    if (!text) return;
+    if (!text) {
+      return;
+    }
     if (active === undefined) {
       switch (phase) {
-      case 'reasoning': open({ kind: 'reasoning' }); break;
-      case 'body': open({ kind: 'text' }); break;
+      case 'reasoning': open({ kind: 'reasoning' });
+        break;
+      case 'body': open({ kind: 'text' });
+        break;
       case 'tool_call': throw new Error('Tool argument text cannot become visible content.');
-      default: { const exhaustive: never = phase; throw new Error(`Unhandled Qwen phase: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(`Unhandled Qwen phase: ${exhaustive}`);
+      }
       }
     }
     emit({ event: { type: 'text_delta', index: active!.index, text } });
@@ -66,128 +81,201 @@ export function createQwen3_5Generation({ emit, prompt, tools }: {
     }
   }
   function flushSeparator(): void {
-    const pending = separator; separator = undefined;
-    if (pending !== undefined) delta({ text: pending.received });
+    const pending = separator;
+    separator = undefined;
+    if (pending !== undefined) {
+      delta({ text: pending.received });
+    }
   }
   function flushCallSeparator(): void {
-    const pending = callSeparator; callSeparator = undefined;
-    if (pending !== undefined) delta({ text: pending });
+    const pending = callSeparator;
+    callSeparator = undefined;
+    if (pending !== undefined) {
+      delta({ text: pending });
+    }
   }
   function flushThoughtNewline(): void {
     if (thoughtNewline) {
-      thoughtNewline = false; delta({ text: '\n' });
+      thoughtNewline = false;
+      delta({ text: '\n' });
     }
   }
   function appendCall({ text }: { text: string }): void {
-    if (callBody.length + text.length > maxDraftLength) throw new Error('Qwen tool draft exceeds its size limit.');
+    if (callBody.length + text.length > maxDraftLength) {
+      throw new Error('Qwen tool draft exceeds its size limit.');
+    }
     callBody += text;
   }
 
   return {
     text({ text }: { text: string }): void {
-      if (!text) return;
+      if (!text) {
+        return;
+      }
       // Qwen can serialize a completed im_end with one framing LF before EOS.
       // Accept that exact suffix only; post-terminal body text stays invalid.
       if (!settled && (terminal === 'user' || terminal === 'tool_results')
         && terminalTrailer === 'empty' && text === '\n') {
-        terminalTrailer = 'line-break'; return;
+        terminalTrailer = 'line-break';
+        return;
       }
       assertWritable();
       switch (phase) {
-      case 'tool_call': appendCall({ text }); return;
+      case 'tool_call': appendCall({ text });
+        return;
       case 'reasoning':
         if (thoughtHeaderPending) {
           thoughtHeaderPending = false;
-          if (text.startsWith('\n')) text = text.slice(1);
+          if (text.startsWith('\n')) {
+            text = text.slice(1);
+          }
         }
-        if (!text) return;
+        if (!text) {
+          return;
+        }
         flushThoughtNewline();
         thoughtNewline = text.endsWith('\n');
-        delta({ text: thoughtNewline ? text.slice(0, -1) : text }); return;
+        delta({ text: thoughtNewline ? text.slice(0, -1) : text });
+        return;
       case 'body':
         if (callSeparator !== undefined) {
           const pending = callSeparator + text;
           if (pending === '\n') {
-            callSeparator = pending; return;
+            callSeparator = pending;
+            return;
           }
-          callSeparator = undefined; text = pending;
+          callSeparator = undefined;
+          text = pending;
         }
         if (separator !== undefined) {
           const needed = separator.expected.length - separator.received.length;
           const consumed = text.slice(0, needed);
           separator.received += consumed;
           text = text.slice(consumed.length);
-          if (!separator.expected.startsWith(separator.received)) flushSeparator();
-          else if (separator.received === separator.expected) separator = undefined;
-          else return;
+          if (!separator.expected.startsWith(separator.received)) {
+            flushSeparator();
+          } else if (separator.received === separator.expected) {
+            separator = undefined;
+          } else {
+            return;
+          }
         }
-        delta({ text }); return;
-      default: { const exhaustive: never = phase; throw new Error(`Unhandled Qwen phase: ${exhaustive}`); }
+        delta({ text });
+        return;
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(`Unhandled Qwen phase: ${exhaustive}`);
+      }
       }
     },
     control({ token }: { token: string }): void {
       if (!settled && (terminal === 'user' || terminal === 'tool_results')
         && terminalTrailer !== 'eos' && token === '<|endoftext|>') {
-        terminalTrailer = 'eos'; return;
+        terminalTrailer = 'eos';
+        return;
       }
       assertWritable();
       switch (phase) {
       case 'tool_call': {
         if (token === '<|im_end|>' || token === '<|endoftext|>') {
-          terminal = 'incomplete'; return;
+          terminal = 'incomplete';
+          return;
         }
         if (token !== '</tool_call>') {
-          appendCall({ text: token }); return;
+          appendCall({ text: token });
+          return;
         }
         // A delimiter within a native parameter is data, not a second call.
         if (callBody.lastIndexOf('<parameter=') > callBody.lastIndexOf('</parameter>')) {
-          appendCall({ text: token }); return;
+          appendCall({ text: token });
+          return;
         }
         const toolCall = parseQwen3_5NativeToolCall({ content: callBody, tools });
         emit({ event: { type: 'tool_call', index: callIndex!, toolCall } });
-        completedCalls++; callIndex = undefined; callBody = ''; phase = 'body'; callSeparator = '';
+        completedCalls++;
+        callIndex = undefined;
+        callBody = '';
+        phase = 'body';
+        callSeparator = '';
         return;
       }
       case 'reasoning': {
         switch (token) {
         case '</think>':
-          thoughtNewline = false; thoughtHeaderPending = false;
-          if (active === undefined) open({ kind: 'reasoning' });
-          close({ completeness: 'complete' }); phase = 'body';
-          separator = { expected: '\n\n', received: '' }; return;
+          thoughtNewline = false;
+          thoughtHeaderPending = false;
+          if (active === undefined) {
+            open({ kind: 'reasoning' });
+          }
+          close({ completeness: 'complete' });
+          phase = 'body';
+          separator = { expected: '\n\n', received: '' };
+          return;
         case '<tool_call>': case '</tool_call>': case '<tool_response>': case '</tool_response>':
-          thoughtHeaderPending = false; flushThoughtNewline(); delta({ text: token }); return;
+          thoughtHeaderPending = false;
+          flushThoughtNewline();
+          delta({ text: token });
+          return;
         case '<|im_end|>': case '<|endoftext|>':
-          flushThoughtNewline(); close({ completeness: 'partial' }); terminal = 'incomplete'; return;
+          flushThoughtNewline();
+          close({ completeness: 'partial' });
+          terminal = 'incomplete';
+          return;
         default: throw new Error('Unsupported control inside Qwen reasoning.');
         }
       }
       case 'body': break;
-      default: { const exhaustive: never = phase; throw new Error(`Unhandled Qwen phase: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = phase;
+        throw new Error(`Unhandled Qwen phase: ${exhaustive}`);
+      }
       }
       flushSeparator();
-      if (token === '<tool_call>' && callSeparator === '\n') callSeparator = undefined;
-      else flushCallSeparator();
+      if (token === '<tool_call>' && callSeparator === '\n') {
+        callSeparator = undefined;
+      } else {
+        flushCallSeparator();
+      }
       switch (token) {
       case '<think>':
-        close({ completeness: 'complete' }); phase = 'reasoning'; thoughtHeaderPending = true;
-        open({ kind: 'reasoning' }); return;
+        close({ completeness: 'complete' });
+        phase = 'reasoning';
+        thoughtHeaderPending = true;
+        open({ kind: 'reasoning' });
+        return;
       case '<tool_call>':
-        if (!tools?.length) throw new Error('Qwen generated a call without tool declarations.');
-        close({ completeness: 'complete' }); phase = 'tool_call'; callBody = ''; callIndex = nextIndex++;
-        emit({ event: { type: 'tool_start', index: callIndex } }); return;
+        if (!tools?.length) {
+          throw new Error('Qwen generated a call without tool declarations.');
+        }
+        close({ completeness: 'complete' });
+        phase = 'tool_call';
+        callBody = '';
+        callIndex = nextIndex++;
+        emit({ event: { type: 'tool_start', index: callIndex } });
+        return;
       case '<|im_end|>':
-        if (nextIndex === 0) open({ kind: 'text' });
-        close({ completeness: 'complete' }); terminal = completedCalls ? 'tool_results' : 'user'; return;
+        if (nextIndex === 0) {
+          open({ kind: 'text' });
+        }
+        close({ completeness: 'complete' });
+        terminal = completedCalls ? 'tool_results' : 'user';
+        return;
       case '<|endoftext|>':
-        close({ completeness: 'partial' }); terminal = 'incomplete'; return;
+        close({ completeness: 'partial' });
+        terminal = 'incomplete';
+        return;
       default: throw new Error('Unsupported or misplaced Qwen control token.');
       }
     },
     finish({ reason }: { reason: 'aborted' | 'limit' | 'unknown' }): void {
-      if (settled) throw new Error('Qwen generation was settled twice.');
+      if (settled) {
+        throw new Error('Qwen generation was settled twice.');
+      }
       settled = true;
-      flushSeparator(); flushCallSeparator(); flushThoughtNewline(); close({ completeness: 'partial' });
+      flushSeparator();
+      flushCallSeparator();
+      flushThoughtNewline();
+      close({ completeness: 'partial' });
       emit({
         event: {
           type: 'result',

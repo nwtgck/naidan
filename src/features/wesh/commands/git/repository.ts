@@ -14,7 +14,9 @@ export function joinPath({ base, child }: { base: string, child: string }): stri
 }
 
 function parentPath({ path }: { path: string }): string | undefined {
-  if (path === "/") return undefined;
+  if (path === "/") {
+    return undefined;
+  }
   const slashIndex = path.lastIndexOf("/");
   return slashIndex <= 0 ? "/" : path.slice(0, slashIndex);
 }
@@ -47,19 +49,25 @@ function parseRepositoryFormat({ text }: { text: string }): RepositoryFormat {
   const extensions = new Map<string, string>();
   for (const rawLine of text.split(/\r?\n/u)) {
     const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith('#') || line.startsWith(';')) continue;
+    if (line.length === 0 || line.startsWith('#') || line.startsWith(';')) {
+      continue;
+    }
     const sectionMatch = /^\[([^\s\]"]+)(?:\s+"[^"]*")?\]$/u.exec(line);
     if (sectionMatch !== null) {
       section = sectionMatch[1]!.toLowerCase();
       continue;
     }
     const assignment = /^([A-Za-z0-9-]+)(?:\s*=\s*(.*))?$/u.exec(line);
-    if (assignment === null) continue;
+    if (assignment === null) {
+      continue;
+    }
     const key = assignment[1]!.toLowerCase();
     const value = assignment[2] ?? 'true';
     if (section === 'core' && key === 'repositoryformatversion') {
       const trimmed = value.trim();
-      if (!/^\d+$/u.test(trimmed)) throw new Error(`invalid repository format version '${value}'`);
+      if (!/^\d+$/u.test(trimmed)) {
+        throw new Error(`invalid repository format version '${value}'`);
+      }
       version = Number.parseInt(trimmed, 10);
     } else if (section === 'extensions') {
       extensions.set(key, value.trim());
@@ -73,18 +81,28 @@ async function validateRepositoryFormat({ files, repository }: {
   repository: GitRepository,
 }): Promise<void> {
   const configPath = joinPath({ base: repository.commonDirPath, child: 'config' });
-  if (!await pathExists({ files, path: configPath })) return;
+  if (!await pathExists({ files, path: configPath })) {
+    return;
+  }
   const format = parseRepositoryFormat({ text: await readFileText({ files, path: configPath }) });
-  if (format.version > 1) throw new Error(`Expected git repo version <= 1, found ${format.version}`);
-  if (format.version !== 1) return;
+  if (format.version > 1) {
+    throw new Error(`Expected git repo version <= 1, found ${format.version}`);
+  }
+  if (format.version !== 1) {
+    return;
+  }
   for (const [name, rawValue] of format.extensions) {
     const value = rawValue.toLowerCase();
     switch (name) {
     case 'objectformat':
-      if (value !== 'sha1') throw new Error(`unsupported repository object format '${rawValue}'`);
+      if (value !== 'sha1') {
+        throw new Error(`unsupported repository object format '${rawValue}'`);
+      }
       break;
     case 'refstorage':
-      if (value !== 'files') throw new Error(`unsupported repository ref storage '${rawValue}'`);
+      if (value !== 'files') {
+        throw new Error(`unsupported repository ref storage '${rawValue}'`);
+      }
       break;
     default:
       throw new Error(`unsupported repository extension '${name}'`);
@@ -93,8 +111,12 @@ async function validateRepositoryFormat({ files, repository }: {
 }
 
 async function directoryHasEntries({ files, path }: { files: GitFiles, path: string }): Promise<boolean> {
-  if (!await pathExists({ files, path })) return false;
-  for await (const _entry of files.readDir({ path })) return true;
+  if (!await pathExists({ files, path })) {
+    return false;
+  }
+  for await (const _entry of files.readDir({ path })) {
+    return true;
+  }
   return false;
 }
 
@@ -109,9 +131,13 @@ async function hasReplacementRefs({ files, repository }: {
   if (await directoryHasEntries({
     files,
     path: joinPath({ base: repository.commonDirPath, child: 'refs/replace' }),
-  })) return true;
+  })) {
+    return true;
+  }
   const packedRefsPath = joinPath({ base: repository.commonDirPath, child: 'packed-refs' });
-  if (!await pathExists({ files, path: packedRefsPath })) return false;
+  if (!await pathExists({ files, path: packedRefsPath })) {
+    return false;
+  }
   return (await readFileText({ files, path: packedRefsPath })).split(/\r?\n/u).some(line => {
     const trimmed = line.trim();
     return trimmed.length > 0 && !trimmed.startsWith('#') && /\srefs\/replace\//u.test(trimmed);
@@ -122,11 +148,15 @@ async function validateRepositoryCapabilities({ files, repository }: {
   files: GitFiles,
   repository: GitRepository,
 }): Promise<void> {
-  if (await hasReplacementRefs({ files, repository })) throw new Error('replacement refs are not supported yet');
+  if (await hasReplacementRefs({ files, repository })) {
+    throw new Error('replacement refs are not supported yet');
+  }
   if (await fileHasContent({
     files,
     path: joinPath({ base: repository.commonDirPath, child: 'objects/info/alternates' }),
-  })) throw new Error('alternate object databases are not supported yet');
+  })) {
+    throw new Error('alternate object databases are not supported yet');
+  }
   for (const base of new Set([repository.gitDirPath, repository.commonDirPath])) {
     if (await fileHasContent({ files, path: joinPath({ base, child: 'shallow' }) })) {
       throw new Error('shallow repositories are not supported yet');
@@ -149,23 +179,33 @@ async function isBareRepositoryDirectory({ files, path, inferWhenConfigMissing }
   inferWhenConfigMissing: boolean,
 }): Promise<boolean> {
   for (const name of ['HEAD', 'objects', 'refs']) {
-    if (!await pathExists({ files, path: joinPath({ base: path, child: name }) })) return false;
+    if (!await pathExists({ files, path: joinPath({ base: path, child: name }) })) {
+      return false;
+    }
   }
   const configPath = joinPath({ base: path, child: 'config' });
-  if (!await pathExists({ files, path: configPath })) return inferWhenConfigMissing;
+  if (!await pathExists({ files, path: configPath })) {
+    return inferWhenConfigMissing;
+  }
   const configText = await readFileText({ files, path: configPath });
   let section = '';
   for (const rawLine of configText.split(/\r?\n/u)) {
     const line = rawLine.trim();
-    if (line.length === 0 || line.startsWith('#') || line.startsWith(';')) continue;
+    if (line.length === 0 || line.startsWith('#') || line.startsWith(';')) {
+      continue;
+    }
     const sectionMatch = /^\[([^\s\]"]+)(?:\s+"[^"]*")?\]$/u.exec(line);
     if (sectionMatch !== null) {
       section = sectionMatch[1]!.toLowerCase();
       continue;
     }
-    if (section !== 'core') continue;
+    if (section !== 'core') {
+      continue;
+    }
     const assignment = /^bare\s*=\s*(.*)$/iu.exec(line);
-    if (assignment === null) continue;
+    if (assignment === null) {
+      continue;
+    }
     return parseBooleanConfigValue({ value: assignment[1]! }) === true;
   }
   return false;
@@ -176,18 +216,26 @@ export function repositoryHasWorktree({ repository }: { repository: GitRepositor
 }
 
 export function assertRepositoryHasWorktree({ repository }: { repository: GitRepository }): void {
-  if (!repositoryHasWorktree({ repository })) throw new Error('this operation must be run in a work tree');
+  if (!repositoryHasWorktree({ repository })) {
+    throw new Error('this operation must be run in a work tree');
+  }
 }
 
 export function repositoryCwdIsInsideWorktree({ context, repository }: {
   context: WeshCommandContext,
   repository: GitRepository,
 }): boolean {
-  if (!repositoryHasWorktree({ repository })) return false;
+  if (!repositoryHasWorktree({ repository })) {
+    return false;
+  }
   const worktreePrefix = repository.worktreePath === '/' ? '/' : `${repository.worktreePath}/`;
   const insideWorktree = context.cwd === repository.worktreePath || context.cwd.startsWith(worktreePrefix);
-  if (!insideWorktree) return false;
-  if (context.env.has('GIT_DIR')) return true;
+  if (!insideWorktree) {
+    return false;
+  }
+  if (context.env.has('GIT_DIR')) {
+    return true;
+  }
   const gitDirPrefix = repository.gitDirPath === '/' ? '/' : `${repository.gitDirPath}/`;
   return context.cwd !== repository.gitDirPath && !context.cwd.startsWith(gitDirPrefix);
 }
@@ -197,8 +245,12 @@ export function assertRepositoryHasUsableWorktree({ context, repository }: {
   repository: GitRepository,
 }): void {
   assertRepositoryHasWorktree({ repository });
-  if (context.env.has('GIT_DIR') || context.env.has('GIT_WORK_TREE')) return;
-  if (!repositoryCwdIsInsideWorktree({ context, repository })) throw new Error('this operation must be run in a work tree');
+  if (context.env.has('GIT_DIR') || context.env.has('GIT_WORK_TREE')) {
+    return;
+  }
+  if (!repositoryCwdIsInsideWorktree({ context, repository })) {
+    throw new Error('this operation must be run in a work tree');
+  }
 }
 
 async function resolveCommonDir({ files, gitDirPath }: {
@@ -206,9 +258,13 @@ async function resolveCommonDir({ files, gitDirPath }: {
   gitDirPath: string,
 }): Promise<string> {
   const commonDirFilePath = joinPath({ base: gitDirPath, child: 'commondir' });
-  if (!await pathExists({ files, path: commonDirFilePath })) return gitDirPath;
+  if (!await pathExists({ files, path: commonDirFilePath })) {
+    return gitDirPath;
+  }
   const relativeCommonDir = (await readFileText({ files, path: commonDirFilePath })).trim();
-  if (relativeCommonDir.length === 0) throw new Error(`Invalid commondir file: ${commonDirFilePath}`);
+  if (relativeCommonDir.length === 0) {
+    throw new Error(`Invalid commondir file: ${commonDirFilePath}`);
+  }
   const commonDirPath = normalizePath({ cwd: gitDirPath, path: relativeCommonDir });
   const stat = await files.stat({ path: commonDirPath });
   switch (stat.type) {
@@ -285,7 +341,9 @@ export async function discoverRepository({ files, cwd }: {
       });
     }
     const parent = parentPath({ path: current });
-    if (parent === undefined) break;
+    if (parent === undefined) {
+      break;
+    }
     current = parent;
   }
   throw new Error("not a git repository (or any of the parent directories): .git");
@@ -298,7 +356,9 @@ export async function discoverRepositoryFromContext({ context }: {
   const worktreeValue = context.env.get('GIT_WORK_TREE');
   if (gitDirValue === undefined) {
     const repository = await discoverRepository({ files: context.files, cwd: context.cwd });
-    if (worktreeValue === undefined) return repository;
+    if (worktreeValue === undefined) {
+      return repository;
+    }
     return {
       ...repository,
       worktreePath: normalizePath({ cwd: context.cwd, path: worktreeValue }),
@@ -458,7 +518,9 @@ export async function discoverRepositoryFromContextIfPresent({ context }: {
   try {
     return await discoverRepositoryFromContext({ context });
   } catch (error) {
-    if (context.env.has('GIT_DIR')) throw error;
+    if (context.env.has('GIT_DIR')) {
+      throw error;
+    }
     if (error instanceof Error
       && error.message === 'not a git repository (or any of the parent directories): .git') {
       return undefined;
@@ -489,7 +551,9 @@ export async function discoverRepositoryAtPath({ files, path }: {
   const markerPath = joinPath({ base: repositoryPath, child: '.git' });
   if (await pathExists({ files, path: markerPath })) {
     const repository = await discoverRepository({ files, cwd: repositoryPath });
-    if (repository.worktreePath !== repositoryPath) throw new Error(`repository '${path}' does not exist`);
+    if (repository.worktreePath !== repositoryPath) {
+      throw new Error(`repository '${path}' does not exist`);
+    }
     return { repository, bare: false };
   }
   const headPath = joinPath({ base: repositoryPath, child: 'HEAD' });
@@ -541,10 +605,14 @@ export async function initializeBareRepository({ files, targetPath }: {
   }
   for (const relativePath of ['branches', 'info', 'objects', 'objects/info', 'objects/pack', 'refs', 'refs/heads', 'refs/tags']) {
     const directoryPath = joinPath({ base: gitDirPath, child: relativePath });
-    if (!await pathExists({ files, path: directoryPath })) await files.mkdir({ path: directoryPath, recursive: true });
+    if (!await pathExists({ files, path: directoryPath })) {
+      await files.mkdir({ path: directoryPath, recursive: true });
+    }
   }
   const headPath = joinPath({ base: gitDirPath, child: 'HEAD' });
-  if (!await pathExists({ files, path: headPath })) await writeFileText({ files, path: headPath, text: 'ref: refs/heads/master\n' });
+  if (!await pathExists({ files, path: headPath })) {
+    await writeFileText({ files, path: headPath, text: 'ref: refs/heads/master\n' });
+  }
   const configPath = joinPath({ base: gitDirPath, child: 'config' });
   if (!await pathExists({ files, path: configPath })) {
     await writeFileText({
@@ -572,7 +640,9 @@ export function relativeToWorktree({ repository, absolutePath }: {
   repository: GitRepository,
   absolutePath: string,
 }): string {
-  if (absolutePath === repository.worktreePath) return "";
+  if (absolutePath === repository.worktreePath) {
+    return "";
+  }
   const prefix = repository.worktreePath === "/" ? "/" : `${repository.worktreePath}/`;
   if (!absolutePath.startsWith(prefix)) {
     throw new Error(`Path is outside repository worktree: ${absolutePath}`);

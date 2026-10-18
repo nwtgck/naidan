@@ -21,29 +21,44 @@ function database() {
       onabort: undefined as (() => void) | undefined,
       onerror: undefined as (() => void) | undefined,
       abort() {
-        if (aborted) throw new Error('Already aborted'); aborted = true; queueMicrotask(() => tx.onabort?.());
+        if (aborted) {
+          throw new Error('Already aborted');
+        }
+        aborted = true;
+        queueMicrotask(() => tx.onabort?.());
       },
       objectStore(name: string) {
         const entries = draft.get(name)!;
         function task({ run, write }: { run(): unknown, write: boolean }) {
-          pending++; dirty ||= write;
+          pending++;
+          dirty ||= write;
           const request = { result: undefined as unknown, onsuccess: undefined as (() => void) | undefined };
           queueMicrotask(() => {
-            if (aborted) return;
+            if (aborted) {
+              return;
+            }
             try {
-              request.result = run(); request.onsuccess?.();
+              request.result = run();
+              request.onsuccess?.();
             } catch {
-              tx.abort(); return;
+              tx.abort();
+              return;
             } finally {
               pending--;
             }
             queueMicrotask(() => {
-              if (pending || aborted || completed) return;
+              if (pending || aborted || completed) {
+                return;
+              }
               if (rejectCommit && dirty) {
-                rejectCommit = false; tx.abort(); return;
+                rejectCommit = false;
+                tx.abort();
+                return;
               }
               completed = true;
-              for (const [key, value] of draft) stores.set(key, value);
+              for (const [key, value] of draft) {
+                stores.set(key, value);
+              }
               tx.oncomplete?.();
             });
           });
@@ -51,29 +66,39 @@ function database() {
         }
         return {
           get(key: string) {
-            requests.push(`${name}:get`); return task({ run: () => entries.get(key), write: false });
+            requests.push(`${name}:get`);
+            return task({ run: () => entries.get(key), write: false });
           },
           getAll() {
-            requests.push(`${name}:getAll`); return task({ run: () => [...entries.values()], write: false });
+            requests.push(`${name}:getAll`);
+            return task({ run: () => [...entries.values()], write: false });
           },
           add(value: unknown, key: string) {
-            requests.push(`${name}:add`); return task({
+            requests.push(`${name}:add`);
+            return task({
               run: () => {
-                if (entries.has(key)) throw new Error('ConstraintError'); entries.set(key, structuredClone(value)); return key;
+                if (entries.has(key)) {
+                  throw new Error('ConstraintError');
+                }
+                entries.set(key, structuredClone(value));
+                return key;
               },
               write: true,
             });
           },
           put(value: unknown, key: string) {
-            requests.push(`${name}:put`); return task({
+            requests.push(`${name}:put`);
+            return task({
               run: () => {
-                entries.set(key, structuredClone(value)); return key;
+                entries.set(key, structuredClone(value));
+                return key;
               },
               write: true,
             });
           },
           delete(key: string) {
-            requests.push(`${name}:delete`); return task({ run: () => entries.delete(key), write: true });
+            requests.push(`${name}:delete`);
+            return task({ run: () => entries.delete(key), write: true });
           },
         };
       },
@@ -85,7 +110,8 @@ function database() {
       names.push(name);
       const result = { transaction, close: closes, onversionchange: undefined };
       const request = { result, onsuccess: undefined as (() => void) | undefined };
-      queueMicrotask(() => request.onsuccess?.()); return request;
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
     },
   });
   return {
@@ -118,7 +144,9 @@ beforeEach(async () => {
   vi.stubGlobal('navigator', {
     locks: {
       request: vi.fn((_name: string, run: () => Promise<unknown>) => {
-        const result = previous.then(run); previous = result.then(() => {}, () => {}); return result;
+        const result = previous.then(run);
+        previous = result.then(() => {}, () => {});
+        return result;
       }),
     },
   });
@@ -129,7 +157,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks(); vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function remember({ next }: { next: NaidanRpcRegistration }) {
@@ -138,14 +167,18 @@ async function remember({ next }: { next: NaidanRpcRegistration }) {
 }
 
 it('reading empty storage neither installs an identity nor connects', async () => {
-  const db = database(); expect(await naidanRpcStorage.readIdentity()).toBeUndefined();
+  const db = database();
+  expect(await naidanRpcStorage.readIdentity()).toBeUndefined();
   expect((await naidanRpcStorage.list()).registrations).toEqual([]);
-  expect(localStorage.length).toBe(0); expect(db.requests).toEqual(['identity:get']);
-  expect(fetch).not.toHaveBeenCalled(); expect(db.closes).toHaveBeenCalledOnce();
+  expect(localStorage.length).toBe(0);
+  expect(db.requests).toEqual(['identity:get']);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(db.closes).toHaveBeenCalledOnce();
 });
 
 it('keeps only the nonextractable identity in IndexedDB and writes registrations through the provider', async () => {
-  const db = database(); await remember({ next: registration });
+  const db = database();
+  await remember({ next: registration });
   expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
   expect((await naidanRpcStorage.readIdentity())?.privateKey.extractable).toBe(false);
   expect(db.scopes.every(scope => scope.length === 1 && scope[0] === 'identity')).toBe(true);
@@ -153,42 +186,49 @@ it('keeps only the nonextractable identity in IndexedDB and writes registrations
   expect(db.stores.get('identity')?.size).toBe(1);
   const stored = await new LocalStorageProvider().loadNaidanRpcRegistry();
   expect(stored?.registrations[0]?.transport).toEqual(registration.transport);
-  expect(JSON.stringify(stored)).not.toContain('privateKey'); expect(fetch).not.toHaveBeenCalled();
+  expect(JSON.stringify(stored)).not.toContain('privateKey');
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 it('does not publish a registration when the identity transaction fails at commit', async () => {
-  const db = database(); db.failNextCommit();
+  const db = database();
+  db.failNextCommit();
   await expect(remember({ next: registration })).rejects.toThrow('aborted');
   expect((await naidanRpcStorage.list()).registrations).toEqual([]);
   expect(await naidanRpcStorage.readIdentity()).toBeUndefined();
 });
 
 it('leaves a committed key available for retry when the registry save fails', async () => {
-  database(); vi.spyOn(LocalStorageProvider.prototype, 'saveNaidanRpcRegistry').mockRejectedValueOnce(new Error('quota'));
+  database();
+  vi.spyOn(LocalStorageProvider.prototype, 'saveNaidanRpcRegistry').mockRejectedValueOnce(new Error('quota'));
   await expect(remember({ next: registration })).rejects.toThrow('quota');
   expect((await naidanRpcStorage.list()).registrations).toEqual([]);
-  const key = await naidanRpcStorage.readIdentity(); expect(key?.privateKey.extractable).toBe(false);
+  const key = await naidanRpcStorage.readIdentity();
+  expect(key?.privateKey.extractable).toBe(false);
   await remember({ next: registration });
   expect((await naidanRpcStorage.readIdentity())?.publicKey).toBe(key?.publicKey);
   expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
 });
 
 it('does not report success or replace grants when the provider write fails', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   vi.spyOn(LocalStorageProvider.prototype, 'saveNaidanRpcRegistry').mockRejectedValueOnce(new Error('quota'));
   await expect(naidanRpcStorage.update({ access, registration: { ...registration, revision: 1, inboundAllowedMethods: [] }, expectedRevision: 0 })).rejects.toThrow('quota');
   expect((await naidanRpcStorage.list()).registrations[0]?.inboundAllowedMethods).toEqual(['generateChat']);
 });
 
 it('refuses stale revisions and never overwrites a concurrent update', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   await naidanRpcStorage.update({ access, registration: { ...registration, revision: 1, label: 'new' }, expectedRevision: 0 });
   await expect(naidanRpcStorage.update({ access, registration: { ...registration, revision: 1, label: 'stale' }, expectedRevision: 0 })).rejects.toThrow('another operation');
   expect((await naidanRpcStorage.list()).registrations[0]?.label).toBe('new');
 });
 
 it('preserves independent record updates made from the same registry snapshot', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   const other = { ...registration, id: toNaidanRpcRegistrationId({ raw: 'registration-2' }) };
   await remember({ next: other });
   await Promise.all([
@@ -199,19 +239,22 @@ it('preserves independent record updates made from the same registry snapshot', 
 });
 
 it('cannot substitute the remembered peer under the same registration ID', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   await expect(naidanRpcStorage.update({ access, registration: { ...registration, peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'C'.repeat(43) }), revision: 1 }, expectedRevision: 0 })).rejects.toThrow('identity changes');
 });
 
 it('cannot replace the local key while remembering another peer', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   const alternate = { ...identity, publicKey: 'D'.repeat(43) };
   await expect(naidanRpcStorage.remember({ access, registration: { ...registration, id: toNaidanRpcRegistrationId({ raw: 'registration-2' }), localPublicKey: alternate.publicKey }, identity: alternate })).rejects.toThrow('identity changed');
   expect((await naidanRpcStorage.list()).registrations).toHaveLength(1);
 });
 
 it('deletes only the expected revision and keeps the local identity and registry ID', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   await expect(naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 9 })).rejects.toThrow();
   await naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 0 });
   expect((await naidanRpcStorage.list()).registrations).toEqual([]);
@@ -220,14 +263,17 @@ it('deletes only the expected revision and keeps the local identity and registry
 });
 
 it('rejects an old snapshot after clearing and recreating the same registration revision', async () => {
-  database(); const access = await remember({ next: registration });
-  await storageService.clearAll(); await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
+  await storageService.clearAll();
+  await remember({ next: registration });
   await expect(naidanRpcStorage.update({ access, registration: { ...registration, label: 'stale', revision: 1 }, expectedRevision: 0 })).rejects.toThrow('registry changed');
   expect((await naidanRpcStorage.list()).registrations[0]?.label).toBe('Peer');
 });
 
 it('copies the registry on provider switches and fences old operations after switching back', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   await storageService.switchProvider({ type: 'memory' });
   expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
   expect((await naidanRpcStorage.list()).access.persistence).toBe('session');
@@ -237,36 +283,45 @@ it('copies the registry on provider switches and fences old operations after swi
 });
 
 it('rejects unreadable registries instead of treating them as permission to create empty storage', async () => {
-  database(); await remember({ next: registration });
+  database();
+  await remember({ next: registration });
   const key = Object.keys(localStorage).find(key => key.endsWith('experimental-naidan-rpc-connections'));
-  if (!key) throw new Error('The registry should be stored through local storage');
+  if (!key) {
+    throw new Error('The registry should be stored through local storage');
+  }
   localStorage.setItem(key, '{');
   await expect(naidanRpcStorage.list()).rejects.toThrow();
   expect(localStorage.getItem(key)).toBe('{');
 });
 
 it('does not install an identity or claim durable trust in memory storage', async () => {
-  const db = database(); await storageService.switchProvider({ type: 'memory' });
+  const db = database();
+  await storageService.switchProvider({ type: 'memory' });
   await expect(remember({ next: registration })).rejects.toThrow('persistent storage');
-  expect(db.requests).toEqual([]); expect((await naidanRpcStorage.list()).registrations).toEqual([]);
+  expect(db.requests).toEqual([]);
+  expect((await naidanRpcStorage.list()).registrations).toEqual([]);
 });
 
 it('requires actual cross-tab locks for durable writes', async () => {
-  const db = database(); const { access } = await naidanRpcStorage.list();
+  const db = database();
+  const { access } = await naidanRpcStorage.list();
   vi.stubGlobal('navigator', {});
   await expect(naidanRpcStorage.remember({ access, registration, identity })).rejects.toThrow('Web Locks');
-  expect(db.requests).toEqual([]); expect((await naidanRpcStorage.list()).registrations).toEqual([]);
+  expect(db.requests).toEqual([]);
+  expect((await naidanRpcStorage.list()).registrations).toEqual([]);
 });
 
 it('keeps local trust and transport credentials out of general JSON backups', async () => {
-  database(); await remember({ next: { ...registration, transport: { ...registration.transport, headers: [{ name: 'Authorization', value: 'private-secret' }] } } });
+  database();
+  await remember({ next: { ...registration, transport: { ...registration.transport, headers: [{ name: 'Authorization', value: 'private-secret' }] } } });
   const backup = await storageService.dumpWithoutLock();
   expect(JSON.stringify(backup.structure)).not.toContain('private-secret');
   expect(JSON.stringify(backup.structure)).not.toContain('localPublicKey');
 });
 
 it('retains the original provider when copying its registry to a new provider fails', async () => {
-  database(); const access = await remember({ next: registration });
+  database();
+  const access = await remember({ next: registration });
   vi.spyOn(MemoryStorageProvider.prototype, 'saveNaidanRpcRegistry').mockRejectedValueOnce(new Error('registry copy failed'));
   await expect(storageService.switchProvider({ type: 'memory' })).rejects.toThrow('registry copy failed');
   expect(storageService.getCurrentType()).toBe('local');
@@ -275,7 +330,8 @@ it('retains the original provider when copying its registry to a new provider fa
 });
 
 it('notifies registry observers in the writing page without making their errors part of the commit', async () => {
-  database(); const observed = vi.fn();
+  database();
+  const observed = vi.fn();
   const unsubscribeThrower = storageService.subscribeNaidanRpcRegistryChanges({
     listener: () => {
       throw new Error('Observer failure');
@@ -284,13 +340,17 @@ it('notifies registry observers in the writing page without making their errors 
   const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: observed });
   using _cleanupResource = {
     [Symbol.dispose]() {
-      unsubscribe(); unsubscribeThrower();
+      unsubscribe();
+      unsubscribeThrower();
     },
   };
-  storageService.notify({ event: { type: 'settings', timestamp: 0 } }); expect(observed).not.toHaveBeenCalled();
-  const access = await remember({ next: registration }); expect(observed).toHaveBeenCalledOnce();
+  storageService.notify({ event: { type: 'settings', timestamp: 0 } });
+  expect(observed).not.toHaveBeenCalled();
+  const access = await remember({ next: registration });
+  expect(observed).toHaveBeenCalledOnce();
   expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
-  unsubscribe(); await naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 0 });
+  unsubscribe();
+  await naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 0 });
   expect(observed).toHaveBeenCalledOnce();
 });
 
@@ -303,8 +363,11 @@ it.each([
   const provider = new LocalStorageProvider();
   await provider.saveNaidanRpcRegistry({ registry: { version: 1, id: 'known-registry', registrations: [] } });
   const key = Object.keys(localStorage).find(key => key.endsWith('experimental-naidan-rpc-connections'));
-  if (!key) throw new Error('Missing stable registry location');
-  const bytes = JSON.stringify(raw); localStorage.setItem(key, bytes);
+  if (!key) {
+    throw new Error('Missing stable registry location');
+  }
+  const bytes = JSON.stringify(raw);
+  localStorage.setItem(key, bytes);
   await expect(naidanRpcStorage.list()).rejects.toThrow();
   await expect(naidanRpcStorage.remember({ access, registration, identity })).rejects.toThrow();
   expect(localStorage.getItem(key)).toBe(bytes);
@@ -313,7 +376,8 @@ it.each([
 });
 
 it.each(['bad-id', 'duplicate-id'])('keeps registry invariants at the use boundary and leaves stored data untouched (%s)', async mode => {
-  database(); await remember({ next: registration });
+  database();
+  await remember({ next: registration });
   const provider = new LocalStorageProvider(), stored = (await provider.loadNaidanRpcRegistry())!;
   const invalid = mode === 'bad-id' ? { ...stored, id: 'bad' } : { ...stored, registrations: [...stored.registrations, ...stored.registrations] };
   // The provider handles declared structure; the registry owns identity and uniqueness.

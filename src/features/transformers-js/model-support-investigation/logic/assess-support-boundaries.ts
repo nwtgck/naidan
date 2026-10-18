@@ -26,21 +26,27 @@ function runtimeIntegrityFailure({ run }: { run: ModelSupportInvestigationRun })
   summary: string,
 } | undefined {
   if (run.runtimeAssets !== undefined) {
-    if (runtimeIntegrityPassed({ run })) return undefined;
+    if (runtimeIntegrityPassed({ run })) {
+      return undefined;
+    }
     return {
       evidencePath: "runtime-assets/preflight.json",
       boundary: "environment-runtime",
       summary: "The fixed ONNX WASM control failed after the runtime assets were resolved and loaded.",
     };
   }
-  if (run.runtimeAssetsPartial === undefined) return undefined;
+  if (run.runtimeAssetsPartial === undefined) {
+    return undefined;
+  }
   const failedStages = run.runtimeAssetsPartial.stageObservations
     .filter(observation => (
       observation.status === "failed"
         && REQUIRED_RUNTIME_PREFLIGHT_STAGES.has(observation.stage as typeof REQUIRED_RUNTIME_PREFLIGHT_STAGES extends Set<infer T> ? T : never)
     ))
     .map(observation => observation.stage);
-  if (failedStages.length === 0) return undefined;
+  if (failedStages.length === 0) {
+    return undefined;
+  }
 
   const uniqueFailedStages = new Set(failedStages);
   if (uniqueFailedStages.size === 1 && uniqueFailedStages.has("origin-validation")) {

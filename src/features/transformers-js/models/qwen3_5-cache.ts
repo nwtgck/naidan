@@ -14,9 +14,13 @@ export type QwenSequenceCache = Readonly<{
 function cpuRow({ value, tensorClass }: { value: unknown; tensorClass: typeof Tensor }): BigInt64Array | undefined {
   try {
     if (!(value instanceof tensorClass) || value.location !== 'cpu' || value.type !== 'int64'
-      || value.dims.length !== 2 || value.dims[0] !== 1) return undefined;
+      || value.dims.length !== 2 || value.dims[0] !== 1) {
+      return undefined;
+    }
     const length = value.dims[1];
-    if (!Number.isSafeInteger(length) || length! < 1 || length! > QWEN_SEQUENCE_CACHE_MAX_TOKENS) return undefined;
+    if (!Number.isSafeInteger(length) || length! < 1 || length! > QWEN_SEQUENCE_CACHE_MAX_TOKENS) {
+      return undefined;
+    }
     const data = value.data;
     return data instanceof BigInt64Array && data.buffer instanceof ArrayBuffer && data.length === length ? data : undefined;
   } catch {
@@ -28,7 +32,9 @@ function cpuRow({ value, tensorClass }: { value: unknown; tensorClass: typeof Te
 function cacheLength({ pastKeyValues }: { pastKeyValues: unknown }): number | undefined {
   try {
     if (typeof pastKeyValues !== 'object' || pastKeyValues === null || !('get_seq_length' in pastKeyValues)
-      || typeof pastKeyValues.get_seq_length !== 'function') return undefined;
+      || typeof pastKeyValues.get_seq_length !== 'function') {
+      return undefined;
+    }
     const length: unknown = pastKeyValues.get_seq_length();
     return typeof length === 'number' && Number.isSafeInteger(length) && length > 0 ? length : undefined;
   } catch {
@@ -37,7 +43,9 @@ function cacheLength({ pastKeyValues }: { pastKeyValues: unknown }): number | un
 }
 
 function plainTextInput({ inputs, tensorClass }: { inputs: Record<string, unknown>; tensorClass: typeof Tensor }): BigInt64Array | undefined {
-  if (Object.keys(inputs).some(key => key !== 'input_ids' && key !== 'attention_mask')) return undefined;
+  if (Object.keys(inputs).some(key => key !== 'input_ids' && key !== 'attention_mask')) {
+    return undefined;
+  }
   const ids = cpuRow({ value: inputs['input_ids'], tensorClass });
   const mask = cpuRow({ value: inputs['attention_mask'], tensorClass });
   return ids !== undefined && mask !== undefined && mask.length === ids.length && mask.every(value => value === 1n) ? ids : undefined;
@@ -51,23 +59,35 @@ export function retainQwenSequenceCache({ model, sequences, pastKeyValues, input
   if (row === undefined || input === undefined || input.length >= row.length
     || !input.every((value, index) => row[index] === value)
     || typeof pastKeyValues !== 'object' || pastKeyValues === null
-    || cacheLength({ pastKeyValues }) !== row.length - 1) return undefined;
+    || cacheLength({ pastKeyValues }) !== row.length - 1) {
+    return undefined;
+  }
   return Object.freeze({ model, sequence: new BigInt64Array(row), pastKeyValues });
 }
 
 export function canReuseQwenSequenceCache({ cache, model, inputs, tensorClass }: {
   cache: QwenSequenceCache | undefined; model: object; inputs: Record<string, unknown>; tensorClass: typeof Tensor;
 }): boolean {
-  if (cache === undefined || cache.model !== model) return false;
+  if (cache === undefined || cache.model !== model) {
+    return false;
+  }
   // Only the pinned Qwen full-input prepare branch is established here.
   // Unknown positional, multimodal or embedding inputs require a fresh cache.
   const ids = plainTextInput({ inputs, tensorClass });
-  if (ids === undefined) return false;
+  if (ids === undefined) {
+    return false;
+  }
   const length = cacheLength({ pastKeyValues: cache.pastKeyValues });
-  if (length === undefined || length !== cache.sequence.length - 1 || length >= ids.length || cache.sequence.length > ids.length) return false;
-  if (!cache.sequence.every((value, index) => ids[index] === value)) return false;
+  if (length === undefined || length !== cache.sequence.length - 1 || length >= ids.length || cache.sequence.length > ids.length) {
+    return false;
+  }
+  if (!cache.sequence.every((value, index) => ids[index] === value)) {
+    return false;
+  }
   try {
-    if (!('sessions' in model) || typeof model.sessions !== 'object' || model.sessions === null) return false;
+    if (!('sessions' in model) || typeof model.sessions !== 'object' || model.sessions === null) {
+      return false;
+    }
     const sessions = model.sessions;
     const decoder = 'decoder_model_merged' in sessions ? sessions.decoder_model_merged : undefined;
     const session = decoder ?? ('model' in sessions ? sessions.model : undefined);

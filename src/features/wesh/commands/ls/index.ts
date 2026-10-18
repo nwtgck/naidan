@@ -33,8 +33,12 @@ const LS_CLASSIFY_ARGUMENTS: readonly {
 
 function parseClassifyArgument({ value }: { value: string }): LsClassifyMode | undefined {
   const exact = LS_CLASSIFY_ARGUMENTS.find(entry => entry.name === value);
-  if (exact !== undefined) return exact.mode;
-  if (value.length === 0) return undefined;
+  if (exact !== undefined) {
+    return exact.mode;
+  }
+  if (value.length === 0) {
+    return undefined;
+  }
 
   const matchingModes = new Set(
     LS_CLASSIFY_ARGUMENTS
@@ -59,8 +63,12 @@ function compareCStrings({ left, right }: { left: string, right: string }): numb
     leftOffset += leftCodePoint > 0xffff ? 2 : 1;
     rightOffset += rightCodePoint > 0xffff ? 2 : 1;
   }
-  if (leftOffset < left.length) return 1;
-  if (rightOffset < right.length) return -1;
+  if (leftOffset < left.length) {
+    return 1;
+  }
+  if (rightOffset < right.length) {
+    return -1;
+  }
   return 0;
 }
 
@@ -472,7 +480,9 @@ export const lsCommandImplementation: WeshCommandImplementation = {
             getStat: () => context.files.statEntry({ entry }),
           });
           await text.print({ text: `${line}\n` });
-          if (isCommandLineArgument) listedTopLevelOperand = true;
+          if (isCommandLineArgument) {
+            listedTopLevelOperand = true;
+          }
           return;
         }
 
@@ -540,7 +550,9 @@ export const lsCommandImplementation: WeshCommandImplementation = {
             await text.print({ text: '\n' });
           }
           await text.print({ text: `${displayPath}:\n` });
-          if (isCommandLineArgument) listedTopLevelOperand = true;
+          if (isCommandLineArgument) {
+            listedTopLevelOperand = true;
+          }
         }
 
         let renderedEntryCount = 0;
@@ -722,9 +734,15 @@ export const lsCommandImplementation: WeshCommandImplementation = {
 };
 
 function formatSize({ bytes }: { bytes: number }): string {
-  if (bytes < 1024) return bytes + 'B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'K';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'M';
+  if (bytes < 1024) {
+    return bytes + 'B';
+  }
+  if (bytes < 1024 * 1024) {
+    return (bytes / 1024).toFixed(1) + 'K';
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return (bytes / (1024 * 1024)).toFixed(1) + 'M';
+  }
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'G';
 }
 

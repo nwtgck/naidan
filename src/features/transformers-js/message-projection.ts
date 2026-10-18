@@ -38,7 +38,9 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
   // Only one leading reasoning segment fits this native message contract.
   // Preserve its state; the selected model adapter decides whether its template
   // can represent it. Never manufacture inline tags to make a request fit.
-  for (const message of acceptedMessages) validateRepresentableMessage({ message });
+  for (const message of acceptedMessages) {
+    validateRepresentableMessage({ message });
+  }
 
   const inferenceMessages: InferenceMessage[] = [];
   for (const message of acceptedMessages) {
@@ -71,12 +73,17 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
           case 'persisted': {
             const { status: _status, ...unhandled } = state;
             unhandled satisfies Record<PropertyKey, never>;
-            if (!readBinaryObject) throw new Error(`No binary reader for attachment "${originalName}".`);
+            if (!readBinaryObject) {
+              throw new Error(`No binary reader for attachment "${originalName}".`);
+            }
             blob = await readBinaryObject({ binaryObjectId, signal });
             break;
           }
           case 'missing': throw new Error(`Attachment "${originalName}" is missing.`);
-          default: { const _ex: never = state; throw new Error(`Unhandled attachment state: ${_ex}`); }
+          default: {
+            const _ex: never = state;
+            throw new Error(`Unhandled attachment state: ${_ex}`);
+          }
           }
           signal?.throwIfAborted();
           const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -84,11 +91,16 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
           // Data URLs cross the existing image input boundary; no remote fetch or
           // model download is authorized by resolving a conversation attachment.
           let binary = '';
-          for (const byte of bytes) binary += String.fromCharCode(byte);
+          for (const byte of bytes) {
+            binary += String.fromCharCode(byte);
+          }
           content.push({ type: 'image_url', image_url: { url: `data:${mimeType};base64,${btoa(binary)}` } });
           break;
         }
-        default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled user part: ${_ex}`);
+        }
         }
       }
       inferenceMessages.push({ role, content: nativeContent({ parts: content }) });
@@ -119,7 +131,10 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
           reasoning = { text, completeness };
           break;
         }
-        default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled assistant part: ${_ex}`);
+        }
         }
       }
       inferenceMessages.push({ role, content: nativeContent({ parts: content }), ...(calls.length === 0 ? {} : { tool_calls: calls }), ...(reasoning === undefined ? {} : { reasoning }) });
@@ -142,7 +157,10 @@ export async function prepareInferenceRequest({ messages, parameters, tools, rea
         inferenceMessages.push({ role, content, tool_call_id: result.toolCallId });
       }
       break;
-    default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+    default: {
+      const _ex: never = message;
+      throw new Error(`Unhandled message: ${_ex}`);
+    }
     }
   }
   signal?.throwIfAborted();
@@ -153,7 +171,9 @@ function nativeContent({ parts }: { parts: MultimodalContent[] }): InferenceMess
   // Keep an absent body distinct from one explicitly empty text part. Multiple
   // text parts retain their boundaries instead of being joined before templating.
   const only = parts[0];
-  if (parts.length === 1 && only?.type === 'text') return only.text;
+  if (parts.length === 1 && only?.type === 'text') {
+    return only.text;
+  }
   return parts;
 }
 
@@ -165,19 +185,29 @@ function validateRepresentableMessage({ message }: { message: ChatMessage }): vo
     for (const part of message.parts) {
       switch (part.type) {
       case 'reasoning':
-        if (hasReasoning || phase !== 'reasoning') throw new Error('The native input requires a single leading reasoning part.');
+        if (hasReasoning || phase !== 'reasoning') {
+          throw new Error('The native input requires a single leading reasoning part.');
+        }
         hasReasoning = true;
         break;
       case 'text':
         switch (phase) {
         case 'reasoning':
-        case 'text': phase = 'text'; break;
+        case 'text': phase = 'text';
+          break;
         case 'tool_call': throw new Error('The native input cannot represent text after a tool call in one message.');
-        default: { const _ex: never = phase; throw new Error(`Unhandled projection phase: ${_ex}`); }
+        default: {
+          const _ex: never = phase;
+          throw new Error(`Unhandled projection phase: ${_ex}`);
+        }
         }
         break;
-      case 'tool_call': phase = 'tool_call'; break;
-      default: { const _ex: never = part; throw new Error(`Unhandled assistant part: ${_ex}`); }
+      case 'tool_call': phase = 'tool_call';
+        break;
+      default: {
+        const _ex: never = part;
+        throw new Error(`Unhandled assistant part: ${_ex}`);
+      }
       }
     }
     return;
@@ -191,20 +221,35 @@ function validateRepresentableMessage({ message }: { message: ChatMessage }): vo
         case 'memory':
         case 'persisted': break;
         case 'missing': throw new Error(`Attachment "${part.attachment.originalName}" is missing.`);
-        default: { const _ex: never = part.attachment; throw new Error(`Unhandled attachment: ${_ex}`); }
+        default: {
+          const _ex: never = part.attachment;
+          throw new Error(`Unhandled attachment: ${_ex}`);
         }
-        if (!/^image\/[a-zA-Z0-9.+-]+$/.test(part.attachment.mimeType)) throw new Error('This model input supports image attachments only.');
+        }
+        if (!/^image\/[a-zA-Z0-9.+-]+$/.test(part.attachment.mimeType)) {
+          throw new Error('This model input supports image attachments only.');
+        }
         break;
-      default: { const _ex: never = part; throw new Error(`Unhandled user part: ${_ex}`); }
+      default: {
+        const _ex: never = part;
+        throw new Error(`Unhandled user part: ${_ex}`);
+      }
       }
     }
     return;
   case 'tool':
-    if (message.parts.length === 0) throw new Error('A tool message has no results.');
-    if (message.parts.some(part => part.result.status === 'executing')) throw new Error('A tool result is still executing.');
+    if (message.parts.length === 0) {
+      throw new Error('A tool message has no results.');
+    }
+    if (message.parts.some(part => part.result.status === 'executing')) {
+      throw new Error('A tool result is still executing.');
+    }
     return;
   case 'system': return;
-  default: { const _ex: never = message; throw new Error(`Unhandled message: ${_ex}`); }
+  default: {
+    const _ex: never = message;
+    throw new Error(`Unhandled message: ${_ex}`);
+  }
   }
 }
 
@@ -222,7 +267,9 @@ async function readToolContent({ content, readBinaryObject, signal }: {
   case 'binary_object': {
     const { type: _type, id, ...unhandled } = content;
     unhandled satisfies Record<PropertyKey, never>;
-    if (!readBinaryObject) throw new Error('No binary reader for the tool result.');
+    if (!readBinaryObject) {
+      throw new Error('No binary reader for the tool result.');
+    }
     signal?.throwIfAborted();
     const blob = await readBinaryObject({ binaryObjectId: id, signal });
     signal?.throwIfAborted();
@@ -230,7 +277,10 @@ async function readToolContent({ content, readBinaryObject, signal }: {
     signal?.throwIfAborted();
     return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   }
-  default: { const _ex: never = content; throw new Error(`Unhandled result content: ${_ex}`); }
+  default: {
+    const _ex: never = content;
+    throw new Error(`Unhandled result content: ${_ex}`);
+  }
   }
 }
 
@@ -253,7 +303,10 @@ async function readToolResult({ result, readBinaryObject, signal }: {
     return formatToolExecutionOutcomeForLm({ outcome: { status, code, message: await readToolContent({ content: message, readBinaryObject, signal }) } });
   }
   case 'executing': throw new Error('A tool result is still executing.');
-  default: { const _ex: never = result; throw new Error(`Unhandled tool result: ${_ex}`); }
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled tool result: ${_ex}`);
+  }
   }
 }
 

@@ -18,7 +18,9 @@ const forbiddenFetch = vi.fn(() => {
 });
 
 afterEach(() => {
-  expect(forbiddenFetch).not.toHaveBeenCalled(); vi.unstubAllGlobals(); vi.useRealTimers();
+  expect(forbiddenFetch).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function options({ remoteFetch }: { remoteFetch: typeof fetch | undefined }): Parameters<typeof collectReplayMetadata>[0] {
@@ -41,7 +43,9 @@ describe('bounded replay metadata collection', () => {
     expect(classifyReplayMetadataAccess({ metadata: { private: false, gated: false } })).toBe('public-request');
     expect(classifyReplayMetadataAccess({ metadata: { private: true, gated: false } })).toBe('excluded-private-or-gated');
     expect(classifyReplayMetadataAccess({ metadata: { private: false, gated: 'auto' } })).toBe('excluded-private-or-gated');
-    for (const metadata of [undefined, {}, { private: false }, { private: 'false', gated: false }]) expect(classifyReplayMetadataAccess({ metadata })).toBe('unverified');
+    for (const metadata of [undefined, {}, { private: false }, { private: 'false', gated: false }]) {
+      expect(classifyReplayMetadataAccess({ metadata })).toBe('unverified');
+    }
   });
 
   it('retains exact raw bytes and checkpoints completed sidecars without adding bytes to summary JSON', async () => {
@@ -176,7 +180,9 @@ describe('bounded replay metadata collection', () => {
       fileTimeoutMs: 10,
       files: [{ path: 'config.json', size: bytes.length }, { path: 'tokenizer.json', size: undefined }],
       onSnapshot: ({ snapshot }) => {
-        if (snapshot.sidecars.length === 1) collected.resolve();
+        if (snapshot.sidecars.length === 1) {
+          collected.resolve();
+        }
       },
     });
     await collected.promise;
@@ -200,7 +206,9 @@ describe('bounded replay metadata collection', () => {
   });
 
   it('keeps current corpus tokenizer sizes below the file budget', () => {
-    for (const size of [19439251, 27868174, 17905598, 19226111, 2104556]) expect(size).toBeLessThan(REPLAY_METADATA_FILE_BYTES);
+    for (const size of [19439251, 27868174, 17905598, 19226111, 2104556]) {
+      expect(size).toBeLessThan(REPLAY_METADATA_FILE_BYTES);
+    }
     expect(() => validateReplayMetadataContent({ path: 'weights.onnx', bytes })).toThrow();
   });
 

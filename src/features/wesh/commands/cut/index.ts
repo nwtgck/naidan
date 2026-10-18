@@ -62,7 +62,9 @@ function parseCutRange({
 
   if (!token.includes('-')) {
     const parsed = parsePositiveInteger({ value: token, label: 'list' });
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     return {
       ok: true,
       value: {
@@ -86,8 +88,12 @@ function parseCutRange({
     ? undefined
     : parsePositiveInteger({ value: endRaw, label: 'list' });
 
-  if (start !== undefined && !start.ok) return start;
-  if (end !== undefined && !end.ok) return end;
+  if (start !== undefined && !start.ok) {
+    return start;
+  }
+  if (end !== undefined && !end.ok) {
+    return end;
+  }
 
   const normalizedStart = start?.ok === true ? start.value : undefined;
   const normalizedEnd = end?.ok === true ? end.value : undefined;
@@ -125,7 +131,9 @@ function parseCutList({
   const ranges: CutRange[] = [];
   for (const token of value.split(',')) {
     const parsed = parseCutRange({ token });
-    if (!parsed.ok) return parsed;
+    if (!parsed.ok) {
+      return parsed;
+    }
     ranges.push(parsed.value);
   }
 
@@ -522,10 +530,14 @@ function findCutPreHelpSemanticIssue({
     occurrence.kind === 'value'
     && (occurrence.key === 'bytes' || occurrence.key === 'characters' || occurrence.key === 'fields')
   )).length;
-  if (listCount > 1) return { kind: 'multiple-lists' };
+  if (listCount > 1) {
+    return { kind: 'multiple-lists' };
+  }
 
   for (const occurrence of parsed.occurrences) {
-    if (occurrence.kind !== 'value' || occurrence.key !== 'delimiter' || typeof occurrence.value !== 'string') continue;
+    if (occurrence.kind !== 'value' || occurrence.key !== 'delimiter' || typeof occurrence.value !== 'string') {
+      continue;
+    }
     const delimiterByteLength = new TextEncoder().encode(occurrence.value).length;
     if (delimiterByteLength !== 0 && delimiterByteLength !== 1) {
       return { kind: 'delimiter', value: occurrence.value };
@@ -821,7 +833,9 @@ export const cutCommandImplementation: WeshCommandImplementation = {
     const inputFiles = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
 
     for (const file of inputFiles) {
-      if (file === undefined) continue;
+      if (file === undefined) {
+        continue;
+      }
 
       try {
         const stream = await openCutInputStream({

@@ -143,7 +143,8 @@ describe('linked model generation admission', () => {
     let remaining = length - prefix.length;
     const segments: string[] = [];
     while (remaining > 255) {
-      segments.push('a'.repeat(200)); remaining -= 203;
+      segments.push('a'.repeat(200));
+      remaining -= 203;
     }
     segments.push(`${'b'.repeat(remaining - '.gguf'.length)}.gguf`);
     return hostModelReference({ directoryId: 'root', repository: 'owner/repo', modelPath: segments.join('/') });

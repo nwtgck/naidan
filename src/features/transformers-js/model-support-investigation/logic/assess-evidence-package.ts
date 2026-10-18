@@ -75,7 +75,9 @@ export function assessEvidencePackage({
   const structurallyValid = missingRequiredCoreFiles.length === 0
     && missingReferencedEvidencePaths.length === 0;
   const status = (() => {
-    if (!structurallyValid) return "invalid" as const;
+    if (!structurallyValid) {
+      return "invalid" as const;
+    }
     const recoveryStatus = recovery?.status;
     switch (recoveryStatus) {
     case "interrupted":

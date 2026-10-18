@@ -20,7 +20,9 @@ describe('standalone Transformers.js provider contract', () => {
     const provider: LmProvider = new TransformersJsProvider();
     const stream = provider.chat(request);
     const values = [];
-    for await (const item of stream) values.push(item);
+    for await (const item of stream) {
+      values.push(item);
+    }
     expect(values).toEqual([{ type: 'result', result: { type: 'error', error: new Error('Transformers.js is not available in standalone mode') } }]);
     expect(fetch).not.toHaveBeenCalled();
     expect(Worker).not.toHaveBeenCalled();
@@ -31,7 +33,9 @@ describe('standalone Transformers.js provider contract', () => {
     controller.abort();
     const values = [];
     const provider: LmProvider = new TransformersJsProvider();
-    for await (const item of provider.chat({ ...request, signal: controller.signal })) values.push(item);
+    for await (const item of provider.chat({ ...request, signal: controller.signal })) {
+      values.push(item);
+    }
     expect(values).toEqual([{ type: 'result', result: { type: 'interrupted', reason: 'aborted' } }]);
   });
 

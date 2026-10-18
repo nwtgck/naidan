@@ -53,7 +53,9 @@ export function createWorkerEntryPlugin({ workers, diagnostics, systemRuntimePat
       }
     },
     resolveId(id) {
-      if (id === runtimePublicId) return DEFAULT_RUNTIME_RESOLVED_ID;
+      if (id === runtimePublicId) {
+        return DEFAULT_RUNTIME_RESOLVED_ID;
+      }
       return workerRecords.get(id)?.resolvedVirtualId ?? null;
     },
     load(id) {
@@ -69,7 +71,9 @@ export function createWorkerEntryPlugin({ workers, diagnostics, systemRuntimePat
         });
       }
       const record = [...workerRecords.values()].find(candidate => candidate.resolvedVirtualId === id);
-      if (!record) return null;
+      if (!record) {
+        return null;
+      }
       const source = `
 import {
   createStandaloneWorkerFromUrls,

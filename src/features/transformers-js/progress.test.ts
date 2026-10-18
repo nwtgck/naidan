@@ -18,13 +18,17 @@ class MockWorker extends EventTarget {
     super();
     workers.push(this);
     queueMicrotask(() => {
-      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) {
+        this.startup.start();
+      }
     });
   }
 }
 
 afterEach(() => {
-  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+  for (const worker of workers.splice(0)) {
+    worker.dispatchEvent(new Event('error'));
+  }
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });

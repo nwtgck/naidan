@@ -1207,10 +1207,12 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
       switch (mimeCategory) {
       case 'binary':
         return fileExplorerReadPreviewResponseSchema.parse({ kind: 'binary', oversized: false });
-      case 'text': previewLimit = TEXT_PREVIEW_SIZE_LIMIT; break;
+      case 'text': previewLimit = TEXT_PREVIEW_SIZE_LIMIT;
+        break;
       case 'image':
       case 'video':
-      case 'audio': previewLimit = MEDIA_PREVIEW_SIZE_LIMIT; break;
+      case 'audio': previewLimit = MEDIA_PREVIEW_SIZE_LIMIT;
+        break;
       default: {
         const exhaustive: never = mimeCategory;
         throw new Error(`Unhandled preview category: ${String(exhaustive)}`);
@@ -1385,7 +1387,9 @@ export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker>
         await source.completed;
       } finally {
         jobs.delete(abortController);
-        if (jobs.size === 0) fileReadJobs.delete(validated.sessionId);
+        if (jobs.size === 0) {
+          fileReadJobs.delete(validated.sessionId);
+        }
       }
     },
 

@@ -14,22 +14,32 @@ const imageSizeFields = new Set(['original_sizes', 'reshaped_input_sizes']);
 /** Only the reviewed processor's tiny size matrices, never arbitrary JSON. */
 function readImageSizes({ value }: { value: unknown }): Array<[number, number]> | undefined {
   function arrayLength({ value, maximum }: { value: unknown; maximum: number }): number | undefined {
-    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return undefined;
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+      return undefined;
+    }
     const length = ownValue({ object: value, key: 'length' });
     if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 1 || length > maximum
-      || Reflect.ownKeys(value).length !== length + 1) return undefined;
+      || Reflect.ownKeys(value).length !== length + 1) {
+      return undefined;
+    }
     return length;
   }
   const length = arrayLength({ value, maximum: 8 });
-  if (length === undefined || !Array.isArray(value)) return undefined;
+  if (length === undefined || !Array.isArray(value)) {
+    return undefined;
+  }
   const values: Array<[number, number]> = [];
   for (let index = 0; index < length; index++) {
     const row = ownValue({ object: value, key: String(index) });
-    if (arrayLength({ value: row, maximum: 2 }) !== 2 || !Array.isArray(row)) return undefined;
+    if (arrayLength({ value: row, maximum: 2 }) !== 2 || !Array.isArray(row)) {
+      return undefined;
+    }
     const height = ownValue({ object: row, key: '0' });
     const width = ownValue({ object: row, key: '1' });
     if (typeof height !== 'number' || !Number.isSafeInteger(height) || height <= 0
-      || typeof width !== 'number' || !Number.isSafeInteger(width) || width <= 0) return undefined;
+      || typeof width !== 'number' || !Number.isSafeInteger(width) || width <= 0) {
+      return undefined;
+    }
     values.push([height, width]);
   }
   return values;
@@ -84,7 +94,8 @@ const callSchema = z.object({
 }).strict();
 const streamTokenSchema = z.string().max(20).regex(/^(?:0|-?[1-9][0-9]*)$/).refine(value => {
   try {
-    const token = BigInt(value); return token >= -(1n << 63n) && token < (1n << 63n);
+    const token = BigInt(value);
+    return token >= -(1n << 63n) && token < (1n << 63n);
   } catch {
     return false;
   }
@@ -118,7 +129,9 @@ const capturedTensorSchema = z.object({
   let elements = 1;
   for (const dimension of value.dims) {
     elements *= dimension;
-    if (!Number.isSafeInteger(elements)) return false;
+    if (!Number.isSafeInteger(elements)) {
+      return false;
+    }
   }
   return value.dims.every(Number.isSafeInteger)
     && elements * dtypeLayouts[value.dtype][1] === value.byteLength
@@ -221,30 +234,51 @@ const captureSchema = runIdentitySchema.extend({
       const streamStatus = invocation?.stream.status;
       switch (streamStatus) {
       case 'available': break;
-      case undefined: case 'not-attempted': case 'unavailable': context.addIssue({ code: 'custom', message: 'Stream events require an available invocation hook' }); break;
-      default: { const _ex: never = streamStatus; throw new Error(String(_ex)); }
+      case undefined: case 'not-attempted': case 'unavailable': context.addIssue({ code: 'custom', message: 'Stream events require an available invocation hook' });
+        break;
+      default: {
+        const _ex: never = streamStatus;
+        throw new Error(String(_ex));
+      }
       }
       const detail = event.detail;
       switch (detail.kind) {
       case 'tokens': {
-        if (event.phase !== 'entering' || event.operation !== 'put') context.addIssue({ code: 'custom', message: 'Unexpected put payload' });
+        if (event.phase !== 'entering' || event.operation !== 'put') {
+          context.addIssue({ code: 'custom', message: 'Unexpected put payload' });
+        }
         const count = detail.groups.reduce((total, row) => total + row.length, 0);
-        if (count > capture.limits.maxTokensPerStreamEvent) context.addIssue({ code: 'custom', message: 'Stream event exceeds token limit' });
+        if (count > capture.limits.maxTokensPerStreamEvent) {
+          context.addIssue({ code: 'custom', message: 'Stream event exceeds token limit' });
+        }
         streamTokens += count;
-        for (const row of detail.groups) for (const token of row) streamTokenBytes += token.length;
+        for (const row of detail.groups) {
+          for (const token of row) {
+            streamTokenBytes += token.length;
+          }
+        }
         break;
       }
       case 'finalized-text':
-        if (event.phase !== 'entering' || event.operation !== 'on_finalized_text') context.addIssue({ code: 'custom', message: 'Unexpected finalized-text payload' });
+        if (event.phase !== 'entering' || event.operation !== 'on_finalized_text') {
+          context.addIssue({ code: 'custom', message: 'Unexpected finalized-text payload' });
+        }
         textBytes += new TextEncoder().encode(detail.text).byteLength;
         break;
       case 'none':
-        if (event.phase === 'entering' && event.operation !== 'end') context.addIssue({ code: 'custom', message: 'Missing entering stream payload' });
+        if (event.phase === 'entering' && event.operation !== 'end') {
+          context.addIssue({ code: 'custom', message: 'Missing entering stream payload' });
+        }
         break;
       case 'not-recorded':
-        if (event.phase !== 'entering' || event.operation === 'end') context.addIssue({ code: 'custom', message: 'Unexpected missing stream payload' });
+        if (event.phase !== 'entering' || event.operation === 'end') {
+          context.addIssue({ code: 'custom', message: 'Unexpected missing stream payload' });
+        }
         break;
-      default: { const _ex: never = detail; throw new Error(String(_ex)); }
+      default: {
+        const _ex: never = detail;
+        throw new Error(String(_ex));
+      }
       }
       snapshots = [];
       break;
@@ -257,20 +291,31 @@ const captureSchema = runIdentitySchema.extend({
         }
         switch (snapshot.status) {
         case 'captured':
-          if (!tensorFields.has(name)) context.addIssue({ code: 'custom', message: 'Unsupported tensor input field' });
+          if (!tensorFields.has(name)) {
+            context.addIssue({ code: 'custom', message: 'Unsupported tensor input field' });
+          }
           break;
         case 'scalar':
-          if (name !== 'num_soft_tokens_per_image') context.addIssue({ code: 'custom', message: 'Unsupported scalar input field' });
+          if (name !== 'num_soft_tokens_per_image') {
+            context.addIssue({ code: 'custom', message: 'Unsupported scalar input field' });
+          }
           break;
         case 'image-sizes': {
-          if (!imageSizeFields.has(name)) context.addIssue({ code: 'custom', message: 'Unsupported image size input field' });
+          if (!imageSizeFields.has(name)) {
+            context.addIssue({ code: 'custom', message: 'Unsupported image size input field' });
+          }
           const bytes = imageSizeFieldBytes({ name, values: snapshot.values });
-          if (bytes > GENERATION_CAPTURE_IMAGE_SIZE_FIELD_BYTES) context.addIssue({ code: 'custom', message: 'Image size field exceeds byte limit' });
+          if (bytes > GENERATION_CAPTURE_IMAGE_SIZE_FIELD_BYTES) {
+            context.addIssue({ code: 'custom', message: 'Image size field exceeds byte limit' });
+          }
           metadataBytes += GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES;
           break;
         }
         case 'not-recorded': break;
-        default: { const _ex: never = snapshot; throw new Error(String(_ex)); }
+        default: {
+          const _ex: never = snapshot;
+          throw new Error(String(_ex));
+        }
         }
         names.add(name);
       }
@@ -283,21 +328,30 @@ const captureSchema = runIdentitySchema.extend({
       }
       snapshots = [event.snapshot];
       break;
-    case 'settings': case 'native-call': snapshots = []; break;
+    case 'settings': case 'native-call': snapshots = [];
+      break;
     case 'chunk':
       textBytes += new TextEncoder().encode(event.text).byteLength;
       snapshots = [];
       break;
-    default: { const _ex: never = event; throw new Error(String(_ex)); }
+    default: {
+      const _ex: never = event;
+      throw new Error(String(_ex));
+    }
     }
     for (const snapshot of snapshots) {
       switch (snapshot.status) {
       case 'captured':
         tensorBytes += snapshot.byteLength;
-        if (snapshot.byteLength > capture.limits.maxTensorBytes) context.addIssue({ code: 'custom', message: 'Capture exceeds configured tensor limit' });
+        if (snapshot.byteLength > capture.limits.maxTensorBytes) {
+          context.addIssue({ code: 'custom', message: 'Capture exceeds configured tensor limit' });
+        }
         break;
       case 'scalar': case 'image-sizes': case 'not-recorded': break;
-      default: { const _ex: never = snapshot; throw new Error(String(_ex)); }
+      default: {
+        const _ex: never = snapshot;
+        throw new Error(String(_ex));
+      }
       }
     }
   }
@@ -307,7 +361,9 @@ const captureSchema = runIdentitySchema.extend({
   if (streamTokens > capture.limits.maxTotalStreamTokens || streamTokenBytes > capture.limits.maxTotalStreamTokenBytes) {
     context.addIssue({ code: 'custom', message: 'Capture exceeds stream token capacity' });
   }
-  if (metadataBytes > GENERATION_CAPTURE_IMAGE_SIZE_TOTAL_BYTES) context.addIssue({ code: 'custom', message: 'Capture exceeds image size byte limit' });
+  if (metadataBytes > GENERATION_CAPTURE_IMAGE_SIZE_TOTAL_BYTES) {
+    context.addIssue({ code: 'custom', message: 'Capture exceeds image size byte limit' });
+  }
 });
 
 /** Parse context on receipt and parse take results on both sides of the future RPC. */
@@ -318,7 +374,9 @@ export const generationCaptureTakeResultSchema = z.discriminatedUnion('status', 
 
 function ownValue({ object, key }: { object: object; key: PropertyKey }): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(object, key);
-  if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) return undefined;
+  if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) {
+    return undefined;
+  }
   return descriptor.value as unknown;
 }
 
@@ -369,31 +427,49 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
     return { kind: 'not-recorded', reason };
   }
   function snapshotStream({ operation, phase, args }: { operation: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['operation'], phase: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['phase'], args: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['args'], streamCallOrdinal: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['streamCallOrdinal'] }): z.infer<typeof streamDetailSchema> {
-    if (phase !== 'entering' || operation === 'end') return { kind: 'none' };
+    if (phase !== 'entering' || operation === 'end') {
+      return { kind: 'none' };
+    }
     switch (operation) {
     case 'put': {
       const value = ownValue({ object: args, key: '0' });
-      if (!Array.isArray(value)) return streamMissing({ reason: 'stream-token-shape' });
+      if (!Array.isArray(value)) {
+        return streamMissing({ reason: 'stream-token-shape' });
+      }
       const rowCount = ownValue({ object: value, key: 'length' });
-      if (typeof rowCount !== 'number' || !Number.isSafeInteger(rowCount) || rowCount < 0 || rowCount > 8) return streamMissing({ reason: 'stream-token-shape' });
+      if (typeof rowCount !== 'number' || !Number.isSafeInteger(rowCount) || rowCount < 0 || rowCount > 8) {
+        return streamMissing({ reason: 'stream-token-shape' });
+      }
       const groups: string[][] = [];
       let count = 0;
       let bytes = 0;
       for (let rowIndex = 0; rowIndex < rowCount; ++rowIndex) {
         const row = ownValue({ object: value, key: String(rowIndex) });
-        if (!Array.isArray(row)) return streamMissing({ reason: 'stream-token-shape' });
+        if (!Array.isArray(row)) {
+          return streamMissing({ reason: 'stream-token-shape' });
+        }
         const tokenCount = ownValue({ object: row, key: 'length' });
-        if (typeof tokenCount !== 'number' || !Number.isSafeInteger(tokenCount) || tokenCount < 0) return streamMissing({ reason: 'stream-token-shape' });
+        if (typeof tokenCount !== 'number' || !Number.isSafeInteger(tokenCount) || tokenCount < 0) {
+          return streamMissing({ reason: 'stream-token-shape' });
+        }
         count += tokenCount;
-        if (count > limits.maxTokensPerStreamEvent) return streamMissing({ reason: 'stream-token-limit' });
-        if (count > limits.maxTotalStreamTokens - retainedStreamTokens) return streamMissing({ reason: 'stream-total-token-limit' });
+        if (count > limits.maxTokensPerStreamEvent) {
+          return streamMissing({ reason: 'stream-token-limit' });
+        }
+        if (count > limits.maxTotalStreamTokens - retainedStreamTokens) {
+          return streamMissing({ reason: 'stream-total-token-limit' });
+        }
         const tokens: string[] = [];
         for (let index = 0; index < tokenCount; ++index) {
           const token = ownValue({ object: row, key: String(index) });
-          if (typeof token !== 'bigint' || token < -(1n << 63n) || token >= (1n << 63n)) return streamMissing({ reason: 'stream-token-type' });
+          if (typeof token !== 'bigint' || token < -(1n << 63n) || token >= (1n << 63n)) {
+            return streamMissing({ reason: 'stream-token-type' });
+          }
           const encoded = token.toString();
           bytes += encoded.length;
-          if (bytes > limits.maxTotalStreamTokenBytes - retainedStreamTokenBytes) return streamMissing({ reason: 'stream-token-byte-limit' });
+          if (bytes > limits.maxTotalStreamTokenBytes - retainedStreamTokenBytes) {
+            return streamMissing({ reason: 'stream-token-byte-limit' });
+          }
           tokens.push(encoded);
         }
         groups.push(tokens);
@@ -405,14 +481,23 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
     case 'on_finalized_text': {
       const text = ownValue({ object: args, key: '0' });
       const streamEnd = ownValue({ object: args, key: '1' });
-      if (typeof text !== 'string' || typeof streamEnd !== 'boolean') return streamMissing({ reason: 'stream-finalized-shape' });
-      if (text.length > limits.maxTextBytes - retainedTextBytes) return streamMissing({ reason: 'text-limit' });
+      if (typeof text !== 'string' || typeof streamEnd !== 'boolean') {
+        return streamMissing({ reason: 'stream-finalized-shape' });
+      }
+      if (text.length > limits.maxTextBytes - retainedTextBytes) {
+        return streamMissing({ reason: 'text-limit' });
+      }
       const bytes = new TextEncoder().encode(text).byteLength;
-      if (bytes > limits.maxTextBytes - retainedTextBytes) return streamMissing({ reason: 'text-limit' });
+      if (bytes > limits.maxTextBytes - retainedTextBytes) {
+        return streamMissing({ reason: 'text-limit' });
+      }
       retainedTextBytes += bytes;
       return { kind: 'finalized-text', text, streamEnd };
     }
-    default: { const _ex: never = operation; throw new Error(String(_ex)); }
+    default: {
+      const _ex: never = operation;
+      throw new Error(String(_ex));
+    }
     }
   }
   function missing({ reason }: { reason: z.infer<typeof missingReasonSchema> }): Snapshot {
@@ -423,46 +508,73 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
     case 'tensor-limit': case 'total-tensor-limit': case 'metadata-limit':
       incompleteReasons.add('unrecorded-value');
       break;
-    default: { const _ex: never = reason; throw new Error(String(_ex)); }
+    default: {
+      const _ex: never = reason;
+      throw new Error(String(_ex));
+    }
     }
     return { status: 'not-recorded', reason };
   }
   function snapshotTensor({ value }: { value: unknown }): Snapshot {
-    if (!(value instanceof tensorClass)) return missing({ reason: 'not-runtime-tensor' });
+    if (!(value instanceof tensorClass)) {
+      return missing({ reason: 'not-runtime-tensor' });
+    }
     // TJS 4.2.0 Tensor is a Proxy over an own ort_tensor. Read only the reviewed
     // ORT own data layout; never invoke .data/getData() or arbitrary getters.
     const ort = ownValue({ object: value, key: 'ort_tensor' });
-    if (ort === null || typeof ort !== 'object') return missing({ reason: 'unknown-layout' });
+    if (ort === null || typeof ort !== 'object') {
+      return missing({ reason: 'unknown-layout' });
+    }
     const location = ownValue({ object: ort, key: 'dataLocation' });
-    if (location !== 'cpu') return missing({ reason: 'not-cpu' });
+    if (location !== 'cpu') {
+      return missing({ reason: 'not-cpu' });
+    }
     const dtype = ownValue({ object: ort, key: 'type' });
-    if (typeof dtype !== 'string' || !Object.hasOwn(dtypeLayouts, dtype)) return missing({ reason: 'unsupported-dtype' });
+    if (typeof dtype !== 'string' || !Object.hasOwn(dtypeLayouts, dtype)) {
+      return missing({ reason: 'unsupported-dtype' });
+    }
     const layout = dtypeLayouts[dtype as keyof typeof dtypeLayouts];
     const rawDims = ownValue({ object: ort, key: 'dims' });
-    if (!Array.isArray(rawDims)) return missing({ reason: 'invalid-shape' });
+    if (!Array.isArray(rawDims)) {
+      return missing({ reason: 'invalid-shape' });
+    }
     const rank = ownValue({ object: rawDims, key: 'length' });
-    if (typeof rank !== 'number' || rank > 8) return missing({ reason: 'invalid-shape' });
+    if (typeof rank !== 'number' || rank > 8) {
+      return missing({ reason: 'invalid-shape' });
+    }
     const dims: number[] = [];
     let elements = 1;
     for (let index = 0; index < rank; ++index) {
       const dimension = ownValue({ object: rawDims, key: String(index) });
-      if (typeof dimension !== 'number' || !Number.isSafeInteger(dimension) || dimension < 0) return missing({ reason: 'invalid-shape' });
+      if (typeof dimension !== 'number' || !Number.isSafeInteger(dimension) || dimension < 0) {
+        return missing({ reason: 'invalid-shape' });
+      }
       dims.push(dimension);
       elements *= dimension;
-      if (!Number.isSafeInteger(elements)) return missing({ reason: 'invalid-shape' });
+      if (!Number.isSafeInteger(elements)) {
+        return missing({ reason: 'invalid-shape' });
+      }
     }
     const byteLength = elements * layout[1];
-    if (!Number.isSafeInteger(byteLength)) return missing({ reason: 'invalid-shape' });
+    if (!Number.isSafeInteger(byteLength)) {
+      return missing({ reason: 'invalid-shape' });
+    }
     if (byteLength > limits.maxTensorBytes) {
-      incompleteReasons.add('tensor-limit'); return missing({ reason: 'tensor-limit' });
+      incompleteReasons.add('tensor-limit');
+      return missing({ reason: 'tensor-limit' });
     }
     if (byteLength > limits.maxTotalTensorBytes - retainedTensorBytes) {
-      incompleteReasons.add('total-tensor-limit'); return missing({ reason: 'total-tensor-limit' });
+      incompleteReasons.add('total-tensor-limit');
+      return missing({ reason: 'total-tensor-limit' });
     }
     const data = ownValue({ object: ort, key: 'cpuData' });
-    if (!ArrayBuffer.isView(data) || Reflect.apply(arrayTagGetter, data, []) !== layout[0]) return missing({ reason: 'invalid-data' });
+    if (!ArrayBuffer.isView(data) || Reflect.apply(arrayTagGetter, data, []) !== layout[0]) {
+      return missing({ reason: 'invalid-data' });
+    }
     const actualBytes = Reflect.apply(arrayLengthGetter, data, []) as number;
-    if (actualBytes !== byteLength) return missing({ reason: 'invalid-data' });
+    if (actualBytes !== byteLength) {
+      return missing({ reason: 'invalid-data' });
+    }
     const buffer = Reflect.apply(arrayBufferGetter, data, []) as ArrayBuffer;
     try {
       Reflect.apply(ordinaryBufferLengthGetter, buffer, []);
@@ -477,14 +589,22 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
   function snapshotInput({ inputs, name }: { inputs: object; name: string }): Snapshot {
     // The allowlist excludes KV, weights, and arbitrary object contents before
     // reading a descriptor, even when an excluded field has a hostile getter.
-    if (!tensorFields.has(name) && !imageSizeFields.has(name) && name !== 'num_soft_tokens_per_image') return missing({ reason: 'excluded-field' });
+    if (!tensorFields.has(name) && !imageSizeFields.has(name) && name !== 'num_soft_tokens_per_image') {
+      return missing({ reason: 'excluded-field' });
+    }
     const descriptor = Object.getOwnPropertyDescriptor(inputs, name);
-    if (descriptor === undefined) return missing({ reason: 'missing' });
-    if (!Object.hasOwn(descriptor, 'value')) return missing({ reason: 'accessor' });
+    if (descriptor === undefined) {
+      return missing({ reason: 'missing' });
+    }
+    if (!Object.hasOwn(descriptor, 'value')) {
+      return missing({ reason: 'accessor' });
+    }
     const value: unknown = descriptor.value;
     if (imageSizeFields.has(name)) {
       const values = readImageSizes({ value });
-      if (values === undefined) return missing({ reason: 'invalid-data' });
+      if (values === undefined) {
+        return missing({ reason: 'invalid-data' });
+      }
       const bytes = imageSizeFieldBytes({ name, values });
       if (bytes > GENERATION_CAPTURE_IMAGE_SIZE_FIELD_BYTES || GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES > GENERATION_CAPTURE_IMAGE_SIZE_TOTAL_BYTES - retainedMetadataBytes) {
         incompleteReasons.add('metadata-limit');
@@ -493,14 +613,22 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
       retainedMetadataBytes += GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES;
       return { status: 'image-sizes', values };
     }
-    if (name !== 'num_soft_tokens_per_image') return snapshotTensor({ value });
-    if (!Array.isArray(value)) return missing({ reason: 'invalid-data' });
+    if (name !== 'num_soft_tokens_per_image') {
+      return snapshotTensor({ value });
+    }
+    if (!Array.isArray(value)) {
+      return missing({ reason: 'invalid-data' });
+    }
     const length = ownValue({ object: value, key: 'length' });
-    if (typeof length !== 'number' || length > 8) return missing({ reason: 'invalid-data' });
+    if (typeof length !== 'number' || length > 8) {
+      return missing({ reason: 'invalid-data' });
+    }
     const values: number[] = [];
     for (let index = 0; index < length; ++index) {
       const scalar = ownValue({ object: value, key: String(index) });
-      if (typeof scalar !== 'number' || !Number.isFinite(scalar)) return missing({ reason: 'invalid-data' });
+      if (typeof scalar !== 'number' || !Number.isFinite(scalar)) {
+        return missing({ reason: 'invalid-data' });
+      }
       values.push(scalar);
     }
     return { status: 'scalar', values };
@@ -508,25 +636,35 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
 
   return {
     noteIncomplete({ reason }: { reason: z.infer<typeof incompleteReasonSchema> }) {
-      if (!taken) incompleteReasons.add(reason);
+      if (!taken) {
+        incompleteReasons.add(reason);
+      }
     },
     beginCall({ context: rawContext, loadIdentity }: { context: unknown; loadIdentity: ProductionLoadIdentity }) {
-      if (taken) return undefined;
+      if (taken) {
+        return undefined;
+      }
       const parsed = generationCaptureContextSchema.safeParse(rawContext);
       if (!parsed.success) {
-        incompleteReasons.add('invalid-context'); return undefined;
+        incompleteReasons.add('invalid-context');
+        return undefined;
       }
       const context = parsed.data;
       if (context.runId !== runIdentity.runId || context.workerEpoch !== runIdentity.workerEpoch) {
-        incompleteReasons.add('wrong-run'); return undefined;
+        incompleteReasons.add('wrong-run');
+        return undefined;
       }
       if (calls.has(context.generationCallId)) {
-        incompleteReasons.add('duplicate-call'); return undefined;
+        incompleteReasons.add('duplicate-call');
+        return undefined;
       }
       if (calls.size >= limits.maxCalls) {
-        incompleteReasons.add('call-limit'); return undefined;
+        incompleteReasons.add('call-limit');
+        return undefined;
       }
-      if ([...calls.values()].some(call => call.outcome === 'active')) incompleteReasons.add('overlapping-calls');
+      if ([...calls.values()].some(call => call.outcome === 'active')) {
+        incompleteReasons.add('overlapping-calls');
+      }
       const parsedLoad = productionLoadIdentitySchema.safeParse(loadIdentity);
       const ownedLoad = freezeProductionLoadIdentity({ identity: parsedLoad.success ? parsedLoad.data : { status: 'not-observed', reason: 'recording-failed' } });
       const call: z.infer<typeof callSchema> = { context, loadIdentity: ownedLoad, outcome: 'active', invocations: [] };
@@ -534,34 +672,48 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
       let invocationCount = 0;
       let currentChunkRecorder: (({ phase, chunk }: { phase: 'strategy-output' | 'worker-send' | 'strategy-raw'; chunk: string }) => void) | undefined;
       function append({ create }: { create: () => Event | undefined }) {
-        if (taken) return;
+        if (taken) {
+          return;
+        }
         switch (call.outcome) {
         case 'active': break;
-        case 'fulfilled': case 'rejected': incompleteReasons.add('late-recording'); return;
-        default: { const _ex: never = call.outcome; throw new Error(String(_ex)); }
+        case 'fulfilled': case 'rejected': incompleteReasons.add('late-recording');
+          return;
+        default: {
+          const _ex: never = call.outcome;
+          throw new Error(String(_ex));
+        }
         }
         if (events.length >= limits.maxEvents) {
-          incompleteReasons.add('event-limit'); return;
+          incompleteReasons.add('event-limit');
+          return;
         }
         try {
           const event = create();
-          if (event !== undefined) events.push(event);
+          if (event !== undefined) {
+            events.push(event);
+          }
         } catch {
           incompleteReasons.add('snapshot-error');
         }
       }
       return {
         beginInvocation() {
-          if (taken || call.outcome !== 'active') return undefined;
+          if (taken || call.outcome !== 'active') {
+            return undefined;
+          }
           if (invocationCount >= limits.maxInvocationsPerCall) {
-            incompleteReasons.add('invocation-limit'); return undefined;
+            incompleteReasons.add('invocation-limit');
+            return undefined;
           }
           const identity = { ...context, nativeInvocationOrdinal: ++invocationCount };
           const invocationState: z.infer<typeof callSchema>['invocations'][number] = { nativeInvocationOrdinal: invocationCount, stream: { status: 'not-attempted' } };
           call.invocations.push(invocationState);
           const invocation = {
             setNativeStreamAvailability({ availability }: { availability: NativeStreamAvailability }) {
-              if (taken || call.outcome !== 'active') return;
+              if (taken || call.outcome !== 'active') {
+                return;
+              }
               recordGenerationCapture({
                 record: () => {
                   invocationState.stream = streamAvailabilitySchema.parse(availability);
@@ -574,7 +726,9 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
             recordNativeStream({ operation, phase, streamCallOrdinal, args }: { operation: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['operation'], phase: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['phase'], streamCallOrdinal: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['streamCallOrdinal'], args: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['args'] }) {
               append({
                 create: () => {
-                  if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');
+                  if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) {
+                    throw new Error('Invalid stream recording identity');
+                  }
                   return { kind: 'native-stream', identity, operation, phase, streamCallOrdinal, detail: snapshotStream({ operation, phase, streamCallOrdinal, args }) };
                 },
               });
@@ -588,7 +742,8 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
                   const values: Extract<Event, { kind: 'inputs' }>['values'] = [];
                   for (const name of Reflect.ownKeys(inputs)) {
                     if (typeof name !== 'string' || name.length > 128 || values.length >= 64) {
-                      incompleteReasons.add('input-key-limit'); continue;
+                      incompleteReasons.add('input-key-limit');
+                      continue;
                     }
                     values.push({ name, snapshot: snapshotInput({ inputs, name }) });
                   }
@@ -623,11 +778,13 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
                 create: () => {
                   const remaining = limits.maxTextBytes - retainedTextBytes;
                   if (chunk.length > remaining) {
-                    incompleteReasons.add('text-limit'); return undefined;
+                    incompleteReasons.add('text-limit');
+                    return undefined;
                   }
                   const byteLength = new TextEncoder().encode(chunk).byteLength;
                   if (byteLength > remaining) {
-                    incompleteReasons.add('text-limit'); return undefined;
+                    incompleteReasons.add('text-limit');
+                    return undefined;
                   }
                   retainedTextBytes += byteLength;
                   return { kind: 'chunk', identity, phase, text: chunk };
@@ -642,16 +799,26 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
           currentChunkRecorder?.({ phase, chunk });
         },
         finish({ outcome }: { outcome: 'fulfilled' | 'rejected' }) {
-          if (!taken && call.outcome === 'active') call.outcome = outcome;
+          if (!taken && call.outcome === 'active') {
+            call.outcome = outcome;
+          }
         },
       };
     },
     take({ run: requestedRun }: { run: unknown }): z.infer<typeof generationCaptureTakeResultSchema> {
       const parsed = runIdentitySchema.safeParse(requestedRun);
-      if (!parsed.success) return { status: 'invalid-context' };
-      if (parsed.data.runId !== runIdentity.runId || parsed.data.workerEpoch !== runIdentity.workerEpoch) return { status: 'wrong-run' };
-      if (taken) return { status: 'already-taken' };
-      if ([...calls.values()].some(call => call.outcome === 'active')) return { status: 'busy' };
+      if (!parsed.success) {
+        return { status: 'invalid-context' };
+      }
+      if (parsed.data.runId !== runIdentity.runId || parsed.data.workerEpoch !== runIdentity.workerEpoch) {
+        return { status: 'wrong-run' };
+      }
+      if (taken) {
+        return { status: 'already-taken' };
+      }
+      if ([...calls.values()].some(call => call.outcome === 'active')) {
+        return { status: 'busy' };
+      }
       const result = generationCaptureTakeResultSchema.parse({
         status: 'captured',
         capture: {

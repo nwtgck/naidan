@@ -22,7 +22,9 @@ function findCommonJsRequireCalls(code: string, id = '<unknown>'): CommonJsRequi
   });
   const calls: CommonJsRequireCall[] = [];
   function visit(node: Node | null | undefined): void {
-    if (!node || typeof node !== 'object') return;
+    if (!node || typeof node !== 'object') {
+      return;
+    }
     if (isBabelNodeType(node, 'CallExpression')) {
       const directRequire = node.callee?.type === 'Identifier' && node.callee.name === 'require';
       const requireResolve = node.callee?.type === 'MemberExpression'
@@ -49,7 +51,9 @@ function findCommonJsRequireCalls(code: string, id = '<unknown>'): CommonJsRequi
     for (const value of Object.values(node)) {
       if (Array.isArray(value)) {
         for (const item of value) {
-          if (isBabelNode(item)) visit(item);
+          if (isBabelNode(item)) {
+            visit(item);
+          }
         }
       } else if (isBabelNode(value)) {
         visit(value);
@@ -66,7 +70,9 @@ export function createCommonJsCompatibilityPlugin({ diagnostics }: Readonly<{dia
     enforce: 'pre',
     transform(code, id) {
       const sourcePath = id.split('?', 1)[0];
-      if (!/\.(?:cjs|cts)$/u.test(sourcePath)) return null;
+      if (!/\.(?:cjs|cts)$/u.test(sourcePath)) {
+        return null;
+      }
       const calls = findCommonJsRequireCalls(code, sourcePath);
       for (const call of calls) {
         if (call.kind !== 'require') {
@@ -83,7 +89,9 @@ export function createCommonJsCompatibilityPlugin({ diagnostics }: Readonly<{dia
     },
     generateBundle(_options, bundle) {
       for (const output of Object.values(bundle)) {
-        if (!isOutputChunk(output)) continue;
+        if (!isOutputChunk(output)) {
+          continue;
+        }
         const browserExternalModules = Object.keys(output.modules).filter(moduleId => /(?:vite-browser-external|browser-external:|\0browser-external)/u.test(moduleId));
         if (browserExternalModules.length > 0) {
           throw new Error(`Browser-external stub modules are unsupported in standalone output ${output.fileName}: ${browserExternalModules.join(', ')}`);

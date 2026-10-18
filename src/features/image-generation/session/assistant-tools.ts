@@ -46,11 +46,19 @@ export function createImageGenerationAssistantTools({ chatId, bindingSignal, rea
       lifetime.abort();
     },
     async execute({ args, signal, approvalContext }) {
-      if (!readSchema.safeParse(args).success) return { status: 'error', code: 'invalid_arguments', message: 'Expected an empty object.' };
-      if (signalFor({ signal }).aborted) return failed({ message: 'The Workspace connection or this turn has ended.' });
-      if (approvalContext?.chatId !== chatId) return failed({ message: 'The tool belongs to a different or unavailable chat.' });
+      if (!readSchema.safeParse(args).success) {
+        return { status: 'error', code: 'invalid_arguments', message: 'Expected an empty object.' };
+      }
+      if (signalFor({ signal }).aborted) {
+        return failed({ message: 'The Workspace connection or this turn has ended.' });
+      }
+      if (approvalContext?.chatId !== chatId) {
+        return failed({ message: 'The tool belongs to a different or unavailable chat.' });
+      }
       const target = readTarget();
-      if (!target || target.chatId !== chatId) return failed({ message: 'The connected Workspace draft is not available for editing.' });
+      if (!target || target.chatId !== chatId) {
+        return failed({ message: 'The connected Workspace draft is not available for editing.' });
+      }
       return { status: 'success', content: JSON.stringify({ ...readContext(), prompt: target.prompt, negativePrompt: target.negativePrompt, revision: idToRaw({ id: target.revision }) }) };
     },
   };
@@ -63,10 +71,16 @@ export function createImageGenerationAssistantTools({ chatId, bindingSignal, rea
     },
     async execute({ args, signal, approvalContext }) {
       const parsed = writeSchema.safeParse(args);
-      if (!parsed.success) return { status: 'error', code: 'invalid_arguments', message: parsed.error.message };
-      if (approvalContext?.chatId !== chatId) return failed({ message: 'A matching chat approval context is required.' });
+      if (!parsed.success) {
+        return { status: 'error', code: 'invalid_arguments', message: parsed.error.message };
+      }
+      if (approvalContext?.chatId !== chatId) {
+        return failed({ message: 'A matching chat approval context is required.' });
+      }
       const target = readTarget();
-      if (!target || target.chatId !== chatId || idToRaw({ id: target.revision }) !== parsed.data.expectedRevision) return failed({ message: 'The draft changed or the connection ended. Read the context again; do not overwrite a newer draft.' });
+      if (!target || target.chatId !== chatId || idToRaw({ id: target.revision }) !== parsed.data.expectedRevision) {
+        return failed({ message: 'The draft changed or the connection ended. Read the context again; do not overwrite a newer draft.' });
+      }
       const { field, value } = parsed.data;
       try {
         const outcome = await applyImageGenerationPromptEdit({
@@ -87,7 +101,10 @@ export function createImageGenerationAssistantTools({ chatId, bindingSignal, rea
         case 'denied': return failed({ message: 'The user denied this edit. Do not retry without a new instruction.' });
         case 'invalid_arguments': return { status: 'error', code: 'invalid_arguments', message: 'The proposed prompt is invalid.' };
         case 'stale': case 'unavailable': case 'cancelled': return failed({ message: `Edit not applied: ${outcome.status}. The draft or connection changed.` });
-        default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = outcome;
+          throw new Error(String(exhaustive));
+        }
         }
       } catch (error) {
         return failed({ message: error instanceof Error ? error.message : String(error) });

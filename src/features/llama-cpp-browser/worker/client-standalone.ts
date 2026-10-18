@@ -16,7 +16,9 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   const lifetime = new AbortController();
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => {
-    if (disposal) return disposal;
+    if (disposal) {
+      return disposal;
+    }
     const completion = Promise.withResolvers<void>();
     disposal = completion.promise;
     disposed = true;
@@ -34,7 +36,9 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     return disposal;
   };
   const start = async (): Promise<LlamaCppWorkerClient> => {
-    if (typeof Worker === 'undefined') throw new LlamaCppBrowserError({ code: 'unavailable' });
+    if (typeof Worker === 'undefined') {
+      throw new LlamaCppBrowserError({ code: 'unavailable' });
+    }
     const session = await createStandaloneWorkerSession<LlamaCppWorkerApi>({ createWorker: createStandaloneWorker });
     const ready = createLlamaCppWorkerSessionClient({
       ...session,
@@ -59,8 +63,12 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     return ready;
   };
   const getClient = async ({ signal }: { signal: AbortSignal | undefined }): Promise<LlamaCppWorkerClient> => {
-    if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-    if (disposed) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+    if (signal?.aborted) {
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }
+    if (disposed) {
+      throw new LlamaCppBrowserError({ code: 'worker-failed' });
+    }
     starting ??= start().catch(error => {
       startupFailure = error instanceof LlamaCppBrowserError ? error : new LlamaCppBrowserError({ code: 'worker-failed' });
       dispose();
@@ -72,14 +80,17 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       ? new LlamaCppBrowserError({ code: 'aborted' })
       : startupFailure ?? new LlamaCppBrowserError({ code: 'worker-failed' }));
     const abort = (): void => {
-      dispose(); reject();
+      dispose();
+      reject();
     };
     signal?.addEventListener('abort', abort, { once: true });
     lifetime.signal.addEventListener('abort', reject, { once: true });
     try {
       return await Promise.race([starting, new Promise<never>((_resolve, rejectPromise) => {
         rejectWaiting = rejectPromise;
-        if (disposed || signal?.aborted) reject();
+        if (disposed || signal?.aborted) {
+          reject();
+        }
       })]);
     } finally {
       signal?.removeEventListener('abort', abort);
@@ -89,9 +100,11 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   return {
     subscribeDisposed({ listener }) {
       if (disposed) {
-        listener(); return () => {};
+        listener();
+        return () => {};
       }
-      disposeListeners.add(listener); return () => {
+      disposeListeners.add(listener);
+      return () => {
         disposeListeners.delete(listener);
       };
     },

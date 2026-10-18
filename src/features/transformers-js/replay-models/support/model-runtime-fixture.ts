@@ -59,11 +59,15 @@ function readRecordedResource({ directory, resource }: {
 
 export function readModelFixture({ modelId }: { modelId: string }) {
   const slug = modelDirectories[modelId];
-  if (slug === undefined) throw new Error(`No checked-in model fixture: ${modelId}`);
+  if (slug === undefined) {
+    throw new Error(`No checked-in model fixture: ${modelId}`);
+  }
   // Fixture paths belong to Node's filesystem, not Vite's browser asset graph.
   const directory = new NodeUrl(`../${slug}/`, import.meta.url);
   const manifest = manifestSchema.parse(JSON.parse(readFileSync(new NodeUrl('model-runtime-inputs.evidence.json', directory), 'utf8')));
-  if (manifest.modelId !== modelId) throw new Error('Mismatched checked-in model identity');
+  if (manifest.modelId !== modelId) {
+    throw new Error('Mismatched checked-in model identity');
+  }
   if (new Set(manifest.resources.map(resource => resource.path)).size !== manifest.resources.length
     || new Set(manifest.modelArtifacts.map(resource => resource.path)).size !== manifest.modelArtifacts.length) {
     throw new Error('Ambiguous checked-in resource identity');
@@ -71,7 +75,8 @@ export function readModelFixture({ modelId }: { modelId: string }) {
   const files = new Map<string, Uint8Array>();
   for (const resource of manifest.resources) {
     switch (resource.status) {
-    case 'recorded': files.set(resource.path, readRecordedResource({ directory, resource })); break;
+    case 'recorded': files.set(resource.path, readRecordedResource({ directory, resource }));
+      break;
     case 'repository-absent': break;
     default: {
       const exhaustive: never = resource;

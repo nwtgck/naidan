@@ -239,7 +239,9 @@ describe('captured Full native inference gate', () => {
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1) }],
       imagePlatform: undefined,
       generate: async ({ options, runtime, model }) => {
-        if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing actual native controls');
+        if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) {
+          throw new Error('Missing actual native controls');
+        }
         const put = vi.spyOn(options.streamer, 'put');
         const end = vi.spyOn(options.streamer, 'end');
         expect(() => replayCapturedFullInvocation({
@@ -268,8 +270,10 @@ describe('captured Full native inference gate', () => {
         }
         expect(() => parseCapturedFullReplay({ value: { ...evidence, invocations: [evidence.invocations[1], invocation, ...evidence.invocations.slice(2)] } })).toThrow('recorded invocation order');
         expect(() => parseCapturedFullReplay({ value: { ...evidence, invocations: [...evidence.invocations, invocation] } })).toThrow('recorded invocation order');
-        const wrongIds = BigInt64Array.from(options.input_ids.data, BigInt); wrongIds[0] = 999n;
-        const wrongMask = BigInt64Array.from(options.attention_mask.data, BigInt); wrongMask[0] = 0n;
+        const wrongIds = BigInt64Array.from(options.input_ids.data, BigInt);
+        wrongIds[0] = 999n;
+        const wrongMask = BigInt64Array.from(options.attention_mask.data, BigInt);
+        wrongMask[0] = 0n;
         type Options = Parameters<ProviderReplayGenerate>[0]['options'];
         const mutations: Array<{ name: string; value: Options }> = [
           { name: 'input token', value: { ...options, input_ids: new runtime.Tensor('int64', wrongIds, options.input_ids.dims) } },

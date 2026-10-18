@@ -33,12 +33,16 @@ export async function runApply({ context, args }: {
     }
     }
   }
-  if (sections.length === 0) throw new Error('No valid patches in input');
+  if (sections.length === 0) {
+    throw new Error('No valid patches in input');
+  }
 
   try {
     if (!parsedArgs.cached && !parsedArgs.index) {
       const plan = await planWorktreeChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-      if (parsedArgs.check) return { exitCode: 0 };
+      if (parsedArgs.check) {
+        return { exitCode: 0 };
+      }
       const written = await writePlannedObjects({ context, repository, plan });
       await replaceTrackedWorktreePaths({
         files: context.files,
@@ -61,7 +65,9 @@ export async function runApply({ context, args }: {
         worktreeAbsentPaths: plan.worktreeAbsentPaths,
       });
     }
-    if (parsedArgs.check) return { exitCode: 0 };
+    if (parsedArgs.check) {
+      return { exitCode: 0 };
+    }
 
     const written = await writePlannedObjects({ context, repository, plan });
     if (parsedArgs.index && !parsedArgs.cached) {

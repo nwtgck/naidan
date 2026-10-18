@@ -24,7 +24,9 @@ const { showConfirm } = useConfirm();
 const paneRef = ref<InstanceType<typeof WeshTerminalPane> | null>(null);
 
 watch(() => props.isOpen, async (open) => {
-  if (!open) return;
+  if (!open) {
+    return;
+  }
   await reopenSessionIfNeeded();
   await nextTick();
   paneRef.value?.focusInput();
@@ -38,7 +40,9 @@ async function handleCloseSession({ sessionId }: { sessionId: string }) {
     cancelButtonText: await ensureStrings.weshTerminal__cancel(),
     confirmButtonVariant: 'danger',
   });
-  if (!confirmed) return;
+  if (!confirmed) {
+    return;
+  }
   await closeSession({ sessionId });
 }
 

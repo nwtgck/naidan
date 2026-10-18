@@ -73,7 +73,9 @@ export async function listWorktreeEntries({ files, repository }: {
   const visit = async ({ absoluteDirectory }: { absoluteDirectory: string }): Promise<void> => {
     for await (const entry of files.readDir({ path: absoluteDirectory })) {
       const relativePath = relativeToWorktree({ repository, absolutePath: entry.fullPath });
-      if (relativePath === '.git') continue;
+      if (relativePath === '.git') {
+        continue;
+      }
       switch (entry.type) {
       case 'directory':
         await visit({ absoluteDirectory: entry.fullPath });
@@ -110,11 +112,15 @@ export async function collectPathsForAdd({ files, repository, cwd, operands }: {
       stat = await files.lstat({ path: absolutePath });
     } catch {
       const relative = relativeToWorktree({ repository, absolutePath });
-      if (relative.length > 0) selected.add(relative);
+      if (relative.length > 0) {
+        selected.add(relative);
+      }
       return;
     }
     const relative = relativeToWorktree({ repository, absolutePath });
-    if (relative === '.git' || relative.startsWith('.git/')) return;
+    if (relative === '.git' || relative.startsWith('.git/')) {
+      return;
+    }
     switch (stat.type) {
     case 'directory':
       for await (const child of files.readDir({ path: absolutePath })) {
@@ -123,7 +129,9 @@ export async function collectPathsForAdd({ files, repository, cwd, operands }: {
       break;
     case 'file':
     case 'symlink':
-      if (relative.length > 0) selected.add(relative);
+      if (relative.length > 0) {
+        selected.add(relative);
+      }
       break;
     case 'fifo':
     case 'chardev':
@@ -155,7 +163,9 @@ async function removeWorktreePathRecursively({ files, path }: {
   files: GitFiles,
   path: string,
 }): Promise<void> {
-  if (!await pathExists({ files, path })) return;
+  if (!await pathExists({ files, path })) {
+    return;
+  }
   const stat = await files.lstat({ path });
   switch (stat.type) {
   case 'directory':
@@ -187,7 +197,9 @@ async function ensureWorktreeDirectory({ files, repository, directoryPath }: {
   repository: GitRepository,
   directoryPath: string,
 }): Promise<void> {
-  if (directoryPath === repository.worktreePath || directoryPath === '/') return;
+  if (directoryPath === repository.worktreePath || directoryPath === '/') {
+    return;
+  }
   await ensureWorktreeDirectory({
     files,
     repository,
@@ -347,7 +359,9 @@ async function removeEmptyParentDirectories({ files, repository, path }: {
       hasEntries = true;
       break;
     }
-    if (hasEntries) return;
+    if (hasEntries) {
+      return;
+    }
     await files.rmdir({ path: current });
     current = parentPath({ path: current });
   }
@@ -360,18 +374,24 @@ export async function removeWorktreePaths({ files, repository, paths }: {
 }): Promise<void> {
   for (const path of sortGitPaths({ paths }).reverse()) {
     const absolutePath = worktreeAbsolutePath({ repository, path });
-    if (!await pathExists({ files, path: absolutePath })) continue;
+    if (!await pathExists({ files, path: absolutePath })) {
+      continue;
+    }
     await removeWorktreePathRecursively({ files, path: absolutePath });
     await removeEmptyParentDirectories({ files, repository, path: absolutePath });
   }
 }
 
 async function removeGitlinkDirectoryIfEmpty({ files, path }: { files: GitFiles, path: string }): Promise<void> {
-  if (!await pathExists({ files, path })) return;
+  if (!await pathExists({ files, path })) {
+    return;
+  }
   const stat = await files.lstat({ path });
   switch (stat.type) {
   case 'directory':
-    for await (const _entry of files.readDir({ path })) return;
+    for await (const _entry of files.readDir({ path })) {
+      return;
+    }
     await files.rmdir({ path });
     return;
   case 'file':
@@ -402,8 +422,12 @@ export async function replaceTrackedWorktreePaths({ files, repository, previousE
   const preparedByPath = new Map<string, PreparedWorktreeMaterialization>();
   for (const path of sortedPaths) {
     const targetEntry = targetByPath.get(path);
-    if (targetEntry === undefined) continue;
-    if (targetEntry.stage !== 0) throw new Error(`cannot materialize unmerged index entry: ${path}`);
+    if (targetEntry === undefined) {
+      continue;
+    }
+    if (targetEntry.stage !== 0) {
+      throw new Error(`cannot materialize unmerged index entry: ${path}`);
+    }
     preparedByPath.set(path, await prepareWorktreeMaterialization({ files, repository, entry: targetEntry, attributes }));
   }
   for (const path of sortedPaths) {
@@ -414,12 +438,17 @@ export async function replaceTrackedWorktreePaths({ files, repository, previousE
     }
     if (targetEntry === undefined) {
       const absolutePath = worktreeAbsolutePath({ repository, path });
-      if (previousEntry?.mode === 0o160000) await removeGitlinkDirectoryIfEmpty({ files, path: absolutePath });
-      else await removeWorktreePathRecursively({ files, path: absolutePath });
+      if (previousEntry?.mode === 0o160000) {
+        await removeGitlinkDirectoryIfEmpty({ files, path: absolutePath });
+      } else {
+        await removeWorktreePathRecursively({ files, path: absolutePath });
+      }
       continue;
     }
     const prepared = preparedByPath.get(path);
-    if (prepared === undefined) throw new Error(`missing prepared worktree materialization: ${path}`);
+    if (prepared === undefined) {
+      throw new Error(`missing prepared worktree materialization: ${path}`);
+    }
     await applyPreparedWorktreeMaterialization({ files, repository, prepared });
   }
 }
@@ -436,15 +465,22 @@ export async function replaceTrackedWorktree({ files, repository, previousEntrie
   const attributes = await loadIndexAttributes({ files, repository, entries: attributeEntries ?? targetEntries, contentConfig });
   const preparedEntries: PreparedWorktreeMaterialization[] = [];
   for (const entry of targetEntries) {
-    if (entry.stage !== 0) throw new Error(`cannot materialize unmerged index entry: ${entry.path}`);
+    if (entry.stage !== 0) {
+      throw new Error(`cannot materialize unmerged index entry: ${entry.path}`);
+    }
     preparedEntries.push(await prepareWorktreeMaterialization({ files, repository, entry, attributes }));
   }
   for (const previousEntry of previousEntries) {
-    if (previousEntry.stage !== 0) throw new Error(`cannot replace worktree with unmerged index entry: ${previousEntry.path}`);
+    if (previousEntry.stage !== 0) {
+      throw new Error(`cannot replace worktree with unmerged index entry: ${previousEntry.path}`);
+    }
     if (!targetPaths.has(previousEntry.path)) {
       const absolutePath = worktreeAbsolutePath({ repository, path: previousEntry.path });
-      if (previousEntry.mode === 0o160000) await removeGitlinkDirectoryIfEmpty({ files, path: absolutePath });
-      else await removeWorktreePathRecursively({ files, path: absolutePath });
+      if (previousEntry.mode === 0o160000) {
+        await removeGitlinkDirectoryIfEmpty({ files, path: absolutePath });
+      } else {
+        await removeWorktreePathRecursively({ files, path: absolutePath });
+      }
     }
   }
   for (const prepared of preparedEntries) {

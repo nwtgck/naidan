@@ -3,7 +3,9 @@ import { compilePosixCompatibleRegExp } from '@/features/wesh/commands/_shared/p
 
 function escapeAwkRegexLiteralCharacter({ character }: { character: string }): string {
   const codePoint = character.codePointAt(0);
-  if (codePoint === undefined) return '';
+  if (codePoint === undefined) {
+    return '';
+  }
   return codePoint <= 0xff
     ? `\\x${codePoint.toString(16).padStart(2, '0')}`
     : `\\u{${codePoint.toString(16)}}`;
@@ -92,7 +94,9 @@ function validateAwkRegularExpression({ source }: { source: string }): void {
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index]!;
     if (character === '\\') {
-      if (index + 1 < source.length) index += 1;
+      if (index + 1 < source.length) {
+        index += 1;
+      }
       previous = 'operand';
       continue;
     }

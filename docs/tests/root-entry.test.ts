@@ -11,7 +11,9 @@ type EntryFixture = { html: string; script: string; appEntryScript: string; en: 
 let compiled: EntryFixture | undefined;
 
 function entry(): EntryFixture {
-  if (!compiled) throw new Error('Entry build has not completed');
+  if (!compiled) {
+    throw new Error('Entry build has not completed');
+  }
   return compiled;
 }
 
@@ -62,9 +64,13 @@ beforeAll(async () => {
   const html = await readFile(path.join(dist, 'index.html'), 'utf8');
   using parsed = parsePage({ html });
   const script = parsed.document.querySelector('script:not([type])[src]')?.getAttribute('src');
-  if (!script) throw new Error('Missing bootstrap script');
+  if (!script) {
+    throw new Error('Missing bootstrap script');
+  }
   const appEntry = parsed.document.querySelector('script[src^="/docs/assets/app-entry-"]')?.getAttribute('src');
-  if (!appEntry) throw new Error('Missing app entry client');
+  if (!appEntry) {
+    throw new Error('Missing app entry client');
+  }
   compiled = {
     html,
     script: await readFile(path.join(dist, script.slice('/docs/'.length)), 'utf8'),
@@ -198,7 +204,9 @@ describe('language-neutral entrance without navigation', () => {
   ] as const)('does not hide the static brand when motion is $state', ({ narrow, reduced, paused }) => {
     using browser = createBrowser({ url: 'https://example.test/docs/ja/', languages: ['ja'] });
     setMotionMedia({ dom: browser.dom, narrow, reduced });
-    if (paused) browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    if (paused) {
+      browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    }
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
   });
@@ -209,7 +217,8 @@ describe('language-neutral entrance without navigation', () => {
     let watchdog: (() => void) | undefined;
     Object.defineProperty(browser.dom.window, 'setTimeout', {
       value: (callback: () => void) => {
-        watchdog = callback; return 1;
+        watchdog = callback;
+        return 1;
       },
     });
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
@@ -290,7 +299,9 @@ describe('language-neutral entrance without navigation', () => {
     expect(pause?.checked).toBe(true);
     expect(en.dom.window.document.querySelectorAll('h1')).toHaveLength(1);
     expect(en.dom.window.document.documentElement.hasAttribute('data-docs-starting')).toBe(false);
-    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    if (!light || !pause) {
+      throw new Error('Missing Docs preference controls');
+    }
     light.checked = false;
     light.dispatchEvent(new en.dom.window.Event('change', { bubbles: true }));
     expect(en.dom.window.document.documentElement.dataset.theme).toBe('dark');
@@ -366,7 +377,9 @@ describe('language-neutral entrance without navigation', () => {
     await Promise.resolve();
     const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
     const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
-    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    if (!light || !pause) {
+      throw new Error('Missing Docs preference controls');
+    }
     light.checked = true;
     light.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
     pause.checked = true;
@@ -395,7 +408,9 @@ describe('language-neutral entrance without navigation', () => {
     await Promise.resolve();
     const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
     const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
-    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    if (!light || !pause) {
+      throw new Error('Missing Docs preference controls');
+    }
     const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('Write denied');
     });
@@ -473,7 +488,9 @@ describe('language-neutral entrance without navigation', () => {
     const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
     expect(light?.checked).toBe(false);
     expect(pause?.checked).toBe(false);
-    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    if (!light || !pause) {
+      throw new Error('Missing Docs preference controls');
+    }
     light.checked = true;
     light.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
     pause.checked = true;
@@ -510,7 +527,9 @@ describe('language-neutral entrance without navigation', () => {
     const bootstrap = page.document.querySelector('script:not([type])[src]')?.getAttribute('src');
     expect(bootstrap).toBe('/docs/__locale.js');
     expect(page.document.querySelectorAll('script[src="/docs/client/app-entry.ts"]')).toHaveLength(1);
-    if (!bootstrap) throw new Error('Missing development locale bootstrap');
+    if (!bootstrap) {
+      throw new Error('Missing development locale bootstrap');
+    }
     const asset = await dev.request({ url: bootstrap });
     expect(asset.status).toBe(200);
     expect(asset.headers.get('content-type')).toContain('text/javascript');

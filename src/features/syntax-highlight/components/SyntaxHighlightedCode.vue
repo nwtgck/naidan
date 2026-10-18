@@ -26,7 +26,9 @@ watch(() => props.language, language => {
   void (async () => {
     try {
       for await (const edit of highlightSyntaxStream({ edits: current.source.edits, language, signal: current.controller.signal })) {
-        if (owner !== current) return;
+        if (owner !== current) {
+          return;
+        }
         display.apply({ edit });
         tokens.value = display.tokens;
         triggerRef(tokens);
@@ -44,10 +46,14 @@ watch(() => props.language, language => {
 }, { immediate: true });
 
 watch(() => props.code, code => {
-  if (!owner) return;
+  if (!owner) {
+    return;
+  }
   switch (owner.state) {
-  case 'active': owner.source.setCode({ code }); break;
-  case 'failed': tokens.value = [{ kind: 'plain', text: code }]; break;
+  case 'active': owner.source.setCode({ code });
+    break;
+  case 'failed': tokens.value = [{ kind: 'plain', text: code }];
+    break;
   default: {
     const _ex: never = owner.state;
     throw new Error(`Unhandled highlight state: ${_ex}`);

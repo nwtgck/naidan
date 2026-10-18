@@ -11,7 +11,9 @@ import {
 } from "@/features/transformers-js/model-support-investigation/logic/tool-protocol-fixture";
 
 function normalizeInputIds({ value }: { value: unknown }): number[] {
-  if (!Array.isArray(value)) throw new Error("Tool-result chat template did not return an input ID array");
+  if (!Array.isArray(value)) {
+    throw new Error("Tool-result chat template did not return an input ID array");
+  }
   return value.map((item) => {
     if (typeof item !== "number" && typeof item !== "bigint") {
       throw new Error("Tool-result chat template returned a non-numeric input ID");

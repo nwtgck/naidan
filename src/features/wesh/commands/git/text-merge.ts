@@ -15,8 +15,12 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 const encoder = new TextEncoder();
 
 function splitLines({ text }: { text: string }): string[] | undefined {
-  if (text.length === 0) return [];
-  if (!text.endsWith('\n')) return undefined;
+  if (text.length === 0) {
+    return [];
+  }
+  if (!text.endsWith('\n')) {
+    return undefined;
+  }
   return text.match(/[^\n]*\n/gu) ?? [];
 }
 
@@ -34,9 +38,15 @@ function createChanges({ baseLines, sideLines }: { baseLines: readonly string[],
 }
 
 function changesConflict({ left, right }: { left: TextChange, right: TextChange }): boolean {
-  if (left.start === left.end && right.start === right.end) return left.start === right.start;
-  if (left.start === left.end) return left.start >= right.start && left.start <= right.end;
-  if (right.start === right.end) return right.start >= left.start && right.start <= left.end;
+  if (left.start === left.end && right.start === right.end) {
+    return left.start === right.start;
+  }
+  if (left.start === left.end) {
+    return left.start >= right.start && left.start <= right.end;
+  }
+  if (right.start === right.end) {
+    return right.start >= left.start && right.start <= left.end;
+  }
   return left.start < right.end && right.start < left.end;
 }
 
@@ -61,13 +71,17 @@ function mergeChanges({ baseLines, ours, theirs }: {
   }
   const changes = [...ours];
   for (const theirsChange of theirs) {
-    if (!changes.some(oursChange => sameChange({ left: oursChange, right: theirsChange }))) changes.push(theirsChange);
+    if (!changes.some(oursChange => sameChange({ left: oursChange, right: theirsChange }))) {
+      changes.push(theirsChange);
+    }
   }
   changes.sort((left, right) => left.start - right.start || left.end - right.end);
   const result: string[] = [];
   let cursor = 0;
   for (const change of changes) {
-    if (change.start < cursor) return undefined;
+    if (change.start < cursor) {
+      return undefined;
+    }
     result.push(...baseLines.slice(cursor, change.start), ...change.replacement);
     cursor = change.end;
   }
@@ -80,9 +94,13 @@ async function readBlobLines({ files, repository, entry }: {
   repository: GitRepository,
   entry: GitIndexEntry,
 }): Promise<string[] | undefined> {
-  if (entry.mode !== 0o100644 && entry.mode !== 0o100755) return undefined;
+  if (entry.mode !== 0o100644 && entry.mode !== 0o100755) {
+    return undefined;
+  }
   const object = await readObject({ files, repository, objectId: entry.objectId });
-  if (object.type !== 'blob' || object.body.includes(0)) return undefined;
+  if (object.type !== 'blob' || object.body.includes(0)) {
+    return undefined;
+  }
   try {
     return splitLines({ text: decoder.decode(object.body) });
   } catch {
@@ -100,10 +118,14 @@ export function createLocalizedConflictText({ baseText, oursText, theirsText, ou
   const baseLines = splitLines({ text: baseText });
   const oursLines = splitLines({ text: oursText });
   const theirsLines = splitLines({ text: theirsText });
-  if (baseLines === undefined || oursLines === undefined || theirsLines === undefined) return undefined;
+  if (baseLines === undefined || oursLines === undefined || theirsLines === undefined) {
+    return undefined;
+  }
   const oursChanges = createChanges({ baseLines, sideLines: oursLines });
   const theirsChanges = createChanges({ baseLines, sideLines: theirsLines });
-  if (oursChanges.length === 0 || oursChanges.length !== theirsChanges.length) return undefined;
+  if (oursChanges.length === 0 || oursChanges.length !== theirsChanges.length) {
+    return undefined;
+  }
 
   const result: string[] = [];
   let cursor = 0;
@@ -112,7 +134,9 @@ export function createLocalizedConflictText({ baseText, oursText, theirsText, ou
     const oursChange = oursChanges[index]!;
     const theirsChange = theirsChanges[index]!;
     if (oursChange.start !== theirsChange.start || oursChange.end !== theirsChange.end
-      || oursChange.start < cursor) return undefined;
+      || oursChange.start < cursor) {
+      return undefined;
+    }
     result.push(...baseLines.slice(cursor, oursChange.start));
     if (sameChange({ left: oursChange, right: theirsChange })) {
       result.push(...oursChange.replacement);
@@ -128,7 +152,9 @@ export function createLocalizedConflictText({ baseText, oursText, theirsText, ou
     }
     cursor = oursChange.end;
   }
-  if (conflictCount === 0) return undefined;
+  if (conflictCount === 0) {
+    return undefined;
+  }
   result.push(...baseLines.slice(cursor));
   return result.join('');
 }

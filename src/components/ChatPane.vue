@@ -16,6 +16,7 @@ import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { provideChatViewScope } from '@/composables/chat/ui/chat-view-scope';
 import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
+import { useChatComposerLayout } from '@/composables/chat/ui/useChatComposerLayout';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import {
@@ -97,7 +98,7 @@ import { loadChatWorkerMountsModule, prefetchChatWorkerMountsModule } from '@/fe
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { formatSettingsSourceLabel, settingsSourcePresentation, type SettingsSource } from '@/logic/settings-labels';
 import { resolveChatTextSubmissionAction, type ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { tw } from 'virtual:naidan-tailwind';
@@ -304,11 +305,20 @@ const isChatStreaming = computed(() => {
 // The index of the single flow item that should display the GeneratingIndicator.
 // Only the very last item during streaming gets the indicator — never more than one.
 const generatingIndicatorIndex = computed(() => {
-  if (!isChatStreaming.value) return -1;
+  if (!isChatStreaming.value) {
+    return -1;
+  }
   return chatFlow.value.length - 1;
 });
 
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+const composerLayout = useChatComposerLayout({
+  composer: computed(() => chatInputRef.value?.rootElement),
+  editor: computed(() => chatInputRef.value?.textareaElement),
+  viewport: container,
+  visibility: inputVisibility,
+  display: modelLaunch.composerVisibility,
+});
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
@@ -317,7 +327,9 @@ const generatedTitleHistory = ref<string[]>([]);
 
 function getCurrentViewportMessageId() {
   const scrollContainer = container.value;
-  if (!scrollContainer) return undefined;
+  if (!scrollContainer) {
+    return undefined;
+  }
 
   const containerRect = scrollContainer.getBoundingClientRect();
   const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
@@ -325,9 +337,13 @@ function getCurrentViewportMessageId() {
 
   let closest: { id: MessageId, distance: number } | undefined;
   for (const element of messageElements) {
-    if (!(element instanceof HTMLElement)) continue;
+    if (!(element instanceof HTMLElement)) {
+      continue;
+    }
     const rect = element.getBoundingClientRect();
-    if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) continue;
+    if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) {
+      continue;
+    }
 
     const distance = Math.abs(rect.top - targetY);
     if (!closest || distance < closest.distance) {
@@ -354,7 +370,9 @@ function jumpToOutlineMessage({ messageId }: { messageId: MessageId }) {
 
 function clearTargetMessageQuery() {
   const currentQuery = router.currentRoute?.value?.query ?? {};
-  if (!currentQuery['message-id']) return;
+  if (!currentQuery['message-id']) {
+    return;
+  }
 
   const query = { ...currentQuery };
   delete query['message-id'];
@@ -363,7 +381,9 @@ function clearTargetMessageQuery() {
 
 async function handleMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatGroups.moveChatToGroup({
     chatId: chatValue.id,
     chatGroupId: groupId ?? undefined,
@@ -372,7 +392,9 @@ async function handleMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
 
 async function handleDeleteChat() {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   const redirectAfterDelete = chatValue.groupId
     ? `/chat-group/${idToRaw({ id: chatValue.groupId })}`
     : '/';
@@ -385,7 +407,9 @@ async function handleDeleteChat() {
 
 async function handleSaveTitle({ title }: { title: string }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatMetadata.rename({
     chatId: chatValue.id,
     title,
@@ -394,7 +418,9 @@ async function handleSaveTitle({ title }: { title: string }) {
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   const chatId = chatValue.id;
   const chatGroupId = chatValue.groupId ?? undefined;
   const titleBeforeGeneration = chatValue.title?.trim();
@@ -409,7 +435,9 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
     signal: undefined,
     titleModelIdOverride: modelId,
   });
-  if (!generatedTitle) return;
+  if (!generatedTitle) {
+    return;
+  }
   const nextHistory = titleBeforeGeneration
     ? [generatedTitle, titleBeforeGeneration, ...generatedTitleHistory.value]
     : [generatedTitle, ...generatedTitleHistory.value];
@@ -418,7 +446,9 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
 
 function handleAbortTitleGeneration() {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   chatTitle.abortTitleGeneration({
     chatId: chatValue.id,
   });
@@ -427,7 +457,9 @@ function handleAbortTitleGeneration() {
 async function exportChat() {
   const snapshot = chat.value;
   const flow = chatFlow.value;
-  if (!snapshot || !flow) return;
+  if (!snapshot || !flow) {
+    return;
+  }
 
   const newChatTitle = await ensureStrings.SHARED__new_chat();
   const userLabel = await ensureStrings.ChatPane__user();
@@ -457,7 +489,9 @@ async function exportChat() {
               switch (itemType) {
               case 'message': {
               // Generating tool arguments are presentation-only and must not enter exports.
-                if (item.toolCallDrafts?.length) continue;
+                if (item.toolCallDrafts?.length) {
+                  continue;
+                }
                 const msg = item.node;
                 const role = (() => {
                   const r = msg.role;
@@ -592,7 +626,9 @@ async function exportChat() {
 }
 
 async function shareAsURL() {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   try {
     const { generateChatShareURL } = await chatUrlShareModuleLoader.load();
@@ -611,7 +647,9 @@ async function shareAsURL() {
 }
 
 async function openChatFileExplorer() {
-  if (!chat.value) return;
+  if (!chat.value) {
+    return;
+  }
 
   const { buildWorkerMountsForChat } = await loadChatWorkerMountsModule();
   const mounts = await buildWorkerMountsForChat({
@@ -653,7 +691,9 @@ function scrollToBottom({ scrollForce, behavior }: { scrollForce: ScrollForce, b
 }
 
 async function waitForPaint({ frames }: { frames: number }) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') {
+    return;
+  }
   for (let index = 0; index < frames; index++) {
     await new Promise<void>((resolve) => {
       window.requestAnimationFrame(() => resolve());
@@ -662,16 +702,22 @@ async function waitForPaint({ frames }: { frames: number }) {
 }
 
 async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatPaneScrollTarget, behavior: ScrollBehavior, offset: number }) {
-  if (!container.value) return false;
+  if (!container.value) {
+    return false;
+  }
 
   let el: HTMLElement | null = null;
   for (let i = 0; i < 5; i++) {
     await nextTick();
     el = container.value.querySelector(`#${target.anchorId}`) as HTMLElement | null;
-    if (el) break;
+    if (el) {
+      break;
+    }
   }
 
-  if (!(el instanceof HTMLElement)) return false;
+  if (!(el instanceof HTMLElement)) {
+    return false;
+  }
 
   scrollIntoViewSafe({
     container: container.value,
@@ -717,7 +763,9 @@ async function scrollInitialOpenTarget({ target }: { target: ChatPaneInitialOpen
 }
 
 function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
-  if (!container.value) return false;
+  if (!container.value) {
+    return false;
+  }
   const el = container.value.querySelector(`#message-${idToRaw({ id: messageId })}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
@@ -766,7 +814,9 @@ watch(
       return;
     }
     const targetKey = `${chatId === undefined ? '' : idToRaw({ id: chatId })}:${leafId === undefined ? '' : idToRaw({ id: leafId })}:${idToRaw({ id: messageId })}:${flowKey}`;
-    if (lastJumpedTargetMessageKey.value === targetKey) return;
+    if (lastJumpedTargetMessageKey.value === targetKey) {
+      return;
+    }
 
     await nextTick();
     await waitForPaint({ frames: 1 });
@@ -791,7 +841,9 @@ defineExpose({
 
 const canGenerateImage = computed(() => {
   const type = resolvedSettings.value?.endpoint.type;
-  if (!type) return false;
+  if (!type) {
+    return false;
+  }
 
   const isOllama = (() => {
     switch (type) {
@@ -811,7 +863,9 @@ const canGenerateImage = computed(() => {
     }
   })();
 
-  if (!isOllama) return false;
+  if (!isOllama) {
+    return false;
+  }
   return availableImageModels.value.length > 0;
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
@@ -822,10 +876,14 @@ const resolvedEndpointType = computed(() => {
 });
 
 const isChatSubmissionEnabled = computed(() => {
-  if (!modelLaunch.maySend.value || !modelRecovery.maySend.value) return false;
+  if (!modelLaunch.maySend.value || !modelRecovery.maySend.value) {
+    return false;
+  }
   const endpoint = resolvedSettings.value?.endpoint;
   const type = resolvedEndpointType.value;
-  if (endpoint === undefined || type === undefined || !isConfiguredEndpoint({ endpoint })) return false;
+  if (endpoint === undefined || type === undefined || !isConfiguredEndpoint({ endpoint })) {
+    return false;
+  }
 
   // Selection and submission must follow the same distribution policy, even
   // when the effective endpoint comes from saved settings or a chat override.
@@ -874,7 +932,9 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
     throw new Error(`Unhandled endpoint build availability: ${_ex}`);
   }
   }
-  if (type === 'browser_provided_lm' && promptApiRuntimeState.value.status !== 'ready') return 'blocked';
+  if (type === 'browser_provided_lm' && promptApiRuntimeState.value.status !== 'ready') {
+    return 'blocked';
+  }
 
   const globalSetupIncomplete = !isConfiguredEndpoint({ endpoint: settings.value.endpoint })
     || !settings.value.defaultModelId;
@@ -966,14 +1026,32 @@ watch(
 
 const chatGroupBadge = computed(() => {
   const groupId = chat.value?.groupId;
-  if (!groupId) return undefined;
+  if (!groupId) {
+    return undefined;
+  }
   return availableChatGroups.value.find(group => group.id === groupId);
 });
 
 const currentModelLabel = computed(() => formatSettingsSourceLabel({
   value: resolvedSettings.value?.modelId,
-  source: resolvedSettings.value?.sources.modelId,
+  source: undefined,
 }));
+
+const currentModelSource = computed(() => {
+  const source = resolvedSettings.value?.sources.modelId;
+  switch (source) {
+  case 'global':
+  case 'chat_group':
+    return settingsSourcePresentation({ source });
+  case 'chat':
+  case undefined:
+    return undefined;
+  default: {
+    const _ex: never = source;
+    return _ex;
+  }
+  }
+});
 
 const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleGeneration ?? 'global');
 
@@ -994,7 +1072,9 @@ const activeTitleEndpoint = computed<Endpoint | undefined>(() => {
 const titleDialogAvailableModels = computed(() => {
   const titleEndpoint = activeTitleEndpoint.value;
   const generationEndpoint = resolvedSettings.value?.endpoint;
-  if (titleEndpoint === undefined || generationEndpoint === undefined) return availableModels.value;
+  if (titleEndpoint === undefined || generationEndpoint === undefined) {
+    return availableModels.value;
+  }
   return areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })
     ? availableModels.value
     : titleDialogModels.value;
@@ -1003,7 +1083,9 @@ const titleDialogAvailableModels = computed(() => {
 const titleDialogFetching = computed(() => {
   const titleEndpoint = activeTitleEndpoint.value;
   const generationEndpoint = resolvedSettings.value?.endpoint;
-  if (titleEndpoint === undefined || generationEndpoint === undefined) return fetchingModels.value;
+  if (titleEndpoint === undefined || generationEndpoint === undefined) {
+    return fetchingModels.value;
+  }
   return areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })
     ? fetchingModels.value
     : titleDialogFetchingModels.value;
@@ -1127,7 +1209,9 @@ const autoScroll = useChatPaneAutoScroll({
 const responseViewportReserve = ref<{ chatId: ChatId, navigationKey: string, userTurnId: MessageId, heightPx: number } | undefined>(undefined);
 
 const isResponseViewportReserveActive = computed(() => {
-  if (props.targetMessageId) return false;
+  if (props.targetMessageId) {
+    return false;
+  }
 
   const snapshot = autoScroll.snapshot.value;
   return !!responseViewportReserve.value
@@ -1137,7 +1221,9 @@ const isResponseViewportReserveActive = computed(() => {
 });
 
 const responseViewportReserveHeightPx = computed(() => {
-  if (!isResponseViewportReserveActive.value) return 0;
+  if (!isResponseViewportReserveActive.value) {
+    return 0;
+  }
   return responseViewportReserve.value?.heightPx ?? 0;
 });
 
@@ -1155,10 +1241,14 @@ function getElementTopInContainer({
 
 function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: MessageId }) {
   const scrollContainer = container.value;
-  if (!scrollContainer) return 0;
+  if (!scrollContainer) {
+    return 0;
+  }
 
   const userElement = scrollContainer.querySelector(`#message-${idToRaw({ id: userTurnId })}`);
-  if (!(userElement instanceof HTMLElement)) return 0;
+  if (!(userElement instanceof HTMLElement)) {
+    return 0;
+  }
 
   const userTop = getElementTopInContainer({
     element: userElement,
@@ -1172,7 +1262,9 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: Me
 
 async function handleEdit({ messageId, newContent, lmParameters }: { messageId: MessageId, newContent: string, lmParameters?: LmParameters }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatBranches.editMessage({
     chatId: chatValue.id,
     messageId,
@@ -1183,7 +1275,9 @@ async function handleEdit({ messageId, newContent, lmParameters }: { messageId: 
 
 async function handleRegenerate({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatConversation.regenerateMessage({
     chatId: chatValue.id,
     failedMessageId: messageId,
@@ -1203,7 +1297,9 @@ async function handleConfirmCompact({
 }) {
   closeCompactSettings();
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   const didCompact = await chatCompaction.compactCurrentBranch({
     chatId: chatValue.id,
     keepRecentMessages: keepCount,
@@ -1216,7 +1312,9 @@ async function handleConfirmCompact({
 
 function handleAbortContextCompact() {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   chatCompaction.abort({
     chatId: chatValue.id,
   });
@@ -1224,7 +1322,9 @@ function handleAbortContextCompact() {
 
 async function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatBranches.switchVersion({
     chatId: chatValue.id,
     messageId,
@@ -1233,7 +1333,9 @@ async function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
 
 async function handleFork({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   const newId = await chatBranches.forkChat({
     chatId: chatValue.id,
     messageId,
@@ -1253,7 +1355,9 @@ async function handleForkLastMessage() {
       case 'message': return item;
       case 'process_sequence': {
         const nested = findLastMessage({ items: item.items });
-        if (nested) return nested;
+        if (nested) {
+          return nested;
+        }
         break;
       }
       case 'tool_group':
@@ -1275,7 +1379,9 @@ async function handleForkLastMessage() {
 
 function getChatSiblings({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
-  if (!chatValue) return [];
+  if (!chatValue) {
+    return [];
+  }
   return [...getSiblingsInChatBranch({
     root: chatValue.root,
     messageId,
@@ -1284,7 +1390,9 @@ function getChatSiblings({ messageId }: { messageId: MessageId }) {
 
 async function fetchTitleDialogModels(): Promise<void> {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   const titleEndpoint = activeTitleEndpoint.value;
   const generationEndpoint = resolvedSettings.value?.endpoint;
   if (titleEndpoint === undefined || generationEndpoint === undefined || areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })) {
@@ -1301,7 +1409,9 @@ async function fetchTitleDialogModels(): Promise<void> {
   titleDialogFetchingModels.value = true;
   try {
     const models = await chatModels.fetchForEndpoint({ endpoint });
-    if (activeTitleEndpoint.value === undefined || !areEndpointsEqual({ left: endpoint, right: activeTitleEndpoint.value })) return;
+    if (activeTitleEndpoint.value === undefined || !areEndpointsEqual({ left: endpoint, right: activeTitleEndpoint.value })) {
+      return;
+    }
     titleDialogModels.value = models;
   } finally {
     titleDialogFetchingModels.value = false;
@@ -1315,7 +1425,9 @@ async function handleRefreshModels() {
 watch(
   () => [showTitleDialog.value, activeTitleEndpoint.value] as const,
   ([isOpen]) => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
     void fetchTitleDialogModels();
   },
 );
@@ -1352,7 +1464,9 @@ function handleChoiceSelection({
 
 function handleAbortGeneration() {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   chatConversation.abort({
     chatId: chatValue.id,
   });
@@ -1360,7 +1474,9 @@ function handleAbortGeneration() {
 
 async function handleToggleDebug() {
   const chatValue = chat.value;
-  if (!chatValue) return;
+  if (!chatValue) {
+    return;
+  }
   await chatMetadata.toggleDebug({
     chatId: chatValue.id,
   });
@@ -1382,8 +1498,12 @@ function canUseFakeLmDebugModeInChatPane(): boolean {
 
 async function handleEnableFakeLmForChat() {
   const chatValue = chat.value;
-  if (!chatValue) return;
-  if (!canUseFakeLmDebugModeInChatPane()) return;
+  if (!chatValue) {
+    return;
+  }
+  if (!canUseFakeLmDebugModeInChatPane()) {
+    return;
+  }
 
   await setFakeLmDebugModeStatus({ status: 'enabled' });
 
@@ -1427,8 +1547,12 @@ watch(
     await nextTick();
 
     const action = autoScroll.consumeScrollAction();
-    if (!action) return;
-    if (props.targetMessageId) return;
+    if (!action) {
+      return;
+    }
+    if (props.targetMessageId) {
+      return;
+    }
 
     switch (action.kind) {
     case 'initial_open':
@@ -1437,7 +1561,9 @@ watch(
       break;
     case 'assistant': {
       const snapshot = autoScroll.snapshot.value;
-      if (!snapshot.chatId || !snapshot.navigationKey) return;
+      if (!snapshot.chatId || !snapshot.navigationKey) {
+        return;
+      }
       responseViewportReserve.value = {
         chatId: snapshot.chatId,
         navigationKey: snapshot.navigationKey,
@@ -1446,7 +1572,9 @@ watch(
       };
       await nextTick();
       const reserve = responseViewportReserve.value;
-      if (!reserve) return;
+      if (!reserve) {
+        return;
+      }
       responseViewportReserve.value = {
         ...reserve,
         heightPx: calculateResponseViewportReserveHeight({ userTurnId: action.userTurnId }),
@@ -1499,6 +1627,7 @@ watch(
       :chat-group-badge="chatGroupBadge"
       :active-message-count="activeMessages.length"
       :model-label="currentModelLabel"
+      :model-source="currentModelSource"
       :has-overrides="!!(chat && hasChatOverrides({ chat }))"
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
@@ -1610,9 +1739,9 @@ watch(
       <div
         ref="container"
         data-testid="scroll-container"
-        tw-class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
+        tw-class="absolute inset-0 overflow-y-auto overscroll-contain"
         style="overflow-anchor: none;"
-        :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
+        :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }"
       >
         <template v-if="chat">
           <div v-if="activeMessages.length > 0" tw-class="relative p-2">
@@ -1751,12 +1880,6 @@ watch(
           </WelcomeScreen>
         </template>
 
-        <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
-        <div
-          v-if="chatInputRef?.isMaximized || isAnimatingHeight"
-          tw-class="h-[75vh] shrink-0 pointer-events-none"
-          data-testid="maximized-spacer"
-        ></div>
       </div>
 
       <!-- Chat State Inspector -->
@@ -1800,6 +1923,13 @@ watch(
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"
+      :inherited-reasoning-effort="inheritedSettings?.lmParameters?.reasoning.effort"
+      :available-space="composerLayout.availableSpace.value"
+      :presentation="modelLaunch.composerVisibility.value"
+      @transitionrun="composerLayout.beginTransition({ event: $event })"
+      @transitionend="composerLayout.finishTransition({ event: $event })"
+      @transitioncancel="composerLayout.finishTransition({ event: $event })"
+      @layout-change="composerLayout.measure()"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
@@ -1844,21 +1974,41 @@ watch(
 <style scoped>
 /* Neural Sync Effect Animations */
 @keyframes neural-scan {
-  0% { transform: translateY(-100%); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateY(100vh); opacity: 0; }
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
 }
 
 @keyframes neural-flash {
-  0% { opacity: 0; }
-  20% { opacity: 0.15; background-color: #6366f1; } /* indigo-500 */
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.15;
+    background-color: #6366f1;
+  } /* indigo-500 */
+  100% {
+    opacity: 0;
+  }
 }
 
 .neural-scan-line {
   position: absolute;
-  top: 0; left: 0; right: 0; height: 120px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
   background: linear-gradient(to bottom, transparent, #6366f1, transparent);
   box-shadow: 0 0 50px rgba(99, 102, 241, 0.4);
   animation: neural-scan 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;

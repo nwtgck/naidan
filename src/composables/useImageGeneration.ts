@@ -229,10 +229,14 @@ export function useImageGeneration() {
     decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
-    if (!target) return;
+    if (!target) {
+      return;
+    }
     const mutableChat = target;
     const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
-    if (!assistantNode) return;
+    if (!assistantNode) {
+      return;
+    }
     switch (assistantNode.role) {
     case 'assistant':
       break;
@@ -287,7 +291,9 @@ export function useImageGeneration() {
       const blocks: GeneratedImageBlock[] = [];
 
       for (let i = 0; i < imageCount; i++) {
-        if (signal?.aborted) break;
+        if (signal?.aborted) {
+          break;
+        }
 
         // Clear stale provider progress from the previous image, then expose step 1 immediately when
         // the requested total is known. Provider progress callbacks report completed steps.
@@ -302,7 +308,9 @@ export function useImageGeneration() {
           activeSeed = seed;
         } else if (seed === 'browser_random') {
           activeSeed = crypto.getRandomValues(new Uint32Array(1))[0];
-          if (activeSeed !== undefined && activeSeed < 1) activeSeed = 1;
+          if (activeSeed !== undefined && activeSeed < 1) {
+            activeSeed = 1;
+          }
         }
 
         const { image: blob, totalSteps } = await performBase64Generation({
@@ -320,7 +328,9 @@ export function useImageGeneration() {
           },
           signal,
         });
-        if (!blob) throw new Error(await ensureStrings.useImageGeneration__failed_to_generate_image());
+        if (!blob) {
+          throw new Error(await ensureStrings.useImageGeneration__failed_to_generate_image());
+        }
 
         let finalBlob = blob;
         let extension = '.png';
@@ -398,7 +408,9 @@ export function useImageGeneration() {
       // Finalize: replace PENDING with PROCESSED
       imagePart.text = imagePart.text.replace(SENTINEL_IMAGE_PENDING, signal?.aborted ? '' : SENTINEL_IMAGE_PROCESSED);
       imagePart.completeness = signal?.aborted ? 'partial' : 'complete';
-      if (signal?.aborted) assistantNode.interruption = { type: 'cancelled' };
+      if (signal?.aborted) {
+        assistantNode.interruption = { type: 'cancelled' };
+      }
     } catch (e) {
       assistantNode.interruption = signal?.aborted ? { type: 'cancelled' } : { type: 'error', message: e instanceof Error ? e.message : String(e) };
       // Cleanup sentinel on error
@@ -469,11 +481,17 @@ export function useImageGeneration() {
       return await sendMessage({ content, parentId: undefined, attachments });
     } finally {
       imageModeMap.value.set(chatId, prevMode);
-      if (prevRes) imageResolutionMap.value.set(chatId, prevRes);
-      if (prevCount !== undefined) imageCountMap.value.set(chatId, prevCount);
+      if (prevRes) {
+        imageResolutionMap.value.set(chatId, prevRes);
+      }
+      if (prevCount !== undefined) {
+        imageCountMap.value.set(chatId, prevCount);
+      }
       imageStepsMap.value.set(chatId, prevSteps);
       imageSeedMap.value.set(chatId, prevSeed);
-      if (prevPersistAs !== undefined) imagePersistAsMap.value.set(chatId, prevPersistAs);
+      if (prevPersistAs !== undefined) {
+        imagePersistAsMap.value.set(chatId, prevPersistAs);
+      }
     }
   };
 

@@ -39,7 +39,9 @@ function acceptanceIdentityError({
     && acceptance.repositoryResolvedRevision === expectedResolvedRevision
     && acceptance.cacheRevision === candidate.revision
     && acceptance.loaderRevisionOption === expectedLoaderRevision
-  ) return undefined;
+  ) {
+    return undefined;
+  }
 
   return {
     name: 'RevisionAcceptanceIdentityMismatch',

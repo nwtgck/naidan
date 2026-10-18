@@ -10,7 +10,9 @@ export function selectDocsLocale({ languages }: { languages: readonly string[] }
       continue;
     }
     const supported = DOCS_LOCALES.find(locale => locale === code);
-    if (supported) return supported;
+    if (supported) {
+      return supported;
+    }
   }
   return 'en';
 }

@@ -18,7 +18,9 @@ const clipboardBusy = ref<Role>();
 const clipboardMessage = ref<{ role: Role, type: 'unavailable' | 'failed' | 'empty' }>();
 // Async permission prompts must not write into another session/edited input.
 watch(() => [props.modelValue, props.disabled, props.active, open.value] as const, () => {
-  clipboardEpoch++; clipboardBusy.value = undefined; clipboardMessage.value = undefined;
+  clipboardEpoch++;
+  clipboardBusy.value = undefined;
+  clipboardMessage.value = undefined;
 }, { flush: 'sync' });
 const clipboardFeedback = computed(() => {
   const type = clipboardMessage.value?.type;
@@ -27,24 +29,31 @@ const clipboardFeedback = computed(() => {
   case 'failed': return lazyStrings.ImageInputControls__clipboard_failed();
   case 'empty': return lazyStrings.ImageInputControls__clipboard_no_image();
   case undefined: return undefined;
-  default: { const exhaustive: never = type; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = type;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const orderedFiles = computed(() => [...(props.modelValue.initImage ? [props.modelValue.initImage] : []), ...props.modelValue.referenceImages]);
 const frames = computed(() => orderedFiles.value.flatMap(file => {
-  const preview = previews.value.get(file); return preview ? [preview] : [];
+  const preview = previews.value.get(file);
+  return preview ? [preview] : [];
 }));
 const groups = computed(() => [
   { role: 'initial' as const, title: lazyStrings.ImageInputControls__initial_image(), help: lazyStrings.ImageInputControls__initial_image_help(), frames: props.modelValue.initImage ? frames.value.slice(0, 1) : [] },
   { role: 'reference' as const, title: lazyStrings.ImageInputControls__reference_images(), help: lazyStrings.ImageInputControls__reference_images_help(), frames: frames.value.slice(props.modelValue.initImage ? 1 : 0) },
 ]);
 watch(orderedFiles, (files, previous) => {
-  if (!previous || files.length !== previous.length || files.some((file, index) => file !== previous[index])) viewerIndex.value = undefined;
+  if (!previous || files.length !== previous.length || files.some((file, index) => file !== previous[index])) {
+    viewerIndex.value = undefined;
+  }
   const retained = new Set(files), next = new Map<File, Preview>();
   for (const file of retained) {
     const existing = previews.value.get(file);
-    if (existing) next.set(file, existing);
-    else {
+    if (existing) {
+      next.set(file, existing);
+    } else {
       // Blob URLs avoid reading/re-encoding image bytes merely to render the UI.
       try {
         next.set(file, { key: ++nextKey, file, url: URL.createObjectURL(file), failed: false });
@@ -53,50 +62,80 @@ watch(orderedFiles, (files, previous) => {
       }
     }
   }
-  for (const [file, preview] of previews.value) if (!retained.has(file) && preview.url) URL.revokeObjectURL(preview.url);
+  for (const [file, preview] of previews.value) {
+    if (!retained.has(file) && preview.url) {
+      URL.revokeObjectURL(preview.url);
+    }
+  }
   previews.value = next;
 }, { immediate: true });
 watch(() => props.active, active => {
-  if (!active) viewerIndex.value = undefined;
+  if (!active) {
+    viewerIndex.value = undefined;
+  }
 });
 onBeforeUnmount(() => {
   clipboardEpoch++;
-  for (const preview of previews.value.values()) if (preview.url) URL.revokeObjectURL(preview.url);
+  for (const preview of previews.value.values()) {
+    if (preview.url) {
+      URL.revokeObjectURL(preview.url);
+    }
+  }
   previews.value.clear();
 });
 
 function failed({ preview }: { preview: Preview }): void {
   // Ignore late decode events from thumbnails replaced or removed meanwhile.
-  if (previews.value.get(preview.file)?.url !== preview.url) return;
+  if (previews.value.get(preview.file)?.url !== preview.url) {
+    return;
+  }
   const next = new Map(previews.value);
-  next.set(preview.file, { ...preview, failed: true }); previews.value = next;
+  next.set(preview.file, { ...preview, failed: true });
+  previews.value = next;
 }
 
 function accept({ role, files, replaceIndex }: { role: Role, files: File[], replaceIndex: number | undefined }): void {
-  if (props.disabled || !files.length) return;
+  if (props.disabled || !files.length) {
+    return;
+  }
   if (files.some(file => file.size === 0 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) {
-    invalid.value = role; return;
+    invalid.value = role;
+    return;
   }
   invalid.value = undefined;
   switch (role) {
-  case 'initial': emit('update:modelValue', { ...props.modelValue, initImage: files[0] }); break;
+  case 'initial': emit('update:modelValue', { ...props.modelValue, initImage: files[0] });
+    break;
   case 'reference': {
     const references = [...props.modelValue.referenceImages];
-    if (replaceIndex === undefined) references.push(...files);
-    else {
-      if (replaceIndex < 0 || replaceIndex >= references.length) return;
-      const file = files[0]; if (!file) return;
+    if (replaceIndex === undefined) {
+      references.push(...files);
+    } else {
+      if (replaceIndex < 0 || replaceIndex >= references.length) {
+        return;
+      }
+      const file = files[0];
+      if (!file) {
+        return;
+      }
       references[replaceIndex] = file;
     }
-    emit('update:modelValue', { ...props.modelValue, referenceImages: references }); break;
+    emit('update:modelValue', { ...props.modelValue, referenceImages: references });
+    break;
   }
-  default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = role;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 function choose({ role, event, replaceIndex }: { role: Role, event: Event, replaceIndex: number | undefined }): void {
-  if (!(event.target instanceof HTMLInputElement)) return;
-  const files = Array.from(event.target.files ?? []); event.target.value = '';
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+  const files = Array.from(event.target.files ?? []);
+  event.target.value = '';
   accept({ role, files, replaceIndex });
 }
 
@@ -106,52 +145,80 @@ function drop({ role, event }: { role: Role, event: DragEvent }): void {
 }
 
 function paste({ role, event }: { role: Role, event: ClipboardEvent }): void {
-  if (props.disabled || !props.active || !open.value || event.defaultPrevented) return;
+  if (props.disabled || !props.active || !open.value || event.defaultPrevented) {
+    return;
+  }
   // Do not turn a paste meant for a strength field or an editor into an import.
-  if (event.target instanceof Element && event.target.closest('input:not([type="file"]), textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (event.target instanceof Element && event.target.closest('input:not([type="file"]), textarea, select, [contenteditable]:not([contenteditable="false"])')) {
+    return;
+  }
   const files = pastedImageFiles({ data: event.clipboardData ?? undefined });
-  if (!files.length) return;
-  event.preventDefault(); event.stopPropagation();
-  clipboardEpoch++; clipboardBusy.value = undefined; clipboardMessage.value = undefined;
+  if (!files.length) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  clipboardEpoch++;
+  clipboardBusy.value = undefined;
+  clipboardMessage.value = undefined;
   accept({ role, files, replaceIndex: undefined });
 }
 
 async function pasteFromClipboard({ role, event }: { role: Role, event: MouseEvent }): Promise<void> {
-  if (props.disabled || !props.active || !open.value || clipboardBusy.value) return;
+  if (props.disabled || !props.active || !open.value || clipboardBusy.value) {
+    return;
+  }
   // Keep native paste usable after a failed/unavailable clipboard.read call.
   const region = event.currentTarget instanceof Element ? event.currentTarget.closest<HTMLElement>('[data-image-paste-region]') : undefined;
   region?.focus({ preventScroll: true });
-  clipboardMessage.value = undefined; invalid.value = undefined;
+  clipboardMessage.value = undefined;
+  invalid.value = undefined;
   const clipboard = navigator.clipboard;
   if (!clipboard?.read) {
-    clipboardMessage.value = { role, type: 'unavailable' }; return;
+    clipboardMessage.value = { role, type: 'unavailable' };
+    return;
   }
   const token = ++clipboardEpoch;
   clipboardBusy.value = role;
   try {
     const files = await readClipboardImageFiles({ clipboard });
-    if (token !== clipboardEpoch) return;
-    if (!files.length) clipboardMessage.value = { role, type: 'empty' };
-    else accept({ role, files, replaceIndex: undefined });
+    if (token !== clipboardEpoch) {
+      return;
+    }
+    if (!files.length) {
+      clipboardMessage.value = { role, type: 'empty' };
+    } else {
+      accept({ role, files, replaceIndex: undefined });
+    }
   } catch {
-    if (token === clipboardEpoch) clipboardMessage.value = { role, type: 'failed' };
+    if (token === clipboardEpoch) {
+      clipboardMessage.value = { role, type: 'failed' };
+    }
   } finally {
-    if (token === clipboardEpoch) clipboardBusy.value = undefined;
+    if (token === clipboardEpoch) {
+      clipboardBusy.value = undefined;
+    }
   }
 }
 
 function dragLeave({ event }: { event: DragEvent }): void {
-  if (event.currentTarget instanceof Node && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+  if (event.currentTarget instanceof Node && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
+    return;
+  }
   dragging.value = undefined;
 }
 
 function strength({ event }: { event: Event }): void {
-  if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
+  if (props.disabled || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   emit('update:modelValue', { ...props.modelValue, strength: event.target.valueAsNumber });
 }
 
 function remove({ role, index }: { role: Role, index: number }): void {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   invalid.value = undefined;
   switch (role) {
   case 'initial': {
@@ -159,23 +226,35 @@ function remove({ role, index }: { role: Role, index: number }): void {
     // Removing the image hides its strength control. Preserve valid preferences,
     // but do not let a hidden invalid draft prevent later text-only generation.
     const retainedStrength = Number.isFinite(strength) && strength >= 0 && strength <= 1 ? strength : emptyImageInputs().strength;
-    emit('update:modelValue', { ...props.modelValue, initImage: undefined, strength: retainedStrength }); break;
+    emit('update:modelValue', { ...props.modelValue, initImage: undefined, strength: retainedStrength });
+    break;
   }
-  case 'reference': emit('update:modelValue', { ...props.modelValue, referenceImages: props.modelValue.referenceImages.filter((_file, position) => position !== index) }); break;
-  default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
+  case 'reference': emit('update:modelValue', { ...props.modelValue, referenceImages: props.modelValue.referenceImages.filter((_file, position) => position !== index) });
+    break;
+  default: {
+    const exhaustive: never = role;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 
 function move({ index, offset }: { index: number, offset: number }): void {
-  if (props.disabled) return;
+  if (props.disabled) {
+    return;
+  }
   const references = [...props.modelValue.referenceImages], target = index + offset, file = references[index];
-  if (!file || target < 0 || target >= references.length) return;
-  references.splice(index, 1); references.splice(target, 0, file);
+  if (!file || target < 0 || target >= references.length) {
+    return;
+  }
+  references.splice(index, 1);
+  references.splice(target, 0, file);
   emit('update:modelValue', { ...props.modelValue, referenceImages: references });
 }
 
 function enlarge({ role, index }: { role: Role, index: number }): void {
-  if (props.active) viewerIndex.value = index + (role === 'reference' && props.modelValue.initImage ? 1 : 0);
+  if (props.active) {
+    viewerIndex.value = index + (role === 'reference' && props.modelValue.initImage ? 1 : 0);
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

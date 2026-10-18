@@ -25,13 +25,15 @@ it('does not delete the handle when saving removal fails', async () => {
     },
     restore,
   })).rejects.toThrow('Settings save failed');
-  expect(hostModelHandles.delete).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
+  expect(hostModelHandles.delete).not.toHaveBeenCalled();
+  expect(restore).not.toHaveBeenCalled();
 });
 
 it('restores just the removed registration when handle cleanup fails', async () => {
   const order: string[] = [];
   vi.mocked(hostModelHandles.delete).mockImplementation(async () => {
-    order.push('delete'); throw new Error('IDB unavailable');
+    order.push('delete');
+    throw new Error('IDB unavailable');
   });
   await expect(unregisterHostModelDirectory({
     id,

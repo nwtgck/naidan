@@ -25,7 +25,9 @@ export class Semaphore {
   release(): void {
     if (this.queue.length > 0) {
       const next = this.queue.shift();
-      if (next) next();
+      if (next) {
+        next();
+      }
     } else {
       this.activeCount--;
     }

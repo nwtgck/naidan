@@ -17,31 +17,42 @@ export async function readLoadedModelDescriptor({ core, model }: { core: Pick<Co
   for (const key of Object.keys(fields) as (keyof typeof fields)[]) {
     try {
       const value = await fields[key]();
-      if (Number.isSafeInteger(value) && value >= 0) descriptor[key] = value;
+      if (Number.isSafeInteger(value) && value >= 0) {
+        descriptor[key] = value;
+      }
     } catch { /* An unavailable native getter is not a zero value. */ }
   }
   const wideFields = { parameterCount: () => core.api.llama_model_n_params(model), tensorBytes: () => core.api.llama_model_size(model) };
   for (const key of Object.keys(wideFields) as (keyof typeof wideFields)[]) {
     try {
       const value = await wideFields[key]();
-      if (typeof value === 'bigint' && value >= 0n && value <= 18446744073709551615n) descriptor[key] = value.toString();
+      if (typeof value === 'bigint' && value >= 0n && value <= 18446744073709551615n) {
+        descriptor[key] = value.toString();
+      }
     } catch { /* Keep other successfully observed fields. */ }
   }
-  let name: bigint | undefined; let buffer: bigint | undefined;
+  let name: bigint | undefined;
+  let buffer: bigint | undefined;
   try {
     name = core.utf8({ text: 'general.architecture' });
     buffer = core.alloc({ bytes: 65 });
     const length = await core.api.llama_model_meta_val_str(model, name, buffer, 65n);
     if (Number.isSafeInteger(length) && length > 0 && length <= 64) {
       const value = new TextDecoder('utf-8', { fatal: true }).decode(core.bytes({ pointer: buffer, length }));
-      if (loadedModelDescriptorSchema.shape.architecture.safeParse(value).success) descriptor.architecture = value;
+      if (loadedModelDescriptorSchema.shape.architecture.safeParse(value).success) {
+        descriptor.architecture = value;
+      }
     }
   } catch { /* Metadata may be unavailable or exceed the fixed buffer. */ } finally {
     try {
-      if (buffer !== undefined) core.free({ pointer: buffer });
+      if (buffer !== undefined) {
+        core.free({ pointer: buffer });
+      }
     } catch { /* Attempt both releases without failing inference. */ }
     try {
-      if (name !== undefined) core.free({ pointer: name });
+      if (name !== undefined) {
+        core.free({ pointer: name });
+      }
     } catch { /* Diagnostic cleanup is best effort. */ }
   }
   return loadedModelDescriptorSchema.parse(descriptor);

@@ -24,7 +24,8 @@ function fresh(): AssistantMessageNode {
 }
 
 async function run({ events }: { events: InferenceGenerationEvent[] }) {
-  const node = fresh(); const controller = new AbortController();
+  const node = fresh();
+  const controller = new AbortController();
   const result = await consumeChatGeneration({
     onToolCallDraftsChange: undefined,
     node,
@@ -33,7 +34,9 @@ async function run({ events }: { events: InferenceGenerationEvent[] }) {
     items: createInferenceGeneration({
       signal: controller.signal,
       generate: async ({ onEvent }) => {
-        for (const event of events) await onEvent({ event });
+        for (const event of events) {
+          await onEvent({ event });
+        }
       },
     }),
   });
@@ -64,7 +67,8 @@ describe('native events to local nested parts', () => {
         { type: 'part_start', index: 1, kind: 'text' }, { type: 'text_delta', index: 1, text: '途中' }, { type: 'part_end', index: 1, completeness: 'partial' }, interrupted,
       ],
     });
-    expect(result.type).toBe('interrupted'); expect(node.parts).toMatchObject([{ completeness: 'complete' }, { text: '途中', completeness: 'partial' }]);
+    expect(result.type).toBe('interrupted');
+    expect(node.parts).toMatchObject([{ completeness: 'complete' }, { text: '途中', completeness: 'partial' }]);
   });
 
   it('reserves drafts without publishing them and does not lose a later completed call', async () => {
@@ -74,7 +78,8 @@ describe('native events to local nested parts', () => {
         { type: 'tool_call', index: 1, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"a": 1} ' } } }, interrupted,
       ],
     });
-    expect(node.parts).toHaveLength(1); expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: ' {"a": 1} ' } } });
+    expect(node.parts).toHaveLength(1);
+    expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: { function: { arguments: ' {"a": 1} ' } } });
   });
 
   it.each([
@@ -89,12 +94,16 @@ describe('native events to local nested parts', () => {
     [{ type: 'part_start', index: 0, kind: 'text' }, { type: 'part_end', index: 0, completeness: 'partial' }, done],
     [],
   ] satisfies InferenceGenerationEvent[][])('reports malformed native ordering without inventing a success: %j', async (...events) => {
-    const { result } = await run({ events }); expect(result.type).toBe('error');
+    const { result } = await run({ events });
+    expect(result.type).toBe('error');
   });
 
   it('waits for the underlying generation settlement after its result event', async () => {
-    const release = Promise.withResolvers<void>(); const emitted = Promise.withResolvers<void>(); const node = fresh();
-    const controller = new AbortController(); let settled = false;
+    const release = Promise.withResolvers<void>();
+    const emitted = Promise.withResolvers<void>();
+    const node = fresh();
+    const controller = new AbortController();
+    let settled = false;
     const pending = consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node,
@@ -103,17 +112,24 @@ describe('native events to local nested parts', () => {
       items: createInferenceGeneration({
         signal: controller.signal,
         generate: async ({ onEvent }) => {
-          await onEvent({ event: done }); emitted.resolve(); await release.promise;
+          await onEvent({ event: done });
+          emitted.resolve();
+          await release.promise;
         },
       }),
     }).then(result => {
-      settled = true; return result;
+      settled = true;
+      return result;
     });
-    await emitted.promise; expect(settled).toBe(false); release.resolve(); expect((await pending).type).toBe('finished');
+    await emitted.promise;
+    expect(settled).toBe(false);
+    release.resolve();
+    expect((await pending).type).toBe('finished');
   });
 
   it('retains an RPC failure even after a native completion', async () => {
-    const error = new Error('delivery failed'); const node = fresh();
+    const error = new Error('delivery failed');
+    const node = fresh();
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node,
@@ -125,15 +141,19 @@ describe('native events to local nested parts', () => {
           await onEvent({ event: { type: 'part_start', kind: 'text', index: 0 } });
           await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } });
           await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
-          await onEvent({ event: done }); throw error;
+          await onEvent({ event: done });
+          throw error;
         },
       }),
     });
-    expect(result).toEqual({ type: 'error', error }); expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'complete' });
+    expect(result).toEqual({ type: 'error', error });
+    expect(node.parts[0]).toMatchObject({ text: 'A', completeness: 'complete' });
   });
 
   it('drains accepted output when a real stop signal reaches the source', async () => {
-    const controller = new AbortController(); const entered = Promise.withResolvers<void>(); const node = fresh();
+    const controller = new AbortController();
+    const entered = Promise.withResolvers<void>();
+    const node = fresh();
     const pending = consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node,
@@ -145,19 +165,23 @@ describe('native events to local nested parts', () => {
           await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
           await onEvent({ event: { type: 'text_delta', index: 0, text: 'A' } });
           const stopped = new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
-          entered.resolve(); await stopped;
+          entered.resolve();
+          await stopped;
           await onEvent({ event: { type: 'text_delta', index: 0, text: 'B' } });
           await onEvent({ event: { type: 'part_end', index: 0, completeness: 'partial' } });
           await onEvent({ event: interrupted });
         },
       }),
     });
-    await entered.promise; controller.abort(); await pending;
+    await entered.promise;
+    controller.abort();
+    await pending;
     expect(node.parts[0]).toMatchObject({ text: 'AB', completeness: 'partial' });
   });
 
   it('ignores callbacks after their generation returned', async () => {
-    let escaped: InferenceGenerationCallback | undefined; const node = fresh();
+    let escaped: InferenceGenerationCallback | undefined;
+    const node = fresh();
     await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node,
@@ -166,15 +190,18 @@ describe('native events to local nested parts', () => {
       items: createInferenceGeneration({
         signal: undefined,
         generate: async ({ onEvent }) => {
-          escaped = onEvent; await onEvent({ event: done });
+          escaped = onEvent;
+          await onEvent({ event: done });
         },
       }),
     });
-    await escaped!({ event: { type: 'part_start', index: 0, kind: 'text' } }); expect(node.parts).toEqual([]);
+    await escaped!({ event: { type: 'part_start', index: 0, kind: 'text' } });
+    expect(node.parts).toEqual([]);
   });
 
   it('connects the native Harmony decoder through bounded delivery to common parts', async () => {
-    const node = fresh(); const failure = vi.fn();
+    const node = fresh();
+    const failure = vi.fn();
     const result = await consumeChatGeneration({
       onToolCallDraftsChange: undefined,
       node,
@@ -185,13 +212,25 @@ describe('native events to local nested parts', () => {
         generate: async ({ onEvent }) => {
           const delivery = createInferenceEventDelivery({ onEvent, onFailure: failure });
           const native = createGptOssGeneration({ emit: ({ event }) => delivery.enqueue({ event }) });
-          native.control({ token: '<|channel|>' }); native.text({ text: 'analysis' }); native.control({ token: '<|message|>' }); native.text({ text: ' R\n' }); native.control({ token: '<|end|>' });
-          native.control({ token: '<|start|>' }); native.text({ text: 'assistant to=functions.f' }); native.control({ token: '<|channel|>' }); native.text({ text: 'commentary' }); native.control({ token: '<|message|>' }); native.text({ text: ' {"a": 1} ' }); native.control({ token: '<|call|>' }); native.finish({ reason: 'unknown' });
+          native.control({ token: '<|channel|>' });
+          native.text({ text: 'analysis' });
+          native.control({ token: '<|message|>' });
+          native.text({ text: ' R\n' });
+          native.control({ token: '<|end|>' });
+          native.control({ token: '<|start|>' });
+          native.text({ text: 'assistant to=functions.f' });
+          native.control({ token: '<|channel|>' });
+          native.text({ text: 'commentary' });
+          native.control({ token: '<|message|>' });
+          native.text({ text: ' {"a": 1} ' });
+          native.control({ token: '<|call|>' });
+          native.finish({ reason: 'unknown' });
           await delivery.finish();
         },
       }),
     });
-    expect(result).toEqual({ type: 'finished', next: 'tool_results' }); expect(failure).not.toHaveBeenCalled();
+    expect(result).toEqual({ type: 'finished', next: 'tool_results' });
+    expect(failure).not.toHaveBeenCalled();
     expect(node.parts).toMatchObject([{ type: 'reasoning', text: ' R\n', completeness: 'complete' }, { type: 'tool_call', toolCall: { function: { name: 'f', arguments: ' {"a": 1} ' } } }]);
   });
 });

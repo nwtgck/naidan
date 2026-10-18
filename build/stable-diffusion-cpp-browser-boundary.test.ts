@@ -20,8 +20,12 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
   const fixture: Plugin = {
     name: 'image-ui-boundary-fixture',
     resolveId(id) {
-      if (id.startsWith('virtual:file-protocol-standalone/worker/')) return '\0' + id;
-      if (id === 'virtual:image-view' || id === 'virtual:image-strings' || id.startsWith('virtual:llama-cpp-browser-core/')) return '\0' + id;
+      if (id.startsWith('virtual:file-protocol-standalone/worker/')) {
+        return '\0' + id;
+      }
+      if (id === 'virtual:image-view' || id === 'virtual:image-strings' || id.startsWith('virtual:llama-cpp-browser-core/')) {
+        return '\0' + id;
+      }
       return undefined;
     },
     load(id) {
@@ -31,12 +35,19 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
       // The reviewed native resolver is independently tested in build-core.test.
       // Worker bootstrap is isolated here; dedicated worker-entry tests bundle
       // the JS storage/query implementation without an inference engine.
-      if (id.startsWith('\0virtual:file-protocol-standalone/worker/')) return 'export async function createStandaloneWorker(){throw new Error("Worker bootstrap is not run by this fixture");}';
-      if (id.startsWith('\0virtual:llama-cpp-browser-core/')) return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
-      if (id === '\0virtual:image-view') return entrySource ?? "export { default } from '@/features/image-generation/components/ImageGenerationLab.vue';";
+      if (id.startsWith('\0virtual:file-protocol-standalone/worker/')) {
+        return 'export async function createStandaloneWorker(){throw new Error("Worker bootstrap is not run by this fixture");}';
+      }
+      if (id.startsWith('\0virtual:llama-cpp-browser-core/')) {
+        return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
+      }
+      if (id === '\0virtual:image-view') {
+        return entrySource ?? "export { default } from '@/features/image-generation/components/ImageGenerationLab.vue';";
+      }
       // The dedicated realStrings cases below cover locale packaging. This
       // build-only fixture also supplies settings' locale lifecycle imports.
-      if (id === '\0virtual:image-strings') return `\
+      if (id === '\0virtual:image-strings') {
+        return `\
 export const lazyStrings = new Proxy({}, { get(_target, key) { return () => String(key); } });
 export const ensureStrings = lazyStrings;
 export const currentLocale = { value: "en" };
@@ -44,10 +55,13 @@ export async function prepareLocale() {}
 export async function setLocale() {}
 export const resolveBrowserLocale = () => 'en';
 `;
+      }
       return undefined;
     },
     buildStart() {
-      if (injectImageAsset) this.emitFile({ type: 'asset', fileName: 'stable-diffusion-cpp-runtime/unexpected/core.wasm', source: new Uint8Array([0, 97, 115, 109]) });
+      if (injectImageAsset) {
+        this.emitFile({ type: 'asset', fileName: 'stable-diffusion-cpp-runtime/unexpected/core.wasm', source: new Uint8Array([0, 97, 115, 109]) });
+      }
     },
   };
   const result = await build({
@@ -75,7 +89,11 @@ export const resolveBrowserLocale = () => 'en';
       plugins: () => [fixture, {
         name: 'image-worker-boundary-trace',
         generateBundle(_options, bundle) {
-          for (const file of Object.values(bundle)) if (file.type === 'chunk') workerModules.push(...Object.keys(file.modules));
+          for (const file of Object.values(bundle)) {
+            if (file.type === 'chunk') {
+              workerModules.push(...Object.keys(file.modules));
+            }
+          }
         },
       }],
     },
@@ -88,7 +106,9 @@ export const resolveBrowserLocale = () => 'en';
     },
   });
   const outputs = (Array.isArray(result) ? result : [result]).flatMap(item => {
-    if (!('output' in item)) throw new Error('Unexpected watcher');
+    if (!('output' in item)) {
+      throw new Error('Unexpected watcher');
+    }
     return item.output;
   });
   return { files: Object.fromEntries(outputs.map(file => [file.fileName, file])), workerModules };
@@ -104,8 +124,12 @@ describe('hosted-only bicore image boundary', () => {
     const local = [...new Set(modules.filter(id => id.includes('/' + feature)).map(id => id.slice(id.indexOf(feature) + feature.length).split('?')[0]))].sort();
     expect(local).toContain('library-standalone.ts');
     expect(local).toContain('types.ts');
-    for (const id of local) expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, id) })).not.toThrow();
-    for (const forbidden of ['capabilities.ts', 'use-image-library.ts', 'inventory-worker/client.ts', 'inference/engine.ts', 'worker/client-hosted.ts']) expect(local).not.toContain(forbidden);
+    for (const id of local) {
+      expect(() => assertStandaloneImageModule({ rootDir: root, id: path.resolve(root, feature, id) })).not.toThrow();
+    }
+    for (const forbidden of ['capabilities.ts', 'use-image-library.ts', 'inventory-worker/client.ts', 'inference/engine.ts', 'worker/client-hosted.ts']) {
+      expect(local).not.toContain(forbidden);
+    }
     expect(modules.some(id => id.endsWith('/providers/local-environment-standalone.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/components/ImageGenerationWorkspace.vue'))).toBe(true);
     expect(workerModules).toEqual([]);
@@ -127,12 +151,16 @@ describe('hosted-only bicore image boundary', () => {
     const { files, workerModules } = await bundleView({ mode: 'hosted', entrySource: undefined, injectImageAsset: false });
     const modules = Object.values(files).flatMap(file => file.type === 'chunk' ? Object.keys(file.modules) : []);
     expect(modules.some(id => id.endsWith('/use-image-generation-hosted.ts'))).toBe(true);
-    for (const name of ['use-image-benchmark-hosted.ts', 'benchmark/runner.ts', 'benchmark/archive.ts']) expect(modules.some(id => id.endsWith('/' + name)), name).toBe(true);
+    for (const name of ['use-image-benchmark-hosted.ts', 'benchmark/runner.ts', 'benchmark/archive.ts']) {
+      expect(modules.some(id => id.endsWith('/' + name)), name).toBe(true);
+    }
     expect(modules.some(id => id.includes('/node_modules/jszip/'))).toBe(false);
     expect(modules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
     expect(modules.some(id => id.endsWith('/download-worker/client.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/inventory-worker/client.ts'))).toBe(true);
-    for (const name of ['entry.ts', 'impl.ts']) expect(workerModules.some(id => id.endsWith('/inventory-worker/' + name))).toBe(true);
+    for (const name of ['entry.ts', 'impl.ts']) {
+      expect(workerModules.some(id => id.endsWith('/inventory-worker/' + name))).toBe(true);
+    }
     expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/privacy-fetch/broker-client.ts'))).toBe(false);

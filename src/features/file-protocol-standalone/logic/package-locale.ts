@@ -14,7 +14,9 @@ function parsePackageLocale({ value }: {
 }): UiLocale {
   if (value !== null) {
     const locale = parseUiLocale({ value });
-    if (locale !== undefined) return locale;
+    if (locale !== undefined) {
+      return locale;
+    }
   }
   throw new Error(`Unsupported standalone package locale: ${String(value)}`);
 }
@@ -22,10 +24,14 @@ function parsePackageLocale({ value }: {
 function resolveStandalonePackageLocaleFromDocument({ documentValue }: {
   documentValue: Document | undefined;
 }): UiLocale | undefined {
-  if (documentValue === undefined) return undefined;
+  if (documentValue === undefined) {
+    return undefined;
+  }
 
   const metas = documentValue.querySelectorAll(`meta[name=${JSON.stringify(STANDALONE_PACKAGE_LOCALE_META_NAME)}]`);
-  if (metas.length === 0) return undefined;
+  if (metas.length === 0) {
+    return undefined;
+  }
   if (metas.length !== 1) {
     throw new Error(`Expected at most one standalone package locale metadata element, found ${metas.length}`);
   }
@@ -35,7 +41,9 @@ function resolveStandalonePackageLocaleFromDocument({ documentValue }: {
 function resolveStandalonePackageLocaleFromWorkerGlobal({ value }: {
   value: unknown;
 }): UiLocale | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
   if (typeof value !== 'string') {
     throw new Error(`Unsupported standalone package locale: ${String(value)}`);
   }
@@ -46,7 +54,9 @@ export function resolveStandalonePackageLocale(): UiLocale | undefined {
   const documentLocale = resolveStandalonePackageLocaleFromDocument({
     documentValue: typeof document === 'undefined' ? undefined : document,
   });
-  if (documentLocale !== undefined) return documentLocale;
+  if (documentLocale !== undefined) {
+    return documentLocale;
+  }
 
   return resolveStandalonePackageLocaleFromWorkerGlobal({
     value: Reflect.get(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME) as unknown,

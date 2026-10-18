@@ -431,10 +431,14 @@ printf next`;
       sourceCompletion: 'complete',
     });
     expect(parsed.kind).toBe('parsed');
-    if (parsed.kind !== 'parsed') return;
+    if (parsed.kind !== 'parsed') {
+      return;
+    }
     expect(parsed.consumedCharacters).toBe(commandLine.indexOf('printf next'));
     expect(parsed.node.kind).toBe('command');
-    if (parsed.node.kind !== 'command') return;
+    if (parsed.node.kind !== 'command') {
+      return;
+    }
     expect(parsed.node.redirections).toEqual([
       { fd: 0, type: 'heredoc', target: 'A', contentExpansion: 'variables', content: 'first\n' },
       { fd: 0, type: 'heredoc', target: 'B', contentExpansion: 'variables', content: 'second\n' },
@@ -453,13 +457,17 @@ B`,
       env: new Map(),
     });
     expect(parsed.kind).toBe('list');
-    if (parsed.kind !== 'list') return;
+    if (parsed.kind !== 'list') {
+      return;
+    }
     expect(parsed.parts).toHaveLength(2);
     const first = parsed.parts[0]?.node;
     const second = parsed.parts[1]?.node;
     expect(first?.kind).toBe('command');
     expect(second?.kind).toBe('command');
-    if (first?.kind !== 'command' || second?.kind !== 'command') return;
+    if (first?.kind !== 'command' || second?.kind !== 'command') {
+      return;
+    }
     expect(first.redirections[0]?.content).toBe('first\n');
     expect(second.redirections[0]?.content).toBe('$FOO\n');
   });

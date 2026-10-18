@@ -15,11 +15,17 @@ async function snapshotFiles({ directory }: { directory: MockFileSystemDirectory
   const files = new Map<string, Uint8Array>();
   for await (const entry of directory.values()) {
     switch (entry.kind) {
-    case 'file': files.set(entry.name, entry.content.slice()); break;
-    case 'directory':
-      for (const [name, bytes] of await snapshotFiles({ directory: entry })) files.set(`${entry.name}/${name}`, bytes);
+    case 'file': files.set(entry.name, entry.content.slice());
       break;
-    default: { const exhaustive: never = entry; throw new Error(`Unexpected entry: ${exhaustive}`); }
+    case 'directory':
+      for (const [name, bytes] of await snapshotFiles({ directory: entry })) {
+        files.set(`${entry.name}/${name}`, bytes);
+      }
+      break;
+    default: {
+      const exhaustive: never = entry;
+      throw new Error(`Unexpected entry: ${exhaustive}`);
+    }
     }
   }
   return files;
@@ -98,7 +104,8 @@ describe('OPFS export index read failures', () => {
       configurable: true,
       value: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
         pull() {
-          entered.resolve(); return new Promise<void>(() => undefined);
+          entered.resolve();
+          return new Promise<void>(() => undefined);
         },
         cancel: cancelled,
       }, { highWaterMark: 0 }),
@@ -135,13 +142,18 @@ describe('OPFS export index read failures', () => {
     'rejects dump after earlier chat and shard output when an existing index is %s', async failure => {
       const { root, provider, brokenIndex } = await createFixture();
       switch (failure) {
-      case 'invalid-json': brokenIndex.content = new TextEncoder().encode('{"objects":'); break;
-      case 'invalid-schema': brokenIndex.content = new TextEncoder().encode('{"objects":[]}'); break;
+      case 'invalid-json': brokenIndex.content = new TextEncoder().encode('{"objects":');
+        break;
+      case 'invalid-schema': brokenIndex.content = new TextEncoder().encode('{"objects":[]}');
+        break;
       case 'unreadable-handle':
         // NotFound after acquiring the handle is a read failure, not an absent index.
         vi.spyOn(brokenIndex, 'getFile').mockRejectedValue(new DOMException('Index handle became unreadable', 'NotFoundError'));
         break;
-      default: { const exhaustive: never = failure; throw new Error(`Unexpected failure: ${exhaustive}`); }
+      default: {
+        const exhaustive: never = failure;
+        throw new Error(`Unexpected failure: ${exhaustive}`);
+      }
       }
       const before = await snapshotFiles({ directory: root });
       const { contentStream } = await provider.dump();
@@ -159,7 +171,9 @@ describe('OPFS export index read failures', () => {
     const before = await snapshotFiles({ directory: root });
     const { contentStream } = await provider.dump();
     const chunks = [];
-    for await (const chunk of contentStream) chunks.push(chunk);
+    for await (const chunk of contentStream) {
+      chunks.push(chunk);
+    }
     expect(chunks.map(chunk => chunk.type === 'chat' ? chunk.data.id : chunk.id)).toEqual(['saved-chat', 'binary-aa', 'binary-cc']);
     expect(await snapshotFiles({ directory: root })).toEqual(before);
   });
@@ -177,7 +191,9 @@ describe('OPFS export index read failures', () => {
       const consume = async () => {
         while (true) {
           const item = await reader.read();
-          if (item.done) return;
+          if (item.done) {
+            return;
+          }
           chunks.push(Uint8Array.from(item.value));
         }
       };

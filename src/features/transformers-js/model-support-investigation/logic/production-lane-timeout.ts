@@ -47,7 +47,9 @@ export async function withProductionLaneTimeout<T>({
   try {
     return await Promise.race([operation, timeout]);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 

@@ -10,15 +10,22 @@ const progress = computed(() => importProgress.value?.total ? { ...importProgres
 const input = ref<HTMLInputElement>(), dragDepth = ref(0), id = useId();
 
 function enter({ event }: { event: DragEvent }): void {
-  if (!props.disabled && !importing.value && !downloading.value && event.dataTransfer?.types.includes('Files')) dragDepth.value++;
+  if (!props.disabled && !importing.value && !downloading.value && event.dataTransfer?.types.includes('Files')) {
+    dragDepth.value++;
+  }
 }
 
 function over({ event }: { event: DragEvent }): void {
-  if (event.dataTransfer) event.dataTransfer.dropEffect = props.disabled || importing.value || downloading.value ? 'none' : 'copy';
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = props.disabled || importing.value || downloading.value ? 'none' : 'copy';
+  }
 }
 
 async function drop({ event }: { event: DragEvent }): Promise<void> {
-  dragDepth.value = 0; if (!props.disabled && !importing.value && !downloading.value) await props.view.dropDirectory({ event });
+  dragDepth.value = 0;
+  if (!props.disabled && !importing.value && !downloading.value) {
+    await props.view.dropDirectory({ event });
+  }
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

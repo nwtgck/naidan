@@ -152,8 +152,9 @@ export class NaidanPipingKeyContext {
   }
 
   private internalCheckLive(): void {
-    if (!this.internalRoot)
+    if (!this.internalRoot) {
       throw new Error('Key context disposed');
+    }
   }
 
   createDomain({ label, context }: {
@@ -167,8 +168,9 @@ export class NaidanPipingKeyContext {
     const id = Array.from(domain, byte => byte.toString(16).padStart(2, '0')).join('');
     requireValue({ condition: !this.internalDomains.has(id) && this.internalDomains.size < 64, message: 'Domain consumed/capacity' });
     this.internalDomains.add(id);
-    if (!this.internalRoot)
+    if (!this.internalRoot) {
       throw new Error('Key context disposed');
+    }
     return new NaidanPipingKeyDomain({ root: this.internalRoot, context: this.internalId.slice(), domain, live: () => this.internalCheckLive() });
   }
 
@@ -186,7 +188,8 @@ export type PinnedContactStatus = {
 };
 
 function contactStatus({ binding, heldContext, publicData }: { binding: Uint8Array; heldContext: Uint8Array | undefined; publicData: Uint8Array }): Uint8Array {
-  const size = new Uint8Array(2); new DataView(size.buffer).setUint16(0, publicData.length);
+  const size = new Uint8Array(2);
+  new DataView(size.buffer).setUint16(0, publicData.length);
   return joinBytes({ parts: [new Uint8Array([8, 1]), binding, new Uint8Array([heldContext ? 1 : 0]), ...(heldContext ? [heldContext] : []), size, publicData] });
 }
 
@@ -250,16 +253,21 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
         const bytes = await state.exchange({ operation: 'write', bytes: new Uint8Array() });
         signal.throwIfAborted();
         // Prepared bytes exist before the registration-relative clock begins.
-        if (flight < 2) noiseWindow = responses.arm({ stage: flight === 0 ? 'noise-2' : 'noise-3' });
+        if (flight < 2) {
+          noiseWindow = responses.arm({ stage: flight === 0 ? 'noise-2' : 'noise-3' });
+        }
         await channel.send({ bytes, signal });
-        if (noiseWindow !== undefined) requireValue({ condition: responses.check({ window: noiseWindow }), message: 'Stale Noise registration' });
+        if (noiseWindow !== undefined) {
+          requireValue({ condition: responses.check({ window: noiseWindow }), message: 'Stale Noise registration' });
+        }
       } else {
         const payload = await state.exchange({ operation: 'read', bytes: await channel.receive({ signal }) });
         requireValue({ condition: payload.length === 0, message: 'Unexpected handshake payload' });
         // Authenticate a received static identity before sending the next flight.
         const peer = state.peerIdentity;
-        if (peer && pin)
+        if (peer && pin) {
           requireValue({ condition: equalBytes({ left: pin, right: peer }), message: 'Peer identity mismatch' });
+        }
         if (noiseWindow !== undefined) {
           requireValue({ condition: responses.accept({ window: noiseWindow }), message: 'Stale Noise response' });
           noiseWindow = undefined;
@@ -269,7 +277,9 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const established = await state.split();
     noise = established;
     signal.throwIfAborted();
-    if (pin) requireValue({ condition: equalBytes({ left: pin, right: established.peerIdentity }), message: 'Peer identity mismatch' });
+    if (pin) {
+      requireValue({ condition: equalBytes({ left: pin, right: established.peerIdentity }), message: 'Peer identity mismatch' });
+    }
     const staticI = isInitiator({ role: role }) ? local.publicKey : established.peerIdentity;
     const staticR = !isInitiator({ role: role }) ? local.publicKey : established.peerIdentity;
     const sessionBinding = await digest({ bytes: fields({ parts: [ascii({ text: 'peer-key-binding/v1' }), established.binding, staticI, staticR] }) });
@@ -291,21 +301,27 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     const receive = async ({ human = false }: { human?: boolean } = {}) => {
       const encrypted = await channel.receive({ signal, human });
       const bytes = await established.receive.crypt({ operation: 'decrypt', bytes: encrypted, aad: new Uint8Array() });
-      if (signal.aborted) bytes.fill(0);
+      if (signal.aborted) {
+        bytes.fill(0);
+      }
       signal.throwIfAborted();
       return bytes;
     };
     // Finite POST completion requires a concurrent peer GET. Both operations
     // remain owned until settled, including when either native operation fails.
     const mutual = async <Sent>({ sending, receiving }: { sending: Promise<Sent>; receiving: Promise<Uint8Array<ArrayBuffer>> }) => {
-      void sending.catch(error => responses.fail({ error })); void receiving.catch(error => responses.fail({ error }));
+      void sending.catch(error => responses.fail({ error }));
+      void receiving.catch(error => responses.fail({ error }));
       const settled = await Promise.allSettled([sending, receiving]);
       // The first failed exchange cancels its sibling. A later cancellation
       // failure still owns resources and must not become a retryable error.
       for (const outcome of settled) {
-        if (outcome.status === 'rejected' && outcome.reason instanceof PipingRetirementError) throw outcome.reason;
+        if (outcome.status === 'rejected' && outcome.reason instanceof PipingRetirementError) {
+          throw outcome.reason;
+        }
       }
-      signal.throwIfAborted(); return promiseAllKeyed({ sent: sending, received: receiving });
+      signal.throwIfAborted();
+      return promiseAllKeyed({ sent: sending, received: receiving });
     };
     if (contact) {
       const localStatus = contactStatus({ binding: sessionBinding, heldContext, publicData });
@@ -340,7 +356,9 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       });
       requireValue({ condition: responses.accept({ window: statusWindow }), message: 'Stale trust status' });
       if (trustFlag === 0 || status[1] === 0) {
-        if (!verifyPeer) throw new Error('This connection needs an explicit peer comparison');
+        if (!verifyPeer) {
+          throw new Error('This connection needs an explicit peer comparison');
+        }
         // The full 256-bit channel binding is compared over an already authenticated external path.
         // Never truncate this to the short, public rendezvous number or reuse it across attempts.
         const verified = await verifyComparison({ verifyPeer, peerIdentity: established.peerIdentity, comparison: sessionBinding, signal });
@@ -409,9 +427,13 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     responses.fail({ error: failure.error });
   } finally {
     responses.dispose();
-    localData.fill(0); publicData.fill(0); heldContext?.fill(0); statusBinding.fill(0);
-    for (const bytes of sensitive)
+    localData.fill(0);
+    publicData.fill(0);
+    heldContext?.fill(0);
+    statusBinding.fill(0);
+    for (const bytes of sensitive) {
       bytes.fill(0);
+    }
     for (const dispose of [() => state?.dispose(), () => noise?.send.dispose(), () => noise?.receive.dispose()]) {
       try {
         dispose();
@@ -420,7 +442,9 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
       }
     }
   }
-  if (responses.retirementFailure) cleanupFailures.push(responses.retirementFailure.error);
+  if (responses.retirementFailure) {
+    cleanupFailures.push(responses.retirementFailure.error);
+  }
   if (cleanupFailures.length) {
     try {
       result?.dispose();
@@ -431,9 +455,12 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     throw new PipingRetirementError({ cause: cleanupFailures[0], logicalError: failure?.error });
   }
   if (failure) {
-    peerData.fill(0); throw failure.error;
+    peerData.fill(0);
+    throw failure.error;
   }
-  if (!result) throw new Error('Key establishment did not produce a result');
+  if (!result) {
+    throw new Error('Key establishment did not produce a result');
+  }
   return { keys: result, peerHandshakeData: peerData };
 }
 

@@ -27,20 +27,28 @@ function opfsFixture() {
     }
 
     private checkAvailable(): void {
-      if (this.state === 'removed') throw new DOMException('Removed directory', 'NotFoundError');
+      if (this.state === 'removed') {
+        throw new DOMException('Removed directory', 'NotFoundError');
+      }
     }
 
     private markRemoved(): void {
       this.state = 'removed';
-      for (const directory of this.directories.values()) directory.markRemoved();
+      for (const directory of this.directories.values()) {
+        directory.markRemoved();
+      }
     }
 
     getDirectoryHandle = vi.fn(async (name: string, options?: FileSystemGetDirectoryOptions): Promise<MockDirectory> => {
       this.checkAvailable();
-      if (this.path === 'naidan-storage' && failures.directoryLookup) throw failures.directoryLookup;
+      if (this.path === 'naidan-storage' && failures.directoryLookup) {
+        throw failures.directoryLookup;
+      }
       let directory = this.directories.get(name);
       if (!directory) {
-        if (!options?.create) throw new DOMException('Missing directory', 'NotFoundError');
+        if (!options?.create) {
+          throw new DOMException('Missing directory', 'NotFoundError');
+        }
         directory = new MockDirectory({ path: this.path ? `${this.path}/${name}` : name });
         this.directories.set(name, directory);
       }
@@ -48,29 +56,40 @@ function opfsFixture() {
     });
     getFileHandle = vi.fn(async (name: string, options?: FileSystemGetFileOptions) => {
       this.checkAvailable();
-      if (failures.lookup) throw failures.lookup;
+      if (failures.lookup) {
+        throw failures.lookup;
+      }
       let file = this.files.get(name);
       if (!file) {
-        if (!options?.create) throw new DOMException('Missing file', 'NotFoundError');
-        file = { content: '' }; this.files.set(name, file);
+        if (!options?.create) {
+          throw new DOMException('Missing file', 'NotFoundError');
+        }
+        file = { content: '' };
+        this.files.set(name, file);
       }
       const stored = file;
       return {
         getFile: async () => {
           this.checkAvailable();
-          if (failures.read) throw failures.read;
+          if (failures.read) {
+            throw failures.read;
+          }
           return { text: async () => stored.content };
         },
         createWritable: async () => {
           let pending = '';
           return {
             write: async (value: string) => {
-              if (failures.write) throw failures.write;
+              if (failures.write) {
+                throw failures.write;
+              }
               pending = value;
             },
             close: async () => {
               this.checkAvailable();
-              if (failures.close) throw failures.close;
+              if (failures.close) {
+                throw failures.close;
+              }
               stored.content = pending;
             },
             abort: aborted,
@@ -80,10 +99,16 @@ function opfsFixture() {
     });
     removeEntry = vi.fn(async (name: string, options?: FileSystemRemoveOptions) => {
       this.checkAvailable();
-      if (this.files.delete(name)) return;
+      if (this.files.delete(name)) {
+        return;
+      }
       const directory = this.directories.get(name);
-      if (!directory) throw new DOMException('Missing entry', 'NotFoundError');
-      if (!options?.recursive && (directory.files.size || directory.directories.size)) throw new DOMException('Directory is not empty', 'InvalidModificationError');
+      if (!directory) {
+        throw new DOMException('Missing entry', 'NotFoundError');
+      }
+      if (!options?.recursive && (directory.files.size || directory.directories.size)) {
+        throw new DOMException('Directory is not empty', 'InvalidModificationError');
+      }
       directory.markRemoved();
       this.directories.delete(name);
     });
@@ -140,7 +165,8 @@ it('creates the experimental directory on the first registry save', async () => 
 it('validates the declared registry version before creating its directory', async () => {
   const { provider, storage } = opfsFixture();
   await storage.removeEntry('experimental', { recursive: true });
-  const invalid = { ...registry }; Reflect.set(invalid, 'version', 2);
+  const invalid = { ...registry };
+  Reflect.set(invalid, 'version', 2);
   await expect(provider.saveNaidanRpcRegistry({ registry: invalid })).rejects.toThrow();
   expect(storage.directories.has('experimental')).toBe(false);
 });
@@ -196,38 +222,49 @@ it('does not turn access failures or failures after lookup into an empty registr
   const { provider, failures, files } = opfsFixture();
   failures.lookup = new DOMException('Denied', 'NotAllowedError');
   await expect(provider.loadNaidanRpcRegistry()).rejects.toThrow('Denied');
-  failures.lookup = undefined; files.set(filename, { content: JSON.stringify(registry) });
+  failures.lookup = undefined;
+  files.set(filename, { content: JSON.stringify(registry) });
   failures.read = new DOMException('Removed after lookup', 'NotFoundError');
   await expect(provider.loadNaidanRpcRegistry()).rejects.toThrow('Removed after lookup');
 });
 
 it('rejects corrupted content without replacing it', async () => {
-  const { provider, files } = opfsFixture(); files.set(filename, { content: '{' });
+  const { provider, files } = opfsFixture();
+  files.set(filename, { content: '{' });
   await expect(provider.loadNaidanRpcRegistry()).rejects.toThrow();
   expect(files.get(filename)?.content).toBe('{');
 });
 
 it('aborts a failed replacement and preserves the previously committed registry', async () => {
   const { provider, failures, files, aborted } = opfsFixture();
-  await provider.saveNaidanRpcRegistry({ registry }); failures.close = new Error('close failed');
+  await provider.saveNaidanRpcRegistry({ registry });
+  failures.close = new Error('close failed');
   await expect(provider.saveNaidanRpcRegistry({ registry: { ...registry, id: 'replacement-example' } })).rejects.toThrow('close failed');
-  expect(aborted).toHaveBeenCalledOnce(); expect(JSON.parse(files.get(filename)!.content)).toEqual(registry);
+  expect(aborted).toHaveBeenCalledOnce();
+  expect(JSON.parse(files.get(filename)!.content)).toEqual(registry);
 });
 
 it('removes a newly created empty file after the first save fails, allowing retry', async () => {
-  const { provider, failures, files } = opfsFixture(); failures.write = new Error('quota');
+  const { provider, failures, files } = opfsFixture();
+  failures.write = new Error('quota');
   await expect(provider.saveNaidanRpcRegistry({ registry })).rejects.toThrow('quota');
-  expect(files.has(filename)).toBe(false); expect(await provider.loadNaidanRpcRegistry()).toBeUndefined();
-  failures.write = undefined; await provider.saveNaidanRpcRegistry({ registry });
+  expect(files.has(filename)).toBe(false);
+  expect(await provider.loadNaidanRpcRegistry()).toBeUndefined();
+  failures.write = undefined;
+  await provider.saveNaidanRpcRegistry({ registry });
   expect(await provider.loadNaidanRpcRegistry()).toEqual(registry);
 });
 
 it('keeps memory registries private to a provider instance and clears them with the other data', async () => {
   const first = new MemoryStorageProvider(), other = new MemoryStorageProvider();
   await first.saveNaidanRpcRegistry({ registry });
-  const loaded = await first.loadNaidanRpcRegistry(); if (!loaded) throw new Error('Registry missing');
+  const loaded = await first.loadNaidanRpcRegistry();
+  if (!loaded) {
+    throw new Error('Registry missing');
+  }
   loaded.id = 'mutated-example';
   expect((await first.loadNaidanRpcRegistry())?.id).toBe(registry.id);
   expect(await other.loadNaidanRpcRegistry()).toBeUndefined();
-  await first.clearAll(); expect(await first.loadNaidanRpcRegistry()).toBeUndefined();
+  await first.clearAll();
+  expect(await first.loadNaidanRpcRegistry()).toBeUndefined();
 });

@@ -20,11 +20,15 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
   worker.addEventListener('error', onWorkerError);
   worker.addEventListener('messageerror', onWorkerError);
   function stop({ reason }: { reason: Error }): void {
-    if (failure) return;
+    if (failure) {
+      return;
+    }
     failure = reason;
     worker.removeEventListener('error', onWorkerError);
     worker.removeEventListener('messageerror', onWorkerError);
-    for (const receiver of active) receiver.abort({ reason });
+    for (const receiver of active) {
+      receiver.abort({ reason });
+    }
     active.clear();
     interrupted.reject(reason);
   }
@@ -37,15 +41,21 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
   };
   return {
     async prepareFileDownload({ path }: { path: string }) {
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const response = await Promise.race([
         interrupted.promise, remote.prepareFileDownload({ request: { sessionId, path } }),
       ]);
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       return fileExplorerPrepareFileDownloadResponseSchema.parse(response);
     },
     async openFileStream({ path }: { path: string }): Promise<ReadableStream<Uint8Array>> {
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const channel = new MessageChannel();
       const receiver = receive({ port: channel.port1 });
       try {
@@ -64,7 +74,9 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
       directoryPath: string,
       excludedRelativePaths: string[],
     }): FileExplorerDirectoryArchiveJob {
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const jobId = typeof globalThis.crypto?.randomUUID === 'function'
         ? globalThis.crypto.randomUUID()
         : `file-explorer-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -92,7 +104,9 @@ export function createFileExplorerStreamClient({ remote, sessionId, worker }: {
         result,
         async cancel() {
           receiver.abort({ reason: new DOMException('Directory archive cancelled', 'AbortError') });
-          if (failure) return;
+          if (failure) {
+            return;
+          }
           await Promise.race([interrupted.promise, remote.cancelDirectoryArchive({ request: { sessionId, jobId } })]);
         },
       };

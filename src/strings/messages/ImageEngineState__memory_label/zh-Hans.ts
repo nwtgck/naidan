@@ -8,6 +8,9 @@ export const ImageEngineState__memory_label = ({ measure }: { measure: "wasm" | 
   case "last-cpu-buffers": return "最近报告的 CPU 运行缓冲区";
   case "last-non-cpu-buffers": return "最近报告的非 CPU 运行缓冲区";
   case "last-unknown-buffers": return "最近报告的运行缓冲区（设备未知）";
-  default: { const exhaustive: never = measure; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = measure;
+    throw new Error(String(exhaustive));
+  }
   }
 };

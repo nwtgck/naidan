@@ -11,7 +11,9 @@ async function loadIndex({ locale }: { locale: DocsLocale }): Promise<SearchInde
   if (!pending) {
     pending = (async () => {
       const response = await fetch(searchIndexHref({ locale }));
-      if (!response.ok) throw new Error(`Docs search index returned ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Docs search index returned ${response.status}`);
+      }
       return parseSearchIndex({ value: await response.json() as unknown, locale });
     })();
     indexes.set(locale, pending);

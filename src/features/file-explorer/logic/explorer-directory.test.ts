@@ -7,7 +7,9 @@ import type { WeshDirEntry, WeshFileType } from '@/features/wesh/types';
 // ---- Helpers ----
 
 function asDir(child: ExplorerChild): Extract<ExplorerChild, { kind: 'directory' }> {
-  if (child.kind !== 'directory') throw new Error(`Expected directory child, got ${child.kind}`);
+  if (child.kind !== 'directory') {
+    throw new Error(`Expected directory child, got ${child.kind}`);
+  }
   return child;
 }
 
@@ -39,7 +41,9 @@ function makeMockVfs({
     },
     async stat({ path }: { path: string }) {
       const r = statResults[path];
-      if (!r) throw new DOMException('Not found', 'NotFoundError');
+      if (!r) {
+        throw new DOMException('Not found', 'NotFoundError');
+      }
       return { size: 0, mode: 0o755, type: r.type, mtime: 0, ino: 0, uid: 0, gid: 0 };
     },
   } as unknown as WeshVFS;

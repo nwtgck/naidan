@@ -162,13 +162,19 @@ describe('parts sharing binary references', () => {
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => ({ id: binaryObjectId, name: String(binaryObjectId), mimeType: 'application/octet-stream', size: String(binaryObjectId).length, createdAt: 1 }));
     const url = new URL(await generateChatShareURL({ chatId: content.id }));
     const data = new URLSearchParams(url.hash.slice(url.hash.indexOf('?') + 1)).get('data-zip');
-    if (!data) throw new Error('Missing ZIP data.');
+    if (!data) {
+      throw new Error('Missing ZIP data.');
+    }
     const zip = await JSZip.loadAsync(data, { base64: true });
-    for (const id of ['image', 'good', 'error', 'memory']) expect(Object.keys(zip.files).some(name => name.endsWith(`/${id}.bin`))).toBe(true);
+    for (const id of ['image', 'good', 'error', 'memory']) {
+      expect(Object.keys(zip.files).some(name => name.endsWith(`/${id}.bin`))).toBe(true);
+    }
     expect(vi.mocked(storageService.getFile).mock.calls.map(([arg]) => String(arg.binaryObjectId)).sort()).toEqual(['error', 'good', 'image']);
     const jsonPath = Object.keys(zip.files).find(name => name.endsWith('/chat-contents/share.json'))!;
     const serialized = await zip.file(jsonPath)!.async('string');
-    expect(serialized).toContain('reasoning'); expect(serialized).toContain('cancelled'); expect(serialized).toContain('partial');
+    expect(serialized).toContain('reasoning');
+    expect(serialized).toContain('cancelled');
+    expect(serialized).toContain('partial');
     expect(content.root.items[0]!.parts[1]).toMatchObject({ text: imageText });
   });
 });

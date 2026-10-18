@@ -107,7 +107,9 @@ let diagnosticLoadOrdinal = 0;
 let postLoadDiagnostic: (({ message }: { message: LoadDiagnosticMessage }) => unknown) | undefined;
 
 function beginGenerationCapture({ request }: { request: GenerationCaptureRequest | undefined }): GenerationCaptureCall | undefined {
-  if (request === undefined) return undefined;
+  if (request === undefined) {
+    return undefined;
+  }
   let call: GenerationCaptureCall | undefined;
   recordGenerationCapture({
     record: () => {
@@ -243,7 +245,9 @@ async function withDownloadedModelAccessMode<T>({
   let busyObserved = false;
   let active = true;
   function assertNotBusy() {
-    if (busyObserved && firstLookupFailure !== undefined) throw firstLookupFailure.error;
+    if (busyObserved && firstLookupFailure !== undefined) {
+      throw firstLookupFailure.error;
+    }
   }
   const guardedCache: ReturnType<typeof createOpfsModelCache> = {
     ...modelCache,
@@ -255,7 +259,9 @@ async function withDownloadedModelAccessMode<T>({
       } catch (error) {
         if (active && !((error instanceof Error || error instanceof DOMException) && error.name === 'NotFoundError')) {
           firstLookupFailure ??= { error };
-          if (error instanceof OpfsResourceBusyError) busyObserved = true;
+          if (error instanceof OpfsResourceBusyError) {
+            busyObserved = true;
+          }
         }
         assertNotBusy();
         throw error;
@@ -279,7 +285,9 @@ async function withDownloadedModelAccessMode<T>({
   } catch (error) {
     // A cleanup timeout requires physical Worker retirement and remains the
     // controlling failure even when it follows an earlier cache conflict.
-    if (error instanceof RequiredDownloadedResourceCleanupError) throw error;
+    if (error instanceof RequiredDownloadedResourceCleanupError) {
+      throw error;
+    }
     assertNotBusy();
     throw error;
   } finally {
@@ -292,7 +300,9 @@ async function withDownloadedModelAccessMode<T>({
 }
 
 function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
-  if (__BUILD_MODE_IS_TEST__) return;
+  if (__BUILD_MODE_IS_TEST__) {
+    return;
+  }
   console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
     at: new Date().toISOString(),
     ...details,
@@ -317,8 +327,11 @@ function clearLoadedRuntimeState({ loadIdentityOperation }: {
   // Diagnostic invalidation never decides whether the actual runtime clears.
   recordGenerationCapture({
     record: () => {
-      if (loadIdentityOperation === undefined) productionLoadIdentity.clear();
-      else loadIdentityOperation.clear();
+      if (loadIdentityOperation === undefined) {
+        productionLoadIdentity.clear();
+      } else {
+        loadIdentityOperation.clear();
+      }
     },
   });
   model = null;
@@ -475,7 +488,9 @@ async function planProductionRuntimeCandidates({ cleanModelId, revision, candida
       repositoryPath: path,
       workerLocationUrl: self.location.href,
     }));
-    if (response === undefined) return false;
+    if (response === undefined) {
+      return false;
+    }
     await response.body?.cancel();
     return true;
   };
@@ -560,7 +575,10 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
   switch (parsed.kind) {
   case 'pinned': return parsed.revision;
   case 'discover-cached': break;
-  default: { const exhaustive: never = parsed; throw new Error('Unknown revision selection: ' + exhaustive); }
+  default: {
+    const exhaustive: never = parsed;
+    throw new Error('Unknown revision selection: ' + exhaustive);
+  }
   }
   const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
   const storageRoot = await navigator.storage.getDirectory();
@@ -577,7 +595,9 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
       repositoryPath: 'config.json',
       workerLocationUrl: self.location.href,
     }));
-    if (config === undefined) continue;
+    if (config === undefined) {
+      continue;
+    }
     await config.body?.cancel();
     const { candidatePlan } = await withDownloadedModelAccessMode({
       modelCache,
@@ -591,7 +611,9 @@ async function selectDownloadedModelRevision({ modelId, selection, candidates }:
         assertNotBusy,
       }),
     });
-    if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) return revision;
+    if (candidatePlan.some(entry => entry.status === 'checked' && entry.complete)) {
+      return revision;
+    }
     if (!candidatePlan.some(entry => entry.status === 'checked')) {
       throw downloadedModelCandidatePlanError({ modelId: cleanModelId, revision, entries: candidatePlan });
     }
@@ -885,10 +907,16 @@ async function loadProductionRuntime({
 }
 
 function numberArrayFromTensorLike({ value }: { value: unknown }): number[] {
-  if (value === undefined || value === null || typeof value !== 'object') return [];
+  if (value === undefined || value === null || typeof value !== 'object') {
+    return [];
+  }
   const data = Reflect.get(value, 'data');
-  if (data === undefined || data === null || typeof data !== 'object') return [];
-  if (!ArrayBuffer.isView(data)) return [];
+  if (data === undefined || data === null || typeof data !== 'object') {
+    return [];
+  }
+  if (!ArrayBuffer.isView(data)) {
+    return [];
+  }
   return Array.from(data as unknown as ArrayLike<number | bigint>, item => Number(item));
 }
 
@@ -896,9 +924,13 @@ function inputTensorMetadata({ inputs }: {
   inputs: Record<string, unknown>,
 }): TransformersJsProductionInvestigationInputTensorMetadata[] {
   return Object.entries(inputs).flatMap(([name, value]) => {
-    if (value === null || typeof value !== 'object') return [];
+    if (value === null || typeof value !== 'object') {
+      return [];
+    }
     const dims = Reflect.get(value, 'dims');
-    if (!Array.isArray(dims) || !dims.every(item => typeof item === 'number')) return [];
+    if (!Array.isArray(dims) || !dims.every(item => typeof item === 'number')) {
+      return [];
+    }
     const dtype = Reflect.get(value, 'type');
     const location = Reflect.get(value, 'location');
     return [{
@@ -911,7 +943,9 @@ function inputTensorMetadata({ inputs }: {
 }
 
 function generatedSequenceTokenIds({ result }: { result: unknown }): number[] {
-  if (result === undefined || result === null || typeof result !== 'object') return [];
+  if (result === undefined || result === null || typeof result !== 'object') {
+    return [];
+  }
   return numberArrayFromTensorLike({ value: Reflect.get(result, 'sequences') });
 }
 
@@ -1187,15 +1221,20 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
           : (error instanceof Error ? error.message : String(error));
         console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
-        if (error instanceof Error) throw error;
+        if (error instanceof Error) {
+          throw error;
+        }
         throw new Error(errorMessage);
       }
     } finally {
       recordGenerationCapture({
         record: () => {
           if (loadDiagnostics !== undefined) {
-            if (previousObserver === undefined) delete diagnosticEnv.naidanModelLoadObserver;
-            else diagnosticEnv.naidanModelLoadObserver = previousObserver;
+            if (previousObserver === undefined) {
+              delete diagnosticEnv.naidanModelLoadObserver;
+            } else {
+              diagnosticEnv.naidanModelLoadObserver = previousObserver;
+            }
           }
         },
       });
@@ -1281,7 +1320,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     } catch (error) {
       if (error instanceof RequiredDownloadedModelResourceError || error instanceof RequiredDownloadedResourceCleanupError || error instanceof OpfsResourceBusyError
         || (error instanceof Error && error.name === DOWNLOADED_MODEL_PREPARATION_ERROR_NAME)
-        || isTransformersJsOptionalConfigurationError({ error })) throw error;
+        || isTransformersJsOptionalConfigurationError({ error })) {
+        throw error;
+      }
       // If no candidate ever loaded, do not let a final missing-artifact error
       // erase an earlier runtime rejection. Explicit Download may repair only a
       // genuinely incomplete cache; runtime rejection is not evidence that a
@@ -1366,7 +1407,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       }: {
         progress: TransformersJsModelLoadProgressObservation | undefined,
       }): void => {
-        if (activeLoadStartedAtMs === undefined) return;
+        if (activeLoadStartedAtMs === undefined) {
+          return;
+        }
         const activeLoadAttempt: TransformersJsProductionInvestigationActiveCandidateLoadAttempt = {
           candidate: structuredClone(activeLoadCandidate),
           status: 'running',
@@ -1402,7 +1445,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         modelId: scenario.modelId,
         revision: scenario.loadRevision,
         onMatchObservation: ({ observation }) => {
-          if (activeLoadStartedAtMs === undefined) return;
+          if (activeLoadStartedAtMs === undefined) {
+            return;
+          }
           loadProgressTracker.observeCacheMatch({ observation, at: new Date().toISOString() });
         },
       });
@@ -2010,7 +2055,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     const captureCall = beginGenerationCapture({ request: capture });
     let captureOutcome: 'fulfilled' | 'rejected' = 'rejected';
     try {
-      if (!model || !tokenizer) throw new Error('Model not loaded');
+      if (!model || !tokenizer) {
+        throw new Error('Model not loaded');
+      }
       const validatedContinuationOwner = generationContinuationOwnerSchema.parse(continuationOwner);
 
       const generationStart = performance.now();
@@ -2064,7 +2111,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
             tokenizer,
             messages,
             onChunk: ({ chunk }) => {
-              if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-output', chunk }) });
+              if (captureCall !== undefined) {
+                recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-output', chunk }) });
+              }
               switch (strategy.kind) {
               case 'standard':
                 break;
@@ -2080,13 +2129,17 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
               }
               delivery.enqueue({
                 deliver: () => {
-                  if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
+                  if (captureCall !== undefined) {
+                    recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'worker-send', chunk }) });
+                  }
                   return onChunk(chunk);
                 },
               });
             },
             onRawChunk: ({ chunk }) => {
-              if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-raw', chunk }) });
+              if (captureCall !== undefined) {
+                recordGenerationCapture({ record: () => captureCall.recordChunk({ phase: 'strategy-raw', chunk }) });
+              }
               console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
             },
             onToolCalls: ({ toolCalls }) => pendingToolCalls.push(...toolCalls),
@@ -2108,9 +2161,13 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         // owned by the other path, even if a malformed strategy used both.
         const acknowledgements = await Promise.allSettled([delivery.finish(), eventDelivery?.finish()]);
         for (const acknowledgement of acknowledgements) {
-          if (acknowledgement.status === 'rejected' && generationFailure === undefined) throw acknowledgement.reason;
+          if (acknowledgement.status === 'rejected' && generationFailure === undefined) {
+            throw acknowledgement.reason;
+          }
         }
-        if (generationFailure !== undefined) throw generationFailure.error;
+        if (generationFailure !== undefined) {
+          throw generationFailure.error;
+        }
         debugLog({
           event: 'generation complete',
           details: {
@@ -2128,15 +2185,21 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       }
       captureOutcome = 'fulfilled';
     } finally {
-      if (activeStoppingCriteria === requestStoppingCriteria) activeStoppingCriteria = stoppingCriteria;
-      if (captureCall !== undefined) recordGenerationCapture({ record: () => captureCall.finish({ outcome: captureOutcome }) });
+      if (activeStoppingCriteria === requestStoppingCriteria) {
+        activeStoppingCriteria = stoppingCriteria;
+      }
+      if (captureCall !== undefined) {
+        recordGenerationCapture({ record: () => captureCall.finish({ outcome: captureOutcome }) });
+      }
     }
   },
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Validate the entire untrusted Comlink request before reading its fields.
   async takeGenerationCapture(request: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult> {
     const parsed = generationCaptureReadRequestSchema.safeParse(request);
-    if (!parsed.success) return { status: 'invalid-context' };
+    if (!parsed.success) {
+      return { status: 'invalid-context' };
+    }
     const result = generationCapture === undefined ? { status: 'not-started' as const } : generationCapture.take({ run: parsed.data });
     switch (result.status) {
     case 'captured': case 'not-started': {
@@ -2144,7 +2207,10 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       return { ...result, ...(loadObservation === undefined ? {} : { loadObservation }) };
     }
     case 'already-taken': case 'wrong-run': case 'busy': case 'invalid-context': return result;
-    default: { const exhaustive: never = result; return exhaustive; }
+    default: {
+      const exhaustive: never = result;
+      return exhaustive;
+    }
     }
   },
 };
@@ -2156,7 +2222,9 @@ export async function initializeProductionWorkerRuntime({ requestRuntimeModule, 
   requestRuntimeModule: RequestProductionRuntimeModule;
   postLoadDiagnostic?: ({ message }: { message: LoadDiagnosticMessage }) => unknown;
 }): Promise<{ requestId: string }> {
-  if (initializationStarted) throw new Error('Production runtime initialization is one-shot');
+  if (initializationStarted) {
+    throw new Error('Production runtime initialization is one-shot');
+  }
   initializationStarted = true;
   postLoadDiagnostic = diagnosticSender;
   const bytes = await fetchProductionRuntimeModule({ assets: runtimeAssets, runtimeFetch });
@@ -2169,7 +2237,9 @@ export async function initializeProductionWorkerRuntime({ requestRuntimeModule, 
   // failures are startup failures, not model incompatibility or another dtype.
   await importProductionRuntimeModule({ objectUrl });
   const wasm = env.backends.onnx.wasm;
-  if (!wasm) throw new Error('Production ONNX Runtime environment is unavailable');
+  if (!wasm) {
+    throw new Error('Production ONNX Runtime environment is unavailable');
+  }
   wasm.wasmPaths = { mjs: objectUrl, wasm: runtimeAssets.wasmUrl };
   exposeWorkerRemote<ITransformersJsWorker>({ api: transformersJsWorker, endpoint: undefined });
   return { requestId };

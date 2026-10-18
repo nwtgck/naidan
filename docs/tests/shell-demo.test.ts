@@ -76,7 +76,9 @@ describe('shell guide tool-call demonstration', () => {
       expect(JSON.parse(call.getAttribute('data-tool-arguments') ?? '{}')).toEqual({ shell_script: scripts[index] });
     }
     const [firstNote, secondNote] = strings.project_note_lines();
-    if (firstNote === undefined || secondNote === undefined) throw new Error('The example requires two project notes');
+    if (firstNote === undefined || secondNote === undefined) {
+      throw new Error('The example requires two project notes');
+    }
     const summary = ['# ' + strings.task_summary_title, '', '- ' + firstNote, '- ' + secondNote, ''].join('\n');
     expect(scripts[3]).toBe(['cat <<EOF > /home/user/project/task-summary.md', summary.trimEnd(), 'EOF', ''].join('\n'));
     expect(scripts[4]).toBe(['cat /home/user/project/task-summary.md', 'git -C /home/user/project status --short'].join('\n'));
@@ -92,15 +94,21 @@ describe('shell guide tool-call demonstration', () => {
     expect(demo?.textContent).toContain(strings.project_task_prompt);
     const answer = demo?.querySelector('[data-testid="docs-shell-response"]');
     expect(answer?.textContent).toContain(strings.assistant_response_lead);
-    for (const item of strings.assistant_response_items()) expect(answer?.textContent).toContain(item);
+    for (const item of strings.assistant_response_items()) {
+      expect(answer?.textContent).toContain(item);
+    }
     expect(document.querySelector('figcaption')?.textContent).toBe(strings.shell_task_example_caption);
 
     const transcript = document.querySelector('[data-testid="docs-shell-transcript"]');
     expect(transcript?.querySelector('summary')?.textContent).toContain(strings.commands_and_results_title);
     expect(transcript?.closest('[aria-hidden="true"]')).toBeNull();
     expect(transcript?.querySelectorAll('section')).toHaveLength(5);
-    for (const script of scripts) expect(transcript?.textContent).toContain(script);
-    for (const result of results) expect(transcript?.textContent).toContain(result);
+    for (const script of scripts) {
+      expect(transcript?.textContent).toContain(script);
+    }
+    for (const result of results) {
+      expect(transcript?.textContent).toContain(result);
+    }
     expect(transcript?.textContent).toContain(strings.assistant_response_lead);
     expect(transcript?.querySelector('[aria-live]')).toBeNull();
     const commands = document.querySelector('[data-testid="docs-shell-command-list"]');
@@ -149,13 +157,17 @@ describe('shell guide tool-call demonstration', () => {
     const source = await readFile(new URL('../components/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
     const { descriptor } = parseSfc(source);
     const style = descriptor.styles[0];
-    if (!style) throw new Error('Missing Shell demo style');
+    if (!style) {
+      throw new Error('Missing Shell demo style');
+    }
     const scopeId = 'data-v-shell-motion-test';
     const compiled = compileStyle({ source: style.content, filename: 'ShellWorkspaceDemo.vue', id: scopeId, scoped: true });
     expect(compiled.errors).toEqual([]);
     const reducedRules: string[] = [];
     parseCss(compiled.code).walkAtRules('media', rule => {
-      if (rule.params.includes('prefers-reduced-motion')) reducedRules.push(...(rule.nodes?.map(node => node.toString()) ?? []));
+      if (rule.params.includes('prefers-reduced-motion')) {
+        reducedRules.push(...(rule.nodes?.map(node => node.toString()) ?? []));
+      }
     });
     using page = {
       window: new JSDOM(`<!doctype html><html><head></head><body><input id="docs-pause-motion" type="checkbox">${html}</body></html>`).window,
@@ -165,19 +177,29 @@ describe('shell guide tool-call demonstration', () => {
     };
     const { document } = page.window;
     const demo = document.querySelector('[data-testid="docs-shell-demo"]');
-    if (!demo) throw new Error('Missing Shell demo');
-    for (const element of [demo, ...demo.querySelectorAll('*')]) element.setAttribute(scopeId, '');
+    if (!demo) {
+      throw new Error('Missing Shell demo');
+    }
+    for (const element of [demo, ...demo.querySelectorAll('*')]) {
+      element.setAttribute(scopeId, '');
+    }
     const sheet = document.createElement('style');
     sheet.textContent = compiled.code + (mode === 'reduced' ? `\n${reducedRules.join('\n')}` : '');
     document.head.append(sheet);
-    if (mode === 'pause') document.querySelector<HTMLInputElement>('#docs-pause-motion')!.checked = true;
+    if (mode === 'pause') {
+document.querySelector<HTMLInputElement>('#docs-pause-motion')!.checked = true;
+    }
 
     const isVisible = ({ selector }: { selector: string }): boolean => {
       const element = demo.querySelector(selector);
-      if (!element) throw new Error(`Missing Shell demo element: ${selector}`);
+      if (!element) {
+        throw new Error(`Missing Shell demo element: ${selector}`);
+      }
       for (let current: Element | null = element; current && current !== demo.parentElement; current = current.parentElement) {
         const computed = page.window.getComputedStyle(current);
-        if (computed.display === 'none' || computed.visibility === 'hidden' || computed.opacity === '0') return false;
+        if (computed.display === 'none' || computed.visibility === 'hidden' || computed.opacity === '0') {
+          return false;
+        }
       }
       return true;
     };
@@ -191,7 +213,9 @@ describe('shell guide tool-call demonstration', () => {
       '[data-testid="docs-shell-response"]',
     ]) {
       const element = demo.querySelector(selector);
-      if (!element) throw new Error(`Missing Shell demo element: ${selector}`);
+      if (!element) {
+        throw new Error(`Missing Shell demo element: ${selector}`);
+      }
       expect(page.window.getComputedStyle(element).animation, selector).toBe('none');
     }
 
@@ -201,7 +225,9 @@ describe('shell guide tool-call demonstration', () => {
       '[data-shell-step="review"] .tool-complete',
       '[data-shell-step="review"] [data-testid="docs-shell-result"]',
       '[data-testid="docs-shell-response"]',
-    ]) expect(isVisible({ selector }), selector).toBe(true);
+    ]) {
+      expect(isVisible({ selector }), selector).toBe(true);
+    }
     for (const selector of [
       '[data-shell-step="git"]',
       '[data-shell-step="review"] .draft-variant',
@@ -209,7 +235,9 @@ describe('shell guide tool-call demonstration', () => {
       '[data-shell-step="review"] .live-output',
       '.initial-summary',
       '.demo-pointer',
-    ]) expect(isVisible({ selector }), selector).toBe(false);
+    ]) {
+      expect(isVisible({ selector }), selector).toBe(false);
+    }
     expect(demo.querySelector('[data-shell-step="review"] [data-testid="docs-shell-result"]')?.textContent).toContain('STDOUT:');
     expect(demo.querySelector('[data-testid="docs-shell-response"]')?.textContent).toContain(english.assistant_response_lead);
   });
@@ -229,16 +257,26 @@ describe('shell guide tool-call demonstration', () => {
         return;
       }
       rule.walkDecls(declaration => {
-        if (rule.selector === '.shell-stage-grid,.stage-layer' && declaration.prop === 'display' && declaration.value === 'grid') gridHost = true;
-        if (rule.selector === '.stage-layer' && declaration.prop === 'grid-area' && declaration.value === '1/1') overlay = true;
-        if (declaration.prop === '--shell-cycle') duration = Number.parseFloat(declaration.value);
+        if (rule.selector === '.shell-stage-grid,.stage-layer' && declaration.prop === 'display' && declaration.value === 'grid') {
+          gridHost = true;
+        }
+        if (rule.selector === '.stage-layer' && declaration.prop === 'grid-area' && declaration.value === '1/1') {
+          overlay = true;
+        }
+        if (declaration.prop === '--shell-cycle') {
+          duration = Number.parseFloat(declaration.value);
+        }
       });
     });
     css.walkAtRules('keyframes', rule => {
-      if (rule.params !== 'shell-script') return;
+      if (rule.params !== 'shell-script') {
+        return;
+      }
       rule.walkRules(frame => {
         frame.walkDecls('clip-path', declaration => {
-          if (declaration.value === 'inset(0)') writingEnd = Math.min(...frame.selector.split(',').map(value => Number.parseFloat(value)));
+          if (declaration.value === 'inset(0)') {
+            writingEnd = Math.min(...frame.selector.split(',').map(value => Number.parseFloat(value)));
+          }
         });
       });
     });
@@ -257,7 +295,9 @@ describe('shell guide tool-call demonstration', () => {
     });
     const stageAnimationNames: string[] = [];
     compiledCss.walkRules(rule => {
-      if (!/^\.stage-(one|two|three|four|five)\[[^\]]+\]$/u.test(rule.selector)) return;
+      if (!/^\.stage-(one|two|three|four|five)\[[^\]]+\]$/u.test(rule.selector)) {
+        return;
+      }
       rule.walkDecls('animation-name', declaration => {
         stageAnimationNames.push(declaration.value);
       });

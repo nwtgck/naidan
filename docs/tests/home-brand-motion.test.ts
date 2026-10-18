@@ -190,7 +190,9 @@ describe('Docs home brand', () => {
     const wordmark = link?.querySelector<HTMLElement>('.brand-wordmark');
     const heroMark = hero?.querySelector<HTMLImageElement>('img');
     const pause = document.querySelector<HTMLInputElement>('#docs-pause-motion');
-    if (!slot || !header || !headerInner || !guideTrigger || !link || !spacer || !hero || !heroWordmark || !mark || !wordmark || !heroMark || !pause) throw new Error('Missing brand fixture');
+    if (!slot || !header || !headerInner || !guideTrigger || !link || !spacer || !hero || !heroWordmark || !mark || !wordmark || !heroMark || !pause) {
+      throw new Error('Missing brand fixture');
+    }
     const queued: FrameRequestCallback[] = [];
     const media = new Map<string, { matches: boolean; addEventListener: () => void }>([
       ['(prefers-reduced-motion: reduce)', { matches: false, addEventListener: () => undefined }],
@@ -199,7 +201,8 @@ describe('Docs home brand', () => {
     Object.defineProperty(dom.window, 'matchMedia', { value: (query: string) => media.get(query) });
     Object.defineProperty(dom.window, 'requestAnimationFrame', {
       value: (callback: FrameRequestCallback) => {
-        queued.push(callback); return queued.length;
+        queued.push(callback);
+        return queued.length;
       },
     });
     Object.defineProperty(dom.window, 'scrollY', { value: 0, writable: true });
@@ -227,7 +230,9 @@ describe('Docs home brand', () => {
     Object.defineProperty(headerInner, 'getBoundingClientRect', { value: () => ({ left: headerOuterLeft }) });
     Object.defineProperty(guideTrigger, 'getBoundingClientRect', { value: () => ({ left: 48 + targetWidth }) });
     const flush = () => {
-      while (queued.length) queued.shift()?.(0);
+      while (queued.length) {
+        queued.shift()?.(0);
+      }
     };
     const leadingShift = () => Number.parseFloat(header.style.getPropertyValue('--docs-home-leading-shift'));
     const expectRestored = () => {
@@ -440,7 +445,9 @@ describe('Docs home brand', () => {
     const link = document.querySelector<HTMLAnchorElement>('[data-docs-brand-link]');
     const hero = document.querySelector<HTMLElement>('[data-docs-hero-brand]');
     const inner = document.querySelector<HTMLElement>('.topbar-inner');
-    if (!group || !link || !hero || !inner) throw new Error('Missing startup brand fixture');
+    if (!group || !link || !hero || !inner) {
+      throw new Error('Missing startup brand fixture');
+    }
     const visualSequence = () => Array.from(inner.children)
       .map((element, index) => ({ element, index, order: Number(dom.window.getComputedStyle(element).order || 0) }))
       .sort((a, b) => a.order - b.order || a.index - b.index)
@@ -492,12 +499,15 @@ describe('Docs home brand', () => {
     const heroMark = hero?.querySelector('img');
     const mark = link?.querySelector('img');
     const pause = document.querySelector<HTMLInputElement>('#docs-pause-motion');
-    if (!hero || !link || !heroMark || !mark || !pause) throw new Error('Missing ready brand fixture');
+    if (!hero || !link || !heroMark || !mark || !pause) {
+      throw new Error('Missing ready brand fixture');
+    }
     Object.defineProperty(dom.window, 'matchMedia', { value: () => ({ matches: false, addEventListener: () => undefined }) });
     const frames: FrameRequestCallback[] = [];
     Object.defineProperty(dom.window, 'requestAnimationFrame', {
       value: (callback: FrameRequestCallback) => {
-        frames.push(callback); return frames.length;
+        frames.push(callback);
+        return frames.length;
       },
     });
     Object.defineProperty(dom.window, 'scrollY', { value: 0 });
@@ -537,7 +547,9 @@ describe('Docs home brand', () => {
     const inner = menu?.parentElement;
     const guideTrigger = document.querySelector<HTMLElement>('.docs-guide-trigger');
     const searchTrigger = document.querySelector<HTMLElement>('.docs-search-trigger');
-    if (!header || !brand || !menu || !localeMenu || !controls || !inner || !guideTrigger || !searchTrigger) throw new Error('Missing header fixture');
+    if (!header || !brand || !menu || !localeMenu || !controls || !inner || !guideTrigger || !searchTrigger) {
+      throw new Error('Missing header fixture');
+    }
     document.documentElement.setAttribute('data-docs-home-brand-motion', '');
     header.style.setProperty('--docs-home-leading-shift', '-144px');
     const guideStyle = dom.window.getComputedStyle(guideTrigger);

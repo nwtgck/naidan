@@ -35,17 +35,27 @@ export async function readReplayState({ files, repository }: {
   const found: Array<{ kind: GitReplayKind, path: string }> = [];
   for (const kind of ['cherry-pick', 'revert'] as const) {
     const path = statePath({ repository, name: headFileName({ kind }) });
-    if (await pathExists({ files, path })) found.push({ kind, path });
+    if (await pathExists({ files, path })) {
+      found.push({ kind, path });
+    }
   }
-  if (found.length === 0) return undefined;
-  if (found.length !== 1) throw new Error('multiple replay states are active');
+  if (found.length === 0) {
+    return undefined;
+  }
+  if (found.length !== 1) {
+    throw new Error('multiple replay states are active');
+  }
   const current = found[0]!;
   const sourceObjectId = (await readFileText({ files, path: current.path })).trim();
-  if (!/^[0-9a-f]{40}$/u.test(sourceObjectId)) throw new Error(`invalid ${headFileName({ kind: current.kind })}`);
+  if (!/^[0-9a-f]{40}$/u.test(sourceObjectId)) {
+    throw new Error(`invalid ${headFileName({ kind: current.kind })}`);
+  }
   const rawMessage = await readFileText({ files, path: statePath({ repository, name: 'MERGE_MSG' }) });
   const commentOffset = rawMessage.indexOf('\n# Conflicts:');
   const message = (commentOffset < 0 ? rawMessage : rawMessage.slice(0, commentOffset)).trimEnd();
-  if (message.length === 0) throw new Error('empty MERGE_MSG');
+  if (message.length === 0) {
+    throw new Error('empty MERGE_MSG');
+  }
   return { kind: current.kind, sourceObjectId, message };
 }
 
@@ -57,7 +67,9 @@ export async function writeReplayState({ files, repository, kind, sourceObjectId
   message: string,
   conflictPaths: readonly string[],
 }): Promise<void> {
-  if (!/^[0-9a-f]{40}$/u.test(sourceObjectId)) throw new Error(`invalid replay object id: ${sourceObjectId}`);
+  if (!/^[0-9a-f]{40}$/u.test(sourceObjectId)) {
+    throw new Error(`invalid replay object id: ${sourceObjectId}`);
+  }
   await replaceTextViaLock({
     files,
     path: statePath({ repository, name: headFileName({ kind }) }),
@@ -80,7 +92,9 @@ export async function clearReplayState({ files, repository, kind }: {
 }): Promise<void> {
   for (const name of [headFileName({ kind }), 'MERGE_MSG'] as const) {
     const path = statePath({ repository, name });
-    if (await pathExists({ files, path })) await files.unlink({ path });
+    if (await pathExists({ files, path })) {
+      await files.unlink({ path });
+    }
   }
 }
 

@@ -8,7 +8,9 @@ function escapeXml({ value }: { value: string }): string {
 
 function createSiteUrl({ hash }: { hash: string | undefined }): string {
   const url = new URL('/', SITE_METADATA.url);
-  if (hash !== undefined) url.hash = hash;
+  if (hash !== undefined) {
+    url.hash = hash;
+  }
   return url.href;
 }
 

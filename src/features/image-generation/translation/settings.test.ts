@@ -16,15 +16,19 @@ describe('image prompt translation inheritance', () => {
 
   it('does not silently fall back for an explicit but unconfigured destination', () => {
     const target = resolveImagePromptTranslation({ session: { endpoint: { type: 'openai', url: '', httpHeaders: undefined }, modelId: '', lmParameters: undefined }, workspace: undefined, global });
-    expect(target.modelId).toBe(''); expect(target.endpoint.type).toBe('openai');
-    expect(target.endpointSource).toBe('session'); expect(target.modelSource).toBe('session');
+    expect(target.modelId).toBe('');
+    expect(target.endpoint.type).toBe('openai');
+    expect(target.endpointSource).toBe('session');
+    expect(target.modelSource).toBe('session');
   });
 
   it('clones all headers rather than mutating inherited profiles or borrowing authentication across endpoints', () => {
     const endpoint: Endpoint = { type: 'openai', url: 'https://example.test', httpHeaders: [['Authorization', 'old']] };
     const override = { endpoint, modelId: 'chosen', lmParameters: undefined };
     const value = cloneImagePromptTranslationOverride({ value: override });
-    if (value?.endpoint?.type !== 'openai') throw new Error('Expected HTTP endpoint.');
+    if (value?.endpoint?.type !== 'openai') {
+      throw new Error('Expected HTTP endpoint.');
+    }
     value.endpoint.httpHeaders![0]![1] = 'new';
     expect(endpoint.httpHeaders![0]![1]).toBe('old');
     const target = resolveImagePromptTranslation({ session: { endpoint: { type: 'openai', url: 'https://other.test', httpHeaders: undefined }, modelId: undefined, lmParameters: undefined }, workspace: override, global });
@@ -52,8 +56,11 @@ it('clones an unavailable session RPC value without inheriting another peer', ()
   const workspace = { endpoint: { type: 'naidan_rpc' as const, registrationId: toNaidanRpcRegistrationId({ raw: 'peer-B' }) }, modelId: 'other-model', lmParameters: undefined };
   const cloned = cloneImagePromptTranslationOverride({ value: session });
   const target = resolveImagePromptTranslation({ session: cloned, workspace, global });
-  expect(target.endpointSource).toBe('session'); expect(target.modelId).toBe('explicit-model');
-  if (target.endpoint.type !== 'unsupported_experimental_endpoint') throw new Error('Unavailable endpoint was replaced');
+  expect(target.endpointSource).toBe('session');
+  expect(target.modelId).toBe('explicit-model');
+  if (target.endpoint.type !== 'unsupported_experimental_endpoint') {
+    throw new Error('Unavailable endpoint was replaced');
+  }
   expect(target.endpoint.persistedType).toBe('naidan_rpc');
   expect(target.endpoint).not.toBe(endpoint);
 });

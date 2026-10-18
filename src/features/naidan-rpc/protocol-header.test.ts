@@ -126,8 +126,11 @@ it('owns each one-byte fragment before the caller reuses its buffer', () => {
     const progress = reader.push({ chunk });
     expect(progress.consumedBytes).toBe(1);
     chunk.fill(255);
-    if (index < 12) expect(progress.result).toEqual({ kind: 'need-more', availableBytes: index + 1 });
-    else expect(progress.result).toEqual({ kind: 'supported', version: 2147483649 });
+    if (index < 12) {
+      expect(progress.result).toEqual({ kind: 'need-more', availableBytes: index + 1 });
+    } else {
+      expect(progress.result).toEqual({ kind: 'supported', version: 2147483649 });
+    }
   }
   expect(reader.finish()).toEqual({ kind: 'supported', version: 2147483649 });
 });

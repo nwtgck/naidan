@@ -16,7 +16,9 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined; vi.unstubAllGlobals();
+  wrapper?.unmount();
+  wrapper = undefined;
+  vi.unstubAllGlobals();
 });
 
 function runFixture({ image }: { image: BenchmarkRun['record']['image']['status'] }): BenchmarkRun {
@@ -58,7 +60,8 @@ it('lazily displays the retained PNG without copying it and releases URLs on clo
   await wrapper.setProps({ png: runFixture({ image: 'retained' }).png });
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:benchmark-2');
   expect(wrapper.get('img').attributes('src')).toBe('blob:benchmark-3');
-  wrapper.unmount(); wrapper = undefined;
+  wrapper.unmount();
+  wrapper = undefined;
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:benchmark-3');
 });
 
@@ -70,7 +73,8 @@ it.each([
   wrapper = mount(ImageBenchmarkResult, { props: { runId: 'm001-r001', png: undefined, imageStatus: image } });
   await toggle({ open: true });
   expect(wrapper.get('[data-testid="benchmark-result-image-unavailable"]').text()).toContain(text);
-  expect(wrapper.find('img').exists()).toBe(false); expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(wrapper.find('img').exists()).toBe(false);
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
 });
 
 it('updates already-open details when a running measurement produces its final PNG', async () => {

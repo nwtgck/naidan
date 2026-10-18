@@ -4,7 +4,7 @@ import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId, VolumeId } from '@/01-models/ids';
+import { idToRaw, type ChatGroupId, type VolumeId } from '@/01-models/ids';
 
 export type ChatGroupMountsAdapter = {
   addMount({
@@ -35,10 +35,44 @@ export type ChatGroupMountsAdapter = {
     readOnly: boolean,
   }): Promise<void>,
 
+  setMountReadOnly({ chatGroupId, volumeId, readOnly }: {
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
+    readOnly: boolean,
+  }): Promise<void>,
+
   TEST_ONLY: Record<never, never>,
 };
 
 export function useChatGroupMounts(): ChatGroupMountsAdapter {
+  async function setMountReadOnly({ chatGroupId, volumeId, readOnly }: {
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
+    readOnly: boolean,
+  }): Promise<void> {
+    const applyUpdate = ({ mounts }: { mounts: Mount[] | undefined }): Mount[] => (mounts ?? []).map(mount =>
+      mount.volumeId === volumeId ? { ...mount, readOnly } : mount,
+    );
+    // Permission prompts can outlive a path edit. Only change this field in the
+    // latest stored owner, rather than saving the entry shown before the prompt.
+    await storageService.updateChatGroup({
+      id: chatGroupId,
+      updater: ({ current }) => {
+        if (!current) {
+          throw new Error(`Chat group not found: ${idToRaw({ id: chatGroupId })}`);
+        }
+        return { ...current, mounts: applyUpdate({ mounts: current.mounts }) };
+      },
+    });
+    const chatGroup = findChatGroupById({ chatGroupId });
+    if (chatGroup !== null) {
+      chatGroup.mounts = applyUpdate({ mounts: chatGroup.mounts });
+    }
+    if (currentChatGroupRef.value?.id === chatGroupId && currentChatGroupRef.value !== chatGroup) {
+      currentChatGroupRef.value.mounts = applyUpdate({ mounts: currentChatGroupRef.value.mounts });
+    }
+  }
+
   async function addMount({
     chatGroupId,
     mount,
@@ -139,6 +173,7 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     addMount,
     removeMount,
     updateMount,
+    setMountReadOnly,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.

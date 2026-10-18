@@ -62,7 +62,9 @@ function legacyUpdatesToChanges({
   // silently bypass the explicit scoped-setting command model. `name` remains
   // a non-inheritable metadata update and is handled by updateChatGroup().
   for (const key of CHAT_GROUP_METADATA_UPDATE_KEYS) {
-    if (!Object.hasOwn(updates, key)) continue;
+    if (!Object.hasOwn(updates, key)) {
+      continue;
+    }
 
     switch (key) {
     case 'name':
@@ -171,7 +173,9 @@ export function useChatGroups(): ChatGroupsAdapter {
       }
       }
     })();
-    if (changes.length === 0 && !updateName && !hasToolConfigUpdate) return;
+    if (changes.length === 0 && !updateName && !hasToolConfigUpdate) {
+      return;
+    }
 
     const queuedChanges = cloneScopedSettingChanges({ changes });
     const previous = updateQueues.get(chatGroupId) ?? Promise.resolve();

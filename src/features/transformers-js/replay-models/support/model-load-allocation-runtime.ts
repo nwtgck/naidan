@@ -57,12 +57,17 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
         case 'admitted': break;
         case 'outside-scope':
         case 'unsupported-method': return undefined;
-        default: { const _ex: never = resolution; throw new Error(`Unhandled scope ${_ex}`); }
+        default: {
+          const _ex: never = resolution;
+          throw new Error(`Unhandled scope ${_ex}`);
+        }
         }
         const matched = await original.match(request);
         const url = typeof request === 'string' ? request : request.url;
         const path = url.split(`/resolve/${archive.summary.revision}/`)[1];
-        if (path === undefined || !paths.includes(path)) return matched;
+        if (path === undefined || !paths.includes(path)) {
+          return matched;
+        }
         // The existing raw harness's one-byte response is never consumed. The
         // caller explicitly owns the replacement Content-Length/body contract.
         await matched?.body?.cancel();
@@ -109,14 +114,18 @@ export function trapLargeModelAllocation({ failure }: { failure: RangeError }) {
   };
   globalThis.ArrayBuffer = new Proxy(originalBuffer, {
     construct(target, args, newTarget) {
-      if (typeof args[0] === 'number' && args[0] > 1024 * 1024) return refuse({ bytes: args[0] });
+      if (typeof args[0] === 'number' && args[0] > 1024 * 1024) {
+        return refuse({ bytes: args[0] });
+      }
       return Reflect.construct(target, args, newTarget);
     },
   });
   WebAssembly.Memory = new Proxy(originalMemory, {
     construct(target, args, newTarget) {
       const descriptor = z.object({ initial: z.number() }).passthrough().parse(args[0]);
-      if (descriptor.initial > 16) return refuse({ bytes: descriptor.initial * 65536 });
+      if (descriptor.initial > 16) {
+        return refuse({ bytes: descriptor.initial * 65536 });
+      }
       return Reflect.construct(target, args, newTarget);
     },
   });
@@ -133,7 +142,9 @@ export function trapLargeModelAllocation({ failure }: { failure: RangeError }) {
   return {
     requests,
     restore() {
-      globalThis.Uint8Array = original; globalThis.ArrayBuffer = originalBuffer; WebAssembly.Memory = originalMemory;
+      globalThis.Uint8Array = original;
+      globalThis.ArrayBuffer = originalBuffer;
+      WebAssembly.Memory = originalMemory;
     },
   };
 }

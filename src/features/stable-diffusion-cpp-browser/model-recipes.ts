@@ -174,8 +174,11 @@ export function selectedRecipeFiles({ recipe, selections }: { recipe: ImageModel
   return recipe.components.map(component => {
     const id = selections[component.role] ?? component.defaultOptionId;
     const option = component.options.find(item => item.id === id);
-    if (!option) throw new Error('Unknown catalog component option');
-    const { id: _id, ...file } = option; return file;
+    if (!option) {
+      throw new Error('Unknown catalog component option');
+    }
+    const { id: _id, ...file } = option;
+    return file;
   });
 }
 
@@ -186,7 +189,10 @@ export function imageRecipeLink({ file, action }: { file: Pick<ImageRecipeFile, 
   switch (action) {
   case 'download': return `${root}/resolve/${file.revision}/${path}?download=true`;
   case 'source': return `${root}/blob/${file.revision}/${path}`;
-  default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = action;
+    throw new Error(String(exhaustive));
+  }
   }
 }
 

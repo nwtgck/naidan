@@ -6,18 +6,24 @@ export function createImageHistoryClient(): ImageHistoryClient {
   let state: State | undefined;
   let disposed = false;
   function retire({ target, cause }: { target: State, cause: Error }): void {
-    if (target.closed) return;
+    if (target.closed) {
+      return;
+    }
     target.closed = true;
     target.worker.removeEventListener('error', target.failed);
     target.worker.removeEventListener('messageerror', target.failed);
-    for (const reject of target.pending) reject(cause);
+    for (const reject of target.pending) {
+      reject(cause);
+    }
     target.pending.clear();
     // A failed Worker cannot acknowledge Comlink release. Never wait for it.
     try {
       Promise.resolve(releaseWorkerRemote({ remote: target.remote })).catch(() => undefined);
     } catch { /* The endpoint may already be gone. */ }
     target.worker.terminate();
-    if (state === target) state = undefined;
+    if (state === target) {
+      state = undefined;
+    }
   }
   function create(): State {
     const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-history' });
@@ -38,7 +44,9 @@ export function createImageHistoryClient(): ImageHistoryClient {
   }
   return {
     async query({ query }) {
-      if (disposed) throw new Error('Image history client is disposed');
+      if (disposed) {
+        throw new Error('Image history client is disposed');
+      }
       const target = state ??= create();
       const stopped = Promise.withResolvers<never>();
       target.pending.add(stopped.reject);
@@ -52,7 +60,9 @@ export function createImageHistoryClient(): ImageHistoryClient {
     },
     async dispose() {
       disposed = true;
-      if (state) retire({ target: state, cause: new DOMException('Image history client disposed', 'AbortError') });
+      if (state) {
+        retire({ target: state, cause: new DOMException('Image history client disposed', 'AbortError') });
+      }
     },
   };
 }

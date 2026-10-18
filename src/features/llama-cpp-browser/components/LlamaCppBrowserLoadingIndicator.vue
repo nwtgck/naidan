@@ -21,7 +21,10 @@ const importScope = computed(() => {
   switch (props.scope) {
   case 'import': return true;
   case 'inference': return false;
-  default: { const exhaustive: never = props.scope; throw new Error(`Unhandled scope: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = props.scope;
+    throw new Error(`Unhandled scope: ${exhaustive}`);
+  }
   }
 });
 const progress = computed(() => {
@@ -29,7 +32,10 @@ const progress = computed(() => {
   switch (current.status) {
   case 'idle': case 'error': case 'unavailable': return undefined;
   case 'working': break;
-  default: { const exhaustive: never = current; throw new Error(`Unhandled state: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = current;
+    throw new Error(`Unhandled state: ${exhaustive}`);
+  }
   }
   const value = current.progress;
   switch (value.phase) {
@@ -37,7 +43,10 @@ const progress = computed(() => {
   case 'initializing': case 'loading': return importScope.value ? undefined : value;
   // The chat already has a streaming indicator. maxTokens is not a completion estimate.
   case 'prefill': case 'generating': case 'decoding-audio': return undefined;
-  default: { const exhaustive: never = value.phase; throw new Error(`Unhandled phase: ${exhaustive}`); }
+  default: {
+    const exhaustive: never = value.phase;
+    throw new Error(`Unhandled phase: ${exhaustive}`);
+  }
   }
 });
 const phase = computed(() => {
@@ -48,7 +57,10 @@ const phase = computed(() => {
   case 'loading': return lazyStrings.llamaCppBrowser__loading();
   case 'prefill': return lazyStrings.llamaCppBrowser__prefill();
   case 'decoding-audio': case 'generating': case undefined: return undefined;
-  default: { const exhaustive: never = value; return exhaustive; }
+  default: {
+    const exhaustive: never = value;
+    return exhaustive;
+  }
   }
 });
 const percentage = computed(() => progress.value && progress.value.total > 0

@@ -6,6 +6,8 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { useImageLibrary } from './use-image-library';
+import { useImagePreferences } from './use-image-preferences';
+import { createImageForm } from '@/features/image-generation/form';
 import { imageModelRecipes } from './model-recipes';
 import type { ImageRecipeDownloadRequest } from './logic/catalog-download';
 import { MemoryDirectory, MemoryFile } from './test-utils/storage.test-support';
@@ -15,9 +17,10 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn(), d
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: mocks.get, put: mocks.put, delete: mocks.delete } }));
 vi.mock('./download-worker/client', () => ({ downloadImageRecipeInWorker: (...args: unknown[]) => mocks.download(...args) }));
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: update }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: update, captureExperimentalStorage: captureStorage }) }));
 
 let settings: Ref<Settings>;
+let storageRevision: number;
 const update = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
   settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
 });
@@ -28,6 +31,7 @@ let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  storageRevision = 0;
   settings = ref<Settings>({
     ...DEFAULT_SETTINGS,
     storageType: 'local',
@@ -39,8 +43,13 @@ beforeEach(() => {
       ],
     },
   });
-  handles.clear(); handles.set('selected', new MemoryDirectory('models')); handles.set('other', new MemoryDirectory('other models'));
+  handles.clear();
+  handles.set('selected', new MemoryDirectory('models'));
+  handles.set('other', new MemoryDirectory('other models'));
   mocks.get.mockImplementation(async ({ id }: { id: string }) => handles.get(id));
+  mocks.put.mockImplementation(async ({ id, handle }: { id: string, handle: MemoryDirectory }) => {
+    handles.set(id, handle);
+  });
   mocks.delete.mockImplementation(async ({ id }: { id: string }) => {
     handles.delete(id);
   });
@@ -52,9 +61,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  wrapper?.unmount(); wrapper = undefined;
-  for (const scope of scopes.splice(0)) scope.stop();
-  vi.unstubAllGlobals(); Reflect.deleteProperty(window, 'showDirectoryPicker');
+  wrapper?.unmount();
+  wrapper = undefined;
+  for (const scope of scopes.splice(0)) {
+    scope.stop();
+  }
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, 'showDirectoryPicker');
 });
 
 it('allows the catalog to download into a linked folder without OPFS', async () => {
@@ -65,18 +78,92 @@ it('allows the catalog to download into a linked folder without OPFS', async () 
   expect(wrapper.get<HTMLOptionElement>('option[value="selected"]').element.disabled).toBe(false);
   const download = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
   expect(download.element.disabled).toBe(false);
-  await download.trigger('click'); await flushPromises();
+  await download.trigger('click');
+  await flushPromises();
   expect(mocks.download).toHaveBeenCalledOnce();
   expect(mocks.download.mock.calls[0]?.[0].destination).toEqual({ kind: 'host', directoryId: 'selected' });
 });
 
 async function harness() {
-  const blocked = ref(false), scope = effectScope(); scopes.push(scope);
+  const blocked = ref(false), scope = effectScope();
+  scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   await library.refresh();
   library.hostDirectories.selectDestination({ id: 'selected' });
   return { library, blocked };
 }
+
+function captureStorage(): () => boolean {
+  const revision = storageRevision;
+  return () => revision === storageRevision;
+}
+
+function preferences({ library }: { library: ReturnType<typeof useImageLibrary> }): void {
+  const scope = effectScope();
+  scopes.push(scope);
+  scope.run(() => useImagePreferences({
+    settings,
+    initialized: ref(true),
+    captureStorage,
+    async updateForStorage({ isCurrent, updater }) {
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      await update({ updater });
+      return 'saved';
+    },
+    form: createImageForm({ profile: 'webgpu-wasm32-asyncify' }),
+    seedMode: ref('random'),
+    historyEnabled: ref(true),
+    library,
+    localModels: ref(false),
+    restoring: ref(false),
+    restored() {},
+    failed() {},
+  }));
+}
+
+it('selects and saves a newly linked image folder for the next download without changing LM preferences', async () => {
+  const { library } = await harness();
+  const lmTarget = { kind: 'host' as const, directoryId: toHostModelDirectoryId({ raw: 'other' }) };
+  settings.value.experimental = { ...settings.value.experimental, llamaCppBrowser: { modelDownloadDestination: lmTarget } };
+  preferences({ library });
+  const root = new MemoryDirectory('new image models');
+  Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(async () => root) });
+  await library.hostDirectories.add();
+  await flushPromises();
+  const registration = settings.value.experimental?.hostModelDirectories?.find(entry => entry.name === root.name);
+  if (!registration) {
+    throw new Error('Expected the linked folder registration');
+  }
+  const selected = { kind: 'host', directoryId: registration.id };
+  expect(library.hostDirectories.destination.value).toBe(registration.id);
+  expect(settings.value.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(selected);
+  expect(settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual(lmTarget);
+  await library.downloadRecipe({ recipeId, selections: {} });
+  expect(mocks.download).toHaveBeenCalledOnce();
+  expect(mocks.download.mock.calls[0]?.[0].destination).toEqual(selected);
+  const restored = await harness();
+  preferences({ library: restored.library });
+  await flushPromises();
+  expect(restored.library.hostDirectories.destination.value).toBe(registration.id);
+});
+
+it('does not save a late folder auto-selection into replacement image preferences', async () => {
+  const { library } = await harness();
+  preferences({ library });
+  const picked = Promise.withResolvers<MemoryDirectory>();
+  Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(() => picked.promise) });
+  const adding = library.hostDirectories.add();
+  storageRevision++;
+  settings.value = { ...settings.value, experimental: { hostModelDirectories: [] } };
+  await flushPromises();
+  picked.resolve(new MemoryDirectory('late models'));
+  await adding;
+  await flushPromises();
+  expect(library.hostDirectories.destination.value).toBe('opfs');
+  expect(settings.value.experimental?.browserImageGeneration?.modelDownloadDestination).toBeUndefined();
+});
 
 function waitForAbort({ signal }: ImageRecipeDownloadRequest): Promise<void> {
   return new Promise((_, reject) => {
@@ -88,13 +175,19 @@ function waitForAbort({ signal }: ImageRecipeDownloadRequest): Promise<void> {
 it.each(['paused', 'failed'] as const)('requires a new explicit download after unlinking the %s destination', async state => {
   const { library } = await harness();
   const folder = handles.get('selected')!;
-  const partial = new MemoryFile('partial.gguf'); partial.data = new Uint8Array([1, 2, 3]);
+  const partial = new MemoryFile('partial.gguf');
+  partial.data = new Uint8Array([1, 2, 3]);
   folder.children.set(partial.name, partial);
-  if (state === 'paused') mocks.download.mockImplementationOnce(waitForAbort);
-  else mocks.download.mockRejectedValueOnce(new Error('Transfer failed'));
+  if (state === 'paused') {
+    mocks.download.mockImplementationOnce(waitForAbort);
+  } else {
+    mocks.download.mockRejectedValueOnce(new Error('Transfer failed'));
+  }
   const downloading = library.downloadRecipe({ recipeId, selections: {} });
   await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-  if (state === 'paused') library.cancelDownload();
+  if (state === 'paused') {
+    library.cancelDownload();
+  }
   await downloading;
   expect(library.downloadState.value).toBe(state);
   expect(mocks.download.mock.calls[0]?.[0].destination).toEqual({ kind: 'host', directoryId: 'selected' });
@@ -117,7 +210,8 @@ it('forgets the aborted intent when unlinking its destination during a transfer'
   mocks.download.mockImplementationOnce(waitForAbort);
   const downloading = library.downloadRecipe({ recipeId, selections: {} });
   await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-  await library.hostDirectories.remove({ id: 'selected' }); await downloading;
+  await library.hostDirectories.remove({ id: 'selected' });
+  await downloading;
   expect(library.downloading.value).toBe(false);
   expect(library.hostDirectories.destination.value).toBe('opfs');
   await library.resumeDownload();
@@ -136,10 +230,12 @@ it('invalidates the old destination even when an independent save starts during 
   });
   const removing = library.hostDirectories.remove({ id: 'selected' });
   await vi.waitFor(() => expect(update).toHaveBeenCalledOnce());
-  blocked.value = true; pending.resolve();
+  blocked.value = true;
+  pending.resolve();
   await vi.waitFor(() => expect(library.hostDirectories.destination.value).toBe('opfs'));
   expect(library.downloadRecipeId.value).toBe('');
-  blocked.value = false; await removing;
+  blocked.value = false;
+  await removing;
   await library.resumeDownload();
   expect(mocks.download).toHaveBeenCalledOnce();
 });
@@ -194,7 +290,8 @@ it('keeps each queued destination fixed while the user selects another linked fo
   const second = library.downloadRecipe({ recipeId, selections: {} });
   library.hostDirectories.selectDestination({ id: 'opfs' });
   expect(library.downloadQueue.value.map(job => job.destination)).toEqual(['models', 'other models']);
-  pending.resolve(); await Promise.all([first, second]);
+  pending.resolve();
+  await Promise.all([first, second]);
   expect(mocks.download.mock.calls.map(call => call[0].destination)).toEqual([
     { kind: 'host', directoryId: 'selected' }, { kind: 'host', directoryId: 'other' },
   ]);
@@ -223,6 +320,7 @@ it('keeps an unavailable restored root through scans and rejects downloads rathe
   await flushPromises();
   expect(library.hostDirectories.destination.value).toBe('not-registered');
   await library.downloadRecipe({ recipeId, selections: {} });
-  expect(mocks.download).not.toHaveBeenCalled(); expect(library.downloadState.value).toBe('failed');
+  expect(mocks.download).not.toHaveBeenCalled();
+  expect(library.downloadState.value).toBe('failed');
   expect(library.hostDirectories.destination.value).toBe('not-registered');
 });

@@ -51,9 +51,18 @@ defineExpose({
 }
 
 /* Left to right: dim→mid→bright, matching the direction of text flow */
-.wi-o1 { background: #93c5fd; animation-delay: 0s;   }
-.wi-o2 { background: #60a5fa; animation-delay: 0.2s; }
-.wi-o3 { background: #3b82f6; animation-delay: 0.4s; }
+.wi-o1 {
+  background: #93c5fd;
+  animation-delay: 0s;
+}
+.wi-o2 {
+  background: #60a5fa;
+  animation-delay: 0.2s;
+}
+.wi-o3 {
+  background: #3b82f6;
+  animation-delay: 0.4s;
+}
 
 @keyframes wi-breathe {
   0%, 100% {

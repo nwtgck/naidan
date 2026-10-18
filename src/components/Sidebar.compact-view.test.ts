@@ -188,7 +188,9 @@ describe('Sidebar Compact View & DND Integrity', () => {
     // Individually defined mocks for scrolling as requested
     HTMLElement.prototype.scrollIntoView = vi.fn();
     HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
-      if (typeof options.top === 'number') this.scrollTop = options.top;
+      if (typeof options.top === 'number') {
+        this.scrollTop = options.top;
+      }
     });
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function(this: HTMLElement) {
       if (this.dataset.testid === 'sidebar-nav') {

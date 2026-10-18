@@ -9,7 +9,7 @@ import { preferredQuantizationHint, matchesMemoryHint, modelSuggestions, moreGgu
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
-const props = defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, suggestions?: readonly ModelSuggestion[], selectionAction?: 'default' | 'select', memoryFilter?: 'show' | 'hide' }>();
+const props = defineProps<{ models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, suggestions?: readonly ModelSuggestion[], selectionAction?: 'default' | 'select', memoryFilter?: 'show' | 'hide', createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel], changed: [] }>();
 const entries = computed(() => props.suggestions ?? modelSuggestions);
 const id = useId();
@@ -62,7 +62,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <ul tw-class="max-h-[28rem] overflow-y-auto overscroll-contain divide-y divide-gray-100 dark:divide-gray-800 pr-1" data-testid="llama-suggestions-list">
             <li v-for="suggestion in entries" v-show="visible({ suggestion })" :key="suggestion.id">
-              <LlamaCppBrowserModelSuggestion :suggestion="suggestion" :models="models" :destination="destination" :destination-unavailable="destinationUnavailable" :destination-revision="destinationRevision" :authorize-destination="downloadDestination.authorize" :destination-label="downloadDestination.label" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :selection-action="selectionAction" @select-default="emit('selectDefault', $event)" @select="emit('select', $event)" />
+              <LlamaCppBrowserModelSuggestion :suggestion="suggestion" :models="models" :destination="destination" :destination-unavailable="destinationUnavailable" :destination-revision="destinationRevision" :authorize-destination="downloadDestination.authorize" :destination-label="downloadDestination.label" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :selection-action="selectionAction" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select-default="emit('selectDefault', $event)" @select="emit('select', $event)" />
             </li>
           </ul>
           <div tw-class="flex justify-end"><a :href="moreGgufModelsUrl" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestions-find-more" tw-class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline underline-offset-2">{{ lazyStrings.llamaCppBrowserDownloads__find_more() }}<ExternalLinkIcon tw-class="w-3 h-3" /></a></div>
@@ -72,8 +72,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </section>
 </template>
 <style scoped>
-.suggestions-disclosure { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms ease, opacity 180ms ease; }
-.suggestions-disclosure-open { grid-template-rows: 1fr; opacity: 1; }
-.suggestions-disclosure-inner { min-height: 0; overflow: hidden; }
-@media (prefers-reduced-motion: reduce) { .suggestions-disclosure { transition: none; } }
+.suggestions-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms ease, opacity 180ms ease;
+}
+.suggestions-disclosure-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.suggestions-disclosure-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestions-disclosure {
+    transition: none;
+  }
+}
 </style>

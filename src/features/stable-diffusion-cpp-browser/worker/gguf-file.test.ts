@@ -11,20 +11,31 @@ it('reads above 2, 4, 8 and 18 GiB without narrowing the file offset or copying 
     expect(to - from).toBeLessThanOrEqual(24);
     const bytes = new Uint8Array(to - from);
     if (from === 0) {
-      const view = new DataView(bytes.buffer); view.setUint32(0, 0x46554747, true); view.setUint32(4, 3, true);
-    } else bytes.fill(from % 251);
-    const blob = new Blob(); parts.set(blob, bytes.buffer); return blob;
+      const view = new DataView(bytes.buffer);
+      view.setUint32(0, 0x46554747, true);
+      view.setUint32(4, 3, true);
+    } else {
+      bytes.fill(from % 251);
+    }
+    const blob = new Blob();
+    parts.set(blob, bytes.buffer);
+    return blob;
   });
   const reader = {
     readAsArrayBuffer: vi.fn((blob: Blob) => {
-      const bytes = parts.get(blob); if (!bytes) throw new Error('unrequested bytes'); return bytes;
+      const bytes = parts.get(blob);
+      if (!bytes) {
+        throw new Error('unrequested bytes');
+      }
+      return bytes;
     }),
   };
   const source = createGgufFileSource({ file, reader });
   for (const gib of [2, 4, 8, 18]) {
     const offset = gib * 1024 ** 3 + 123;
     const target = new Uint8Array(16);
-    expect(source.read(target, offset)).toBe(16); expect(target[0]).toBe(offset % 251);
+    expect(source.read(target, offset)).toBe(16);
+    expect(target[0]).toBe(offset % 251);
     expect(slice).toHaveBeenLastCalledWith(offset, offset + 16);
   }
   expect(source.size).toBe(file.size);

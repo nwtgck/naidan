@@ -36,7 +36,9 @@ function fixture({ plan }: { plan: Arguments['plan'] }) {
   const createCaptureClient = vi.fn<Arguments['createCaptureClient']>(({ runId, workerEpoch, getActiveRequest }) => {
     client.generateMessage.mockImplementation(async ({ onEvent }) => {
       const request = getActiveRequest();
-      if (request === undefined) throw new Error('Expected public request');
+      if (request === undefined) {
+        throw new Error('Expected public request');
+      }
       issuedCalls.push({ runId, workerEpoch, requestId: request.requestId, generationCallId: issuedCalls.length + 1 });
       entered.resolve();
       await onEvent({ event: { type: 'part_start', index: 0, kind: 'text' } });
@@ -177,7 +179,8 @@ describe('bounded Production Provider investigation', () => {
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
       client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await pending.promise;
+        entered.resolve();
+        await pending.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
@@ -185,7 +188,8 @@ describe('bounded Production Provider investigation', () => {
     const sealing = Promise.withResolvers<nativeEvidence.ProductionProviderNativeEvidenceSidecar>();
     const sealEntered = Promise.withResolvers<void>();
     vi.spyOn(nativeEvidence, 'createProductionProviderNativeEvidence').mockImplementation(() => {
-      sealEntered.resolve(); return sealing.promise;
+      sealEntered.resolve();
+      return sealing.promise;
     });
     const running = investigation.run();
     await entered.promise;
@@ -216,7 +220,8 @@ describe('bounded Production Provider investigation', () => {
     createCaptureClient.mockImplementation(input => {
       const result = originalClient(input);
       client.generateMessage.mockImplementation(async () => {
-        entered.resolve(); await new Promise(() => undefined);
+        entered.resolve();
+        await new Promise(() => undefined);
       });
       return result;
     });
@@ -235,12 +240,14 @@ describe('bounded Production Provider investigation', () => {
     const { investigation, take, taking } = fixture({ plan: 'first-only' });
     const pendingTake = Promise.withResolvers<GenerationCaptureReadResult>();
     take.mockImplementation(() => {
-      taking.resolve(); return pendingTake.promise;
+      taking.resolve();
+      return pendingTake.promise;
     });
     const sealing = Promise.withResolvers<nativeEvidence.ProductionProviderNativeEvidenceSidecar>();
     const sealEntered = Promise.withResolvers<void>();
     vi.spyOn(nativeEvidence, 'createProductionProviderNativeEvidence').mockImplementation(() => {
-      sealEntered.resolve(); return sealing.promise;
+      sealEntered.resolve();
+      return sealing.promise;
     });
     const running = investigation.run();
     await taking.promise;
@@ -275,7 +282,8 @@ describe('bounded Production Provider investigation', () => {
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
       client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await pending.promise;
+        entered.resolve();
+        await pending.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;
@@ -299,7 +307,8 @@ describe('bounded Production Provider investigation', () => {
     const { investigation, take, taking, client } = fixture({ plan: 'first-only' });
     const pending = Promise.withResolvers<GenerationCaptureReadResult>();
     take.mockImplementation(() => {
-      taking.resolve(); return pending.promise;
+      taking.resolve();
+      return pending.promise;
     });
     const running = investigation.run();
     await taking.promise;
@@ -403,7 +412,8 @@ describe('bounded Production Provider investigation', () => {
     createCaptureClient.mockImplementation(input => {
       const capture = original(input);
       client.generateMessage.mockImplementation(async ({ onEvent }) => {
-        entered.resolve(); await pending.promise;
+        entered.resolve();
+        await pending.promise;
         await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
       });
       return capture;

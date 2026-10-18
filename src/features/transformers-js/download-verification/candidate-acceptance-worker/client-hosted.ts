@@ -54,10 +54,14 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
     verificationOutcome = { status: 'not-settled' };
     try {
       const result = await operation();
-      if (ordinal === verificationOrdinal) verificationOutcome = { status: 'fulfilled', device: result.device, dtype: result.dtype };
+      if (ordinal === verificationOrdinal) {
+        verificationOutcome = { status: 'fulfilled', device: result.device, dtype: result.dtype };
+      }
       return result;
     } catch (error) {
-      if (ordinal === verificationOrdinal) verificationOutcome = { status: 'rejected', error };
+      if (ordinal === verificationOrdinal) {
+        verificationOutcome = { status: 'rejected', error };
+      }
       throw error;
     }
   }
@@ -73,7 +77,9 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
             workerProxy({
               // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
               value: (info: ProgressInfo) => {
-                if (session.isActive()) return progressCallback({ info });
+                if (session.isActive()) {
+                  return progressCallback({ info });
+                }
               },
             }),
           ),
@@ -89,7 +95,9 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
             workerProxy({
               // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
               value: (info: ProgressInfo) => {
-                if (session.isActive()) return progressCallback({ info });
+                if (session.isActive()) {
+                  return progressCallback({ info });
+                }
               },
             }),
           ),
@@ -97,7 +105,9 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient({ oper
       });
     },
     async dispose() {
-      if (retirementError !== undefined) throw retirementError;
+      if (retirementError !== undefined) {
+        throw retirementError;
+      }
       try {
         session.dispose();
       } catch (cause) {

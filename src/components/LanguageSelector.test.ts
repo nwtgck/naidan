@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
@@ -95,5 +95,42 @@ describe('LanguageSelector', () => {
       '简体中文',
       '한국어',
     ]);
+  });
+
+  it('blocks overlapping locale changes and restores the selector after completion', async () => {
+    const pendingChange = Promise.withResolvers<void>();
+    mocks.setLocale.mockImplementationOnce(() => pendingChange.promise);
+    using mounted = {
+      wrapper: mount(LanguageSelector),
+      [Symbol.dispose]() {
+        pendingChange.resolve();
+        this.wrapper.unmount();
+      },
+    };
+    const wrapper = mounted.wrapper;
+    const toggle = wrapper.get('[data-testid="language-selector-toggle"]');
+    await toggle.trigger('click');
+    const englishOption = wrapper.findAll('[data-testid="language-selector-option"]')
+      .find(option => option.text() === 'English');
+    expect(englishOption).toBeDefined();
+    await englishOption!.trigger('click');
+
+    expect(mocks.setLocale).toHaveBeenCalledTimes(1);
+    expect(toggle.attributes('disabled')).toBeDefined();
+    expect(wrapper.findAll('[data-testid="language-selector-option"]').every(option => option.attributes('disabled') !== undefined)).toBe(true);
+    const exposed = wrapper.vm as unknown as {
+      TEST_ONLY: {
+        changeLocale: ({ locale }: { locale: UiLocale }) => Promise<void>;
+      };
+    };
+    await exposed.TEST_ONLY.changeLocale({ locale: 'en' });
+    expect(mocks.setLocale).toHaveBeenCalledTimes(1);
+
+    pendingChange.resolve();
+    await flushPromises();
+    expect(toggle.attributes('disabled')).toBeUndefined();
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false);
+    await toggle.trigger('click');
+    expect(wrapper.findAll('[data-testid="language-selector-option"]')).toHaveLength(7);
   });
 });

@@ -14,7 +14,10 @@ const label = computed(() => {
   switch (origin) {
   case 'recommended': return lazyStrings.imageGeneration__recommended_value();
   case undefined: case 'suggested': return lazyStrings.imageGeneration__suggested_value();
-  default: { const exhaustive: never = origin; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = origin;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const display = computed(() => hint.value?.range ? `${hint.value.range.minimum}–${hint.value.range.maximum}` : String(hint.value?.value ?? ''));
@@ -24,31 +27,47 @@ watch(() => [props.context, props.recommendation?.id, props.field, hint.value?.v
 // The trigger's v-if can disappear without unmounting this component. Do not
 // resurrect an old popup when the input later differs from the preset again.
 watch(different, value => {
-  if (!value) open.value = false;
+  if (!value) {
+    open.value = false;
+  }
 }, { flush: 'sync' });
 
 async function openWithKeyboard(): Promise<void> {
-  if (props.disabled) return;
-  open.value = true; await nextTick();
-  if (open.value) action.value?.focus({ preventScroll: true });
+  if (props.disabled) {
+    return;
+  }
+  open.value = true;
+  await nextTick();
+  if (open.value) {
+    action.value?.focus({ preventScroll: true });
+  }
 }
 
 async function toggle({ event }: { event: MouseEvent }): Promise<void> {
   if (open.value) {
-    open.value = false; return;
+    open.value = false;
+    return;
   }
-  if (event.detail === 0) await openWithKeyboard();
-  else open.value = true;
+  if (event.detail === 0) {
+    await openWithKeyboard();
+  } else {
+    open.value = true;
+  }
 }
 
 function close(): void {
-  open.value = false; button.value?.focus({ preventScroll: true });
+  open.value = false;
+  button.value?.focus({ preventScroll: true });
 }
 
 async function apply(): Promise<void> {
-  if (props.disabled || !props.recommendation || !open.value) return;
+  if (props.disabled || !props.recommendation || !open.value) {
+    return;
+  }
   emit('apply', { field: props.field, recommendationId: props.recommendation.id, context: props.context });
-  open.value = false; await nextTick(); document.getElementById(props.inputId)?.focus({ preventScroll: true });
+  open.value = false;
+  await nextTick();
+  document.getElementById(props.inputId)?.focus({ preventScroll: true });
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

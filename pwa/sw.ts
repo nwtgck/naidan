@@ -39,7 +39,9 @@ let networkOnly = caches.open(modeCache).then(async cache =>
 const precache = new PrecacheController({
   plugins: [{
     async handlerDidError({ request, error, event }) {
-      if (event.type === 'install') console.error('[PWA] Failed to precache an application resource.', request.url, error);
+      if (event.type === 'install') {
+        console.error('[PWA] Failed to precache an application resource.', request.url, error);
+      }
       // Report the ORIGINAL error; never turn an incomplete install into success.
       return undefined;
     },
@@ -57,7 +59,9 @@ self.addEventListener('activate', event => {
   // If C is already writing, B must not delete C's entries. If C starts after
   // this check, its install waits for this activation before writing anything.
   // A later uncontended activation cleans up any entries left by a failed C.
-  if (!self.registration.installing) event.waitUntil(precache.activate(event));
+  if (!self.registration.installing) {
+    event.waitUntil(precache.activate(event));
+  }
 });
 cleanupOutdatedCaches();
 const router = new Router();
@@ -68,13 +72,19 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   // Leave other origins, scopes and methods to the browser. In particular,
   // this worker does not wrap model/API requests or their response streams.
-  if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
-  if (isDocsUrl({ url, scope })) return;
+  if (event.request.method !== 'GET' || url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) {
+    return;
+  }
+  if (isDocsUrl({ url, scope })) {
+    return;
+  }
   const response = (async () => {
     // The deliberate tradeoff is SCOPE-wide: all tabs/workers still controlled
     // by this generation use the network. This avoids guessing worker ancestry,
     // mixing old fixed-name runtime files, or changing any model/user cache.
-    if (await networkOnly) return fetch(event.request, { cache: 'no-store' });
+    if (await networkOnly) {
+      return fetch(event.request, { cache: 'no-store' });
+    }
     return router.handleRequest({ request: event.request, event }) ?? fetch(event.request);
   })();
   event.respondWith(response);
@@ -86,21 +96,31 @@ self.addEventListener('message', event => {
   const fromActive = source !== null && source === self.registration.active;
   const fromPage = event.origin === scope.origin && source && 'url' in source && 'type' in source
     && source.type === 'window' && source.url.startsWith(scope.href);
-  if (!fromPage && !fromActive) return;
+  if (!fromPage && !fromActive) {
+    return;
+  }
   const data: unknown = event.data;
-  if (!data || typeof data !== 'object' || !('type' in data)) return;
+  if (!data || typeof data !== 'object' || !('type' in data)) {
+    return;
+  }
   if (data.type === ACTIVATE_BUILD_MESSAGE) {
     // Only the active worker can prove ALL its streams have drained. The build
     // check prevents a replaced waiting B from accidentally activating C.
-    if (fromActive && 'buildId' in data && data.buildId === __PWA_BUILD_ID__) event.waitUntil(self.skipWaiting());
+    if (fromActive && 'buildId' in data && data.buildId === __PWA_BUILD_ID__) {
+      event.waitUntil(self.skipWaiting());
+    }
     return;
   }
   if (data.type === 'SKIP_WAITING') {
-    if (fromPage) event.waitUntil(self.skipWaiting());
+    if (fromPage) {
+      event.waitUntil(self.skipWaiting());
+    }
     return;
   }
   const reply = event.ports[0];
-  if (!reply) return;
+  if (!reply) {
+    return;
+  }
   if (data.type === BUILD_ID_MESSAGE) {
     // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Read-only, versioned, validated one-shot identity; available even during install.
     reply.postMessage({ type: BUILD_ID_MESSAGE, buildId: __PWA_BUILD_ID__ });
@@ -108,7 +128,8 @@ self.addEventListener('message', event => {
     return;
   }
   if (!fromPage) {
-    reply.close(); return;
+    reply.close();
+    return;
   }
   if (data.type === COMPLETE_OFFLINE_MESSAGE) {
     event.waitUntil((async () => {
@@ -120,7 +141,9 @@ self.addEventListener('message', event => {
         const active = self.registration.active;
         const controlled = await self.clients.matchAll({ type: 'window' });
         if (active === self.registration.active && source && 'id' in source && controlled.some(client => client.id === source.id)
-          && 'buildId' in data && typeof data.buildId === 'string' && data.buildId.trim()) accepted = await handoff.request({ buildId: data.buildId });
+          && 'buildId' in data && typeof data.buildId === 'string' && data.buildId.trim()) {
+          accepted = await handoff.request({ buildId: data.buildId });
+        }
       } catch (error) {
         console.warn('[PWA] Offline handoff could not be prepared.', error);
       }
@@ -131,7 +154,9 @@ self.addEventListener('message', event => {
     return;
   }
   // Unrecognized messages/ports may belong to the local download protocol.
-  if (data.type !== USE_NETWORK_MESSAGE) return;
+  if (data.type !== USE_NETWORK_MESSAGE) {
+    return;
+  }
   event.waitUntil((async () => {
     try {
       // Persist BEFORE acknowledging, so a reload/worker restart cannot return

@@ -27,10 +27,14 @@ describe('module-local native ABI layouts', () => {
     const counts = new Map<string, number>();
     const module: CoreModule = new Proxy(core.module, {
       get(target, property) {
-        if (typeof property === 'string' && Object.hasOwn(overrides, property)) return overrides[property];
+        if (typeof property === 'string' && Object.hasOwn(overrides, property)) {
+          return overrides[property];
+        }
         const value: unknown = Reflect.get(target, property, target);
         if (typeof property === 'string' && ['_lcb_sizeof_record', '_lcb_offsetof_field', '_lcb_sizeof_field'].includes(property)) {
-          if (typeof value !== 'function') throw new Error('Missing fixture native layout export');
+          if (typeof value !== 'function') {
+            throw new Error('Missing fixture native layout export');
+          }
           // Instrument native scalar ABI without changing the call shape.
           return (...args: (number | bigint)[]) => {
             counts.set(property, (counts.get(property) ?? 0) + 1);
@@ -50,17 +54,21 @@ describe('module-local native ABI layouts', () => {
     const b = bound.allocRecord({ name: 'llama_batch' });
     using _cleanupResource = {
       [Symbol.dispose]() {
-        bound.free({ pointer: a }); bound.free({ pointer: b });
+        bound.free({ pointer: a });
+        bound.free({ pointer: b });
       },
     };
-    for (let i = 0; i < 100; i++) bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: a, value: i });
+    for (let i = 0; i < 100; i++) {
+      bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: a, value: i });
+    }
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: b, value: 12 });
     const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
     const read = ({ pointer }: { pointer: bigint }) => {
       const span = bound.bytes({ pointer: pointer + layout.offset, length: layout.size });
       return new DataView(span.buffer, span.byteOffset, span.byteLength).getInt32(0, true);
     };
-    expect(read({ pointer: a })).toBe(99); expect(read({ pointer: b })).toBe(12);
+    expect(read({ pointer: a })).toBe(99);
+    expect(read({ pointer: b })).toBe(12);
     expect(counts.get('_lcb_sizeof_record')).toBe(1);
     expect(counts.get('_lcb_offsetof_field')).toBe(1);
     expect(counts.get('_lcb_sizeof_field')).toBe(1);
@@ -91,7 +99,8 @@ describe('module-local native ABI layouts', () => {
     };
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 });
     const previous = heap;
-    heap = new Uint8Array(previous.length); heap.set(previous);
+    heap = new Uint8Array(previous.length);
+    heap.set(previous);
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 73 });
     expect(new DataView(heap.buffer).getInt32(at, true)).toBe(73);
     expect(new DataView(previous.buffer).getInt32(at, true)).toBe(1);
@@ -141,16 +150,22 @@ describe('module-local native ABI layouts', () => {
         () => bound.fieldLayout({ name: 'llama_batch', field: 'token' }),
         () => bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' }),
         () => bound.setField({ name: 'llama_batch', field: 'token', pointer, value: 0n }),
-      ]) expect(action).toThrow('Serialize access');
+      ]) {
+        expect(action).toThrow('Serialize access');
+      }
     } finally {
-      gate.resolve(0n); await pending; bound.free({ pointer });
+      gate.resolve(0n);
+      await pending;
+      bound.free({ pointer });
     }
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' }).kind).toBe('pointer');
   });
 
   it.each(['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record'])('does not memoize a failed %s query', exportName => {
     const original = Reflect.get(core.module, exportName);
-    if (typeof original !== 'function') throw new Error('Missing native export');
+    if (typeof original !== 'function') {
+      throw new Error('Missing native export');
+    }
     const failure = new WebAssembly.RuntimeError('layout query failed');
     const stub = vi.fn().mockImplementationOnce(() => {
       throw failure;
@@ -159,18 +174,24 @@ describe('module-local native ABI layouts', () => {
     const bound = attachCore({ module, callMode: 'direct' });
     const read = () => exportName === '_lcb_sizeof_record' ? bound.recordSize({ name: 'llama_batch' }) : bound.fieldLayout({ name: 'llama_batch', field: 'token' });
     expect(read).toThrow(failure);
-    const valid = read(); expect(read()).toEqual(valid); expect(stub).toHaveBeenCalledTimes(2);
+    const valid = read();
+    expect(read()).toEqual(valid);
+    expect(stub).toHaveBeenCalledTimes(2);
   });
 
   it.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe offsets or sizes before caching: %s', invalid => {
     for (const exportName of ['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record']) {
       const original = Reflect.get(core.module, exportName);
-      if (typeof original !== 'function') throw new Error('Missing native export');
+      if (typeof original !== 'function') {
+        throw new Error('Missing native export');
+      }
       const stub = vi.fn().mockReturnValueOnce(invalid).mockImplementation((...args: (number | bigint)[]) => Reflect.apply(original, core.module, args));
       const { module } = instrument({ overrides: { [exportName]: stub } });
       const bound = attachCore({ module, callMode: 'direct' });
       const read = () => exportName === '_lcb_sizeof_record' ? bound.recordSize({ name: 'llama_batch' }) : bound.fieldLayout({ name: 'llama_batch', field: 'token' });
-      expect(read).toThrow('Unsafe memory index'); expect(read).not.toThrow(); expect(stub).toHaveBeenCalledTimes(2);
+      expect(read).toThrow('Unsafe memory index');
+      expect(read).not.toThrow();
+      expect(stub).toHaveBeenCalledTimes(2);
     }
   });
 

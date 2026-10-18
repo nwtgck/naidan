@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
@@ -23,6 +24,7 @@ const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount } = vi
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
+  BrainIcon: { template: '<span>Brain</span>' },
   SquareIcon: { template: '<span>Square</span>' },
   Minimize2Icon: { template: '<span>Minimize2</span>' },
   Maximize2Icon: { template: '<span>Maximize2</span>' },
@@ -62,10 +64,11 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 // Mock child components
-vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div></div>' } }));
+vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="settings" /></div>' } }));
 vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
+const mockAddToast = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
@@ -105,7 +108,7 @@ vi.mock('@/features/tools/wesh/chat-workspace', () => ({
 }));
 vi.mock('../composables/useToast', () => ({
   useToast: () => ({
-    addToast: vi.fn(),
+    addToast: mockAddToast,
   }),
 }));
 vi.mock('../composables/useConfirm', () => ({
@@ -278,7 +281,9 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
     abortChat: mockAbortChat,
     updateChatSettings: mockUpdateChatSettings,
     getLiveChat: vi.fn().mockImplementation((c) => {
-      if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+      if (mockCurrentChat.value?.id === (c.id || c)) {
+        return mockCurrentChat.value;
+      }
       return c;
     }),
     ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
@@ -343,7 +348,9 @@ const mockChatStore = {
     }
   }),
   getLiveChat: vi.fn().mockImplementation((c) => {
-    if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+    if (mockCurrentChat.value?.id === (c.id || c)) {
+      return mockCurrentChat.value;
+    }
     return c;
   }),
   ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
@@ -417,7 +424,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         return undefined;
       }),
     updateReasoningEffort: ({ chatId, effort }: { chatId: string, effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
-      mockReasoningStore.updateReasoningEffort({
+      return mockReasoningStore.updateReasoningEffort({
         chatId,
         effort,
       });
@@ -1046,10 +1053,9 @@ describe('ChatInput Integration', () => {
     expect(mockSetPreferredEditorMode).toHaveBeenCalledWith({ mode: 'textarea' });
   });
 
-  it('should persist reasoning effort when updated via tools menu', async () => {
+  it('should persist reasoning effort when updated via the model selector', async () => {
     const wrapper = getWrapper();
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.exists()).toBe(true);
+    const reasoning = wrapper.getComponent(ReasoningSettings);
 
     // Update the chat to have initial lmParameters
     mockCurrentChat.value = {
@@ -1059,8 +1065,8 @@ describe('ChatInput Integration', () => {
     };
     await nextTick();
 
-    // Trigger update event from tools menu
-    await (toolsMenu.vm as any).$emit('update:reasoning-effort', 'high');
+    // The selector delegates persistence to its chat owner.
+    await reasoning.vm.$emit('update:effort', 'high');
     await nextTick();
 
     // Verify updateChatSettings was called correctly
@@ -1091,5 +1097,97 @@ describe('ChatInput Integration', () => {
 
     // Verify it reflects the NEW chat's state
     expect(wrapper.vm.TEST_ONLY.selectedReasoningEffort.value).toBe('high');
+  });
+
+  it('distinguishes inherited reasoning from a local override and supports clearing it', async () => {
+    const wrapper = getWrapper();
+    await wrapper.setProps({ inheritedReasoningEffort: 'low' });
+    const reasoning = wrapper.getComponent(ReasoningSettings);
+    expect(reasoning.props('selectedEffort')).toBeUndefined();
+    expect(reasoning.props('defaultLabel')).toBe('Inherit (Low)');
+    await reasoning.vm.$emit('update:effort', 'none');
+    await flushPromises();
+    expect(mockCurrentChat.value.lmParameters.reasoning.effort).toBe('none');
+    expect(reasoning.props('defaultLabel')).toBe('Inherit (Low)');
+    await reasoning.vm.$emit('update:effort', undefined);
+    await flushPromises();
+    expect(mockUpdateChatSettings).toHaveBeenLastCalledWith('chat-1', expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }) }));
+  });
+
+  it('keeps reasoning editable during generation and prevents duplicate pending saves', async () => {
+    const wrapper = getWrapper();
+    await wrapper.setProps({ isStreaming: true });
+    const pending = Promise.withResolvers<void>();
+    mockReasoningStore.updateReasoningEffort.mockImplementationOnce(() => pending.promise);
+    const reasoning = wrapper.getComponent(ReasoningSettings);
+    const control = reasoning.element;
+    await reasoning.vm.$emit('update:effort', 'high');
+    expect(reasoning.props('disabled')).toBe(true);
+    expect(reasoning.element).toBe(control);
+    expect(reasoning.get<HTMLButtonElement>('[data-testid="reasoning-effort-low"]').element.disabled).toBe(true);
+    await reasoning.vm.$emit('update:effort', 'low');
+    expect(mockReasoningStore.updateReasoningEffort).toHaveBeenCalledTimes(1);
+    pending.reject(new Error('Storage unavailable'));
+    await flushPromises();
+    expect(reasoning.props('disabled')).toBe(false);
+    expect(reasoning.element).toBe(control);
+    expect(reasoning.get<HTMLButtonElement>('[data-testid="reasoning-effort-low"]').element.disabled).toBe(false);
+    expect(mockAddToast).toHaveBeenCalledWith({ message: 'Could not save the reasoning setting. Try again.' });
+    await reasoning.vm.$emit('update:effort', 'low');
+    await flushPromises();
+    expect(mockReasoningStore.updateReasoningEffort).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not send a composing shortcut or remount the textarea when opening model settings', async () => {
+    const wrapper = getWrapper();
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Draft remains here');
+    await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true, isComposing: true });
+    await textarea.trigger('keydown', { key: 'Enter', metaKey: true, keyCode: 229 });
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    await wrapper.getComponent({ name: 'ModelSelector' }).vm.$emit('update:open', true);
+    expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea.element);
+    expect(textarea.element.value).toBe('Draft remains here');
+  });
+
+  it('caps the textarea against the pane without requesting another near-bottom scroll', async () => {
+    const wrapper = getWrapper();
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    Object.defineProperty(textarea.element, 'scrollHeight', { configurable: true, value: 500 });
+    Object.defineProperty(textarea.element, 'offsetHeight', { configurable: true, value: 160 });
+    Object.defineProperty(wrapper.element, 'scrollHeight', { configurable: true, value: 240 });
+    await wrapper.setProps({ availableSpace: { width: 320, height: 200 } });
+    await nextTick();
+    expect(parseFloat(textarea.element.style.height)).toBeLessThanOrEqual(112);
+    expect(textarea.element.style.overflowY).toBe('auto');
+    expect(wrapper.emitted('scroll-to-bottom')).toBeUndefined();
+    expect(wrapper.emitted('layout-change')).toBeTruthy();
+  });
+
+  it('keeps the shortcut inside the send action and replaces it with Esc while generating', async () => {
+    const wrapper = getWrapper();
+    const send = wrapper.get('[data-testid="send-button"]');
+    expect(send.get('.composer-shortcut').text()).toMatch(/(Ctrl \+|⌘) Enter/);
+    await wrapper.setProps({ isStreaming: true });
+    const stop = wrapper.get('[data-testid="abort-button"]');
+    expect(stop.get('.composer-shortcut').text()).toBe('Esc');
+    expect(stop.text()).not.toContain('Enter');
+  });
+
+  it('closes attachments during setup without losing the draft and can reopen after setup', async () => {
+    const wrapper = getWrapper();
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep my draft');
+    await wrapper.get('[data-testid="attach-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="attach-menu"]').exists()).toBe(true);
+    await wrapper.setProps({ presentation: 'hidden' });
+    expect(wrapper.find('[data-testid="attach-menu"]').exists()).toBe(false);
+    expect(textarea.element.value).toBe('Keep my draft');
+    await wrapper.setProps({ presentation: 'visible' });
+    await wrapper.get('[data-testid="attach-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="attach-menu"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="chat-input"]').element).toBe(textarea.element);
   });
 });

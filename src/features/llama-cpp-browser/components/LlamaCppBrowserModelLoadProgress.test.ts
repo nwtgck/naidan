@@ -15,16 +15,20 @@ describe('measured model load progress', () => {
     expect(wrapper.get('[role="progressbar"]').attributes('aria-label')).toBe('Loading model weights');
     await wrapper.setProps({ progress: { phase: 'initializing', completed: 0, total: 0 } });
     expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
-    expect(wrapper.text()).not.toContain('%'); expect(wrapper.text()).toContain('context'); wrapper.unmount();
+    expect(wrapper.text()).not.toContain('%');
+    expect(wrapper.text()).toContain('context');
+    wrapper.unmount();
   });
 
   it.each([undefined, { phase: 'loading' as const, completed: 0, total: 0 }, { phase: 'loading' as const, completed: NaN, total: 1 }, { phase: 'generating' as const, completed: 5, total: 10 }])('does not turn unknown or unrelated progress into a load percentage', progress => {
     const wrapper = mount(LlamaCppBrowserModelLoadProgress, { props: { progress } });
-    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined(); wrapper.unmount();
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBeUndefined();
+    wrapper.unmount();
   });
 
   it.each([[-1, '0'], [2, '100']] as const)('bounds an observed fraction %s to %s', (completed, expected) => {
     const wrapper = mount(LlamaCppBrowserModelLoadProgress, { props: { progress: { phase: 'loading', completed, total: 1 } } });
-    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe(expected); wrapper.unmount();
+    expect(wrapper.get('[role="progressbar"]').attributes('aria-valuenow')).toBe(expected);
+    wrapper.unmount();
   });
 });

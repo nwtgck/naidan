@@ -133,7 +133,9 @@ function floorDivideBigInt({
 }): bigint {
   const quotient = dividend / divisor;
   const remainder = dividend % divisor;
-  if (remainder < 0n) return quotient - 1n;
+  if (remainder < 0n) {
+    return quotient - 1n;
+  }
   return quotient;
 }
 
@@ -144,7 +146,9 @@ function formatScaledSeconds({
   scaledSeconds: bigint,
   precision: number,
 }): string {
-  if (precision === 0) return scaledSeconds.toString();
+  if (precision === 0) {
+    return scaledSeconds.toString();
+  }
   const scale = 10n ** BigInt(precision);
   const sign = scaledSeconds < 0n ? '-' : '';
   const absolute = scaledSeconds < 0n ? -scaledSeconds : scaledSeconds;
@@ -178,7 +182,9 @@ function formatEpochSeconds({
     scaledSeconds,
     precision: representedPrecision,
   });
-  if (precision <= 3) return represented;
+  if (precision <= 3) {
+    return represented;
+  }
   return `${represented}${'0'.repeat(precision - 3)}`;
 }
 
@@ -192,16 +198,24 @@ function isSurrogateEscapedByte({ codeUnit }: { codeUnit: number }): boolean {
 
 function canUseDoubleQuotes({ value }: { value: string }): boolean {
   for (const character of value) {
-    if (character === "'" || character === ' ') continue;
-    if (/^[\p{L}\p{M}\p{N}_+,.\-/:@%]$/u.test(character)) continue;
+    if (character === "'" || character === ' ') {
+      continue;
+    }
+    if (/^[\p{L}\p{M}\p{N}_+,.\-/:@%]$/u.test(character)) {
+      continue;
+    }
     return false;
   }
   return true;
 }
 
 function quotePrintableStatSegment({ value }: { value: string }): string {
-  if (!value.includes("'")) return `'${value}'`;
-  if (canUseDoubleQuotes({ value })) return `"${value}"`;
+  if (!value.includes("'")) {
+    return `'${value}'`;
+  }
+  if (canUseDoubleQuotes({ value })) {
+    return `"${value}"`;
+  }
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -230,12 +244,16 @@ export function quoteStatName({
   let escapedBytes: number[] = [];
 
   const flushPrintable = ({ evenIfEmpty }: { evenIfEmpty: boolean }): void => {
-    if (printable.length === 0 && !evenIfEmpty) return;
+    if (printable.length === 0 && !evenIfEmpty) {
+      return;
+    }
     rendered.push(quotePrintableStatSegment({ value: printable }));
     printable = '';
   };
   const flushEscaped = (): void => {
-    if (escapedBytes.length === 0) return;
+    if (escapedBytes.length === 0) {
+      return;
+    }
     rendered.push(`$'${escapedBytes.map(byte => escapeStatByte({ byte })).join('')}'`);
     escapedBytes = [];
   };
@@ -334,7 +352,9 @@ function applyFieldWidth({
   zeroPaddingPrefixLength: number,
 }): Uint8Array {
   const width = token.width;
-  if (width === undefined || value.byteLength >= width) return value;
+  if (width === undefined || value.byteLength >= width) {
+    return value;
+  }
 
   const paddingLength = width - value.byteLength;
   if (token.alignment === 'right' && token.padding === 'zero' && supportsZeroPadding) {
@@ -365,8 +385,12 @@ function applyUnsignedIntegerPrecision({
   digits: string,
   precision: number | undefined,
 }): string {
-  if (precision === undefined) return digits;
-  if (precision === 0 && digits === '0') return '';
+  if (precision === undefined) {
+    return digits;
+  }
+  if (precision === 0 && digits === '0') {
+    return '';
+  }
   return digits.padStart(precision, '0');
 }
 
@@ -377,7 +401,9 @@ function applyTimestampSign({
   value: string,
   sign: StatFormatDirectiveToken['sign'],
 }): string {
-  if (value.startsWith('-')) return value;
+  if (value.startsWith('-')) {
+    return value;
+  }
   switch (sign) {
   case 'none':
     return value;
@@ -399,7 +425,9 @@ function truncateBytes({
   bytes: Uint8Array,
   precision: number | undefined,
 }): Uint8Array {
-  if (precision === undefined || bytes.byteLength <= precision) return bytes;
+  if (precision === undefined || bytes.byteLength <= precision) {
+    return bytes;
+  }
   return bytes.slice(0, precision);
 }
 
@@ -536,7 +564,9 @@ function renderDirective({
         : rawName,
     });
     const name = renderNameValue({ rawName: input.operand });
-    if (input.symlinkTarget === undefined) return name;
+    if (input.symlinkTarget === undefined) {
+      return name;
+    }
     const target = renderNameValue({ rawName: input.symlinkTarget });
     return combineByteArrays({
       parts: [name, textEncoder.encode(' -> '), target],
@@ -610,15 +640,21 @@ export function* renderCompiledStatFormatChunks({
     switch (token.kind) {
     case 'literal-text': {
       const bytes = textEncoder.encode(token.value);
-      if (bytes.byteLength > 0) yield bytes;
+      if (bytes.byteLength > 0) {
+        yield bytes;
+      }
       break;
     }
     case 'literal-bytes':
-      if (token.value.byteLength > 0) yield token.value;
+      if (token.value.byteLength > 0) {
+        yield token.value;
+      }
       break;
     case 'directive': {
       const bytes = renderDirective({ token, input, quoteModifiedNameDirectives });
-      if (bytes.byteLength > 0) yield bytes;
+      if (bytes.byteLength > 0) {
+        yield bytes;
+      }
       break;
     }
     default: {

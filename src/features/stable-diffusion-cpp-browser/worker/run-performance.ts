@@ -27,14 +27,24 @@ const emptyPlacement = () => ({
 });
 
 function parsePlacement({ message }: { message: string }): ReturnType<typeof emptyPlacement> | 'invalid' | undefined {
-  if (!/^compute_workspace\.cpp:\d+\s+- browser-placement-v1\b/.test(message)) return undefined;
+  if (!/^compute_workspace\.cpp:\d+\s+- browser-placement-v1\b/.test(message)) {
+    return undefined;
+  }
   const match = /^compute_workspace\.cpp:\d+\s+- browser-placement-v1 nodes=(\d+) cpu=(\d+) webgpu=(\d+) other=(\d+) bf16=(\d+) inspected=(\d+) cpu_bf16=(\d+) webgpu_bf16=(\d+) other_bf16=(\d+) cpu_unsupported_bf16=(\d+) webgpu_weights=(\d+) host_weights=(\d+) other_weights=(\d+) webgpu_cpu_bf16=(\d+) webgpu_cpu_bf16_use_bytes=(\d+)\s*$/.exec(message);
-  if (!match) return 'invalid';
+  if (!match) {
+    return 'invalid';
+  }
   const values = match.slice(1).map(Number);
-  if (values.some(value => !Number.isSafeInteger(value))) return 'invalid';
+  if (values.some(value => !Number.isSafeInteger(value))) {
+    return 'invalid';
+  }
   const [nodes, cpu, webgpu, other, bf16, inspected, cpuBf16, webgpuBf16, otherBf16, unsupported, gpuWeights, hostWeights, otherWeights, gpuCpu, gpuCpuBytes] = values;
-  if (nodes === undefined || cpu === undefined || webgpu === undefined || other === undefined || bf16 === undefined || inspected === undefined || cpuBf16 === undefined || webgpuBf16 === undefined || otherBf16 === undefined || unsupported === undefined || gpuWeights === undefined || hostWeights === undefined || otherWeights === undefined || gpuCpu === undefined || gpuCpuBytes === undefined) return 'invalid';
-  if (cpu + webgpu + other !== nodes || bf16 > nodes || inspected > bf16 || cpuBf16 + webgpuBf16 + otherBf16 !== inspected || gpuWeights + hostWeights + otherWeights !== inspected || cpuBf16 > cpu || webgpuBf16 > webgpu || otherBf16 > other || unsupported > cpuBf16 || gpuCpu > cpuBf16 || gpuCpu > gpuWeights || (gpuCpu === 0 && gpuCpuBytes !== 0)) return 'invalid';
+  if (nodes === undefined || cpu === undefined || webgpu === undefined || other === undefined || bf16 === undefined || inspected === undefined || cpuBf16 === undefined || webgpuBf16 === undefined || otherBf16 === undefined || unsupported === undefined || gpuWeights === undefined || hostWeights === undefined || otherWeights === undefined || gpuCpu === undefined || gpuCpuBytes === undefined) {
+    return 'invalid';
+  }
+  if (cpu + webgpu + other !== nodes || bf16 > nodes || inspected > bf16 || cpuBf16 + webgpuBf16 + otherBf16 !== inspected || gpuWeights + hostWeights + otherWeights !== inspected || cpuBf16 > cpu || webgpuBf16 > webgpu || otherBf16 > other || unsupported > cpuBf16 || gpuCpu > cpuBf16 || gpuCpu > gpuWeights || (gpuCpu === 0 && gpuCpuBytes !== 0)) {
+    return 'invalid';
+  }
   return {
     allocationReports: 1,
     invalidReports: 0,
@@ -58,20 +68,33 @@ function parsePlacement({ message }: { message: string }): ReturnType<typeof emp
 
 function parseWeightConversion({ message }: { message: string }) {
   const match = /^model_manager\.cpp:\d+\s+- browser-weight-conversion-v1 target=(f32|f16) tensors=(\d+) source_bytes=(\d+) destination_bytes=(\d+) extra_bytes=(\d+)\s*$/.exec(message);
-  if (!match) return undefined;
+  if (!match) {
+    return undefined;
+  }
   const target = match[1], values = match.slice(2).map(Number);
-  if (target !== 'f32' && target !== 'f16') return undefined;
-  if (values.some(value => !Number.isSafeInteger(value))) return undefined;
+  if (target !== 'f32' && target !== 'f16') {
+    return undefined;
+  }
+  if (values.some(value => !Number.isSafeInteger(value))) {
+    return undefined;
+  }
   const [tensors, sourceBytes, destinationBytes, extraBytes] = values;
-  if (tensors === undefined || sourceBytes === undefined || destinationBytes === undefined || extraBytes === undefined || tensors < 1 || sourceBytes < 1) return undefined;
+  if (tensors === undefined || sourceBytes === undefined || destinationBytes === undefined || extraBytes === undefined || tensors < 1 || sourceBytes < 1) {
+    return undefined;
+  }
   const multiplier = (() => {
     switch (target) {
     case 'f32': return 2;
     case 'f16': return 1;
-    default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
     }
   })();
-  if (destinationBytes !== sourceBytes * multiplier || extraBytes !== destinationBytes - sourceBytes) return undefined;
+  if (destinationBytes !== sourceBytes * multiplier || extraBytes !== destinationBytes - sourceBytes) {
+    return undefined;
+  }
   return { target, tensors, sourceBytes, destinationBytes, extraBytes };
 }
 
@@ -93,7 +116,9 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
   const placementTotal = emptyPlacement();
   let placementWindow = emptyPlacement();
   function report({ metric, fields }: { metric: string, fields: ImageDiagnosticInput['fields'] }): void {
-    if (!enabled || closed) return;
+    if (!enabled || closed) {
+      return;
+    }
     try {
       emit({ event: 'native', stage: 'generation', message: undefined, fields: { metric, perfVersion: 1, ...fields } });
     } catch { /* observational */ }
@@ -114,12 +139,16 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     });
   }
   function flushPlacement(): void {
-    if (!placementWindow.allocationReports && !placementWindow.invalidReports) return;
+    if (!placementWindow.allocationReports && !placementWindow.invalidReports) {
+      return;
+    }
     reportPlacement({ metric: 'graph-placement-window', counts: placementWindow });
     placementWindow = emptyPlacement();
   }
   function setPhase({ next }: { next: PerformancePhase }): void {
-    if (!enabled || closed || next === phase) return;
+    if (!enabled || closed || next === phase) {
+      return;
+    }
     const time = now(), ms = Math.max(0, time - phaseStart);
     phases[phase] += ms;
     report({ metric: 'phase-wall', fields: { phase, milliseconds: ms, startMs: phaseStart - began, endMs: time - began } });
@@ -131,17 +160,23 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
           switch (next) {
           case 'sampling': return step;
           case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'decoding': case 'encoding': case 'cleanup': return 0;
-          default: { const exhaustive: never = next; throw new Error(String(exhaustive)); }
+          default: {
+            const exhaustive: never = next;
+            throw new Error(String(exhaustive));
+          }
           }
         })(),
         reason: 'phase',
       },
     });
-    phase = next; phaseStart = time;
+    phase = next;
+    phaseStart = time;
   }
   return {
     settings(): void {
-      if (!enabled || closed) return;
+      if (!enabled || closed) {
+        return;
+      }
       const p = request.parameters;
       // Exact approved flag only; do not parse/export arbitrary model arguments.
       const arg = p.modelArguments.trim();
@@ -178,20 +213,35 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     },
     phase: setPhase,
     native({ signal }: { signal: NativePerformanceSignal }): void {
-      if (!enabled || closed) return;
+      if (!enabled || closed) {
+        return;
+      }
       switch (signal.kind) {
-      case 'conditioning': setPhase({ next: 'conditioning' }); return;
+      case 'conditioning': setPhase({ next: 'conditioning' });
+        return;
       case 'sampling-progress': break;
-      default: { const exhaustive: never = signal; throw new Error(String(exhaustive)); }
+      default: {
+        const exhaustive: never = signal;
+        throw new Error(String(exhaustive));
+      }
       }
       const { step: next, steps } = signal;
-      if (!Number.isInteger(next) || steps !== request.parameters.steps || next < 0 || next > steps) return;
-      if (next === 0 && stepStart === undefined) {
-        setPhase({ next: 'sampling' }); stepStart = now(); return;
+      if (!Number.isInteger(next) || steps !== request.parameters.steps || next < 0 || next > steps) {
+        return;
       }
-      if (stepStart === undefined || next <= step) return;
+      if (next === 0 && stepStart === undefined) {
+        setPhase({ next: 'sampling' });
+        stepStart = now();
+        return;
+      }
+      if (stepStart === undefined || next <= step) {
+        return;
+      }
       const time = now(), ms = Math.max(0, time - stepStart);
-      stepSum += ms; stepMin = Math.min(stepMin, ms); stepMax = Math.max(stepMax, ms); stepsSeen++;
+      stepSum += ms;
+      stepMin = Math.min(stepMin, ms);
+      stepMax = Math.max(stepMax, ms);
+      stepsSeen++;
       report({
         metric: 'step-wall',
         fields: {
@@ -205,20 +255,26 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       });
       flushPlacement();
       checkpoint({ point: { phase: 'sampling', step: next, reason: 'completed-step' } });
-      step = next; stepStart = time; stepPreviewMs = previewMs;
+      step = next;
+      stepStart = time;
+      stepPreviewMs = previewMs;
     },
     log({ message }: { message: string }): void {
-      if (!enabled || closed || message.length > 2048) return;
+      if (!enabled || closed || message.length > 2048) {
+        return;
+      }
       // Parse before the raw-log rate limiter. An allocation snapshot reports
       // scheduling and original weight operands, not completed kernels or real
       // readbacks; compare its windows with independent WebGPU API measurements.
       const placement = parsePlacement({ message });
       if (placement !== undefined) {
         if (placement === 'invalid') {
-          placementTotal.invalidReports++; placementWindow.invalidReports++;
+          placementTotal.invalidReports++;
+          placementWindow.invalidReports++;
         } else {
           for (const key of Object.keys(placement) as (keyof typeof placement)[]) {
-            placementTotal[key] += placement[key]; placementWindow[key] += placement[key];
+            placementTotal[key] += placement[key];
+            placementWindow[key] += placement[key];
           }
         }
         return;
@@ -234,32 +290,48 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
       // information, never guessed timings or disclosure of prompt/model text.
       let value: RegExpExecArray | null;
       if ((value = /^image\.cpp:\d+\s+- get_learned_condition completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
-        conditionMs += Number(value[1]) * 1000; conditionReports++;
+        conditionMs += Number(value[1]) * 1000;
+        conditionReports++;
       }
       if ((value = /^image\.cpp:\d+\s+- sampling completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
-        samplingMs += Number(value[1]) * 1000; samplingReports++;
+        samplingMs += Number(value[1]) * 1000;
+        samplingReports++;
       }
       if ((value = /^vae\.hpp:\d+\s+- computing vae decode graph completed, taking (\d+(?:\.\d+)?)s\s*$/.exec(message))) {
         switch (phase) {
-        case 'sampling': previewMs += Number(value[1]) * 1000; previewReports++; break;
-        case 'decoding': finalDecodeMs += Number(value[1]) * 1000; finalDecodeReports++; break;
+        case 'sampling': previewMs += Number(value[1]) * 1000;
+          previewReports++;
+          break;
+        case 'decoding': finalDecodeMs += Number(value[1]) * 1000;
+          finalDecodeReports++;
+          break;
         case 'runtime': case 'model-header': case 'model-load': case 'prepare': case 'conditioning': case 'encoding': case 'cleanup': break;
-        default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
+        default: {
+          const exhaustive: never = phase;
+          throw new Error(String(exhaustive));
+        }
         }
       }
       if ((value = /^ggml_runner\.cpp:\d+\s+- ([a-z0-9_]+) executing segment \d+\/\d+: graph\s*$/.exec(message))) {
         const name = value[1];
-        if (name === 'z_image' || name === 'qwen_image_2_1') diffusionGraphs++;
-        else if (name === 'qwen3' || name === 'qwen3vl') textGraphs++;
-        else if (name === 'vae' || name === 'wan_vae') vaeGraphs++;
-        else otherGraphs++;
+        if (name === 'z_image' || name === 'qwen_image_2_1') {
+          diffusionGraphs++;
+        } else if (name === 'qwen3' || name === 'qwen3vl') {
+          textGraphs++;
+        } else if (name === 'vae' || name === 'wan_vae') {
+          vaeGraphs++;
+        } else {
+          otherGraphs++;
+        }
       }
     },
     preview({ fields }: { fields: ImageDiagnosticInput['fields'] }): void {
       report({ metric: 'preview-output', fields });
     },
     finish({ outcome }: { outcome: MeasurementOutcome }): void {
-      if (!enabled || closed) return;
+      if (!enabled || closed) {
+        return;
+      }
       const time = now();
       phases[phase] += Math.max(0, time - phaseStart);
       const partialStepWallMs = phase === 'sampling' && stepStart !== undefined && step < request.parameters.steps ? Math.max(0, time - stepStart) : 0;

@@ -32,7 +32,9 @@ describe('owned host prompt checkpoints', () => {
     expect(api.llama_state_seq_get_data_ext).toHaveBeenCalledExactlyOnceWith(20n, 100n, 64n, 0, 1);
     expect(core.free).not.toHaveBeenCalled();
     tokens.push(5);
-    if (!checkpoint) throw new Error('Expected a checkpoint');
+    if (!checkpoint) {
+      throw new Error('Expected a checkpoint');
+    }
     expect(checkpoint.tokens).toEqual([1, 2, 3, 4]);
     await expect(restorePromptCheckpoint({ core, context: 20n, checkpoint })).resolves.toBe(true);
     expect(api.llama_state_seq_set_data_ext).toHaveBeenCalledExactlyOnceWith(20n, 100n, 64n, 0, 1);
@@ -46,28 +48,40 @@ describe('owned host prompt checkpoints', () => {
     const { core, api } = fixture();
     api.llama_state_seq_get_size_ext.mockResolvedValue(size);
     await expect(capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] })).resolves.toBeUndefined();
-    expect(core.tryAlloc).not.toHaveBeenCalled(); expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
+    expect(core.tryAlloc).not.toHaveBeenCalled();
+    expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
   });
 
   it('declines a null allocation without calling the native writer', async () => {
-    const { core, api } = fixture(); core.tryAlloc.mockReturnValue(undefined);
+    const { core, api } = fixture();
+    core.tryAlloc.mockReturnValue(undefined);
     await expect(capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] })).resolves.toBeUndefined();
-    expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled(); expect(core.free).not.toHaveBeenCalled();
+    expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
+    expect(core.free).not.toHaveBeenCalled();
   });
 
   it.each(['short-write', 'write-trap', 'invalid-range'] as const)('frees an unpublished buffer after %s', async failure => {
     const { core, api } = fixture();
     switch (failure) {
-    case 'short-write': api.llama_state_seq_get_data_ext.mockResolvedValue(63n); break;
-    case 'write-trap': api.llama_state_seq_get_data_ext.mockRejectedValue(new WebAssembly.RuntimeError('fixture trap')); break;
+    case 'short-write': api.llama_state_seq_get_data_ext.mockResolvedValue(63n);
+      break;
+    case 'write-trap': api.llama_state_seq_get_data_ext.mockRejectedValue(new WebAssembly.RuntimeError('fixture trap'));
+      break;
     case 'invalid-range': core.bytes.mockImplementation(() => {
       throw new RangeError('fixture range');
-    }); break;
-    default: { const exhaustive: never = failure; throw new Error(`Unknown failure: ${exhaustive}`); }
+    });
+      break;
+    default: {
+      const exhaustive: never = failure;
+      throw new Error(`Unknown failure: ${exhaustive}`);
+    }
     }
     const pending = capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] });
-    if (failure === 'short-write') await expect(pending).resolves.toBeUndefined();
-    else await expect(pending).rejects.toThrow();
+    if (failure === 'short-write') {
+      await expect(pending).resolves.toBeUndefined();
+    } else {
+      await expect(pending).rejects.toThrow();
+    }
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
   });
 
@@ -88,13 +102,22 @@ describe('owned host prompt checkpoints', () => {
   it.each(['short-read', 'refused-trim', 'lost-window', 'wrong-frontier'] as const)('rejects an unverifiable restored state: %s', async failure => {
     const { core, api } = fixture();
     const checkpoint = await capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] });
-    if (!checkpoint) throw new Error('Expected checkpoint');
+    if (!checkpoint) {
+      throw new Error('Expected checkpoint');
+    }
     switch (failure) {
-    case 'short-read': api.llama_state_seq_set_data_ext.mockResolvedValue(63n); break;
-    case 'refused-trim': api.llama_memory_seq_rm.mockResolvedValue(0); break;
-    case 'lost-window': api.llama_memory_seq_pos_min.mockResolvedValue(3); break;
-    case 'wrong-frontier': api.llama_memory_seq_pos_max.mockResolvedValue(4); break;
-    default: { const exhaustive: never = failure; throw new Error(`Unknown failure: ${exhaustive}`); }
+    case 'short-read': api.llama_state_seq_set_data_ext.mockResolvedValue(63n);
+      break;
+    case 'refused-trim': api.llama_memory_seq_rm.mockResolvedValue(0);
+      break;
+    case 'lost-window': api.llama_memory_seq_pos_min.mockResolvedValue(3);
+      break;
+    case 'wrong-frontier': api.llama_memory_seq_pos_max.mockResolvedValue(4);
+      break;
+    default: {
+      const exhaustive: never = failure;
+      throw new Error(`Unknown failure: ${exhaustive}`);
+    }
     }
     await expect(restorePromptCheckpoint({ core, context: 20n, checkpoint })).resolves.toBe(false);
     disposePromptCheckpoint({ core, checkpoint });
@@ -114,7 +137,9 @@ describe('owned host prompt checkpoints', () => {
     if (suffix === 'GG') {
       expect(api.llama_tokenize).toHaveBeenCalledWith(30n, 40n, 3, 100n, 4, 1, 1);
       expect(core.free).toHaveBeenCalledOnce();
-    } else expect(api.llama_tokenize).not.toHaveBeenCalled();
+    } else {
+      expect(api.llama_tokenize).not.toHaveBeenCalled();
+    }
   });
 
   it('does not invent a checkpoint boundary for a one-token prompt', async () => {
@@ -159,7 +184,8 @@ describe('owned host prompt checkpoints', () => {
   });
 
   it('does not tokenize an optional boundary when allocation fails', async () => {
-    const { core, api } = fixture(); core.tryAlloc.mockReturnValue(undefined);
+    const { core, api } = fixture();
+    core.tryAlloc.mockReturnValue(undefined);
     expect(await promptCheckpointBoundary({
       core,
       vocab: 30n,
@@ -169,12 +195,14 @@ describe('owned host prompt checkpoints', () => {
       tokens: [1, 2, 3],
       onTokenize: () => {},
     })).toBe(2);
-    expect(api.llama_tokenize).not.toHaveBeenCalled(); expect(core.free).not.toHaveBeenCalled();
+    expect(api.llama_tokenize).not.toHaveBeenCalled();
+    expect(core.free).not.toHaveBeenCalled();
   });
 
   it('keeps the optional buffer owned until native failure has settled', async () => {
     const { core, api } = fixture();
-    const native = Promise.withResolvers<number>(); api.llama_tokenize.mockReturnValue(native.promise);
+    const native = Promise.withResolvers<number>();
+    api.llama_tokenize.mockReturnValue(native.promise);
     const pending = promptCheckpointBoundary({
       core,
       vocab: 30n,
@@ -207,11 +235,13 @@ describe('owned host prompt checkpoints', () => {
       onTokenize: () => {},
     })).toBe(1);
     expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 262144 }], [{ bytes: 264000 }]]);
-    expect(api.llama_tokenize).toHaveBeenCalledTimes(2); expect(core.free).toHaveBeenCalledTimes(2);
+    expect(api.llama_tokenize).toHaveBeenCalledTimes(2);
+    expect(core.free).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry freeing the old checkpoint buffer when resizing cleanup throws', async () => {
-    const { core, api } = fixture(); const failure = new Error('resize free failure');
+    const { core, api } = fixture();
+    const failure = new Error('resize free failure');
     core.bytes.mockImplementation(() => new Uint8Array(262144));
     api.llama_tokenize.mockResolvedValueOnce(-66000);
     core.free.mockImplementationOnce(() => {
@@ -227,7 +257,8 @@ describe('owned host prompt checkpoints', () => {
       onTokenize: () => {},
     })).rejects.toBe(failure);
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
-    expect(core.tryAlloc).toHaveBeenCalledOnce(); expect(api.llama_tokenize).toHaveBeenCalledOnce();
+    expect(core.tryAlloc).toHaveBeenCalledOnce();
+    expect(api.llama_tokenize).toHaveBeenCalledOnce();
   });
 });
 

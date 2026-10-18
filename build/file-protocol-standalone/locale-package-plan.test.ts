@@ -55,20 +55,28 @@ function inferredModuleGraph(graph: readonly PackageChunk[]): Map<string, { impo
   }
 
   for (const outputChunk of graph) {
-    if (!outputChunk.isEntry) continue;
+    if (!outputChunk.isEntry) {
+      continue;
+    }
     // Synthetic graph convenience only. Production semantic roots come from
     // Rollup/Rolldown ModuleInfo.isEntry via collectPackageModuleGraph().
     const entryModuleId = renderedIds(outputChunk)[0];
-    if (entryModuleId !== undefined) result.get(entryModuleId)!.isEntry = true;
+    if (entryModuleId !== undefined) {
+result.get(entryModuleId)!.isEntry = true;
+    }
   }
 
   const targetModuleId = (fileName: string): string => {
     const targetChunk = chunksByFileName.get(fileName);
-    if (targetChunk === undefined) return `/__missing__/${fileName}`;
+    if (targetChunk === undefined) {
+      return `/__missing__/${fileName}`;
+    }
     const targetIds = renderedIds(targetChunk);
     const packRoot = targetIds.find((moduleId) => moduleId.startsWith(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX));
     const target = packRoot ?? targetIds[0];
-    if (target === undefined) throw new Error(`Test chunk has no rendered module: ${fileName}`);
+    if (target === undefined) {
+      throw new Error(`Test chunk has no rendered module: ${fileName}`);
+    }
     return target;
   };
 
@@ -79,7 +87,9 @@ function inferredModuleGraph(graph: readonly PackageChunk[]): Map<string, { impo
     const defaultSourceId = packId
       ?? sourceIds.find((moduleId) => !moduleId.startsWith(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX))
       ?? boundaryId;
-    if (defaultSourceId === undefined) continue;
+    if (defaultSourceId === undefined) {
+      continue;
+    }
 
     // Synthetic chunks intentionally coalesce the entry facade and Boundary
     // registration. Model the semantic edge explicitly instead of treating
@@ -477,7 +487,9 @@ describe('module-level edge provenance', () => {
     const result = new Map<string, { importedIds: string[]; dynamicallyImportedIds: string[]; isEntry?: boolean }>();
     for (const outputChunk of graph) {
       for (const [moduleId, info] of Object.entries(outputChunk.modules)) {
-        if (info.renderedLength > 0) result.set(moduleId.replaceAll('\\', '/'), { importedIds: [], dynamicallyImportedIds: [] });
+        if (info.renderedLength > 0) {
+          result.set(moduleId.replaceAll('\\', '/'), { importedIds: [], dynamicallyImportedIds: [] });
+        }
       }
     }
     return result;

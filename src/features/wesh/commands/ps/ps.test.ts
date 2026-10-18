@@ -112,7 +112,9 @@ describe('wesh ps', () => {
     });
     let newlineCount = 0;
     for (const character of output) {
-      if (character === '\n') newlineCount += 1;
+      if (character === '\n') {
+        newlineCount += 1;
+      }
     }
 
     expect(newlineCount).toBe(processCount + 1);
@@ -123,7 +125,9 @@ describe('wesh ps', () => {
 
   it('renders each process on one line without terminal control characters', () => {
     const parsedColumns = TEST_ONLY.parseFormatList({ raw: 'args,pid' });
-    if (parsedColumns.kind !== 'ok') throw new Error(parsedColumns.message);
+    if (parsedColumns.kind !== 'ok') {
+      throw new Error(parsedColumns.message);
+    }
     const processNames = [
       'a\tb',
       `\
@@ -154,7 +158,9 @@ a?b           4
 a?b           5
 `);
     const customHeaderColumns = TEST_ONLY.parseFormatList({ raw: 'args=COMMAND,pid=\u001b[31m' });
-    if (customHeaderColumns.kind !== 'ok') throw new Error(customHeaderColumns.message);
+    if (customHeaderColumns.kind !== 'ok') {
+      throw new Error(customHeaderColumns.message);
+    }
     expect(TEST_ONLY.formatProcesses({
       columns: customHeaderColumns.columns,
       processes: processes.slice(0, 1),
@@ -166,7 +172,9 @@ a?b           2
 
   it('aligns process fields by terminal display width', () => {
     const parsedColumns = TEST_ONLY.parseFormatList({ raw: 'args,pid' });
-    if (parsedColumns.kind !== 'ok') throw new Error(parsedColumns.message);
+    if (parsedColumns.kind !== 'ok') {
+      throw new Error(parsedColumns.message);
+    }
     const processes: WeshProcessSnapshot[] = ['a', '表', 'e\u0301', '😀'].map((argv0, index) => ({
       pid: index + 2,
       ppid: 1,
@@ -297,7 +305,9 @@ e\u0301             4
     ]);
 
     const parsedColumns = TEST_ONLY.parseFormatList({ raw: 'args=' });
-    if (parsedColumns.kind !== 'ok') throw new Error(parsedColumns.message);
+    if (parsedColumns.kind !== 'ok') {
+      throw new Error(parsedColumns.message);
+    }
     const columns = TEST_ONLY.decorateForestColumns({
       columns: parsedColumns.columns,
       depthByPid: layout.depthByPid,

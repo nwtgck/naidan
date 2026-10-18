@@ -3,7 +3,9 @@ import { expectedDecodedResponseByteLength, fullResourceResponseError } from '@/
 
 /** An operation-local alternative to OPFS, never a persisted model cache. */
 export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByteLength: number }) {
-  if (!Number.isSafeInteger(maximumByteLength) || maximumByteLength <= 0) throw new Error('Invalid metadata memory budget');
+  if (!Number.isSafeInteger(maximumByteLength) || maximumByteLength <= 0) {
+    throw new Error('Invalid metadata memory budget');
+  }
   const files = new Map<string, Blob>();
   const readers = new Set<ReadableStreamDefaultReader<Uint8Array>>();
   let retainedByteLength = 0;
@@ -27,7 +29,9 @@ export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByte
     async read({ url }) {
       check();
       const file = files.get(url);
-      if (file === undefined) return undefined;
+      if (file === undefined) {
+        return undefined;
+      }
       return {
         byteLength: file.size,
         response: new Response(file.stream(), {
@@ -44,19 +48,25 @@ export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByte
       try {
         check();
         const error = fullResourceResponseError({ response });
-        if (error !== undefined) throw error;
+        if (error !== undefined) {
+          throw error;
+        }
         const expected = expectedDecodedResponseByteLength({ response });
         if (expected !== undefined && retainedByteLength + reservedByteLength + expected > maximumByteLength) {
           throw new Error('Metadata memory budget exceeded');
         }
-        if (response.body === null) throw new Error('Metadata response has no body');
+        if (response.body === null) {
+          throw new Error('Metadata response has no body');
+        }
         reader = response.body.getReader();
         readers.add(reader);
         const chunks: Uint8Array<ArrayBuffer>[] = [];
         while (true) {
           const item = await reader.read();
           check();
-          if (item.done) break;
+          if (item.done) {
+            break;
+          }
           // Count all in-flight writes as well as committed Blobs. A concurrent
           // writer or replacement cannot borrow memory already held elsewhere.
           if (retainedByteLength + reservedByteLength + item.value.byteLength > maximumByteLength) {
@@ -66,8 +76,12 @@ export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByte
           reservedByteLength += item.value.byteLength;
           chunks.push(Uint8Array.from(item.value));
         }
-        if (reserved === 0) throw new Error('Empty metadata is not a complete resource');
-        if (expected !== undefined && reserved !== expected) throw new Error('Metadata response byte length mismatch');
+        if (reserved === 0) {
+          throw new Error('Empty metadata is not a complete resource');
+        }
+        if (expected !== undefined && reserved !== expected) {
+          throw new Error('Metadata response byte length mismatch');
+        }
         const file = new Blob(chunks);
         check();
         retainedByteLength += file.size - (files.get(url)?.size ?? 0);

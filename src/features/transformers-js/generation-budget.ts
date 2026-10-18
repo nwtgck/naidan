@@ -82,8 +82,12 @@ function resolveDecoderOnlyUsedContextTokenCount({
   attentionMaskTokenCount: number | undefined,
   pastTokenCount: number,
 }): number | undefined {
-  if (promptTokenCount === undefined) return undefined;
-  if (pastTokenCount === 0) return promptTokenCount;
+  if (promptTokenCount === undefined) {
+    return undefined;
+  }
+  if (pastTokenCount === 0) {
+    return promptTokenCount;
+  }
 
   // Mirror Transformers.js decoder_prepare_inputs_for_generation. A full prompt
   // supplied with an external cache is sliced at past_length, so its total
@@ -92,7 +96,9 @@ function resolveDecoderOnlyUsedContextTokenCount({
   if (attentionMaskTokenCount !== undefined && attentionMaskTokenCount > promptTokenCount) {
     return Math.max(attentionMaskTokenCount, pastTokenCount + promptTokenCount);
   }
-  if (pastTokenCount < promptTokenCount) return promptTokenCount;
+  if (pastTokenCount < promptTokenCount) {
+    return promptTokenCount;
+  }
   return pastTokenCount + promptTokenCount;
 }
 
@@ -103,8 +109,12 @@ function resolveEncoderDecoderUsedContextTokenCount({
   promptTokenCount: number | undefined,
   pastTokenCount: number,
 }): number | undefined {
-  if (promptTokenCount === undefined) return undefined;
-  if (pastTokenCount === 0) return promptTokenCount;
+  if (promptTokenCount === undefined) {
+    return undefined;
+  }
+  if (pastTokenCount === 0) {
+    return promptTokenCount;
+  }
 
   // Encoder-decoder generation forwards only the final decoder token when a
   // cache is present. Accommodate both full decoder histories and suffix-only
@@ -119,7 +129,9 @@ function resolveContextLimit({
   config: Record<string, unknown> | undefined,
   isEncoderDecoder: boolean,
 }): number | undefined {
-  if (!config) return undefined;
+  if (!config) {
+    return undefined;
+  }
 
   const candidateConfigs = isEncoderDecoder
     ? [config['decoder'], config['generator'], config, config['text_config']]
@@ -128,7 +140,9 @@ function resolveContextLimit({
   for (const candidate of candidateConfigs) {
     const record = asRecord({ value: candidate });
     const contextLimit = readPositiveInteger({ value: record?.['max_position_embeddings'] });
-    if (contextLimit !== undefined) return contextLimit;
+    if (contextLimit !== undefined) {
+      return contextLimit;
+    }
   }
   return undefined;
 }
@@ -136,14 +150,18 @@ function resolveContextLimit({
 function readSequenceLength({ value }: { value: unknown }): number | undefined {
   const record = asRecord({ value });
   const dims = record?.['dims'];
-  if (!Array.isArray(dims) || dims.length === 0) return undefined;
+  if (!Array.isArray(dims) || dims.length === 0) {
+    return undefined;
+  }
   return readPositiveInteger({ value: dims.at(-1) });
 }
 
 function readPastTokenCount({ pastKeyValues }: { pastKeyValues: unknown }): number {
   const record = asRecord({ value: pastKeyValues });
   const getSequenceLength = record?.['get_seq_length'];
-  if (typeof getSequenceLength !== 'function') return 0;
+  if (typeof getSequenceLength !== 'function') {
+    return 0;
+  }
   try {
     const value = Reflect.apply(getSequenceLength, pastKeyValues, []) as unknown;
     return readNonNegativeInteger({ value }) ?? 0;
@@ -153,7 +171,9 @@ function readPastTokenCount({ pastKeyValues }: { pastKeyValues: unknown }): numb
 }
 
 function asRecord({ value }: { value: unknown }): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== 'object') return undefined;
+  if (value === null || typeof value !== 'object') {
+    return undefined;
+  }
   return value as Record<string, unknown>;
 }
 

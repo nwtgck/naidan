@@ -95,7 +95,9 @@ interface CombinedHunk {
 }
 
 function formatCombinedRange({ start, count }: { start: number, count: number }): string {
-  if (count === 0) return `${start},0`;
+  if (count === 0) {
+    return `${start},0`;
+  }
   return `${start + 1},${count}`;
 }
 
@@ -106,7 +108,9 @@ function parentBoundary({ alignment, resultBoundary }: {
   let parentLine = 0;
   for (let position = 0; position < resultBoundary; position += 1) {
     parentLine += alignment.deletedBeforeResultLine[position]!.length;
-    if (alignment.presentResultLines[position]) parentLine += 1;
+    if (alignment.presentResultLines[position]) {
+      parentLine += 1;
+    }
   }
   return parentLine;
 }
@@ -120,9 +124,13 @@ function parentRangeCount({ alignment, resultStart, resultEnd, resultLength }: {
   let count = 0;
   for (let position = resultStart; position < resultEnd; position += 1) {
     count += alignment.deletedBeforeResultLine[position]!.length;
-    if (alignment.presentResultLines[position]) count += 1;
+    if (alignment.presentResultLines[position]) {
+      count += 1;
+    }
   }
-  if (resultEnd === resultLength) count += alignment.deletedBeforeResultLine[resultEnd]!.length;
+  if (resultEnd === resultLength) {
+    count += alignment.deletedBeforeResultLine[resultEnd]!.length;
+  }
   return count;
 }
 
@@ -138,10 +146,14 @@ function createCombinedHunks({ firstAlignment, secondAlignment, resultLength, co
       || secondAlignment.deletedBeforeResultLine[position]!.length > 0;
     const resultChanged = position < resultLength
       && (!firstAlignment.presentResultLines[position]! || !secondAlignment.presentResultLines[position]!);
-    if (!hasDeletion && !resultChanged) continue;
+    if (!hasDeletion && !resultChanged) {
+      continue;
+    }
     changes.push({ start: position, end: position + (resultChanged ? 1 : 0) });
   }
-  if (changes.length === 0) return [];
+  if (changes.length === 0) {
+    return [];
+  }
 
   const hunks: CombinedHunk[] = [];
   let groupStart = changes[0]!.start;
@@ -176,7 +188,9 @@ function createCombinedHunks({ firstAlignment, secondAlignment, resultLength, co
 function combinedFunctionSuffix({ result, beforeLine }: { result: DiffInput, beforeLine: number }): string {
   for (let lineIndex = beforeLine - 1; lineIndex >= 0; lineIndex -= 1) {
     const line = decodeLine({ input: result, lineIndex, stripTrailingCarriageReturn: false });
-    if (line.length === 0 || /^\s/u.test(line)) continue;
+    if (line.length === 0 || /^\s/u.test(line)) {
+      continue;
+    }
     const combined = line.slice(0, -1);
     return combined.length === 0 ? "" : ` ${combined}`;
   }
@@ -211,7 +225,9 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
     resultLength: result.lines.starts.length,
     contextLines: 3,
   });
-  if (hunks.length === 0) return;
+  if (hunks.length === 0) {
+    return;
+  }
 
   const writer = createDiffByteWriter({ handle });
   const displayPath = quoteGitPath({ path, quoteNonAscii, quoteSpaces: false });
@@ -290,7 +306,9 @@ export async function writeTwoParentCombinedDiff({ handle, path, firstParent, se
           }
         }
       }
-      if (position === hunk.resultEnd) continue;
+      if (position === hunk.resultEnd) {
+        continue;
+      }
       await writer.writeText({ text: `${firstAlignment.presentResultLines[position] ? " " : "+"}${secondAlignment.presentResultLines[position] ? " " : "+"}` });
       await writer.writeBytes({ bytes: getLineBytes({ input: result, lineIndex: position, stripTrailingCarriageReturn: false }) });
       await writer.writeText({ text: "\n" });

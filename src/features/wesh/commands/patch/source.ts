@@ -34,7 +34,9 @@ class ChunkedFloat64Index {
       throw new Error(`line index is out of range: ${index}`);
     }
     const chunk = this.chunks[Math.floor(index / INDEX_CHUNK_SIZE)];
-    if (chunk === undefined) throw new Error(`missing line offset chunk for index ${index}`);
+    if (chunk === undefined) {
+      throw new Error(`missing line offset chunk for index ${index}`);
+    }
     return chunk[index % INDEX_CHUNK_SIZE]!;
   }
 
@@ -64,7 +66,9 @@ class ChunkedUint32Index {
       throw new Error(`line hash index is out of range: ${index}`);
     }
     const chunk = this.chunks[Math.floor(index / INDEX_CHUNK_SIZE)];
-    if (chunk === undefined) throw new Error(`missing line hash chunk for index ${index}`);
+    if (chunk === undefined) {
+      throw new Error(`missing line hash chunk for index ${index}`);
+    }
     return chunk[index % INDEX_CHUNK_SIZE]!;
   }
 }
@@ -90,7 +94,9 @@ class ChunkedUint8Index {
       throw new Error(`line terminator index is out of range: ${index}`);
     }
     const chunk = this.chunks[Math.floor(index / INDEX_CHUNK_SIZE)];
-    if (chunk === undefined) throw new Error(`missing line terminator chunk for index ${index}`);
+    if (chunk === undefined) {
+      throw new Error(`missing line terminator chunk for index ${index}`);
+    }
     return chunk[index % INDEX_CHUNK_SIZE]!;
   }
 }
@@ -122,7 +128,9 @@ function hashBytes({
       if (isHorizontalBlank({ value })) {
         inBlankRun = true;
       } else {
-        if (inBlankRun) hash = updateHash({ hash, value: 0x20 });
+        if (inBlankRun) {
+          hash = updateHash({ hash, value: 0x20 });
+        }
         inBlankRun = false;
         hash = updateHash({ hash, value });
       }
@@ -138,9 +146,13 @@ function hashBytes({
 }
 
 function bytesEqual({ left, right }: { left: Uint8Array, right: Uint8Array }): boolean {
-  if (left.byteLength !== right.byteLength) return false;
+  if (left.byteLength !== right.byteLength) {
+    return false;
+  }
   for (let index = 0; index < left.byteLength; index++) {
-    if (left[index] !== right[index]) return false;
+    if (left[index] !== right[index]) {
+      return false;
+    }
   }
   return true;
 }
@@ -153,9 +165,13 @@ function bytesEqualIgnoringWhitespaceChanges({
   right: Uint8Array,
 }): boolean {
   let leftEnd = left.byteLength;
-  while (leftEnd > 0 && isHorizontalBlank({ value: left[leftEnd - 1]! })) leftEnd -= 1;
+  while (leftEnd > 0 && isHorizontalBlank({ value: left[leftEnd - 1]! })) {
+    leftEnd -= 1;
+  }
   let rightEnd = right.byteLength;
-  while (rightEnd > 0 && isHorizontalBlank({ value: right[rightEnd - 1]! })) rightEnd -= 1;
+  while (rightEnd > 0 && isHorizontalBlank({ value: right[rightEnd - 1]! })) {
+    rightEnd -= 1;
+  }
 
   let leftIndex = 0;
   let rightIndex = 0;
@@ -164,13 +180,21 @@ function bytesEqualIgnoringWhitespaceChanges({
     const leftBlank = isHorizontalBlank({ value: left[leftIndex]! });
     const rightBlank = isHorizontalBlank({ value: right[rightIndex]! });
     if (leftBlank || rightBlank) {
-      if (!leftBlank || !rightBlank) return false;
-      while (leftIndex < leftEnd && isHorizontalBlank({ value: left[leftIndex]! })) leftIndex += 1;
-      while (rightIndex < rightEnd && isHorizontalBlank({ value: right[rightIndex]! })) rightIndex += 1;
+      if (!leftBlank || !rightBlank) {
+        return false;
+      }
+      while (leftIndex < leftEnd && isHorizontalBlank({ value: left[leftIndex]! })) {
+        leftIndex += 1;
+      }
+      while (rightIndex < rightEnd && isHorizontalBlank({ value: right[rightIndex]! })) {
+        rightIndex += 1;
+      }
       continue;
     }
 
-    if (left[leftIndex] !== right[rightIndex]) return false;
+    if (left[leftIndex] !== right[rightIndex]) {
+      return false;
+    }
     leftIndex += 1;
     rightIndex += 1;
   }
@@ -222,7 +246,9 @@ async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> 
       if (isHorizontalBlank({ value: byte })) {
         whitespaceRun = true;
       } else {
-        if (whitespaceRun) whitespaceHash = updateHash({ hash: whitespaceHash, value: 0x20 });
+        if (whitespaceRun) {
+          whitespaceHash = updateHash({ hash: whitespaceHash, value: 0x20 });
+        }
         whitespaceRun = false;
         whitespaceHash = updateHash({ hash: whitespaceHash, value: byte });
       }
@@ -285,7 +311,9 @@ class BlobPatchLineSource implements PatchLineSource {
 
   private getPatchHashes({ patchLine }: { patchLine: PatchLine }): { exact: number, whitespace: number } {
     const cached = this.patchHashCache.get(patchLine);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
     const hashes = {
       exact: hashBytes({ bytes: patchLine.content, whitespaceMode: 'exact' }),
       whitespace: hashBytes({ bytes: patchLine.content, whitespaceMode: 'ignore-changes' }),
@@ -316,7 +344,9 @@ class BlobPatchLineSource implements PatchLineSource {
         || this.lineCacheBytes > LINE_CACHE_BYTE_LIMIT
       ) {
         const first = this.lineCache.entries().next().value as [number, Uint8Array] | undefined;
-        if (first === undefined) break;
+        if (first === undefined) {
+          break;
+        }
         this.lineCache.delete(first[0]);
         this.lineCacheBytes -= first[1].byteLength;
       }
@@ -334,17 +364,25 @@ class BlobPatchLineSource implements PatchLineSource {
     patchLine: PatchLine,
     whitespaceMode: PatchWhitespaceMode,
   }): Promise<boolean> {
-    if (lineIndex < 0 || lineIndex >= this.lineCount) return false;
+    if (lineIndex < 0 || lineIndex >= this.lineCount) {
+      return false;
+    }
     const sourceTerminator = this.terminators.get({ index: lineIndex }) === 1 ? 'lf' : 'none';
-    if (sourceTerminator !== patchLine.terminator) return false;
+    if (sourceTerminator !== patchLine.terminator) {
+      return false;
+    }
 
     const patchHashes = this.getPatchHashes({ patchLine });
     switch (whitespaceMode) {
     case 'exact':
-      if (this.exactHashes.get({ index: lineIndex }) !== patchHashes.exact) return false;
+      if (this.exactHashes.get({ index: lineIndex }) !== patchHashes.exact) {
+        return false;
+      }
       return bytesEqual({ left: await this.readLineBytes({ lineIndex }), right: patchLine.content });
     case 'ignore-changes':
-      if (this.whitespaceHashes.get({ index: lineIndex }) !== patchHashes.whitespace) return false;
+      if (this.whitespaceHashes.get({ index: lineIndex }) !== patchHashes.whitespace) {
+        return false;
+      }
       return bytesEqualIgnoringWhitespaceChanges({
         left: await this.readLineBytes({ lineIndex }),
         right: patchLine.content,
@@ -368,7 +406,9 @@ class BlobPatchLineSource implements PatchLineSource {
     if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end > this.byteLength) {
       throw new Error(`invalid source byte range: ${start}..${end}`);
     }
-    if (start === end) return;
+    if (start === end) {
+      return;
+    }
 
     for (let chunkStart = start; chunkStart < end; chunkStart += COPY_CHUNK_SIZE) {
       const chunkEnd = Math.min(end, chunkStart + COPY_CHUNK_SIZE);

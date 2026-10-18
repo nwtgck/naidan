@@ -37,7 +37,9 @@ const trimmedTitle = computed(() => titleInput.value.trim());
 watch(
   () => props.isOpen,
   (isOpen) => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
     suppressTitleAutosave.value = true;
     titleInput.value = props.title || '';
     selectedTitleModelDraft.value = props.selectedTitleModel;
@@ -52,7 +54,9 @@ watch(
 watch(
   () => props.selectedTitleModel,
   (modelId) => {
-    if (!props.isOpen) return;
+    if (!props.isOpen) {
+      return;
+    }
     selectedTitleModelDraft.value = modelId;
   },
 );
@@ -60,11 +64,17 @@ watch(
 watch(
   titleInput,
   () => {
-    if (!props.isOpen || suppressTitleAutosave.value) return;
-    if (titleAutosaveTimer) clearTimeout(titleAutosaveTimer);
+    if (!props.isOpen || suppressTitleAutosave.value) {
+      return;
+    }
+    if (titleAutosaveTimer) {
+      clearTimeout(titleAutosaveTimer);
+    }
     titleAutosaveTimer = setTimeout(() => {
       const nextTitle = trimmedTitle.value || UNTITLED_CHAT_TITLE;
-      if (nextTitle === (props.title || '')) return;
+      if (nextTitle === (props.title || '')) {
+        return;
+      }
       emit('save-title', nextTitle);
     }, 500);
   },
@@ -73,7 +83,9 @@ watch(
 watch(
   () => props.generatedTitles[0],
   (title) => {
-    if (!props.isOpen || !title) return;
+    if (!props.isOpen || !title) {
+      return;
+    }
     suppressTitleAutosave.value = true;
     titleInput.value = title;
     queueMicrotask(() => {
@@ -108,7 +120,9 @@ function titleModelSourceLabel({ source }: { source: 'chat' | 'chat_group' | 'gl
 
 function activeTitleModelSourceDescription(): string | undefined {
   const sourceLabel = titleModelSourceLabel({ source: props.titleModelSource });
-  if (sourceLabel === undefined) return undefined;
+  if (sourceLabel === undefined) {
+    return undefined;
+  }
   return lazyStrings.ChatTitleDialog__editing_source_because_that_is_the_active_source_for_this_chat({ sourceLabel });
 }
 
@@ -131,7 +145,9 @@ function toggleDetails() {
 }
 
 onBeforeUnmount(() => {
-  if (titleAutosaveTimer) clearTimeout(titleAutosaveTimer);
+  if (titleAutosaveTimer) {
+    clearTimeout(titleAutosaveTimer);
+  }
 });
 
 defineExpose({

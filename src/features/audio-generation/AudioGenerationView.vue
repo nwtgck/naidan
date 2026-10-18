@@ -57,41 +57,63 @@ const modelLabels = computed(() => Object.fromEntries(visibleModels.value.map(en
   const status = detections.value.get(entry.id)?.status;
   let label: string;
   switch (status) {
-  case 'detected': label = entry.name; break;
+  case 'detected': label = entry.name;
+    break;
   case 'unverified': case undefined: {
     const suffix = lazyStrings.audioGeneration__not_detected_as_audio();
-    label = suffix === undefined ? entry.name : `${entry.name} · ${suffix}`; break;
+    label = suffix === undefined ? entry.name : `${entry.name} · ${suffix}`;
+    break;
   }
-  default: { const exhaustive: never = status; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
   }
   return [entry.id, label];
 })));
 
 function chooseModel({ value }: { value: string | undefined }): void {
-  if (blocked.value || value === undefined || !selectableModelIds.value.includes(value)) return;
-  model.value = value; selectionChanged();
+  if (blocked.value || value === undefined || !selectableModelIds.value.includes(value)) {
+    return;
+  }
+  model.value = value;
+  selectionChanged();
 }
 
 async function restartRuntime(): Promise<void> {
-  if (blocked.value || disposed) return;
-  const controller = new AbortController(); recovery.value = controller;
+  if (blocked.value || disposed) {
+    return;
+  }
+  const controller = new AbortController();
+  recovery.value = controller;
   try {
     await llamaCppBrowserService.restartRuntime({ signal: controller.signal });
     if (!disposed && !controller.signal.aborted) {
-      failure.value = undefined; stopped.value = false;
+      failure.value = undefined;
+      stopped.value = false;
     }
   } catch (error) {
-    if (!disposed && !controller.signal.aborted) failure.value = errorCode({ error });
+    if (!disposed && !controller.signal.aborted) {
+      failure.value = errorCode({ error });
+    }
   } finally {
-    if (!disposed && recovery.value === controller) recovery.value = undefined;
+    if (!disposed && recovery.value === controller) {
+      recovery.value = undefined;
+    }
   }
 }
 
 const languages = computed(() => audioLanguageOptions({ locale: currentLocale.value }));
 const progressLabel = computed(() => {
-  if (preparingReference.value && !stopping.value) return lazyStrings.audioGeneration__preparing_references();
-  if (stopping.value) return lazyStrings.audioGeneration__stopping();
-  if (finishing.value && !(state.value.status === 'working' && state.value.progress.phase === 'decoding-audio')) return lazyStrings.audioGeneration__finishing_current_step();
+  if (preparingReference.value && !stopping.value) {
+    return lazyStrings.audioGeneration__preparing_references();
+  }
+  if (stopping.value) {
+    return lazyStrings.audioGeneration__stopping();
+  }
+  if (finishing.value && !(state.value.status === 'working' && state.value.progress.phase === 'decoding-audio')) {
+    return lazyStrings.audioGeneration__finishing_current_step();
+  }
   const current = state.value;
   switch (current.status) {
   case 'idle': case 'error': case 'unavailable': return lazyStrings.audioGeneration__waiting();
@@ -104,14 +126,22 @@ const progressLabel = computed(() => {
     case 'decoding-audio': return lazyStrings.audioGeneration__decoding_audio();
     case 'generating': return lazyStrings.audioGeneration__steps_completed({ completed: progress.completed, maximum: progress.total });
     case 'importing': return lazyStrings.audioGeneration__waiting();
-    default: { const exhaustive: never = progress.phase; throw new Error(String(exhaustive)); }
+    default: {
+      const exhaustive: never = progress.phase;
+      throw new Error(String(exhaustive));
+    }
     }
   }
-  default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = current;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 const errorMessage = computed(() => {
-  if (invalid.value) return lazyStrings.audioGeneration__check_parameters();
+  if (invalid.value) {
+    return lazyStrings.audioGeneration__check_parameters();
+  }
   const code = failure.value;
   switch (code) {
   case 'audio-model-unsupported': return lazyStrings.audioGeneration__unsupported_model();
@@ -123,7 +153,10 @@ const errorMessage = computed(() => {
   case 'unavailable': case 'invalid-gguf': case 'duplicate-model': case 'missing-model': case 'storage-error':
   case 'runtime-error': case 'template-unsupported': case 'reasoning-unsupported': case 'unsupported-input': case 'busy': case 'aborted': case 'worker-failed':
     return lazyStrings.audioGeneration__generation_failed();
-  default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
+  default: {
+    const exhaustive: never = code;
+    throw new Error(String(exhaustive));
+  }
   }
 });
 
@@ -135,10 +168,14 @@ function revealInvalidField({ field }: { field: string }): void {
   // Open collapsed ancestors before focus. Native form validation cannot focus a
   // hidden number input and otherwise reports only "not focusable" in the console.
   const element = form.value?.querySelector<HTMLElement>(`[data-audio-field="${field}"]`);
-  if (!element) return;
+  if (!element) {
+    return;
+  }
   let parent = element.parentElement;
   while (parent && parent !== form.value) {
-    if (parent instanceof HTMLDetailsElement) parent.open = true;
+    if (parent instanceof HTMLDetailsElement) {
+      parent.open = true;
+    }
     parent = parent.parentElement;
   }
   // ModelSelector owns a button rather than a native select.
@@ -148,8 +185,12 @@ function revealInvalidField({ field }: { field: string }): void {
 }
 
 async function generate(): Promise<void> {
-  if (!canGenerate.value) return;
-  failure.value = undefined; invalidFields.value = []; stopped.value = false;
+  if (!canGenerate.value) {
+    return;
+  }
+  failure.value = undefined;
+  invalidFields.value = [];
+  stopped.value = false;
   const accepted = audioGenerationInputSchema.safeParse({ ...parameters.value, model: model.value, text: text.value, reference: undefined, debug: debug.value ? 'on' : 'off', options: llamaCppBrowserService.getOptions() });
   if (!accepted.success) {
     invalidFields.value = audioValidationFields({ issues: accepted.error.issues });
@@ -158,9 +199,16 @@ async function generate(): Promise<void> {
     return;
   }
   const { options: _options, ...input } = accepted.data;
-  const request = ++generation; const active = new AbortController(); controller.value = active; stopping.value = false;
-  const completion = new AbortController(); completionController.value = completion; finishing.value = false;
-  const captures = createAudioPreviewRequests(); previews.value = captures; previewPending.value = false;
+  const request = ++generation;
+  const active = new AbortController();
+  controller.value = active;
+  stopping.value = false;
+  const completion = new AbortController();
+  completionController.value = completion;
+  finishing.value = false;
+  const captures = createAudioPreviewRequests();
+  previews.value = captures;
+  previewPending.value = false;
   const modelName = models.value.find(entry => entry.id === input.model)!.name;
   const settings = captureAudioSettings({ input: accepted.data, modelName });
   try {
@@ -175,44 +223,73 @@ async function generate(): Promise<void> {
       preview: {
         requests: captures.requests,
         onPreview: ({ event: { result: incoming, requestVersion } }) => {
-          if (disposed || request !== generation || active.signal.aborted) return;
+          if (disposed || request !== generation || active.signal.aborted) {
+            return;
+          }
           const result = audioGenerationPreviewSchema.parse(incoming);
           validateAudioWav(result);
           appendHistory({ result, settings });
-          if (requestVersion >= captures.requests.version) previewPending.value = false;
+          if (requestVersion >= captures.requests.version) {
+            previewPending.value = false;
+          }
         },
       },
     }));
     // An RPC may finish after Stop or route unmount. Never publish that old result.
-    if (disposed || request !== generation || active.signal.aborted) return;
+    if (disposed || request !== generation || active.signal.aborted) {
+      return;
+    }
     validateAudioWav(result);
     appendHistory({ result, settings });
   } catch (error) {
-    if (disposed || request !== generation) return;
+    if (disposed || request !== generation) {
+      return;
+    }
     const code = errorCode({ error });
-    if (active.signal.aborted || code === 'aborted') stopped.value = true;
-    else failure.value = preparingReference.value ? 'audio-reference-invalid' : code;
+    if (active.signal.aborted || code === 'aborted') {
+      stopped.value = true;
+    } else {
+      failure.value = preparingReference.value ? 'audio-reference-invalid' : code;
+    }
   } finally {
     if (!disposed && request === generation) {
-      if (active.signal.aborted) stopped.value = true;
-      preparingReference.value = false; controller.value = undefined; completionController.value = undefined; previews.value = undefined; previewPending.value = false; stopping.value = false; finishing.value = false;
+      if (active.signal.aborted) {
+        stopped.value = true;
+      }
+      preparingReference.value = false;
+      controller.value = undefined;
+      completionController.value = undefined;
+      previews.value = undefined;
+      previewPending.value = false;
+      stopping.value = false;
+      finishing.value = false;
     }
   }
 }
 
 function capturePreview(): void {
-  if (!canFinish.value || previewPending.value || !previews.value) return;
-  previewPending.value = true; previews.value.request();
+  if (!canFinish.value || previewPending.value || !previews.value) {
+    return;
+  }
+  previewPending.value = true;
+  previews.value.request();
 }
 
 function finishAudio(): void {
-  if (!canFinish.value) return;
-  finishing.value = true; previewPending.value = false; completionController.value?.abort();
+  if (!canFinish.value) {
+    return;
+  }
+  finishing.value = true;
+  previewPending.value = false;
+  completionController.value?.abort();
 }
 
 function stop(): void {
-  if (!controller.value) return;
-  stopping.value = true; controller.value.abort();
+  if (!controller.value) {
+    return;
+  }
+  stopping.value = true;
+  controller.value.abort();
 }
 
 onMounted(() => {
@@ -223,7 +300,11 @@ onMounted(() => {
   });
 });
 onUnmounted(() => {
-  disposed = true; generation++; recovery.value?.abort(); controller.value?.abort(); unsubscribe?.();
+  disposed = true;
+  generation++;
+  recovery.value?.abort();
+  controller.value?.abort();
+  unsubscribe?.();
 });
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -232,7 +313,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div tw-class="absolute inset-0 overflow-y-auto overscroll-y-contain" data-testid="audio-generation-scroll">
     <main tw-class="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-8 text-gray-900 dark:text-gray-100" data-testid="audio-generation-page">
       <header tw-class="space-y-3">
-        <h1 tw-class="flex items-center gap-3 text-2xl font-semibold tracking-tight"><AudioLinesIcon tw-class="h-7 w-7 text-purple-500" />{{ lazyStrings.audioGeneration__audio_generation() }}</h1>
+        <h1 tw-class="flex items-center gap-3 text-2xl font-semibold tracking-tight"><AudioLinesIcon tw-class="h-7 w-7 text-blue-500" />{{ lazyStrings.audioGeneration__audio_generation() }}</h1>
         <p tw-class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__introduction() }}</p>
       </header>
       <LlamaCppBrowserModelSuggestions :suggestions="audioModelCatalog" :models="models" :disabled="blocked" :default-model="undefined" :default-action-disabled="blocked" selection-action="select" memory-filter="hide" @select="selectModel({ name: $event.name })" />
@@ -257,7 +338,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <label :for="`${id}-model`" tw-class="block text-sm font-medium">{{ lazyStrings.audioGeneration__audio_model() }}</label>
             <ModelSelector :input-id="`${id}-model`" :model-value="model || undefined" :models="selectableModelIds" :model-labels="modelLabels" :loading="scanState === 'scanning'" :disabled="blocked" :invalid="invalidFields.includes('model')" :placeholder="lazyStrings.audioGeneration__choose_model()" data-testid="audio-model" data-audio-field="model" @update:model-value="chooseModel({ value: $event })" @refresh="manager?.refresh()" />
             <p v-if="scanState === 'scanning'" role="status" data-testid="audio-model-scanning" tw-class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__checking_local_model_metadata() }}</p>
-            <p v-else-if="detectedCount === 0" data-testid="audio-no-detected-models" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }} <button type="button" @click="showAllModels" data-testid="audio-show-all" tw-class="underline text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__show_all_models() }}</button></p>
+            <p v-else-if="detectedCount === 0" data-testid="audio-no-detected-models" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__no_audio_models_detected() }} <button type="button" @click="showAllModels" data-testid="audio-show-all" tw-class="underline text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__show_all_models() }}</button></p>
             <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__model_detection_help() }}</p>
             <details tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3" data-testid="audio-model-selection-details">
               <summary tw-class="cursor-pointer text-xs font-medium">{{ lazyStrings.audioGeneration__advanced_model_selection() }}</summary>
@@ -309,9 +390,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </details>
         </fieldset>
         <div tw-class="flex flex-wrap items-center gap-3">
-          <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"><AudioLinesIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
-          <button v-if="busy" type="button" :disabled="!canFinish || previewPending" @click="capturePreview" data-testid="audio-preview" tw-class="inline-flex items-center gap-2 rounded-xl border border-purple-300 dark:border-purple-700 px-4 py-2.5 text-sm font-medium text-purple-700 dark:text-purple-300 disabled:opacity-50 disabled:cursor-not-allowed"><Loader2Icon v-if="previewPending" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__capture_preview() }}</button>
-          <button v-if="busy" type="button" :disabled="!canFinish" @click="finishAudio" data-testid="audio-finish" tw-class="rounded-xl border border-purple-300 dark:border-purple-700 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__finish_and_keep_audio() }}</button>
+          <button type="submit" :disabled="!canGenerate" data-testid="audio-generate" tw-class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"><AudioLinesIcon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__generate_audio() }}</button>
+          <button v-if="busy" type="button" :disabled="!canFinish || previewPending" @click="capturePreview" data-testid="audio-preview" tw-class="inline-flex items-center gap-2 rounded-xl border border-blue-300 dark:border-blue-700 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"><Loader2Icon v-if="previewPending" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.audioGeneration__capture_preview() }}</button>
+          <button v-if="busy" type="button" :disabled="!canFinish" @click="finishAudio" data-testid="audio-finish" tw-class="rounded-xl border border-blue-300 dark:border-blue-700 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__finish_and_keep_audio() }}</button>
           <button v-if="busy" type="button" :disabled="stopping" @click="stop" data-testid="audio-stop" tw-class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm disabled:opacity-50">{{ lazyStrings.audioGeneration__cancel_and_discard() }}</button>
           <button type="button" :disabled="blocked" @click="restartRuntime" data-testid="audio-restart-runtime" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"><RefreshCcwIcon :tw-class="['h-4 w-4', { 'animate-spin motion-reduce:animate-none': recovery !== undefined }]" />{{ recovery ? lazyStrings.audioGeneration__reinitializing_runtime() : lazyStrings.audioGeneration__reinitialize_runtime() }}</button>
           <p v-if="!runtimeReady" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__runtime_unavailable() }}</p>
@@ -319,7 +400,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__reinitialize_runtime_help() }}</p>
         <p v-if="busy" role="status" data-testid="audio-progress" tw-class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"><Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ progressLabel }}</p>
         <p v-if="busy" data-testid="audio-preview-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__preview_help() }}</p>
-        <p v-if="previewPending && !finishing && !stopping" role="status" data-testid="audio-preview-pending" tw-class="text-xs text-purple-600 dark:text-purple-400">{{ lazyStrings.audioGeneration__preview_pending() }}</p>
+        <p v-if="previewPending && !finishing && !stopping" role="status" data-testid="audio-preview-pending" tw-class="text-xs text-blue-600 dark:text-blue-400">{{ lazyStrings.audioGeneration__preview_pending() }}</p>
         <p v-if="busy" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__finish_audio_help() }}</p>
         <p v-if="stopped" role="status" data-testid="audio-stopped" tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__generation_stopped() }}</p>
 
