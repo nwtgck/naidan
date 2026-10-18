@@ -1441,7 +1441,7 @@ defineExpose({
         </div>
 
         <!-- Folder/File Mounts attached to this chat -->
-        <div v-if="chatMountList.length > 0" tw-class="px-4 pt-4" data-testid="chat-mounts-preview">
+        <div v-if="chatMountList.length > 0" tw-class="px-4 pt-2 pb-3" data-testid="chat-mounts-preview">
           <MountBadgeList
             :mounts="chatMountList"
             path-trim-prefix="/home/user/"
