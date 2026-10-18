@@ -928,11 +928,12 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();
   });
 
-  it('shows inherited model presentation separately from the raw clear choice', async () => {
-    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: undefined, surface: 'settings', inheritedModel: { id: 'owner/repository/model-Q4', source: { label: 'Global', description: 'Follows global changes' } }, models: ['owner/repository/model-Q4'], allowClear: true } });
+  it.each(['settings', 'composer'] as const)('shows %s inherited model presentation separately from the raw clear choice', async surface => {
+    const wrapper = mount(ModelSelector, { attachTo: document.body, props: { modelValue: undefined, surface, inheritedModel: { id: 'owner/repository/model-Q4', source: { label: 'Global', description: 'Follows global changes' } }, models: ['owner/repository/model-Q4'], allowClear: true } });
     const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     expect(trigger.text()).toContain('model-Q4');
     expect(trigger.text()).toContain('owner/repository');
+    expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).toContain('Global');
     expect(trigger.attributes('aria-label')).toContain('Follows global changes');
     await trigger.trigger('click');
     const clear = document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!;
@@ -941,6 +942,7 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     expect(wrapper.emitted('update:modelValue')).toEqual([['owner/repository/model-Q4']]);
     await wrapper.setProps({ modelValue: 'owner/repository/model-Q4' });
     expect(trigger.attributes('aria-label')).not.toContain('Follows global changes');
+    expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).not.toContain('Global');
     await trigger.trigger('click');
     document.querySelector<HTMLButtonElement>('[data-testid="model-selector-clear"]')!.click();
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([undefined]);
@@ -960,8 +962,8 @@ expect(wrapper.emitted('update:modelValue')).toEqual([['b/2']]);
     expect(tab.defaultPrevented).toBe(false);
   });
 
-  it('shows metadata only when the displayed model has a path or active source', async () => {
-    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: [], surface: 'settings', placeholder: 'None' } });
+  it.each(['settings', 'composer'] as const)('shows %s metadata only when the displayed model has a path or active source', async surface => {
+    const wrapper = mount(ModelSelector, { props: { modelValue: undefined, models: [], surface, placeholder: 'None' } });
     using _cleanupResource = {
       [Symbol.dispose]() {
         wrapper.unmount();

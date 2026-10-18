@@ -29,7 +29,7 @@ import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { settingsSourcePresentation, type SettingsSource } from '@/logic/settings-labels';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { lazyStrings, ensureStrings } from '@/strings';
 import { loadChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
@@ -127,9 +127,10 @@ const isAnimatingHeight = computed({
   set: (val) => emit('update:isAnimatingHeight', val),
 });
 
-function formatLabel({ value, source }: { value: string | undefined, source: SettingsSource | undefined }) {
-  return formatSettingsSourceLabel({ value, source });
-}
+const inheritedModelPresentation = computed(() => ({
+  id: props.inheritedModelId,
+  source: settingsSourcePresentation({ source: props.inheritedModelSource }),
+}));
 
 const isImageMode = computed({
   get: () => chatMedia.isImageMode.value,
@@ -1346,7 +1347,6 @@ defineExpose({
   isMaximized,
   processFiles,
   processDropItems,
-  formatLabel,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       adjustTextareaHeight,
@@ -1539,7 +1539,9 @@ defineExpose({
             :model-value="chat.modelId"
             @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
             :models="sortedAvailableModels"
-            :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
+            :inherited-model="inheritedModelPresentation"
+            :placeholder="lazyStrings.formatSettingsSourceLabel__none()"
+            :clear-label="lazyStrings.formatSettingsSourceLabel__none()"
             :loading="fetchingModels"
             allow-clear
             @refresh="fetchModels"
