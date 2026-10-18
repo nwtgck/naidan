@@ -1,18 +1,18 @@
 import { isUnsupportedReasoningError } from '@/01-models/lm-errors';
 import { renderThinkingTemplate } from '@/features/lm/reasoning-rejection';
-import type { MainModule, common_chat_params, common_chat_parser_params, common_chat_templates_inputs, common_chat_msg } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
+import type { MainModule, common_chat_params, common_chat_prompt, common_chat_templates_inputs, common_chat_msg } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
 import { LlamaCppBrowserError, type GenerateInput, type GenerationResult } from '@/features/llama-cpp-browser/types';
 import { logFailure } from '@/features/llama-cpp-browser/debug-log';
 
 // Only the chat result fields used by Naidan cross the profile boundary. In
 // particular, size_t-backed JSON, arena and delimiter helpers remain native.
 export type ChatParams = Pick<common_chat_params,
-  'delete' | 'format' | 'prompt' | 'grammar' | 'grammar_lazy' | 'generation_prompt'
+  'delete' | 'format' | 'grammar' | 'grammar_lazy' | 'generation_prompt'
   | 'supports_thinking' | 'thinking_start_tag' | 'thinking_end_tags'
-  | 'grammar_triggers' | 'preserved_tokens' | 'additional_stops' | 'parser'>;
+  | 'grammar_triggers' | 'preserved_tokens' | 'additional_stops'>;
 type ChatInputValues = Pick<common_chat_templates_inputs,
   'delete' | 'tools' | 'use_jinja' | 'parallel_tool_calls' | 'enable_thinking' | 'reasoning_format' | 'chat_template_kwargs'>;
-type ParserValues = Pick<common_chat_parser_params, 'delete' | 'reasoning_format' | 'parse_tool_calls'>;
+export type ChatPromptPart = { text: string, isInput: boolean };
 type ParsedMessage = Pick<common_chat_msg, 'delete' | 'tool_calls' | 'content' | 'reasoning_content'>;
 
 /** Bind once to a concrete native module. The generic handles preserve the
@@ -26,9 +26,10 @@ export function bindNativeChat<
   Json extends { delete(): void },
   Messages extends { delete(): void },
   Inputs extends ChatInputValues & { messages: Messages },
-  Params extends ChatParams,
-  Arena extends { delete(): void; load(text: string): void },
-  Parser extends ParserValues & { parser: Arena },
+  Params extends ChatParams & { prompt: Pick<common_chat_prompt, 'delete' | 'parts'>, parser: Arena },
+  Arena extends { delete(): void },
+  Parser extends { delete(): void; parser: Arena },
+  Input extends { delete(): void },
 >({ native }: { native: Pick<MainModule, 'string_map' | 'common_reasoning_format'> & {
   common_json: { parse(text: string): Json };
   common_chat_msgs_parse_oaicompat(json: Json): Messages;
@@ -36,8 +37,8 @@ export function bindNativeChat<
   common_chat_templates_inputs: new () => Inputs;
   common_chat_templates: new (model: bigint, chatTemplate: string, bosToken: string, eosToken: string) => { delete(): void; apply(inputs: Inputs): Params };
   common_chat_parser_params: new (params: Params) => Parser;
-  common_peg_arena: new () => Arena;
-  common_chat_parse(text: string, partial: boolean, parser: Parser): ParsedMessage;
+  common_chat_input: new (text: string) => Input;
+  common_chat_parse(input: Input, partial: boolean, parser: Parser): ParsedMessage;
 } }) {
   /* eslint-enable local-rules-named-args/require-named-args */
   const templatesByModel = new Map<bigint, InstanceType<typeof native.common_chat_templates>>();
@@ -153,16 +154,35 @@ export function bindNativeChat<
           inputs.delete();
         }
         parser = new native.common_chat_parser_params(params);
-        parser.reasoning_format = native.common_reasoning_format.COMMON_REASONING_FORMAT_DEEPSEEK;
-        parser.parse_tool_calls = !!request.tools?.length;
-        const arena = new native.common_peg_arena();
+        // The upstream constructor copies the format and generation prefix,
+        // but not the parser arena. Both property accesses use owned copies.
+        const arena = params.parser;
         try {
-          if (params.parser) {
-            arena.load(params.parser);
-          }
           parser.parser = arena;
         } finally {
           arena.delete();
+        }
+        const promptParts: ChatPromptPart[] = [];
+        const nativePrompt = params.prompt;
+        try {
+          const parts = nativePrompt.parts;
+          try {
+            for (let index = 0; index < parts.size(); index++) {
+              const part = parts.get(index);
+              if (!part) {
+                throw new Error('Missing native prompt part');
+              }
+              try {
+                promptParts.push({ text: part.text, isInput: part.is_input });
+              } finally {
+                part.delete();
+              }
+            }
+          } finally {
+            parts.delete();
+          }
+        } finally {
+          nativePrompt.delete();
         }
         const stops = params.additional_stops;
         let additionalStops: string[];
@@ -175,33 +195,43 @@ export function bindNativeChat<
         const chatParams: ChatParams = params;
         return {
           params: chatParams,
+          prompt: promptParts.map(part => part.text).join(''),
+          promptParts,
           additionalStops,
           images,
           dispose,
           parse({ text, partial }: { text: string, partial: boolean }): Omit<GenerationResult, 'finishReason'> {
             assertIdle();
-            const message = native.common_chat_parse(text, partial, parserParams);
+            if (parser === undefined) {
+              throw new Error('Native chat request has been disposed');
+            }
+            const input = new native.common_chat_input(text);
             try {
-              const calls = message.tool_calls;
+              const message = native.common_chat_parse(input, partial, parserParams);
               try {
-                const toolCalls: GenerationResult['toolCalls'] = [];
-                for (let index = 0; index < calls.size(); index++) {
-                  const call = calls.get(index);
-                  if (!call) {
-                    throw new Error('Missing native tool call');
+                const calls = message.tool_calls;
+                try {
+                  const toolCalls: GenerationResult['toolCalls'] = [];
+                  for (let index = 0; index < calls.size(); index++) {
+                    const call = calls.get(index);
+                    if (!call) {
+                      throw new Error('Missing native tool call');
+                    }
+                    try {
+                      toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
+                    } finally {
+                      call.delete();
+                    }
                   }
-                  try {
-                    toolCalls.push({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } });
-                  } finally {
-                    call.delete();
-                  }
+                  return { content: message.content, reasoningContent: message.reasoning_content, toolCalls };
+                } finally {
+                  calls.delete();
                 }
-                return { content: message.content, reasoningContent: message.reasoning_content, toolCalls };
               } finally {
-                calls.delete();
+                message.delete();
               }
             } finally {
-              message.delete();
+              input.delete();
             }
           },
         };

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import * as chatPromptModule from './tokenize-chat-prompt';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { File as NodeFile } from 'node:buffer';
 import { invalidateStoredModel, prepareSession, releaseSession, TEST_ONLY as sessionTesting } from './session';
@@ -281,7 +282,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const expected = Array.from({ length: required }, (_, index) => view.getInt32(index * 4, true));
     const onTokenize = vi.fn();
-    const actual = await tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, onTokenize });
+    const actual = await tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, addSpecial: true, parseSpecial: true, onTokenize });
     candidate = actual.pointer;
     expect(actual.tokens).toEqual(expected);
     expect(onTokenize).toHaveBeenCalledOnce();
@@ -1196,7 +1197,7 @@ user:Q ;assistant: R
           chat.dispose();
         },
       };
-      expect(chat.params.prompt).toBe(expectedPrompt);
+      expect(chat.prompt).toBe(expectedPrompt);
     }
     // The fixture's SentencePiece tokenizer spells spaces as U+2581. Its byte
     // vocabulary assigns token 1 to BOS and byte b to b + 3. These expected IDs
@@ -3581,28 +3582,40 @@ describe('single-encoding prompt transfer with the supplied native runtime', () 
     { kind: 'recurrent', text: 'single encode' },
     { kind: 'recurrent', text: '日本語😀' },
     { kind: 'recurrent', text: 'a\0b' },
-  ])('passes identical prompt bytes to the tokenizer with one encoding: $kind $text', async ({ kind, text }) => {
+  ])('passes each encoded prompt segment once through one native buffer: $kind $text', async ({ kind, text }) => {
     host.bytes = Uint8Array.from(kind === 'attention' ? createInputSensitiveGguf({ chatTemplate: 'chatml' }) : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
     const req = { ...request({ messages: [{ role: 'user', content: text }] }), maxTokens: 2 };
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     const chat = prepareChat({ core: session.core, model: session.model, request: req });
-    const prompt = chat.params.prompt;
+    const expected = new TextEncoder().encode(chat.prompt);
+    const promptParts = chat.promptParts;
     chat.dispose();
-    const expected = new TextEncoder().encode(prompt);
-    const observed: Uint8Array[] = [];
+    const encoded = chatPromptModule.encodeChatPrompt({ parts: promptParts });
+    expect(encoded.data).toEqual(expected);
+    const observed: { pointer: bigint, bytes: Uint8Array, parseSpecial: number }[] = [];
+    let nativePrompt: Uint8Array | undefined;
     const original = session.core.api.llama_tokenize;
     vi.spyOn(session.core.api, 'llama_tokenize').mockImplementation(async (...args) => {
-      if (args[2] === expected.length && args[5] === 1) {
-        observed.push(session.core.bytes({ pointer: args[1], length: args[2] + 1 }).slice());
+      if (observed.length < encoded.parts.length) {
+        if (!observed.length) {
+          nativePrompt = session.core.bytes({ pointer: args[1], length: expected.length + 1 }).slice();
+        }
+        observed.push({ pointer: args[1], bytes: session.core.bytes({ pointer: args[1], length: args[2] }).slice(), parseSpecial: args[6] });
       }
       return original(...args);
     });
-    const encode = vi.spyOn(TextEncoder.prototype, 'encode');
+    const encode = vi.spyOn(chatPromptModule, 'encodeChatPrompt');
     const result = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-    expect(encode.mock.calls.filter(([value]) => value === prompt)).toHaveLength(1);
-    expect(observed.length).toBeGreaterThan(0);
-    for (const bytes of observed) {
-      expect(bytes).toEqual(Uint8Array.from([...expected, 0]));
+    expect(encode).toHaveBeenCalledExactlyOnceWith({ parts: promptParts });
+    expect(nativePrompt).toEqual(Uint8Array.from([...expected, 0]));
+    expect(observed).toHaveLength(encoded.parts.length);
+    const base = observed[0]!.pointer;
+    for (const [index, part] of encoded.parts.entries()) {
+      expect(observed[index]).toEqual({
+        pointer: base + BigInt(part.byteOffset),
+        bytes: expected.slice(part.byteOffset, part.byteOffset + part.byteLength),
+        parseSpecial: Number(!part.isInput),
+      });
     }
     expect(result.content).toBeTypeOf('string');
     expect(session.cache.validity).toBe('valid');
