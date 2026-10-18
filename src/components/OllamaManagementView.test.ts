@@ -46,4 +46,18 @@ describe('OllamaManagementView', () => {
       fakeLmDebugModeStatus: 'disabled',
     });
   });
+
+  it('uses the existing runtime in settings without a second heading or disclosure', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+    const wrapper = mount(OllamaManagementView, { props: { endpointUrl: 'http://localhost:11434', endpointHttpHeaders: [], fakeLmDebugModeStatus: 'disabled', presentation: 'settings' }, global: { stubs: { OllamaPsView: { name: 'OllamaPsView', props: ['provider', 'endpointUrl', 'presentation'], template: '<div data-testid="ps" />' } } } });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.find('h2').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="ollama-management-view"]').attributes('aria-labelledby')).toBeUndefined();
+    expect(wrapper.findComponent({ name: 'OllamaPsView' }).props('presentation')).toBe('settings');
+    expect(wrapper.find('button').exists()).toBe(false);
+  });
 });

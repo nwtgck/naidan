@@ -91,7 +91,7 @@ describe('Sidebar Transformers.js Support', () => {
     'ThemeToggle': true,
     'ModelSelector': {
       name: 'ModelSelector',
-      template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}</div>',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue"><slot name="trigger-label" />{{ modelValue }}</div>',
       props: ['modelValue', 'models', 'loading'],
     },
   };

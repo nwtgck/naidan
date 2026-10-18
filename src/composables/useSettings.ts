@@ -13,6 +13,8 @@ import {
   type Endpoint,
   type EndpointType,
   DEFAULT_SETTINGS,
+  EMPTY_LM_PARAMETERS,
+  type Reasoning,
   type StorageType,
   type ProviderProfile,
   type UiLocale,
@@ -109,6 +111,7 @@ interface UseSettingsApi {
   fetchModels: ({ overrides }: { overrides?: Endpoint }) => Promise<string[]>,
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
+  updateGlobalReasoningEffort: ({ effort }: { effort: Reasoning['effort'] }) => Promise<void>,
   updateGlobalModelAndEndpoint: ({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
   }) => Promise<'applied' | 'changed'>,
@@ -653,6 +656,20 @@ export function useSettings(): UseSettingsApi {
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
   }
 
+  async function updateGlobalReasoningEffort({ effort }: { effort: Reasoning['effort'] }) {
+    // Merge this single field against the latest persisted parameters. Do not
+    // publish an unsaved value or replace concurrent edits to other parameters.
+    await storageService.updateSettings({
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        const parameters = base.lmParameters ?? EMPTY_LM_PARAMETERS;
+        return { ...base, lmParameters: { ...parameters, reasoning: { ...parameters.reasoning, effort } } };
+      },
+    });
+    const parameters = _settings.value.lmParameters ?? EMPTY_LM_PARAMETERS;
+    _settings.value = { ..._settings.value, lmParameters: { ...parameters, reasoning: { ...parameters.reasoning, effort } } };
+  }
+
   /** Commit both default fields together, without optimistic half-updates. */
   async function updateGlobalModelAndEndpoint({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
@@ -882,6 +899,7 @@ export function useSettings(): UseSettingsApi {
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,
+    updateGlobalReasoningEffort,
     updateGlobalEndpoint,
     updateGlobalModelAndEndpoint,
     updateSystemPrompt,

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import DeveloperDataDeletionPanel from './DeveloperDataDeletionPanel.vue';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import * as dataDeletion from '@/features/data-deletion/logic/data-deletion';
 
 const routerMocks = vi.hoisted(() => ({
   replace: vi.fn(),
@@ -70,6 +71,112 @@ describe('DeveloperDataDeletionPanel', () => {
       const input = wrapper.find<HTMLInputElement>(`[data-testid="data-deletion-checkbox-${id}"]`);
       expect(input.element.checked).toBe(true);
     }
+  });
+
+  it('clears the Factory Reset selection and preview without deleting data and allows reselection', async () => {
+    localStorage.setItem('naidan:lsp:settings', '{"kept":true}');
+    localStorage.setItem('other:shared', 'kept');
+    using executeDeletion = vi.spyOn(dataDeletion, 'executeDataDeletion');
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const clearButton = wrapper.get('[data-testid="data-deletion-clear-all-selections-button"]');
+    const deleteButton = wrapper.get('[data-testid="setting-reset-data-button"]');
+    const previewPanel = wrapper.get('[data-testid="data-deletion-preview-panel"]');
+
+    expect(clearButton.text()).toBe('Clear all selections');
+    expect(clearButton.attributes('disabled')).toBeDefined();
+    expect(deleteButton.attributes('disabled')).toBeDefined();
+
+    await wrapper.get('[data-testid="data-deletion-factory-reset-preset-button"]').trigger('click');
+    expect(clearButton.attributes('disabled')).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(previewPanel.text()).toContain('naidan:lsp:settings');
+    });
+
+    await clearButton.trigger('click');
+    await flushPromises();
+
+    for (const input of wrapper.findAll<HTMLInputElement>('[data-testid^="data-deletion-checkbox-"]')) {
+      expect(input.element.checked).toBe(false);
+    }
+    expect(clearButton.attributes('disabled')).toBeDefined();
+    expect(deleteButton.attributes('disabled')).toBeDefined();
+    expect(previewPanel.text()).toContain('No matching entries.');
+    expect(previewPanel.text()).not.toContain('naidan:lsp:settings');
+    expect(localStorage.getItem('naidan:lsp:settings')).toBe('{"kept":true}');
+    expect(localStorage.getItem('other:shared')).toBe('kept');
+    expect(executeDeletion).not.toHaveBeenCalled();
+    expect(showConfirm).not.toHaveBeenCalled();
+    expect(routerMocks.replace).not.toHaveBeenCalled();
+    expect(reloadPage).not.toHaveBeenCalled();
+
+    const selector = wrapper.get<HTMLInputElement>('[data-testid="data-deletion-checkbox-local-storage-naidan-all"]');
+    await selector.setValue(true);
+    await flushPromises();
+
+    expect(selector.element.checked).toBe(true);
+    expect(clearButton.attributes('disabled')).toBeUndefined();
+    expect(deleteButton.attributes('disabled')).toBeUndefined();
+    expect(previewPanel.text()).toContain('naidan:lsp:settings');
+  });
+
+  it('clears advanced selections while their selectors are hidden', async () => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const advancedMode = wrapper.get('[data-testid="data-deletion-advanced-mode-checkbox"]');
+    const clearButton = wrapper.get('[data-testid="data-deletion-clear-all-selections-button"]');
+
+    await advancedMode.setValue(true);
+    await wrapper.get('[data-testid="data-deletion-checkbox-local-storage-theme-mode"]').setValue(true);
+    await advancedMode.setValue(false);
+
+    expect(wrapper.find('[data-testid="data-deletion-checkbox-local-storage-theme-mode"]').exists()).toBe(false);
+    expect(clearButton.attributes('disabled')).toBeUndefined();
+
+    await clearButton.trigger('click');
+    await advancedMode.setValue(true);
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="data-deletion-checkbox-local-storage-theme-mode"]').element.checked).toBe(false);
+    expect(clearButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="setting-reset-data-button"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('keeps the preview empty when an older scan finishes after clearing selections', async () => {
+    const wrapper = mountPanel();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    const pending = Promise.withResolvers<dataDeletion.DataDeletionPreview>();
+    using _previewSpy = vi.spyOn(dataDeletion, 'createDataDeletionPreview').mockReturnValueOnce(pending.promise);
+    const previewPanel = wrapper.get('[data-testid="data-deletion-preview-panel"]');
+
+    await wrapper.get('[data-testid="data-deletion-checkbox-local-storage-naidan-all"]').setValue(true);
+    expect(previewPanel.text()).toContain('Scanning storage');
+    await wrapper.get('[data-testid="data-deletion-clear-all-selections-button"]').trigger('click');
+    await flushPromises();
+    expect(previewPanel.text()).toContain('No matching entries.');
+
+    pending.resolve({
+      status: 'ready',
+      entries: [{ path: 'stale-entry', location: 'localStorage' }],
+      notes: [],
+    });
+    await flushPromises();
+
+    expect(previewPanel.text()).toContain('No matching entries.');
+    expect(previewPanel.text()).not.toContain('stale-entry');
+    expect(wrapper.get('[data-testid="setting-reset-data-button"]').attributes('disabled')).toBeDefined();
   });
 
   it('keeps unavailable storage selectors checkable while showing a warning', async () => {

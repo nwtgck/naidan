@@ -1,11 +1,15 @@
 import type { ProfileCapabilities, ProfileState } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
 import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
+import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
+
+vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 
 const notifications = vi.hoisted(() => ({
   capabilities: new Set<(event: { state: ProfileState }) => void>(),
@@ -126,6 +130,7 @@ beforeEach(async () => {
   vi.mocked(llamaCppBrowserService.removeModel).mockResolvedValue('deleted');
   vi.mocked(prepareModelRemoval).mockResolvedValue({ plan: { id: storedModel.id, files: [{ path: 'local.gguf', size: 16384, lastModified: 1 }] }, sharedPlan: undefined, affectedVariants: 0 });
   await ensureAllStringsForTest({ locale: 'en' });
+  vi.mocked(searchModels).mockReset().mockResolvedValue({ results: [], nextCursor: undefined });
 });
 
 afterEach(() => {
@@ -136,6 +141,30 @@ afterEach(() => {
 });
 
 describe('local GGUF manager', () => {
+  it('keeps search active without a busy feedback loop and aborts it when suspended', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof searchModels>>>();
+    vi.mocked(searchModels).mockReturnValueOnce(pending.promise);
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    const signal = vi.mocked(searchModels).mock.calls[0]![0].signal;
+    expect(signal.aborted).toBe(false);
+    expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('true');
+    expect(wrapper.get('[data-testid="llama-cpp-browser-import"] fieldset').attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ suspended: true });
+    expect(signal.aborted).toBe(true);
+    expect(wrapper.get('[data-testid="llama-hf-search-query"]').attributes('disabled')).toBeDefined();
+    pending.resolve({ results: [{ id: 'old/model' }], nextCursor: undefined });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-hf-search-result"]').exists()).toBe(false);
+    await wrapper.setProps({ suspended: false });
+    await flushPromises();
+    expect(searchModels).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('false');
+  });
+
   it('loads models with suspension omitted and leaves normal model operations enabled', async () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     const wrapper = render();
@@ -288,7 +317,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.emitted('modelsChanged')?.[0]?.[0]).toEqual([storedModel, first, second]);
   });
 
-  it('shows shared public IDs for split GGUFs and keeps physical paths only in title tooltips', async () => {
+  it('shows shared public IDs for split GGUFs and keeps physical paths in collapsed details and title tooltips', async () => {
     const variants = [
       { variant: 'Q4_K_M', path: 'Q4_K_M/Model-Q4_K_M-00001-of-00002.gguf' },
       { variant: 'Q5_K_M', path: 'Q5_K_M/Model-Q5_K_M-00001-of-00003.gguf' },
@@ -317,8 +346,11 @@ describe('local GGUF manager', () => {
       'host/Models/alice/Model-GGUF:Q8_0',
     ]);
     expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.attributes('title'))).toEqual(variants.map(({ path }) => path));
-    for (const { path } of variants) {
-      expect(list.text()).not.toContain(path);
+    for (const [index, { path }] of variants.entries()) {
+      const details = wrapper.get(`[data-testid="llama-imported-model-details-${models[index]!.id}"]`);
+      expect((details.element as HTMLDetailsElement).open).toBe(false);
+      expect(details.get('summary').text()).not.toContain(path);
+      expect(details.get('[data-testid="llama-imported-model-detail-file"]').text()).toBe(path);
     }
     await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('host/Models/alice/Model-GGUF:Q8_0');
     expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.text())).toEqual([
@@ -908,6 +940,7 @@ describe('local GGUF manager', () => {
     vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'working', progress: { phase: 'generating', completed: 1, total: 0 } });
     const wrapper = render();
     await flushPromises();
+    await wrapper.get(`[data-testid="llama-imported-model-details-toggle-${storedModel.id}"]`).trigger('click');
     await wrapper.get(`[data-testid="llama-cpp-browser-delete-${storedModel.id}"]`).trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-delete-details"]').text()).toContain('local.gguf');
@@ -922,6 +955,7 @@ describe('local GGUF manager', () => {
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
     const wrapper = render();
     await flushPromises();
+    await wrapper.get(`[data-testid="llama-imported-model-details-toggle-${storedModel.id}"]`).trigger('click');
     await wrapper.get(`[data-testid="llama-cpp-browser-delete-${storedModel.id}"]`).trigger('click');
     await flushPromises();
     wrapper.unmount();
@@ -983,4 +1017,191 @@ it('lets the independent audio workspace suppress chat suggestions without chang
   expect(audio.find('[data-testid="llama-model-suggestions"]').exists()).toBe(false);
   expect(chat.find('[data-testid="llama-model-suggestions"]').exists()).toBe(true);
   expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+});
+
+describe('local-model chat group action', () => {
+  const catalogRepository = preferredQuantizationHint({ suggestion: modelSuggestions.find(suggestion => suggestion.id === 'smollm2-135m')! }).hfRepository;
+  const catalogModel: LocalModel = { id: `hf.co/${catalogRepository}:SmolLM2-135M-Instruct-Q4_K_M.gguf`, name: `hf.co/${catalogRepository}:Q4_K_M`, size: 128, importedAt: 1 };
+  function renderWithAction({ createChatGroup }: { createChatGroup: ({ model, signal }: { model: LocalModel, signal: AbortSignal }) => Promise<void> }): VueWrapper {
+    const wrapper = mount(LlamaCppBrowserManager, {
+      props: {
+        createChatGroup,
+        defaultModel: { endpoint: { type: 'openai', url: 'http://localhost:1234/v1' }, modelId: 'global-model' },
+        applyDefaultModel: vi.fn().mockResolvedValue('applied'),
+      },
+    });
+    wrappers.push(wrapper);
+    return wrapper;
+  }
+
+  it('keeps the original default-only controls for callers without the Settings action', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const wrapper = render();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-cpp-browser-model-list"] [data-testid="llama-default-model-action"]').exists()).toBe(true);
+  });
+
+  it('routes catalog and imported actions through the same guarded creation request', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([catalogModel, storedModel]);
+    const request = Promise.withResolvers<void>();
+    const createChatGroup = vi.fn().mockReturnValue(request.promise);
+    const wrapper = renderWithAction({ createChatGroup });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-smollm2-135m"]');
+    const main = row.get('[data-testid="llama-model-action-main"]');
+    main.element.dispatchEvent(new MouseEvent('click'));
+    main.element.dispatchEvent(new MouseEvent('click'));
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledExactlyOnceWith({ model: catalogModel, signal: expect.any(AbortSignal) });
+    expect(main.attributes('aria-busy')).toBe('true');
+    expect(row.get('[data-testid="llama-suggestion-quantization"]').element.matches(':disabled')).toBe(true);
+    const imported = wrapper.get('[data-testid="llama-cpp-browser-model-list"]');
+    const importedActions = imported.findAll('[data-testid="llama-model-action-main"]');
+    expect(importedActions.map(action => action.attributes('aria-busy'))).toEqual(['true', 'false']);
+    expect(importedActions.every(action => action.element.matches(':disabled'))).toBe(true);
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    request.reject(new Error('creation failed'));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-create-chat-group-error"]').text()).toContain('Could not create or open the chat group');
+    expect(main.element.matches(':disabled')).toBe(false);
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+  });
+
+  it('retains the existing confirmation dialog when the catalog split action is set to default', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([catalogModel]);
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const applyDefaultModel = vi.fn().mockResolvedValue('applied');
+    const wrapper = renderWithAction({ createChatGroup });
+    await wrapper.setProps({ applyDefaultModel });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-smollm2-135m"]');
+    await row.get('[data-testid="llama-model-action-options"]').trigger('click');
+    const option = document.querySelector<HTMLButtonElement>('[data-testid="llama-model-action-set-default"]');
+    if (!option) {
+      throw new Error('Default-model option was not shown');
+    }
+    await new DOMWrapper(option).trigger('click');
+    expect(document.querySelector('[data-testid="llama-default-model-dialog"]')).toBeNull();
+    expect(applyDefaultModel).not.toHaveBeenCalled();
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    await flushPromises();
+    const confirm = document.querySelector<HTMLButtonElement>('[data-testid="llama-default-confirm"]');
+    if (!confirm) {
+      throw new Error('Default-model confirmation was not shown');
+    }
+    expect(applyDefaultModel).not.toHaveBeenCalled();
+    await new DOMWrapper(confirm).trigger('click');
+    await flushPromises();
+    expect(applyDefaultModel).toHaveBeenCalledExactlyOnceWith({ model: catalogModel, previous: { endpoint: { type: 'openai', url: 'http://localhost:1234/v1' }, modelId: 'global-model' } });
+    expect(createChatGroup).not.toHaveBeenCalled();
+  });
+
+  it('keeps deletion in native details and opens them without extra fetching or selecting a model', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const wrapper = render();
+    await flushPromises();
+    const details = wrapper.get(`[data-testid="llama-imported-model-details-${storedModel.id}"]`);
+    const summary = wrapper.get(`[data-testid="llama-imported-model-details-toggle-${storedModel.id}"]`);
+    expect((details.element as HTMLDetailsElement).open).toBe(false);
+    expect(summary.text()).toContain('GGUF');
+    expect(summary.text()).toContain('Details');
+    expect(details.get('[data-testid="llama-imported-model-detail-name"]').text()).toBe(storedModel.name);
+    expect(details.find('[data-testid="llama-imported-model-detail-folder"]').exists()).toBe(false);
+    expect(details.get(`[data-testid="llama-cpp-browser-delete-${storedModel.id}"]`).element.closest('details')).toBe(details.element);
+    await summary.trigger('click');
+    expect((details.element as HTMLDetailsElement).open).toBe(true);
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(prepareModelRemoval).not.toHaveBeenCalled();
+    expect(wrapper.emitted('modelSelected')).toBeUndefined();
+    await summary.trigger('click');
+    expect((details.element as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it('shows linked model information from the existing inventory when details are expanded', async () => {
+    const linked: LocalModel = {
+      id: 'host/root-a/alice/Model-GGUF:model.gguf',
+      name: 'host/Models/alice/Model-GGUF:Q4_K_M',
+      size: 128,
+      importedAt: 1,
+      source: { kind: 'host', directoryId: 'root-a', directoryName: 'Models', repository: 'alice/Model-GGUF', path: 'Q4_K_M/model.gguf' },
+    };
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([linked]);
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get(`[data-testid="llama-imported-model-details-toggle-${linked.id}"]`).trigger('click');
+    const details = wrapper.get(`[data-testid="llama-imported-model-details-${linked.id}"]`);
+    expect((details.element as HTMLDetailsElement).open).toBe(true);
+    expect(details.get('[data-testid="llama-imported-model-detail-name"]').text()).toBe(linked.name);
+    expect(details.get('[data-testid="llama-imported-model-detail-folder"]').text()).toBe('Models');
+    expect(details.get('[data-testid="llama-imported-model-detail-repository"]').text()).toBe('alice/Model-GGUF');
+    expect(details.get('[data-testid="llama-imported-model-detail-file"]').text()).toBe('Q4_K_M/model.gguf');
+    expect(details.text()).not.toContain('root-a');
+    expect(llamaCppBrowserService.listModels).toHaveBeenCalledOnce();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+  });
+
+  it('passes the row model and cancellation signal, blocks repeated clicks and disables mutations while creating', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, { ...storedModel, id: 'other-model', name: 'Other model' }]);
+    const request = Promise.withResolvers<void>();
+    const createChatGroup = vi.fn().mockReturnValue(request.promise);
+    const wrapper = renderWithAction({ createChatGroup });
+    await flushPromises();
+    const buttons = wrapper.findAll('[data-testid="llama-model-action-main"]');
+    buttons[0]!.element.dispatchEvent(new MouseEvent('click'));
+    buttons[0]!.element.dispatchEvent(new MouseEvent('click'));
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledOnce();
+    expect(createChatGroup).toHaveBeenCalledWith({ model: storedModel, signal: expect.any(AbortSignal) });
+    expect(buttons.every(button => button.element.matches(':disabled'))).toBe(true);
+    expect(buttons[0]!.attributes('aria-busy')).toBe('true');
+    expect(wrapper.findAll('[data-testid="llama-model-action-options"]').every(button => button.element.matches(':disabled'))).toBe(true);
+    expect(wrapper.get(`[data-testid="llama-cpp-browser-delete-${storedModel.id}"]`).element.matches(':disabled')).toBe(true);
+    expect(wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+    request.resolve();
+    await flushPromises();
+    expect(buttons.every(button => !button.element.matches(':disabled'))).toBe(true);
+    expect(wrapper.find('[data-testid="llama-cpp-browser-create-chat-group-error"]').exists()).toBe(false);
+    expect(llamaCppBrowserService.setOptions).not.toHaveBeenCalled();
+    expect(llamaCppBrowserService.importModel).not.toHaveBeenCalled();
+  });
+
+  it('shows a localized failure and allows another attempt without exposing raw errors', async () => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const createChatGroup = vi.fn().mockRejectedValueOnce(new Error('private-path')).mockResolvedValue(undefined);
+    const wrapper = renderWithAction({ createChatGroup });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="llama-cpp-browser-create-chat-group-error"]').text()).toContain('Could not create or open the chat group');
+    expect(wrapper.text()).not.toContain('private-path');
+    await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="llama-cpp-browser-create-chat-group-error"]').exists()).toBe(false);
+  });
+
+  it.each(['suspend', 'unmount'])('aborts the request and suppresses its late failure when invalidated (%s)', async reason => {
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel]);
+    const request = Promise.withResolvers<void>();
+    const createChatGroup = vi.fn().mockReturnValue(request.promise);
+    const wrapper = renderWithAction({ createChatGroup });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+    const signal = createChatGroup.mock.calls[0]![0].signal as AbortSignal;
+    if (reason === 'suspend') {
+      await wrapper.setProps({ suspended: true });
+    } else {
+      wrapper.unmount();
+      wrappers.splice(wrappers.indexOf(wrapper), 1);
+    }
+    expect(signal.aborted).toBe(true);
+    request.reject(new Error('late failure'));
+    await flushPromises();
+    if (reason === 'suspend') {
+      expect(wrapper.find('[data-testid="llama-cpp-browser-create-chat-group-error"]').exists()).toBe(false);
+      expect(wrapper.get('[data-testid="llama-model-action-main"]').element.matches(':disabled')).toBe(true);
+    }
+  });
 });

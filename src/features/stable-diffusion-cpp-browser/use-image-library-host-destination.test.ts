@@ -6,6 +6,8 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { useImageLibrary } from './use-image-library';
+import { useImagePreferences } from './use-image-preferences';
+import { createImageForm } from '@/features/image-generation/form';
 import { imageModelRecipes } from './model-recipes';
 import type { ImageRecipeDownloadRequest } from './logic/catalog-download';
 import { MemoryDirectory, MemoryFile } from './test-utils/storage.test-support';
@@ -15,9 +17,10 @@ const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn(), d
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: mocks.get, put: mocks.put, delete: mocks.delete } }));
 vi.mock('./download-worker/client', () => ({ downloadImageRecipeInWorker: (...args: unknown[]) => mocks.download(...args) }));
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: update }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, updateExperimental: update, captureExperimentalStorage: captureStorage }) }));
 
 let settings: Ref<Settings>;
+let storageRevision: number;
 const update = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
   settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
 });
@@ -28,6 +31,7 @@ let wrapper: VueWrapper | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  storageRevision = 0;
   settings = ref<Settings>({
     ...DEFAULT_SETTINGS,
     storageType: 'local',
@@ -43,6 +47,9 @@ beforeEach(() => {
   handles.set('selected', new MemoryDirectory('models'));
   handles.set('other', new MemoryDirectory('other models'));
   mocks.get.mockImplementation(async ({ id }: { id: string }) => handles.get(id));
+  mocks.put.mockImplementation(async ({ id, handle }: { id: string, handle: MemoryDirectory }) => {
+    handles.set(id, handle);
+  });
   mocks.delete.mockImplementation(async ({ id }: { id: string }) => {
     handles.delete(id);
   });
@@ -85,6 +92,78 @@ async function harness() {
   library.hostDirectories.selectDestination({ id: 'selected' });
   return { library, blocked };
 }
+
+function captureStorage(): () => boolean {
+  const revision = storageRevision;
+  return () => revision === storageRevision;
+}
+
+function preferences({ library }: { library: ReturnType<typeof useImageLibrary> }): void {
+  const scope = effectScope();
+  scopes.push(scope);
+  scope.run(() => useImagePreferences({
+    settings,
+    initialized: ref(true),
+    captureStorage,
+    async updateForStorage({ isCurrent, updater }) {
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      await update({ updater });
+      return 'saved';
+    },
+    form: createImageForm({ profile: 'webgpu-wasm32-asyncify' }),
+    seedMode: ref('random'),
+    historyEnabled: ref(true),
+    library,
+    localModels: ref(false),
+    restoring: ref(false),
+    restored() {},
+    failed() {},
+  }));
+}
+
+it('selects and saves a newly linked image folder for the next download without changing LM preferences', async () => {
+  const { library } = await harness();
+  const lmTarget = { kind: 'host' as const, directoryId: toHostModelDirectoryId({ raw: 'other' }) };
+  settings.value.experimental = { ...settings.value.experimental, llamaCppBrowser: { modelDownloadDestination: lmTarget } };
+  preferences({ library });
+  const root = new MemoryDirectory('new image models');
+  Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(async () => root) });
+  await library.hostDirectories.add();
+  await flushPromises();
+  const registration = settings.value.experimental?.hostModelDirectories?.find(entry => entry.name === root.name);
+  if (!registration) {
+    throw new Error('Expected the linked folder registration');
+  }
+  const selected = { kind: 'host', directoryId: registration.id };
+  expect(library.hostDirectories.destination.value).toBe(registration.id);
+  expect(settings.value.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(selected);
+  expect(settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual(lmTarget);
+  await library.downloadRecipe({ recipeId, selections: {} });
+  expect(mocks.download).toHaveBeenCalledOnce();
+  expect(mocks.download.mock.calls[0]?.[0].destination).toEqual(selected);
+  const restored = await harness();
+  preferences({ library: restored.library });
+  await flushPromises();
+  expect(restored.library.hostDirectories.destination.value).toBe(registration.id);
+});
+
+it('does not save a late folder auto-selection into replacement image preferences', async () => {
+  const { library } = await harness();
+  preferences({ library });
+  const picked = Promise.withResolvers<MemoryDirectory>();
+  Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(() => picked.promise) });
+  const adding = library.hostDirectories.add();
+  storageRevision++;
+  settings.value = { ...settings.value, experimental: { hostModelDirectories: [] } };
+  await flushPromises();
+  picked.resolve(new MemoryDirectory('late models'));
+  await adding;
+  await flushPromises();
+  expect(library.hostDirectories.destination.value).toBe('opfs');
+  expect(settings.value.experimental?.browserImageGeneration?.modelDownloadDestination).toBeUndefined();
+});
 
 function waitForAbort({ signal }: ImageRecipeDownloadRequest): Promise<void> {
   return new Promise((_, reject) => {

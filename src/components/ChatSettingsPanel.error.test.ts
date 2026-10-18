@@ -1,3 +1,4 @@
+import { SettingsSelectStub } from './settings-select.test-support';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -99,6 +100,9 @@ describe('ChatSettingsPanel Error Handling', () => {
       props: { show: true },
       global: {
         stubs: {
+          SettingsSelect: SettingsSelectStub,
+          ScopedMountSettings: true,
+          LmToolsSettings: true,
           ModelSelector: true,
           LmParametersEditor: true,
           'router-link': true,
@@ -124,6 +128,9 @@ describe('ChatSettingsPanel Error Handling', () => {
       props: { show: true },
       global: {
         stubs: {
+          SettingsSelect: SettingsSelectStub,
+          ScopedMountSettings: true,
+          LmToolsSettings: true,
           ModelSelector: true,
           LmParametersEditor: true,
           'router-link': true,
@@ -156,6 +163,9 @@ describe('ChatSettingsPanel Error Handling', () => {
       props: { show: true },
       global: {
         stubs: {
+          SettingsSelect: SettingsSelectStub,
+          ScopedMountSettings: true,
+          LmToolsSettings: true,
           ModelSelector: true,
           LmParametersEditor: true,
           'router-link': true,

@@ -15,9 +15,10 @@ import { installedSelection, repositoryDirectories } from '@/features/llama-cpp-
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { repositoryUrlPath, type DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
+import LlamaCppBrowserModelAction from './LlamaCppBrowserModelAction.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
-const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination> }>();
+const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination>, createChatGroup?: ({ model }: { model: LocalModel }) => Promise<void>, creatingChatGroupModelId?: string }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel] }>();
 const id = useId();
 const queue = getDownloadQueue();
@@ -168,6 +169,13 @@ watch([() => props.models, quantization, multimodal, plan, queue.changed, destin
     }
   }
 }, { immediate: true });
+
+async function handleCreateChatGroup(): Promise<void> {
+  if (disposed || optionsLocked.value || checkingLocal.value || localError.value || props.destinationUnavailable || !installed.value || !props.createChatGroup) {
+    return;
+  }
+  await props.createChatGroup({ model: installed.value });
+}
 
 function selectQuantization({ event }: { event: Event }): void {
   const target = event.target;
@@ -326,6 +334,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
       <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+      <LlamaCppBrowserModelAction v-else-if="installed && !busy && props.createChatGroup" :key="installed.id" :model="installed" :current="defaultModel" :disabled="optionsLocked || checkingLocal || localError || destinationUnavailable === true" :default-action-disabled="defaultActionDisabled" :creating="creatingChatGroupModelId === installed.id" tw-class="ml-auto" @create-chat-group="handleCreateChatGroup" @select-default="emit('selectDefault', $event)" />
       <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
       <button
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"

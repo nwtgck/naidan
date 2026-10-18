@@ -177,4 +177,28 @@ describe('LmToolsSettings.vue', () => {
 
     expect(wrapper.get('[data-testid="chat-tool-save-error"]').text()).toContain('storage failed');
   });
+
+  it('keeps concurrent pending operations attached to their owner across A to B to A navigation', async () => {
+    let completeFirst: (() => void) | undefined;
+    let completeSecond: (() => void) | undefined;
+    mocks.setToolStatus.mockImplementationOnce(() => new Promise<void>(resolve => {
+      completeFirst = resolve;
+    }));
+    mocks.setToolStatus.mockImplementationOnce(() => new Promise<void>(resolve => {
+      completeSecond = resolve;
+    }));
+    const wrapper = mountSettings();
+    await wrapper.get('[data-testid="enable-calculator"]').trigger('click');
+    mockCurrentChat.value.id = 'chat-2';
+    await flushPromises();
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toMatchObject({ pending: false });
+    mockCurrentChat.value.id = 'chat-1';
+    await wrapper.get('[data-testid="enable-calculator"]').trigger('click');
+    completeFirst?.();
+    await flushPromises();
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toMatchObject({ pending: true });
+    completeSecond?.();
+    await flushPromises();
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toMatchObject({ pending: false });
+  });
 });

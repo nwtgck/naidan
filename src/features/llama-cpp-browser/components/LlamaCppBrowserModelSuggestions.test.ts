@@ -1,6 +1,6 @@
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
+import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { discoverRepository, groupModelFiles } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
@@ -239,6 +239,63 @@ describe('offline-first suggested model UI', () => {
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
   });
+
+  it('offers the shared chat-group action only for an installed model when the caller provides it', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [] });
+    await wrapper.setProps({ createChatGroup });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    expect(row.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
+    await wrapper.setProps({ models: [local] });
+    await flushPromises();
+    expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(false);
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledExactlyOnceWith({ model: local });
+    expect(wrapper.emitted('selectDefault')).toBeUndefined();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('changes the catalog action without executing it and keeps the existing default-model event', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [local] });
+    await wrapper.setProps({ createChatGroup });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    await row.get('[data-testid="llama-model-action-options"]').trigger('click');
+    const option = document.querySelector<HTMLButtonElement>('[data-testid="llama-model-action-set-default"]');
+    if (!option) {
+      throw new Error('Default-model option was not shown');
+    }
+    await new DOMWrapper(option).trigger('click');
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(wrapper.emitted('selectDefault')).toBeUndefined();
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(wrapper.emitted('selectDefault')).toEqual([[local]]);
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
+
+  it('disables both catalog controls and shows progress only for the model being used to create a chat group', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ models: [local] });
+    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.id });
+    await flushPromises();
+    const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
+    expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('true');
+    expect(row.get('[data-testid="llama-model-action-main"]').element.matches(':disabled')).toBe(true);
+    expect(row.get('[data-testid="llama-model-action-options"]').element.matches(':disabled')).toBe(true);
+    await row.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(createChatGroup).not.toHaveBeenCalled();
+    await wrapper.setProps({ creatingChatGroupModelId: 'another-model' });
+    expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('false');
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
+  });
 });
 
 describe('the original catalog reused for audio', () => {
@@ -272,7 +329,8 @@ describe('the original catalog reused for audio', () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
     const saved: LocalModel = { id: `hf.co/${hint.hfRepository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
     const view = audioCatalog();
-    await view.setProps({ models: [saved] });
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    await view.setProps({ models: [saved], createChatGroup });
     await flushPromises();
     const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
     // Required companion mode checks actual stored selection, not just a name.
@@ -284,6 +342,8 @@ describe('the original catalog reused for audio', () => {
     await action.trigger('click');
     expect(view.emitted('select')).toEqual([[{ ...saved, importedAt: 2 }]]);
     expect(view.emitted('selectDefault')).toBeUndefined();
+    expect(view.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(createChatGroup).not.toHaveBeenCalled();
     expect(discoverRepository).not.toHaveBeenCalled();
     expect(downloadRepository).not.toHaveBeenCalled();
   });

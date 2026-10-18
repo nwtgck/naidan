@@ -3,7 +3,7 @@ import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick, useId } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
@@ -31,20 +31,11 @@ import {
 } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
-import {
-  XIcon,
-  Settings2Icon,
-  LayersIcon,
-  GlobeIcon,
-  AlertCircleIcon,
-  Trash2Icon,
-  PlusIcon,
-} from 'lucide-vue-next';
+import { XIcon, ChevronDownIcon, FolderOpenIcon, RotateCcwIcon, SlidersHorizontalIcon, TypeIcon, WrenchIcon, FolderIcon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { hasChatOverrides } from '@/logic/chat-settings-resolver';
-import { formatSettingsSourceLabel } from '@/logic/settings-labels';
+import { settingsSourcePresentation, formatSettingsSourceLabel } from '@/logic/settings-labels';
 import {
   cloneLmParameters as clonePlainLmParameters,
   hasLmParameterOverrides,
@@ -55,18 +46,22 @@ import {
   createSystemPromptSettingChange,
 } from '@/logic/scoped-setting-changes';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
-import { endpointTypeLabel } from './endpoint-type-label';
-import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { endpointTypeLabel, endpointTypeDescription, endpointUrlPlaceholder } from './endpoint-type-label';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 import ModelSelector from './ModelSelector.vue';
+import SettingsSelect from './SettingsSelect.vue';
+import EndpointPresetButtons from './EndpointPresetButtons.vue';
+import SettingsSourceBadge from './SettingsSourceBadge.vue';
+import SettingsDisclosure from './SettingsDisclosure.vue';
+import SettingsCollapse from './SettingsCollapse.vue';
+import HttpHeadersEditor from './HttpHeadersEditor.vue';
+import ScopedMountSettings from './ScopedMountSettings.vue';
 import SystemPromptSettingsEditor from './SystemPromptSettingsEditor.vue';
-import { systemPromptUiModeFromValue } from './system-prompt-settings-editor';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
-const LlamaCppBrowserUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserUpsell.vue') });
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
+const LmToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/tools/components/LmToolsSettings.vue') });
 
 const props = defineProps<{
   show?: boolean,
@@ -76,11 +71,14 @@ const emit = defineEmits<{
   (e: 'close'): void,
 }>();
 
-const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
+const { currentChatId, currentChat, currentChatGroup, inheritedSettings } = useCurrentChatState();
 const chatMetadata = useChatMetadata();
 const chatModels = useChatModels();
-const isFetchingModels = computed(() => chatModels.fetchingModels.value);
-const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
+const isFetchingModels = ref(false);
+const endpointModels = ref<string[]>([]);
+const sortedAvailableModels = computed(() => naturalSort({ values: endpointModels.value }));
+let modelRequest = 0;
+let titleModelRequest = 0;
 const titleEndpointModels = ref<string[]>([]);
 const isFetchingTitleEndpointModels = ref(false);
 const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
@@ -403,11 +401,11 @@ function titleReasoningLabel({
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
 // until the UI value and label handling are reviewed.
 const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
-  naidan_rpc: true,
   openai: true,
   ollama: true,
-  transformers_js: true,
+  naidan_rpc: true,
   llama_cpp_browser: true,
+  transformers_js: true,
   browser_provided_lm: true,
 };
 
@@ -438,34 +436,6 @@ function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEn
     return value as EndpointType;
   }
   throw new Error(`Unhandled title endpoint type value: ${value}`);
-}
-
-function inheritedEndpointTypeLabel(): string | undefined {
-  const endpointType = inheritedSettings.value?.endpoint.type;
-  if (endpointType === undefined) {
-    return formatSettingsSourceLabel({
-      value: undefined,
-      source: inheritedSettings.value?.sources.endpoint,
-    });
-  }
-  const label = endpointTypeLabel({ endpointType });
-  if (label === undefined) {
-    return undefined;
-  }
-  return formatSettingsSourceLabel({
-    value: label,
-    source: inheritedSettings.value?.sources.endpoint,
-  });
-}
-
-function titleModelExplanation(): string | undefined {
-  return lazyStrings.ChatSettingsPanel__title_model_explanation({
-    inheritance: { type: 'none' },
-  });
-}
-
-function endpointTypeValueLabel({ endpoint }: { endpoint: Endpoint }): string | undefined {
-  return endpointTypeLabel({ endpointType: endpoint.type });
 }
 
 function mergedLmParameters({
@@ -570,19 +540,6 @@ function materializedLocalTitleGenerationOverride(): Exclude<ScopedTitleGenerati
   };
 }
 
-const inheritedTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: inheritedSettings.value?.titleGeneration === 'disabled'
-    ? lazyStrings.ChatSettingsPanel__disabled()
-    : inheritedSettings.value?.titleGeneration === undefined
-      ? undefined
-      : endpointTypeValueLabel({ endpoint: inheritedSettings.value.titleGeneration.endpoint }),
-  source: 'chat_group',
-}));
-const sameScopeTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: endpointTypeValueLabel({ endpoint: effectiveEndpoint.value }),
-  source: 'chat',
-}));
-
 
 function createChanges({
   previous,
@@ -667,8 +624,6 @@ const pendingFieldRevisions = new Map<ScopedSettingChange['field'], number>();
 const saveQueues = new Map<ChatId, Promise<void>>();
 const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
-
-const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
 const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint ?? settings.value.endpoint);
 const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
 const localTitleGeneration = computed(() => scopedTitleGenerationFromDraft({ draft: localSettings.value }));
@@ -754,42 +709,6 @@ function setLocalTitleEndpointHttpHeaders({
   });
 }
 
-function addLocalTitleHeader(): void {
-  const headers = localTitleEndpointHttpHeaders.value;
-  if (headers === undefined) {
-    return;
-  }
-  setLocalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
-}
-
-function updateLocalTitleHeader({
-  index,
-  field,
-  value,
-}: {
-  index: number,
-  field: 0 | 1,
-  value: string,
-}): void {
-  const headers = localTitleEndpointHttpHeaders.value;
-  if (headers === undefined) {
-    return;
-  }
-  setLocalTitleEndpointHttpHeaders({
-    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
-      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
-      : header),
-  });
-}
-
-async function removeLocalTitleHeader({ index }: { index: number }): Promise<void> {
-  const headers = localTitleEndpointHttpHeaders.value;
-  if (headers !== undefined) {
-    setLocalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
-  }
-  await saveChangesFromUi();
-}
-
 const titleModelOptions = computed(() => {
   return localTitleEndpointUsesSameScope.value
     ? sortedAvailableModels.value
@@ -801,16 +720,6 @@ const titleModelLoading = computed(() => {
     : isFetchingTitleEndpointModels.value;
 });
 const effectiveModelId = computed(() => localSettings.value.modelId || inheritedSettings.value?.modelId || settings.value.defaultModelId);
-const inheritedTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: inheritedSettings.value?.titleGeneration === 'disabled'
-    ? lazyStrings.ChatSettingsPanel__disabled()
-    : inheritedSettings.value?.titleGeneration?.modelId,
-  source: 'chat_group',
-}));
-const sameScopeTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: effectiveModelId.value,
-  source: 'chat',
-}));
 
 function reasoningEffortFromTitleReasoningValue({
   value,
@@ -871,7 +780,7 @@ const effectiveTitleModelId = computed(() => {
       : inheritedSettings.value?.titleGeneration?.modelId;
   }
   if (localTitleEndpointUsesSameScope.value) {
-    return effectiveModelId.value;
+    return localTitleModelId.value ?? effectiveModelId.value;
   }
   return localTitleModelId.value;
 });
@@ -1054,25 +963,31 @@ function setLocalTitleEndpointType({
   }
 }
 
-function handleTitleEndpointTypeChange({ event }: { event: Event }): void {
-  setLocalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value: (event.target as HTMLSelectElement).value }) });
-}
-
 async function fetchTitleEndpointModels(): Promise<void> {
   if (localTitleEndpointUsesSameScope.value) {
     await fetchModels();
     return;
   }
+  if (activeTitleEndpoint.value === undefined) {
+    titleModelRequest++;
+    isFetchingTitleEndpointModels.value = false;
+    titleEndpointModels.value = [];
+    return;
+  }
+  const ownerId = currentChatId.value;
+  const request = ++titleModelRequest;
+  const isCurrent = () => request === titleModelRequest && currentChatId.value === ownerId && areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value });
   const endpoint = cloneEndpoint({ endpoint: effectiveTitleEndpoint.value });
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     titleEndpointModels.value = [];
+    isFetchingTitleEndpointModels.value = false;
     return;
   }
 
   isFetchingTitleEndpointModels.value = true;
   try {
     const models = await chatModels.fetchForEndpoint({ endpoint });
-    if (!areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value })) {
+    if (!isCurrent()) {
       return;
     }
     titleEndpointModels.value = models ?? [];
@@ -1080,7 +995,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
     if (typeof titleGeneration === 'string' || titleGeneration.endpoint === 'same_scope') {
       return;
     }
-    if (!titleEndpointModels.value.includes(titleGeneration.model.id) && titleEndpointModels.value[0] !== undefined) {
+    if (!titleEndpointModels.value.includes(titleGeneration.model.id) && !preservesUnlistedModel({ endpoint, modelId: titleGeneration.model.id }) && titleEndpointModels.value[0] !== undefined) {
       setLocalTitleGeneration({
         titleGeneration: {
           endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
@@ -1089,11 +1004,16 @@ async function fetchTitleEndpointModels(): Promise<void> {
       });
     }
   } catch (caught) {
+    if (!isCurrent()) {
+      return;
+    }
     error.value = caught instanceof Error
       ? caught.message
       : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
   } finally {
-    isFetchingTitleEndpointModels.value = false;
+    if (isCurrent()) {
+      isFetchingTitleEndpointModels.value = false;
+    }
   }
 }
 
@@ -1188,11 +1108,9 @@ function setLocalTitleModelId({
   });
 }
 
-const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
-
 const localEndpointUrl = computed({
   get: () => {
-    const endpoint = localSettings.value.endpoint;
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint ?? settings.value.endpoint;
     return endpoint !== undefined && isHttpEndpoint(endpoint)
       ? endpoint.url
       : '';
@@ -1214,7 +1132,7 @@ const localEndpointUrl = computed({
 
 const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
   get: () => {
-    const endpoint = localSettings.value.endpoint;
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint ?? settings.value.endpoint;
     return endpoint !== undefined && isHttpEndpoint(endpoint)
       ? endpoint.httpHeaders
       : undefined;
@@ -1230,20 +1148,6 @@ const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
       httpHeaders,
     };
   },
-});
-
-const inheritedEndpointUrlPlaceholder = computed(() => {
-  const inherited = inheritedSettings.value;
-  if (inherited === null || inherited === undefined || !isHttpEndpoint(inherited.endpoint)) {
-    return formatSettingsSourceLabel({
-      value: undefined,
-      source: inherited?.sources.endpoint,
-    });
-  }
-  return formatSettingsSourceLabel({
-    value: inherited.endpoint.url,
-    source: inherited.sources.endpoint,
-  });
 });
 
 // Keep field synchronization exhaustive. A new LM setting command must
@@ -1465,19 +1369,55 @@ async function saveChangesFromUi(): Promise<void> {
   }
 }
 
+let closeSession = 0;
+watch([currentChatId, () => props.show], () => {
+  closeSession++;
+}, { flush: 'sync' });
+const isClosing = ref(false);
+
+async function waitForAuxiliaryOperations({ chatId, session }: { chatId: ChatId | undefined, session: number }): Promise<boolean> {
+  if (!toolsStatus.value.pending && !foldersStatus.value.pending) {
+    return currentChatId.value === chatId && closeSession === session;
+  }
+  await new Promise<void>(resolve => {
+    const stop = watch([currentChatId, () => props.show, toolsStatus, foldersStatus], () => {
+      if (closeSession !== session || currentChatId.value !== chatId || (!toolsStatus.value.pending && !foldersStatus.value.pending)) {
+        stop();
+        resolve();
+      }
+    }, { flush: 'sync' });
+  });
+  // A second explicit close acknowledges an error already visible to the user.
+  return closeSession === session && currentChatId.value === chatId && !toolsStatus.value.error && !foldersStatus.value.error;
+}
+
 async function closePanel(): Promise<void> {
-  try {
-    await saveChanges();
-  } catch {
+  if (isClosing.value) {
     return;
   }
-  emit('close');
+  const chatId = currentChatId.value;
+  const session = closeSession;
+  isClosing.value = true;
+  try {
+    if (!await waitForAuxiliaryOperations({ chatId, session })) {
+      return;
+    }
+    await saveChanges();
+    if (!await waitForAuxiliaryOperations({ chatId, session })) {
+      return;
+    }
+    emit('close');
+  } catch {
+    // Save errors retain the modal and all dirty fields.
+  } finally {
+    isClosing.value = false;
+  }
 }
 
 onMounted(() => {
   syncLocalWithCurrent({ preserveDirty: false });
   if (currentChat.value) {
-    const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
+    const endpoint = effectiveEndpoint.value;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
     if ((type === 'transformers_js' || type === 'llama_cpp_browser') || type === 'browser_provided_lm' || isLocalhost({ url })) {
@@ -1680,45 +1620,27 @@ async function handleQuickProviderProfileChange() {
   selectedProviderProfileId.value = '';
 }
 
-function addHeader() {
-  const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
-  if (!endpoint || !isHttpEndpoint(endpoint)) {
-    return;
-  }
-  localEndpointHttpHeaders.value = [
-    ...(endpoint.httpHeaders ?? []),
-    ['', ''],
-  ];
-}
-
-async function removeHeader({ index }: { index: number }) {
-  const headers = localEndpointHttpHeaders.value;
-  if (headers !== undefined) {
-    localEndpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
-  }
-  await saveChangesFromUi();
-}
-
 async function fetchModels() {
   const chatId = currentChatId.value;
   if (!chatId) {
     return;
   }
   const requestedEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
+  const request = ++modelRequest;
+  const isCurrent = () => request === modelRequest && currentChatId.value === chatId && areEndpointsEqual({ left: requestedEndpoint, right: effectiveEndpoint.value });
+  isFetchingModels.value = true;
   error.value = null;
   try {
     const models = await chatModels.fetchForChat({ chatId });
-    if (
-      currentChatId.value !== chatId
-      || !areEndpointsEqual({ left: requestedEndpoint, right: effectiveEndpoint.value })
-    ) {
+    if (!isCurrent()) {
       return;
     }
+    endpointModels.value = models;
     if (models.length === 0) {
       error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
     }
     let changed = false;
-    if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
+    if (localSettings.value.modelId && !models.includes(localSettings.value.modelId) && !preservesUnlistedModel({ endpoint: requestedEndpoint, modelId: localSettings.value.modelId })) {
       localSettings.value.modelId = undefined;
       changed = true;
     }
@@ -1728,6 +1650,7 @@ async function fetchModels() {
       && titleGeneration.endpoint === 'same_scope'
       && titleGeneration.model !== 'same_scope'
       && !models.includes(titleGeneration.model.id)
+      && !preservesUnlistedModel({ endpoint: requestedEndpoint, modelId: titleGeneration.model.id })
     ) {
       updateLocalTitleGenerationDraft({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
       changed = true;
@@ -1736,9 +1659,16 @@ async function fetchModels() {
       await saveChangesFromUi();
     }
   } catch (caught) {
+    if (!isCurrent()) {
+      return;
+    }
     error.value = caught instanceof Error
       ? caught.message
       : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
+  } finally {
+    if (isCurrent()) {
+      isFetchingModels.value = false;
+    }
   }
 }
 
@@ -1763,32 +1693,148 @@ watch(
 );
 
 
-const parentSystemPromptText = computed(() => inheritedSettings.value?.systemPromptMessages?.join('\n\n') ?? '');
-const systemPromptUiMode = computed(() => systemPromptUiModeFromValue({ systemPrompt: localSettings.value.systemPrompt }));
+// Compare captured values rather than draft object identity: an unrelated save
+// can echo an equivalent cloned endpoint while a model refresh is in progress.
+let observedEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
+let observedTitleEndpoint = cloneOptionalEndpoint({ endpoint: activeTitleEndpoint.value });
+watch(effectiveEndpoint, endpoint => {
+  if (areEndpointsEqual({ left: endpoint, right: observedEndpoint })) {
+    return;
+  }
+  const previous = observedEndpoint;
+  observedEndpoint = cloneEndpoint({ endpoint });
+  modelRequest++;
+  isFetchingModels.value = false;
+  if (!areEndpointModelNamespacesEqual({ left: endpoint, right: previous })) {
+    endpointModels.value = [];
+  }
+}, { deep: true, flush: 'sync' });
+watch(activeTitleEndpoint, endpoint => {
+  if (areOptionalEndpointsEqual({ left: endpoint, right: observedTitleEndpoint })) {
+    return;
+  }
+  const previous = observedTitleEndpoint;
+  observedTitleEndpoint = cloneOptionalEndpoint({ endpoint });
+  titleModelRequest++;
+  isFetchingTitleEndpointModels.value = false;
+  if (endpoint === undefined || previous === undefined || !areEndpointModelNamespacesEqual({ left: endpoint, right: previous })) {
+    titleEndpointModels.value = [];
+  }
+}, { deep: true, flush: 'sync' });
 
-const systemPromptResolutionStatus = computed(() => {
-  switch (systemPromptUiMode.value) {
-  case 'parent':
-    return parentSystemPromptText.value
-      ? lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()
-      : lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set();
-  case 'no_prompt':
-    return lazyStrings.ChatSettingsPanel__system_prompt_no_prompt();
-  case 'replace':
-    return lazyStrings.ChatSettingsPanel__replace();
-  case 'append':
-    return lazyStrings.ChatSettingsPanel__append();
-  default: {
-    const _ex: never = systemPromptUiMode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-});
+function preservesUnlistedModel({ endpoint, modelId }: { endpoint: Endpoint, modelId: string }): boolean {
+  return (endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(modelId)) || (endpoint.type === 'naidan_rpc' && modelId.startsWith('host/'));
+}
+
+watch(() => currentChatId.value, () => {
+  modelRequest++;
+  titleModelRequest++;
+  // The endpoint watchers clear only when the model namespace changes; cached
+  // candidates for an unchanged endpoint remain usable when selecting another owner.
+  isFetchingModels.value = false;
+  isFetchingTitleEndpointModels.value = false;
+}, { flush: 'sync' });
+
+const parentSystemPromptText = computed(() => inheritedSettings.value?.systemPromptMessages?.join('\n\n') ?? '');
 
 
 async function handleRestoreDefaults() {
   localSettings.value = emptyDraft();
   await saveChangesFromUi();
+}
+
+
+// Presentation stays separate from raw draft values and the existing save commands.
+const connectionOpen = ref(false);
+const connectionTrigger = ref<HTMLButtonElement | null>(null);
+const connectionDetailsId = useId();
+const headingId = useId();
+const toolsStatus = ref<{ pending: boolean, error: string | undefined, enabledCount: number }>({ pending: false, error: undefined, enabledCount: 0 });
+const foldersStatus = ref<{ pending: boolean, error: string | undefined }>({ pending: false, error: undefined });
+const ownMounts = computed(() => currentChat.value?.mounts ?? []);
+const upstreamMounts = computed(() => [...(settings.value.mounts ?? []).map(mount => ({ mount, source: 'global' as const })), ...(currentChatGroup.value?.mounts ?? []).map(mount => ({ mount, source: 'chat_group' as const }))]);
+const inheritedEndpoint = computed(() => inheritedSettings.value?.endpoint ?? settings.value.endpoint);
+const inheritedEndpointSource = computed(() => settingsSourcePresentation({ source: inheritedSettings.value?.sources.endpoint ?? 'global' }));
+const inheritedModelPresentation = computed(() => ({ id: inheritedSettings.value?.modelId ?? settings.value.defaultModelId, source: settingsSourcePresentation({ source: inheritedSettings.value?.sources.modelId ?? 'global' }) }));
+const titleInheritedEndpoint = computed(() => inheritedSettings.value?.titleGeneration === 'disabled' ? undefined : inheritedSettings.value?.titleGeneration?.endpoint);
+const titleInheritedSource = computed(() => settingsSourcePresentation({ source: inheritedSettings.value?.sources.titleGeneration ?? 'global' }));
+const titleModelPresentation = computed(() => ({
+  id: localTitleEndpointUsesInheritance.value ? effectiveTitleModelId.value : effectiveModelId.value,
+  source: localTitleEndpointUsesInheritance.value ? titleInheritedSource.value : settingsSourcePresentation({ source: 'chat' }),
+}));
+const mainReasoningSource = computed(() => settingsSourcePresentation({ source: localSettings.value.lmParameters?.reasoning?.effort !== undefined ? undefined : currentChatGroup.value?.lmParameters?.reasoning?.effort !== undefined ? 'chat_group' : 'global' }));
+
+function scopedEndpointTypeLabel({ endpointType }: { endpointType: Endpoint['type'] }): string | undefined {
+  switch (endpointType) {
+  case 'openai': return lazyStrings.ChatSettingsPanel__openai_compatible();
+  case 'naidan_rpc': return rpcEnabled.value ? lazyStrings.naidanRpc__title() : lazyStrings.naidanRpc__disabled();
+  case 'llama_cpp_browser': return lazyStrings.llamaCppBrowser__endpoint_label();
+  case 'transformers_js': return lazyStrings.ChatSettingsPanel__transformers_js_experimental();
+  case 'ollama': case 'browser_provided_lm': case 'unsupported_experimental_endpoint': return endpointTypeLabel({ endpointType });
+  default: {
+    const _ex: never = endpointType;
+    return _ex;
+  }
+  }
+}
+
+function endpointDetail({ endpoint }: { endpoint: Endpoint | undefined }): string | undefined {
+  if (endpoint === undefined) {
+    return undefined;
+  }
+  return isHttpEndpoint(endpoint) && endpoint.url ? endpoint.url : endpointTypeDescription({ endpointType: endpoint.type });
+}
+
+function endpointChoices({ title }: { title: boolean }) {
+  const current = title ? localTitleEndpointSelectValue.value : localSettings.value.endpoint?.type;
+  const choices = (Object.keys(endpointTypeSelectValueRecord) as EndpointType[]).filter(type => type !== 'naidan_rpc' || rpcEnabled.value || current === 'naidan_rpc').map(type => ({
+    value: type as string,
+    label: scopedEndpointTypeLabel({ endpointType: type }),
+    detail: endpointTypeDescription({ endpointType: type }),
+    disabled: (() => {
+      switch (type) {
+      case 'naidan_rpc': return !rpcEnabled.value;
+      case 'browser_provided_lm': return false;
+      case 'openai': case 'ollama': case 'llama_cpp_browser': case 'transformers_js': return getEndpointBuildAvailability({ type }) !== 'available';
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
+      }
+    })(),
+  }));
+  // Prompt API remains selectable even when the current browser cannot initialize it.
+  for (const choice of choices) {
+    if (choice.value === 'browser_provided_lm') {
+      choice.disabled = false;
+    }
+  }
+  switch (current) {
+  case 'unsupported_experimental_endpoint': choices.push({ value: current, label: lazyStrings.SHARED__unsupported_experimental_endpoint(), detail: undefined, disabled: true });
+    break;
+  case undefined: case 'inherit': case 'same_scope': case 'naidan_rpc': case 'openai': case 'ollama': case 'llama_cpp_browser': case 'transformers_js': case 'browser_provided_lm': break;
+  default: {
+    const _ex: never = current;
+    throw new Error(`Unhandled current endpoint: ${_ex}`);
+  }
+  }
+  return choices;
+}
+
+const mainEndpointChoices = computed(() => [{ value: 'global', label: scopedEndpointTypeLabel({ endpointType: inheritedEndpoint.value.type }), detail: endpointDetail({ endpoint: inheritedEndpoint.value }), source: inheritedEndpointSource.value }, ...endpointChoices({ title: false })]);
+const titleEndpointChoices = computed(() => [
+  { value: 'inherit', label: titleInheritedEndpoint.value ? scopedEndpointTypeLabel({ endpointType: titleInheritedEndpoint.value.type }) : lazyStrings.ChatSettingsPanel__disabled(), detail: endpointDetail({ endpoint: titleInheritedEndpoint.value }), source: titleInheritedSource.value },
+  { value: 'same_scope', label: scopedEndpointTypeLabel({ endpointType: effectiveEndpoint.value.type }), detail: endpointDetail({ endpoint: effectiveEndpoint.value }), source: settingsSourcePresentation({ source: 'chat' }) },
+  ...endpointChoices({ title: true }),
+]);
+const profileChoices = computed(() => [{ value: '', label: lazyStrings.ChatSettingsPanel__load_from_saved_profiles() }, ...(settings.value.providerProfiles ?? []).map(profile => ({ value: idToRaw({ id: profile.id }), label: profile.name, detail: endpointTypeLabel({ endpointType: profile.endpoint.type }) }))]);
+
+function changeTitleType({ value }: { value: string }) {
+  setLocalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value }) });
+}
+
+function changeMainType({ value }: { value: string }) {
+  void updateEndpointType({ endpointType: endpointTypeFromSelectValue({ value }) });
 }
 
 defineExpose({
@@ -1798,527 +1844,226 @@ defineExpose({
     },
   }) || {}),
 });
+
+const dialogRef = ref<HTMLElement | null>(null);
+let previouslyFocused: HTMLElement | undefined;
+watch(() => props.show, async show => {
+  if (show) {
+    previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    await nextTick();
+    if (props.show) {
+      dialogRef.value?.querySelector<HTMLButtonElement>('[data-testid="close-button"]')?.focus();
+    }
+  } else {
+    previouslyFocused?.focus();
+  }
+}, { immediate: true });
+onBeforeUnmount(() => previouslyFocused?.focus());
+
+function handleModalKeydown({ event }: { event: KeyboardEvent }) {
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229) {
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    void closePanel();
+    return;
+  }
+  if (event.key !== 'Tab') {
+    return;
+  }
+  const candidates = [...(dialogRef.value?.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, summary, [tabindex="0"]') ?? [])].filter(element => !element.matches(':disabled') && !element.closest('[inert], [aria-hidden="true"]'));
+  const first = candidates[0];
+  const last = candidates.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last?.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first?.focus();
+  }
+}
 </script>
 
 <template>
-  <Transition name="modal">
-    <div v-if="show" tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6" @click.self="closePanel">
-      <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 relative overflow-hidden">
-        <!-- Title & Close -->
-        <div tw-class="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800 shrink-0">
-          <div tw-class="flex items-center gap-2">
-            <div tw-class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-              <Settings2Icon tw-class="w-4 h-4 text-blue-600" />
-            </div>
-            <h3 tw-class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__chat_specific_overrides() }}</h3>
-          </div>
-
-          <div tw-class="flex items-center gap-2">
-            <div
-              v-if="hasActiveOverrides"
-              tw-class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-full"
-            >
-              <div tw-class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-              <span tw-class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__active_overrides() }}</span>
-            </div>
-
-            <button
-              @click="closePanel"
-              tw-class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-              data-testid="close-button"
-            >
-              <XIcon tw-class="w-5 h-5" />
+  <Transition name="modal"><div v-if="show" tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 backdrop-blur-[2px] md:p-6" @click.self="closePanel" @keydown="handleModalKeydown({ event: $event })"><div ref="dialogRef" role="dialog" aria-modal="true" :aria-labelledby="headingId" class="modal-content-zoom" tw-class="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
+    <header tw-class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/70 px-5 py-3 dark:border-gray-800"><h3 :id="headingId" tw-class="min-w-0 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ lazyStrings.ChatSettingsPanel__chat_specific_overrides() }}</h3><button type="button" :aria-label="lazyStrings.ChatSettingsPanel__close()" tw-class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800 dark:hover:text-gray-100" @click="closePanel" :aria-busy="isClosing || undefined" data-testid="close-button"><XIcon tw-class="h-5 w-5" /></button></header>
+    <p v-if="saveError || toolsStatus.error || foldersStatus.error" role="alert" tw-class="mx-5 mt-3 rounded-xl bg-red-50 px-4 py-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300" data-testid="chat-settings-save-error">{{ saveError || toolsStatus.error || foldersStatus.error }}</p>
+    <div tw-class="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6">
+      <div class="scoped-settings-form" tw-class="space-y-6">
+        <div class="scoped-settings-main">
+          <div tw-class="min-w-0 space-y-2">
+            <span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</span>
+            <button type="button" :aria-expanded="connectionOpen" :aria-controls="connectionDetailsId" ref="connectionTrigger" data-testid="chat-setting-connection-trigger" class="scoped-connection-trigger" tw-class="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:bg-gray-800" @click="connectionOpen = !connectionOpen">
+              <span tw-class="block min-w-0 flex-1"><span tw-class="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ scopedEndpointTypeLabel({ endpointType: effectiveEndpointType }) }}</span><span tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="localSettings.endpoint ? undefined : inheritedEndpointSource" /><span tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ endpointDetail({ endpoint: effectiveEndpoint }) }}</span></span></span><ChevronDownIcon :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200', connectionOpen && 'rotate-180']" />
             </button>
           </div>
-        </div>
-
-        <div
-          v-if="saveError"
-          tw-class="mx-6 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
-          data-testid="chat-settings-save-error"
-        >
-          {{ saveError }}
-        </div>
-
-        <!-- Scrollable Content -->
-        <div tw-class="flex-1 overflow-y-auto p-6 space-y-8 overscroll-contain">
-          <div tw-class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
-            <div tw-class="flex flex-col md:flex-row gap-8 flex-1">
-              <!-- Quick Switcher -->
-              <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" tw-class="w-full md:max-w-[240px] space-y-2">
-                <label tw-class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">{{ lazyStrings.ChatSettingsPanel__quick_profile_switcher() }}</label>
-                <select
-                  v-model="selectedProviderProfileId"
-                  @change="handleQuickProviderProfileChange"
-                  tw-class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                  style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                >
-                  <option value="" disabled>{{ lazyStrings.ChatSettingsPanel__load_from_saved_profiles() }}</option>
-                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
-                </select>
-              </div>
-
-              <!-- Endpoint Presets -->
-              <div tw-class="space-y-2 flex-1">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">{{ lazyStrings.ChatSettingsPanel__quick_endpoint_presets() }}</label>
-                <div tw-class="flex flex-wrap gap-1.5">
-                  <button
-                    v-for="preset in ENDPOINT_PRESETS"
-                    :key="preset.name"
-                    @click="applyPreset({ preset })"
-                    type="button"
-                    :tw-class="['px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm', localEndpointUrl === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600']"
-                  >
-                    {{ preset.name }}
-                  </button>
-                </div>
+          <div tw-class="min-w-0 space-y-4">
+            <div tw-class="min-w-0 space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__model_override() }}</span>
+              <div tw-class="flex min-w-0 items-stretch overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700/60 dark:bg-gray-800/55">
+                <ModelSelector surface="settings" frame="embedded" :model-value="localSettings.modelId" :inherited-model="inheritedModelPresentation" :models="sortedAvailableModels" :loading="isFetchingModels" :disabled="effectiveEndpointType === 'browser_provided_lm'" :allow-clear="true" @update:model-value="value => { localSettings.modelId = value; saveChangesFromUi(); }" @refresh="fetchModels" data-testid="chat-setting-model-select" />
+                <router-link v-if="effectiveEndpointType === 'llama_cpp_browser' || effectiveEndpointType === 'transformers_js'" :to="{ query: { ...$route?.query, settings: effectiveEndpointType === 'llama_cpp_browser' ? 'llama-cpp-browser' : 'transformers-js' } }" :title="lazyStrings.ChatSettingsPanel__model_management()" :aria-label="lazyStrings.ChatSettingsPanel__model_management()" tw-class="flex shrink-0 items-center justify-center gap-2 border-l border-gray-200 px-3 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:border-gray-700/60 dark:text-blue-400 dark:hover:bg-blue-500/5"><FolderOpenIcon tw-class="h-4 w-4 shrink-0" /><span class="scoped-management-label">{{ lazyStrings.ChatSettingsPanel__model_management() }}</span></router-link>
               </div>
             </div>
+            <fieldset :disabled="effectiveEndpointType === 'browser_provided_lm'" :tw-class="['min-w-0', effectiveEndpointType === 'browser_provided_lm' && 'opacity-50']"><ReasoningSettings :selected-effort="localSettings.lmParameters?.reasoning?.effort" :default-label="lazyStrings.ChatSettingsPanel__inherited()" :disabled="effectiveEndpointType === 'browser_provided_lm'" surface="plain" notice="inline-help" @update:effort="effort => { localSettings.lmParameters = { ...(localSettings.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } }; saveChangesFromUi(); }"><template #heading-extra><SettingsSourceBadge :source="mainReasoningSource" /></template></ReasoningSettings></fieldset>
           </div>
-
-          <div tw-class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div tw-class="space-y-2">
-              <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</label>
-              <select
-                data-testid="chat-setting-endpoint-type-select"
-                :value="localSettings.endpoint?.type || 'global'"
-                @change="async (e) => {
-                  const value = (e.target as HTMLSelectElement).value;
-                  await updateEndpointType({ endpointType: endpointTypeFromSelectValue({ value }) });
-                }"
-                tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-              >
-                <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
-                <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
-                <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
-                <option v-else-if="localSettings.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
-                <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
-                <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
-                <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
-                <option
-                  v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
-                  value="unsupported_experimental_endpoint"
-                  disabled
-                >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
-                <option
-                  v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
-                  value="unsupported_experimental_endpoint"
-                  disabled
-                >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
-              </select>
-            </div>
-
-            <RpcRegistrationSelect v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId"
-                                   @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
-            <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
-
-            <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
-              <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
-              <input
-                v-model="localEndpointUrl"
-                @blur="saveChangesFromUi"
-                @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
-                @input="error = null"
-                type="text"
-                tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                :placeholder="inheritedEndpointUrlPlaceholder"
-                data-testid="chat-setting-url-input"
-              />
-              <div v-if="error" tw-class="mt-2">
-                <p class="animate-in fade-in slide-in-from-top-1" tw-class="text-[10px] text-red-500 font-bold ml-1 leading-relaxed duration-200">{{ error }}</p>
-              </div>
-            </div>
-
-            <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
-              <div tw-class="flex items-center justify-between ml-1">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
-                <button
-                  @click="addHeader"
-                  type="button"
-                  tw-class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
-                >
-                  <PlusIcon tw-class="w-2.5 h-2.5" />
-                  {{ lazyStrings.ChatSettingsPanel__add_header() }}
-                </button>
-              </div>
-
-              <div v-if="localEndpointHttpHeaders && localEndpointHttpHeaders.length > 0" tw-class="space-y-2">
-                <div
-                  v-for="(header, index) in localEndpointHttpHeaders"
-                  :key="index"
-                  tw-class="flex gap-2"
-                >
-                  <input
-                    v-model="header[0]"
-                    @blur="saveChangesFromUi"
-                    type="text"
-                    tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                    :placeholder="lazyStrings.ChatSettingsPanel__name()"
-                  />
-                  <input
-                    v-model="header[1]"
-                    @blur="saveChangesFromUi"
-                    type="text"
-                    tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                    :placeholder="lazyStrings.ChatSettingsPanel__value()"
-                  />
-                  <button
-                    @click="removeHeader({ index })"
-                    tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2Icon tw-class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div v-else tw-class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatSettingsPanel__no_custom_headers() }}</div>
-            </div>
-
+        </div>
+        <SettingsCollapse :id="connectionDetailsId" :open="connectionOpen" :return-focus="connectionTrigger ?? undefined"><div tw-class="space-y-4 rounded-xl bg-gray-50/70 p-4 dark:bg-gray-800/25">
+          <div tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</span><SettingsSelect :model-value="localSettings.endpoint?.type || 'global'" :options="mainEndpointChoices" :label="lazyStrings.ChatSettingsPanel__endpoint_type()" @update:model-value="value => changeMainType({ value })" data-testid="chat-setting-endpoint-type-select" /></div>
+          <RpcRegistrationSelect surface="settings" v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
+          <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
+          <template v-if="isHttpEndpoint(effectiveEndpoint)">
+            <label tw-class="block space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</span><input v-model="localEndpointUrl" :placeholder="endpointUrlPlaceholder({ endpointType: effectiveEndpoint.type })" class="scoped-input" type="url" @blur="saveChangesFromUi" @keyup.enter="($event.target as HTMLInputElement).blur()" data-testid="chat-setting-url-input" /></label>
+            <HttpHeadersEditor :model-value="localEndpointHttpHeaders ?? []" @update:model-value="value => localEndpointHttpHeaders = value" @save="saveChangesFromUi" test-id-prefix="chat-setting-http-header" />
+            <p tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls() }}</p>
+          </template>
+          <p v-if="error" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ error }}</p>
+          <div v-if="settings.providerProfiles?.length" tw-class="max-w-sm space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__quick_profile_switcher() }}</span><SettingsSelect data-testid="chat-setting-profile-select" v-model="selectedProviderProfileId" :options="profileChoices" :label="lazyStrings.ChatSettingsPanel__quick_profile_switcher()" @update:model-value="handleQuickProviderProfileChange" /></div>
+          <EndpointPresetButtons :endpoint="effectiveEndpoint" test-id-prefix="chat-endpoint-preset" @apply="preset => applyPreset({ preset })" />
+        </div></SettingsCollapse>
+        <section><SystemPromptSettingsEditor
+          v-model="localSettings.systemPrompt"
+          :title="lazyStrings.ChatSettingsPanel__chat_system_prompt()"
+          :parent-mode-label="lazyStrings.ChatSettingsPanel__chat_group()"
+          :no-prompt-mode-label="lazyStrings.ChatSettingsPanel__no_prompt()"
+          :replace-mode-label="lazyStrings.ChatSettingsPanel__replace()"
+          :append-mode-label="lazyStrings.ChatSettingsPanel__append()"
+          :parent-prompt-text="parentSystemPromptText"
+          :parent-prompt-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()"
+          :parent-prompt-not-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set()"
+          :no-prompt-caption="lazyStrings.ChatSettingsPanel__system_prompt_no_prompt()"
+          :replace-caption="lazyStrings.ChatSettingsPanel__instructions_for_this_chat()"
+          :append-caption="lazyStrings.ChatSettingsPanel__instructions_to_append()"
+          :type-to-replace-placeholder="lazyStrings.ChatSettingsPanel__start_typing_to_replace()"
+          :replace-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_for_this_chat()"
+          :append-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_to_append()"
+          :reset-key="currentChatId ? idToRaw({ id: currentChatId }) : ''"
+          test-id-prefix="chat-setting-system-prompt"
+          :rows="4"
+          @save="saveChangesFromUi"
+        /></section>
+        <div tw-class="space-y-0">
+          <SettingsDisclosure :title="lazyStrings.ChatSettingsPanel__parameters()" test-id="chat-setting-parameters-disclosure"><template #icon><SlidersHorizontalIcon tw-class="h-4 w-4" /></template><template #summary><span data-testid="resolution-status-lm-parameters">{{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? lazyStrings.ChatSettingsPanel__override() : lazyStrings.ChatSettingsPanel__inherited() }}</span></template><LmParametersEditor :inheritance-label="lazyStrings.ChatSettingsPanel__inherited()" :inheritance-hint="lazyStrings.LmParametersEditor__empty_fields_use_parent_settings()" :model-value="localSettings.lmParameters" @update:model-value="value => { localSettings.lmParameters = value; saveChangesFromUi(); }" /></SettingsDisclosure>
+          <SettingsDisclosure :title="lazyStrings.ChatSettingsPanel__automatic_title()" :summary="localTitleGenerationMode === 'disabled' ? lazyStrings.ChatSettingsPanel__disabled() : localTitleGenerationMode === 'inherit' ? lazyStrings.ChatSettingsPanel__inherited() : lazyStrings.ChatSettingsPanel__override()" test-id="chat-setting-title-disclosure"><template #icon><TypeIcon tw-class="h-4 w-4" /></template>
             <div tw-class="space-y-4">
-              <div tw-class="space-y-2">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__model_override() }}</label>
-                <ModelSelector
-                  :model-value="localSettings.modelId"
-                  @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
-                  :models="sortedAvailableModels"
-                  :loading="isFetchingModels"
-                  :disabled="effectiveEndpointType === 'browser_provided_lm'"
-                  :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
-                  :allow-clear="true"
-                  @refresh="fetchModels"
-                  data-testid="chat-setting-model-select"
-                />
-              </div>
-
-              <fieldset
-                :disabled="effectiveEndpointType === 'browser_provided_lm'"
-                :tw-class="['p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl', { 'opacity-50': effectiveEndpointType === 'browser_provided_lm' }]"
-              >
-                <ReasoningSettings
-                  :selected-effort="localSettings.lmParameters?.reasoning?.effort"
-                  @update:effort="effort => {
-                    const params = { ...(localSettings.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
-                    localSettings.lmParameters = params;
-                    saveChangesFromUi();
-                  }"
-                />
-              </fieldset>
-              <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
-              <LlamaCppBrowserUpsell :show="effectiveEndpointType === 'llama_cpp_browser'" />
-            </div>
-          </div>
-
-          <!-- Automatic Title Section -->
-          <div tw-class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl space-y-6">
-            <div tw-class="flex items-center justify-between">
-              <div tw-class="flex items-center gap-3">
-                <div tw-class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                  <Settings2Icon tw-class="w-4 h-4 text-blue-600" />
+              <div role="group" :aria-label="lazyStrings.ChatSettingsPanel__automatic_title()" tw-class="inline-flex max-w-full rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800 inset-ring-1 inset-ring-gray-200/50 dark:inset-ring-gray-700/50"><button v-for="mode in ['inherit', 'override', 'disabled'] as const" :key="mode" type="button" :aria-pressed="localTitleGenerationMode === mode" :tw-class="['min-h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30', localTitleGenerationMode === mode ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 inset-ring-1 inset-ring-gray-200 dark:inset-ring-gray-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/40 hover:text-gray-700 dark:hover:text-gray-200']" @click="setLocalTitleGenerationMode({ mode })">{{ mode === 'inherit' ? lazyStrings.ChatSettingsPanel__inherited() : mode === 'override' ? lazyStrings.ChatSettingsPanel__override() : lazyStrings.ChatSettingsPanel__disabled() }}</button></div>
+              <div v-if="localTitleGenerationMode !== 'disabled'" tw-class="space-y-4">
+                <div tw-class="grid min-w-0 grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  <div tw-class="min-w-0 space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__title_endpoint_type() }}</span><SettingsSelect :model-value="localTitleEndpointSelectValue" :options="titleEndpointChoices" :label="lazyStrings.ChatSettingsPanel__title_endpoint_type()" @update:model-value="value => changeTitleType({ value })" data-testid="chat-setting-title-endpoint-type-select" /></div>
+                  <div tw-class="min-w-0 space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</span><ModelSelector surface="settings" :placeholder="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined" :clear-label="localTitleEndpointUsesInheritance && titleInheritedEndpoint === undefined ? lazyStrings.ChatSettingsPanel__disabled() : undefined" :model-value="localTitleEndpointUsesInheritance ? undefined : localTitleModelId" :inherited-model="titleModelPresentation" :models="titleModelOptions" :loading="titleModelLoading" :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope" :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'" @update:model-value="value => setLocalTitleModelId({ modelId: value })" @refresh="fetchTitleEndpointModels" data-testid="chat-setting-title-model-select" /></div>
                 </div>
-                <div>
-                  <h4 tw-class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__automatic_title() }}</h4>
-                  <p tw-class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.ChatSettingsPanel__configure_how_this_chat_is_automatically_named() }}</p>
-                </div>
-              </div>
-              <div tw-class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                <button
-                  @click="setLocalTitleGenerationMode({ mode: 'inherit' })"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'inherit' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                >
-                  {{ lazyStrings.ChatSettingsPanel__use_chat_group_setting() }}
-                </button>
-                <button
-                  @click="setLocalTitleGenerationMode({ mode: 'override' })"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                >
-                  {{ lazyStrings.ChatSettingsPanel__override() }}
-                </button>
-                <button
-                  @click="setLocalTitleGenerationMode({ mode: 'disabled' })"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'disabled' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                >
-                  {{ lazyStrings.ChatSettingsPanel__disabled() }}
-                </button>
+                <ReasoningSettings :selected-effort="reasoningEffortFromTitleReasoningValue({ value: localTitleReasoningSelectValue })" :selected-value="localTitleReasoningSelectValue" :leading-options="titleReasoningLeadingOptions" :heading="lazyStrings.ChatSettingsPanel__title_reasoning()" surface="plain" notice="inline-help" @update:value="value => setLocalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })" data-testid="chat-setting-title-reasoning-select" />
+                <RpcRegistrationSelect surface="settings" v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'" :model-value="localTitleEndpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: true })" />
+                <template v-if="activeTitleEndpoint !== undefined && isHttpEndpoint(activeTitleEndpoint)"><p v-if="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope" tw-class="text-xs leading-5 text-gray-400 dark:text-gray-500">{{ lazyStrings.ChatSettingsPanel__editing_connection_creates_a_local_title_override() }}</p><label tw-class="block space-y-2"><span class="scoped-field-label">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</span><input v-model="localTitleEndpointUrl" :placeholder="endpointUrlPlaceholder({ endpointType: activeTitleEndpoint?.type })" class="scoped-input" type="url" @blur="saveChangesFromUi" @keyup.enter="($event.target as HTMLInputElement).blur()" data-testid="chat-setting-title-endpoint-url-input" /></label><HttpHeadersEditor :model-value="localTitleEndpointHttpHeaders ?? []" @update:model-value="value => setLocalTitleEndpointHttpHeaders({ httpHeaders: value })" @save="saveChangesFromUi" test-id-prefix="chat-setting-title-http-header" /></template>
               </div>
             </div>
-
-            <!-- UX: keep effective inherited title controls visible. Editing them intentionally materializes a local override instead of forcing users to switch modes first. -->
-            <div v-if="localTitleGenerationMode !== 'disabled'" tw-class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
-              <div tw-class="space-y-2">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__title_endpoint_type() }}</label>
-                <select
-                  :value="localTitleEndpointSelectValue"
-                  @change="handleTitleEndpointTypeChange({ event: $event })"
-                  tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                  data-testid="chat-setting-title-endpoint-type-select"
-                >
-                  <option value="inherit">{{ inheritedTitleEndpointTypeOptionLabel }}</option>
-                  <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
-                  <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
-                  <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
-                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
-                  <option v-else-if="localTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
-                  <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
-                  <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
-                  <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
-                  <option
-                    v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
-                    value="unsupported_experimental_endpoint"
-                    disabled
-                  >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
-                </select>
-                <RpcRegistrationSelect v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'"
-                                       :model-value="localTitleEndpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: true })" />
-              </div>
-
-              <div tw-class="space-y-2">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
-                <input
-                  v-model="localTitleEndpointUrl"
-                  @blur="saveChangesFromUi"
-                  @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
-                  type="text"
-                  tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                  :placeholder="isHttpEndpoint(effectiveEndpoint) ? effectiveEndpoint.url : undefined"
-                  :disabled="activeTitleEndpoint === undefined || !isHttpEndpoint(activeTitleEndpoint)"
-                  data-testid="chat-setting-title-endpoint-url-input"
-                />
-              </div>
-
-              <div v-if="activeTitleEndpoint !== undefined && isHttpEndpoint(activeTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
-                <div tw-class="flex items-center justify-between ml-1">
-                  <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
-                  <button
-                    @click="addLocalTitleHeader"
-                    type="button"
-                    tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
-                  >
-                    <PlusIcon tw-class="w-3 h-3" />
-                    {{ lazyStrings.ChatSettingsPanel__add_header() }}
-                  </button>
-                </div>
-
-                <div v-if="localTitleEndpointHttpHeaders && localTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
-                  <div
-                    v-for="(header, index) in localTitleEndpointHttpHeaders"
-                    :key="index"
-                    class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
-                  >
-                    <input
-                      :value="header[0]"
-                      @input="updateLocalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
-                      @blur="saveChangesFromUi"
-                      type="text"
-                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      :placeholder="lazyStrings.ChatSettingsPanel__name()"
-                      data-testid="chat-setting-title-http-header-name-input"
-                    />
-                    <input
-                      :value="header[1]"
-                      @input="updateLocalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
-                      @blur="saveChangesFromUi"
-                      type="text"
-                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      :placeholder="lazyStrings.ChatSettingsPanel__value()"
-                      data-testid="chat-setting-title-http-header-value-input"
-                    />
-                    <button
-                      @click="removeLocalTitleHeader({ index })"
-                      tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                      data-testid="chat-setting-title-http-header-remove-button"
-                    >
-                      <Trash2Icon tw-class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                <div v-else tw-class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatSettingsPanel__no_custom_headers() }}</div>
-              </div>
-
-              <div tw-class="space-y-2">
-                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</label>
-                <ModelSelector
-                  :model-value="localTitleEndpointUsesInheritance ? undefined : localTitleModelId"
-                  @update:model-value="val => setLocalTitleModelId({ modelId: val })"
-                  :models="titleModelOptions"
-                  :loading="titleModelLoading"
-                  :placeholder="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : (localTitleEndpointUsesSameScope ? sameScopeTitleModelOptionLabel : undefined)"
-                  :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope"
-                  :clear-label="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : sameScopeTitleModelOptionLabel"
-                  :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'"
-                  @refresh="fetchTitleEndpointModels"
-                  data-testid="chat-setting-title-model-select"
-                />
-              </div>
-              <div tw-class="md:col-span-2">
-                <ReasoningSettings
-                  :selected-effort="reasoningEffortFromTitleReasoningValue({ value: localTitleReasoningSelectValue })"
-                  :selected-value="localTitleReasoningSelectValue"
-                  :leading-options="titleReasoningLeadingOptions"
-                  :heading="lazyStrings.ChatSettingsPanel__title_reasoning()"
-                  surface="card"
-                  @update:value="value => setLocalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })"
-                  data-testid="chat-setting-title-reasoning-select"
-                />
-              </div>
-
-              <div tw-class="flex items-center">
-                <p tw-class="text-[10px] text-gray-400 italic leading-relaxed">
-                  {{ titleModelExplanation() }}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Info Banners -->
-          <div tw-class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div tw-class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
-              <div tw-class="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                <GlobeIcon tw-class="w-4 h-4 text-blue-500" />
-              </div>
-              <div tw-class="space-y-1">
-                <p tw-class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__auto_check() }}</p>
-                <p tw-class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">{{ lazyStrings.ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls() }}</p>
-              </div>
-            </div>
-
-            <div tw-class="flex items-start gap-4 p-4 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
-              <div tw-class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                <AlertCircleIcon tw-class="w-4 h-4 text-gray-400" />
-              </div>
-              <div tw-class="space-y-1">
-                <p tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__local_overrides() }}</p>
-                <p tw-class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
-                  {{ lazyStrings.ChatSettingsPanel__these_settings_only_apply_to_this_chat() }}
-                  <button
-                    @click="handleRestoreDefaults"
-                    tw-class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                    data-testid="chat-setting-restore-defaults"
-                  >
-                    {{ lazyStrings.ChatSettingsPanel__restore_defaults() }}
-                  </button>.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <!-- System Prompt and Parameters -->
-          <div tw-class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-8">
-            <div tw-class="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div tw-class="md:col-span-2 space-y-4">
-                <SystemPromptSettingsEditor
-                  v-model="localSettings.systemPrompt"
-                  :title="lazyStrings.ChatSettingsPanel__chat_system_prompt()"
-                  :parent-mode-label="lazyStrings.ChatSettingsPanel__chat_group()"
-                  :no-prompt-mode-label="lazyStrings.ChatSettingsPanel__no_prompt()"
-                  :replace-mode-label="lazyStrings.ChatSettingsPanel__replace()"
-                  :append-mode-label="lazyStrings.ChatSettingsPanel__append()"
-                  :parent-prompt-text="parentSystemPromptText"
-                  :parent-prompt-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()"
-                  :parent-prompt-not-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set()"
-                  :no-prompt-caption="lazyStrings.ChatSettingsPanel__system_prompt_no_prompt()"
-                  :replace-caption="lazyStrings.ChatSettingsPanel__instructions_for_this_chat()"
-                  :append-caption="lazyStrings.ChatSettingsPanel__instructions_to_append()"
-                  :type-to-replace-placeholder="lazyStrings.ChatSettingsPanel__start_typing_to_replace()"
-                  :replace-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_for_this_chat()"
-                  :append-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_to_append()"
-                  :reset-key="currentChatId ? idToRaw({ id: currentChatId }) : ''"
-                  test-id-prefix="chat-setting-system-prompt"
-                  :rows="4"
-                  @save="saveChangesFromUi"
-                />
-              </div>
-
-              <div tw-class="space-y-4">
-                <label tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <LayersIcon tw-class="w-3 h-3" />
-                  {{ lazyStrings.ChatSettingsPanel__settings_resolution() }}
-                </label>
-                <div tw-class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
-                  <div tw-class="flex items-center justify-between text-[10px] font-bold">
-                    <span tw-class="text-gray-400">{{ lazyStrings.ChatSettingsPanel__system_prompt() }}</span>
-                    <span :tw-class="systemPromptUiMode === 'parent' ? 'text-gray-300' : 'text-blue-500'" data-testid="resolution-status-system-prompt">
-                      {{ systemPromptResolutionStatus }}
-                    </span>
-                  </div>
-                  <div tw-class="flex items-center justify-between text-[10px] font-bold">
-                    <span tw-class="text-gray-400">{{ lazyStrings.ChatSettingsPanel__parameters() }}</span>
-                    <span :tw-class="hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
-                      {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? lazyStrings.ChatSettingsPanel__chat_overrides() : lazyStrings.ChatSettingsPanel__inherited() }}
-                    </span>
-                  </div>
-                  <div tw-class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
-                    <p tw-class="text-[9px] text-gray-400 leading-relaxed italic">{{ lazyStrings.ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings() }}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div tw-class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl">
-              <LmParametersEditor
-                :model-value="localSettings.lmParameters"
-                @update:model-value="val => { localSettings.lmParameters = val; saveChangesFromUi(); }"
-              />
-            </div>
-          </div>
+          </SettingsDisclosure>
+          <SettingsDisclosure :title="lazyStrings.ChatSettingsPanel__tools()" test-id="chat-setting-tools-disclosure"><template #icon><WrenchIcon tw-class="h-4 w-4" /></template><template #summary><span v-if="toolsStatus.error" tw-class="text-red-500">{{ toolsStatus.error }}</span><span v-else-if="toolsStatus.pending">{{ lazyStrings.ChatSettingsPanel__saving() }}</span><span v-else>{{ lazyStrings.ChatSettingsPanel__enabled_tool_count({ count: toolsStatus.enabledCount }) }}</span></template><LmToolsSettings @status="toolsStatus = $event" /></SettingsDisclosure>
+          <SettingsDisclosure :title="lazyStrings.ChatSettingsPanel__folders()" test-id="chat-setting-folders-disclosure"><template #icon><FolderIcon tw-class="h-4 w-4" /></template><template #summary><span :tw-class="foldersStatus.error ? 'text-red-500' : ''">{{ foldersStatus.error || (foldersStatus.pending ? lazyStrings.ChatSettingsPanel__working() : lazyStrings.ChatSettingsPanel__folder_counts({ own: ownMounts.length, inherited: upstreamMounts.length })) }}</span></template><ScopedMountSettings v-if="currentChatId" :owner="{ type: 'chat', id: currentChatId }" :mounts="ownMounts" :inherited-mounts="upstreamMounts" @status="foldersStatus = $event"  /></SettingsDisclosure>
         </div>
+        <footer tw-class="flex items-center justify-end border-t border-gray-200/70 pt-3 dark:border-gray-800"><button type="button" tw-class="inline-flex min-h-9 items-center gap-1.5 rounded-md text-xs text-gray-500 transition-colors hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-gray-400 dark:hover:text-gray-200" @click="handleRestoreDefaults" data-testid="chat-setting-restore-defaults"><RotateCcwIcon tw-class="h-3.5 w-3.5" />{{ lazyStrings.ChatSettingsPanel__restore_defaults() }}</button></footer>
       </div>
     </div>
-  </Transition>
+  </div></div></Transition>
 </template>
-            <style scoped>
-/* Modal Transition */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
 
-.modal-enter-active .modal-content-zoom,
-.modal-leave-active .modal-content-zoom {
-  transition: all 0.3s cubic-bezier(0.34, 1.05, 0.64, 1);
+<style scoped>
+.scoped-settings-form {
+  container-type: inline-size;
 }
-
-.modal-enter-from,
-.modal-leave-to {
+.scoped-settings-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+.scoped-field-label {
+  display: block;
+  min-height: 1rem;
+  color: #6b7280;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+.scoped-connection-trigger {
+  min-height: 3.75rem;
+}
+.scoped-management-label {
+  display: none;
+}
+.scoped-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.625rem 0.875rem;
+  color: #1f2937;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.scoped-input:focus-visible {
+  border-color: rgb(59 130 246 / 65%);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 10%);
+}
+.scoped-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.5rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+.scoped-menu-action:hover {
+  background: rgb(107 114 128 / 8%);
+  color: #2563eb;
+}
+.scoped-menu-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dark .scoped-field-label {
+  color: #9ca3af;
+}
+.dark .scoped-input {
+  border-color: rgb(55 65 81 / 60%);
+  background: rgb(31 41 55 / 55%);
+  color: #e5e7eb;
+}
+.dark .scoped-menu-action {
+  color: #9ca3af;
+}
+@container (min-width: 32rem) {
+  .scoped-management-label {
+    display: inline;
+  }
+}
+@container (min-width: 43rem) {
+  .scoped-settings-main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 2rem;
+  }
+}
+.modal-enter-active, .modal-leave-active {
+  transition: opacity 150ms;
+}
+.modal-enter-active .modal-content-zoom, .modal-leave-active .modal-content-zoom {
+  transition: transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.modal-enter-from, .modal-leave-to {
   opacity: 0;
 }
-
-.modal-enter-from .modal-content-zoom,
-.modal-leave-to .modal-content-zoom {
-  transform: scale(0.9);
-  opacity: 0;
+.modal-enter-from .modal-content-zoom, .modal-leave-to .modal-content-zoom {
+  transform: translateY(0.25rem) scale(0.99);
 }
-
-.animate-in {
-  animation-fill-mode: forwards;
-}
-@keyframes fade-in {
-  from {
-    opacity: 0;
+@media (prefers-reduced-motion: reduce) {
+  .modal-enter-active, .modal-leave-active, .modal-content-zoom {
+    transition: none !important;
   }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes zoom-in {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes slide-in-from-top {
-  from {
-    transform: translateY(-0.5rem);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-.slide-in-from-top-1 {
-  animation-name: slide-in-from-top;
 }
 </style>

@@ -283,18 +283,49 @@ describe('catalog quantization selection', () => {
     expect(discoverRepository).toHaveBeenCalledOnce();
   });
 
-  it('uses the public inventory name when a repository lookup returns the canonical Host ID', async () => {
+  it.each([false, true])('uses the public inventory name when a repository lookup returns the canonical Host ID (split action=%s)', async splitAction => {
     const canonical = { ...localQat, id: `host/root/${official.hfRepository}:${qatPath}`, name: `host/root/${official.hfRepository}:${qatPath}` };
     const available = { ...canonical, name: `host/Models/${official.hfRepository}:${qatPath}` };
     vi.mocked(installedSelection).mockResolvedValue(canonical);
     const wrapper = render({ suggestion: gemma, models: [available] });
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    if (splitAction) {
+      await wrapper.setProps({ createChatGroup });
+    }
     await wrapper.setProps({ destination: { kind: 'host', directoryId: 'root' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
     await wrapper.get('[data-testid="llama-suggestion-check"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
-    expect(wrapper.emitted('selectDefault')).toEqual([[available]]);
+    if (splitAction) {
+      await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+      expect(createChatGroup).toHaveBeenCalledExactlyOnceWith({ model: available });
+      expect(wrapper.emitted('selectDefault')).toBeUndefined();
+    } else {
+      await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
+      expect(wrapper.emitted('selectDefault')).toEqual([[available]]);
+    }
+  });
+
+  it('passes only the selected installed source and quantization into chat-group creation without external I/O', async () => {
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    const wrapper = render({ suggestion: gemma, models: [localQat, localCommunity] });
+    await wrapper.setProps({ createChatGroup });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(createChatGroup).toHaveBeenLastCalledWith({ model: localQat });
+    await wrapper.get('select').setValue('q4_k_m');
+    await flushPromises();
+    expect(createChatGroup).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="llama-model-action-main"]').trigger('click');
+    expect(createChatGroup).toHaveBeenLastCalledWith({ model: localCommunity });
+    await wrapper.get('select').setValue('q8_0');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
+    expect(createChatGroup).toHaveBeenCalledTimes(2);
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
   });
 
   it('shows and emits only the exact installed source/quantization, without changing defaults on selection', async () => {
@@ -322,6 +353,8 @@ describe('catalog quantization selection', () => {
     const pendingLocal = Promise.withResolvers<LocalModel | undefined>();
     vi.mocked(installedSelection).mockReturnValueOnce(pendingLocal.promise);
     const wrapper = render({ suggestion: gemma, models: [] });
+    const createChatGroup = vi.fn().mockResolvedValue(undefined);
+    await wrapper.setProps({ createChatGroup });
     await flushPromises();
     await wrapper.get('[data-testid="llama-suggestion-check"]').trigger('click');
     await flushPromises();
@@ -331,6 +364,8 @@ describe('catalog quantization selection', () => {
     pendingLocal.resolve(localQat);
     await flushPromises();
     expect(wrapper.find('[data-testid="llama-default-model-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-model-split-action"]').exists()).toBe(false);
+    expect(createChatGroup).not.toHaveBeenCalled();
     expect(wrapper.get('[data-testid="llama-suggestion-download"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="llama-download-plan-files"]').exists()).toBe(false);
   });

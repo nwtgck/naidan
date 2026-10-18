@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
+import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { destinationKey, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
@@ -7,13 +8,12 @@ import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
-import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, SearchIcon, Trash2Icon } from 'lucide-vue-next';
-import { quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { AlertCircleIcon, CheckIcon, ChevronDownIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
+import { matchesQuantizationChoice, quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
@@ -23,12 +23,15 @@ import { repositoryUrlPath, type DownloadConflict, type DownloadJournal, type Do
 import { useHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
+import { modelLaunchShareUrl } from '@/features/llama-cpp-browser/model-launch/share-url';
 const props = defineProps<{ disabled: boolean, modelPreset?: ModelPreset }>();
 const emit = defineEmits<{ changed: [], busy: [value: boolean], modelReady: [model: LocalModel], selectionChanged: [] }>();
 const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
 const { input, checkedInput, catalog, requestedVariantUnresolved, quantization, candidate, projector, multimodal } = useHuggingFaceSession();
 const id = useId();
 const details = ref<HTMLDetailsElement>();
+const repositorySearch = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceSearch>>();
+const searching = ref(false);
 const active = ref<AbortController>();
 let inspectionPreset: ModelPreset | undefined;
 let inspecting = false;
@@ -64,6 +67,38 @@ const selected = computed(() => {
   const variants = selectedChoice.value?.models ?? [];
   return variants.find(model => model.label === candidate.value) ?? (variants.length === 1 ? variants[0] : undefined);
 });
+const modelLaunchUrl = computed(() => {
+  const current = catalog.value;
+  const mainFilePath = selected.value?.files[0]?.path;
+  return current && mainFilePath && catalogCurrent.value && !active.value
+    ? modelLaunchShareUrl({ baseUrl: window.location.href, catalog: current, mainFilePath }) : undefined;
+});
+const copyState = ref<'copied' | 'failed'>();
+let copyGeneration = 0;
+watch(modelLaunchUrl, () => {
+  copyGeneration++;
+  copyState.value = undefined;
+}, { flush: 'sync' });
+
+async function copyModelLaunchUrl(): Promise<void> {
+  const url = modelLaunchUrl.value;
+  if (url === undefined || disposed) {
+    return;
+  }
+  const generation = ++copyGeneration;
+  copyState.value = undefined;
+  try {
+    await navigator.clipboard.writeText(url);
+    if (generation === copyGeneration && !disposed) {
+      copyState.value = 'copied';
+    }
+  } catch {
+    if (generation === copyGeneration && !disposed) {
+      copyState.value = 'failed';
+    }
+  }
+}
+
 const projectorOptions = computed(() => projectorChoices({ files: catalog.value?.projectors ?? [] }));
 const selectedProjector = computed(() => {
   switch (multimodal.value) {
@@ -106,6 +141,7 @@ function recheckLocalFiles(): void {
 }
 
 const total = computed(() => selectedFiles.value.reduce((sum, file) => sum + file.size, 0));
+const downloadSizeDescription = computed(() => selected.value && needsProjector.value ? lazyStrings.LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total() : lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size());
 let disposed = false;
 const deleting = ref(false);
 const authorizing = ref(false);
@@ -156,6 +192,7 @@ async function inspect(): Promise<void> {
   if (active.value || props.disabled || deleting.value) {
     return;
   }
+  repositorySearch.value?.cancelPending();
   inspecting = true;
   const controller = new AbortController();
   active.value = controller;
@@ -173,9 +210,9 @@ async function inspect(): Promise<void> {
     const nextChoices = quantizationChoices({ repository: next.repository, models: next.models });
     requestedVariantUnresolved.value = false;
     if (requestedVariant !== undefined) {
-      // Keep legacy URL/storage variant names compatible with the new
-      // quantization-first presentation. Never select a drafter by its quant alone.
-      const exact = nextChoices.filter(choice => choice.label === requestedVariant || variantLabel({ repository: next.repository, path: choice.id }) === requestedVariant);
+      // Resolve complete variant names before falling back to quantization.
+      // Never select a drafter by its quant alone.
+      const exact = nextChoices.filter(choice => matchesQuantizationChoice({ choice, variant: requestedVariant }));
       const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.id }) === 'model');
       quantization.value = matches.length === 1 ? matches[0]!.id : '';
       candidate.value = '';
@@ -362,8 +399,8 @@ watch(queue.changed, () => {
   void refresh();
   emit('changed');
 });
-watch([active, queuedDownloadBusy, deleting], ([operation, downloading, removing]) => {
-  emit('busy', operation !== undefined || downloading || removing);
+watch([active, queuedDownloadBusy, deleting, searching], ([operation, downloading, removing, finding]) => {
+  emit('busy', operation !== undefined || downloading || removing || finding);
 }, { immediate: true });
 onMounted(() => {
   window.addEventListener('focus', recheckLocalFiles);
@@ -371,6 +408,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   disposed = true;
+  copyGeneration++;
   active.value?.abort();
   window.removeEventListener('focus', recheckLocalFiles);
 });
@@ -389,15 +427,17 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
   <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-4 space-y-3" data-testid="llama-hf-manager">
     <div tw-class="flex flex-wrap items-center gap-x-2 gap-y-1">
       <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><DownloadIcon tw-class="w-4 h-4 text-blue-500" />Hugging Face</h3>
-      <label :for="`${id}-repository`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</label>
+      <span tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</span>
       <LlamaCppBrowserDownloadDestination tw-class="ml-auto" :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
     </div>
     <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
-    <fieldset :disabled="disabled || active !== undefined || deleting" tw-class="space-y-3 disabled:opacity-50">
+    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
+    <fieldset :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
       <div tw-class="space-y-2">
+        <label :for="`${id}-repository`" tw-class="block text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository_url_or_id() }}</label>
         <div tw-class="flex flex-col sm:flex-row gap-2">
           <input :id="`${id}-repository`" v-model="input" data-testid="llama-hf-repository" placeholder="owner/repository" tw-class="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" @keydown.enter.prevent="inspect" />
-          <button type="button" data-testid="llama-hf-inspect" :disabled="!input.trim()" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="inspect"><SearchIcon tw-class="w-4 h-4" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
+          <button type="button" data-testid="llama-hf-inspect" :disabled="!input.trim()" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="inspect"><FolderSearchIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
         </div>
       </div>
       <template v-if="catalog">
@@ -433,7 +473,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
             </div>
           </div>
           <div tw-class="flex flex-wrap items-center gap-2 ml-auto">
-            <div data-testid="llama-hf-total" :title="lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size()" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5" aria-hidden="true" /><span tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__total_download_size() }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected && !needsProjector ? size({ bytes: total }) : '—' }}</span></div>
+            <div data-testid="llama-hf-total" :title="downloadSizeDescription" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span tw-class="sr-only">{{ downloadSizeDescription }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected ? needsProjector ? lazyStrings.LlamaCppBrowserHuggingFaceManager__model_size({ size: size({ bytes: selected.size }) }) : size({ bytes: total }) : '—' }}</span></div>
             <button type="button" data-testid="llama-hf-download" :disabled="!selected || needsProjector || !catalogCurrent || localAvailability !== 'missing' || destinationUnavailable || authorizing" tw-class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="start"><Loader2Icon v-if="localAvailability === 'checking'" tw-class="w-4 h-4 animate-spin" /><DownloadIcon v-else tw-class="w-4 h-4" />{{ downloadLabel }}</button>
           </div>
         </div>
@@ -460,6 +500,17 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
       <summary tw-class="cursor-pointer font-semibold py-1 hover:text-blue-600 dark:hover:text-blue-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_details() }}</summary>
       <div tw-class="mt-3 space-y-4">
         <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: catalog.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-repository-link" tw-class="inline-flex items-center gap-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 break-all"><span>Hugging Face · {{ catalog.repository }}</span><ExternalLinkIcon tw-class="w-3 h-3 shrink-0" /></a>
+        <div v-if="modelLaunchUrl" tw-class="min-w-0 space-y-1">
+          <p :id="`${id}-model-launch-link`" tw-class="font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__link_to_open_in_naidan() }}</p>
+          <div tw-class="flex items-start gap-2">
+            <a :href="modelLaunchUrl" :aria-labelledby="`${id}-model-launch-link`" target="_blank" rel="noopener noreferrer" data-testid="llama-hf-model-launch-url" tw-class="min-w-0 flex-1 break-all select-text font-mono text-[11px] leading-relaxed text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-2 focus-visible:outline-blue-500">{{ modelLaunchUrl }}</a>
+            <button type="button" :aria-label="lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_url()" :title="lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_url()" data-testid="llama-hf-model-launch-copy" tw-class="min-w-11 min-h-11 shrink-0 -mt-2 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="copyModelLaunchUrl">
+              <CheckIcon v-if="copyState === 'copied'" aria-hidden="true" tw-class="w-3.5 h-3.5" />
+              <CopyIcon v-else aria-hidden="true" tw-class="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p v-if="copyState" role="status" data-testid="llama-hf-model-launch-copy-status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ copyState === 'copied' ? lazyStrings.LlamaCppBrowserHuggingFaceManager__url_copied() : lazyStrings.LlamaCppBrowserHuggingFaceManager__copy_failed() }}</p>
+        </div>
         <p :id="`${id}-multimodal-help`" tw-class="leading-relaxed">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models() }}</p>
         <div v-if="(selectedChoice?.models.length ?? 0) > 1" tw-class="space-y-2">
           <label :for="`${id}-variant`" tw-class="block font-bold">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__model_variant() }}</label>

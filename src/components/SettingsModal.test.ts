@@ -1,3 +1,4 @@
+import { SettingsSelectStub } from './settings-select.test-support';
 import { toProviderProfileId } from '@/01-models/ids';
 // Mock the dynamic import for licenses
 vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
@@ -164,6 +165,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   };
 
   const globalStubs = {
+    SettingsSelect: SettingsSelectStub,
     ActivityIcon: true,
     RefreshCwIcon: true,
     Loader2Icon: true,
@@ -327,7 +329,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   describe('UI / Design Regression', () => {
-    it('positions the close button correctly in the top-right corner', async () => {
+    it('keeps one close button beside the language selector on mobile and in the top-right corner on desktop', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
@@ -335,9 +337,20 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const closeBtn = wrapper.find('[data-testid="setting-close-x"]');
+      expect(wrapper.findAll('[data-testid="setting-close-x"]')).toHaveLength(1);
+      const header = wrapper.get('[data-testid="settings-navigation-header"]');
+      expect(header.find('[data-testid="language-selector"]').exists()).toBe(true);
+      expect(header.classes()).toContain('pr-14');
+      expect(closeBtn.element.parentElement).toBe(header.element);
+      expect(wrapper.get('aside').classes()).not.toContain('relative');
+      expect(header.classes()).not.toContain('relative');
+      expect(closeBtn.element.compareDocumentPosition(wrapper.get('nav').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(closeBtn.classes()).toContain('absolute');
-      expect(closeBtn.classes()).toContain('top-4');
-      expect(closeBtn.classes()).toContain('right-4');
+      expect(closeBtn.classes()).toContain('right-3');
+      expect(closeBtn.classes()).toContain('h-10');
+      expect(closeBtn.classes()).toContain('w-10');
+      expect(closeBtn.classes()).toContain('md:top-4');
+      expect(closeBtn.classes()).toContain('md:right-4');
     });
 
     it('maintains UI stability during model fetching', async () => {
@@ -426,8 +439,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
 
       // Should show success state
-      expect(checkBtn.text()).toContain('Connected');
-      expect(checkBtn.classes()).toContain('bg-green-50');
+      expect(checkBtn.text()).toBe('Check Connection');
+      expect(wrapper.get('[data-testid="setting-connection-success"]').text()).toBe('Connected');
     });
 
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
@@ -450,7 +463,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Title Generation Model label must be explicit about fallback behavior.
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
       const titleTrigger = titleSelect.find('[data-testid="model-selector-trigger"]');
-      expect(titleTrigger.text()).toBe('Use Current Chat Model (Default)');
+      expect(titleTrigger.text()).toContain('Conversation model');
+      expect(titleTrigger.text()).toContain('Conversation');
     });
 
     it('applies animation classes for entrance effects', async () => {
@@ -498,7 +512,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    expect(wrapper.text()).toContain('Endpoint Configuration');
+    expect(wrapper.find('[data-testid="setting-provider-select"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="setting-model-select"]').exists()).toBe(true);
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
     expect((urlInput.element as HTMLInputElement).value).toBe('http://localhost:1234/v1');
   });
@@ -636,18 +651,18 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await lmstudioPreset.trigger('click');
     const vm = wrapper.vm as unknown as { form: Settings };
     expect(vm.form.endpoint).toEqual({ type: 'openai', url: 'http://localhost:1234/v1' });
-    expect(lmstudioPreset.attributes('class')).toContain('bg-blue-600'); // Highlighted
+    expect(lmstudioPreset.attributes('aria-pressed')).toBe('true'); // Active preset
 
     // Test Ollama
     await ollamaPreset.trigger('click');
     expect(vm.form.endpoint).toEqual({ type: 'ollama', url: 'http://localhost:11434' });
-    expect(ollamaPreset.attributes('class')).toContain('bg-blue-600');
-    expect(lmstudioPreset.attributes('class')).not.toContain('bg-blue-600');
+    expect(ollamaPreset.attributes('aria-pressed')).toBe('true');
+    expect(lmstudioPreset.attributes('aria-pressed')).toBe('false');
 
     // Test llama-server
     await llamaPreset.trigger('click');
     expect(vm.form.endpoint).toEqual({ type: 'openai', url: 'http://localhost:8080/v1' });
-    expect(llamaPreset.attributes('class')).toContain('bg-blue-600');
+    expect(llamaPreset.attributes('aria-pressed')).toBe('true');
   });
 
   it('auto-fetches models only when endpoint is localhost', async () => {
@@ -1290,13 +1305,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const connectionVm = connectionTab.vm as any;
 
       // 1. Add a header manually in Connection tab
-      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click');
+      await wrapper.get('[data-testid="setting-http-header-add-button"]').trigger('click');
       if (connectionVm.form.endpoint.type === 'transformers_js') {
         throw new Error('Expected an HTTP endpoint');
       }
-      if (!connectionVm.form.endpoint.httpHeaders) {
-        connectionVm.addHeader();
-      }
+      expect(connectionVm.form.endpoint.httpHeaders).toHaveLength(1);
       await nextTick();
 
       connectionVm.form.endpoint.httpHeaders[0] = ['X-Manual', 'val-manual'];
@@ -1315,8 +1328,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
 
       // 3. Remove header
-      const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
-      await removeBtn?.trigger('click');
+      await wrapper.get('[data-testid="setting-http-header-remove-button"]').trigger('click');
       expect(connectionVm.form.endpoint.httpHeaders).toHaveLength(0);
     });
   });

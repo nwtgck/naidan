@@ -6,6 +6,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import type { FocusArea } from '@/composables/useLayout';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -21,6 +22,13 @@ const mockSettings = reactive({
 const mockCreateChatGroup = vi.fn();
 const mockRenameChatGroup = vi.fn();
 const mockRenameChat = vi.fn();
+const mockFocusArea = ref<FocusArea>('sidebar');
+
+vi.mock('../composables/chat/useChatGroups', () => ({
+  useChatGroups: () => ({
+    updateChatGroupMetadata: ({ chatGroupId, updates }: { chatGroupId: string, updates: Partial<ChatGroup> }) => mockRenameChatGroup({ groupId: chatGroupId, newName: updates.name }),
+  }),
+}));
 
 vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
@@ -101,6 +109,10 @@ vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
     toggleSidebar: vi.fn(),
+    activeFocusArea: mockFocusArea,
+    setActiveFocusArea: ({ area }: { area: FocusArea }) => {
+      mockFocusArea.value = area;
+    },
   }),
 }));
 
@@ -119,6 +131,7 @@ describe('Sidebar IME handling', () => {
   });
 
   const globalStubs = {
+    teleport: true,
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
@@ -165,9 +178,9 @@ describe('Sidebar IME handling', () => {
     await wrapper.vm.$nextTick();
 
     // Start editing
-    await wrapper.find('button[class*="hover:text-blue-600"]').trigger('click'); // Pencil button for group
+    await wrapper.get('[data-testid="rename-chat-group-button"]').trigger('click');
 
-    const input = wrapper.find('[data-testid="chat-group-rename-input"]');
+    const input = wrapper.find('[data-testid="chat-group-name-input"]');
     expect(input.exists()).toBe(true);
 
     await input.setValue('New Group Name');

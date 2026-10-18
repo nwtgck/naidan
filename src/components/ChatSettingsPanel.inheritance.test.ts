@@ -1,3 +1,4 @@
+import { SettingsSelectStub } from './settings-select.test-support';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
@@ -47,6 +48,9 @@ describe('ChatSettingsPanel Inheritance UI', () => {
   });
 
   const globalStubs = {
+    SettingsSelect: SettingsSelectStub,
+    ScopedMountSettings: true,
+    LmToolsSettings: true,
     XIcon: true,
     RefreshCwIcon: true,
     GlobeIcon: true,
@@ -124,13 +128,13 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
-    expect(urlInput.attributes('placeholder')).toBe('Global: http://global-url');
+    expect(urlInput.element).toHaveProperty('value', 'http://global-url');
 
     const modelSelector = wrapper.findComponent(ModelSelector);
-    expect(modelSelector.props('placeholder')).toBe('Global: global-model');
+    expect(modelSelector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('Global: OpenAI');
+    expect(typeSelect.find('option').text()).toBe('Global: OpenAI Compatible');
   });
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
@@ -141,12 +145,12 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
-    expect(urlInput.attributes('placeholder')).toBe('Chat Group: http://group-url');
+    expect(urlInput.element).toHaveProperty('value', 'http://group-url');
 
     const modelSelector = wrapper.findComponent(ModelSelector);
-    expect(modelSelector.props('placeholder')).toBe('Chat Group: group-model');
+    expect(modelSelector.props('inheritedModel')).toMatchObject({ id: 'group-model', source: { label: 'Chat group' } });
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('Chat Group: Ollama');
+    expect(typeSelect.find('option').text()).toBe('Chat group: Ollama');
   });
 });

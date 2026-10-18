@@ -63,20 +63,20 @@ defineExpose({
         </p>
       </div>
 
-      <div tw-class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div tw-class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
         <a
           href="https://github.com/nwtgck/naidan"
           target="_blank"
           rel="noopener noreferrer"
           tw-class="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 rounded-3xl hover:bg-gray-50 transition-all group no-underline shadow-sm"
         >
-          <div tw-class="p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
+          <div tw-class="shrink-0 p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
             <GithubIcon tw-class="w-6 h-6" />
           </div>
           <div tw-class="flex-1 min-w-0">
             <div tw-class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
               {{ lazyStrings.AboutTab__github_repository() }}
-              <ExternalLinkIcon tw-class="w-3 h-3 opacity-50" />
+              <ExternalLinkIcon tw-class="w-3 h-3 shrink-0 opacity-50" />
             </div>
             <div tw-class="text-xs text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.AboutTab__view_source_code_and_contribute() }}</div>
           </div>
@@ -88,7 +88,7 @@ defineExpose({
           :download="portableAppDownload.fileName"
           tw-class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
-          <div tw-class="p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
+          <div tw-class="shrink-0 p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
             <DownloadIcon tw-class="w-6 h-6" />
           </div>
           <div tw-class="flex-1 min-w-0">

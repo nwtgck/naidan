@@ -8,6 +8,7 @@ import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 const props = defineProps<{
   modelValue?: LmParameters,
   inheritanceLabel?: string,
+  inheritanceHint?: string,
 }>();
 
 const emit = defineEmits<{
@@ -170,8 +171,8 @@ defineExpose({
     <div tw-class="flex items-center justify-between">
       <div tw-class="flex items-center gap-2">
         <h3 tw-class="text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.LmParametersEditor__lm_parameters() }}</h3>
-        <span tw-class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800">
-          {{ inheritanceLabel ?? lazyStrings.LmParametersEditor__empty_fields_use_provider_defaults() }}
+        <span data-testid="lm-parameters-inheritance-hint" tw-class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/70">
+          {{ inheritanceHint ?? inheritanceLabel ?? lazyStrings.LmParametersEditor__empty_fields_use_provider_defaults() }}
         </span>
       </div>
       <button
@@ -207,7 +208,7 @@ defineExpose({
           type="range" min="0" max="2" step="0.01"
           :value="params.temperature ?? 1"
           @input="e => updateParam({ key: 'temperature', value: parseFloat((e.target as HTMLInputElement).value) })"
-          tw-class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+          :tw-class="['w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer', isOverridden({ key: 'temperature' }) ? 'accent-[#2b63a4] dark:accent-blue-400' : 'accent-[#164d87] dark:accent-blue-300']"
         />
       </div>
 
@@ -233,7 +234,7 @@ defineExpose({
           type="range" min="0" max="1" step="0.01"
           :value="params.topP ?? 1"
           @input="e => updateParam({ key: 'topP', value: parseFloat((e.target as HTMLInputElement).value) })"
-          tw-class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+          :tw-class="['w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer', isOverridden({ key: 'topP' }) ? 'accent-[#2b63a4] dark:accent-blue-400' : 'accent-[#164d87] dark:accent-blue-300']"
         />
       </div>
 
@@ -279,7 +280,7 @@ defineExpose({
           type="range" min="-2" max="2" step="0.01"
           :value="params.presencePenalty ?? 0"
           @input="e => updateParam({ key: 'presencePenalty', value: parseFloat((e.target as HTMLInputElement).value) })"
-          tw-class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+          :tw-class="['w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer', isOverridden({ key: 'presencePenalty' }) ? 'accent-[#2b63a4] dark:accent-blue-400' : 'accent-[#164d87] dark:accent-blue-300']"
         />
       </div>
 

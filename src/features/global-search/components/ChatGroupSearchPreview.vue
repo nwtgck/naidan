@@ -142,17 +142,17 @@ watch(chats, nextChats => {
 <template>
   <div tw-class="h-full flex flex-col bg-white dark:bg-gray-900">
     <!-- Group Info Bar (Top) -->
-    <div tw-class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50 shrink-0">
-      <div tw-class="flex items-center gap-3">
-        <div tw-class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400">
+    <div tw-class="px-4 py-3 border-b border-gray-200/80 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 bg-gray-50/80 dark:bg-gray-900 shrink-0">
+      <div tw-class="flex items-center gap-2.5 min-w-0">
+        <div tw-class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-blue-500/60 shrink-0">
           <FolderIcon tw-class="w-5 h-5" />
         </div>
-        <div>
-          <h3 tw-class="text-sm font-black text-gray-900 dark:text-gray-100 tracking-wider">{{ groupName }}</h3>
-          <p tw-class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">{{ lazyStrings.ChatGroupSearchPreview__group_preview() }}</p>
+        <div tw-class="min-w-0">
+          <h3 tw-class="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{{ groupName }}</h3>
+          <p tw-class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ lazyStrings.ChatGroupSearchPreview__group_preview() }}</p>
         </div>
       </div>
-      <div tw-class="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+      <div tw-class="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md shrink-0 tabular-nums">
         {{ lazyStrings.ChatGroupSearchPreview__chat_count({ count: chats.length }) }}
       </div>
     </div>
@@ -160,43 +160,43 @@ watch(chats, nextChats => {
     <!-- Main Content Area -->
     <div tw-class="flex-1 flex overflow-hidden">
       <!-- Left: Chat List inside Group -->
-      <div tw-class="w-64 border-r border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden bg-gray-50/30 dark:bg-gray-950/20 shrink-0">
+      <div tw-class="w-64 border-r border-gray-200/80 dark:border-gray-800 flex flex-col overflow-hidden bg-gray-50/50 dark:bg-gray-950/20 shrink-0">
         <div v-if="chats.length === 0" tw-class="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <MessageSquareIcon tw-class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
-          <p tw-class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatGroupSearchPreview__empty_group() }}</p>
+          <MessageSquareIcon tw-class="w-6 h-6 text-gray-400 dark:text-gray-500 mb-3" />
+          <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.ChatGroupSearchPreview__empty_group() }}</p>
         </div>
-        <div v-else ref="chatListContainer" class="scrollbar-hide" tw-class="flex-1 overflow-y-auto p-3 space-y-1">
+        <div v-else ref="chatListContainer" class="scrollbar-hide" tw-class="flex-1 overflow-y-auto p-2 space-y-1">
           <div
             v-for="chat in chats"
             :key="idToRaw({ id: chat.id })"
             @click="selectedChatId = chat.id"
             :data-group-chat-id="idToRaw({ id: chat.id })"
-            :tw-class="['w-full h-12 flex items-center gap-3 px-3 rounded-xl transition-all cursor-pointer group relative overflow-hidden shrink-0', selectedChatId === chat.id
-              ? 'bg-blue-50 dark:bg-blue-900/20 shadow-sm border border-blue-100/50 dark:border-blue-800/50'
+            :tw-class="['w-full min-h-14 flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors cursor-pointer group relative overflow-hidden shrink-0', selectedChatId === chat.id
+              ? 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-600/70'
               : 'hover:bg-gray-100 dark:hover:bg-gray-800/50 border border-transparent']"
           >
-            <div tw-class="shrink-0 p-1.5 rounded-lg bg-white/50 dark:bg-gray-900/50">
-              <MessageSquareIcon tw-class="w-3.5 h-3.5 text-gray-400" />
+            <div tw-class="shrink-0 text-gray-400">
+              <MessageSquareIcon tw-class="w-4 h-4" />
             </div>
 
             <div tw-class="flex-1 min-w-0 flex flex-col justify-center">
-              <span :tw-class="['text-[11px] font-bold truncate', selectedChatId === chat.id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300']">
+              <span :tw-class="['text-sm font-medium truncate', selectedChatId === chat.id ? 'text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300']">
                 {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
-              <span tw-class="text-[8px] text-gray-400 font-medium truncate">{{ formatTime({ timestamp: chat.updatedAt }) }}</span>
+              <span tw-class="text-[11px] text-gray-500 dark:text-gray-400 truncate tabular-nums mt-0.5">{{ formatTime({ timestamp: chat.updatedAt }) }}</span>
             </div>
 
             <!-- Action Button (Doesn't change layout height) -->
             <button
               @click.stop="selectAndNavigate({ chatId: chat.id })"
-              tw-class="shrink-0 p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              tw-class="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50 transition-opacity"
               :title="lazyStrings.ChatGroupSearchPreview__open_chat()"
             >
               <ChevronRightIcon tw-class="w-3.5 h-3.5" />
             </button>
 
             <!-- Selection Indicator -->
-            <div v-if="selectedChatId === chat.id" tw-class="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 dark:bg-blue-500"></div>
+            <div v-if="selectedChatId === chat.id" tw-class="absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-blue-500/70 dark:bg-blue-400/70"></div>
           </div>
         </div>
       </div>
@@ -206,9 +206,8 @@ watch(chats, nextChats => {
         <SearchPreview
           v-if="selectedSearchResultItem"
           :chat="selectedSearchResultItem"
-          tw-class="!border-l-0"
         />
-        <div v-else tw-class="h-full flex items-center justify-center text-gray-300 p-8 text-center uppercase text-[10px] font-black tracking-[0.2em]">
+        <div v-else tw-class="h-full flex items-center justify-center text-gray-500 dark:text-gray-400 p-6 text-center text-sm leading-relaxed">
           {{ lazyStrings.ChatGroupSearchPreview__select_a_chat_to_preview() }}
         </div>
       </div>

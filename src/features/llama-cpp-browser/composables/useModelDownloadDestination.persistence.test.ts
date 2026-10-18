@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS, DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { toHostModelDirectoryId } from '@/01-models/ids';
+import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
@@ -101,6 +101,9 @@ beforeEach(async () => {
   handles.set('root-a', new MemoryDirectory('Models A'));
   handles.set('root-b', new MemoryDirectory('Models B'));
   vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => handles.get(String(id)) as unknown as HostModelDirectoryHandle | undefined);
+  vi.mocked(hostModelHandles.put).mockImplementation(async ({ id, handle }) => {
+    handles.set(String(id), handle as unknown as MemoryDirectory);
+  });
   vi.mocked(hostModelHandles.delete).mockImplementation(async ({ id }) => {
     handles.delete(String(id));
   });
@@ -121,6 +124,122 @@ afterEach(async () => {
 });
 
 describe('persisted shared LM download destination', () => {
+  it.each(['opfs', 'root-a'])('selects and persists a newly linked folder from %s for both selectors', async previous => {
+    const first = create(), second = create();
+    await flushPromises();
+    await first.state.view.selectDestination({ id: previous });
+    const root = new MemoryDirectory('New models');
+    Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(async () => root) });
+    await first.state.view.add();
+    await flushPromises();
+    const registration = (await storageService.loadSettings())?.experimental?.hostModelDirectories?.find(entry => entry.name === root.name);
+    if (!registration) {
+      throw new Error('Expected the linked folder registration');
+    }
+    const selected = { kind: 'host' as const, directoryId: idToRaw({ id: registration.id }) };
+    expect(first.state.destination.value).toEqual(selected);
+    expect(second.state.destination.value).toEqual(selected);
+    expect(second.state.unavailable.value).toBe(false);
+    expect(await second.state.authorize({ destination: selected })).toEqual({ destination: selected, expectedRoot: root });
+    expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual(selected);
+    expect((await storageService.loadSettings())?.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(imageTarget);
+    unmountAll();
+    TEST_ONLY.reset();
+    await reloadSettings();
+    expect(create().state.destination.value).toEqual(selected);
+  });
+
+  it('retains an auto-selected folder visibly unavailable when saving its selection fails', async () => {
+    const first = create(), second = create();
+    await flushPromises();
+    const root = new MemoryDirectory('New models');
+    Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(async () => root) });
+    vi.spyOn(storageService, 'updateSettingsForStorage').mockRejectedValueOnce(new Error('Selection save failed'));
+    await first.state.view.add();
+    await flushPromises();
+    const stored = await storageService.loadSettings();
+    const registration = stored?.experimental?.hostModelDirectories?.find(entry => entry.name === root.name);
+    if (!registration) {
+      throw new Error('Expected the linked folder registration');
+    }
+    expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: registration.id });
+    expect(second.state.view.destination.value).toBe(registration.id);
+    expect(second.state.unavailable.value).toBe(true);
+    expect(first.state.failure.value).toBe(true);
+    expect(stored?.experimental?.llamaCppBrowser?.modelDownloadDestination).toBeUndefined();
+    await second.state.view.selectDestination({ id: idToRaw({ id: registration.id }), kind: 'host' });
+    expect(first.state.failure.value).toBe(false);
+    expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: registration.id });
+  });
+
+  it('does not overwrite a newer selection in another selector when a folder picker finishes late', async () => {
+    const first = create(), second = create();
+    await flushPromises();
+    const picked = Promise.withResolvers<MemoryDirectory>();
+    Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(() => picked.promise) });
+    const adding = first.state.view.add();
+    await second.state.view.selectDestination({ id: 'root-b' });
+    picked.resolve(new MemoryDirectory('New models'));
+    await adding;
+    await flushPromises();
+    expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'root-b' });
+    expect(second.state.destination.value).toEqual({ kind: 'host', directoryId: 'root-b' });
+    expect((await storageService.loadSettings())?.experimental?.hostModelDirectories).toHaveLength(3);
+    expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-b' });
+  });
+
+  it('does not auto-select a late linked folder in a replacement settings provider', async () => {
+    const first = create();
+    await flushPromises();
+    const picked = Promise.withResolvers<MemoryDirectory>();
+    Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(() => picked.promise) });
+    const adding = first.state.view.add();
+    await storageService.init({ type: 'memory' });
+    await storageService.updateSettings({ updater: () => ({ ...structuredClone(base), storageType: 'memory' }) });
+    picked.resolve(new MemoryDirectory('New models'));
+    await adding;
+    await flushPromises();
+    expect(first.state.destination.value).toEqual({ kind: 'opfs' });
+    expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser).toBeUndefined();
+    expect(first.state.failure.value).toBe(false);
+  });
+
+  it('keeps a shared new selection unavailable until the other selector has refreshed its handle', async () => {
+    const first = create();
+    await flushPromises();
+    const root = new MemoryDirectory('New models');
+    Object.defineProperty(window, 'showDirectoryPicker', { value: vi.fn(async () => root) });
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    const update = storageService.updateSettingsForStorage.bind(storageService);
+    vi.spyOn(storageService, 'updateSettingsForStorage').mockImplementationOnce(async input => {
+      entered.resolve();
+      await release.promise;
+      return update(input);
+    });
+    const adding = first.state.view.add();
+    await entered.promise;
+    const ready = Promise.withResolvers<void>();
+    vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => {
+      if (handles.get(String(id)) === root) {
+        await ready.promise;
+      }
+      return handles.get(String(id)) as unknown as HostModelDirectoryHandle | undefined;
+    });
+    const second = create();
+    await flushPromises();
+    release.resolve();
+    await flushPromises();
+    expect(second.state.destination.value).toEqual(first.state.destination.value);
+    expect(first.state.unavailable.value).toBe(false);
+    expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual(first.state.destination.value);
+    expect(second.state.unavailable.value).toBe(true);
+    ready.resolve();
+    await adding;
+    await flushPromises();
+    expect(second.state.unavailable.value).toBe(false);
+    expect(await second.state.authorize({ destination: second.state.destination.value })).toEqual({ destination: second.state.destination.value, expectedRoot: root });
+  });
+
   it('defaults to OPFS without a write and restores both selectors after real provider recreation', async () => {
     const first = create(), second = create();
     await flushPromises();
@@ -333,7 +452,7 @@ describe('persisted shared LM download destination', () => {
     let image: ReturnType<typeof useHostModelDirectories> | undefined;
     const wrapper = mount(defineComponent({
       setup() {
-        image = useHostModelDirectories({ blocked: () => false, stopDownload: async () => {}, changed: async () => {}, failed: () => {} });
+        image = useHostModelDirectories({ blocked: () => false, stopDownload: async () => {}, added: undefined, changed: async () => {}, failed: () => {} });
         return () => undefined;
       },
     }));

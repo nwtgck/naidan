@@ -12,10 +12,11 @@ vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { 
 const id = toHostModelDirectoryId({ raw: 'existing' });
 const otherId = toHostModelDirectoryId({ raw: 'other' });
 let settings: Ref<Settings>, scope: EffectScope;
+let storageRevision: number;
 let update: ReturnType<typeof vi.fn<ReturnType<typeof useSettings>['updateExperimental']>>;
 const handles = new Map<string, HostModelDirectoryHandle>();
 const picker = vi.fn();
-const failed = vi.fn(), changed = vi.fn(), stopDownload = vi.fn();
+const failed = vi.fn(), changed = vi.fn(), stopDownload = vi.fn(), added = vi.fn();
 
 function handle({ name }: { name: string }): HostModelDirectoryHandle {
   const result = {
@@ -30,6 +31,7 @@ function handle({ name }: { name: string }): HostModelDirectoryHandle {
 }
 
 beforeEach(() => {
+  storageRevision = 0;
   settings = ref<Settings>({
     ...DEFAULT_SETTINGS,
     storageType: 'local',
@@ -39,7 +41,14 @@ beforeEach(() => {
   update = vi.fn(async ({ updater }) => {
     settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
   });
-  vi.mocked(useSettings).mockReturnValue({ settings, updateExperimental: update } as unknown as ReturnType<typeof useSettings>);
+  vi.mocked(useSettings).mockReturnValue({
+    settings,
+    updateExperimental: update,
+    captureExperimentalStorage() {
+      const revision = storageRevision;
+      return () => storageRevision === revision;
+    },
+  } as unknown as ReturnType<typeof useSettings>);
   handles.clear();
   handles.set('existing', handle({ name: 'models' }));
   vi.mocked(hostModelHandles.get).mockReset().mockImplementation(async ({ id }) => handles.get(String(id)));
@@ -52,6 +61,7 @@ beforeEach(() => {
   picker.mockReset();
   failed.mockReset();
   changed.mockReset().mockResolvedValue(undefined);
+  added.mockReset().mockResolvedValue(undefined);
   stopDownload.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal('indexedDB', {});
   vi.stubGlobal('navigator', { locks: { request: async (_name: string, run: () => Promise<void>) => run() } });
@@ -66,10 +76,132 @@ afterEach(() => {
 });
 
 function create() {
-  return scope.run(() => useHostModelDirectories({ blocked: () => false, stopDownload, changed, failed }))!;
+  return scope.run(() => useHostModelDirectories({ blocked: () => false, stopDownload, added, changed, failed }))!;
 }
 
 describe('linked model directory registration', () => {
+  it.each(['opfs', 'existing'])('selects a newly linked root after refreshing its handle when the previous destination is %s', async previous => {
+    const root = handle({ name: 'new-models' });
+    picker.mockResolvedValue(root);
+    const state = create();
+    state.view.selectDestination({ id: previous });
+    added.mockImplementation(async ({ id }: { id: string }) => {
+      expect(state.view.destination.value).toBe(id);
+      expect(state.currentHandle({ id })).toBe(root);
+      expect(state.view.busy.value).toBe(true);
+      expect(changed).not.toHaveBeenCalled();
+    });
+    await state.view.add();
+    const registration = state.registrations().find(entry => entry.name === root.name)!;
+    expect(registration.id).not.toBe('existing');
+    expect(state.view.destination.value).toBe(registration.id);
+    expect(added).toHaveBeenCalledExactlyOnceWith({ id: registration.id });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(state.view.busy.value).toBe(false);
+  });
+
+  it.each(['cancelled', 'denied', 'duplicate', 'handle-save', 'metadata-save'])('keeps the selected root when linking is %s', async outcome => {
+    const root = handle({ name: 'new-models' });
+    picker.mockResolvedValue(root);
+    switch (outcome) {
+    case 'cancelled': picker.mockRejectedValue(new DOMException('Cancelled', 'AbortError'));
+      break;
+    case 'denied': vi.mocked(root.queryPermission).mockResolvedValue('denied');
+      break;
+    case 'duplicate': picker.mockResolvedValue(handles.get('existing'));
+      break;
+    case 'handle-save': vi.mocked(hostModelHandles.put).mockRejectedValueOnce(new Error('Handle save failed'));
+      break;
+    case 'metadata-save': update.mockRejectedValueOnce(new Error('Settings save failed'));
+      break;
+    }
+    const state = create();
+    state.view.selectDestination({ id: 'existing' });
+    await state.view.add();
+    expect(state.view.destination.value).toBe('existing');
+    expect(added).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(state.registrations()).toEqual([{ id: 'existing', name: 'models' }]);
+    expect(handles.size).toBe(1);
+    expect(failed).toHaveBeenCalledTimes(outcome === 'cancelled' ? 0 : 1);
+  });
+
+  it('does not auto-select a picker result after its settings provider changes', async () => {
+    const picked = Promise.withResolvers<HostModelDirectoryHandle>();
+    picker.mockReturnValue(picked.promise);
+    const state = create();
+    state.view.selectDestination({ id: 'existing' });
+    const adding = state.view.add();
+    storageRevision++;
+    picked.resolve(handle({ name: 'new-models' }));
+    await adding;
+    expect(state.registrations()).toHaveLength(2);
+    expect(state.view.destination.value).toBe('existing');
+    expect(added).not.toHaveBeenCalled();
+  });
+
+  it('caches the linked handle before a superseded refresh can finish the add operation', async () => {
+    const root = handle({ name: 'new-models' });
+    picker.mockResolvedValue(root);
+    const staleEntered = Promise.withResolvers<void>(), stale = Promise.withResolvers<void>();
+    const latestEntered = Promise.withResolvers<void>(), latest = Promise.withResolvers<void>();
+    let reads = 0;
+    vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => {
+      const stored = handles.get(String(id));
+      if (stored === root) {
+        reads++;
+        if (reads === 1) {
+          staleEntered.resolve();
+          await stale.promise;
+        } else {
+          latestEntered.resolve();
+          await latest.promise;
+        }
+      }
+      return stored;
+    });
+    const state = create();
+    const adding = state.view.add();
+    await staleEntered.promise;
+    const refreshing = state.refresh();
+    await latestEntered.promise;
+    stale.resolve();
+    await adding;
+    expect(state.view.busy.value).toBe(false);
+    expect(state.currentHandle({ id: state.view.destination.value })).toBe(root);
+    expect(await state.downloadDestination({ id: state.view.destination.value })).toEqual({ kind: 'host', directoryId: state.view.destination.value });
+    latest.resolve();
+    await refreshing;
+    expect(state.currentHandle({ id: state.view.destination.value })).toBe(root);
+  });
+
+  it('does not select a new root unlinked by another selector before the add refresh finishes', async () => {
+    const root = handle({ name: 'new-models' });
+    picker.mockResolvedValue(root);
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let waiting = false;
+    vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => {
+      const stored = handles.get(String(id));
+      if (stored === root && !waiting) {
+        waiting = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return stored;
+    });
+    const state = create(), other = create();
+    state.view.selectDestination({ id: 'existing' });
+    const adding = state.view.add();
+    await entered.promise;
+    const registration = state.registrations().find(entry => entry.name === root.name)!;
+    await other.view.remove({ id: registration.id });
+    release.resolve();
+    await adding;
+    expect(state.registrations()).toEqual([{ id: 'existing', name: 'models' }]);
+    expect(state.view.destination.value).toBe('existing');
+    expect(added).not.toHaveBeenCalled();
+  });
+
   it('defaults to OPFS, reads permission without prompting and keeps restored missing handles registered', async () => {
     handles.clear();
     const state = create();
@@ -92,6 +224,20 @@ describe('linked model directory registration', () => {
     expect(hostModelHandles.put).toHaveBeenCalledWith({ id, handle: replacement });
     expect(settings.value.experimental?.hostModelDirectories).toEqual([{ id, name: 'restored-models' }]);
     expect(settings.value.experimental?.locale).toBe('ja');
+    expect(state.view.destination.value).toBe('opfs');
+    expect(added).not.toHaveBeenCalled();
+  });
+
+  it('keeps another selected root when reconnecting an existing handle', async () => {
+    handles.set('other', handle({ name: 'other-models' }));
+    settings.value.experimental!.hostModelDirectories!.push({ id: otherId, name: 'other-models' });
+    const state = create();
+    await state.refresh();
+    state.view.selectDestination({ id: 'other' });
+    await state.view.reconnect({ id: 'existing' });
+    expect(state.view.destination.value).toBe('other');
+    expect(added).not.toHaveBeenCalled();
+    expect(handles.get('existing')!.requestPermission).toHaveBeenCalledOnce();
   });
 
   it('removes a newly saved handle when registering its metadata fails', async () => {

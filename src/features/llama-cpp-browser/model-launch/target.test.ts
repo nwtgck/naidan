@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { modelLaunchTargetSchema } from '@/01-models/llama-cpp-browser-model-launch';
-import { resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
+import { modelLaunchChoices, resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 
 function catalog({ paths }: { paths: string[] }): RepositoryCatalog {
@@ -19,6 +19,29 @@ describe('model launch resolution', () => {
     const result = resolveModelLaunchTarget({ input: 'hf.co/owner/Model-GGUF:Q8_0', catalog: catalog({ paths: ['Model-Q4_K_M.gguf', 'Model-Q8_0.gguf'] }) });
     expect(result.requestedVariant).toBe('Q8_0');
     expect(result.target.mainFilePath).toBe('Model-Q8_0.gguf');
+  });
+
+  it.each(['UD-IQ4_NL', 'UD-Q4_K_XL', 'AWQ-Q4_K_M', 'QAD-Q4_0', 'FutureMethod-q4_Custom', 'imatrix/UD-Q4_K_XL'])('retains the displayed variant and resolves its canonical selector: %s', variant => {
+    const parts = variant.split('/');
+    const stem = parts.pop()!;
+    const path = [...parts, `Model-${stem}.gguf`].join('/');
+    const input = catalog({ paths: ['Model-IQ4_NL.gguf', 'Model-Q4_K_M.gguf', path] });
+    expect(modelLaunchChoices({ catalog: input }).find(choice => choice.id === path)?.label).toBe(variant);
+    const { target } = resolveModelLaunchTarget({ input: `owner/Model-GGUF:${variant}`, catalog: input });
+    expect(target.mainFilePath).toBe(path);
+    expect(target.selection.files).toEqual([{ path, size: 256 }]);
+    expect(target.modelId).toBe(`hf.co/owner/Model-GGUF:${encodeURIComponent(path)}`);
+  });
+
+  it.each([
+    { variant: 'UD-IQ4_NL', previousLabel: 'IQ4_NL · UD' },
+    { variant: 'UD-Q4_K_XL', previousLabel: 'Q4_K_XL · UD' },
+    { variant: 'AWQ-Q4_K_M', previousLabel: 'Q4_K_M · AWQ' },
+  ])('resolves previously displayed labels to the same exact files: $previousLabel', ({ variant, previousLabel }) => {
+    const input = catalog({ paths: ['Model-IQ4_NL.gguf', 'Model-Q4_K_M.gguf', `Model-${variant}.gguf`] });
+    const canonical = resolveModelLaunchTarget({ input: `owner/Model-GGUF:${variant}`, catalog: input });
+    const previous = resolveModelLaunchTarget({ input: `owner/Model-GGUF:${previousLabel}`, catalog: input });
+    expect(previous.target).toEqual(canonical.target);
   });
 
   it.each(['Q6_K', 'Q4_K_M'])('never substitutes an unavailable or ambiguous %s', variant => {

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
-import type { Reasoning } from '@/01-models/types';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mockWindowSize = {
@@ -27,7 +26,6 @@ describe('ChatToolsMenu', () => {
     canGenerateImage: true,
     isProcessing: false,
     isImageMode: false,
-    isThinkActive: false,
     selectedWidth: 512,
     selectedHeight: 512,
     selectedCount: 1,
@@ -36,7 +34,6 @@ describe('ChatToolsMenu', () => {
     selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1', 'model-2'],
     selectedImageModel: 'model-1',
-    selectedReasoningEffort: undefined as Reasoning['effort'],
   };
 
   let wrapper: VueWrapper<any>;
@@ -308,17 +305,17 @@ describe('ChatToolsMenu', () => {
     expect(document.body.textContent).toContain('No tools available for this provider');
   });
 
-  describe('Reasoning Effort Integration', () => {
-    it('shows highlighing on the gear icon when isThinkActive is true', async () => {
+  describe('Tool status integration', () => {
+    it('highlights the gear icon while image generation is enabled', async () => {
       wrapper = mount(ChatToolsMenu, {
-        props: { ...defaultProps, isThinkActive: true },
+        props: { ...defaultProps, isImageMode: true },
       });
       const button = wrapper.find('[data-testid="chat-tools-button"]');
       expect(button.classes()).toContain('text-blue-600');
       expect(button.classes()).toContain('ring-2');
     });
 
-    it('emits update:reasoning-effort when a value is selected in ReasoningSettings', async () => {
+    it('keeps image and tool settings available after reasoning moves to model selection', async () => {
       wrapper = mount(ChatToolsMenu, {
         props: defaultProps,
         attachTo: document.body,
@@ -328,10 +325,9 @@ describe('ChatToolsMenu', () => {
       await vi.dynamicImportSettled();
 
       const reasoningSettings = wrapper.findComponent({ name: 'ReasoningSettings' });
-      expect(reasoningSettings.exists()).toBe(true);
-
-      await reasoningSettings.vm.$emit('update:effort', 'high');
-      expect(wrapper.emitted('update:reasoning-effort')).toEqual([['high']]);
+      expect(reasoningSettings.exists()).toBe(false);
+      expect(wrapper.findComponent({ name: 'ImageGenerationSettings' }).exists()).toBe(true);
+      expect(wrapper.findComponent({ name: 'LmToolsSettings' }).exists()).toBe(true);
     });
   });
 

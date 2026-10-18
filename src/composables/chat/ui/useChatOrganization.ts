@@ -20,7 +20,7 @@ export type ChatOrganizationAdapter = {
     options,
   }: {
     name: string,
-    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>,
+    options?: Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<ChatGroupId>,
 
   deleteChatGroup({
@@ -78,7 +78,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     options,
   }: {
     name: string,
-    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>,
+    options?: Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<ChatGroupId> {
     const id = generateId<ChatGroupId>();
     const newGroup: ChatGroup = {

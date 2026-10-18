@@ -68,6 +68,7 @@ const mockSettings = vi.hoisted(() => ({
     },
   },
 }));
+const mockFakeLmAvailability = vi.hoisted(() => ({ value: 'available' }));
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
@@ -78,7 +79,7 @@ vi.mock('@/composables/useSettings', () => ({
 vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
-    fakeLmDebugModeAvailability: { value: 'available' },
+    fakeLmDebugModeAvailability: mockFakeLmAvailability,
   }),
 }));
 
@@ -145,6 +146,82 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    mockSettings.value.experimental.fakeLm = 'disabled';
+    mockFakeLmAvailability.value = 'available';
+  });
+
+  it('keeps an independently named close action outside the toolbar in every mode', async () => {
+    const wrapper = mountInspector(createMockChat([]));
+    const header = wrapper.get('[data-testid="chat-inspector-header"]');
+    const toolbar = wrapper.get('[data-testid="chat-inspector-toolbar"]');
+    const closeButton = header.get('[data-testid="chat-inspector-close"]');
+
+    expect(closeButton.attributes('type')).toBe('button');
+    expect(closeButton.attributes('aria-label')).toBe('Close inspector');
+    expect(closeButton.attributes('title')).toBe('Close inspector');
+    expect(toolbar.find('[data-testid="chat-inspector-close"]').exists()).toBe(false);
+
+    for (const mode of ['active', 'tree', 'raw']) {
+      await toolbar.get(`[data-testid="chat-inspector-mode-${mode}"]`).trigger('click');
+      await closeButton.trigger('click');
+    }
+
+    expect(wrapper.emitted('close')).toHaveLength(3);
+  });
+
+  it('exposes the selected mode and the full label on each mode action', async () => {
+    const wrapper = mountInspector(createMockChat([]));
+    const modeSelector = wrapper.get('[data-testid="chat-inspector-mode-selector"]');
+    const labels = { active: 'Active', tree: 'Tree', raw: 'JSON' };
+
+    for (const selectedMode of ['active', 'tree', 'raw']) {
+      await modeSelector.get(`[data-testid="chat-inspector-mode-${selectedMode}"]`).trigger('click');
+
+      for (const [mode, label] of Object.entries(labels)) {
+        const button = modeSelector.get(`[data-testid="chat-inspector-mode-${mode}"]`);
+        expect(button.attributes('type')).toBe('button');
+        expect(button.attributes('aria-label')).toBe(label);
+        expect(button.attributes('title')).toBe(label);
+        expect(button.attributes('aria-pressed')).toBe(String(mode === selectedMode));
+      }
+    }
+  });
+
+  it('provides complete Japanese names for the title, mode actions, and close action', async () => {
+    await ensureAllStringsForTest({ locale: 'ja' });
+    const wrapper = mountInspector(createMockChat([]));
+
+    expect(wrapper.get('[data-testid="chat-inspector-heading"]').text()).toContain('チャットインスペクター');
+    expect(wrapper.get('[data-testid="chat-inspector-mode-active"]').attributes('aria-label')).toBe('アクティブ');
+    expect(wrapper.get('[data-testid="chat-inspector-mode-active"]').attributes('title')).toBe('アクティブ');
+    expect(wrapper.get('[data-testid="chat-inspector-close"]').attributes('aria-label')).toBe('インスペクターを閉じる');
+  });
+
+  it('keeps header toggle states connected to both active and tree content', async () => {
+    const node = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
+    const wrapper = mountInspector(createMockChat([node]), [node]);
+    const highlightButton = wrapper.get('[data-testid="chat-inspector-toggle-highlighting"]');
+    const collapseButton = wrapper.get('[data-testid="chat-inspector-toggle-content-collapse"]');
+
+    expect(highlightButton.attributes('aria-pressed')).toBe('true');
+    expect(highlightButton.attributes('aria-label')).toBe('Toggle Highlighting');
+    expect(collapseButton.attributes('aria-pressed')).toBe('false');
+    expect(collapseButton.attributes('aria-label')).toBe('Toggle Content Collapse');
+    expect(wrapper.getComponent(ChatDebugTreeNode).props()).toMatchObject({ highlight: true, isContentCollapsed: false });
+
+    await highlightButton.trigger('click');
+    await collapseButton.trigger('click');
+
+    expect(highlightButton.attributes('aria-pressed')).toBe('false');
+    expect(collapseButton.attributes('aria-pressed')).toBe('true');
+    expect(wrapper.getComponent(ChatDebugTreeNode).props()).toMatchObject({ highlight: false, isContentCollapsed: true });
+
+    await wrapper.get('[data-testid="chat-inspector-mode-tree"]').trigger('click');
+    expect(wrapper.getComponent(ChatDebugTreeNode).props()).toMatchObject({ highlight: false, isContentCollapsed: true });
+
+    await highlightButton.trigger('click');
+    await collapseButton.trigger('click');
+    expect(wrapper.getComponent(ChatDebugTreeNode).props()).toMatchObject({ highlight: true, isContentCollapsed: false });
   });
 
   it('emits a fake LM setup event from the header shortcut', async () => {
@@ -158,6 +235,28 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     await button.trigger('click');
 
+    expect(wrapper.emitted('enable-fake-lm')).toHaveLength(1);
+  });
+
+  it('keeps the fake LM shortcut visible and disabled when unavailable', async () => {
+    mockFakeLmAvailability.value = 'unavailable_in_standalone';
+    const wrapper = mountInspector(createMockChat([]));
+    const button = wrapper.get('[data-testid="chat-inspector-enable-fake-lm"]');
+
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(button.attributes('title')).toBe('Fake LM is only available in hosted builds. Standalone builds do not bundle fake LM.');
+    await button.trigger('click');
+    expect(wrapper.emitted('enable-fake-lm')).toBeUndefined();
+  });
+
+  it('preserves the enabled fake LM status badge and setup action', async () => {
+    mockSettings.value.experimental.fakeLm = 'enabled';
+    const wrapper = mountInspector(createMockChat([]));
+    const button = wrapper.get('[data-testid="chat-inspector-enable-fake-lm"]');
+
+    expect(button.get('[data-testid="chat-inspector-fake-lm-status"]').text()).toBe('On');
+    expect(button.attributes('disabled')).toBeUndefined();
+    await button.trigger('click');
     expect(wrapper.emitted('enable-fake-lm')).toHaveLength(1);
   });
 

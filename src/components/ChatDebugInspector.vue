@@ -316,74 +316,96 @@ defineExpose({
       tabindex="-1"
       data-testid="chat-inspector"
     >
-      <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-[24px] shadow-2xl max-w-7xl w-full h-[98vh] flex flex-col overflow-hidden border border-gray-100 dark:border-white/5 font-mono text-xs">
+      <div class="modal-content-zoom inspector-shell" tw-class="bg-white dark:bg-gray-900 rounded-[24px] shadow-2xl max-w-7xl w-full h-[98vh] flex flex-col overflow-hidden border border-gray-100 dark:border-white/5 font-mono text-xs">
         <!-- Header -->
-        <div tw-class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 shrink-0">
-          <div tw-class="flex items-center gap-3">
-            <div tw-class="p-2 bg-indigo-500/10 rounded-xl">
-              <BugIcon tw-class="w-5 h-5 text-indigo-500" />
+        <div class="inspector-header" tw-class="bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 shrink-0 font-sans" data-testid="chat-inspector-header">
+          <div class="inspector-heading" tw-class="min-w-0 flex items-center gap-2" data-testid="chat-inspector-heading">
+            <div tw-class="w-[32px] h-[32px] shrink-0 flex items-center justify-center bg-blue-500/10 rounded-lg">
+              <BugIcon tw-class="w-4 h-4 shrink-0 text-blue-500" aria-hidden="true" />
             </div>
-            <div>
-              <h3 tw-class="text-base font-black text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ChatDebugInspector__chat_inspector() }}</h3>
-              <p tw-class="text-[9px] text-gray-400 uppercase tracking-widest font-black">{{ lazyStrings.ChatDebugInspector__data_explorer() }}</p>
+            <div tw-class="min-w-0">
+              <h3 tw-class="truncate text-sm leading-tight font-bold text-gray-800 dark:text-white" :title="lazyStrings.ChatDebugInspector__chat_inspector()">{{ lazyStrings.ChatDebugInspector__chat_inspector() }}</h3>
+              <p tw-class="truncate text-xs leading-tight text-gray-500 dark:text-gray-400" :title="lazyStrings.ChatDebugInspector__data_explorer()">{{ lazyStrings.ChatDebugInspector__data_explorer() }}</p>
             </div>
           </div>
 
-          <div tw-class="flex items-center gap-4">
+          <div class="inspector-toolbar" tw-class="min-w-0 flex flex-wrap items-center gap-2" data-testid="chat-inspector-toolbar">
             <!-- Mode Switcher -->
-            <div tw-class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
+            <div tw-class="grid grid-cols-3 min-w-0 flex-[1_1_16rem] gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" data-testid="chat-inspector-mode-selector">
               <button
                 v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__json()}] as const)"
                 :key="m.id"
+                type="button"
                 @click="mode = m.id"
+                :aria-pressed="mode === m.id"
+                :aria-label="m.label"
+                :title="m.label"
                 :data-testid="`chat-inspector-mode-${m.id}`"
-                :tw-class="['px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider', mode === m.id ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200']"
+                :tw-class="['min-w-0 h-[36px] px-2 rounded-md transition-colors flex items-center justify-center gap-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset', mode === m.id ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/5']"
               >
-                <component :is="m.icon" tw-class="w-3 h-3" />
-                <span>{{ m.label }}</span>
+                <component :is="m.icon" tw-class="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span tw-class="truncate">{{ m.label }}</span>
               </button>
             </div>
 
-            <!-- Fake LM Shortcut -->
-            <button
-              @click="handleEnableFakeLm"
-              :tw-class="['px-3 py-2 rounded-xl border transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider', canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:scale-105 active:scale-95' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed']"
-              :disabled="!canEnableFakeLmForChat"
-              :title="fakeLmButtonTitle"
-              data-testid="chat-inspector-enable-fake-lm"
-            >
-              <BugIcon tw-class="w-4 h-4" />
-              <span>{{ lazyStrings.ChatDebugInspector__fake_lm() }}</span>
-              <span
-                v-if="fakeLmDebugModeStatus === 'enabled'"
-                tw-class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
-              >{{ lazyStrings.ChatDebugInspector__on() }}</span>
-            </button>
+            <div tw-class="min-w-0 max-w-full flex flex-wrap items-center gap-2" data-testid="chat-inspector-utility-actions">
+              <!-- Fake LM Shortcut -->
+              <button
+                type="button"
+                @click="handleEnableFakeLm"
+                :tw-class="['min-w-0 max-w-full h-[36px] px-2 rounded-lg border transition-colors flex items-center justify-center gap-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900', canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400 dark:text-gray-500 cursor-not-allowed']"
+                :disabled="!canEnableFakeLmForChat"
+                :title="fakeLmButtonTitle"
+                data-testid="chat-inspector-enable-fake-lm"
+              >
+                <BugIcon tw-class="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span tw-class="truncate">{{ lazyStrings.ChatDebugInspector__fake_lm() }}</span>
+                <span
+                  v-if="fakeLmDebugModeStatus === 'enabled'"
+                  tw-class="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-xs"
+                  data-testid="chat-inspector-fake-lm-status"
+                >{{ lazyStrings.ChatDebugInspector__on() }}</span>
+              </button>
 
-            <!-- Global Highlighting Toggle -->
-            <button
-              @click="isHighlightEnabled = !isHighlightEnabled"
-              :tw-class="['p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95', isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400']"
-              :title="lazyStrings.ChatDebugInspector__toggle_highlighting()"
-            >
-              <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" tw-class="w-4 h-4" />
-            </button>
+              <!-- Global Highlighting Toggle -->
+              <button
+                type="button"
+                @click="isHighlightEnabled = !isHighlightEnabled"
+                :tw-class="['w-[36px] h-[36px] shrink-0 rounded-lg border transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900', isHighlightEnabled ? 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700']"
+                :aria-pressed="isHighlightEnabled"
+                :aria-label="lazyStrings.ChatDebugInspector__toggle_highlighting()"
+                :title="lazyStrings.ChatDebugInspector__toggle_highlighting()"
+                data-testid="chat-inspector-toggle-highlighting"
+              >
+                <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" tw-class="w-4 h-4 shrink-0" aria-hidden="true" />
+              </button>
 
-            <!-- Content Collapse Toggle -->
-            <button
-              @click="isContentCollapsed = !isContentCollapsed"
-              :tw-class="['p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95', isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400']"
-              :title="lazyStrings.ChatDebugInspector__toggle_content_collapse()"
-            >
-              <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" tw-class="w-4 h-4" />
-            </button>
-
-            <div tw-class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
-
-            <button @click="handleClose" tw-class="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90">
-              <XIcon tw-class="w-6 h-6" />
-            </button>
+              <!-- Content Collapse Toggle -->
+              <button
+                type="button"
+                @click="isContentCollapsed = !isContentCollapsed"
+                :tw-class="['w-[36px] h-[36px] shrink-0 rounded-lg border transition-colors flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900', isContentCollapsed ? 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700']"
+                :aria-pressed="isContentCollapsed"
+                :aria-label="lazyStrings.ChatDebugInspector__toggle_content_collapse()"
+                :title="lazyStrings.ChatDebugInspector__toggle_content_collapse()"
+                data-testid="chat-inspector-toggle-content-collapse"
+              >
+                <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" tw-class="w-4 h-4 shrink-0" aria-hidden="true" />
+              </button>
+            </div>
           </div>
+
+          <button
+            class="inspector-close"
+            type="button"
+            @click="handleClose"
+            tw-class="w-[36px] h-[36px] shrink-0 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200/70 dark:hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+            :aria-label="lazyStrings.ChatDebugInspector__close_inspector()"
+            :title="lazyStrings.ChatDebugInspector__close_inspector()"
+            data-testid="chat-inspector-close"
+          >
+            <XIcon tw-class="w-4 h-4 shrink-0" aria-hidden="true" />
+          </button>
         </div>
 
         <!-- Content Area (Lazy) -->
@@ -529,6 +551,44 @@ defineExpose({
 </template>
 
 <style scoped>
+.inspector-shell {
+  container-type: inline-size;
+}
+
+.inspector-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.inspector-heading {
+  grid-area: 1 / 1;
+}
+
+.inspector-toolbar {
+  grid-area: 2 / 1 / auto / -1;
+}
+
+.inspector-close {
+  grid-area: 1 / 2;
+}
+
+@container (min-width: 48rem) {
+  .inspector-header {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 32rem) 36px;
+  }
+
+  .inspector-toolbar {
+    grid-area: 1 / 2;
+  }
+
+  .inspector-close {
+    grid-area: 1 / 3;
+  }
+}
+
 .modal-enter-active,
 .modal-leave-active {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);

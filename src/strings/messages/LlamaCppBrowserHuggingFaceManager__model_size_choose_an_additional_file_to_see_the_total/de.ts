@@ -1,0 +1,1 @@
+export const LlamaCppBrowserHuggingFaceManager__model_size_choose_an_additional_file_to_see_the_total = (): string => "Größe der Modelldatei; wähle eine Zusatzdatei aus, um die Gesamtgröße zu sehen.";
