@@ -14,11 +14,11 @@ type TokenizeCore = Pick<Core, 'tryAlloc' | 'bytes' | 'free'> & {
 /** Transfers one native token buffer to the caller on success; otherwise frees
  * every allocation after the native call settles, including on a trap/rejection.
  * A failed speculative allocation falls back to the existing size-query path. */
-export async function tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, onTokenize }: {
+export async function tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, addSpecial, parseSpecial, onTokenize }: {
   core: TokenizeCore, vocab: bigint, prompt: bigint, promptBytes: number, contextTokens: number,
-  onTokenize: () => void,
+  addSpecial: boolean, parseSpecial: boolean, onTokenize: () => void,
 }): Promise<{ pointer: bigint, tokens: number[] }> {
-  if (!Number.isInteger(contextTokens) || contextTokens < 2 || contextTokens > maximumNativeCount
+  if (!Number.isInteger(contextTokens) || contextTokens < (addSpecial ? 2 : 1) || contextTokens > maximumNativeCount
     || !Number.isInteger(promptBytes) || promptBytes < 0 || promptBytes > maximumNativeCount) {
     throw new LlamaCppBrowserError({ code: 'runtime-error' });
   }
@@ -26,7 +26,7 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
   // Size the speculative buffer for this prompt, not the resident context.
   // The small special-token allowance is only a hint; native negative counts
   // still trigger the exact-size retry, including unusual tokenizer families.
-  let capacity = Math.min(maximumTokens, speculativeTokens, promptBytes + 8);
+  let capacity = Math.max(1, Math.min(maximumTokens, speculativeTokens, promptBytes + 8));
   let pointer = core.tryAlloc({ bytes: capacity * 4 });
   let transferred = false;
   const tokenize = async (): Promise<number> => {
@@ -35,12 +35,12 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
       core.bytes({ pointer, length: capacity * 4 });
     }
     onTokenize();
-    const result = await core.api.llama_tokenize(vocab, prompt, promptBytes, pointer ?? 0n, pointer === undefined ? 0 : capacity, 1, 1);
+    const result = await core.api.llama_tokenize(vocab, prompt, promptBytes, pointer ?? 0n, pointer === undefined ? 0 : capacity, Number(addSpecial), Number(parseSpecial));
     if (!Number.isInteger(result) || result < -2147483648 || result > maximumNativeCount) {
       throw new LlamaCppBrowserError({ code: 'runtime-error' });
     }
     // INT32_MIN is the upstream overflow sentinel, not an allocatable length.
-    if (result === -2147483648 || result === 0 || Math.abs(result) > maximumTokens) {
+    if (result === -2147483648 || (result === 0 && addSpecial) || Math.abs(result) > maximumTokens) {
       logDiagnostic({ diagnostic: { event: 'failed', stage: 'tokenize', code: 'context-full', contextTokens, ...(result === -2147483648 ? {} : { tokens: Math.abs(result) }) } });
       throw new LlamaCppBrowserError({ code: 'context-full' });
     }
@@ -69,6 +69,10 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
       if (count !== required) {
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
+    }
+    if (count === 0 && pointer === undefined) {
+      capacity = 1;
+      pointer = core.tryAlloc({ bytes: 4 });
     }
     if (pointer === undefined || count > capacity) {
       throw new LlamaCppBrowserError({ code: 'runtime-error' });

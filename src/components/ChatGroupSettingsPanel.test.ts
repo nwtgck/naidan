@@ -2,6 +2,7 @@ import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
 import SettingsSelect from './SettingsSelect.vue';
+import SettingsSourceBadge from './SettingsSourceBadge.vue';
 vi.mock('../composables/chat/useChatMounts', () => ({ useChatMounts: vi.fn() }));
 import { SettingsSelectStub } from './settings-select.test-support';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -1644,7 +1645,17 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const inherited = titleReasoning.get('[data-testid="reasoning-effort-inherit"]');
     const sameScope = titleReasoning.get('[data-testid="reasoning-effort-same-scope"]');
     expect(inherited.text()).not.toBe(sameScope.text());
+    expect(inherited.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Global' });
+    expect(sameScope.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Chat group' });
     expect(sameScope.attributes('aria-pressed')).toBe('true');
+
+    mockSettings.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } };
+    await nextTick();
+
+    expect(sameScope.text()).toContain('High');
+    expect(sameScope.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Chat group' });
+    expect(mockGroup.titleGeneration).toMatchObject({ lmParameters: 'same_scope' });
+
     await inherited.trigger('click');
     await flushPromises();
     expect(mockGroup.titleGeneration).toBe('inherit');

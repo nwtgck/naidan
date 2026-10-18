@@ -21,21 +21,44 @@ function fixture() {
   }
   const deleteParams = vi.fn();
   const deleteParser = vi.fn();
+  const arena = { delete: vi.fn() };
+  const assignArena = vi.fn();
+  const promptParts = [
+    { text: '<s>', is_input: false, delete: vi.fn() },
+    { text: 'user 日本語\0😀', is_input: true, delete: vi.fn() },
+  ];
+  const nativeParts = { size: () => promptParts.length, get: vi.fn((index: number) => promptParts[index]), delete: vi.fn() };
+  const nativePrompt = { parts: nativeParts, delete: vi.fn() };
+  const inputConstructed = vi.fn();
+  const deleteInput = vi.fn();
+  const calls = { size: () => 0, get: vi.fn(), delete: vi.fn() };
+  const message = { content: 'reply', reasoning_content: 'reason', tool_calls: calls, delete: vi.fn() };
+  const parse = vi.fn((_input: unknown, _partial: boolean, _parser: unknown) => message);
   class Params {
-    format = 0; prompt = ''; grammar = ''; grammar_lazy = false; generation_prompt = ''; supports_thinking = false;
+    format = 0; prompt = nativePrompt; grammar = ''; grammar_lazy = false; generation_prompt = ''; supports_thinking = false;
     thinking_start_tag = ''; thinking_end_tags = disposableVector<string>([]); grammar_triggers = disposableVector<never>([]);
-    preserved_tokens = disposableVector<string>([]); additional_stops = disposableVector<string>([]); parser = '';
+    preserved_tokens = disposableVector<string>([]); additional_stops = disposableVector<string>([]); parser = arena;
     delete = deleteParams;
   }
   class Parser {
-    reasoning_format = 0; parse_tool_calls = false; parser: unknown; delete = deleteParser;
+    get parser() {
+      return arena;
+    }
+
+    set parser(value: typeof arena) {
+      assignArena(value);
+    }
+
+    delete = deleteParser;
 
     constructor(_params: Params) {}
   }
-  class Arena {
-    load(_text: string) {}
+  class Input {
+    constructor(readonly text: string) {
+      inputConstructed(text);
+    }
 
-    delete() {}
+    delete = deleteInput;
   }
   const apply = vi.fn((_inputs: Inputs) => new Params());
   class Templates {
@@ -62,16 +85,36 @@ function fixture() {
     common_chat_templates_inputs: Inputs,
     common_chat_templates: Templates,
     common_chat_parser_params: Parser,
-    common_peg_arena: Arena,
-    common_chat_parse: () => {
-      throw new Error('unused');
-    },
+    common_chat_input: Input,
+    common_chat_parse: parse,
   };
   const chat = bindNativeChat({ native: fakeNative as never });
   const assertIdle = vi.fn();
   const request = { messages: [], tools: undefined, reasoningEffort: undefined };
 
-  return { chat, assertIdle, request, templateConstructed, deletedTemplates, apply, deleteParser, deleteParams };
+  return {
+    chat,
+    assertIdle,
+    request,
+    templateConstructed,
+    deletedTemplates,
+    apply,
+    deleteParser,
+    deleteParams,
+    arena,
+    assignArena,
+    promptParts,
+    nativeParts,
+    nativePrompt,
+    inputConstructed,
+    deleteInput,
+    parse,
+    message,
+    calls,
+    [Symbol.dispose]() {
+      chat.releaseModel({ assertIdle, model: 7n });
+    },
+  };
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -175,5 +218,115 @@ describe('native thinking preference rejection', () => {
       }
       f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
     }
+  });
+});
+
+describe('v0.7 native chat value ownership', () => {
+  it('copies the arena and prompt segments without retaining owned getter handles', () => {
+    using f = fixture();
+    const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
+    using _request = {
+      [Symbol.dispose]() {
+        chat.dispose();
+      },
+    };
+    expect(f.assignArena).toHaveBeenCalledExactlyOnceWith(f.arena);
+    expect(f.arena.delete).toHaveBeenCalledOnce();
+    expect(f.nativePrompt.delete).toHaveBeenCalledOnce();
+    expect(f.nativeParts.delete).toHaveBeenCalledOnce();
+    for (const part of f.promptParts) {
+      expect(part.delete).toHaveBeenCalledOnce();
+    }
+    expect(chat.promptParts).toEqual([{ text: '<s>', isInput: false }, { text: 'user 日本語\0😀', isInput: true }]);
+    f.promptParts[1]!.text = 'overwritten';
+    chat.dispose();
+    expect(chat.prompt).toBe('<s>user 日本語\0😀');
+    expect(chat.promptParts[1]!.text).toBe('user 日本語\0😀');
+    expect(f.deleteParser).toHaveBeenCalledOnce();
+    expect(f.deleteParams).toHaveBeenCalledOnce();
+  });
+
+  it('releases the arena and both request handles when copying the arena traps', () => {
+    using f = fixture();
+    const trap = new WebAssembly.RuntimeError('arena assignment');
+    f.assignArena.mockImplementationOnce(() => {
+      throw trap;
+    });
+    expect(() => f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request })).toThrow(trap);
+    expect(f.arena.delete).toHaveBeenCalledOnce();
+    expect(f.deleteParser).toHaveBeenCalledOnce();
+    expect(f.deleteParams).toHaveBeenCalledOnce();
+    expect(f.nativePrompt.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'trap'] as const)('releases the prompt vector, value and request after a %s segment', failure => {
+    using f = fixture();
+    f.nativeParts.get.mockImplementationOnce(index => f.promptParts[index]).mockImplementationOnce(() => {
+      if (failure === 'trap') {
+        throw new WebAssembly.RuntimeError('part getter');
+      }
+      return undefined;
+    });
+    expect(() => f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request })).toThrow();
+    expect(f.promptParts[0]!.delete).toHaveBeenCalledOnce();
+    expect(f.promptParts[1]!.delete).not.toHaveBeenCalled();
+    expect(f.nativeParts.delete).toHaveBeenCalledOnce();
+    expect(f.nativePrompt.delete).toHaveBeenCalledOnce();
+    expect(f.deleteParser).toHaveBeenCalledOnce();
+    expect(f.deleteParams).toHaveBeenCalledOnce();
+  });
+
+  it('passes owned UTF-8-capable inputs to partial and final native parsing', () => {
+    using f = fixture();
+    const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
+    using _request = {
+      [Symbol.dispose]() {
+        chat.dispose();
+      },
+    };
+    for (const partial of [true, false]) {
+      expect(chat.parse({ text: '日本語\0😀', partial })).toEqual({ content: 'reply', reasoningContent: 'reason', toolCalls: [] });
+      expect(f.parse).toHaveBeenLastCalledWith(expect.objectContaining({ text: '日本語\0😀' }), partial, expect.anything());
+    }
+    expect(f.deleteInput).toHaveBeenCalledTimes(2);
+    expect(f.message.delete).toHaveBeenCalledTimes(2);
+    expect(f.calls.delete).toHaveBeenCalledTimes(2);
+    chat.dispose();
+    expect(() => chat.parse({ text: '', partial: false })).toThrow('disposed');
+    expect(f.inputConstructed).toHaveBeenCalledTimes(2);
+  });
+
+  it('frees an input when native parsing traps without inventing a message handle', () => {
+    using f = fixture();
+    const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
+    using _request = {
+      [Symbol.dispose]() {
+        chat.dispose();
+      },
+    };
+    const trap = new WebAssembly.RuntimeError('native parser');
+    f.parse.mockImplementationOnce(() => {
+      throw trap;
+    });
+    expect(() => chat.parse({ text: 'input', partial: true })).toThrow(trap);
+    expect(f.deleteInput).toHaveBeenCalledOnce();
+    expect(f.message.delete).not.toHaveBeenCalled();
+  });
+
+  it('frees the input even when message cleanup throws', () => {
+    using f = fixture();
+    const chat = f.chat.prepare({ assertIdle: f.assertIdle, model: 7n, request: f.request });
+    using _request = {
+      [Symbol.dispose]() {
+        chat.dispose();
+      },
+    };
+    f.message.delete.mockImplementationOnce(() => {
+      throw new WebAssembly.RuntimeError('message cleanup');
+    });
+    expect(() => chat.parse({ text: 'input', partial: false })).toThrow('message cleanup');
+    expect(f.calls.delete).toHaveBeenCalledOnce();
+    expect(f.message.delete).toHaveBeenCalledOnce();
+    expect(f.deleteInput).toHaveBeenCalledOnce();
   });
 });

@@ -2,6 +2,7 @@ import { endpointTypeDescription } from './endpoint-type-label';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
 import SettingsSelect from './SettingsSelect.vue';
+import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import { SettingsSelectStub } from './settings-select.test-support';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { mount, flushPromises, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils';
@@ -581,10 +582,11 @@ describe('ChatSettingsPanel.vue', () => {
   it('uses same scope when switching the chat to override keeps the same resolved title settings', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
     mockCurrentChat.value.lmParameters = undefined;
+    mockSettings.value.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } };
     mockSettings.value.titleGeneration = {
       endpoint: 'same_scope',
       model: 'same_scope',
-      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+      lmParameters: 'same_scope',
     };
 
     const wrapper = mount(ChatSettingsPanel, {
@@ -603,6 +605,18 @@ describe('ChatSettingsPanel.vue', () => {
       model: 'same_scope',
       lmParameters: 'same_scope',
     });
+
+    const sameScope = wrapper.get('[data-testid="chat-setting-title-reasoning-select"]').get('[data-testid="reasoning-effort-same-scope"]');
+    expect(sameScope.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Same chat' });
+    expect(sameScope.text()).toContain('High');
+    expect(sameScope.attributes('aria-pressed')).toBe('true');
+
+    mockSettings.value.lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } };
+    await nextTick();
+
+    expect(sameScope.text()).toContain('Low');
+    expect(sameScope.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Same chat' });
+    expect(mockCurrentChat.value.titleGeneration.lmParameters).toBe('same_scope');
   });
 
   it('materializes inherited title endpoint and model when changing title reasoning', async () => {
@@ -627,6 +641,11 @@ describe('ChatSettingsPanel.vue', () => {
       global: { stubs: globalStubs },
     });
     await nextTick();
+
+    const inheritedReasoning = wrapper.get('[data-testid="chat-setting-title-reasoning-select"]').get('[data-testid="reasoning-effort-inherit"]');
+    expect(inheritedReasoning.getComponent(SettingsSourceBadge).props('source')).toMatchObject({ label: 'Global' });
+    expect(inheritedReasoning.text()).toContain('High');
+    expect(inheritedReasoning.attributes('aria-pressed')).toBe('true');
 
     const titleMediumButton = wrapper.findAll('[data-testid="reasoning-effort-medium"]').at(-1);
     expect(titleMediumButton).toBeDefined();

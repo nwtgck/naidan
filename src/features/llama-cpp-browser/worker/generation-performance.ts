@@ -24,6 +24,7 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   const counters = {
     checkpoint: undefined as PerformanceSummary['checkpoint'],
     backendCensus: undefined as PerformanceSummary['backendCensus'],
+    nativeGraphCounters: undefined as PerformanceSummary['nativeGraphCounters'],
     memoryObservation: undefined as PerformanceSummary['memoryObservation'],
     sampleWindows: enabled ? [] as NonNullable<PerformanceSummary['sampleWindows']> : undefined,
     input: 'unknown' as PerformanceSummary['input'],
@@ -155,6 +156,11 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
           outcome,
           ...counters,
           postFirstSample: postFirstSample(),
+          nativeGraphCounters: counters.nativeGraphCounters ? {
+            ...counters.nativeGraphCounters,
+            before: counters.nativeGraphCounters.before ? { ...counters.nativeGraphCounters.before } : undefined,
+            after: counters.nativeGraphCounters.after ? { ...counters.nativeGraphCounters.after } : undefined,
+          } : undefined,
           memoryObservation: counters.memoryObservation ? { ...counters.memoryObservation } : undefined,
           sampleWindows: counters.sampleWindows?.map(window => ({ ...window })),
           sampling: counters.sampling ? { ...counters.sampling } : undefined,

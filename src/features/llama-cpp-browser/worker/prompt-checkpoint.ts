@@ -1,3 +1,4 @@
+import type { TokenizedPromptPart } from './tokenize-chat-prompt';
 import type { CheckpointObserver } from './checkpoint-performance';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
@@ -117,8 +118,8 @@ export async function restorePromptCheckpoint({ core, context, checkpoint, obser
 
 /** Prefer the native generation suffix boundary only when both text and actual
  * tokenization agree. Retain a final token for fresh logits in every case. */
-export async function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens, onTokenize }: {
-  core: CheckpointCore, vocab: bigint, prompt: string, promptPointer: bigint, generationPrompt: string, tokens: number[], onTokenize: () => void,
+export async function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens, parts, onTokenize }: {
+  core: CheckpointCore, vocab: bigint, prompt: string, promptPointer: bigint, generationPrompt: string, tokens: number[], parts: readonly TokenizedPromptPart[], onTokenize: () => void,
 }): Promise<number> {
   const fallback = Math.max(0, tokens.length - 1);
   if (!generationPrompt || !prompt.endsWith(generationPrompt)) {
@@ -129,7 +130,25 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
   if (tokens.length < 2) {
     return fallback;
   }
-  let capacity = Math.min(tokens.length - 1, 65536);
+  const part = parts.find(part => length >= part.byteOffset && length <= part.byteOffset + part.byteLength);
+  if (!part) {
+    return fallback;
+  }
+  // Earlier segments already have a proven token boundary. Never re-tokenize
+  // user text as template syntax just to find an optional checkpoint.
+  if (!part.addSpecial && length === part.byteOffset + part.byteLength) {
+    return Math.min(fallback, part.tokenOffset + part.tokenCount);
+  }
+  if (!part.addSpecial && length === part.byteOffset) {
+    return Math.min(fallback, part.tokenOffset);
+  }
+  const maximumCount = Math.min(part.tokenCount, tokens.length - 1 - part.tokenOffset);
+  if (maximumCount < 1) {
+    return fallback;
+  }
+  const textPointer = promptPointer + BigInt(part.byteOffset);
+  const textLength = length - part.byteOffset;
+  let capacity = Math.min(maximumCount, 65536);
   let pointer = core.tryAlloc({ bytes: capacity * 4 });
   if (pointer === undefined) {
     return fallback;
@@ -139,8 +158,8 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
     // view after it settles because tokenization can grow Wasm memory.
     core.bytes({ pointer, length: capacity * 4 });
     onTokenize();
-    let count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
-    if (Number.isInteger(count) && count >= -2147483647 && count < -capacity && count > -tokens.length) {
+    let count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(!part.isInput));
+    if (Number.isInteger(count) && count >= -2147483647 && count < -capacity && count >= -maximumCount) {
       const required = -count;
       const previous = pointer;
       pointer = undefined;
@@ -152,25 +171,25 @@ export async function promptCheckpointBoundary({ core, vocab, prompt, promptPoin
       }
       core.bytes({ pointer, length: capacity * 4 });
       onTokenize();
-      count = await core.api.llama_tokenize(vocab, promptPointer, length, pointer, capacity, 1, 1);
+      count = await core.api.llama_tokenize(vocab, textPointer, textLength, pointer, capacity, Number(part.addSpecial), Number(!part.isInput));
       if (count !== required) {
         return fallback;
       }
     }
     // A checkpoint is optional. Failed/overflowing tokenization must never
     // cause a huge allocation or invent a prefix boundary.
-    if (!Number.isInteger(count) || count < 1 || count > capacity || count >= tokens.length) {
+    if (!Number.isInteger(count) || count < 0 || count > capacity || count > maximumCount) {
       return fallback;
     }
     const bytes = core.bytes({ pointer, length: count * 4 });
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let common = 0;
-    while (common < count && view.getInt32(common * 4, true) === tokens[common]) {
+    while (common < count && view.getInt32(common * 4, true) === tokens[part.tokenOffset + common]) {
       common++;
     }
     // Tokenization can merge across the generation suffix boundary. Capture
     // before that changed token instead of assuming the text split is a token split.
-    return common > 0 ? common : fallback;
+    return part.tokenOffset + common > 0 ? part.tokenOffset + common : fallback;
   } finally {
     if (pointer !== undefined) {
       core.free({ pointer });

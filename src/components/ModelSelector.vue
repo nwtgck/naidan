@@ -68,7 +68,7 @@ function splitModelName({ name }: { name: string | undefined }) {
 }
 
 const modelNameParts = computed(() => splitModelName({ name: displayModelName.value }));
-const settingsHasMetadata = computed(() => Boolean(modelNameParts.value.prefix || (!props.modelValue && props.inheritedModel?.source)));
+const modelHasMetadata = computed(() => Boolean(modelNameParts.value.prefix || (!props.modelValue && props.inheritedModel?.source)));
 const inheritedModelHasMetadata = computed(() => Boolean(inheritedModelParts.value.prefix || props.inheritedModel?.source));
 
 const searchableModels = computed(() => {
@@ -356,7 +356,7 @@ defineExpose({
       type="button"
       :id="inputId"
       :aria-invalid="invalid || undefined"
-      :aria-label="surface === 'settings' ? [displayModelName, modelValue ? undefined : inheritedModel?.source?.description].filter(Boolean).join(' · ') : undefined"
+      :aria-label="surface === 'settings' || inheritedModel ? [displayModelName, modelValue ? undefined : inheritedModel?.source?.description].filter(Boolean).join(' · ') : undefined"
       :aria-expanded="isOpen"
       :aria-busy="isFetchingModels || undefined"
       @click="toggleDropdown"
@@ -380,9 +380,9 @@ defineExpose({
         <span v-if="$slots['trigger-summary']" class="model-selector-trigger-summary" tw-class="min-w-0 shrink-0 text-right font-normal text-gray-400 dark:text-gray-500"><slot name="trigger-summary"></slot></span>
       </div>
       <div tw-class="flex w-full min-w-0 items-center justify-between gap-2">
-        <span v-if="surface === 'settings'" tw-class="block min-w-0 flex-1 text-left">
-          <span tw-class="block truncate text-sm leading-5">{{ modelNameParts.suffix }}</span>
-          <span v-if="settingsHasMetadata" data-testid="model-selector-trigger-metadata" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="modelValue ? undefined : inheritedModel?.source" /><span tw-class="min-w-0 flex-1 truncate text-xs font-normal leading-4 text-gray-500 dark:text-gray-400">{{ modelNameParts.prefix.replace(/\/$/, '') }}</span></span>
+        <span v-if="surface === 'settings' || inheritedModel" tw-class="block min-w-0 flex-1 text-left">
+          <span :tw-class="['block truncate', surface === 'settings' ? 'text-sm leading-5' : 'text-xs leading-4']">{{ modelNameParts.suffix }}</span>
+          <span v-if="modelHasMetadata" data-testid="model-selector-trigger-metadata" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="modelValue ? undefined : inheritedModel?.source" /><span :tw-class="['min-w-0 flex-1 truncate font-normal leading-4 text-gray-500 dark:text-gray-400', surface === 'settings' ? 'text-xs' : 'text-[11px]']">{{ modelNameParts.prefix.replace(/\/$/, '') }}</span></span>
         </span>
         <div v-else tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
           <span
@@ -489,14 +489,14 @@ defineExpose({
                   ]"
                   :disabled="modelSelectionUnavailable"
                   data-testid="model-selector-clear"
-                  :aria-label="surface === 'settings' && inheritedModel ? [inheritedModel.id || clearLabel, inheritedModel.source?.description].filter(Boolean).join(' · ') : undefined"
+                  :aria-label="inheritedModel ? [inheritedModel.id || clearLabel, inheritedModel.source?.description].filter(Boolean).join(' · ') : undefined"
                   data-index="0"
                   @mouseenter="highlightedIndex = 0"
           >
             <div tw-class="flex min-w-0 flex-1 items-center gap-2">
               <XIcon v-if="modelValue" tw-class="w-3.5 h-3.5" />
-              <span v-if="surface === 'settings' && inheritedModel" tw-class="block min-w-0 flex-1">
-                <span tw-class="block truncate text-sm font-medium leading-5">{{ inheritedModelParts.suffix || clearLabel || lazyStrings.ModelSelector__inherit() }}</span>
+              <span v-if="inheritedModel" tw-class="block min-w-0 flex-1">
+                <span :tw-class="['block truncate font-medium', surface === 'settings' ? 'text-sm leading-5' : 'text-xs leading-4']">{{ inheritedModelParts.suffix || clearLabel || lazyStrings.ModelSelector__inherit() }}</span>
                 <span v-if="inheritedModelHasMetadata" data-testid="model-selector-clear-metadata" tw-class="mt-0.5 flex min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="inheritedModel.source" /><span tw-class="min-w-0 flex-1 truncate text-xs font-normal text-gray-500 dark:text-gray-400">{{ inheritedModelParts.prefix.replace(/\/$/, '') }}</span></span>
               </span>
               <template v-else><span tw-class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span></template>

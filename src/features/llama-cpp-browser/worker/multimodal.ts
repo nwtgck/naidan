@@ -1,31 +1,58 @@
+import type { ChatPromptPart } from '@/features/llama-cpp-browser/runtime/chat-bindings';
 import { logOperation, logFailure, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { decodeImage } from '@/features/llama-cpp-browser/runtime/image-input';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
-export function splitImagePrompt({ prompt, images }: { prompt: string, images: { marker: string, blob: Blob }[] }): ({ type: 'text', text: string } | { type: 'image', blob: Blob })[] {
-  const parts: ({ type: 'text', text: string } | { type: 'image', blob: Blob })[] = [];
+export function splitImagePrompt({ prompt, images }: { prompt: readonly ChatPromptPart[], images: { marker: string, blob: Blob }[] }): ({ type: 'text', text: string, isInput: boolean } | { type: 'image', blob: Blob })[] {
+  const parts: ({ type: 'text', text: string, isInput: boolean } | { type: 'image', blob: Blob })[] = [];
+  const text = prompt.map(part => part.text).join('');
+  let end = 0;
+  const spans = prompt.map(part => {
+    const start = end;
+    end += part.text.length;
+    return { ...part, start, end };
+  });
+  let spanIndex = 0;
+  const appendText = ({ start, end }: { start: number, end: number }): void => {
+    if (start >= end) {
+      return;
+    }
+    while (spanIndex < spans.length) {
+      const span = spans[spanIndex]!;
+      if (span.end <= start) {
+        spanIndex++;
+        continue;
+      }
+      if (span.start >= end) {
+        break;
+      }
+      const from = Math.max(start, span.start);
+      const to = Math.min(end, span.end);
+      parts.push({ type: 'text', text: text.slice(from, to), isInput: span.isInput });
+      if (span.end > end) {
+        break;
+      }
+      spanIndex++;
+    }
+  };
   let offset = 0;
   for (const { marker, blob } of images) {
-    const position = prompt.indexOf(marker, offset);
-    if (position < 0 || prompt.indexOf(marker, position + marker.length) !== -1) {
+    const position = text.indexOf(marker, offset);
+    if (!marker || position < 0 || text.indexOf(marker, position + marker.length) !== -1) {
       throw new LlamaCppBrowserError({ code: 'template-unsupported' });
     }
-    if (position > offset) {
-      parts.push({ type: 'text', text: prompt.slice(offset, position) });
-    }
+    appendText({ start: offset, end: position });
     parts.push({ type: 'image', blob });
     offset = position + marker.length;
   }
-  if (offset < prompt.length) {
-    parts.push({ type: 'text', text: prompt.slice(offset) });
-  }
+  appendText({ start: offset, end: text.length });
   return parts;
 }
 
 /** Native mtmd owns image preprocessing, embedding and model-specific positions. */
 export async function prepareMultimodal({ core, projector, prompt, images }: {
-  core: Core, projector: bigint, prompt: string, images: { marker: string, blob: Blob }[],
+  core: Core, projector: bigint, prompt: readonly ChatPromptPart[], images: { marker: string, blob: Blob }[],
 }): Promise<{ positions: number, tokenCount: number, textTokens: number[], evaluate: ({ context, capacity }: { context: bigint, capacity: number }) => Promise<number>, dispose: () => Promise<void> }> {
   if (projector === 0n) {
     throw new LlamaCppBrowserError({ code: 'unsupported-input' });
@@ -61,7 +88,7 @@ export async function prepareMultimodal({ core, projector, prompt, images }: {
         const text = record({ name: 'mtmd_input_text' });
         const data = core.utf8({ text: part.text });
         allocations.push(data);
-        for (const [field, value] of Object.entries({ text: data, text_len: BigInt(new TextEncoder().encode(part.text).length), add_special: 0, parse_special: 1 })) {
+        for (const [field, value] of Object.entries({ text: data, text_len: BigInt(new TextEncoder().encode(part.text).length), add_special: 0, parse_special: Number(!part.isInput) })) {
           core.setField({ name: 'mtmd_input_text', pointer: text, field, value });
         }
         core.setField({ name: 'mtmd_input_part', pointer: input, field: 'text', value: text });

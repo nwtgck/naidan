@@ -125,7 +125,7 @@ function fixture() {
   } as Awaited<ReturnType<typeof prepareGenerationSession>>;
   host.session.mockResolvedValue(session);
   const parse = vi.fn<ReturnType<typeof prepareChat>['parse']>(({ text }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
-  host.chat.mockReturnValue({ params: { prompt: 'prompt', generation_prompt: '' }, images: [], additionalStops: [], parse, dispose: vi.fn() } as unknown as ReturnType<typeof prepareChat>);
+  host.chat.mockReturnValue({ params: { generation_prompt: '' }, prompt: 'prompt', promptParts: [{ text: 'prompt', isInput: false }], images: [], additionalStops: [], parse, dispose: vi.fn() } as unknown as ReturnType<typeof prepareChat>);
   host.sampler.mockResolvedValue({ sample: vi.fn(async () => 7), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
   const request: WorkerGenerateInput = {
     debug: 'on',

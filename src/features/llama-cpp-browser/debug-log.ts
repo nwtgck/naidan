@@ -1,3 +1,4 @@
+import { nativeGraphCountersSchema } from './performance/native-graph-counters-schema';
 import { loadedModelDescriptorSchema } from './loaded-model-descriptor';
 import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
 import { backendCensusSchema } from './performance/backend-census-schema';
@@ -79,6 +80,7 @@ export const diagnosticSchema = z.object({
     // Existing load counters, without enabling per-read clocks in standard measurement.
     modelReads: fileReadSchema.optional(),
     backendCensus: backendCensusSchema.optional(),
+    nativeGraphCounters: nativeGraphCountersSchema.optional(),
     checkpoint: checkpointPerformanceSchema.optional(),
     memoryObservation: z.object({
       wasmHeapBeforeBytes: z.number().int().nonnegative(),

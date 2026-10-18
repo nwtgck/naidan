@@ -1104,11 +1104,13 @@ describe('ChatInput Integration', () => {
     await wrapper.setProps({ inheritedReasoningEffort: 'low' });
     const reasoning = wrapper.getComponent(ReasoningSettings);
     expect(reasoning.props('selectedEffort')).toBeUndefined();
-    expect(reasoning.props('defaultLabel')).toBe('Inherit (Low)');
+    expect(reasoning.props('defaultLabel')).toBe('Low');
+    expect(reasoning.props('defaultSource')).toEqual({ label: 'Inherit', description: undefined });
     await reasoning.vm.$emit('update:effort', 'none');
     await flushPromises();
     expect(mockCurrentChat.value.lmParameters.reasoning.effort).toBe('none');
-    expect(reasoning.props('defaultLabel')).toBe('Inherit (Low)');
+    expect(reasoning.props('defaultLabel')).toBe('Low');
+    expect(reasoning.props('defaultSource')).toEqual({ label: 'Inherit', description: undefined });
     await reasoning.vm.$emit('update:effort', undefined);
     await flushPromises();
     expect(mockUpdateChatSettings).toHaveBeenLastCalledWith('chat-1', expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }) }));

@@ -41,7 +41,7 @@ import ReasoningSettings from './ReasoningSettings.vue';
 import ChatGroupNameDialog from './ChatGroupNameDialog.vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { settingsSourcePresentation, formatSettingsSourceLabel } from '@/logic/settings-labels';
+import { settingsSourcePresentation } from '@/logic/settings-labels';
 import {
   cloneLmParameters as clonePlainLmParameters,
   hasLmParameterOverrides,
@@ -608,30 +608,28 @@ const sameScopeReasoningEffort = computed<Reasoning['effort']>(() => (
   localSettings.value.lmParameters?.reasoning?.effort ?? settings.value.lmParameters?.reasoning?.effort
 ));
 
-const globalTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: settings.value.titleGeneration === 'disabled'
+const globalTitleReasoningOptionLabel = computed(() => (
+  settings.value.titleGeneration === 'disabled'
     ? lazyStrings.ChatGroupSettingsPanel__disabled()
     : titleReasoningLabel({
       lmParameters: globalLmParameters(),
       sameScopeEffort: settings.value.lmParameters?.reasoning?.effort,
-    }),
-  source: 'global',
-}));
-const sameScopeTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: reasoningEffortLabel({ effort: sameScopeReasoningEffort.value }),
-  source: 'chat_group',
-}));
+    })
+));
+const sameScopeTitleReasoningOptionLabel = computed(() => reasoningEffortLabel({ effort: sameScopeReasoningEffort.value }));
 const titleReasoningLeadingOptions = computed(() => ([
   {
     value: 'inherit' as const,
     label: globalTitleReasoningOptionLabel.value,
     shortLabel: globalTitleReasoningOptionLabel.value,
+    source: settingsSourcePresentation({ source: 'global' }),
     testId: 'inherit',
   },
   {
     value: 'same_scope' as const,
     label: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
     shortLabel: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
+    source: settingsSourcePresentation({ source: 'chat_group' }),
     testId: 'same-scope',
   },
 ]));
