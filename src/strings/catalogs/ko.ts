@@ -85,6 +85,11 @@ import { ChatGroupActions__delete_group } from '@/strings/messages/ChatGroupActi
 import { ChatGroupActions__duplicate_group } from '@/strings/messages/ChatGroupActions__duplicate_group/ko';
 import { ChatGroupActions__more_actions } from '@/strings/messages/ChatGroupActions__more_actions/ko';
 import { ChatGroupActions__search_in_group } from '@/strings/messages/ChatGroupActions__search_in_group/ko';
+import { ChatGroupNameDialog__failed_to_rename_chat_group } from '@/strings/messages/ChatGroupNameDialog__failed_to_rename_chat_group/ko';
+import { ChatGroupNameDialog__group_name } from '@/strings/messages/ChatGroupNameDialog__group_name/ko';
+import { ChatGroupNameDialog__rename_chat_group } from '@/strings/messages/ChatGroupNameDialog__rename_chat_group/ko';
+import { ChatGroupNameDialog__save } from '@/strings/messages/ChatGroupNameDialog__save/ko';
+import { ChatGroupNameDialog__saving } from '@/strings/messages/ChatGroupNameDialog__saving/ko';
 import { ChatGroupSearchPreview__chat_count } from '@/strings/messages/ChatGroupSearchPreview__chat_count/ko';
 import { ChatGroupSearchPreview__empty_group } from '@/strings/messages/ChatGroupSearchPreview__empty_group/ko';
 import { ChatGroupSearchPreview__group_preview } from '@/strings/messages/ChatGroupSearchPreview__group_preview/ko';
@@ -123,6 +128,7 @@ import { ChatGroupSettingsPanel__global_model } from '@/strings/messages/ChatGro
 import { ChatGroupSettingsPanel__global_prompt_cleared } from '@/strings/messages/ChatGroupSettingsPanel__global_prompt_cleared/ko';
 import { ChatGroupSettingsPanel__group_actions } from '@/strings/messages/ChatGroupSettingsPanel__group_actions/ko';
 import { ChatGroupSettingsPanel__group_level } from '@/strings/messages/ChatGroupSettingsPanel__group_level/ko';
+import { ChatGroupSettingsPanel__group_name_changed_to_model_name } from '@/strings/messages/ChatGroupSettingsPanel__group_name_changed_to_model_name/ko';
 import { ChatGroupSettingsPanel__group_overrides } from '@/strings/messages/ChatGroupSettingsPanel__group_overrides/ko';
 import { ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats/ko';
 import { ChatGroupSettingsPanel__group_settings_title } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_title/ko';
@@ -151,6 +157,7 @@ import { ChatGroupSettingsPanel__quick_endpoint_presets } from '@/strings/messag
 import { ChatGroupSettingsPanel__quick_profile_switcher } from '@/strings/messages/ChatGroupSettingsPanel__quick_profile_switcher/ko';
 import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/ko';
 import { ChatGroupSettingsPanel__restore_defaults } from '@/strings/messages/ChatGroupSettingsPanel__restore_defaults/ko';
+import { ChatGroupSettingsPanel__restore_previous_group_name } from '@/strings/messages/ChatGroupSettingsPanel__restore_previous_group_name/ko';
 import { ChatGroupSettingsPanel__runs_in_this_browser } from '@/strings/messages/ChatGroupSettingsPanel__runs_in_this_browser/ko';
 import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/ko';
 import { ChatGroupSettingsPanel__saving } from '@/strings/messages/ChatGroupSettingsPanel__saving/ko';
@@ -175,6 +182,7 @@ import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/Chat
 import { ChatGroupSettingsPanel__tools } from '@/strings/messages/ChatGroupSettingsPanel__tools/ko';
 import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js/ko';
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/ko';
+import { ChatGroupSettingsPanel__undo } from '@/strings/messages/ChatGroupSettingsPanel__undo/ko';
 import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/ko';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/ko';
 import { ChatGroupSettingsPanel__working } from '@/strings/messages/ChatGroupSettingsPanel__working/ko';
@@ -2941,6 +2949,11 @@ export const catalog = {
   ChatGroupActions__duplicate_group,
   ChatGroupActions__more_actions,
   ChatGroupActions__search_in_group,
+  ChatGroupNameDialog__failed_to_rename_chat_group,
+  ChatGroupNameDialog__group_name,
+  ChatGroupNameDialog__rename_chat_group,
+  ChatGroupNameDialog__save,
+  ChatGroupNameDialog__saving,
   ChatGroupSearchPreview__chat_count,
   ChatGroupSearchPreview__empty_group,
   ChatGroupSearchPreview__group_preview,
@@ -2979,6 +2992,7 @@ export const catalog = {
   ChatGroupSettingsPanel__global_prompt_cleared,
   ChatGroupSettingsPanel__group_actions,
   ChatGroupSettingsPanel__group_level,
+  ChatGroupSettingsPanel__group_name_changed_to_model_name,
   ChatGroupSettingsPanel__group_overrides,
   ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats,
   ChatGroupSettingsPanel__group_settings_title,
@@ -3007,6 +3021,7 @@ export const catalog = {
   ChatGroupSettingsPanel__quick_profile_switcher,
   ChatGroupSettingsPanel__replace,
   ChatGroupSettingsPanel__restore_defaults,
+  ChatGroupSettingsPanel__restore_previous_group_name,
   ChatGroupSettingsPanel__runs_in_this_browser,
   ChatGroupSettingsPanel__same_as_group_chat_endpoint,
   ChatGroupSettingsPanel__saving,
@@ -3031,6 +3046,7 @@ export const catalog = {
   ChatGroupSettingsPanel__tools,
   ChatGroupSettingsPanel__transformers_js,
   ChatGroupSettingsPanel__transformers_js_experimental,
+  ChatGroupSettingsPanel__undo,
   ChatGroupSettingsPanel__use_global_setting,
   ChatGroupSettingsPanel__value,
   ChatGroupSettingsPanel__working,

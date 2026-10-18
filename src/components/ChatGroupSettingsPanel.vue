@@ -9,9 +9,11 @@ import { useLayout } from '@/composables/useLayout';
 import { useChatGroups, type ToolConfigsUpdater } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { ChevronDownIcon, FolderOpenIcon, MoreHorizontalIcon, RotateCcwIcon, ChefHatIcon, SearchIcon, SlidersHorizontalIcon, TypeIcon, WrenchIcon, FolderIcon } from 'lucide-vue-next';
+import { useChatGroupName, type ChatGroupNameChange } from '@/composables/chat/ui/useChatGroupName';
+import { useToast } from '@/composables/useToast';
+import { ChevronDownIcon, FolderOpenIcon, MoreHorizontalIcon, RotateCcwIcon, ChefHatIcon, SearchIcon, PencilIcon, Undo2Icon, SlidersHorizontalIcon, TypeIcon, WrenchIcon, FolderIcon } from 'lucide-vue-next';
 import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/01-models/scoped-setting-change';
-import type { Endpoint, EndpointType, LmParameters, Reasoning, ScopedTitleGeneration, SystemPrompt } from '@/01-models/types';
+import type { ChatGroup, Endpoint, EndpointType, LmParameters, Reasoning, ScopedTitleGeneration, SystemPrompt } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   areEndpointModelNamespacesEqual,
@@ -36,6 +38,7 @@ import HttpHeadersEditor from './HttpHeadersEditor.vue';
 import ScopedMountSettings from './ScopedMountSettings.vue';
 import SystemPromptSettingsEditor from './SystemPromptSettingsEditor.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
+import ChatGroupNameDialog from './ChatGroupNameDialog.vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
 import { settingsSourcePresentation, formatSettingsSourceLabel } from '@/logic/settings-labels';
@@ -61,6 +64,10 @@ const { settings } = useSettings();
 const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const { setActiveFocusArea } = useLayout();
 const chatGroups = useChatGroups();
+const chatGroupName = useChatGroupName();
+const { addToast } = useToast();
+const canUndoModelName = computed(() => currentChatGroup.value !== null && currentChatGroup.value !== undefined && chatGroupName.canUndoModelName({ chatGroupId: currentChatGroup.value.id }));
+const isRenamingChatGroup = computed(() => currentChatGroup.value !== null && currentChatGroup.value !== undefined && chatGroupName.isRenamingChatGroup({ chatGroupId: currentChatGroup.value.id }));
 const chatModels = useChatModels();
 const isFetchingModels = ref(false);
 
@@ -75,6 +82,10 @@ const isFetchingTitleEndpointModels = ref(false);
 const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 
 const showExportModal = ref(false);
+const renamingChatGroup = ref<Pick<ChatGroup, 'id' | 'name'>>();
+const renameRestoreFocusTo = ref<HTMLElement>();
+const groupActionsMenu = ref<HTMLDetailsElement>();
+const groupActionsTrigger = ref<HTMLElement>();
 
 function handleCreateRecipe(): void {
   showExportModal.value = true;
@@ -1773,17 +1784,48 @@ async function restoreDefaults(): Promise<void> {
   }
 }
 
+function startRenamingChatGroup({ trigger }: { trigger: HTMLElement | undefined }) {
+  const chatGroup = currentChatGroup.value;
+  if (!chatGroup) {
+    return;
+  }
+  setActiveFocusArea({ area: 'chat-group-settings' });
+  renameRestoreFocusTo.value = groupActionsMenu.value?.open ? groupActionsTrigger.value : trigger;
+  if (groupActionsMenu.value) {
+    groupActionsMenu.value.open = false;
+  }
+  renamingChatGroup.value = { id: chatGroup.id, name: chatGroup.name };
+}
+
 async function setGroupNameFromModelId() {
-  const modelId = localSettings.value.modelId;
-  const chatGroupId = editingChatGroupId.value;
-  if (!modelId || !chatGroupId) {
+  const modelId = effectiveModelId.value;
+  const chatGroup = currentChatGroup.value;
+  if (!modelId || !chatGroup) {
     return;
   }
   const newName = modelId.split('/').pop() || modelId;
-  await chatGroups.updateChatGroupMetadata({
-    chatGroupId,
-    updates: { name: newName },
-  });
+  const chatGroupId = chatGroup.id;
+  try {
+    const change = await chatGroupName.renameChatGroup({ chatGroup, newName, source: 'model' });
+    if (!change) {
+      return;
+    }
+    addToast({
+      message: await ensureStrings.ChatGroupSettingsPanel__group_name_changed_to_model_name(),
+      actionLabel: await ensureStrings.ChatGroupSettingsPanel__undo(),
+      onAction: () => restoreGroupName({ chatGroupId, expectedChange: change }),
+    });
+  } catch {
+    addToast({ message: await ensureStrings.ChatGroupSettingsPanel__failed_to_save_chat_group_settings() });
+  }
+}
+
+async function restoreGroupName({ chatGroupId, expectedChange }: { chatGroupId: ChatGroupId, expectedChange: ChatGroupNameChange | undefined }) {
+  try {
+    await chatGroupName.undoModelName({ chatGroupId, expectedChange });
+  } catch {
+    addToast({ message: await ensureStrings.ChatGroupSettingsPanel__failed_to_save_chat_group_settings() });
+  }
 }
 
 
@@ -1890,7 +1932,25 @@ defineExpose({
 
 <template>
   <div v-if="currentChatGroup" tw-class="relative flex h-full flex-col overflow-hidden bg-white outline-none dark:bg-gray-900" tabindex="-1" @click="setActiveFocusArea({ area: 'chat-group-settings' })" @focusin="setActiveFocusArea({ area: 'chat-group-settings' })">
-    <header tw-class="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/70 px-5 py-3 dark:border-gray-800"><h2 :title="currentChatGroup.name" tw-class="min-w-0 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ currentChatGroup.name }}</h2><details tw-class="relative shrink-0"><summary :aria-label="lazyStrings.ChatGroupSettingsPanel__group_actions()" tw-class="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800"><MoreHorizontalIcon tw-class="h-5 w-5" /></summary><div tw-class="absolute right-0 top-full z-20 w-60 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900"><button type="button" class="scoped-menu-action" @click="useGlobalSearch().openSearch({ groupIds: [idToRaw({ id: currentChatGroup.id })] })"><SearchIcon tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ChatGroupSettingsPanel__search_messages() }}</button><button type="button" class="scoped-menu-action" @click="handleCreateRecipe"><ChefHatIcon tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ChatGroupSettingsPanel__create_recipe() }}</button><button type="button" class="scoped-menu-action" :disabled="!localSettings.modelId" @click="setGroupNameFromModelId" data-testid="group-setting-set-name-from-model">{{ lazyStrings.ChatGroupSettingsPanel__set_group_name() }}</button></div></details></header>
+    <header tw-class="@container flex shrink-0 items-center justify-between gap-3 border-b border-gray-200/70 px-5 py-3 dark:border-gray-800">
+      <div tw-class="flex min-w-0 items-center gap-2">
+        <h2 :title="currentChatGroup.name" tw-class="min-w-0 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ currentChatGroup.name }}</h2>
+        <button type="button" @click="startRenamingChatGroup({ trigger: $event.currentTarget as HTMLElement })" :title="lazyStrings.ChatGroupNameDialog__rename_chat_group()" :aria-label="lazyStrings.ChatGroupNameDialog__rename_chat_group()" tw-class="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:hover:bg-gray-800 dark:hover:text-gray-200 @min-sm:inline-flex" data-testid="group-setting-rename-button"><PencilIcon tw-class="h-3.5 w-3.5" /></button>
+        <button v-if="canUndoModelName" type="button" @click="restoreGroupName({ chatGroupId: currentChatGroup.id, expectedChange: undefined })" :title="lazyStrings.ChatGroupSettingsPanel__restore_previous_group_name()" :aria-label="lazyStrings.ChatGroupSettingsPanel__restore_previous_group_name()" tw-class="inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-lg px-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" data-testid="group-setting-undo-model-name"><Undo2Icon tw-class="h-3.5 w-3.5" /><span tw-class="hidden @min-sm:inline">{{ lazyStrings.ChatGroupSettingsPanel__undo() }}</span></button>
+      </div>
+      <div tw-class="flex shrink-0 items-center gap-1">
+        <button type="button" @click="useGlobalSearch().openSearch({ groupIds: [idToRaw({ id: currentChatGroup.id })] })" :title="lazyStrings.ChatGroupSettingsPanel__search_messages()" :aria-label="lazyStrings.ChatGroupSettingsPanel__search_messages()" tw-class="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 dark:hover:bg-gray-800" data-testid="group-setting-search-button"><SearchIcon tw-class="h-4 w-4" /></button>
+        <details ref="groupActionsMenu" tw-class="relative shrink-0">
+          <summary ref="groupActionsTrigger" :aria-label="lazyStrings.ChatGroupSettingsPanel__group_actions()" tw-class="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800"><MoreHorizontalIcon tw-class="h-5 w-5" /></summary>
+          <div tw-class="absolute right-0 top-full z-20 w-60 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <button type="button" class="scoped-menu-action" @click="startRenamingChatGroup({ trigger: $event.currentTarget as HTMLElement })" data-testid="group-setting-rename-menu-button"><PencilIcon tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ChatGroupNameDialog__rename_chat_group() }}</button>
+            <button type="button" class="scoped-menu-action" @click="handleCreateRecipe"><ChefHatIcon tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ChatGroupSettingsPanel__create_recipe() }}</button>
+            <button type="button" class="scoped-menu-action" :disabled="!effectiveModelId || isRenamingChatGroup" @click="setGroupNameFromModelId" data-testid="group-setting-set-name-from-model"><TypeIcon tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ChatGroupSettingsPanel__set_group_name() }}</button>
+          </div>
+        </details>
+      </div>
+    </header>
+    <ChatGroupNameDialog v-if="renamingChatGroup" :chat-group="renamingChatGroup" :restore-focus-to="renameRestoreFocusTo" @close="renamingChatGroup = undefined" />
     <p v-if="saveError" role="alert" tw-class="mx-5 mt-3 rounded-xl bg-red-50 px-4 py-3 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300" data-testid="chat-group-settings-save-error">{{ saveError }}</p>
     <RecipeExportModal :is-open="showExportModal" :group-name="currentChatGroup.name" :system-prompt="localSettings.systemPrompt" :lm-parameters="localSettings.lmParameters" :initial-model-id="localSettings.modelId" @close="showExportModal = false" />
     <div tw-class="flex-1 overflow-y-auto overscroll-contain"><div tw-class="mx-auto max-w-4xl p-5 sm:p-6">

@@ -53,6 +53,7 @@ const mockGroup = reactive<ChatGroup>({
 });
 
 const mockCurrentGroup = ref<ChatGroup>(mockGroup);
+const mockFocusArea = ref<'chat-group-settings' | 'dialog'>('chat-group-settings');
 
 const mockSettings = reactive<Settings>({
   endpoint: { type: 'openai', url: 'http://global-url' },
@@ -129,6 +130,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 const globalStubs = {
+  teleport: true,
   RouterLink: RouterLinkStub,
   VolumeCreator: true,
   SettingsSelect: SettingsSelectStub,
@@ -159,6 +161,7 @@ const globalStubs = {
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
+    activeFocusArea: mockFocusArea,
     setActiveFocusArea: mocks.setActiveFocusArea,
   }),
 }));
@@ -202,6 +205,10 @@ describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
+    mockFocusArea.value = 'chat-group-settings';
+    mocks.setActiveFocusArea.mockImplementation(({ area }: { area: 'chat-group-settings' | 'dialog' }) => {
+      mockFocusArea.value = area;
+    });
     mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
       if (idToRaw({ id: mockGroup.id }) === id) {
         const next = updater({ current: mockGroup });
@@ -216,7 +223,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       activeMessages: computed(() => []),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
-      chatGroups: computed(() => []),
+      chatGroups: computed(() => [mockCurrentGroup.value]),
       sidebarItems: computed(() => []),
       TEST_ONLY: {
         allMessages: computed(() => []),
@@ -335,6 +342,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockCurrentGroup.value = mockGroup;
     // Default global settings
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
+    mockSettings.defaultModelId = 'global-model';
     mockSettings.providerProfiles = [];
     mockSettings.systemPrompt = undefined;
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
@@ -1306,8 +1314,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search messages'));
-    await searchBtn?.trigger('click');
+    const searchBtn = wrapper.get('[data-testid="group-setting-search-button"]');
+    expect(searchBtn.element.closest('details')).toBeNull();
+    await searchBtn.trigger('click');
 
     expect(mocks.openSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
   });
@@ -1321,6 +1330,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(setNameBtn.exists()).toBe(true);
 
     await setNameBtn.trigger('click');
+    await flushPromises();
 
     expectLatestGroupUpdate({
       partial: {
@@ -1328,6 +1338,39 @@ describe('ChatGroupSettingsPanel.vue', () => {
         name: 'my-model:latest',
       },
     });
+  });
+
+  it.each(['group-setting-rename-button', 'group-setting-rename-menu-button'])('renames only the name through the shared dialog from %s', async testId => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await wrapper.get(`[data-testid="${testId}"]`).trigger('click');
+    await wrapper.get('[data-testid="chat-group-name-input"]').setValue('  Renamed group  ');
+    await wrapper.get('[data-testid="chat-group-name-save"]').trigger('click');
+    await flushPromises();
+    expect(mockUpdateChatGroupMetadata).toHaveBeenLastCalledWith({ id: mockGroup.id, updates: { name: 'Renamed group' } });
+    expect(wrapper.find('h2').text()).toBe('Renamed group');
+    expect(wrapper.find('[data-testid="chat-group-name-dialog"]').exists()).toBe(false);
+  });
+
+  it('uses an inherited model name and keeps undo beside the name after remounting', async () => {
+    mockSettings.defaultModelId = 'provider/inherited-model';
+    const first = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    expect(first.find('[data-testid="group-setting-undo-model-name"]').exists()).toBe(false);
+    const setName = first.get('[data-testid="group-setting-set-name-from-model"]');
+    expect(setName.attributes('disabled')).toBeUndefined();
+    await setName.trigger('click');
+    await flushPromises();
+    expect(mockGroup.name).toBe('inherited-model');
+    expect(first.get('[data-testid="group-setting-undo-model-name"]').element.closest('details')).toBeNull();
+    first.unmount();
+
+    const second = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await second.get('[data-testid="group-setting-undo-model-name"]').trigger('click');
+    await flushPromises();
+    expect(mockGroup.name).toBe('Test Group');
+    expect(second.find('[data-testid="group-setting-undo-model-name"]').exists()).toBe(false);
   });
 
   describe('Folders (chat group mounts)', () => {

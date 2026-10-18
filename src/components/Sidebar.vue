@@ -12,6 +12,7 @@ import SidebarHeader from './SidebarHeader.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
+import ChatGroupNameDialog from './ChatGroupNameDialog.vue';
 import { useToast } from '@/composables/useToast';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
@@ -159,7 +160,6 @@ function renameChat({
   });
 }
 
-const renameChatGroup = chatOrganization.renameChatGroup;
 const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel, updateGlobalReasoningEffort } = useSettings();
@@ -230,8 +230,8 @@ const editingId = ref<ChatId | null>(null);
 const editingTitle = ref('');
 const isCreatingChatGroup = ref(false);
 const newChatGroupName = ref('');
-const editingChatGroupId = ref<ChatGroupId | null>(null);
-const editingChatGroupName = ref('');
+const renamingChatGroup = ref<Pick<ChatGroup, 'id' | 'name'>>();
+const renameRestoreFocusTo = ref<HTMLElement>();
 const skipLeaveAnimation = ref(false);
 const lastNavigatedId = ref<string | null>(null);
 
@@ -816,16 +816,11 @@ async function saveRename() {
   editingId.value = null;
 }
 
-function startEditingChatGroup({ chatGroup }: { chatGroup: ChatGroup }) {
-  editingChatGroupId.value = chatGroup.id;
-  editingChatGroupName.value = chatGroup.name;
-}
-
-async function saveChatGroupRename() {
-  if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
-  }
-  editingChatGroupId.value = null;
+function startEditingChatGroup({ chatGroup, trigger }: { chatGroup: ChatGroup, trigger: HTMLElement | undefined }) {
+  setActiveFocusArea({ area: 'sidebar' });
+  renameRestoreFocusTo.value = trigger;
+  renamingChatGroup.value = { id: chatGroup.id, name: chatGroup.name };
+  activeActionGroupId.value = null;
 }
 
 async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
@@ -913,7 +908,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
   if (
     editingId.value ||
-    editingChatGroupId.value ||
+    renamingChatGroup.value ||
     isCreatingChatGroup.value
   ) {
     return;
@@ -1082,6 +1077,7 @@ defineExpose({
     </SidebarHeader>
 
     <PWAUpdateNotification />
+    <ChatGroupNameDialog v-if="renamingChatGroup" :chat-group="renamingChatGroup" :restore-focus-to="renameRestoreFocusTo" @close="renamingChatGroup = undefined" />
 
     <!-- Actions -->
     <div :tw-class="['py-2 space-y-2', isSidebarOpen ? 'px-4' : 'px-1']">
@@ -1175,7 +1171,7 @@ defineExpose({
           @start="onDragStart"
           @end="onDragEnd"
           ghost-class="sortable-ghost"
-          :tw-class="['space-y-1 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
+          :tw-class="['space-y-0 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
           :swap-threshold="0.5"
           :invert-swap="true"
           :scroll="true"
@@ -1203,33 +1199,23 @@ defineExpose({
                   <div tw-class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button
                       @click.stop="handleToggleChatGroupCollapse({ chatGroup: element.chatGroup })"
-                      tw-class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
+                      tw-class="p-1 -ml-1 -mr-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
                     >
                       <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" tw-class="w-3 h-3 flex-shrink-0" />
                     </button>
                     <FolderIcon tw-class="w-4 h-4 shrink-0 text-blue-500/60" />
 
-                    <input
-                      v-if="editingChatGroupId === element.chatGroup.id"
-                      v-focus
-                      v-model="editingChatGroupName"
-                      @keydown.enter="$event => !$event.isComposing && saveChatGroupRename()"
-                      @keyup.esc="editingChatGroupId = null"
-                      @blur="saveChatGroupRename"
-                      @click.stop
-                      tw-class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
-                      data-testid="chat-group-rename-input"
-                    />
-                    <span v-else tw-class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
+                    <span tw-class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
 
-                  <div class="group-action-container touch-visible" :tw-class="['flex items-center', activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity']">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" tw-class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.Sidebar__rename_group()"><PencilIcon tw-class="w-3 h-3" /></button>
+                  <div class="group-action-container touch-visible" :tw-class="['flex items-center', activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 group-focus-within/folder:opacity-100 transition-opacity']">
+                    <button @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup, trigger: $event.currentTarget as HTMLElement })" tw-class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.ChatGroupNameDialog__rename_chat_group()" data-testid="rename-chat-group-button"><PencilIcon tw-class="w-3 h-3" /></button>
 
                     <ChatGroupActions
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
+                      @rename="trigger => startEditingChatGroup({ chatGroup: element.chatGroup, trigger })"
                       @duplicate="() => { duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup({ group: element.chatGroup }); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
