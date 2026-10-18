@@ -3,6 +3,7 @@ import { lazyStrings } from '@/strings';
 import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
 import ReasoningSettingsHelp from './ReasoningSettingsHelp.vue';
+import SettingsSourceBadge, { type SettingsSourcePresentation } from './SettingsSourceBadge.vue';
 import type { Reasoning } from '@/01-models/types';
 
 defineOptions({
@@ -15,6 +16,7 @@ type ReasoningSettingsValue = Reasoning['effort'] | SpecialReasoningSettingsValu
 type LeadingOption = {
   label: string | undefined,
   shortLabel: string | undefined,
+  source?: SettingsSourcePresentation,
   testId: string,
   value: SpecialReasoningSettingsValue,
 };
@@ -22,6 +24,7 @@ type LeadingOption = {
 type EffortOption = {
   label: string,
   shortLabel: string,
+  source?: SettingsSourcePresentation,
   testId: string,
   value: ReasoningSettingsValue,
   width: 'default' | 'normal' | 'wide',
@@ -29,6 +32,7 @@ type EffortOption = {
 
 const props = defineProps<{
   defaultLabel?: string,
+  defaultSource?: SettingsSourcePresentation,
   selectedEffort: Reasoning['effort'],
   selectedValue?: ReasoningSettingsValue,
   leadingOptions?: readonly LeadingOption[],
@@ -73,7 +77,7 @@ const effortOptions = computed<EffortOption[]>(() => {
     ))
     .map((option): EffortOption => ({ ...option, width: 'wide' }));
   const options: Array<Omit<EffortOption, 'label' | 'shortLabel'> & { label: string | undefined, shortLabel: string | undefined }> = [
-    { label: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), shortLabel: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined, width: 'default' },
+    { label: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), shortLabel: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), source: props.defaultSource, testId: 'default', value: undefined, width: 'default' },
     { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const, width: 'normal' },
     { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const, width: 'normal' },
     { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const, width: 'normal' },
@@ -235,9 +239,12 @@ defineExpose({
                         : 'flex-1'
         ]"
         :data-testid="`reasoning-effort-${opt.testId}`"
-        :title="opt.label"
+        :title="[opt.label, opt.source?.description ?? opt.source?.label].filter(Boolean).join(' · ')"
       >
-        <span tw-class="block min-w-0 truncate">{{ opt.shortLabel }}</span>
+        <span tw-class="flex min-w-0 items-center justify-center gap-1.5">
+          <span tw-class="block min-w-0 truncate">{{ opt.shortLabel }}</span>
+          <SettingsSourceBadge v-if="opt.source" :source="opt.source" />
+        </span>
       </button>
     </div>
 

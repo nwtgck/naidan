@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount } from '@vue/test-utils';
 import ReasoningSettings from './ReasoningSettings.vue';
+import SettingsSourceBadge from './SettingsSourceBadge.vue';
 import { nextTick } from 'vue';
 import type { Reasoning } from '@/01-models/types';
 
@@ -43,7 +44,7 @@ describe('ReasoningSettings Component', () => {
   it('keeps plain inherited selection, pending controls, and button identity stable', async () => {
     using testCase = {
       wrapper: mount(ReasoningSettings, {
-        props: { selectedEffort: undefined, defaultLabel: 'Inherit (a long provider reasoning description)', surface: 'plain', notice: 'inline-help' },
+        props: { selectedEffort: undefined, defaultLabel: 'A long provider reasoning description', defaultSource: { label: 'Inherit', description: undefined }, surface: 'plain', notice: 'inline-help' },
         slots: { 'heading-extra': '<span data-testid="reasoning-source">Global</span>' },
       }),
       [Symbol.dispose]() {
@@ -55,7 +56,8 @@ describe('ReasoningSettings Component', () => {
     const inherited = wrapper.get<HTMLButtonElement>('[data-testid="reasoning-effort-default"]');
     const high = wrapper.get<HTMLButtonElement>('[data-testid="reasoning-effort-high"]');
     const highButton = high.element;
-    expect(inherited.attributes('title')).toBe('Inherit (a long provider reasoning description)');
+    expect(inherited.attributes('title')).toBe('A long provider reasoning description · Inherit');
+    expect(inherited.getComponent(SettingsSourceBadge).props('source')).toEqual({ label: 'Inherit', description: undefined });
     expect(inherited.attributes('aria-pressed')).toBe('true');
     expect(high.attributes('aria-pressed')).toBe('false');
     const slider = wrapper.get<HTMLElement>('[data-testid="reasoning-effort-slider"]');
