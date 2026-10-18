@@ -314,7 +314,9 @@ describe('ChatPane Group Inheritance UI', () => {
     expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Global');
 
     const selector = wrapper.getComponent(ModelSelector);
-    expect(selector.props('placeholder')).toBe('Global: global-model');
+    expect(selector.props('modelValue')).toBeUndefined();
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
+    expect(selector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Global');
   });
 
   it('displays the chat group model with its separate source when inheriting from a chat group', async () => {
@@ -337,6 +339,11 @@ describe('ChatPane Group Inheritance UI', () => {
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
     expect(modelBadge.get('[data-testid="chat-model-name"]').text()).toBe('group-model');
     expect(modelBadge.get('[data-testid="chat-model-source"]').text()).toBe('Chat group');
+
+    const selector = wrapper.getComponent(ModelSelector);
+    expect(selector.props('modelValue')).toBeUndefined();
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'group-model', source: { label: 'Chat group' } });
+    expect(selector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Chat group');
   });
 
   it('displays only the model name when a chat-specific override is set', async () => {
@@ -364,9 +371,12 @@ describe('ChatPane Group Inheritance UI', () => {
     expect(modelBadge.find('[data-testid="chat-model-source"]').exists()).toBe(false);
     expect(modelBadge.attributes('aria-description')).toBe('specific-model');
 
-    // BUT the ModelSelector placeholder (the "Inherit" preview) should show what it reverts to
+    // Keep the inherited choice available while displaying the explicit model.
     const selector = wrapper.getComponent(ModelSelector);
-    expect(selector.props('placeholder')).toBe('Global: global-model');
+    expect(selector.props('modelValue')).toBe('specific-model');
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
+    expect(selector.get('[data-testid="model-selector-trigger"]').text()).toBe('specific-model');
+    expect(selector.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
   });
 
   it('updates labels immediately when inherited settings change (e.g. moving between groups)', async () => {
@@ -378,6 +388,8 @@ describe('ChatPane Group Inheritance UI', () => {
     // 1. Initially Global
     expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe('global-model');
     expect(wrapper.get('[data-testid="chat-model-source"]').text()).toBe('Global');
+    const selector = wrapper.getComponent(ModelSelector);
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-model', source: { label: 'Global' } });
 
     // 2. Simulate moving to a group with a different model
     mockResolvedSettings.value = {
@@ -394,6 +406,9 @@ describe('ChatPane Group Inheritance UI', () => {
 
     expect(wrapper.get('[data-testid="chat-model-name"]').text()).toBe('new-group-model');
     expect(wrapper.get('[data-testid="chat-model-source"]').text()).toBe('Chat group');
+    expect(selector.props('modelValue')).toBeUndefined();
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'new-group-model', source: { label: 'Chat group' } });
+    expect(selector.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Chat group');
   });
 
   it.each([

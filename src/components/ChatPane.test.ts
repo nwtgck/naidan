@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
+import ModelSelector from './ModelSelector.vue';
 import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -4047,13 +4048,17 @@ describe('ChatPane Model Selection', () => {
     expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
-  it('should display the global default model name as placeholder', async () => {
+  it('displays the inherited global model separately from its source', async () => {
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
-    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toBe('Global: global-default-model');
+    const selector = wrapper.getComponent(ModelSelector);
+    expect(selector.props('modelValue')).toBeUndefined();
+    expect(selector.props('inheritedModel')).toMatchObject({ id: 'global-default-model', source: { label: 'Global' } });
+    const trigger = selector.get('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toContain('global-default-model');
+    expect(trigger.get('[data-testid="model-selector-trigger-metadata"]').text()).toBe('Global');
   });
 
   it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {
