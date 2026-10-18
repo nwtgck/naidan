@@ -70,26 +70,48 @@ The input is English. Results are not interchangeable with standard-text-v1
 (Japanese) or standard-text-en-v2 (a different schedule and output budget).
 
 ## Operation diagnostic: capabilities and limitations
-The diagnostic uses the public native evaluation callback, reads tensor metadata
-only, and never requests node completion or tensor values. Upstream scheduling
-still synchronizes backend splits when that callback is present. Therefore this
-call is marked instrumented and excluded from all normal speed aggregates.
-Types, operation descriptions, graph-compute flags, shapes, first two source shapes, destination-buffer storage, and WebGPU
-operation-support queries are collected. This is NOT an exact execution-backend
-trace: a host buffer does not by itself prove CPU fallback, an unsupported op is
-not proof of its runtime share, and optimized/fused graph nodes may not correspond
-to separate dispatches. Views are identified separately. Node counts are not time.
-GPU (Graphics Processing Unit) kernel durations, exact CPU (Central Processing Unit)/GPU utilization, and transfer/synchronization
-breakdowns are NOT collected. Missing fields are not replaced with zero.
-A separate profiling build is needed for upstream GPU timestamp instrumentation;
-profiling changes dispatch batching and must not replace the ordinary runtime.
+The diagnostic uses the public native evaluation callback. Prefill observations
+are metadata-only. When decodeCompletionTiming is present, the same public
+callback requests completion for every decode node, including views and nodes
+whose metadata was dropped. The scheduler synchronizes each node before the
+completion callback; this deliberately changes batching and inhibits fusion.
+Tensor values are NEVER read. This extra instrumentation is enabled only in the
+separate diagnostic call, never ordinary chat or the speed-summary trials. It
+uses the installed runtime, with no additional Wasm variant or timestamp feature.
+Operation type, weight/source shapes and quantization, destination-buffer storage,
+and WebGPU operation-support queries are collected. This is NOT an exact
+execution-backend trace: a host buffer does not by itself prove CPU fallback,
+an unsupported op is not proof of its runtime share, and optimized/fused graph
+nodes may not correspond to separate dispatches. Views are identified separately.
+Node counts are not time. completionTiming groups observed decode completion wall
+times by operation, weight types/shapes and destination storage. samples, totalMs,
+minMs and maxMs exclude the callback's metadata reads, but include dispatch,
+synchronization, driver scheduling and potentially memory-residency waits. They
+are not GPU kernel time, bandwidth, swap measurements, or CPU/GPU utilization.
+maxNodeName and maxNodeIndex identify the slowest observed node in each group;
+maxNodeIndex is the one-based completion-request ordinal within this diagnostic.
+Timings across backends are not directly comparable; split-input copies can
+precede the first ask and are not fully attributed. Per-node fences can also
+change residency and eliminate or amplify a slowdown seen in ordinary inference.
+Never sum these values into normal trial timings or claim a speedup from them.
+The decodeCompletionTiming totals disclose requested/completed/timed nodes,
+unattributedNodes (metadata missing), unfinishedNodes (no matching completion),
+skippedNodes (budget exhausted or callback protocol failed) and errors. totalMs
+includes valid but unattributed durations; per-entry sums may therefore differ.
+Timing is capped at 25,000 nodes per diagnostic decode phase. Metadata shape caps
+never silently merge a preceding node's time into a later recorded operation.
+Missing decodeCompletionTiming in older archives means not collected, not zero.
+GPU (Graphics Processing Unit) timestamp durations, exact CPU (Central Processing
+Unit)/GPU utilization, physical memory residency and swap are NOT collected.
+Missing fields are not replaced with zero.
 The capability field identifies which metadata reader was actually available.
 Legacy JSPI (JavaScript Promise Integration) artifacts return Promises even for
 non-suspending getters. Without the versioned synchronous callback bindings,
 only safe tensor layout fields are read: buffer placement and WebGPU support
 are explicitly unavailable, not CPU fallback. Rebuild bicore with the separate
 callback-metadata binding patch to obtain those additional leaf observations.
-Collection is bounded; inspect droppedNodes and errors before drawing conclusions.
+Collection is bounded; inspect droppedNodes, errors and decodeCompletionTiming
+coverage before drawing conclusions.
 placement-layout-only, placement-missing and placement-incomplete warnings are
 not erased by a successful inference. A completed run is not proof of full GPU
 profiling. Failure summaries retain a classified failureKind and stage, not raw
@@ -97,6 +119,22 @@ native messages or exception stacks.
 No callback or node inspection is installed for normal unmeasured chat. A context
 created for diagnostics is freed before returning to an ordinary context; loaded
 weights can be retained. The final model cleanup releases the diagnostic context.
+
+## Passive native graph counters
+nativeGraphCounters, when present in performance, reads the existing
+llama_perf_context counters before and after each measured request in the same
+resident context. This does not enable native performance clocks, reset counters,
+change graph batching or add GPU work. Ordinary chat does not create this reader.
+The upstream field names are preserved: n_reused counts successful graph reuse;
+n_reallocs_same and n_reallocs_diff count reallocations of unchanged/changed graph
+size only when backend assignments did not change. They are NOT all graph builds,
+all allocations, live GPU bytes, page faults, or an attribution of elapsed time.
+Use after minus before within one request only; never compare raw totals between
+contexts. Counters can have different reset lifetimes upstream; negative deltas
+are not performance measurements. Missing boundaries/errors mean an incomplete
+observation, not zero. Before/after reads allocate and free one small record only
+at measurement boundaries. These reads use the existing public API and add no
+per-token observer or extra Wasm variant.
 
 ## Interpreting timings
 Each model uses a new physical Worker. The previous Worker is terminated before

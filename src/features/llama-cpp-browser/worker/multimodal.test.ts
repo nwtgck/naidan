@@ -13,6 +13,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const allocated = new Set<bigint>();
   const records = new Map<bigint, Record<string, number | bigint>>();
   const observedParts: string[] = [];
+  const observedText: { text: string, addSpecial: number | bigint | undefined, parseSpecial: number | bigint | undefined }[] = [];
   const allocate = ({ bytes }: { bytes: number }): bigint => {
     const pointer = BigInt(next);
     next += bytes + 16;
@@ -36,7 +37,13 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
       for (let index = 0; index < Number(count); index++) {
         const offset = Number(pointers) + index * pointerBytes;
         const pointer = pointerBytes === 8 ? view.getBigUint64(offset, true) : BigInt(view.getUint32(offset, true));
-        observedParts.push(records.get(pointer)?.bitmap ? 'image' : 'text');
+        const part = records.get(pointer)!;
+        observedParts.push(part.bitmap ? 'image' : 'text');
+        if (part.text) {
+          const record = records.get(BigInt(part.text))!;
+          const start = Number(record.text);
+          observedText.push({ text: new TextDecoder().decode(memory.subarray(start, start + Number(record.text_len))), addSpecial: record.add_special, parseSpecial: record.parse_special });
+        }
       }
       return 0;
     }),
@@ -83,7 +90,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     },
     constant: () => 0,
   } as unknown as Core;
-  return { core, api, allocated, tokenPointer, observedParts };
+  return { core, api, allocated, tokenPointer, observedParts, observedText };
 }
 
 const blob = new Blob(['image'], { type: 'image/png' });
@@ -91,7 +98,7 @@ const blob = new Blob(['image'], { type: 'image/png' });
 describe('native multimodal orchestration', () => {
   it.each([4, 8] as const)('uses %i-byte pointer arrays, preserves part order and trusts native next position', async pointerBytes => {
     const host = fixture({ pointerBytes });
-    const prepared = await prepareMultimodal({ core: host.core, projector: 1n, prompt: 'before<marker>after', images: [{ marker: '<marker>', blob }] });
+    const prepared = await prepareMultimodal({ core: host.core, projector: 1n, prompt: [{ text: 'before<marker>after', isInput: false }], images: [{ marker: '<marker>', blob }] });
     expect(host.observedParts).toEqual(['text', 'image', 'text']);
     expect(prepared.positions).toBe(11);
     expect(prepared.tokenCount).toBe(40);
@@ -108,25 +115,80 @@ describe('native multimodal orchestration', () => {
   it('frees native parts and bitmaps when preprocessing fails', async () => {
     const host = fixture({ pointerBytes: 8 });
     host.api.mtmd_tokenize_from_parts.mockResolvedValue(2);
-    await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>after', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
+    await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: [{ text: '<marker>after', isInput: false }], images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
     expect([...host.allocated]).toEqual([host.tokenPointer]);
   });
 
   it('rejects an image-ending prompt without valid text logits', async () => {
     const host = fixture({ pointerBytes: 4 });
     host.api.mtmd_input_chunk_get_type.mockResolvedValue(1);
-    await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: '<marker>', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('template-unsupported');
+    await expect(prepareMultimodal({ core: host.core, projector: 1n, prompt: [{ text: '<marker>', isInput: false }], images: [{ marker: '<marker>', blob }] })).rejects.toThrow('template-unsupported');
     expect([...host.allocated]).toEqual([host.tokenPointer]);
   });
 
   it('fails before decoding when no projector is loaded', async () => {
-    await expect(prepareMultimodal({ core: fixture({ pointerBytes: 4 }).core, projector: 0n, prompt: '<marker>', images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
+    await expect(prepareMultimodal({ core: fixture({ pointerBytes: 4 }).core, projector: 0n, prompt: [{ text: '<marker>', isInput: false }], images: [{ marker: '<marker>', blob }] })).rejects.toThrow('unsupported-input');
     expect(decodeImage).not.toHaveBeenCalled();
   });
 
   it('rejects templates that omit, duplicate or reorder image markers', () => {
     for (const prompt of ['none', '<a><a>', '<b><a>']) {
-      expect(() => splitImagePrompt({ prompt, images: [{ marker: '<a>', blob }, { marker: '<b>', blob }] })).toThrow('template-unsupported');
+      expect(() => splitImagePrompt({ prompt: [{ text: prompt, isInput: false }], images: [{ marker: '<a>', blob }, { marker: '<b>', blob }] })).toThrow('template-unsupported');
     }
+  });
+});
+
+describe('multimodal prompt segment boundaries', () => {
+  it.each([4, 8] as const)('preserves literal input and template flags with %i-byte pointers', async pointerBytes => {
+    const host = fixture({ pointerBytes });
+    const prepared = await prepareMultimodal({
+      core: host.core,
+      projector: 1n,
+      prompt: [
+        { text: '<s>', isInput: false },
+        { text: '日本語\0<s><marker></s>', isInput: true },
+        { text: 'assistant', isInput: false },
+      ],
+      images: [{ marker: '<marker>', blob }],
+    });
+    await using _prepared = {
+      async [Symbol.asyncDispose]() {
+        await prepared.dispose();
+      },
+    };
+    expect(host.observedParts).toEqual(['text', 'text', 'image', 'text', 'text']);
+    expect(host.observedText).toEqual([
+      { text: '<s>', addSpecial: 0, parseSpecial: 1 },
+      { text: '日本語\0<s>', addSpecial: 0, parseSpecial: 0 },
+      { text: '</s>', addSpecial: 0, parseSpecial: 0 },
+      { text: 'assistant', addSpecial: 0, parseSpecial: 1 },
+    ]);
+    await prepared.dispose();
+    expect([...host.allocated]).toEqual([host.tokenPointer]);
+  });
+
+  it('recognizes a marker crossing native segments without merging literal and template text', () => {
+    expect(splitImagePrompt({
+      prompt: [
+        { text: 'header', isInput: false },
+        { text: 'a<mar', isInput: true },
+        { text: 'ker>b', isInput: true },
+        { text: 'tail', isInput: false },
+      ],
+      images: [{ marker: '<marker>', blob }],
+    })).toEqual([
+      { type: 'text', text: 'header', isInput: false },
+      { type: 'text', text: 'a', isInput: true },
+      { type: 'image', blob },
+      { type: 'text', text: 'b', isInput: true },
+      { type: 'text', text: 'tail', isInput: false },
+    ]);
+  });
+
+  it('does not insert empty text chunks between adjacent images or empty segments', () => {
+    expect(splitImagePrompt({ prompt: [{ text: '', isInput: false }, { text: '<a><b>', isInput: true }], images: [{ marker: '<a>', blob }, { marker: '<b>', blob }] })).toEqual([
+      { type: 'image', blob }, { type: 'image', blob },
+    ]);
+    expect(() => splitImagePrompt({ prompt: [{ text: 'text', isInput: true }], images: [{ marker: '', blob }] })).toThrow('template-unsupported');
   });
 });

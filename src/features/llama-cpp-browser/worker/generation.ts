@@ -1,3 +1,4 @@
+import { createNativeGraphCounters } from './native-graph-counters';
 import { sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { createCheckpointPerformance } from './checkpoint-performance';
 import { copyNativeUtf8 } from '@/features/llama-cpp-browser/runtime/native-utf8';
@@ -8,7 +9,7 @@ import { createTokenRenderer } from './token-renderer';
 import { createOutputPacing } from './output-pacing';
 import { createPrefillYieldPacing } from './prefill-yield-pacing';
 import { createGenerationPerformance } from './generation-performance';
-import { tokenizePrompt } from './tokenize-prompt';
+import { encodeChatPrompt, tokenizeChatPrompt, type EncodedPromptPart, type TokenizedPromptPart } from './tokenize-chat-prompt';
 import { prepareMultimodal } from './multimodal';
 import { errorCode, LlamaCppBrowserError, usesWebGpu, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
 import { classifyFailure, logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
@@ -47,6 +48,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
   let session: Awaited<ReturnType<typeof prepareGenerationSession>> | undefined;
+  let graphCounters: ReturnType<typeof createNativeGraphCounters> | undefined;
   const measurements = createGenerationPerformance({ enabled: request.debug === 'on' || request.measurement !== undefined, now: () => performance.now() });
   const checkpointObservation = request.measurement ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
   measurements.counters.runtimeAssetBaseURL = request.assetBaseURL;
@@ -92,6 +94,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     try {
       if (session && request.measurement) {
         measurements.counters.backendCensus = session.census?.snapshot();
+        measurements.counters.nativeGraphCounters = graphCounters?.snapshot();
         const memory = measurements.counters.memoryObservation;
         if (memory) {
           memory.wasmHeapAfterBytes = session.core.module.HEAPU8.byteLength;
@@ -126,6 +129,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   try {
     session = await prepareGenerationSession({ request, onProgress, signal });
+    graphCounters = request.measurement ? createNativeGraphCounters({ core: session.core, context: session.context }) : undefined;
   } catch (error) {
     outcome = failureOutcome({ error });
     recordFailure({ error, stage });
@@ -216,6 +220,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   try {
     checkCancelled();
+    if (graphCounters) {
+      await graphCounters.capture({ point: 'before' });
+    }
     const measurementSequence = request.measurement?.sequence;
     switch (measurementSequence) {
     case 'fresh':
@@ -240,17 +247,16 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     chat = prepareChat({ core, model, request });
     measurements.counters.input = chat.images.length ? 'multimodal' : 'text';
     setStage({ value: 'tokenize' });
-    const promptText = chat.params.prompt;
-    let promptLength: number;
+    const promptText = chat.prompt;
+    let promptParts: EncodedPromptPart[];
+    let tokenizedParts: TokenizedPromptPart[] = [];
     let promptPointer = 0n;
     {
       // Use the same bytes for the limit, tokenizer length, and native string.
       // Keep the host buffer out of the asynchronous generation lifetime.
-      const data = new TextEncoder().encode(promptText);
-      promptLength = data.byteLength;
-      if (promptLength > 4 * 1024 * 1024) {
-        throw new LlamaCppBrowserError({ code: 'context-full' });
-      }
+      const encoded = encodeChatPrompt({ parts: chat.promptParts });
+      const data = encoded.data;
+      promptParts = encoded.parts;
       if (!chat.images.length) {
         promptPointer = copyNativeUtf8({ core, data });
         allocations.push(promptPointer);
@@ -264,18 +270,18 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       cache.validity = 'invalid';
       cache.tokens = [];
       discardCheckpoint();
-      multimodal = await prepareMultimodal({ core, projector, prompt: promptText, images: chat.images });
+      multimodal = await prepareMultimodal({ core, projector, prompt: chat.promptParts, images: chat.images });
       promptTokens = multimodal.textTokens;
       tokens = alloc({ bytes: Math.max(4, promptTokens.length * 4) });
       const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 });
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
     } else {
-      const tokenized = await tokenizePrompt({
+      const tokenized = await tokenizeChatPrompt({
         core,
         vocab,
         prompt: promptPointer,
-        promptBytes: promptLength,
+        parts: promptParts,
         contextTokens: capacity,
         onTokenize: () => {
           measurements.counters.tokenizeCalls++;
@@ -285,6 +291,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       // The helper transfers ownership only after native tokenization has settled.
       allocations.push(tokens);
       promptTokens = tokenized.tokens;
+      tokenizedParts = tokenized.parts;
       checkCancelled();
     }
     const tokenCount = multimodal?.tokenCount ?? promptTokens.length;
@@ -448,6 +455,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
           promptPointer,
           generationPrompt: chat.params.generation_prompt,
           tokens: promptTokens,
+          parts: tokenizedParts,
           onTokenize: () => {
             measurements.counters.checkpointTokenizeCalls++;
           },
@@ -894,6 +902,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     try {
       await cleanup();
     } finally {
+      if (graphCounters) {
+        await graphCounters.capture({ point: 'after' });
+      }
       sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
       reportPerformance();
     }

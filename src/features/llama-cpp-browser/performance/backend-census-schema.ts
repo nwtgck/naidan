@@ -11,6 +11,19 @@ export const backendCensusSchema = z.object({
   observedNodes: z.number().int().nonnegative(),
   droppedNodes: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),
+  // Optional for archives collected before completion observations were added.
+  // Synchronization changes graph batching; this is never a kernel timer.
+  decodeCompletionTiming: z.object({
+    method: z.literal('per-node-synchronized-wall-time'),
+    requestedNodes: z.number().int().nonnegative(),
+    completedNodes: z.number().int().nonnegative(),
+    timedNodes: z.number().int().nonnegative(),
+    unattributedNodes: z.number().int().nonnegative(),
+    unfinishedNodes: z.number().int().nonnegative(),
+    skippedNodes: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    totalMs: z.number().nonnegative(),
+  }).strict().optional(),
   entries: z.array(z.object({
     phase: z.enum(['setup', 'prefill', 'decode', 'other']),
     description: z.string().max(96),
@@ -25,6 +38,14 @@ export const backendCensusSchema = z.object({
     metadataOnly: z.boolean(),
     nodes: z.number().int().positive(),
     examples: z.array(z.string().max(96)).max(3),
+    completionTiming: z.object({
+      samples: z.number().int().positive(),
+      totalMs: z.number().nonnegative(),
+      minMs: z.number().nonnegative(),
+      maxMs: z.number().nonnegative(),
+      maxNodeName: z.string().max(96),
+      maxNodeIndex: z.number().int().positive(),
+    }).strict().optional(),
   }).strict()).max(2048),
 }).strict();
 export type BackendCensus = z.infer<typeof backendCensusSchema>;

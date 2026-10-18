@@ -547,7 +547,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     try {
       await api.llama_context_default_params(cp);
       if (wantsCensus) {
-        current.census = createBackendCensus({ core });
+        current.census = createBackendCensus({ core, timeDecode: true });
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval', value: BigInt(current.census.pointer) });
         core.setField({ name: 'llama_context_params', pointer: cp, field: 'cb_eval_user_data', value: 0n });
       }

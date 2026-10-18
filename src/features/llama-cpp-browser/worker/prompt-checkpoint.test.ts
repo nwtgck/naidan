@@ -1,5 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
+import { capturePromptCheckpoint, disposePromptCheckpoint, promptCheckpointBoundary as nativePromptCheckpointBoundary, restorePromptCheckpoint } from './prompt-checkpoint';
+
+function promptCheckpointBoundary({ core, vocab, prompt, promptPointer, generationPrompt, tokens, onTokenize }: {
+  core: Parameters<typeof nativePromptCheckpointBoundary>[0]['core'], vocab: bigint, prompt: string,
+  promptPointer: bigint, generationPrompt: string, tokens: number[], onTokenize: () => void,
+}) {
+  return nativePromptCheckpointBoundary({
+    core,
+    vocab,
+    prompt,
+    promptPointer,
+    generationPrompt,
+    tokens,
+    onTokenize,
+    parts: [{ byteOffset: 0, byteLength: new TextEncoder().encode(prompt).length, isInput: false, tokenOffset: 0, tokenCount: tokens.length, addSpecial: true }],
+  });
+}
 
 function fixture() {
   const storage = new Uint8Array(128);
@@ -281,5 +297,74 @@ describe('checkpoint boundary deallocation failure', () => {
     })).rejects.toBe(failure);
     expect(core.free).toHaveBeenCalledOnce();
     expect(core.tryAlloc).toHaveBeenCalledOnce();
+  });
+});
+
+describe('checkpoint boundaries in segmented prompts', () => {
+  it('re-tokenizes only the input prefix with its literal flag and UTF-8 byte offset', async () => {
+    const { core, api, storage } = fixture();
+    api.llama_tokenize.mockImplementationOnce(async () => {
+      new DataView(storage.buffer).setInt32(0, 90, true);
+      new DataView(storage.buffer).setInt32(4, 91, true);
+      return 2;
+    });
+    const onTokenize = vi.fn();
+    const boundary = await nativePromptCheckpointBoundary({
+      core,
+      vocab: 1n,
+      prompt: '<s>日本語<s>tail',
+      promptPointer: 1000n,
+      generationPrompt: 'tail',
+      tokens: [1, 90, 91, 92, 93, 94],
+      onTokenize,
+      parts: [
+        { byteOffset: 0, byteLength: 3, isInput: false, tokenOffset: 0, tokenCount: 1, addSpecial: false },
+        { byteOffset: 3, byteLength: 16, isInput: true, tokenOffset: 1, tokenCount: 5, addSpecial: false },
+      ],
+    });
+    expect(boundary).toBe(3);
+    expect(api.llama_tokenize).toHaveBeenCalledExactlyOnceWith(1n, 1003n, 12, 100n, 4, 0, 0);
+    expect(onTokenize).toHaveBeenCalledOnce();
+    expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
+  });
+
+  it('uses a previously tokenized segment boundary without allocating or reinterpreting input', async () => {
+    const { core, api } = fixture();
+    const boundary = await nativePromptCheckpointBoundary({
+      core,
+      vocab: 1n,
+      prompt: '<s>日本語<s>tail',
+      promptPointer: 1000n,
+      generationPrompt: 'tail',
+      tokens: [1, 90, 91, 92, 93],
+      onTokenize: vi.fn(),
+      parts: [
+        { byteOffset: 0, byteLength: 3, isInput: false, tokenOffset: 1, tokenCount: 1, addSpecial: false },
+        { byteOffset: 3, byteLength: 12, isInput: true, tokenOffset: 2, tokenCount: 2, addSpecial: false },
+        { byteOffset: 15, byteLength: 4, isInput: false, tokenOffset: 4, tokenCount: 1, addSpecial: false },
+      ],
+    });
+    expect(boundary).toBe(4);
+    expect(core.tryAlloc).not.toHaveBeenCalled();
+    expect(api.llama_tokenize).not.toHaveBeenCalled();
+  });
+
+  it('keeps one token for fresh logits even when the generation suffix tokenizes to nothing', async () => {
+    const { core } = fixture();
+    const boundary = await nativePromptCheckpointBoundary({
+      core,
+      vocab: 1n,
+      prompt: 'user ',
+      promptPointer: 1000n,
+      generationPrompt: ' ',
+      tokens: [1, 90, 91],
+      onTokenize: vi.fn(),
+      parts: [
+        { byteOffset: 0, byteLength: 4, isInput: true, tokenOffset: 1, tokenCount: 2, addSpecial: false },
+        { byteOffset: 4, byteLength: 1, isInput: false, tokenOffset: 3, tokenCount: 0, addSpecial: false },
+      ],
+    });
+    expect(boundary).toBe(2);
+    expect(core.tryAlloc).not.toHaveBeenCalled();
   });
 });

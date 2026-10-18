@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { prepareChat, createGrammarSampler, preservedTokenIds, tokenizeChatText } from './native-chat';
 import { createChatSampler, copyReasoningEndMatch } from './chat-sampler';
+import { encodeChatPrompt, tokenizeChatPrompt } from './tokenize-chat-prompt';
 import { createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
 import type { GenerateInput, LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 
@@ -80,6 +81,37 @@ describe.each(profiles)('native chat on %s', profile => {
   });
 
   describe('native Jinja and tool parser through the application runtime', () => {
+    it('keeps template token spellings in user input literal through the published native tokenizer', async () => {
+      const text = 'literal <s> and </s> 日本語\0😀';
+      const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: text }], tools: undefined, reasoningEffort: undefined } });
+      using _chat = {
+        [Symbol.dispose]() {
+          chat.dispose();
+        },
+      };
+      const prompt = core.utf8({ text: chat.prompt });
+      using _prompt = {
+        [Symbol.dispose]() {
+          core.free({ pointer: prompt });
+        },
+      };
+      expect(chat.promptParts.filter(part => part.isInput).map(part => part.text).join('')).toContain(text);
+      expect(chat.promptParts.some(part => !part.isInput)).toBe(true);
+      const encoded = encodeChatPrompt({ parts: chat.promptParts });
+      const vocab = await core.api.llama_model_get_vocab(model);
+      const result = await tokenizeChatPrompt({ core, vocab, prompt, parts: encoded.parts, contextTokens: 4096, onTokenize: () => {} });
+      using _tokens = {
+        [Symbol.dispose]() {
+          core.free({ pointer: result.pointer });
+        },
+      };
+      const bos = await core.api.llama_vocab_bos(vocab);
+      const eos = await core.api.llama_vocab_eos(vocab);
+      expect(result.tokens.filter(token => token === bos)).toHaveLength(1);
+      expect(result.tokens).not.toContain(eos);
+      expect(result.tokens.every(token => token >= 0)).toBe(true);
+    });
+
     it('streams weather calls and ordinary content through native grammar and partial parsing', async () => {
       const weatherTools: NonNullable<GenerateInput['tools']> = [{
         type: 'function',
@@ -185,8 +217,8 @@ describe.each(profiles)('native chat on %s', profile => {
           chat.dispose();
         },
       };
-      expect(chat.params.prompt).toContain('lookup');
-      expect(chat.params.prompt).toContain('Find Tokyo');
+      expect(chat.prompt).toContain('lookup');
+      expect(chat.prompt).toContain('Find Tokyo');
       const output = `\
 <tool_call>
 {"name":"lookup","arguments":{"city":"Tokyo"}}
@@ -212,7 +244,7 @@ describe.each(profiles)('native chat on %s', profile => {
         },
       });
       try {
-        expect(next.params.prompt).toContain(`\
+        expect(next.prompt).toContain(`\
 <tool_response>
 Sunny`);
       } finally {
@@ -236,7 +268,7 @@ Sunny`);
           chat.dispose();
         },
       };
-      expect(chat.params.prompt).toContain(`Reasoning: ${effort}`);
+      expect(chat.prompt).toContain(`Reasoning: ${effort}`);
     });
 
     it('leaves unspecified effort to the template and does not invent a none effort string', () => {
@@ -247,7 +279,7 @@ Sunny`);
             chat.dispose();
           },
         };
-        expect(chat.params.prompt).not.toContain('Reasoning:');
+        expect(chat.prompt).not.toContain('Reasoning:');
       }
     });
 

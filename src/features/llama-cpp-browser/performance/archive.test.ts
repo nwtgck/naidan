@@ -302,3 +302,57 @@ it('keeps app and runtime identity beside native model and Flash Attention obser
   expect(readme).toContain('source=loaded-model-native-api');
   expect(readme).toContain('Requested mode alone is never resolved selection');
 });
+
+it('round-trips optional diagnostic completion groups and their interpretation without putting them in speed summaries', async () => {
+  const source = snapshot();
+  source.plan = performancePlan({ diagnostics: 'placement' });
+  source.trials[0]!.stepId = source.plan.steps.find(step => step.scenario === 'placement')!.id;
+  source.trials[0]!.exclusion = ['instrumented'];
+  const census = {
+    version: 1 as const,
+    method: 'native-eval-metadata' as const,
+    timing: 'not-a-speed-measurement' as const,
+    placementMeaning: 'destination-buffer-not-execution-backend' as const,
+    observedNodes: 1,
+    droppedNodes: 0,
+    errors: 0,
+    decodeCompletionTiming: {
+      method: 'per-node-synchronized-wall-time' as const,
+      requestedNodes: 1,
+      completedNodes: 1,
+      timedNodes: 1,
+      unattributedNodes: 0,
+      unfinishedNodes: 0,
+      skippedNodes: 0,
+      errors: 0,
+      totalMs: 9,
+    },
+    entries: [{
+      phase: 'decode' as const,
+      description: 'MUL_MAT_ID',
+      compute: true,
+      op: 'GGML_OP_MUL_MAT_ID',
+      type: 'GGML_TYPE_F32',
+      shape: [2560, 10, 1, 1],
+      inputs: [{ type: 'GGML_TYPE_Q5_1', shape: [640, 2560, 512, 1] }],
+      buffer: 'WebGPU',
+      storage: 'device' as const,
+      webgpuSupport: 'supported' as const,
+      metadataOnly: false,
+      nodes: 1,
+      examples: ['ffn_moe_down-43'],
+      completionTiming: { samples: 1, totalMs: 9, minMs: 9, maxMs: 9, maxNodeName: 'ffn_moe_down-43', maxNodeIndex: 1 },
+    }],
+  };
+  source.trials[0]!.summary!.performance!.backendCensus = census;
+  const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+  expect(JSON.parse(await zip.file('backend-placement.json')!.async('string'))[0].diagnostic).toEqual(census);
+  expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toEqual([]);
+  const readme = await zip.file('README.md')!.async('string');
+  expect(readme).toContain('not GPU kernel time');
+  expect(readme).toContain('including views');
+  expect(readme).toContain('unfinishedNodes');
+  expect(readme).toContain('maxNodeIndex');
+  expect(readme).toContain('split-input copies');
+  expect(readme).toContain('no additional Wasm variant');
+});

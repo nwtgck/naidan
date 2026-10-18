@@ -311,7 +311,11 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                             void exhaustive;
                           }
                           }
-                          if (census && (census.errors > 0 || census.droppedNodes > 0)) {
+                          const completion = census?.decodeCompletionTiming;
+                          if (census && (census.errors > 0 || census.droppedNodes > 0 || completion && (
+                            completion.errors > 0 || completion.skippedNodes > 0 || completion.unattributedNodes > 0 ||
+                            completion.unfinishedNodes > 0 || completion.timedNodes !== completion.requestedNodes
+                          ))) {
                             trial.warnings.push('placement-incomplete');
                           }
                           break;

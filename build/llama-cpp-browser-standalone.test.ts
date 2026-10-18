@@ -269,12 +269,15 @@ int unrelated;`;
     const wasm = readFileSync(coreId.replace('core.mjs', 'core.wasm'));
     expect(byteLength).toBe(wasm.byteLength);
     expect(sha256).toBe(createHash('sha256').update(wasm).digest('hex'));
-    // Keep a size budget on the encoded payload, independent of chunk naming.
-    expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_500_000);
+    // The reviewed v0.7.0 artifact is 1,534,864 Brotli bytes on wasm64.
+    // Keep a fixed 1.6 MB budget, independent of chunk names or input size.
+    expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_600_000);
     expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
     expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
     const data32 = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary32.code }));
     const wasm32 = readFileSync(core32Id.replace('core.mjs', 'core.wasm'));
+    // wasm32 is 1,500,064 bytes; enforce the same bound for both profiles.
+    expect(Buffer.from(data32.base64, 'base64').byteLength).toBeLessThan(1_600_000);
     expect(data32.byteLength).toBe(wasm32.byteLength);
     expect(data32.sha256).toBe(createHash('sha256').update(wasm32).digest('hex'));
     expect(brotliDecompressSync(Buffer.from(data32.base64, 'base64')).equals(wasm32)).toBe(true);

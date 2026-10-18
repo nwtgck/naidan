@@ -36,7 +36,7 @@ function fixture() {
     },
   };
   const onTokenize = vi.fn();
-  const run = ({ contextTokens }: { contextTokens: number }) => tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 8, contextTokens, onTokenize });
+  const run = ({ contextTokens }: { contextTokens: number }) => tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 8, contextTokens, addSpecial: true, parseSpecial: true, onTokenize });
   return { core, allocations, onTokenize, run };
 }
 
@@ -55,7 +55,7 @@ describe('bounded single-pass prompt tokenization', () => {
 
   it('caps the speculative allocation independently of a huge context', async () => {
     const { core, onTokenize } = fixture();
-    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 1000000, contextTokens: 2147483647, onTokenize });
+    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 1000000, contextTokens: 2147483647, addSpecial: true, parseSpecial: true, onTokenize });
     expect(core.tryAlloc).toHaveBeenCalledExactlyOnceWith({ bytes: 262144 });
     core.free({ pointer: result.pointer });
   });
@@ -193,7 +193,7 @@ describe('prompt-sized speculation and deallocation failures', () => {
   it('retries from the native count when special tokens exceed the hint', async () => {
     const { core, onTokenize } = fixture();
     core.api.llama_tokenize.mockResolvedValueOnce(-17).mockResolvedValueOnce(17);
-    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 0, contextTokens: 32, onTokenize });
+    const result = await tokenizePrompt({ core, vocab: 1n, prompt: 2n, promptBytes: 0, contextTokens: 32, addSpecial: true, parseSpecial: true, onTokenize });
     expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 8 * 4 }], [{ bytes: 17 * 4 }]]);
     expect(result.tokens).toHaveLength(17);
     core.free({ pointer: result.pointer });
