@@ -17,9 +17,9 @@ const options = [
   { value: 'ollama', label: 'Ollama' },
 ];
 
-describe('SettingsSelect', () => {
+describe.each(['default', 'compact'] as const)('SettingsSelect (%s)', size => {
   it('distinguishes inherited and explicit equal values without rewriting raw values', async () => {
-    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection' } });
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection', size } });
     const trigger = wrapper.get('button');
     expect(trigger.attributes('aria-label')).toContain('Follows global changes');
     await trigger.trigger('click');
@@ -33,7 +33,7 @@ describe('SettingsSelect', () => {
   });
 
   it('closes and returns focus without emitting when the current raw value is reselected', async () => {
-    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection' } });
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection', size } });
     const trigger = wrapper.get('button');
     await trigger.trigger('click');
     const selected = document.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')!;
@@ -45,10 +45,11 @@ describe('SettingsSelect', () => {
   });
 
   it('skips disabled options and supports navigation, typeahead and nested Escape', async () => {
-    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection' } });
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection', size } });
     await wrapper.get('button').trigger('keydown', { key: 'ArrowDown' });
     await flushPromises();
     const list = document.querySelector<HTMLElement>('[role="listbox"]')!;
+    expect(list.hasAttribute('inert')).toBe(false);
     list.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
     expect(document.activeElement?.textContent).toContain('Ollama');
     list.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
@@ -64,10 +65,11 @@ describe('SettingsSelect', () => {
     expect(escape.defaultPrevented).toBe(true);
     expect(wrapper.get('button').attributes('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(wrapper.get('button').element);
+    expect(list.hasAttribute('inert')).toBe(true);
   });
 
   it('closes and blocks a teleported option when disabled during an open menu', async () => {
-    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection' } });
+    const wrapper = mount(SettingsSelect, { attachTo: document.body, props: { modelValue: 'inherit', options, label: 'Connection', size } });
     await wrapper.get('button').trigger('click');
     const option = document.querySelector<HTMLButtonElement>('[role="option"]')!;
     await wrapper.setProps({ disabled: true });
@@ -78,7 +80,7 @@ describe('SettingsSelect', () => {
   });
 
   it('keeps children mounted but closes only their popup when the disclosure closes', async () => {
-    const Host = defineComponent({ components: { SettingsDisclosure, SettingsSelect }, data: () => ({ options }), template: '<SettingsDisclosure title="Title"><SettingsSelect model-value="inherit" :options="options" label="Connection" /><input data-testid="draft" value="preserved" /></SettingsDisclosure>' });
+    const Host = defineComponent({ components: { SettingsDisclosure, SettingsSelect }, data: () => ({ options, size }), template: '<SettingsDisclosure title="Title"><SettingsSelect model-value="inherit" :options="options" label="Connection" :size="size" /><input data-testid="draft" value="preserved" /></SettingsDisclosure>' });
     const wrapper = mount(Host, { attachTo: document.body });
     const disclosure = wrapper.findComponent(SettingsDisclosure);
     await disclosure.get('button').trigger('click');

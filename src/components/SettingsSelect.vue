@@ -26,6 +26,7 @@ const props = defineProps<{
   disabled?: boolean,
   surface?: 'default' | 'embedded',
   presentation?: 'default' | 'toolbar',
+  size?: 'default' | 'compact',
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void,
@@ -36,7 +37,25 @@ const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 const open = ref(false);
 const menuId = useId();
-const popup = useAnchoredPopup({ anchor: triggerRef, preferredWidth: { unit: 'rem', value: 20 }, maxWidthPx: 560 });
+const popup = useAnchoredPopup({
+  anchor: triggerRef,
+  preferredWidth: {
+    unit: 'rem',
+    get value() {
+      const size = props.size;
+      switch (size) {
+      case 'compact': return 10;
+      case 'default':
+      case undefined: return 20;
+      default: {
+        const _ex: never = size;
+        throw new Error(`Unhandled select size: ${_ex}`);
+      }
+      }
+    },
+  },
+  maxWidthPx: 560,
+});
 
 function close({ restoreFocus }: { restoreFocus: boolean }) {
   open.value = false;
@@ -154,20 +173,20 @@ defineExpose({
     :aria-controls="open ? menuId : undefined"
     :title="[selected?.label, selected?.detail, selected?.source?.description].filter(Boolean).join(' · ')"
     class="settings-select-trigger"
-    :class="{ 'settings-select-trigger-embedded': surface === 'embedded', 'settings-select-trigger-toolbar': presentation === 'toolbar' }"
+    :class="{ 'settings-select-trigger-embedded': surface === 'embedded', 'settings-select-trigger-toolbar': presentation === 'toolbar', 'settings-select-trigger-compact': size === 'compact' }"
     :tw-class="['group flex w-full min-w-0 items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800', surface === 'embedded' ? 'h-full rounded-none border-0 bg-transparent shadow-none focus-visible:ring-inset' : 'rounded-xl border border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700/60 dark:bg-gray-800/55 dark:hover:border-gray-600']"
     @click="toggle"
     @keydown.down.prevent="open || toggle()"
     @keydown.up.prevent="open || toggle()"
   >
     <span :class="{ 'settings-select-content-toolbar': presentation === 'toolbar' }" tw-class="block min-w-0 flex-1">
-      <span class="settings-select-value" tw-class="block truncate text-sm font-medium leading-5 text-gray-800 dark:text-gray-100">{{ selected?.label ?? modelValue }}</span>
+      <span class="settings-select-value" :tw-class="['block truncate font-medium text-gray-800 dark:text-gray-100', size === 'compact' ? 'text-xs leading-4' : 'text-sm leading-5']">{{ selected?.label ?? modelValue }}</span>
       <span v-if="presentation !== 'toolbar'" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5">
         <SettingsSourceBadge :source="selected?.source" />
         <span v-if="selected?.detail" tw-class="min-w-0 flex-1 truncate text-xs leading-4 text-gray-500 dark:text-gray-400">{{ selected.detail }}</span>
       </span>
     </span>
-    <ChevronDownIcon :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', open && 'rotate-180']" />
+    <ChevronDownIcon :tw-class="['shrink-0 text-gray-400 transition-transform duration-200 group-hover:text-gray-600 dark:group-hover:text-gray-200', size === 'compact' ? 'h-3 w-3' : 'h-4 w-4', open && 'rotate-180']" />
   </button>
   <Teleport to="body">
     <Transition name="settings-select-menu">
@@ -178,12 +197,12 @@ defineExpose({
         role="listbox"
         :aria-label="label"
         :aria-hidden="!open"
-        :inert="!open"
+        :inert="!open || undefined"
         :style="popup.placement.value.style"
         :data-placement="popup.placement.value.direction"
         :data-open="open"
         class="settings-select-menu"
-        tw-class="overflow-y-auto overscroll-contain rounded-2xl border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/40"
+        :tw-class="['overflow-y-auto overscroll-contain border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-950/15 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/40', size === 'compact' ? 'rounded-xl' : 'rounded-2xl']"
         @keydown="handleMenuKeydown({ event: $event })"
       >
         <button
@@ -191,15 +210,16 @@ defineExpose({
           :key="option.value"
           type="button"
           role="option"
+          :data-testid="'settings-select-option-' + option.value"
           :disabled="option.disabled"
           :aria-selected="option.value === modelValue"
           :aria-label="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
           :title="[option.label, option.detail, option.source?.description].filter(Boolean).join(' · ')"
-          :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
+          :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
           @click="choose({ value: option.value })"
         >
           <span tw-class="block min-w-0 flex-1">
-            <span tw-class="block truncate text-sm font-medium">{{ option.label }}</span>
+            <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
             <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
               <SettingsSourceBadge :source="option.source" />
               <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
@@ -225,6 +245,14 @@ defineExpose({
   height: 2.75rem;
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
+}
+
+.settings-select-trigger-compact {
+  height: auto;
+  min-height: 1.75rem;
+  padding: 0.25rem 0.625rem;
+  gap: 0.5rem;
+  border-radius: 0.5rem;
 }
 
 .settings-select-content-toolbar {
