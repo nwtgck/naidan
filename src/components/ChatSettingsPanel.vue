@@ -35,7 +35,7 @@ import { XIcon, ChevronDownIcon, FolderOpenIcon, RotateCcwIcon, SlidersHorizonta
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { settingsSourcePresentation, formatSettingsSourceLabel } from '@/logic/settings-labels';
+import { settingsSourcePresentation } from '@/logic/settings-labels';
 import {
   cloneLmParameters as clonePlainLmParameters,
   hasLmParameterOverrides,
@@ -749,27 +749,25 @@ const sameScopeReasoningEffort = computed<Reasoning['effort']>(() => (
   ?? settings.value.lmParameters?.reasoning?.effort
 ));
 
-const inheritedTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: inheritedSettings.value?.titleGeneration === 'disabled'
+const inheritedTitleReasoningOptionLabel = computed(() => (
+  inheritedSettings.value?.titleGeneration === 'disabled'
     ? lazyStrings.ChatSettingsPanel__disabled()
-    : titleReasoningLabel({ lmParameters: inheritedLmParameters(), sameScopeEffort: undefined }),
-  source: inheritedSettings.value?.sources.titleGeneration,
-}));
-const sameScopeTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
-  value: reasoningEffortLabel({ effort: sameScopeReasoningEffort.value }),
-  source: 'chat',
-}));
+    : titleReasoningLabel({ lmParameters: inheritedLmParameters(), sameScopeEffort: undefined })
+));
+const sameScopeTitleReasoningOptionLabel = computed(() => reasoningEffortLabel({ effort: sameScopeReasoningEffort.value }));
 const titleReasoningLeadingOptions = computed(() => ([
   {
     value: 'inherit' as const,
     label: inheritedTitleReasoningOptionLabel.value,
     shortLabel: inheritedTitleReasoningOptionLabel.value,
+    source: settingsSourcePresentation({ source: inheritedSettings.value?.sources.titleGeneration }),
     testId: 'inherit',
   },
   {
     value: 'same_scope' as const,
     label: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
     shortLabel: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
+    source: settingsSourcePresentation({ source: 'chat' }),
     testId: 'same-scope',
   },
 ]));
