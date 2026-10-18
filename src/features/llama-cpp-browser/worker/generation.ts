@@ -1,3 +1,4 @@
+import { createNativeGraphCounters } from './native-graph-counters';
 import { sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { createCheckpointPerformance } from './checkpoint-performance';
 import { copyNativeUtf8 } from '@/features/llama-cpp-browser/runtime/native-utf8';
@@ -47,6 +48,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
   let session: Awaited<ReturnType<typeof prepareGenerationSession>> | undefined;
+  let graphCounters: ReturnType<typeof createNativeGraphCounters> | undefined;
   const measurements = createGenerationPerformance({ enabled: request.debug === 'on' || request.measurement !== undefined, now: () => performance.now() });
   const checkpointObservation = request.measurement ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
   measurements.counters.runtimeAssetBaseURL = request.assetBaseURL;
@@ -92,6 +94,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     try {
       if (session && request.measurement) {
         measurements.counters.backendCensus = session.census?.snapshot();
+        measurements.counters.nativeGraphCounters = graphCounters?.snapshot();
         const memory = measurements.counters.memoryObservation;
         if (memory) {
           memory.wasmHeapAfterBytes = session.core.module.HEAPU8.byteLength;
@@ -126,6 +129,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   try {
     session = await prepareGenerationSession({ request, onProgress, signal });
+    graphCounters = request.measurement ? createNativeGraphCounters({ core: session.core, context: session.context }) : undefined;
   } catch (error) {
     outcome = failureOutcome({ error });
     recordFailure({ error, stage });
@@ -216,6 +220,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   try {
     checkCancelled();
+    if (graphCounters) {
+      await graphCounters.capture({ point: 'before' });
+    }
     const measurementSequence = request.measurement?.sequence;
     switch (measurementSequence) {
     case 'fresh':
@@ -895,6 +902,9 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     try {
       await cleanup();
     } finally {
+      if (graphCounters) {
+        await graphCounters.capture({ point: 'after' });
+      }
       sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
       reportPerformance();
     }

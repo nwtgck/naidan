@@ -468,3 +468,36 @@ it('keeps inclusive debug throughput and nonterminal investigation intervals dis
     sampleWindows: [{ firstSample: 1, lastSample: 2, firstMs: 100, lastMs: 150 }],
   });
 });
+
+describe('passive native graph counter summaries', () => {
+  it('snapshots both boundaries and validates additive metadata without content', () => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    const nativeGraphCounters = {
+      method: 'llama-perf-context' as const,
+      errors: 0,
+      before: { n_reused: 2, n_reallocs_same: 1, n_reallocs_diff: 3 },
+      after: { n_reused: 65, n_reallocs_same: 1, n_reallocs_diff: 4 },
+    };
+    metrics.counters.nativeGraphCounters = nativeGraphCounters;
+    const report = metrics.finish({ outcome: 'completed', profile })!;
+    nativeGraphCounters.before.n_reused = 999;
+    nativeGraphCounters.after.n_reallocs_diff = 999;
+    expect(report.performance!.nativeGraphCounters!.before!.n_reused).toBe(2);
+    expect(report.performance!.nativeGraphCounters!.after!.n_reallocs_diff).toBe(4);
+    expect(diagnosticSchema.safeParse(report).success).toBe(true);
+    for (const extra of [{ errors: -1 }, { tokens: [123] }, { method: 'reset-and-read' }]) {
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: { ...report.performance!, nativeGraphCounters: { ...nativeGraphCounters, ...extra } },
+      }).success).toBe(false);
+    }
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: { ...report.performance!, nativeGraphCounters: undefined },
+    }).success).toBe(true);
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: { ...report.performance!, nativeGraphCounters: { method: 'llama-perf-context', errors: 1 } },
+    }).success).toBe(true);
+  });
+});

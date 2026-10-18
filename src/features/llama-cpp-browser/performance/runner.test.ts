@@ -367,3 +367,50 @@ it('retains failed-attempt memory and rejects late evidence from the previous mo
   expect(trials[0]?.memoryDiagnostics?.droppedSamples).toBe(0);
   expect(trials.filter(trial => trial.modelIndex === 1).every(trial => trial.memoryDiagnostics === undefined)).toBe(true);
 });
+
+it.each(['errors', 'skippedNodes', 'unattributedNodes', 'unfinishedNodes', 'untimed'] as const)('excludes and marks incomplete diagnostic completion timing with %s', failure => {
+  const test = setup({ diagnostics: 'placement' });
+  const original = test.generate.getMockImplementation()!;
+  test.generate.mockImplementation(async args => {
+    const result = await original(args);
+    if (args.observation === 'placement') {
+      const diagnostic = performanceReport();
+      const timing = {
+        method: 'per-node-synchronized-wall-time' as const,
+        requestedNodes: 1,
+        completedNodes: 1,
+        timedNodes: 1,
+        unattributedNodes: 0,
+        unfinishedNodes: 0,
+        skippedNodes: 0,
+        errors: 0,
+        totalMs: 20,
+      };
+      if (failure === 'untimed') {
+        timing.timedNodes = 0;
+      } else {
+        timing[failure] = 1;
+      }
+      diagnostic.performance!.backendCensus = {
+        version: 1,
+        method: 'native-eval-metadata',
+        timing: 'not-a-speed-measurement',
+        placementMeaning: 'destination-buffer-not-execution-backend',
+        capability: 'synchronous-leaf-bindings-v1',
+        observedNodes: 1,
+        droppedNodes: 0,
+        errors: 0,
+        entries: [],
+        decodeCompletionTiming: timing,
+      };
+      args.onSummary({ diagnostic });
+    }
+    return result;
+  });
+  return test.start().then(() => {
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.at(-1)).toMatchObject({ status: 'succeeded', exclusion: ['instrumented'], warnings: ['placement-incomplete'] });
+    expect(snapshot.trials.slice(0, -1).every(trial => !trial.warnings.length)).toBe(true);
+    expect(summarizePerformance({ snapshot }).every(group => group.scenario !== 'placement')).toBe(true);
+  });
+});

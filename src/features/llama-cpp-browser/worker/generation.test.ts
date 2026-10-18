@@ -1,3 +1,4 @@
+import * as graphCountersModule from './native-graph-counters';
 // @vitest-environment node
 import * as chatPromptModule from './tokenize-chat-prompt';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
@@ -3768,7 +3769,7 @@ describe('measurement contracts with supplied native Wasm', () => {
   }, 30000);
 });
 
-describe('metadata-only operation diagnostics with real native evaluation', () => {
+describe('isolated operation diagnostics with real native evaluation', () => {
   beforeEach(async () => {
     await releaseSession({ releaseRuntime: true });
     host.companion = false;
@@ -3804,12 +3805,13 @@ describe('metadata-only operation diagnostics with real native evaluation', () =
     expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
   }, 30000);
 
-  it.each(['attention', 'recurrent'] as const)('collects bounded %s operation metadata and removes the callback before ordinary inference', async kind => {
+  it.each(['attention', 'recurrent'] as const)('collects bounded %s operation completion observations and removes the callback before ordinary inference', async kind => {
     host.bytes = Uint8Array.from(kind === 'attention'
       ? createInputSensitiveGguf({ chatTemplate: 'chatml' }) : createTinyLfm2Gguf({ chatTemplate: 'chatml' }));
     const req = { ...request({ messages: [{ role: 'user', content: 'Explain local inference.' }] }), maxTokens: 2, debug: 'off' as const };
     const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const core = host.core!;
+    const ordinaryLogits = await readNativeLogits();
     const readerFactory = vi.spyOn(core, 'createTensorPlacementReader');
     const remove = vi.spyOn(core.module, 'removeFunction');
     const modelLoads = host.modelLoads, reads = host.reads;
@@ -3824,7 +3826,11 @@ describe('metadata-only operation diagnostics with real native evaluation', () =
       },
     });
     expect(diagnosed).toEqual(ordinary);
+    expect(await readNativeLogits()).toEqual(ordinaryLogits);
     const report = diagnosticSchema.parse(reports[0]);
+    expect(report.performance?.nativeGraphCounters).toMatchObject({ method: 'llama-perf-context', errors: 0 });
+    expect(report.performance?.nativeGraphCounters?.before).toBeDefined();
+    expect(report.performance?.nativeGraphCounters?.after).toBeDefined();
     const census = report.performance?.backendCensus;
     expect(census).toBeDefined();
     expect(census!.observedNodes).toBeGreaterThan(0);
@@ -3834,6 +3840,17 @@ describe('metadata-only operation diagnostics with real native evaluation', () =
     expect(census!.entries.some(entry => entry.op === 'GGML_OP_MUL_MAT')).toBe(true);
     expect(census!.entries.every(entry => entry.shape.length === 4 && entry.webgpuSupport === 'unavailable')).toBe(true);
     expect(census!.placementMeaning).toBe('destination-buffer-not-execution-backend');
+    const timing = census!.decodeCompletionTiming!;
+    expect(timing).toMatchObject({ method: 'per-node-synchronized-wall-time', errors: 0, unfinishedNodes: 0, skippedNodes: 0, unattributedNodes: 0 });
+    expect(timing.requestedNodes).toBeGreaterThan(0);
+    expect(timing.completedNodes).toBe(timing.requestedNodes);
+    expect(timing.timedNodes).toBe(timing.requestedNodes);
+    const decodeEntries = census!.entries.filter(entry => entry.phase === 'decode');
+    expect(decodeEntries.reduce((sum, entry) => sum + entry.nodes, 0)).toBe(timing.requestedNodes);
+    expect(decodeEntries.every(entry => entry.completionTiming?.samples === entry.nodes)).toBe(true);
+    expect(decodeEntries.some(entry => entry.metadataOnly && entry.completionTiming)).toBe(true);
+    expect(decodeEntries.reduce((sum, entry) => sum + entry.completionTiming!.totalMs, 0)).toBeCloseTo(timing.totalMs, 5);
+    expect(census!.entries.filter(entry => entry.phase !== 'decode').every(entry => !entry.completionTiming)).toBe(true);
     expect(report.performance?.sampleWindows?.length).toBeGreaterThan(0);
     expect(report.performance?.memoryObservation?.wasmHeapBeforeBytes).toBeGreaterThan(0);
     expect(readerFactory).toHaveBeenCalledOnce();
@@ -3857,5 +3874,33 @@ describe('metadata-only operation diagnostics with real native evaluation', () =
     expect(diagnosticSchema.parse(reports[1]).performance?.backendCensus).toBeUndefined();
     expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
     expect(readerFactory).toHaveBeenCalledOnce();
+  }, 30000);
+
+  it('keeps native graph reads out of ordinary chat and reads passive lifetime counters only twice per measurement', async () => {
+    const factory = vi.spyOn(graphCountersModule, 'createNativeGraphCounters');
+    host.bytes = Uint8Array.from(createInputSensitiveGguf({ chatTemplate: 'chatml' }));
+    const req = { ...request({ messages: [{ role: 'user', content: 'Passive graph fixture.' }] }), maxTokens: 3, debug: 'off' as const };
+    const ordinary = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(factory).not.toHaveBeenCalled();
+    const core = host.core!;
+    const read = vi.spyOn(core.api, 'llama_perf_context');
+    const reset = vi.spyOn(core.api, 'llama_perf_context_reset');
+    const reports: unknown[] = [];
+    expect(await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) })).toEqual(ordinary);
+    expect(factory).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(reset).not.toHaveBeenCalled();
+    expect(diagnosticSchema.parse(reports[0]).performance?.nativeGraphCounters).toMatchObject({
+      method: 'llama-perf-context',
+      errors: 0,
+      before: { n_reused: expect.any(Number) },
+      after: { n_reused: expect.any(Number) },
+    });
+    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(ordinary);
+    expect(read).toHaveBeenCalledTimes(2);
+    read.mockRejectedValueOnce(new Error('optional native read failure'));
+    expect(await generate({ request: { ...req, measurement: { sequence: 'fresh' } }, signal: undefined, onEvent: () => {}, onProgress: () => {}, onSummary: ({ diagnostic }) => reports.push(diagnostic) })).toEqual(ordinary);
+    expect(diagnosticSchema.parse(reports[1]).performance?.nativeGraphCounters).toMatchObject({ errors: 1, after: { n_reused: expect.any(Number) } });
+    expect(diagnosticSchema.parse(reports[1]).performance?.nativeGraphCounters?.before).toBeUndefined();
   }, 30000);
 });
