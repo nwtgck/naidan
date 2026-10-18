@@ -217,21 +217,22 @@ async function updateReasoningEffort({ effort }: { effort: Reasoning['effort'] }
 
 const inheritedReasoningLabel = computed(() => {
   const effort = props.inheritedReasoningEffort;
-  const label = (() => {
-    switch (effort) {
-    case undefined: return lazyStrings.ReasoningSettings__default();
-    case 'none': return lazyStrings.ReasoningSettings__off();
-    case 'low': return lazyStrings.ReasoningSettings__low();
-    case 'medium': return lazyStrings.ReasoningSettings__medium();
-    case 'high': return lazyStrings.ReasoningSettings__high();
-    default: {
-      const _ex: never = effort;
-      throw new Error(`Unhandled reasoning effort: ${_ex}`);
-    }
-    }
-  })();
-  return label === undefined ? undefined : lazyStrings.ChatInput__inherit_reasoning({ effort: label });
+  switch (effort) {
+  case undefined: return lazyStrings.ReasoningSettings__default();
+  case 'none': return lazyStrings.ReasoningSettings__off();
+  case 'low': return lazyStrings.ReasoningSettings__low();
+  case 'medium': return lazyStrings.ReasoningSettings__medium();
+  case 'high': return lazyStrings.ReasoningSettings__high();
+  default: {
+    const _ex: never = effort;
+    throw new Error(`Unhandled reasoning effort: ${_ex}`);
+  }
+  }
 });
+const inheritedReasoningSource = computed(() => ({
+  label: lazyStrings.ModelSelector__inherit(),
+  description: undefined,
+}));
 
 const selectedImageModel = computed(() => {
   return chatMedia.selectedImageModel.value;
@@ -1552,6 +1553,7 @@ defineExpose({
               <ReasoningSettings
                 :selected-effort="selectedReasoningEffort"
                 :default-label="inheritedReasoningLabel"
+                :default-source="inheritedReasoningSource"
                 :disabled="pendingReasoningChats.has(chatId)"
                 surface="plain"
                 notice="inline-help"
