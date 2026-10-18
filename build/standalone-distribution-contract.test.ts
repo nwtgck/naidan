@@ -47,14 +47,19 @@ describe('standalone distribution contract', () => {
   });
 
   it.each([
-    'src/components/WelcomeScreen.vue',
-    'src/components/AboutTab.vue',
-    'src/components/SettingsModal.vue',
-  ])('routes Portable App downloads through the shared current-locale composable in %s', (fileName) => {
+    { fileName: 'src/components/WelcomeScreen.vue', downloadFileName: 'src/components/WelcomeScreen.vue' },
+    { fileName: 'src/components/AboutTab.vue', downloadFileName: 'src/components/AboutTab.vue' },
+    { fileName: 'src/components/SettingsModal.vue', downloadFileName: 'src/components/SettingsNavigation.vue' },
+  ])('routes Portable App downloads through the shared current-locale composable in $fileName', ({ fileName, downloadFileName }) => {
     const source = readRepositoryFile({ fileName });
+    const downloadSource = readRepositoryFile({ fileName: downloadFileName });
     expect(source).toContain("@/features/file-protocol-standalone/composables/usePortableAppDownload");
-    expect(source).toContain(':href="portableAppDownload.href"');
-    expect(source).toContain(':download="portableAppDownload.fileName"');
+    if (fileName !== downloadFileName) {
+      expect(source).toContain(':portable-app-download="portableAppDownload"');
+    }
+    expect(downloadSource).toContain(':href="portableAppDownload.href"');
+    expect(downloadSource).toContain(':download="portableAppDownload.fileName"');
     expect(source).not.toContain('href="./naidan-standalone.zip"');
+    expect(downloadSource).not.toContain('href="./naidan-standalone.zip"');
   });
 });
