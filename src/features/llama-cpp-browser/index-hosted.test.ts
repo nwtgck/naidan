@@ -25,7 +25,7 @@ beforeEach(async () => {
   worker.probeProfiles.mockResolvedValue({
     recommended: 'cpu-wasm32',
     profiles: [
-      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
     ],
   });
   worker.canReuse.mockReturnValue(true);
@@ -80,7 +80,7 @@ describe('serialized hosted model service', () => {
   it('isolates option snapshots from observers and callers', () => {
     const mutate = service.subscribeOptions({
       listener: ({ options }) => {
-        options.profile = 'cpu-wasm64';
+        options.profile = 'webgpu-wasm64-jspi';
       },
     });
     const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
@@ -196,7 +196,7 @@ describe('serialized hosted model service', () => {
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
     service.release();
     const second = service.probeProfiles({ signal: undefined });
-    old.resolve({ recommended: 'cpu-wasm64', profiles: [{ profile: 'cpu-wasm64', status: 'available' }] });
+    old.resolve({ recommended: 'webgpu-wasm64-jspi', profiles: [{ profile: 'webgpu-wasm64-jspi', status: 'available' }] });
     await failed;
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledTimes(2));
     const third = service.probeProfiles({ signal: undefined });
@@ -230,7 +230,7 @@ describe('serialized hosted model service', () => {
     const pendingInput = input();
     const second = service.generate({ input: pendingInput, onEvent: () => {}, signal: undefined });
     pendingInput.messages[0]!.content = 'mutated';
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generate).toHaveBeenCalledOnce();
     finish();
     await first;
@@ -429,7 +429,7 @@ describe('audio sharing the serialized inference lane', () => {
     const audio = service.generateAudio({ input: pendingInput, cancellationSignal: undefined });
     pendingInput.text = 'mutated';
     pendingInput.contextTokens = 8192;
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generateAudio).not.toHaveBeenCalled();
     gate.resolve({ content: 'chat', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await chat;
@@ -686,11 +686,11 @@ describe('idle model preparation', () => {
     service.setOptions({ options: { profile: 'cpu-wasm32' } });
     const probe = service.probeProfiles({ signal: undefined });
     const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     gate.resolve({
-      recommended: 'cpu-wasm64',
+      recommended: 'webgpu-wasm64-jspi',
       profiles: [
-        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
       ],
     });
     await probe;

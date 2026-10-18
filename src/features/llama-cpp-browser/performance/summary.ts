@@ -1,3 +1,4 @@
+import { isGpuProfileTrial } from './gpu-profile-summary';
 import type { PerformanceSnapshot, PerformanceTrial } from './types';
 
 export function trialRates({ trial }: { trial: PerformanceTrial }) {
@@ -30,7 +31,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     reusedTokens: number | undefined, generatedTokens: number | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
     const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
-    if (!step || step.role !== 'measurement' || trial.status !== 'succeeded' || trial.exclusion.length) {
+    if (!step || step.role !== 'measurement' || isGpuProfileTrial({ trial, snapshot }) || trial.status !== 'succeeded' || trial.exclusion.length) {
       continue;
     }
     const metrics = trial.summary?.performance;
@@ -91,8 +92,8 @@ function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial,
  * both attempts and explain every rejected comparison instead of filtering by
  * which direction a result moved. */
 export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapshot }) {
-  return snapshot.plan.steps.filter(step => step.position === 'before').map(beforeStep => {
-    const afterStep = snapshot.plan.steps.find(step => step.modelIndex === beforeStep.modelIndex && step.repetition === beforeStep.repetition && step.position === 'after');
+  return snapshot.plan.steps.filter(step => step.position === 'before' && step.lane !== 'gpu-profile').map(beforeStep => {
+    const afterStep = snapshot.plan.steps.find(step => step.modelIndex === beforeStep.modelIndex && step.repetition === beforeStep.repetition && step.position === 'after' && step.lane !== 'gpu-profile');
     const before = snapshot.trials.find(trial => trial.stepId === beforeStep.id);
     const after = snapshot.trials.find(trial => trial.stepId === afterStep?.id);
     const reasons: string[] = [], uncertainties: string[] = [];
@@ -107,7 +108,7 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       if (before.status !== 'succeeded' || after.status !== 'succeeded') {
         reasons.push('unsuccessful-attempt');
       }
-      if (before.exclusion.length || after.exclusion.length) {
+      if (before.exclusion.length || after.exclusion.length || isGpuProfileTrial({ trial: before, snapshot }) || isGpuProfileTrial({ trial: after, snapshot })) {
         reasons.push('excluded-attempt');
       }
       const a = before.summary?.performance, b = after.summary?.performance;

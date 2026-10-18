@@ -143,7 +143,7 @@ describe('selected runtime startup inputs', () => {
     expect(host.create).not.toHaveBeenCalled();
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify'] as const)('acquires only %s and keeps module options and backend checks', async selected => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi', 'webgpu-wasm32-asyncify'] as const)('acquires only %s and keeps module options and backend checks', async selected => {
     expect(await loadRuntime({ profile: selected, assetBaseURL })).toBe(core);
     expect(host.binary).toHaveBeenCalledExactlyOnceWith({ profile: selected, assetBaseURL, signal: expect.any(AbortSignal) });
     expect(host.factory).toHaveBeenCalledExactlyOnceWith({ profile: selected, baseURL: assetBaseURL });

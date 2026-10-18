@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { normalizePath, type Plugin } from 'vite';
-import { profileSchema, type LlamaCppProfile } from './types';
-import { readLlamaArtifactPackage } from './build-artifact-package';
+import { gpuProfilingProfile, profileSchema, type LlamaCppProfile } from './types';
+import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
@@ -40,7 +40,10 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     }
     }
   })();
-  const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : profileSchema.options;
+  const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : hostedArtifactProfiles({ files, readArtifact });
+  const gpuProfilingAvailable = !isStandalone && profiles.includes(gpuProfilingProfile);
+  const availabilityId = '\0' + virtualPrefix + 'availability';
+  const unavailableProfileId = '\0' + virtualPrefix + 'unavailable-gpu-profile';
   const cores = profiles.map(profile => {
     // Verify at plugin creation too: an optimizer cache must not hide corrupt input.
     const core = readArtifact({ relative: `profiles/${profile}/browser/core.mjs` });
@@ -77,6 +80,12 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
       },
       resolveId(id) {
+        if (id === virtualPrefix + 'availability') {
+          return availabilityId;
+        }
+        if (!isStandalone && !gpuProfilingAvailable && id === virtualPrefix + gpuProfilingProfile) {
+          return unavailableProfileId;
+        }
         if (!id.startsWith(virtualPrefix)) {
           return;
         }
@@ -91,6 +100,12 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         this.emitFile({ type: 'asset', fileName: 'llama-cpp-browser-native-licenses.txt', source: licenseText });
       },
       load(id) {
+        if (id === availabilityId) {
+          return `export const gpuProfilingAvailable = ${gpuProfilingAvailable};`;
+        }
+        if (id === unavailableProfileId) {
+          return 'export default function() { throw new Error("GPU profiling artifact is not installed"); }';
+        }
         const filePath = normalizePath(id.split('?')[0]!);
         if (!filePath.startsWith(profileRoot)) {
           return;

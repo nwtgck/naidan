@@ -1,3 +1,4 @@
+import { optionsForLane, performanceLanes } from './plan';
 import { nanoid } from 'nanoid';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
 import { type GenerateInput, type RuntimeOptions, errorCode } from '@/features/llama-cpp-browser/types';
@@ -24,6 +25,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       id: nanoid(),
       stepId: step.id,
       modelIndex: step.modelIndex,
+      lane: step.lane ?? 'standard',
       status: 'skipped',
       startedAt: date(),
       input: [],
@@ -74,10 +76,10 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const elapsed = () => Math.max(0, now() - started);
       // Orchestration intervals are not GPU timings. All clocks here are outside
       // token callbacks and keep hidden-page waiting separate from native work.
-      const interval = ({ kind, modelIndex, stepId }: { kind: typeof execution.intervals[number]['kind'], modelIndex: number, stepId?: string }) => {
+      const interval = ({ kind, modelIndex, stepId, lane }: { kind: typeof execution.intervals[number]['kind'], modelIndex: number, stepId?: string, lane?: PerformanceStep['lane'] }) => {
         const start = elapsed(), hiddenAtStart = hidden();
         return ({ outcome }: { outcome: typeof execution.intervals[number]['outcome'] }) => {
-          execution.intervals.push({ kind, modelIndex, stepId, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
+          execution.intervals.push({ kind, modelIndex, stepId, lane, startedMs: start, elapsedMs: Math.max(0, elapsed() - start), hiddenAtStart, outcome });
         };
       };
       const visible = async ({ modelIndex, stepId }: { modelIndex: number, stepId?: string }) => {
@@ -96,14 +98,15 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       const activeSnapshot = snapshot;
       notify();
       try {
-        for (const [modelIndex, model] of plan.models.entries()) {
+        for (const { modelIndex, model, lane } of plan.models.flatMap((model, modelIndex) => performanceLanes({ mode: plan.settings.mode }).map(lane => ({ modelIndex, model, lane })))) {
           if (control.signal.aborted) {
             break;
           }
-          const steps = plan.steps.filter(step => step.modelIndex === modelIndex);
+          const steps = plan.steps.filter(step => step.modelIndex === modelIndex && (step.lane ?? 'standard') === lane);
+          const options = optionsForLane({ plan, lane });
           try {
             await visible({ modelIndex });
-            const inventory = interval({ kind: 'model-inventory', modelIndex });
+            const inventory = interval({ kind: 'model-inventory', modelIndex, lane });
             const stored = await service.listModels({ signal: control.signal }).then(value => {
               inventory({ outcome: 'completed' });
               return value;
@@ -115,13 +118,13 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
             if (matching.length !== 1 || matching[0]?.id !== model.id || matching[0]?.size !== model.size || matching[0]?.importedAt !== model.importedAt) {
               throw new Error('Selected model inventory changed');
             }
-            const acquired = interval({ kind: 'model-acquire', modelIndex });
+            const acquired = interval({ kind: 'model-acquire', modelIndex, lane });
             let entered = false;
             let release: ReturnType<typeof interval> | undefined;
             let operationOutcome: typeof execution.intervals[number]['outcome'] = 'completed';
             try {
               await service.runPerformanceOperation({
-                options: plan.options,
+                options,
                 signal: control.signal,
                 operation: async ({ scope }) => {
                   entered = true;
@@ -154,6 +157,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         id: nanoid(),
                         stepId: step.id,
                         modelIndex,
+                        lane,
                         status: 'running',
                         startedAt: date(),
                         startedMs: elapsed(),
@@ -291,10 +295,31 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                         if (trial.hiddenObserved) {
                           trial.exclusion.push('page-hidden');
                         }
-                        if (observation !== undefined) {
+                        if (observation !== undefined || lane === 'gpu-profile') {
                           trial.exclusion.push('instrumented');
                         }
                         const metrics = trial.summary?.performance;
+                        const gpuStatus = metrics?.gpuProfile?.status;
+                        switch (lane) {
+                        case 'standard': break;
+                        case 'gpu-profile':
+                          switch (gpuStatus) {
+                          case undefined: case 'unavailable': trial.warnings.push('gpu-profile-missing');
+                            break;
+                          case 'partial': trial.warnings.push('gpu-profile-incomplete');
+                            break;
+                          case 'complete': break;
+                          default: {
+                            const exhaustive: never = gpuStatus;
+                            void exhaustive;
+                          }
+                          }
+                          break;
+                        default: {
+                          const exhaustive: never = lane;
+                          void exhaustive;
+                        }
+                        }
                         switch (observation) {
                         case 'placement': {
                           const census = metrics?.backendCensus;
@@ -351,7 +376,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                     }
                   } finally {
                     scope.signal.removeEventListener('abort', abortOperation);
-                    release = interval({ kind: 'model-release', modelIndex });
+                    release = interval({ kind: 'model-release', modelIndex, lane });
                   }
                 },
               });
@@ -367,10 +392,10 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
               release?.({ outcome: operationOutcome });
             }
           } catch (error) {
-            activeSnapshot.modelErrors.push({ modelIndex, error: error instanceof Error ? error.message : String(error) });
+            activeSnapshot.modelErrors.push({ modelIndex, lane, error: error instanceof Error ? error.message : String(error) });
             for (const step of steps) {
               if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
-                skip({ step, options: plan.options, error: control.signal.aborted ? 'cancelled' : 'model-operation-failed' });
+                skip({ step, options, error: control.signal.aborted ? 'cancelled' : 'model-operation-failed' });
               }
             }
             notify();
@@ -380,7 +405,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
         activeSnapshot.status = control.signal.aborted ? 'cancelled' : 'completed';
         for (const step of plan.steps) {
           if (!activeSnapshot.trials.some(trial => trial.stepId === step.id)) {
-            skip({ step, options: plan.options, error: 'cancelled' });
+            skip({ step, options: optionsForLane({ plan, lane: step.lane ?? 'standard' }), error: 'cancelled' });
           }
         }
         execution.finishedAt = date();

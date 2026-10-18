@@ -1,4 +1,5 @@
-import { checkJspi, checkStorage, gpuUnavailableReason, supportsMemory64 } from './capability-probes';
+import { gpuProfilingAvailable } from 'virtual:llama-cpp-browser-core/availability';
+import { checkJspi, checkStorage, probeGpuCapabilities, supportsMemory64 } from './capability-probes';
 import { profileCapabilitiesSchema, type ProfileCapabilities, type ProfileUnavailableReason } from './profile-capabilities';
 import { profileSchema } from '@/features/llama-cpp-browser/types';
 import { LlamaCppBrowserError, type LlamaCppProfile, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
@@ -8,7 +9,7 @@ const memory64Probe = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1
 
 export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptions['profile'] }): Promise<LlamaCppProfile> {
   switch (profile) {
-  case 'cpu-wasm32': case 'cpu-wasm64': case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify':
+  case 'cpu-wasm32': case 'webgpu-wasm64-jspi-gpu-profile': case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify':
     // Explicit choices remain explicit; model/load failures are not fallback triggers.
     return profile;
   case 'auto': break;
@@ -45,7 +46,7 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
       // Unavailable/blocked adapters leave the CPU path available. Do not log raw errors.
     }
   }
-  return memory64 ? 'cpu-wasm64' : 'cpu-wasm32';
+  return 'cpu-wasm32';
 }
 
 /** Report browser capabilities without importing an inference runtime or a model. */
@@ -68,13 +69,15 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
       jspi = true;
     } catch { /* CPU and Asyncify remain available. */ }
   }
-  const gpuReason = sharedReason ? undefined : await gpuUnavailableReason();
+  const gpu = sharedReason ? undefined : await probeGpuCapabilities();
+  const gpuReason = gpu?.reason;
   const profiles: ProfileCapabilities['profiles'] = profileSchema.options.map(profile => {
     let reason = sharedReason;
     if (!reason) {
       switch (profile) {
       case 'cpu-wasm32': break;
-      case 'cpu-wasm64': reason = memory64 ? undefined : 'memory64';
+      case 'webgpu-wasm64-jspi-gpu-profile': reason = !gpuProfilingAvailable ? 'profiling-artifact'
+        : gpuReason ?? (!memory64 ? 'memory64' : !jspi ? 'jspi' : !gpu?.timestampQuery ? 'timestamp-query' : undefined);
         break;
       case 'webgpu-wasm32-asyncify': reason = gpuReason;
         break;
@@ -90,7 +93,7 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
     }
     return reason ? { profile, status: 'unavailable', reason } : { profile, status: 'available' };
   });
-  return profileCapabilitiesSchema.parse({ profiles, recommended: profiles.find(entry => entry.status === 'available')?.profile });
+  return profileCapabilitiesSchema.parse({ profiles, recommended: profiles.find(entry => entry.status === 'available' && entry.profile !== 'webgpu-wasm64-jspi-gpu-profile')?.profile });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

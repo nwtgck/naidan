@@ -1,0 +1,1 @@
+export const llamaCppPerformance__gpu_profiling_help = (): string => "Misst Shader-Zeiten mit der 64-Bit-WebGPU-Diagnoselaufzeit. Das Profiling verursacht Zusatzaufwand; diese Läufe werden nicht in die reguläre Geschwindigkeitsstatistik aufgenommen.";

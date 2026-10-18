@@ -27,7 +27,7 @@ beforeEach(async () => {
   const { storageService } = await import('@/00-storage/service');
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   worker.subscribeDisposed.mockReturnValue(() => {});
-  worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }] });
+  worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' }] });
   worker.generate.mockImplementation(async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'answer' }), onEvent }));
   service = (await import('./index-hosted')).llamaCppBrowserService;
   provider = createLlamaCppProvider({ service });
@@ -71,14 +71,14 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     });
     const running = fixture.run();
     await entered.promise;
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     const queued = service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
     expect(factory).toHaveBeenCalledOnce();
     release.resolve();
     expect(await running).toEqual({ type: 'finished', next: 'user' });
     await queued;
-    expect(worker.generate.mock.calls.map(([{ request }]) => request.options.profile)).toEqual(['cpu-wasm32', 'cpu-wasm32', 'cpu-wasm64']);
+    expect(worker.generate.mock.calls.map(([{ request }]) => request.options.profile)).toEqual(['cpu-wasm32', 'cpu-wasm32', 'webgpu-wasm64-jspi']);
     expect(worker.generate.mock.calls[1]?.[0].request.messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool']);
     expect(worker.generate.mock.calls[1]?.[0].request.messages[1]?.reasoning_content).toBe('Check the tool.\n');
     expect(fixture.nodes.map(n => n.role)).toEqual(['assistant', 'tool', 'assistant']);

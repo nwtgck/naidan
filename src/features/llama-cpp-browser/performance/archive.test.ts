@@ -354,5 +354,5 @@ it('round-trips optional diagnostic completion groups and their interpretation w
   expect(readme).toContain('unfinishedNodes');
   expect(readme).toContain('maxNodeIndex');
   expect(readme).toContain('split-input copies');
-  expect(readme).toContain('no additional Wasm variant');
+  expect(readme).toContain('orthogonal to the selected standard/GPU-profiling lane');
 });

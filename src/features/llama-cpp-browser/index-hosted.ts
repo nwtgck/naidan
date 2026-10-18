@@ -1,4 +1,4 @@
-import { captureChatOptions } from './runtime/chat-options';
+import { captureChatOptions, capturePerformanceOptions } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
 import { z } from 'zod';
 import { resolveStoredModelName } from './host-model-names';
@@ -730,7 +730,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     }
   },
   async runPerformanceOperation({ options, signal, operation }) {
-    const acceptedOptions = captureChatOptions({ options });
+    const acceptedOptions = capturePerformanceOptions({ options });
     // Fail rather than silently warming behind an unrelated operation.
     if (laneReservations > 0) {
       throw new LlamaCppBrowserError({ code: 'busy' });

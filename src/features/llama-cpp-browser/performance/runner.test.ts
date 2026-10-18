@@ -4,11 +4,11 @@ import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/feature
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformanceRunner } from './runner';
-import { snapshotSchema } from './types';
+import { planSchema, snapshotSchema, type MeasurementMode } from './types';
 import { summarizePerformance } from './summary';
 
-function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnostics?: 'none' | 'placement' } = {}) {
-  const plan = performancePlan({ models, diagnostics });
+function setup({ models = 1, diagnostics = 'none', mode }: { models?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
+  const plan = performancePlan({ models, diagnostics, mode });
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
@@ -412,5 +412,70 @@ it.each(['errors', 'skippedNodes', 'unattributedNodes', 'unfinishedNodes', 'unti
     expect(snapshot.trials.at(-1)).toMatchObject({ status: 'succeeded', exclusion: ['instrumented'], warnings: ['placement-incomplete'] });
     expect(snapshot.trials.slice(0, -1).every(trial => !trial.warnings.length)).toBe(true);
     expect(summarizePerformance({ snapshot }).every(group => group.scenario !== 'placement')).toBe(true);
+  });
+});
+
+describe('runtime profiling lane isolation', () => {
+  it('runs both complete plans serially, releases each worker scope and doubles calls rather than mixing contexts', async () => {
+    const test = setup({ models: 2, diagnostics: 'placement', mode: 'both' });
+    await test.start();
+    expect(test.order).toEqual([0, 0, 1, 1].flatMap(index => ['acquire', ...Array(6).fill(`model${index}.gguf`), 'release']));
+    expect(test.service.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile']);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials).toHaveLength(24);
+    expect(snapshot.trials.every(trial => trial.status === 'succeeded')).toBe(true);
+    const diagnostic = snapshot.trials.filter(trial => trial.lane === 'gpu-profile');
+    expect(diagnostic).toHaveLength(12);
+    expect(diagnostic.every(trial => trial.exclusion.includes('instrumented') && trial.warnings.includes('gpu-profile-missing'))).toBe(true);
+    expect(snapshot.execution?.intervals.filter(interval => interval.kind === 'model-release').map(interval => interval.lane)).toEqual(['standard', 'gpu-profile', 'standard', 'gpu-profile']);
+    expect(summarizePerformance({ snapshot })).toHaveLength(10);
+    for (const start of [0, 6, 12, 18]) {
+      expect(snapshot.trials[start + 2]!.input[1]?.content).toBe(snapshot.trials[start + 1]!.output?.content);
+    }
+  });
+
+  it('has no ordinary-speed aggregates when only profiling is requested', async () => {
+    const test = setup({ mode: 'gpu-profile' });
+    await test.start();
+    expect(test.generate).toHaveBeenCalledTimes(5);
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.every(trial => trial.options.profile === 'webgpu-wasm64-jspi-gpu-profile' && trial.exclusion.includes('instrumented'))).toBe(true);
+    expect(summarizePerformance({ snapshot })).toEqual([]);
+  });
+
+  it('keeps the other lane after one lane fails instead of claiming a silent fallback', async () => {
+    const test = setup({ mode: 'both' });
+    test.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'runtime-error' }));
+    await test.start();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.trials.slice(0, 5).map(trial => trial.status)).toEqual(['failed', 'skipped', 'skipped', 'skipped', 'skipped']);
+    expect(snapshot.trials.slice(5).every(trial => trial.lane === 'gpu-profile' && trial.status === 'succeeded')).toBe(true);
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels remaining lanes without creating another worker and preserves lane identities for skipped calls', async () => {
+    const test = setup({ mode: 'both' });
+    test.generate.mockImplementationOnce(async () => {
+      test.runner.stop();
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    await test.start();
+    const snapshot = snapshotSchema.parse(test.runner.snapshot());
+    expect(snapshot.status).toBe('cancelled');
+    expect(test.service.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(snapshot.trials.slice(5).every(trial => trial.status === 'skipped' && trial.lane === 'gpu-profile' && trial.options.profile === 'webgpu-wasm64-jspi-gpu-profile')).toBe(true);
+  });
+
+  it('rejects cross-lane continuations, mismatched modes and an accidentally selected diagnostic chat profile', () => {
+    const plan = performancePlan({ mode: 'both' });
+    const continuation = plan.steps.find(step => step.lane === 'gpu-profile' && step.dependsOn)!;
+    continuation.dependsOn = plan.steps[1]!.id;
+    expect(planSchema.safeParse(plan).success).toBe(false);
+    const normal = performancePlan();
+    normal.steps[0]!.lane = 'gpu-profile';
+    expect(planSchema.safeParse(normal).success).toBe(false);
+    const wrong = performancePlan();
+    wrong.options.profile = 'webgpu-wasm64-jspi-gpu-profile';
+    expect(planSchema.safeParse(wrong).success).toBe(false);
   });
 });

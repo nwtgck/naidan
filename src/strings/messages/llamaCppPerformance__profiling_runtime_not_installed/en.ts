@@ -1,0 +1,1 @@
+export const llamaCppPerformance__profiling_runtime_not_installed = (): string => "The installed runtime package does not include GPU profiling. Install a browser-inference-core artifact containing the diagnostic profile to enable it.";

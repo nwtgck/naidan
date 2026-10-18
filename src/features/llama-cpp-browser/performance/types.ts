@@ -1,13 +1,31 @@
 import { memoryDiagnosticsSchema } from './memory-schema';
 import { z } from 'zod';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
-import { generationResultSchema, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
+import { generationResultSchema, gpuProfilingProfile, modelSchema, progressSchema, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 
-export const performanceProtocol = 'targeted-text-en-v3' as const;
+export const performanceProtocol = 'targeted-text-en-v4' as const;
+export const measurementModeSchema = z.enum(['gpu-profile', 'standard', 'both']);
+export const measurementLaneSchema = z.enum(['standard', 'gpu-profile']);
+export type MeasurementMode = z.infer<typeof measurementModeSchema>;
+export type MeasurementLane = z.infer<typeof measurementLaneSchema>;
+
+export function measurementLanes({ mode }: { mode: MeasurementMode | undefined }): MeasurementLane[] {
+  switch (mode) {
+  case 'both': return ['standard', 'gpu-profile'];
+  case 'standard': case undefined: return ['standard'];
+  case 'gpu-profile': return ['gpu-profile'];
+  default: {
+    const exhaustive: never = mode;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_-]+$/).max(128);
 const milliseconds = z.number().finite().nonnegative();
 export const protocolSchema = z.object({
+  // Missing in v3 archives: those always used an ordinary runtime.
+  mode: measurementModeSchema.optional(),
   repeats: z.number().int().min(1).max(5),
   maxTokens: z.number().int().min(1).max(512),
   timeoutMs: z.number().int().min(1000).max(3600000),
@@ -21,6 +39,7 @@ export const textMessageSchema = z.object({
 export const stepSchema = z.object({
   id: idSchema,
   modelIndex: z.number().int().nonnegative(),
+  lane: measurementLaneSchema.optional(),
   scenario: z.enum(['initial', 'short', 'long', 'continuation', 'placement']),
   position: z.enum(['initial', 'before', 'after', 'workload', 'diagnostic']),
   maxTokens: z.number().int().min(1).max(512),
@@ -32,7 +51,7 @@ export const stepSchema = z.object({
 }).strict();
 export const planSchema = z.object({
   version: z.literal(1),
-  protocol: z.literal(performanceProtocol),
+  protocol: z.enum(['targeted-text-en-v3', performanceProtocol]),
   id: idSchema,
   createdAt: z.string(),
   models: z.array(modelSchema).min(1).max(16),
@@ -40,11 +59,53 @@ export const planSchema = z.object({
   options: runtimeOptionsSchema,
   notes: z.string().max(10000),
   steps: z.array(stepSchema).min(1).max(1024),
-}).strict();
+}).strict().superRefine((plan, context) => {
+  if (plan.options.profile === gpuProfilingProfile) {
+    context.addIssue({ code: 'custom', message: 'Select the profiling measurement mode, not a diagnostic chat profile' });
+  }
+  switch (plan.settings.mode) {
+  case 'both': case 'gpu-profile':
+    switch (plan.options.profile) {
+    case 'webgpu-wasm64-jspi': break;
+    case 'auto': case 'cpu-wasm32': case 'webgpu-wasm32-jspi': case 'webgpu-wasm32-asyncify': case 'webgpu-wasm64-jspi-gpu-profile':
+      context.addIssue({ code: 'custom', message: 'GPU profiling requires the ordinary wasm64/JSPI reference profile' });
+      break;
+    default: {
+      const exhaustive: never = plan.options.profile;
+      throw new Error(String(exhaustive));
+    }
+    }
+    break;
+  case 'standard': case undefined: break;
+  default: {
+    const exhaustive: never = plan.settings.mode;
+    throw new Error(String(exhaustive));
+  }
+  }
+  const allowed = measurementLanes({ mode: plan.settings.mode });
+  const seen = new Map<string, typeof plan.steps[number]>();
+  for (const step of plan.steps) {
+    if (!allowed.includes(step.lane ?? 'standard')) {
+      context.addIssue({ code: 'custom', message: 'Measurement lane does not match the selected mode' });
+    }
+
+    if (seen.has(step.id) || step.modelIndex >= plan.models.length) {
+      context.addIssue({ code: 'custom', message: 'Invalid measurement step identity' });
+    }
+    if (step.dependsOn !== undefined) {
+      const parent = seen.get(step.dependsOn);
+      if (!parent || parent.modelIndex !== step.modelIndex || (parent.lane ?? 'standard') !== (step.lane ?? 'standard')) {
+        context.addIssue({ code: 'custom', message: 'Continuation crosses a model or runtime lane' });
+      }
+    }
+    seen.set(step.id, step);
+  }
+});
 export const trialSchema = z.object({
   id: idSchema,
   stepId: idSchema,
   modelIndex: z.number().int().nonnegative(),
+  lane: measurementLaneSchema.optional(),
   status: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'skipped']),
   startedAt: z.string(),
   startedMs: milliseconds.optional(),
@@ -65,11 +126,12 @@ export const trialSchema = z.object({
   summary: diagnosticSchema.optional(),
   memoryDiagnostics: memoryDiagnosticsSchema.optional(),
   error: z.string().optional(),
-  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete'])),
+  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete', 'gpu-profile-missing', 'gpu-profile-incomplete'])),
   exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented'])),
 }).strict();
 const intervalSchema = z.object({
   modelIndex: z.number().int().nonnegative(),
+  lane: measurementLaneSchema.optional(),
   stepId: idSchema.optional(),
   kind: z.enum(['visibility-wait', 'model-inventory', 'model-acquire', 'model-release']),
   startedMs: milliseconds,
@@ -105,7 +167,7 @@ export const snapshotSchema = z.object({
   }).strict(),
   status: z.enum(['running', 'completed', 'cancelled']),
   trials: z.array(trialSchema),
-  modelErrors: z.array(z.object({ modelIndex: z.number().int().nonnegative(), error: z.string() }).strict()),
+  modelErrors: z.array(z.object({ modelIndex: z.number().int().nonnegative(), lane: measurementLaneSchema.optional(), error: z.string() }).strict()),
 }).strict();
 export type PerformancePlan = z.infer<typeof planSchema>;
 export type PerformanceStep = z.infer<typeof stepSchema>;

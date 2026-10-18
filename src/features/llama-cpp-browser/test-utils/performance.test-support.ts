@@ -1,13 +1,13 @@
 import { createGenerationPerformance } from '@/features/llama-cpp-browser/worker/generation-performance';
 import { createPerformancePlan } from '@/features/llama-cpp-browser/performance/plan';
-import type { PerformanceSnapshot } from '@/features/llama-cpp-browser/performance/types';
+import type { MeasurementMode, PerformanceSnapshot } from '@/features/llama-cpp-browser/performance/types';
 
-export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none' }: { models?: number, repeats?: number, diagnostics?: 'none' | 'placement' } = {}) {
+export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none', mode }: { models?: number, repeats?: number, diagnostics?: 'none' | 'placement', mode?: MeasurementMode } = {}) {
   return createPerformancePlan({
     id: 'test_run',
     createdAt: '2026-10-01T00:00:00.000Z',
     models: Array.from({ length: models }, (_, index) => ({ id: `user/m${index}`, name: `model${index}.gguf`, size: 4096, importedAt: 1 })),
-    settings: { repeats, diagnostics, maxTokens: 128, timeoutMs: 1000 },
+    settings: { repeats, diagnostics, mode, maxTokens: 128, timeoutMs: 1000 },
     options: { profile: 'webgpu-wasm64-jspi' },
     notes: '',
   });

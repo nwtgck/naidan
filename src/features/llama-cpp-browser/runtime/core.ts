@@ -4,9 +4,9 @@ import { loadCoreModule, type CoreModuleOptions } from '@/features/llama-cpp-bro
 import { z } from 'zod';
 import rawSchema from 'llama-cpp-browser-core/api/schema.mjs';
 import type { LowLevelFunctions } from 'llama-cpp-browser-core/api/functions.js';
-import type { MainModule } from 'llama-cpp-browser-core/profiles/cpu-wasm64/browser/core.mjs';
+import type { MainModule } from 'llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs';
 import type { ChatParams, NativeChat } from './chat-bindings';
-import { usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
+import { gpuProfilingProfile, usesWebGpu, type LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
@@ -492,12 +492,14 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
 }): Promise<Core> {
   const wasmBinary = wasmModuleBinary({ binary: moduleOptions.wasmBinary });
   const gpuRequests = createGpuRequestObserver();
+  // No diagnostic import, buffer hooks or timestamp resources in ordinary chat.
+  const profiler = profile === gpuProfilingProfile ? (await import('./gpu-profiler')).createGpuProfileObserver() : undefined;
   const options: CoreModuleOptions = usesWebGpu({ profile }) ? {
     ...moduleOptions,
     wasmBinary,
     hostNavigator: createCoreWebGpuNavigator({
       navigator: globalThis.navigator,
-      observeDevice: gpuRequests.wrapDevice,
+      observeDevice: profiler ? ({ device, adapter }) => gpuRequests.wrapDevice({ device: profiler.wrapDevice({ device }), adapter }) : gpuRequests.wrapDevice,
       report({ axis, count, limit, chunks }) {
         logDiagnostic({
           diagnostic: {
@@ -520,12 +522,13 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
     associateGpuRequests({ core, snapshot: gpuRequests.snapshot });
     return core;
   }
+  case 'webgpu-wasm64-jspi-gpu-profile':
   case 'webgpu-wasm64-jspi': case 'webgpu-wasm32-jspi': {
     const core = { ...attachCore({ module, callMode: 'jspi' }), chat };
     associateGpuRequests({ core, snapshot: gpuRequests.snapshot });
     return core;
   }
-  case 'cpu-wasm64': case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
+  case 'cpu-wasm32': return { ...attachCore({ module, callMode: 'direct' }), chat };
   default: {
     const exhaustive: never = profile;
     throw new Error(`Unhandled profile: ${exhaustive}`);

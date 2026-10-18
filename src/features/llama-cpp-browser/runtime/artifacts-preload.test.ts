@@ -6,7 +6,7 @@ import { loadCoreModule as loadStandaloneModule, preloadCoreModule as preloadSta
 const host = vi.hoisted(() => ({
   factories: {
     'cpu-wasm32': vi.fn(),
-    'cpu-wasm64': vi.fn(),
+    'webgpu-wasm64-jspi-gpu-profile': vi.fn(),
     'webgpu-wasm32-asyncify': vi.fn(),
     'webgpu-wasm32-jspi': vi.fn(),
     'webgpu-wasm64-jspi': vi.fn(),
@@ -14,7 +14,7 @@ const host = vi.hoisted(() => ({
   bind: vi.fn(),
 }));
 vi.mock('virtual:llama-cpp-browser-core/cpu-wasm32', () => ({ default: host.factories['cpu-wasm32'] }));
-vi.mock('virtual:llama-cpp-browser-core/cpu-wasm64', () => ({ default: host.factories['cpu-wasm64'] }));
+vi.mock('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi-gpu-profile', () => ({ default: host.factories['webgpu-wasm64-jspi-gpu-profile'] }));
 vi.mock('virtual:llama-cpp-browser-core/webgpu-wasm32-asyncify', () => ({ default: host.factories['webgpu-wasm32-asyncify'] }));
 vi.mock('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi', () => ({ default: host.factories['webgpu-wasm32-jspi'] }));
 vi.mock('virtual:llama-cpp-browser-core/webgpu-wasm64-jspi', () => ({ default: host.factories['webgpu-wasm64-jspi'] }));
@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe('factory-only runtime preloads', () => {
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)('imports hosted %s without instantiation and passes options only when requested', async profile => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify', 'webgpu-wasm32-jspi', 'webgpu-wasm64-jspi'] as const)('imports hosted %s without instantiation and passes options only when requested', async profile => {
     const baseURL = 'https://example.invalid/runtime/';
     await preloadHostedModule({ profile, baseURL });
     await preloadHostedModule({ profile, baseURL });
@@ -73,7 +73,7 @@ describe('factory-only runtime preloads', () => {
     }
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded standalone %s without instantiating or fetching', async profile => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded standalone %s without instantiating or fetching', async profile => {
     await expect(preloadStandaloneModule({ profile, baseURL: undefined })).rejects.toThrow('unavailable');
     for (const factory of Object.values(host.factories)) {
       expect(factory).not.toHaveBeenCalled();
