@@ -38,6 +38,12 @@ async function bundleView({ mode, entrySource, injectImageAsset, realStrings = f
       if (id.startsWith('\0virtual:file-protocol-standalone/worker/')) {
         return 'export async function createStandaloneWorker(){throw new Error("Worker bootstrap is not run by this fixture");}';
       }
+      if (id === '\0virtual:llama-cpp-browser-core/availability') {
+        // The image boundary has no llama runtime. Model the public capability
+        // contract separately from native core factories so caller modules can
+        // still import the named flag without bundling profiling artifacts.
+        return 'export const gpuProfilingAvailable = false;';
+      }
       if (id.startsWith('\0virtual:llama-cpp-browser-core/')) {
         return 'export default function () { throw new Error("Native llama is not executed by this bundle fixture"); }';
       }
