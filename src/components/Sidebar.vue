@@ -1285,7 +1285,7 @@ defineExpose({
                             <div tw-class="flex items-center gap-1">
                               <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                               <div v-if="editingId !== nestedItem.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                                <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
+                                <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" data-testid="sidebar-chat-rename-button" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
                                 <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id, groupId: element.chatGroup.id })" tw-class="p-1 hover:text-red-500" :data-testid="'delete-chat-button-' + idToRaw({ id: nestedItem.chat.id })"><Trash2Icon tw-class="w-3 h-3" /></button>
                               </div>
                             </div>
@@ -1342,7 +1342,7 @@ defineExpose({
                 <div tw-class="flex items-center gap-1">
                   <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                    <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
+                    <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" data-testid="sidebar-chat-rename-button" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat({ id: element.chat.id, groupId: undefined })" tw-class="p-1 hover:text-red-500" :data-testid="'delete-chat-button-' + idToRaw({ id: element.chat.id })"><Trash2Icon tw-class="w-3 h-3" /></button>
                   </div>
                 </div>

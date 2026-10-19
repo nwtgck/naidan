@@ -1195,6 +1195,40 @@ import { MessageThinking__hide_thought_process } from '@/strings/messages/Messag
 import { MessageThinking__show_thought_process } from '@/strings/messages/MessageThinking__show_thought_process/ko';
 import { MessageThinking__thinking } from '@/strings/messages/MessageThinking__thinking/ko';
 import { MessageThinking__thought_process } from '@/strings/messages/MessageThinking__thought_process/ko';
+import { ModelDownloads__activity } from '@/strings/messages/ModelDownloads__activity/ko';
+import { ModelDownloads__back_to_list } from '@/strings/messages/ModelDownloads__back_to_list/ko';
+import { ModelDownloads__cancel } from '@/strings/messages/ModelDownloads__cancel/ko';
+import { ModelDownloads__cancelling } from '@/strings/messages/ModelDownloads__cancelling/ko';
+import { ModelDownloads__checking } from '@/strings/messages/ModelDownloads__checking/ko';
+import { ModelDownloads__clear_completed } from '@/strings/messages/ModelDownloads__clear_completed/ko';
+import { ModelDownloads__close } from '@/strings/messages/ModelDownloads__close/ko';
+import { ModelDownloads__complete } from '@/strings/messages/ModelDownloads__complete/ko';
+import { ModelDownloads__completed_count } from '@/strings/messages/ModelDownloads__completed_count/ko';
+import { ModelDownloads__destination } from '@/strings/messages/ModelDownloads__destination/ko';
+import { ModelDownloads__details } from '@/strings/messages/ModelDownloads__details/ko';
+import { ModelDownloads__download_status } from '@/strings/messages/ModelDownloads__download_status/ko';
+import { ModelDownloads__download_url } from '@/strings/messages/ModelDownloads__download_url/ko';
+import { ModelDownloads__downloading } from '@/strings/messages/ModelDownloads__downloading/ko';
+import { ModelDownloads__downloads } from '@/strings/messages/ModelDownloads__downloads/ko';
+import { ModelDownloads__failed } from '@/strings/messages/ModelDownloads__failed/ko';
+import { ModelDownloads__file } from '@/strings/messages/ModelDownloads__file/ko';
+import { ModelDownloads__file_details } from '@/strings/messages/ModelDownloads__file_details/ko';
+import { ModelDownloads__files } from '@/strings/messages/ModelDownloads__files/ko';
+import { ModelDownloads__history_is_session_only } from '@/strings/messages/ModelDownloads__history_is_session_only/ko';
+import { ModelDownloads__image_model } from '@/strings/messages/ModelDownloads__image_model/ko';
+import { ModelDownloads__language_model } from '@/strings/messages/ModelDownloads__language_model/ko';
+import { ModelDownloads__linked_folder } from '@/strings/messages/ModelDownloads__linked_folder/ko';
+import { ModelDownloads__no_pending_downloads } from '@/strings/messages/ModelDownloads__no_pending_downloads/ko';
+import { ModelDownloads__pause } from '@/strings/messages/ModelDownloads__pause/ko';
+import { ModelDownloads__paused } from '@/strings/messages/ModelDownloads__paused/ko';
+import { ModelDownloads__pausing } from '@/strings/messages/ModelDownloads__pausing/ko';
+import { ModelDownloads__preparing } from '@/strings/messages/ModelDownloads__preparing/ko';
+import { ModelDownloads__queue_position } from '@/strings/messages/ModelDownloads__queue_position/ko';
+import { ModelDownloads__resume } from '@/strings/messages/ModelDownloads__resume/ko';
+import { ModelDownloads__retry } from '@/strings/messages/ModelDownloads__retry/ko';
+import { ModelDownloads__unknown_size } from '@/strings/messages/ModelDownloads__unknown_size/ko';
+import { ModelDownloads__verifying } from '@/strings/messages/ModelDownloads__verifying/ko';
+import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__waiting/ko';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/ko';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/ko';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/ko';
@@ -4072,6 +4106,40 @@ export const catalog = {
   MessageThinking__show_thought_process,
   MessageThinking__thinking,
   MessageThinking__thought_process,
+  ModelDownloads__activity,
+  ModelDownloads__back_to_list,
+  ModelDownloads__cancel,
+  ModelDownloads__cancelling,
+  ModelDownloads__checking,
+  ModelDownloads__clear_completed,
+  ModelDownloads__close,
+  ModelDownloads__complete,
+  ModelDownloads__completed_count,
+  ModelDownloads__destination,
+  ModelDownloads__details,
+  ModelDownloads__download_status,
+  ModelDownloads__download_url,
+  ModelDownloads__downloading,
+  ModelDownloads__downloads,
+  ModelDownloads__failed,
+  ModelDownloads__file,
+  ModelDownloads__file_details,
+  ModelDownloads__files,
+  ModelDownloads__history_is_session_only,
+  ModelDownloads__image_model,
+  ModelDownloads__language_model,
+  ModelDownloads__linked_folder,
+  ModelDownloads__no_pending_downloads,
+  ModelDownloads__pause,
+  ModelDownloads__paused,
+  ModelDownloads__pausing,
+  ModelDownloads__preparing,
+  ModelDownloads__queue_position,
+  ModelDownloads__resume,
+  ModelDownloads__retry,
+  ModelDownloads__unknown_size,
+  ModelDownloads__verifying,
+  ModelDownloads__waiting,
   ModelSelector__clear_filter,
   ModelSelector__filter_models,
   ModelSelector__inherit,

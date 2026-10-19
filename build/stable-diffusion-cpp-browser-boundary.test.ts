@@ -167,10 +167,14 @@ describe('hosted-only bicore image boundary', () => {
     for (const name of ['entry.ts', 'impl.ts']) {
       expect(workerModules.some(id => id.endsWith('/inventory-worker/' + name))).toBe(true);
     }
-    expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(true);
-    expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(true);
+    // Image model acquisition is now implemented by the shared Hugging Face
+    // writer, rather than the former image-specific download Worker.
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-download.ts'))).toBe(false);
+    expect(workerModules.some(id => id.endsWith('/logic/catalog-file-download.ts'))).toBe(false);
+    expect(workerModules.some(id => id.endsWith('/hugging-face-download/worker/impl.ts'))).toBe(true);
+    expect(workerModules.some(id => id.endsWith('/hugging-face-download/acquire.ts'))).toBe(true);
     expect(workerModules.some(id => id.endsWith('/privacy-fetch/broker-client.ts'))).toBe(false);
-    expect(modules.some(id => id.endsWith('/download-worker/fetch-bridge.ts'))).toBe(true);
+    expect(modules.some(id => id.endsWith('/hugging-face-download/fetch-bridge.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/diagnostics.ts'))).toBe(true);
     expect(modules.some(id => id.endsWith('/use-image-generation-standalone.ts'))).toBe(false);
     for (const name of ['entry.ts', 'session.ts', 'core-loader.ts', 'gguf-file.ts', 'gpu-diagnostics.ts', 'gpu-performance.ts', 'performance-counters.ts', 'run-performance.ts', 'webgpu.ts', 'preview-control.ts', 'preview-output.ts', 'image-input.ts', 'image-output.ts']) {

@@ -22,6 +22,7 @@ it('shares the logo, Naidan name, build version and collapse action between side
   expect(wrapper.text()).toContain('Naidan');
   expect(wrapper.text()).toContain(`v${__APP_VERSION__}`);
   expect(wrapper.find('[data-testid="status-slot"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="model-downloads-trigger"]').exists()).toBe(false);
   await wrapper.get('[data-testid="sidebar-toggle"]').trigger('click');
   expect(wrapper.emitted('toggle')).toHaveLength(1);
   await wrapper.setProps({ expanded: false });

@@ -59,3 +59,14 @@ describe('standalone facades', () => {
     expect((alias?.find as RegExp).test(`${facadePath}/components/ModelSupportInvestigationModal.vue`)).toBe(false);
   });
 });
+
+it('routes the shared file downloader through the registered standalone worker, without engine-specific transfer clients', () => {
+  const path = '@/logic/hugging-face-download/worker/factory';
+  const definition = STANDALONE_FACADES.find(facade => facade.facadePath === path);
+  expect(definition?.standalonePath).toBe('src/logic/hugging-face-download/worker/factory-standalone.ts');
+  const client = readFileSync(resolve(process.cwd(), 'src/logic/hugging-face-download/client.ts'), 'utf8');
+  expect(client).toContain(`from '${path}'`);
+  const worker = readFileSync(resolve(process.cwd(), 'src/logic/hugging-face-download/worker/factory-standalone.ts'), 'utf8');
+  expect(worker).toContain("from 'virtual:file-protocol-standalone/worker/file-download'");
+  expect(worker).not.toContain('new Worker');
+});

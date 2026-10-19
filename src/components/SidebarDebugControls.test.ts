@@ -19,6 +19,35 @@ afterEach(() => {
   wrapper = undefined;
 });
 
+it('keeps the mock-style download icon before terminal and More, without a sidebar text label', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<div />' } }],
+  });
+  await router.push('/');
+  await router.isReady();
+  wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router] } });
+  const trigger = wrapper.get('[data-testid="model-downloads-trigger"]');
+  expect(trigger.attributes('aria-label')).toBeTruthy();
+  expect(trigger.attributes('title')).toBe(trigger.attributes('aria-label'));
+  expect(trigger.text()).toBe('');
+  const buttons = wrapper.findAll('button');
+  expect(buttons[0]?.element).toBe(trigger.element);
+  expect(buttons[1]?.attributes('data-testid')).toBe('sidebar-debug-button');
+  expect(buttons[2]?.attributes('data-testid')).toBe('sidebar-opfs-menu-button');
+  expect(wrapper.text()).not.toContain('Downloads');
+});
+
+it('keeps the icon-only download control in the collapsed action stack', async () => {
+  wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: false } });
+  const trigger = wrapper.get('[data-testid="model-downloads-trigger"]');
+  expect(trigger.text()).toBe('');
+  const buttons = wrapper.findAll('button');
+  expect(buttons).toHaveLength(2);
+  expect(buttons[0]?.element).toBe(trigger.element);
+  expect(wrapper.find('[data-testid="sidebar-opfs-menu-button"]').exists()).toBe(false);
+});
+
 it('opens the independent audio workspace from Quick Access and closes the menu', async () => {
   const router = createRouter({
     history: createMemoryHistory(),

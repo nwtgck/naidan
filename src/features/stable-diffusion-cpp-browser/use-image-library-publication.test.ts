@@ -7,6 +7,11 @@ import { scanImageRepositories, type ModelInventory } from './logic/model-candid
 import { ggufFixture, zImageTensors } from './test-utils/weights.test-support';
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), download: vi.fn(), inspect: vi.fn(), change: vi.fn(), stopDownload: vi.fn() }));
+vi.mock('@/00-storage/service/host-model-handles', () => ({
+  hostModelHandles: {
+    get: vi.fn(async () => ({ name: 'weights', isSameEntry: async () => true })),
+  },
+}));
 vi.mock('./download-worker/client', () => ({ downloadImageRecipeInWorker: (...args: unknown[]) => mocks.download(...args) }));
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('./composables/use-host-model-directories', async () => {
@@ -65,7 +70,8 @@ it('releases cancellation while the final host permission refresh is pending and
   library.cancelDownload();
   await downloading;
   expect(library.downloading.value).toBe(false);
-  expect(library.downloadState.value).toBe('paused');
+  // The transfer already committed before publication was cancelled.
+  expect(library.downloadState.value).toBe('complete');
   pending.reject(new Error('Late permission lookup failure'));
   await new Promise(resolve => setImmediate(resolve));
   expect(mocks.inspect).not.toHaveBeenCalled();
@@ -85,7 +91,8 @@ it('settles the linked-folder stopDownload callback during inventory publication
   await mocks.stopDownload({ id: 'linked-models' });
   await downloading;
   expect(library.downloading.value).toBe(false);
-  expect(library.downloadState.value).toBe('paused');
+  // The transfer already committed before publication was cancelled.
+  expect(library.downloadState.value).toBe('complete');
   blocked.value = false;
   await new Promise(resolve => setImmediate(resolve));
   expect(mocks.inspect).toHaveBeenCalledOnce();
