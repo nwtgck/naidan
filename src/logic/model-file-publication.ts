@@ -12,6 +12,20 @@ export function modelFileMarker({ name, state }: { name: string, state: 'complet
   return `.${name}.${state}`;
 }
 
+/** Include sidecars only in an explicitly confirmed deletion plan. The executor
+ * still compares every selected file against the user's size/mtime snapshot. */
+export function withModelFileMarkers({ paths }: { paths: readonly string[] }): string[] {
+  return paths.flatMap(path => {
+    const parts = path.split('/');
+    const name = parts.pop()!;
+    if (name.startsWith('.')) {
+      return [path];
+    }
+    const prefix = parts.length ? `${parts.join('/')}/` : '';
+    return [path, `${prefix}${modelFileMarker({ name, state: 'pending' })}`, `${prefix}${modelFileMarker({ name, state: 'complete' })}`];
+  });
+}
+
 export async function optionalModelFile({ directory, name }: { directory: FileSystemDirectoryHandle, name: string }): Promise<FileSystemFileHandle | undefined> {
   try {
     return await directory.getFileHandle(name);

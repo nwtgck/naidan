@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { effectScope, ref } from 'vue';
+import { createDownloadManager, type DownloadManager } from '@/logic/download-manager';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
@@ -32,7 +33,7 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
   return { id, name: id, files: [{ path: file.path, file: blob }] };
 }
 
-function harness({ download, initial }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[] }) {
+function harness({ download, initial, manager }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[], manager?: DownloadManager }) {
   let entries = initial;
   const blocked = ref(false);
   const downloader = vi.fn(download ?? (async () => undefined));
@@ -43,7 +44,7 @@ function harness({ download, initial }: { download: ImageRecipeDownloader | unde
     downloadsBlocked: () => false,
     blocked: () => blocked.value,
     onSelection,
-    dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download: downloader },
+    dependencies: { list, scan: scanImageRepositories, import: vi.fn(), download: downloader, manager },
   }))!;
   return {
     library,
@@ -109,7 +110,7 @@ it.each(['cancel', 'dispose'] as const)('settles pending publication on %s while
   await operation;
   expect(h.library.downloading.value).toBe(false);
   if (action === 'cancel') {
-    expect(h.library.downloadState.value).toBe('paused');
+    expect(h.library.downloadState.value).toBe('complete');
   }
   h.unblock();
   reading.resolve([]);
@@ -117,7 +118,7 @@ it.each(['cancel', 'dispose'] as const)('settles pending publication on %s while
   expect(h.list).toHaveBeenCalledOnce();
 });
 
-it('cancels an unresponsive final inspection and ignores its late result', async () => {
+it('keeps committed files complete when cancelling an unresponsive final inspection and ignores its late result', async () => {
   const h = harness({ initial: [], download: undefined });
   const reading = Promise.withResolvers<LocalImageRepository[]>();
   h.list.mockReturnValueOnce(reading.promise);
@@ -125,7 +126,7 @@ it('cancels an unresponsive final inspection and ignores its late result', async
   await vi.waitFor(() => expect(h.list).toHaveBeenCalledOnce());
   h.library.cancelDownload();
   await operation;
-  expect(h.library.downloadState.value).toBe('paused');
+  expect(h.library.downloadState.value).toBe('complete');
   expect(h.library.downloading.value).toBe(false);
   reading.reject(new Error('Late platform read failure'));
   await new Promise(resolve => setImmediate(resolve));
@@ -258,27 +259,30 @@ it('deduplicates active downloads and pauses without publishing a completion', a
   expect(h.library.downloading.value).toBe(true);
   expect(h.library.ready.value).toBe(false);
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
-  expect(h.downloader).toHaveBeenCalledTimes(1);
+  await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledTimes(1));
   h.library.cancelDownload();
   await running;
   expect(h.library.downloadState.value).toBe('paused');
   expect(h.library.downloading.value).toBe(false);
 });
 
-it('aborts a pending download on scope disposal and ignores late completion', async () => {
+it('keeps a pending download alive after scope disposal without updating the closed view', async () => {
+  const transferred = Promise.withResolvers<void>();
   let signal: AbortSignal | undefined;
   const h = harness({
     initial: [],
     download: async args => {
       signal = args.signal;
-      await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
+      await transferred.promise;
     },
   });
   const running = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   await vi.waitFor(() => expect(signal).toBeDefined());
   h.scope.stop();
+  expect(signal?.aborted).toBe(false);
+  transferred.resolve();
   await running;
-  expect(signal?.aborted).toBe(true);
+  expect(signal?.aborted).toBe(false);
   expect(h.list).not.toHaveBeenCalled();
 });
 
@@ -351,7 +355,7 @@ it('retains a failed entry and proceeds with other explicitly queued downloads w
   expect(h.downloader.mock.calls[2]![0].files).toEqual(h.downloader.mock.calls[0]![0].files);
 });
 
-it('pauses the entire queue and resumes the original job before the next variant', async () => {
+it('pauses only the current job and rejoins the tail after the next variant', async () => {
   const h = harness({ initial: [], download: undefined });
   h.downloader.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
@@ -361,12 +365,13 @@ it('pauses the entire queue and resumes the original job before the next variant
   await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
   h.library.cancelDownload();
   await first;
-  expect(h.library.downloadQueue.value.map(job => job.state)).toEqual(['paused', 'queued']);
-  await h.library.resumeDownload();
   await second;
+  expect(h.library.downloadQueue.value.some(job => job.state === 'paused')).toBe(true);
+  const paused = h.library.downloadQueue.value.find(job => job.state === 'paused')!;
+  await h.library.retryQueuedDownload({ id: paused.id });
   expect(h.downloader).toHaveBeenCalledTimes(3);
-  expect(h.downloader.mock.calls[1]![0].files).toEqual(h.downloader.mock.calls[0]![0].files);
-  expect(h.downloader.mock.calls[2]![0].files[0]!.path).toBe('z_image_turbo-Q8_0.gguf');
+  expect(h.downloader.mock.calls[2]![0].files).toEqual(h.downloader.mock.calls[0]![0].files);
+  expect(h.downloader.mock.calls[1]![0].files[0]!.path).toBe('z_image_turbo-Q8_0.gguf');
 });
 
 it('removes a queued item without fetching it or modifying its partial files', async () => {
@@ -375,6 +380,7 @@ it('removes a queued item without fetching it or modifying its partial files', a
   h.downloader.mockImplementationOnce(() => gate.promise);
   const first = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   const second = h.library.downloadRecipe({ recipeId: recipe.id, selections: { diffusion: 'q8-0' } });
+  await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
   const queued = h.library.downloadQueue.value.find(job => job.state === 'queued')!;
   h.library.removeQueuedDownload({ id: queued.id });
   await second;
@@ -435,4 +441,49 @@ it('retains unrelated user Files after a completed catalog publication without r
   after.forEach((model, index) => expect(model.file).toBe(before[index]!.file));
   await h.library.refresh();
   h.library.selectedModels()!.forEach((model, index) => expect(model.file).not.toBe(before[index]!.file));
+});
+
+it('reflects a central-panel cancellation after the current writer has drained', async () => {
+  const manager = createDownloadManager();
+  const cleanup = Promise.withResolvers<void>();
+  const h = harness({
+    manager,
+    initial: [],
+    download: async ({ signal }) => {
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+      await cleanup.promise;
+      signal.throwIfAborted();
+    },
+  });
+  const operation = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await vi.waitFor(() => expect(h.downloader).toHaveBeenCalledOnce());
+  const stopped = manager.remove({ id: manager.snapshot()[0]!.id });
+  expect(h.library.downloading.value).toBe(true);
+  cleanup.resolve();
+  await stopped;
+  await operation;
+  expect(h.library.downloadQueue.value).toEqual([]);
+  expect(h.library.downloading.value).toBe(false);
+});
+
+it('resumes a paused request from a reopened catalog instead of attaching to a settled old attempt', async () => {
+  const manager = createDownloadManager();
+  const first = harness({ manager, initial: [], download: undefined });
+  first.downloader.mockImplementationOnce(async ({ signal }) => {
+    await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+    signal.throwIfAborted();
+  });
+  const initial = first.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  await vi.waitFor(() => expect(first.downloader).toHaveBeenCalledOnce());
+  first.scope.stop();
+  manager.pause({ id: manager.snapshot()[0]!.id });
+  await initial;
+  expect(manager.snapshot()[0]!.status).toBe('paused');
+  const reopened = harness({ manager, initial: [], download: undefined });
+  await reopened.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
+  expect(manager.snapshot()).toHaveLength(1);
+  expect(manager.snapshot()[0]!.status).toBe('complete');
+  expect(first.downloader).toHaveBeenCalledTimes(2);
+  expect(reopened.downloader).not.toHaveBeenCalled();
+  expect(reopened.library.downloading.value).toBe(false);
 });

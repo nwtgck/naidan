@@ -1,71 +1,43 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
+import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { privacyFetchStream } from '@/features/privacy-fetch';
-import { scanDeletionTree } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import { createDownloadWriter } from './writer';
-import { listHuggingFaceModels, repositoryFolder } from './storage';
-import { memoryDirectory, ggufBytes } from './test-opfs';
-import { cancelDownload, downloadRepository } from './download-standalone';
+import { downloadRepository, cancelDownload } from './download-standalone';
+import { cancelDownload as sharedCancel } from './download';
 
-const calls = vi.hoisted(() => ({ factory: vi.fn(), release: vi.fn(), pause: undefined as (() => Promise<void>) | undefined, append: undefined as (() => Promise<number>) | undefined }));
-vi.mock('virtual:file-protocol-standalone/worker/llama-cpp-browser-download', () => ({ createStandaloneWorker: calls.factory }));
-vi.mock('./writer-client', async () => import('./writer-client-standalone'));
+const calls = vi.hoisted(() => ({ factory: vi.fn(), release: vi.fn(), download: vi.fn(), cancel: vi.fn() }));
+vi.mock('virtual:file-protocol-standalone/worker/file-download', () => ({ createStandaloneWorker: calls.factory }));
+vi.mock('@/logic/hugging-face-download/worker/factory', async () => import('@/logic/hugging-face-download/worker/factory-standalone'));
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
-vi.mock('@/utils/worker-transport', async importOriginal => {
-  const original = await importOriginal<typeof import('@/utils/worker-transport')>();
-  return {
-    ...original,
-    wrapWorkerRemote: () => {
-      const writer = createDownloadWriter();
-      if (calls.pause) {
-        writer.pause = calls.pause;
-      }
-      if (calls.append) {
-        writer.append = calls.append;
-      }
-      return writer;
-    },
-    releaseWorkerRemote: calls.release,
-    workerTransfer: ({ value }: { value: object }) => value,
-    workerProxy: ({ value }: { value: object }) => value,
-    getReadableStreamTransferSupport: async () => 'unsupported',
-  };
-});
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: () => ({ download: calls.download, cancel: calls.cancel, verifyStorage }),
+  releaseWorkerRemote: calls.release,
+  workerProxy: ({ value }: { value: object }) => value,
+}));
 class TestWorker extends EventTarget {
   terminate = vi.fn();
 }
 let worker: TestWorker;
 const selection = { repository: 'example/model', revision: 'a'.repeat(40), files: [{ path: 'model-Q4_K_M.gguf', size: 128 }] };
 
+const run = ({ signal }: { signal: AbortSignal }) => downloadRepository({ selection, signal, onProgress() {} });
+
 beforeEach(() => {
   vi.clearAllMocks();
-  calls.pause = undefined;
-  calls.append = undefined;
+  calls.download.mockReset().mockResolvedValue(undefined);
+  calls.cancel.mockReset().mockResolvedValue(undefined);
+  calls.release.mockReset().mockResolvedValue(undefined);
   worker = new TestWorker();
-  calls.factory.mockResolvedValue(worker);
-  calls.release.mockResolvedValue(undefined);
-  const root = memoryDirectory({ name: '' });
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, _options: object, operation: (lock: object) => Promise<unknown>) => operation({}) } });
+  calls.factory.mockReset().mockResolvedValue(worker);
+  const root = new MemoryDirectory('root');
+  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root } });
   vi.stubGlobal('Worker', class {
     constructor() {
       throw new Error('Raw Worker is forbidden in standalone');
     }
   });
-  vi.mocked(privacyFetchStream).mockImplementation(async () => ({
-    status: 200,
-    statusText: '',
-    ok: true,
-    url: '',
-    redirected: false,
-    responseType: 'basic',
-    policyName: 'standalone-fixture',
-    headers: new Headers(),
-    body: new ReadableStream<Uint8Array<ArrayBuffer>>({
-      start(controller) {
-        controller.enqueue(ggufBytes());
-        controller.close();
-      },
-    }),
-  }));
 });
 
 afterEach(() => {
@@ -73,129 +45,108 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('standalone browser model downloads', () => {
-  it('allows cooperative cancellation a grace period before abandoning a stuck append', async () => {
-    vi.useFakeTimers();
-    const entered = Promise.withResolvers<void>();
-    calls.append = () => {
-      entered.resolve();
-      return new Promise(() => {});
-    };
-    const controller = new AbortController();
-    const operation = downloadRepository({ selection, signal: controller.signal, onProgress: () => {} });
-    const rejected = expect(operation).rejects.toThrow('Download paused');
-    await entered.promise;
-    controller.abort();
-    await vi.advanceTimersByTimeAsync(4999);
-    expect(worker.terminate).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(1);
-    await rejected;
-    expect(worker.terminate).toHaveBeenCalledOnce();
-    expect(await listHuggingFaceModels()).toEqual([]);
-  });
-
-  it('downloads through the shared fetch boundary and the standalone writer factory', async () => {
-    const onProgress = vi.fn();
-    await downloadRepository({ selection, signal: new AbortController().signal, onProgress });
+describe('standalone shared file-download Worker', () => {
+  it('uses the registered standalone factory and passes the complete pinned selection', async () => {
+    await run({ signal: new AbortController().signal });
     expect(calls.factory).toHaveBeenCalledOnce();
-    expect(privacyFetchStream).toHaveBeenCalledOnce();
-    expect(onProgress).toHaveBeenCalled();
-    expect((await listHuggingFaceModels())[0]?.name).toBe('hf.co/example/model:Q4_K_M');
+    expect(calls.download).toHaveBeenCalledWith(expect.objectContaining({ files: [{ repository: selection.repository, revision: selection.revision, path: 'model-Q4_K_M.gguf', expectedSize: 128 }], validation: 'model-weight' }), expect.any(Function), expect.any(Function));
     expect(worker.terminate).toHaveBeenCalledOnce();
     expect(calls.release).toHaveBeenCalledOnce();
   });
 
-  it('allows explicit deletion of a verified standalone download', async () => {
-    await downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
-    const folder = await repositoryFolder({ repository: selection.repository, create: false });
-    const files = (await scanDeletionTree({ folder })).files;
-    await expect(cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/example/model', files } })).resolves.toBe('deleted');
-    expect(await listHuggingFaceModels()).toEqual([]);
+  it('keeps explicit deletion on the same shared storage implementation', () => {
+    expect(cancelDownload).toBe(sharedCancel);
   });
 
-  it('rejects cancellation before startup settles and cleans up a late writer without fetching', async () => {
-    const startup = Promise.withResolvers<Worker>();
-    const entered = Promise.withResolvers<void>();
-    calls.factory.mockImplementation(() => {
-      entered.resolve();
-      return startup.promise;
-    });
-    const controller = new AbortController();
-    const operation = downloadRepository({ selection, signal: controller.signal, onProgress: () => {} });
-    const rejected = vi.fn();
-    const result = operation.catch(error => {
-      rejected(error);
-      return error;
-    });
-    await entered.promise;
-    controller.abort();
-    try {
-      await vi.waitFor(() => expect(rejected).toHaveBeenCalledOnce(), { timeout: 200 });
-      expect(await result).toMatchObject({ message: 'llama.cpp browser: aborted' });
-      expect(privacyFetchStream).not.toHaveBeenCalled();
-      expect(worker.terminate).not.toHaveBeenCalled();
-    } finally {
-      startup.resolve(worker as unknown as Worker);
-      await result;
-      await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
-    }
-    expect(privacyFetchStream).not.toHaveBeenCalled();
-  });
-
-  it('does not create a writer for an already cancelled download', async () => {
+  it('does not create a Worker for an already aborted intent', async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(downloadRepository({ selection, signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
+    await expect(run({ signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
     expect(calls.factory).not.toHaveBeenCalled();
     expect(privacyFetchStream).not.toHaveBeenCalled();
   });
 
-  it('handles a late bootstrap rejection after cancellation without downloading', async () => {
-    const startup = Promise.withResolvers<Worker>();
-    const entered = Promise.withResolvers<void>();
-    calls.factory.mockImplementation(() => {
-      entered.resolve();
-      return startup.promise;
-    });
+  it('cancels pending bootstrap immediately and cleans up a late physical Worker', async () => {
+    const starting = Promise.withResolvers<Worker>();
+    calls.factory.mockReturnValueOnce(starting.promise);
+    await using _cleanup = {
+      async [Symbol.asyncDispose]() {
+        starting.resolve(worker as unknown as Worker);
+        await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+      },
+    };
     const controller = new AbortController();
-    const operation = downloadRepository({ selection, signal: controller.signal, onProgress: () => {} });
-    const rejection = expect(operation).rejects.toThrow('aborted');
-    await entered.promise;
+    const task = run({ signal: controller.signal });
+    const rejected = expect(task).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(calls.factory).toHaveBeenCalledOnce());
     controller.abort();
-    await rejection;
-    startup.reject(new Error('Bootstrap failed after cancellation'));
-    await new Promise(resolve => setTimeout(resolve, 0));
-    expect(privacyFetchStream).not.toHaveBeenCalled();
+    await rejected;
+    expect(calls.download).not.toHaveBeenCalled();
+    expect(worker.terminate).not.toHaveBeenCalled();
+  });
+
+  it('handles a late bootstrap rejection after the user has cancelled', async () => {
+    const starting = Promise.withResolvers<Worker>();
+    calls.factory.mockReturnValueOnce(starting.promise);
+    const controller = new AbortController();
+    const task = run({ signal: controller.signal });
+    const rejected = expect(task).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(calls.factory).toHaveBeenCalledOnce());
+    controller.abort();
+    await rejected;
+    starting.reject(new Error('Late bootstrap failure'));
+    await new Promise(resolve => setImmediate(resolve));
+    expect(calls.download).not.toHaveBeenCalled();
     expect(calls.release).not.toHaveBeenCalled();
   });
 
-  it('preserves storage unavailability and retires the writer before any fetch', async () => {
+  it('does not transfer when the window and Worker cannot verify shared storage', async () => {
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: async () => {
           throw new DOMException('Denied', 'SecurityError');
         },
       },
-      locks: { request: async (_name: string, _options: object, operation: (lock: object) => Promise<unknown>) => operation({}) },
     });
-    await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow('unavailable');
-    expect(worker.terminate).toHaveBeenCalledOnce();
+    await expect(run({ signal: new AbortController().signal })).rejects.toThrow('unavailable');
+    await vi.waitFor(() => expect(worker.terminate).toHaveBeenCalledOnce());
+    expect(calls.download).not.toHaveBeenCalled();
     expect(privacyFetchStream).not.toHaveBeenCalled();
   });
 
-  it('terminates after bounded pause cleanup even when a writer becomes unresponsive', async () => {
-    vi.useFakeTimers();
+  it('allows a bounded checkpoint grace period before terminating an unresponsive transfer', async () => {
     const entered = Promise.withResolvers<void>();
-    calls.pause = () => {
+    calls.download.mockImplementation(() => {
       entered.resolve();
       return new Promise(() => {});
-    };
-    const operation = downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
-    const rejection = expect(operation).rejects.toThrow('cleanup timed out');
+    });
+    const controller = new AbortController();
+    const task = run({ signal: controller.signal });
+    const rejected = expect(task).rejects.toThrow('Download paused');
     await entered.promise;
-    await vi.advanceTimersByTimeAsync(3000);
-    await rejection;
+    vi.useFakeTimers();
+    controller.abort();
+    expect(calls.cancel).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(worker.terminate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
     expect(worker.terminate).toHaveBeenCalledOnce();
-    expect(calls.release).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('terminates even when transport release never acknowledges', async () => {
+    const releasing = Promise.withResolvers<void>();
+    calls.release.mockImplementation(() => {
+      releasing.resolve();
+      return new Promise(() => {});
+    });
+    vi.useFakeTimers();
+    const task = run({ signal: new AbortController().signal });
+    const rejected = expect(task).rejects.toThrow('timed out');
+    await releasing.promise;
+    await vi.advanceTimersByTimeAsync(3000);
+    await rejected;
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 });

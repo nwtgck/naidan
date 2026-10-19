@@ -1,3 +1,4 @@
+import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostModelSelector } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { hostDownloadMarker, hostDownloadMarkerPath } from './host-download-marker';
 import { isHostDestination, hostModelRoot, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
@@ -305,7 +306,7 @@ export async function deleteRepository({ repository, plan, destination }: { repo
       }
     }
   }
-  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).flatMap(file => isHostDestination(destination) ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])] : (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path);
+  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).flatMap(file => isHostDestination(destination) ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])] : withModelFileMarkers({ paths: (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path) });
   const result = await executeDeletionPlan({ folder: current, plan, selectedPaths });
   switch (result) {
   case 'changed': return result;

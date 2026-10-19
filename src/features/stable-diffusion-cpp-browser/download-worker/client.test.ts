@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { downloadImageRecipeInWorker } from './client';
 import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 const remote = vi.hoisted(() => ({ download: vi.fn(), cancel: vi.fn(), release: vi.fn(), wrap: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: remote.wrap, releaseWorkerRemote: remote.release, workerProxy: ({ value }: { value: unknown }) => value }));
+vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: remote.wrap, releaseWorkerRemote: remote.release, workerProxy: ({ value }: { value: unknown }) => value, workerCapability: ({ value }: { value: unknown }) => value }));
 let worker: EventTarget & { terminate: ReturnType<typeof vi.fn> };
 const construct = vi.fn();
 
@@ -62,6 +62,7 @@ it('catches worker startup failures instead of leaking it', async () => {
 it('terminates a crashed worker without waiting indefinitely for its RPC', async () => {
   remote.download.mockImplementation(() => new Promise(() => undefined));
   const running = downloadImageRecipeInWorker({ files, signal: new AbortController().signal, onProgress() {} });
+  await vi.waitFor(() => expect(remote.download).toHaveBeenCalled());
   worker.dispatchEvent(new Event('error'));
   await expect(running).rejects.toThrow('Worker failed');
   expect(worker.terminate).toHaveBeenCalledOnce();
@@ -73,6 +74,7 @@ it('allows graceful checkpointing on pause before applying the bounded terminati
   const controller = new AbortController();
   const running = downloadImageRecipeInWorker({ files, signal: controller.signal, onProgress() {} });
   const result = expect(running).rejects.toThrow('Download paused');
+  await Promise.resolve();
   controller.abort();
   expect(remote.cancel).toHaveBeenCalledOnce();
   expect(worker.terminate).not.toHaveBeenCalled();

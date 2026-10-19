@@ -1,3 +1,4 @@
+import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
 import { resolveHostModel } from './host-model-store';
 import { parseHostModelReference, hostModelRoot, withDestinationLock } from './model-destination';
@@ -151,6 +152,8 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
     // Select GGUF files and our transient marker; shared metadata is not ours.
     selectedPaths = files.filter(file => (file.path === pendingName || /\.gguf$/i.test(file.path)) && !projectors.includes(file.path)).map(file => file.path);
   }
+  selectedPaths = selectedPaths ? withModelFileMarkers({ paths: selectedPaths }) : undefined;
+  projectors = withModelFileMarkers({ paths: projectors });
   if (includeSharedProjector({ choice: sharedProjector })) {
     selectedPaths?.push(...projectors);
   }

@@ -1,3 +1,6 @@
+import { createDownloadManager, getDownloadManager, type DownloadExecution, type DownloadManager } from '@/logic/download-manager';
+import { downloadFilesForDisplay } from '@/logic/hugging-face-download/presentation';
+import { hostModelHandles } from '@/00-storage/service/host-model-handles';
 import { awaitInspection } from './logic/inspection-abort';
 import { inspectImageInventory } from './inventory-worker/client';
 import type { InspectionProgress } from './inventory-worker/types';
@@ -20,7 +23,7 @@ import type { ImageGenerationModelFile } from '@/01-models/image-generation-hist
 import type { BrowserImageModelLocation, BrowserImageModelSelection } from '@/01-models/types';
 import type { ImageLoraSelection } from './lora-form';
 
-type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader };
+type Dependencies = { list: typeof listImageRepositories, scan: typeof scanImageRepositories, import: typeof importImageRepository, download: ImageRecipeDownloader, manager?: DownloadManager };
 type InventoryRefreshResult = 'scanned' | 'blocked' | 'failed';
 const defaultDependencies: Pick<Dependencies, 'import' | 'download'> = { import: importImageRepository, download: downloadImageRecipeInWorker };
 
@@ -56,6 +59,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   dependencies: Dependencies | undefined,
 }): ImageLibraryView {
   const deps = dependencies ?? defaultDependencies;
+  const manager = dependencies?.manager ?? (dependencies ? createDownloadManager() : getDownloadManager());
   const inventory = shallowRef<ModelInventory>({ candidates: [], issues: [] });
   let inventoryReady = false;
   const inspectedMissingFiles = new Set<string>();
@@ -80,7 +84,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   type DownloadJob = {
     id: string, key: string, target: DownloadTarget, files: readonly ImageDownloadSource[],
     destinationId: string, destinationName: string, label: string,
-    authorization: Promise<{ destination: ImageDownloadDestination | undefined, error: unknown }>,
+    authorization: Promise<{ destination: ImageDownloadDestination | undefined, error: unknown, root: FileSystemDirectoryHandle | undefined }>,
+    managedId: number | undefined, boundRoot: FileSystemDirectoryHandle | undefined,
     state: 'queued' | 'downloading' | 'paused' | 'failed' | 'incomplete' | 'complete', error: string,
     completion: ReturnType<typeof Promise.withResolvers<void>>, selectionVersion: number, selectWhenComplete: boolean,
   };
@@ -96,7 +101,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     }
   }));
-  let currentJob: DownloadJob | undefined, processing = false, queuePaused = false, jobSequence = 0, selectionVersion = 0;
+  let currentJob: DownloadJob | undefined, jobSequence = 0, selectionVersion = 0;
   function publishJobs(): void {
     jobs.value = [...jobs.value];
   }
@@ -123,18 +128,13 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const downloadLoraId = computed(() => downloadPresentation.value.loraId);
   const downloadSelections = computed<ImageRecipeSelection>(() => downloadPresentation.value.selections);
   let recipeIntent: { family: 'z-image' | 'qwen-image-2.1' | 'sd-checkpoint' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image', files: ImageRecipeFile[], destinationId: string } | undefined;
-  const downloading = computed(() => activeDownload.value !== undefined);
+  const downloading = computed(() => activeDownload.value !== undefined || jobs.value.some(job => job.state === 'queued' || job.state === 'downloading'));
   let hostPublication: AbortController | undefined;
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
     added: undefined,
     async stopDownload({ id }) {
-      if (downloadCompletion?.directoryId !== id) {
-        return;
-      }
-      const completed = downloadCompletion.promise;
-      activeDownload.value?.abort();
-      await completed;
+      await manager.stopDirectory({ directoryId: id });
     },
     async changed() {
       hostPublication?.abort();
@@ -187,7 +187,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       // Only a committed unlink removes queued work. Failed settings writes keep
       // the original root and its paused/retryable transfer intact.
       for (const job of [...jobs.value]) {
-        if (job.destinationId !== 'opfs' && !ids.includes(job.destinationId)) {
+        if (job.destinationId !== 'opfs' && previousIds.includes(job.destinationId) && !ids.includes(job.destinationId)) {
           removeQueuedDownload({ id: job.id });
         }
       }
@@ -511,10 +511,18 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     await enqueueDownload({ target: { kind: 'lora', id }, files: [entry.source], label: entry.title });
   }
   function authorizeDownload({ destinationId }: { destinationId: string }): DownloadJob['authorization'] {
-    // Request host permission in the explicit click, not when the FIFO eventually
-    // reaches this entry. The destination is immutable even if the select changes.
+    // Capture physical identity at the explicit action, before waiting in the queue.
+    const root = host && destinationId !== 'opfs'
+      ? hostModelHandles.get({ id: toHostModelDirectoryId({ raw: destinationId }) }).then(handle => ({ handle }), error => ({ error }))
+      : Promise.resolve(undefined);
     const permission = host ? host.downloadDestination({ id: destinationId }) : Promise.resolve<ImageDownloadDestination>({ kind: 'opfs' });
-    return permission.then(destination => ({ destination, error: undefined }), error => ({ destination: undefined, error }));
+    return permission.then(async destination => {
+      const captured = await root;
+      if (captured && 'error' in captured) {
+        throw captured.error;
+      }
+      return { destination, error: undefined, root: captured?.handle };
+    }).catch(error => ({ destination: undefined, error, root: undefined }));
   }
   async function enqueueDownload({ target, files, label }: { target: DownloadTarget, files: readonly ImageDownloadSource[], label: string }): Promise<void> {
     const destinationId = hostDirectories.destination.value;
@@ -531,6 +539,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       destinationName: destinationId === 'opfs' ? 'OPFS' : hostDirectories.entries.value.find(entry => entry.id === destinationId)?.name ?? destinationId,
       label,
       authorization: authorizeDownload({ destinationId }),
+      managedId: undefined,
+      boundRoot: undefined,
       state: 'queued',
       error: '',
       completion: Promise.withResolvers<void>(),
@@ -542,23 +552,31 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     await job.completion.promise;
   }
   async function processDownloads(): Promise<void> {
-    if (processing || queuePaused || disposed || downloadsBlocked() || hostDirectories.busy.value || importing.value) {
-      return;
-    }
-    processing = true;
-    try {
-      while (!queuePaused && !disposed && !downloadsBlocked() && !hostDirectories.busy.value && !importing.value) {
-        const job = jobs.value.find(job => job.state === 'queued');
-        if (!job) {
-          break;
-        }
-        currentJob = job;
-        await downloadFiles({ job });
+    for (const job of jobs.value) {
+      if (job.state !== 'queued' || job.managedId !== undefined) {
+        continue;
+      }
+      const destination: ImageDownloadDestination = job.destinationId === 'opfs' ? { kind: 'opfs' } : { kind: 'host', directoryId: job.destinationId };
+      const managed = manager.enqueue({
+        key: `image:${job.key}`,
+        title: job.label,
+        category: 'image-model',
+        destination,
+        files: downloadFilesForDisplay({ files: job.files, destination, rootName: job.destinationName }),
+        onResume: () => {
+          job.authorization = authorizeDownload({ destinationId: job.destinationId });
+        },
+        run: async ({ execution }) => {
+          currentJob = job;
+          await downloadFiles({ job, execution });
+        },
+      });
+      job.managedId = managed.id;
+      const previous = manager.snapshot().find(entry => entry.id === managed.id);
+      const done = previous?.status === 'paused' || previous?.status === 'failed' ? manager.resume({ id: managed.id }) ?? managed.done : managed.done;
+      void done.then(() => {
+        const removed = !jobs.value.includes(job);
         job.completion.resolve();
-        if (!jobs.value.includes(job)) {
-          currentJob = undefined;
-          clearDownloadIntent();
-        }
         switch (job.state) {
         case 'complete': jobs.value = jobs.value.filter(entry => entry !== job);
           break;
@@ -568,11 +586,75 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           throw new Error(String(exhaustive));
         }
         }
-      }
-    } finally {
-      processing = false;
+        if (removed && currentJob === job) {
+          currentJob = undefined;
+          clearDownloadIntent();
+        }
+      });
     }
   }
+  const completedSeen = new Set(manager.snapshot().filter(job => job.status === 'complete').map(job => job.id));
+  const unsubscribeDownloads = manager.subscribe({
+    listener: () => {
+      if (disposed) {
+        return;
+      }
+      const snapshot = manager.snapshot();
+      const present = new Set(snapshot.map(entry => entry.id));
+      // Removal is published only after the manager has drained the writer. A
+      // panel cancellation must disappear from an already-open library as well.
+      jobs.value = jobs.value.filter(job => {
+        if (job.managedId === undefined || present.has(job.managedId)) {
+          return true;
+        }
+        job.completion.resolve();
+        if (currentJob === job) {
+          currentJob = undefined;
+          clearDownloadIntent();
+        }
+        return false;
+      });
+      for (const managed of snapshot) {
+        const job = jobs.value.find(entry => entry.managedId === managed.id);
+        if (job) {
+          switch (managed.status) {
+          case 'queued': job.state = 'queued';
+            break;
+          case 'resolving': case 'downloading': case 'pausing': case 'cancelling': job.state = 'downloading';
+            break;
+          case 'paused': case 'failed': job.state = managed.status;
+            break;
+          case 'complete':
+            switch (job.state) {
+            case 'incomplete': break;
+            case 'complete': case 'queued': case 'downloading': case 'paused': case 'failed': job.state = 'complete';
+              break;
+            default: {
+              const exhaustive: never = job.state;
+              throw new Error(String(exhaustive));
+            }
+            }
+            break;
+          case 'cancelled': break;
+          default: {
+            const exhaustive: never = managed.status;
+            throw new Error(String(exhaustive));
+          }
+          }
+        }
+        if (managed.category === 'image-model' && managed.status === 'complete' && !completedSeen.has(managed.id)) {
+          completedSeen.add(managed.id);
+          // A reopened view can observe a download owned by an older, closed view.
+          if (currentJob?.managedId !== managed.id) {
+            void refresh().catch(error => {
+              failure.value = error instanceof Error ? error.message : String(error);
+            });
+          }
+        }
+      }
+      publishJobs();
+    },
+  });
   function completeDownload({ job }: { job: DownloadJob }): boolean {
     const { target, destinationId } = job;
     switch (target.kind) {
@@ -591,9 +673,14 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     }
   }
-  async function downloadFiles({ job }: { job: DownloadJob }): Promise<void> {
+  async function downloadFiles({ job, execution }: { job: DownloadJob, execution: DownloadExecution }): Promise<void> {
     const { target, files, destinationId } = job;
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    execution.signal.addEventListener('abort', abort, { once: true });
+    if (execution.signal.aborted) {
+      abort();
+    }
     activeDownload.value = controller;
     const completion = Promise.withResolvers<void>();
     downloadCompletion = { promise: completion.promise, directoryId: destinationId === 'opfs' ? undefined : destinationId };
@@ -608,8 +695,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     job.error = '';
     publishJobs();
     let transferred = false;
+    let transferFailure: { error: unknown } | undefined;
     try {
-      const authorization = await job.authorization;
+      const authorization = await awaitInspection({ task: job.authorization, signal: controller.signal });
       controller.signal.throwIfAborted();
       if (!authorization.destination) {
         throw authorization.error;
@@ -617,19 +705,26 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (host && destinationId !== 'opfs' && !host.registrations().some(entry => entry.id === destinationId)) {
         throw new Error('Linked model directory is unavailable');
       }
+      if (job.boundRoot && authorization.root && !await job.boundRoot.isSameEntry(authorization.root)) {
+        throw new Error('Linked model folder changed after this download was queued');
+      }
+      job.boundRoot ??= authorization.root;
+      execution.setFiles({ files: downloadFilesForDisplay({ files, destination: authorization.destination, rootName: job.boundRoot?.name }) });
       await deps.download({
         files,
+        expectedRoot: job.boundRoot,
         destination: authorization.destination,
         signal: controller.signal,
         onProgress: ({ progress }) => {
+          execution.reportFile({ index: progress.index, patch: { size: progress.fileTotal || undefined, completed: progress.fileCompleted, state: progress.phase } });
           if (!disposed && !controller.signal.aborted) {
             downloadProgress.value = progress;
           }
         },
       });
-      controller.signal.throwIfAborted();
       transferred = true;
     } catch (error) {
+      transferFailure = { error };
       if (!disposed) {
         downloadState.value = controller.signal.aborted ? 'paused' : 'failed';
         job.state = downloadState.value;
@@ -661,7 +756,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         }
         if (transferred) {
           const available = scanned === 'scanned' && completeDownload({ job });
-          job.state = controller.signal.aborted ? 'paused' : available ? 'complete' : 'incomplete';
+          job.state = available ? 'complete' : 'incomplete';
           downloadState.value = job.state;
         }
         if (!job.error) {
@@ -670,7 +765,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           failure.value = job.error;
         }
       }
-      if (controller.signal.aborted && jobs.value.includes(job)) {
+      if (transferred && (controller.signal.aborted || disposed)) {
+        job.state = downloadState.value = 'complete';
+      } else if (controller.signal.aborted && jobs.value.includes(job)) {
         job.state = downloadState.value = 'paused';
       }
       if (activeDownload.value === controller) {
@@ -681,6 +778,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (downloadCompletion?.promise === completion.promise) {
         downloadCompletion = undefined;
       }
+      execution.signal.removeEventListener('abort', abort);
+    }
+    if (transferFailure) {
+      throw transferFailure.error;
     }
   }
   function resetDownloadIntent(): void {
@@ -699,18 +800,31 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     if (!job || downloadsBlocked() || disposed || importing.value || job.state === 'queued' || job.state === 'downloading') {
       return;
     }
-    job.authorization = authorizeDownload({ destinationId: job.destinationId });
     job.state = 'queued';
     job.error = '';
     job.completion = Promise.withResolvers<void>();
-    queuePaused = false;
     publishJobs();
-    void processDownloads();
+    if (job.managedId !== undefined) {
+      const retry = manager.resume({ id: job.managedId });
+      if (retry) {
+        await retry;
+        job.completion.resolve();
+      } else {
+        // The files may be complete while the model composition is incomplete.
+        // An explicit retry is a new transfer request, not revived completion.
+        job.managedId = undefined;
+        job.authorization = authorizeDownload({ destinationId: job.destinationId });
+        void processDownloads();
+      }
+    } else {
+      void processDownloads();
+    }
     await job.completion.promise;
   }
   async function resumeDownload(): Promise<void> {
-    if (currentJob) {
-      await retryQueuedDownload({ id: currentJob.id });
+    const resumable = currentJob && ['paused', 'failed', 'incomplete'].includes(currentJob.state) ? currentJob : jobs.value.find(job => ['paused', 'failed', 'incomplete'].includes(job.state));
+    if (resumable) {
+      await retryQueuedDownload({ id: resumable.id });
     }
   }
   function removeQueuedDownload({ id }: { id: string }): void {
@@ -719,9 +833,13 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return;
     }
     jobs.value = jobs.value.filter(entry => entry !== job);
-    job.completion.resolve();
+    if (currentJob !== job || !activeDownload.value) {
+      job.completion.resolve();
+    }
+    if (job.managedId !== undefined) {
+      void manager.remove({ id: job.managedId });
+    }
     if (currentJob === job) {
-      queuePaused = false;
       if (activeDownload.value) {
         activeDownload.value.abort();
       } else {
@@ -732,8 +850,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     void processDownloads();
   }
   function cancelDownload(): void {
-    queuePaused = true;
-    activeDownload.value?.abort();
+    const job = activeDownload.value ? currentJob : jobs.value.find(entry => entry.state === 'queued');
+    if (job?.managedId !== undefined) {
+      manager.pause({ id: job.managedId });
+    }
   }
   async function waitForEditor({ signal }: { signal: AbortSignal }): Promise<void> {
     if (!blocked() || signal.aborted || disposed) {
@@ -1277,16 +1397,12 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   }
   onScopeDispose(() => {
     disposed = true;
-    for (const job of jobs.value) {
-      if (job !== currentJob) {
-        job.completion.resolve();
-      }
-    }
-    jobs.value = [];
+    unsubscribeDownloads();
     cancelScan();
     activeImport.value?.abort();
-    activeDownload.value?.abort();
     hostPublication?.abort();
+    // Download tasks belong to the shared manager, including queued work.
+    // Closing this view cancels only its reads and rendering, never file writes.
   });
   return {
     captureModelSelection,

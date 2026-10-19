@@ -1195,6 +1195,40 @@ import { MessageThinking__hide_thought_process } from '@/strings/messages/Messag
 import { MessageThinking__show_thought_process } from '@/strings/messages/MessageThinking__show_thought_process/pt-BR';
 import { MessageThinking__thinking } from '@/strings/messages/MessageThinking__thinking/pt-BR';
 import { MessageThinking__thought_process } from '@/strings/messages/MessageThinking__thought_process/pt-BR';
+import { ModelDownloads__activity } from '@/strings/messages/ModelDownloads__activity/pt-BR';
+import { ModelDownloads__back_to_list } from '@/strings/messages/ModelDownloads__back_to_list/pt-BR';
+import { ModelDownloads__cancel } from '@/strings/messages/ModelDownloads__cancel/pt-BR';
+import { ModelDownloads__cancelling } from '@/strings/messages/ModelDownloads__cancelling/pt-BR';
+import { ModelDownloads__checking } from '@/strings/messages/ModelDownloads__checking/pt-BR';
+import { ModelDownloads__clear_completed } from '@/strings/messages/ModelDownloads__clear_completed/pt-BR';
+import { ModelDownloads__close } from '@/strings/messages/ModelDownloads__close/pt-BR';
+import { ModelDownloads__complete } from '@/strings/messages/ModelDownloads__complete/pt-BR';
+import { ModelDownloads__completed_count } from '@/strings/messages/ModelDownloads__completed_count/pt-BR';
+import { ModelDownloads__destination } from '@/strings/messages/ModelDownloads__destination/pt-BR';
+import { ModelDownloads__details } from '@/strings/messages/ModelDownloads__details/pt-BR';
+import { ModelDownloads__download_status } from '@/strings/messages/ModelDownloads__download_status/pt-BR';
+import { ModelDownloads__download_url } from '@/strings/messages/ModelDownloads__download_url/pt-BR';
+import { ModelDownloads__downloading } from '@/strings/messages/ModelDownloads__downloading/pt-BR';
+import { ModelDownloads__downloads } from '@/strings/messages/ModelDownloads__downloads/pt-BR';
+import { ModelDownloads__failed } from '@/strings/messages/ModelDownloads__failed/pt-BR';
+import { ModelDownloads__file } from '@/strings/messages/ModelDownloads__file/pt-BR';
+import { ModelDownloads__file_details } from '@/strings/messages/ModelDownloads__file_details/pt-BR';
+import { ModelDownloads__files } from '@/strings/messages/ModelDownloads__files/pt-BR';
+import { ModelDownloads__history_is_session_only } from '@/strings/messages/ModelDownloads__history_is_session_only/pt-BR';
+import { ModelDownloads__image_model } from '@/strings/messages/ModelDownloads__image_model/pt-BR';
+import { ModelDownloads__language_model } from '@/strings/messages/ModelDownloads__language_model/pt-BR';
+import { ModelDownloads__linked_folder } from '@/strings/messages/ModelDownloads__linked_folder/pt-BR';
+import { ModelDownloads__no_pending_downloads } from '@/strings/messages/ModelDownloads__no_pending_downloads/pt-BR';
+import { ModelDownloads__pause } from '@/strings/messages/ModelDownloads__pause/pt-BR';
+import { ModelDownloads__paused } from '@/strings/messages/ModelDownloads__paused/pt-BR';
+import { ModelDownloads__pausing } from '@/strings/messages/ModelDownloads__pausing/pt-BR';
+import { ModelDownloads__preparing } from '@/strings/messages/ModelDownloads__preparing/pt-BR';
+import { ModelDownloads__queue_position } from '@/strings/messages/ModelDownloads__queue_position/pt-BR';
+import { ModelDownloads__resume } from '@/strings/messages/ModelDownloads__resume/pt-BR';
+import { ModelDownloads__retry } from '@/strings/messages/ModelDownloads__retry/pt-BR';
+import { ModelDownloads__unknown_size } from '@/strings/messages/ModelDownloads__unknown_size/pt-BR';
+import { ModelDownloads__verifying } from '@/strings/messages/ModelDownloads__verifying/pt-BR';
+import { ModelDownloads__waiting } from '@/strings/messages/ModelDownloads__waiting/pt-BR';
 import { ModelSelector__clear_filter } from '@/strings/messages/ModelSelector__clear_filter/pt-BR';
 import { ModelSelector__filter_models } from '@/strings/messages/ModelSelector__filter_models/pt-BR';
 import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inherit/pt-BR';
@@ -4072,6 +4106,40 @@ export const catalog = {
   MessageThinking__show_thought_process,
   MessageThinking__thinking,
   MessageThinking__thought_process,
+  ModelDownloads__activity,
+  ModelDownloads__back_to_list,
+  ModelDownloads__cancel,
+  ModelDownloads__cancelling,
+  ModelDownloads__checking,
+  ModelDownloads__clear_completed,
+  ModelDownloads__close,
+  ModelDownloads__complete,
+  ModelDownloads__completed_count,
+  ModelDownloads__destination,
+  ModelDownloads__details,
+  ModelDownloads__download_status,
+  ModelDownloads__download_url,
+  ModelDownloads__downloading,
+  ModelDownloads__downloads,
+  ModelDownloads__failed,
+  ModelDownloads__file,
+  ModelDownloads__file_details,
+  ModelDownloads__files,
+  ModelDownloads__history_is_session_only,
+  ModelDownloads__image_model,
+  ModelDownloads__language_model,
+  ModelDownloads__linked_folder,
+  ModelDownloads__no_pending_downloads,
+  ModelDownloads__pause,
+  ModelDownloads__paused,
+  ModelDownloads__pausing,
+  ModelDownloads__preparing,
+  ModelDownloads__queue_position,
+  ModelDownloads__resume,
+  ModelDownloads__retry,
+  ModelDownloads__unknown_size,
+  ModelDownloads__verifying,
+  ModelDownloads__waiting,
   ModelSelector__clear_filter,
   ModelSelector__filter_models,
   ModelSelector__inherit,
