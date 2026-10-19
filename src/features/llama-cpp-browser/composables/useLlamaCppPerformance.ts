@@ -96,6 +96,12 @@ export function useLlamaCppPerformance() {
       current.value = trial ? { ...trial } : undefined;
     },
   });
+  const canInterruptCurrent = computed(() => !!current.value && running.value && !stopping.value
+    && runner.canInterruptCurrent({ trialId: current.value.id }));
+  const interruptionPending = computed(() => running.value && snapshot.value?.trials.some(trial => trial.interruption?.recovery === 'pending') === true);
+  function interruptCurrent({ trialId }: { trialId: string }): boolean {
+    return !disposed && running.value && !stopping.value && runner.interruptCurrent({ trialId });
+  }
   const visibilityChanged = () => {
     pageHidden.value = document.hidden;
     runner.visibilityChanged();
@@ -355,6 +361,9 @@ export function useLlamaCppPerformance() {
     document.removeEventListener('visibilitychange', visibilityChanged);
   });
   return {
+    canInterruptCurrent,
+    interruptionPending,
+    interruptCurrent,
     mode,
     profilingUnavailableReason,
     profilingSupported,

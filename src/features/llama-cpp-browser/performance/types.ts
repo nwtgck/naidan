@@ -101,12 +101,23 @@ export const planSchema = z.object({
     seen.set(step.id, step);
   }
 });
+const interruptionSchema = z.object({
+  reason: z.literal('user-skip'),
+  // Both clocks are relative to the interrupted trial, not the complete run.
+  requestedMs: milliseconds,
+  settledMs: milliseconds.optional(),
+  recovery: z.enum(['pending', 'new-scope', 'not-needed', 'stopped', 'failed']),
+}).strict();
 export const trialSchema = z.object({
   id: idSchema,
   stepId: idSchema,
   modelIndex: z.number().int().nonnegative(),
   lane: measurementLaneSchema.optional(),
-  status: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'skipped']),
+  status: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'skipped', 'interrupted']),
+  interruption: interruptionSchema.optional(),
+  // Segment is local to model/lane. Omitted in older archives (segment zero).
+  runtimeSegment: z.number().int().nonnegative().optional(),
+  skipReason: z.enum(['dependency-interrupted', 'dependency-runtime-reset']).optional(),
   startedAt: z.string(),
   startedMs: milliseconds.optional(),
   elapsedMs: milliseconds.optional(),
@@ -126,10 +137,11 @@ export const trialSchema = z.object({
   summary: diagnosticSchema.optional(),
   memoryDiagnostics: memoryDiagnosticsSchema.optional(),
   error: z.string().optional(),
-  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete', 'gpu-profile-missing', 'gpu-profile-incomplete'])),
-  exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented'])),
+  warnings: z.array(z.enum(['incomplete-parent', 'placement-layout-only', 'placement-missing', 'placement-incomplete', 'gpu-profile-missing', 'gpu-profile-incomplete', 'runtime-restarted'])),
+  exclusion: z.array(z.enum(['page-hidden', 'missing-summary', 'incomplete-summary', 'unexpected-reuse', 'incomplete-output', 'failed', 'instrumented', 'interrupted', 'dependency-unavailable'])),
 }).strict();
 const intervalSchema = z.object({
+  runtimeSegment: z.number().int().nonnegative().optional(),
   modelIndex: z.number().int().nonnegative(),
   lane: measurementLaneSchema.optional(),
   stepId: idSchema.optional(),
@@ -137,14 +149,15 @@ const intervalSchema = z.object({
   startedMs: milliseconds,
   elapsedMs: milliseconds,
   hiddenAtStart: z.boolean(),
-  outcome: z.enum(['completed', 'failed', 'cancelled']),
+  outcome: z.enum(['completed', 'failed', 'cancelled', 'interrupted']),
 }).strict();
 export const snapshotSchema = z.object({
   execution: z.object({
     startedAt: z.string(),
     finishedAt: z.string().optional(),
     elapsedMs: milliseconds.optional(),
-    intervals: z.array(intervalSchema).max(2048),
+    // At most five orchestration intervals per planned step after repeated skips.
+    intervals: z.array(intervalSchema).max(8192),
     visibility: z.array(z.object({ atMs: milliseconds, hidden: z.boolean() }).strict()).max(256),
     droppedVisibilityEvents: z.number().int().nonnegative(),
   }).strict().optional(),

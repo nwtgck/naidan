@@ -12,7 +12,7 @@ import type { PerformanceTrial } from '@/features/llama-cpp-browser/performance/
 const props = defineProps<{ isOpen: boolean, defaultModel: string | undefined }>();
 const emit = defineEmits<{ close: [] }>();
 const view = useLlamaCppPerformance();
-const { mode, profilingUnavailableReason, profilingSupported, modelDraft, modelInputError, diagnostics, models, selected, query, repeats, maxTokens, timeoutMinutes, notes, profile, running, stopping, exporting,
+const { canInterruptCurrent, interruptionPending, mode, profilingUnavailableReason, profilingSupported, modelDraft, modelInputError, diagnostics, models, selected, query, repeats, maxTokens, timeoutMinutes, notes, profile, running, stopping, exporting,
   loading, error, downloadStarted, pageHidden, snapshot, current, preview, filteredModels, otherWork, canStart, callCount, selectedModels } = view;
 const measurementProfile = computed({
   get: () => {
@@ -79,6 +79,15 @@ function stepFor({ trial }: { trial: PerformanceTrial }) {
 
 function numberText({ value }: { value: number | undefined }): string {
   return value === undefined ? '—' : value.toFixed(1);
+}
+
+function interruptDisplayed({ event }: { event: MouseEvent }): void {
+  // Use the rendered button's identity, not a reactive current value that may
+  // already refer to the next attempt before Vue flushes its DOM update.
+  const target = event.currentTarget;
+  if (target instanceof HTMLButtonElement && target.dataset.trialId) {
+    view.interruptCurrent({ trialId: target.dataset.trialId });
+  }
 }
 
 function close(): void {
@@ -200,10 +209,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
         <p v-if="otherWork" role="status" tw-class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{{ lazyStrings.llamaCppPerformance__wait_for_other_work() }}</p>
         <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__keep_page_visible() }}</p>
         <p v-if="error" role="alert" tw-class="break-words rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-100">{{ error }}</p>
+        <p v-if="running" data-testid="llama-performance-interruption-help" tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__interrupt_current_help() }}</p>
         <section v-if="snapshot" tw-class="space-y-3 border-t border-gray-200 pt-4 dark:border-gray-800">
           <div role="status" aria-live="polite" tw-class="flex flex-wrap justify-between gap-2 text-sm">
             <span>{{ lazyStrings.llamaCppPerformance__completed_trials() }}: {{ finishedCount }} / {{ snapshot.plan.steps.length }}</span>
             <span v-if="stopping">{{ lazyStrings.llamaCppPerformance__stopping() }}</span>
+            <span v-else-if="interruptionPending" data-testid="llama-performance-interrupting">{{ lazyStrings.llamaCppPerformance__interrupting_and_preparing_next() }}</span>
             <span v-else-if="running && pageHidden">{{ lazyStrings.llamaCppPerformance__waiting_for_visible_page() }}</span>
           </div>
           <template v-if="current && currentStep">
@@ -232,6 +243,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
       </main>
       <footer tw-class="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 p-4 dark:border-gray-800">
         <span v-if="downloadStarted" role="status" tw-class="mr-auto text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__download_requested() }}</span>
+        <button v-if="running" :key="current?.id ?? 'inactive-trial'" type="button" :data-trial-id="current?.id" :disabled="!canInterruptCurrent" data-testid="llama-performance-interrupt" tw-class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium disabled:opacity-50 dark:border-gray-700" @click="interruptDisplayed({ event: $event })">{{ lazyStrings.llamaCppPerformance__interrupt_current_and_continue() }}</button>
         <button v-if="running" type="button" :disabled="stopping" data-testid="llama-performance-stop" tw-class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" @click="view.stop">{{ stopping ? lazyStrings.llamaCppPerformance__stopping() : lazyStrings.llamaCppPerformance__stop_measurement() }}</button>
         <button v-else type="button" :disabled="!canStart" data-testid="llama-performance-start" :tw-class="snapshot ? 'rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium disabled:opacity-40 dark:border-gray-700' : 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40'" @click="view.start">{{ snapshot ? lazyStrings.llamaCppPerformance__replace_results_and_measure() : lazyStrings.llamaCppPerformance__start_measurement() }}</button>
         <button v-if="snapshot" type="button" :disabled="running || exporting" data-testid="llama-performance-download" tw-class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" @click="view.download">{{ exporting ? lazyStrings.llamaCppPerformance__creating_zip() : lazyStrings.llamaCppPerformance__save_zip() }}</button>

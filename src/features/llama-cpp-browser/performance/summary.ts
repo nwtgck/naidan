@@ -26,7 +26,7 @@ function median({ values }: { values: number[] }): number | undefined {
 /** Partition by effective context/batch, finish reason and actual work. Never
  * average an allocation fallback or a shortened answer into another condition. */
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
-  const groups = new Map<string, { modelIndex: number, scenario: string, position: string, profile: string, contextTokens: number | undefined,
+  const groups = new Map<string, { modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
     batchTokens: number | undefined, finishReason: string | undefined, parentFinishReason: string | undefined, promptTokens: number | undefined,
     reusedTokens: number | undefined, generatedTokens: number | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
@@ -37,6 +37,8 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     const metrics = trial.summary?.performance;
     const condition = {
       modelIndex: trial.modelIndex,
+      runtimeSegment: trial.runtimeSegment ?? 0,
+      runtimeRestarted: trial.warnings.includes('runtime-restarted'),
       scenario: step.scenario,
       position: step.position,
       profile: trial.options.profile,
@@ -73,6 +75,9 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
 function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial, position: 'before' | 'after' }) {
   const events = trial.summary?.performance?.preparationEvents;
   const reasons: string[] = [], uncertainties: string[] = [];
+  if (trial.warnings.includes('runtime-restarted')) {
+    reasons.push(`${position}-runtime-restarted`);
+  }
   if (events === undefined || !events.some(event => event.event === 'model-reused')) {
     uncertainties.push(`${position}-model-reuse-unconfirmed`);
   }
@@ -111,6 +116,9 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       if (before.exclusion.length || after.exclusion.length || isGpuProfileTrial({ trial: before, snapshot }) || isGpuProfileTrial({ trial: after, snapshot })) {
         reasons.push('excluded-attempt');
       }
+      if ((before.runtimeSegment ?? 0) !== (after.runtimeSegment ?? 0)) {
+        reasons.push('different-runtime-segment');
+      }
       const a = before.summary?.performance, b = after.summary?.performance;
       if (!a || !b) {
         reasons.push('missing-summary');
@@ -140,6 +148,8 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       modelIndex: beforeStep.modelIndex,
       repetition: beforeStep.repetition,
       beforeAttempt: before?.id,
+      beforeRuntimeSegment: before?.runtimeSegment,
+      afterRuntimeSegment: after?.runtimeSegment,
       afterAttempt: after?.id,
       meaning: 'chronological-same-workload-comparison-not-a-causal-estimate',
       reasons,

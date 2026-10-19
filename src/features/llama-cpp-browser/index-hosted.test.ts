@@ -1,3 +1,5 @@
+import { createPerformanceRunner } from './performance/runner';
+import { performancePlan, performanceEnvironment, performanceReport } from './test-utils/performance.test-support';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
@@ -980,5 +982,72 @@ describe('stored chat allocation targets', () => {
     vi.mocked(storage.loadSettings).mockResolvedValue(null);
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('trial interruption through the unchanged real performance service', () => {
+  it.each([true, false])('retires the interrupted owner and reacquires without reusing a poisoned scope (canReuse=%s)', async canReuse => {
+    const plan = performancePlan({ models: 2 });
+    factory.mockImplementation(() => {
+      worker.canReuse.mockReturnValue(true);
+      return { ...worker };
+    });
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _stop = {
+      [Symbol.dispose]() {
+        runner.stop();
+      },
+    };
+    worker.generate.mockImplementationOnce(async ({ signal, onEvent, onSummary }) => {
+      await onEvent({ event: { type: 'text', text: 'partial' } });
+      expect(runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id })).toBe(true);
+      expect(signal?.aborted).toBe(true);
+      worker.canReuse.mockReturnValue(canReuse);
+      onSummary?.({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }).mockImplementation(async ({ onEvent, onSummary }) => {
+      worker.canReuse.mockReturnValue(true);
+      await onEvent({ event: { type: 'text', text: 'answer' } });
+      onSummary?.({ diagnostic: performanceReport() });
+      return { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await runner.start({ plan, environment: performanceEnvironment() });
+    const result = runner.snapshot()!;
+    expect(result.modelErrors).toEqual([]);
+    expect(result.trials).toHaveLength(10);
+    expect(result.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial', interruption: { recovery: 'new-scope' } });
+    expect(result.trials.slice(1).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(factory).toHaveBeenCalledTimes(3);
+    expect(worker.dispose).toHaveBeenCalledTimes(3);
+    expect(worker.generate).toHaveBeenCalledTimes(10);
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('does not start the next request before the real service finishes asynchronous retirement', async () => {
+    const plan = performancePlan();
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const retirement = Promise.withResolvers<void>();
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        retirement.resolve();
+        runner.stop();
+      },
+    };
+    // Worker retirement is not just releaseRuntime; its transport handle must settle.
+    worker.dispose.mockReturnValueOnce(retirement.promise);
+    worker.generate.mockImplementationOnce(async () => {
+      runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const pending = runner.start({ plan, environment: performanceEnvironment() });
+    await vi.waitFor(() => expect(worker.dispose).toHaveBeenCalledOnce());
+    expect(worker.generate).toHaveBeenCalledOnce();
+    expect(factory).toHaveBeenCalledOnce();
+    retirement.resolve();
+    await pending;
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(runner.snapshot()!.trials[0]?.interruption?.recovery).toBe('new-scope');
   });
 });

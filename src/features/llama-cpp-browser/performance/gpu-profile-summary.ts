@@ -22,6 +22,8 @@ export function summarizeGpuProfiles({ snapshot }: { snapshot: PerformanceSnapsh
       scenario: step?.scenario,
       position: step?.position,
       status: trial.status,
+      interruption: trial.interruption,
+      runtimeSegment: trial.runtimeSegment,
       observationStatus: profile?.status ?? 'missing',
       phases: gpuProfilePhaseSchema.options.map(phase => {
         const rows = profile?.rows.filter(row => row.phase === phase) ?? [];

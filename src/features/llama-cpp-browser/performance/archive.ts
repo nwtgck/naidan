@@ -318,6 +318,46 @@ retainedRestoredCaptures counts identical restored snapshots not copied again.
 Checkpoint elapsed time can include device-to-host transfer and synchronization;
 it must not be labelled CPU arithmetic time.
 
+## Interrupt the current trial and continue
+The user can interrupt only the active attempt, without stopping the whole run.
+An accepted request immediately records interruption.reason=user-skip and
+requestedMs (relative to that trial). The runner waits for the existing generation
+call to settle, retaining ALL received events, output, progress, summary and memory
+observations until then. settledMs is the same trial-relative clock. Late callbacks
+after settlement are ignored; unavailable/unfinished GPU observations remain missing
+or partial, never fabricated zero. No additional GPU synchronization is introduced.
+The unchanged Worker client still owns cooperative cancellation and its bounded
+forced-termination fallback. Unsaved Worker-local data cannot be recovered after
+termination; this UI does not claim which native termination path occurred.
+
+status=interrupted is distinct from skipped (never started) and cancelled (whole
+run stopped). A whole-run Stop wins if received before the attempt settles; an
+already accepted interruption record is still retained. Timeout that already fired
+cannot be converted into a user interruption. Interrupted requests remain in raw
+outputs, memory, GPU profiles and CSV but not successful normal speed aggregates.
+
+The runner NEVER reuses a failed performance scope. After an intentional abort it
+awaits full scope/Worker retirement, then acquires a new scope for the next independent
+step in the SAME model/lane. Model identity is revalidated. Dependent continuations
+are skipped with skipReason=dependency-interrupted (including transitive dependents),
+not generated from truncated output. A successful parent from a different runtime
+segment cannot supply cached continuation state (dependency-runtime-reset).
+No extra warm-up call or hidden retry of the interrupted attempt is performed.
+A paired run keeps the other lane's plan unchanged. Real non-abort failures retain
+the existing lane-failure behavior rather than becoming automatic retries.
+
+interruption.recovery is pending while settling/releasing/reacquiring, new-scope
+once the next scope is acquired, not-needed when no independent step remains in that
+lane, stopped if the whole run stops first, or failed if cleanup/reacquisition fails.
+It is NOT a report of native cancellation safety. runtimeSegment starts at zero per
+model/lane and increments on reacquisition. The first request after restarting carries
+runtime-restarted. It includes model reload cost in its ordinary timings. Successful
+aggregates partition by segment and findings reject a before/after pair crossing a
+segment. Older records without a segment are treated as segment zero. Acquisition,
+visibility, inventory and release intervals identify their segment; interrupted is
+also an orchestration outcome. The interval cap allows up to 1024 planned trials each
+requiring a separate scope. Completion order and actual request counts remain visible.
+
 ## Provenance and failure handling
 Inputs and results live in memory; no chat history is read or written. Export
 occurs only when the user presses Save ZIP, never automatically after completion.
@@ -416,6 +456,8 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
             scenario: step?.scenario,
             position: step?.position,
             status: trial.status,
+            interruption: trial.interruption,
+            runtimeSegment: trial.runtimeSegment,
             requestedProfile: trial.options.profile,
             observedProfile: trial.summary?.profile,
             observationStatus: trial.summary?.performance?.gpuProfile?.status ?? 'missing',
@@ -425,7 +467,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           });
         }).join('\n') + '\n',
       });
-      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, lane: trial.lane, profile: trial.options.profile, status: trial.status, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
+      await add({ name: 'backend-placement.json', text: json({ value: snapshot.trials.filter(trial => snapshot.plan.steps.find(step => step.id === trial.stepId)?.scenario === 'placement').map(trial => ({ attemptId: trial.id, modelIndex: trial.modelIndex, lane: trial.lane, profile: trial.options.profile, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, warnings: trial.warnings, diagnostic: trial.summary?.performance?.backendCensus, failureKind: trial.summary?.failureKind, stage: trial.summary?.stage, error: trial.error })) }) });
       await add({
         name: 'trials.jsonl',
         text: snapshot.trials.map(({ input: _input, output: _output, partialText: _text, partialReasoning: _reasoning, memoryDiagnostics, ...record }) => {
@@ -443,10 +485,10 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           return JSON.stringify({ ...record, summary, gpuProfileFile: gpuProfile ? 'gpu-profile.jsonl' : undefined, gpuProfileCoverage: gpuProfile ? gpuCoverage : undefined, memoryDiagnosticsFile: memoryDiagnostics ? `memory/${record.id}.json` : undefined, memoryDiagnosticsCoverage: coverage });
         }).join('\n') + '\n',
       });
-      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s']];
+      const rows: (string | number | undefined)[][] = [['attempt', 'model', 'mode', 'lane', 'requested_profile', 'observed_profile', 'scenario', 'position', 'output_limit', 'role', 'status', 'warnings', 'exclusion', 'elapsed_ms', 'first_received_ms', 'first_text_ms', 'first_reasoning_ms', 'prefill_tokens_s', 'generation_tokens_s', 'prompt_tokens', 'reused_tokens', 'context_tokens', 'batch_tokens', 'finish_reason', 'parent_finish_reason', 'last_phase', 'last_progress_ms', 'error', 'gpu_profile_status', 'gpu_pass_total_ms', 'instrumented_prefill_tokens_s', 'instrumented_generation_tokens_s', 'runtime_segment', 'interrupt_requested_ms', 'interrupt_settled_ms', 'interrupt_recovery', 'skip_reason']];
       for (const trial of snapshot.trials) {
         if (trial.memoryDiagnostics) {
-          await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, ...trial.memoryDiagnostics } }) });
+          await add({ name: `memory/${trial.id}.json`, text: json({ value: { attemptId: trial.id, modelIndex: trial.modelIndex, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, ...trial.memoryDiagnostics } }) });
         }
         const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
         const metrics = trial.summary?.performance, rates = trialRates({ trial });
@@ -467,8 +509,8 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,
           step?.dependsOn === undefined ? undefined : snapshot.trials.find(parent => parent.stepId === step.dependsOn)?.output?.finishReason, trial.lastProgress?.phase, trial.lastProgressMs, trial.error, metrics?.gpuProfile?.status, gpuTotalMs,
-          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined]);
-        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
+          instrumented ? rates.prefillTokensPerSecond : undefined, instrumented ? rates.generationTokensPerSecond : undefined, trial.runtimeSegment, trial.interruption?.requestedMs, trial.interruption?.settledMs, trial.interruption?.recovery, trial.skipReason]);
+        await add({ name: `outputs/${trial.id}.json`, text: json({ value: { attemptId: trial.id, status: trial.status, interruption: trial.interruption, runtimeSegment: trial.runtimeSegment, input: trial.input, output: trial.output, partialText: trial.partialText, partialReasoning: trial.partialReasoning } }) });
       }
       await add({ name: 'summary.csv', text: rows.map(row => row.map(value => csvCell({ value })).join(',')).join('\r\n') + '\r\n' });
       await writer.finalize();

@@ -1,0 +1,1 @@
+export const llamaCppPerformance__interrupt_current_help = (): string => "A interrupção preserva os resultados parciais e pula continuações dependentes. A próxima medição independente recarrega o modelo; parar a medição encerra toda a execução.";

@@ -1,0 +1,1 @@
+export const llamaCppPerformance__interrupt_current_help = (): string => "Interrupting keeps the partial results and skips dependent continuations. The next independent trial reloads the model; Stop measurement ends the entire run.";

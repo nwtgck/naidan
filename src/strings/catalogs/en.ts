@@ -2498,6 +2498,9 @@ import { llamaCppPerformance__gpu_pass_time_ms } from '@/strings/messages/llamaC
 import { llamaCppPerformance__gpu_profiling } from '@/strings/messages/llamaCppPerformance__gpu_profiling/en';
 import { llamaCppPerformance__gpu_profiling_help } from '@/strings/messages/llamaCppPerformance__gpu_profiling_help/en';
 import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/en';
+import { llamaCppPerformance__interrupt_current_and_continue } from '@/strings/messages/llamaCppPerformance__interrupt_current_and_continue/en';
+import { llamaCppPerformance__interrupt_current_help } from '@/strings/messages/llamaCppPerformance__interrupt_current_help/en';
+import { llamaCppPerformance__interrupting_and_preparing_next } from '@/strings/messages/llamaCppPerformance__interrupting_and_preparing_next/en';
 import { llamaCppPerformance__keep_page_visible } from '@/strings/messages/llamaCppPerformance__keep_page_visible/en';
 import { llamaCppPerformance__loading_models } from '@/strings/messages/llamaCppPerformance__loading_models/en';
 import { llamaCppPerformance__maximum_output_tokens } from '@/strings/messages/llamaCppPerformance__maximum_output_tokens/en';
@@ -5375,6 +5378,9 @@ export const catalog = {
   llamaCppPerformance__gpu_profiling,
   llamaCppPerformance__gpu_profiling_help,
   llamaCppPerformance__initial_short_long_or_continuation,
+  llamaCppPerformance__interrupt_current_and_continue,
+  llamaCppPerformance__interrupt_current_help,
+  llamaCppPerformance__interrupting_and_preparing_next,
   llamaCppPerformance__keep_page_visible,
   llamaCppPerformance__loading_models,
   llamaCppPerformance__maximum_output_tokens,

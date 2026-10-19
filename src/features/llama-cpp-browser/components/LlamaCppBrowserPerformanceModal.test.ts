@@ -435,3 +435,142 @@ describe('profiling modes and safe result actions', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(model.id);
   });
 });
+
+describe('current-trial interruption controls', () => {
+  it('drains partial evidence, keeps Stop available and waits for retirement before continuing', async () => {
+    const released = Promise.withResolvers<void>();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        released.resolve();
+      },
+    };
+    mocks.runPerformanceOperation.mockImplementationOnce(async ({ options, signal, operation }) => {
+      await using _retire = {
+        async [Symbol.asyncDispose]() {
+          await released.promise;
+        },
+      };
+      await operation({
+        scope: {
+          options,
+          signal: signal!,
+          generate: async args => {
+            await args.onEvent({ event: { type: 'text', text: 'partial from slow model' } });
+            await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
+            args.onSummary({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+            args.onMemoryDiagnostics?.({ memory: { samples: [], droppedSamples: 0, nativeAllocations: [], droppedNativeAllocations: 0, nativeSettings: [], droppedNativeSettings: 0 } });
+            throw new DOMException('Interrupted', 'AbortError');
+          },
+        },
+      });
+    });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper!.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(false));
+    await wrapper.get('[data-testid="llama-performance-interrupt"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(true);
+    expect(wrapper.get('[data-testid="llama-performance-interrupting"]').text()).toContain('interrupting_and_preparing_next');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-stop"]').element.disabled).toBe(false);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-download"]').element.disabled).toBe(true);
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();
+    expect(mocks.archive).not.toHaveBeenCalled();
+    released.resolve();
+    await saveManually();
+    const snapshot = mocks.archive.mock.calls[0]![0].snapshot;
+    expect(snapshot.status).toBe('completed');
+    expect(snapshot.trials).toHaveLength(6);
+    expect(snapshot.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial from slow model', interruption: { recovery: 'new-scope' }, summary: { performance: { outcome: 'aborted' } }, memoryDiagnostics: { samples: [] } });
+    expect(snapshot.trials.slice(1).every((trial: { status: string }) => trial.status === 'succeeded')).toBe(true);
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the interruption button disabled while acquiring rather than accidentally skipping a future trial', async () => {
+    mocks.runPerformanceOperation.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true });
+    }));
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await vi.waitFor(() => expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce());
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(true);
+    await wrapper.get('[data-testid="llama-performance-stop"]').trigger('click');
+    await saveManually();
+    expect(mocks.archive.mock.calls[0]![0].snapshot.status).toBe('cancelled');
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();
+  });
+
+  it('lets Stop during interrupted-scope retirement cancel the remaining plan', async () => {
+    const released = Promise.withResolvers<void>();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        released.resolve();
+      },
+    };
+    mocks.runPerformanceOperation.mockImplementationOnce(async ({ options, signal, operation }) => {
+      await using _retire = {
+        async [Symbol.asyncDispose]() {
+          await released.promise;
+        },
+      };
+      await operation({
+        scope: {
+          options,
+          signal: signal!,
+          generate: async args => {
+            await args.onEvent({ event: { type: 'reasoning', text: 'saved partial reasoning' } });
+            await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
+            throw new DOMException('Interrupted', 'AbortError');
+          },
+        },
+      });
+    });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper!.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(false));
+    await wrapper.get('[data-testid="llama-performance-interrupt"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-performance-stop"]').trigger('click');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-stop"]').element.disabled).toBe(true);
+    released.resolve();
+    await saveManually();
+    const snapshot = mocks.archive.mock.calls[0]![0].snapshot;
+    expect(snapshot.status).toBe('cancelled');
+    expect(snapshot.trials[0]).toMatchObject({ status: 'interrupted', interruption: { recovery: 'stopped' }, partialReasoning: 'saved partial reasoning' });
+    expect(snapshot.trials.slice(1).every((trial: { status: string }) => trial.status === 'skipped')).toBe(true);
+    expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce();
+  });
+});
+
+it('does not redirect a queued click on the old button to the next trial', async () => {
+  const observed: AbortSignal[] = [];
+  mocks.runPerformanceOperation.mockImplementation(async ({ options, signal, operation }) => operation({
+    scope: {
+      options,
+      signal: signal!,
+      generate: async args => {
+        observed.push(args.signal);
+        await new Promise<void>(resolve => args.signal.addEventListener('abort', () => resolve(), { once: true }));
+        throw new DOMException('Aborted', 'AbortError');
+      },
+    },
+  }));
+  wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+  await flushPromises();
+  await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
+  await vi.waitFor(() => expect(observed).toHaveLength(1));
+  const button = wrapper.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]');
+  const previous = button.element;
+  await button.trigger('click');
+  await vi.waitFor(() => expect(observed).toHaveLength(2));
+  await flushPromises();
+  expect(wrapper.get('[data-testid="llama-performance-interrupt"]').element).not.toBe(previous);
+  previous.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  expect(observed[0]!.aborted).toBe(true);
+  expect(observed[1]!.aborted).toBe(false);
+  await wrapper.get('[data-testid="llama-performance-stop"]').trigger('click');
+  await saveManually();
+  expect(mocks.runPerformanceOperation).toHaveBeenCalledTimes(2);
+});
