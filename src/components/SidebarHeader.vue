@@ -2,7 +2,6 @@
 import { RouterLink } from 'vue-router';
 import { PanelLeftIcon } from 'lucide-vue-next';
 import Logo from './Logo.vue';
-import ModelDownloads from './ModelDownloads.vue';
 import { lazyStrings } from '@/strings';
 defineProps<{ expanded: boolean }>();
 const emit = defineEmits<{ toggle: [] }>();
@@ -18,7 +17,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="flex items-center gap-1"><span tw-class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span><slot name="status" /></div>
       </div>
     </RouterLink>
-    <ModelDownloads />
     <button type="button" @click="emit('toggle')" :title="expanded ? lazyStrings.Sidebar__close_sidebar() : lazyStrings.Sidebar__open_sidebar()" :aria-label="expanded ? lazyStrings.Sidebar__close_sidebar() : lazyStrings.Sidebar__open_sidebar()" data-testid="sidebar-toggle" tw-class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><PanelLeftIcon tw-class="w-5 h-5" /></button>
   </div>
 </template>

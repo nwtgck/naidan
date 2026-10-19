@@ -466,7 +466,7 @@ it('reflects a central-panel cancellation after the current writer has drained',
   expect(h.library.downloading.value).toBe(false);
 });
 
-it('resumes a paused request from a reopened catalog instead of attaching to a settled old attempt', async () => {
+it('uses the reopened catalog as the owner of a paused request instead of the disposed view', async () => {
   const manager = createDownloadManager();
   const first = harness({ manager, initial: [], download: undefined });
   first.downloader.mockImplementationOnce(async ({ signal }) => {
@@ -483,7 +483,7 @@ it('resumes a paused request from a reopened catalog instead of attaching to a s
   await reopened.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(manager.snapshot()).toHaveLength(1);
   expect(manager.snapshot()[0]!.status).toBe('complete');
-  expect(first.downloader).toHaveBeenCalledTimes(2);
-  expect(reopened.downloader).not.toHaveBeenCalled();
+  expect(first.downloader).toHaveBeenCalledOnce();
+  expect(reopened.downloader).toHaveBeenCalledOnce();
   expect(reopened.library.downloading.value).toBe(false);
 });

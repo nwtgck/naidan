@@ -190,6 +190,30 @@ describe('one session-wide download lane', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  it('replaces a failed or paused request when a new owner explicitly enqueues the same key', async () => {
+    const manager = createDownloadManager();
+    const failed = manager.enqueue({
+      ...parameters({ key: 'replace-failed' }),
+      run: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await failed.done).status).toBe('failed');
+    const fresh = vi.fn(async () => undefined);
+    const replacement = manager.enqueue({ ...parameters({ key: 'replace-failed' }), run: fresh });
+    expect(replacement.id).not.toBe(failed.id);
+    expect((await replacement.done).status).toBe('complete');
+    expect(fresh).toHaveBeenCalledOnce();
+
+    const queued = manager.enqueue({ ...parameters({ key: 'replace-paused' }), run: async () => undefined });
+    manager.pause({ id: queued.id });
+    expect((await queued.done).status).toBe('paused');
+    const newer = manager.enqueue({ ...parameters({ key: 'replace-paused' }), run: fresh });
+    expect(newer.id).not.toBe(queued.id);
+    expect((await newer.done).status).toBe('complete');
+    expect(fresh).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects invalid progress without letting the error stop subsequent requests', async () => {
     const manager = createDownloadManager();
     const invalid = manager.enqueue({

@@ -552,6 +552,11 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     await job.completion.promise;
   }
   async function processDownloads(): Promise<void> {
+    // File imports and host directory mutations must finish publication before
+    // queued downloads are submitted to the shared execution manager.
+    if (importing.value || hostDirectories.busy.value || disposed) {
+      return;
+    }
     for (const job of jobs.value) {
       if (job.state !== 'queued' || job.managedId !== undefined) {
         continue;
@@ -1063,7 +1068,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     return operation.promise;
   }
   async function importInputs({ collect }: { collect: ({ signal }: { signal: AbortSignal }) => Promise<Parameters<typeof importImageRepository>[0]['input'][]> }): Promise<void> {
-    if (blocked() || importing.value || downloading.value || disposed) {
+    if (blocked() || importing.value || activeDownload.value !== undefined || disposed) {
       return;
     }
     const controller = new AbortController();

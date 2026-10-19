@@ -135,7 +135,7 @@ int unrelated;`;
     expect(() => TEST_ONLY.embeddedNotices({ source: 'int x;' })).toThrow('Missing');
   });
 
-  it.each([false, 'oxc'] as const)('validates and packages the real two-Worker graph with minify=%s in every locale ZIP', async minify => {
+  it.each([false, 'oxc'] as const)('validates and packages the real three-Worker graph with minify=%s in every locale ZIP', async minify => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-package-'));
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -168,7 +168,7 @@ int unrelated;`;
         });
       `);
     const resolvePath = (relative: string): string => path.join(repo, relative);
-    const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser'));
+    const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser') || worker.name === 'file-download-worker');
     const adapter = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
     const diagnostics: Record<string, unknown> = {};
     const require = createRequire(import.meta.url);

@@ -66,11 +66,11 @@ export function createDownloadQueue({ download, manager: suppliedManager }: { do
     for (const [id, binding] of bindings) {
       const current = states.get(id);
       if (!current) {
-        if (jobIsBusy({ job: binding.job })) {
-          binding.job = { ...binding.job, status: 'cancelled' };
-          if (binding.job.selection) {
-            changed.value++;
-          }
+        // Another view or the shared download panel can retire this job.
+        // Keeping its old binding would render an orphaned retry control.
+        bindings.delete(id);
+        if (binding.job.selection) {
+          changed.value++;
         }
         continue;
       }
@@ -213,5 +213,9 @@ export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
 export const TEST_ONLY = {
   reset() {
     queue = undefined;
+    const manager = getDownloadManager();
+    for (const job of manager.snapshot()) {
+      void manager.remove({ id: job.id });
+    }
   },
 };

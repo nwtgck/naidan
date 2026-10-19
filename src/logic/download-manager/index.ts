@@ -119,7 +119,18 @@ export function createDownloadManager() {
   }): { id: number, done: Promise<ManagedDownload> } {
     const existing = entries.find(entry => entry.job.key === key && entry.job.status !== 'complete');
     if (existing) {
-      return { id: existing.job.id, done: existing.attempt.promise };
+      if (existing.job.status === 'paused' || existing.job.status === 'failed') {
+        // A new explicit request must use its own run closure. The previous
+        // view may have been disposed, so merely reusing its job would resume
+        // writing without updating the new view's download state.
+        existing.intent = 'remove';
+        existing.run = undefined;
+        existing.onResume = undefined;
+        entries = entries.filter(candidate => candidate !== existing);
+        notify();
+      } else {
+        return { id: existing.job.id, done: existing.attempt.promise };
+      }
     }
     const entry: Entry = {
       job: { id: ++sequence, key, title, category, destination: { ...destination }, status: 'queued', files: files.map(file => ({ ...file })), error: undefined },

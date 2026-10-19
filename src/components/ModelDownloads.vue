@@ -1,19 +1,18 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from 'vue';
-import { ArrowLeftIcon, BoxIcon, CheckIcon, ChevronDownIcon, DownloadIcon, ImageIcon, PauseIcon, PlayIcon, RotateCcwIcon, XIcon } from 'lucide-vue-next';
+import { computed, nextTick, ref, shallowRef, useId, watch } from 'vue';
+import { BoxIcon, CheckIcon, ChevronDownIcon, DownloadIcon, ImageIcon, PauseIcon, PlayIcon, RotateCcwIcon, XIcon } from 'lucide-vue-next';
 import { useAnchoredPopup } from '@/composables/useAnchoredPopup';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { useDownloads } from '@/composables/useDownloads';
 import { downloadTotals, downloadByteLabel } from '@/logic/download-manager/progress';
 import type { ManagedDownload, DownloadFile } from '@/01-models/download';
+import ModelDownloadFileDetails from './ModelDownloadFileDetails.vue';
 import { lazyStrings } from '@/strings';
 
 const { jobs, manager } = useDownloads();
 const open = ref(false);
 const showCompleted = ref(false);
-const detailId = ref<number>();
-const listScrollTop = ref(0);
-const scrollArea = ref<HTMLElement | null>(null);
+const expandedIds = shallowRef<ReadonlySet<number>>(new Set());
 const trigger = ref<HTMLElement | null>(null);
 const panel = ref<HTMLElement | null>(null);
 const panelId = useId();
@@ -21,14 +20,28 @@ const popup = useAnchoredPopup({ anchor: trigger, preferredWidth: { unit: 'rem',
 const panelStyle = computed(() => ({ ...popup.placement.value.style, height: `min(34rem, ${popup.placement.value.style.maxHeight})` }));
 const pending = computed(() => jobs.value.filter(job => job.status !== 'complete').sort((a, b) => a.id - b.id));
 const completed = computed(() => jobs.value.filter(job => job.status === 'complete'));
-const detailJob = computed(() => jobs.value.find(job => job.id === detailId.value));
 const activeCount = computed(() => pending.value.filter(job => ['resolving', 'downloading', 'pausing', 'cancelling'].includes(job.status)).length);
 const waitingCount = computed(() => pending.value.filter(job => job.status === 'queued').length);
 watch(jobs, value => {
-  if (!value.some(job => job.id === detailId.value)) {
-    detailId.value = undefined;
+  const present = new Set(value.map(job => job.id));
+  if ([...expandedIds.value].some(id => !present.has(id))) {
+    expandedIds.value = new Set([...expandedIds.value].filter(id => present.has(id)));
   }
 });
+
+function toggleDetails({ id }: { id: number }): void {
+  const next = new Set(expandedIds.value);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  expandedIds.value = next;
+}
+
+function detailPanelId({ id }: { id: number }): string {
+  return `${panelId}-files-${id}`;
+}
 
 function progress({ job }: { job: ManagedDownload }): number | undefined {
   return downloadTotals({ files: job.files }).percent;
@@ -69,23 +82,6 @@ function statusLabel({ job }: { job: ManagedDownload }): string | undefined {
   }
 }
 
-function fileLabel({ file, job }: { file: DownloadFile, job: ManagedDownload }): string | undefined {
-  if (file.state !== 'complete' && ['pausing', 'paused', 'failed', 'cancelling'].includes(job.status)) {
-    return statusLabel({ job });
-  }
-  switch (file.state) {
-  case 'queued': return lazyStrings.ModelDownloads__waiting();
-  case 'checking': return lazyStrings.ModelDownloads__checking();
-  case 'transferring': return lazyStrings.ModelDownloads__downloading();
-  case 'verifying': return lazyStrings.ModelDownloads__verifying();
-  case 'complete': return lazyStrings.ModelDownloads__complete();
-  default: {
-    const exhaustive: never = file.state;
-    throw new Error(String(exhaustive));
-  }
-  }
-}
-
 function toggleDownload({ job }: { job: ManagedDownload }): void {
   switch (job.status) {
   case 'downloading': case 'resolving': manager.pause({ id: job.id });
@@ -117,22 +113,6 @@ function close({ restoreFocus }: { restoreFocus: boolean }): void {
   if (restoreFocus) {
     trigger.value?.focus({ preventScroll: true });
   }
-}
-
-async function showDetails({ id }: { id: number }): Promise<void> {
-  listScrollTop.value = scrollArea.value?.scrollTop ?? 0;
-  detailId.value = id;
-  await nextTick();
-  scrollArea.value?.scrollTo?.({ top: 0 });
-  panel.value?.querySelector<HTMLElement>('[data-testid="model-downloads-back"]')?.focus({ preventScroll: true });
-}
-
-async function showList(): Promise<void> {
-  const id = detailId.value;
-  detailId.value = undefined;
-  await nextTick();
-  scrollArea.value?.scrollTo?.({ top: listScrollTop.value });
-  panel.value?.querySelector<HTMLElement>(`[data-download-detail="${id}"]`)?.focus({ preventScroll: true });
 }
 
 useEventTargetListener(document, 'pointerdown', event => {
@@ -167,7 +147,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     @click="toggle"
     :tw-class="['relative flex shrink-0 items-center justify-center rounded-xl border p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40', open ? 'border-gray-200 bg-white text-blue-600 dark:border-gray-700 dark:bg-gray-800 dark:text-blue-400' : 'border-transparent text-gray-500 hover:border-gray-200 hover:bg-white hover:text-blue-600 dark:text-gray-400 dark:hover:border-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200']"
   >
-    <DownloadIcon tw-class="h-4 w-4" />
+    <DownloadIcon tw-class="h-4 w-4 shrink-0" />
     <span v-if="pending.length" tw-class="absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-gray-200 bg-gray-100 px-0.5 text-[9px] font-semibold leading-none text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">{{ pending.length }}</span>
   </button>
 
@@ -185,36 +165,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     >
       <header tw-class="shrink-0 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <div tw-class="flex items-center gap-2">
-          <button v-if="detailJob" type="button" @click="showList" :aria-label="lazyStrings.ModelDownloads__back_to_list()" :title="lazyStrings.ModelDownloads__back_to_list()" data-testid="model-downloads-back" tw-class="-ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-400 dark:hover:bg-gray-800"><ArrowLeftIcon tw-class="h-4 w-4" /></button>
-          <DownloadIcon v-else tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />
-          <h2 tw-class="min-w-0 flex-1 text-sm font-semibold">{{ detailJob ? lazyStrings.ModelDownloads__file_details() : lazyStrings.ModelDownloads__downloads() }}</h2>
+          <DownloadIcon tw-class="h-4 w-4 text-blue-500 dark:text-blue-400" />
+          <h2 tw-class="min-w-0 flex-1 text-sm font-semibold">{{ lazyStrings.ModelDownloads__downloads() }}</h2>
           <button type="button" @click="close({ restoreFocus: true })" :aria-label="lazyStrings.ModelDownloads__close()" :title="lazyStrings.ModelDownloads__close()" tw-class="-mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-gray-800 dark:hover:text-gray-200"><XIcon tw-class="h-4 w-4" /></button>
         </div>
-        <p aria-live="polite" :title="detailJob?.title" tw-class="mt-1 h-4 truncate text-[11px] leading-4 text-gray-500 dark:text-gray-400"><template v-if="detailJob">{{ detailJob.title }}</template><template v-else>{{ lazyStrings.ModelDownloads__activity({ active: activeCount, queued: waitingCount }) }}</template></p>
+        <p aria-live="polite" tw-class="mt-1 h-4 truncate text-[11px] leading-4 text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelDownloads__activity({ active: activeCount, queued: waitingCount }) }}</p>
       </header>
 
-      <div ref="scrollArea" style="scrollbar-gutter: stable" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div v-if="detailJob" data-testid="model-downloads-details">
-          <div tw-class="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <div tw-class="flex items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400"><span>{{ category({ job: detailJob }) }}<span tw-class="mx-1.5">·</span>{{ lazyStrings.ModelDownloads__files({ count: detailJob.files.length }) }}<span tw-class="mx-1.5">·</span>{{ detailJob.destination.kind === 'opfs' ? 'OPFS' : lazyStrings.ModelDownloads__linked_folder() }}</span><span tw-class="shrink-0 tabular-nums">{{ progress({ job: detailJob }) === undefined ? '—' : `${progress({ job: detailJob })}%` }}</span></div>
-          </div>
-          <ol tw-class="divide-y divide-gray-100 dark:divide-gray-800/80">
-            <li v-for="(file, index) in detailJob.files" :key="file.url" tw-class="px-4 py-3.5">
-              <div tw-class="flex items-start gap-2">
-                <span tw-class="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-gray-100 text-[10px] tabular-nums text-gray-400 dark:bg-gray-800 dark:text-gray-500">{{ index + 1 }}</span>
-                <p :title="file.name" tw-class="min-w-0 flex-1 break-all font-mono text-[11px] leading-5">{{ file.name }}</p>
-              </div>
-              <div tw-class="mt-2 flex items-center justify-between gap-2 text-[10px] leading-4 text-gray-500 dark:text-gray-400"><span>{{ fileLabel({ file, job: detailJob }) }}</span><span tw-class="tabular-nums">{{ downloadTotals({ files: [file] }).percent === undefined ? '—' : `${downloadTotals({ files: [file] }).percent}%` }}</span></div>
-              <div role="progressbar" :aria-label="file.name" :aria-valuenow="downloadTotals({ files: [file] }).percent" :aria-valuemin="0" :aria-valuemax="100" tw-class="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div :style="{ width: downloadTotals({ files: [file] }).percent === undefined ? '30%' : `${downloadTotals({ files: [file] }).percent}%` }" tw-class="h-full rounded-full bg-blue-500/80 dark:bg-blue-400/80" /></div>
-              <p tw-class="mt-1.5 text-[10px] tabular-nums leading-4 text-gray-400 dark:text-gray-500">{{ amount({ files: [file] }) }}</p>
-              <dl tw-class="mt-3 space-y-2.5">
-                <div><dt tw-class="text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.ModelDownloads__download_url() }}</dt><dd tw-class="mt-1 select-text break-all font-mono text-[10px] leading-4 text-gray-600 dark:text-gray-400">{{ file.url }}</dd></div>
-                <div><dt tw-class="text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.ModelDownloads__destination() }}</dt><dd tw-class="mt-1 select-text break-all font-mono text-[10px] leading-4 text-gray-600 dark:text-gray-400">{{ file.destination }}</dd></div>
-              </dl>
-            </li>
-          </ol>
-        </div>
-        <div v-else>
+      <div style="scrollbar-gutter: stable" tw-class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div>
           <div v-if="!pending.length" tw-class="flex flex-col items-center gap-2 px-4 py-10 text-gray-400"><CheckIcon tw-class="h-6 w-6" /><p tw-class="text-xs">{{ lazyStrings.ModelDownloads__no_pending_downloads() }}</p></div>
           <ul tw-class="divide-y divide-gray-100 dark:divide-gray-800/80">
             <li v-for="job in pending" :key="job.id" :data-download-id="job.id" :tw-class="['px-4 py-3.5', job.status === 'downloading' ? 'bg-blue-50/40 dark:bg-blue-500/5' : '']">
@@ -238,7 +197,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <p v-if="job.error" tw-class="mb-2 select-text break-words text-[10px] text-red-500">{{ job.error }}</p>
                 <div tw-class="flex items-center justify-between gap-2 text-[10px] leading-4">
                   <span :tw-class="['min-w-0 flex-1 truncate', job.status === 'downloading' ? 'text-blue-600 dark:text-blue-400' : job.status === 'failed' ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400']">{{ statusLabel({ job }) }}</span>
-                  <button type="button" @click="showDetails({ id: job.id })" :data-download-detail="job.id" :aria-label="lazyStrings.ModelDownloads__details()" tw-class="shrink-0 rounded px-1 text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-500 dark:hover:text-gray-300">{{ lazyStrings.ModelDownloads__details() }}</button>
+                  <button type="button" @click="toggleDetails({ id: job.id })" :data-download-detail="job.id" :aria-expanded="expandedIds.has(job.id)" :aria-controls="expandedIds.has(job.id) ? detailPanelId({ id: job.id }) : undefined" :aria-label="`${job.title} · ${lazyStrings.ModelDownloads__details()}`" tw-class="inline-flex shrink-0 items-center gap-1 rounded px-1 text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-500 dark:hover:text-gray-300">{{ lazyStrings.ModelDownloads__details() }}<ChevronDownIcon :tw-class="['h-3 w-3 transition-transform duration-200', expandedIds.has(job.id) ? 'rotate-180' : '']" /></button>
                   <span tw-class="w-8 shrink-0 text-right tabular-nums text-gray-500 dark:text-gray-400">{{ progress({ job }) === undefined ? '—' : `${progress({ job })}%` }}</span>
                 </div>
                 <div role="progressbar" :aria-label="job.title" :aria-valuenow="progress({ job })" :aria-valuemin="0" :aria-valuemax="100" tw-class="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
@@ -246,11 +205,26 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 </div>
                 <p tw-class="mt-1.5 flex h-4 items-center gap-2 whitespace-nowrap text-[10px] tabular-nums leading-4 text-gray-400 dark:text-gray-500"><span tw-class="shrink-0">{{ amount({ files: job.files }) }}</span></p>
               </div>
+              <Transition name="download-detail">
+                <div v-if="expandedIds.has(job.id)" :id="detailPanelId({ id: job.id })" class="download-detail-grid"><div tw-class="min-h-0 overflow-hidden"><div tw-class="pt-3"><ModelDownloadFileDetails :job="job" /></div></div></div>
+              </Transition>
             </li>
           </ul>
           <div v-if="completed.length" tw-class="border-t border-gray-100 dark:border-gray-800">
             <button type="button" @click="showCompleted = !showCompleted" :aria-expanded="showCompleted" tw-class="flex w-full items-center gap-2 px-4 py-2.5 text-[11px] text-gray-500 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-400 dark:hover:bg-gray-800/50"><ChevronDownIcon :tw-class="['h-3 w-3 transition-transform', showCompleted ? 'rotate-180' : '']" /><span>{{ lazyStrings.ModelDownloads__completed_count({ count: completed.length }) }}</span></button>
-            <div v-if="showCompleted" tw-class="space-y-2 px-4 pb-3"><div v-for="job in completed" :key="job.id" tw-class="flex items-center gap-2 text-[11px]"><CheckIcon tw-class="h-3.5 w-3.5 shrink-0 text-gray-400" /><span :title="job.title" tw-class="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-400">{{ job.title }}</span><button type="button" @click="showDetails({ id: job.id })" :data-download-detail="job.id" :aria-label="lazyStrings.ModelDownloads__details()" tw-class="shrink-0 rounded px-1 text-[10px] text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-500 dark:hover:text-gray-300">{{ lazyStrings.ModelDownloads__details() }}</button><span tw-class="shrink-0 tabular-nums text-gray-400 dark:text-gray-500">{{ amount({ files: job.files }) }}</span></div></div>
+            <ul v-if="showCompleted" tw-class="divide-y divide-gray-100 dark:divide-gray-800/80">
+              <li v-for="job in completed" :key="job.id" tw-class="px-4 py-2.5">
+                <div tw-class="flex items-center gap-2 text-[11px]">
+                  <CheckIcon tw-class="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                  <span :title="job.title" tw-class="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-400">{{ job.title }}</span>
+                  <button type="button" @click="toggleDetails({ id: job.id })" :data-download-detail="job.id" :aria-expanded="expandedIds.has(job.id)" :aria-controls="expandedIds.has(job.id) ? detailPanelId({ id: job.id }) : undefined" :aria-label="`${job.title} · ${lazyStrings.ModelDownloads__details()}`" tw-class="inline-flex shrink-0 items-center gap-1 rounded px-1 text-[10px] text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:text-gray-500 dark:hover:text-gray-300">{{ lazyStrings.ModelDownloads__details() }}<ChevronDownIcon :tw-class="['h-3 w-3 transition-transform duration-200', expandedIds.has(job.id) ? 'rotate-180' : '']" /></button>
+                  <span tw-class="shrink-0 tabular-nums text-gray-400 dark:text-gray-500">{{ amount({ files: job.files }) }}</span>
+                </div>
+                <Transition name="download-detail">
+                  <div v-if="expandedIds.has(job.id)" :id="detailPanelId({ id: job.id })" class="download-detail-grid"><div tw-class="min-h-0 overflow-hidden"><div tw-class="pt-2"><ModelDownloadFileDetails :job="job" /></div></div></div>
+                </Transition>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -262,3 +236,27 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </section>
   </Teleport>
 </template>
+
+<style scoped>
+/* Animate the intrinsic file list height, including multi-file downloads,
+   without guessing a max-height and without removing interactive content early. */
+.download-detail-grid {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.download-detail-enter-active,
+.download-detail-leave-active {
+  transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 190ms ease;
+}
+.download-detail-enter-from,
+.download-detail-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .download-detail-enter-active,
+  .download-detail-leave-active {
+    transition: none;
+  }
+}
+</style>
