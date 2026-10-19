@@ -1,3 +1,5 @@
+import { gpuProfilingProfile } from '@/features/llama-cpp-browser/types';
+import type { GpuProfileMeasurement } from '@/features/llama-cpp-browser/runtime/gpu-profiler';
 import { createNativeGraphCounters } from './native-graph-counters';
 import { sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import { createCheckpointPerformance } from './checkpoint-performance';
@@ -38,12 +40,32 @@ function failureOutcome({ error }: { error: unknown }): 'aborted' | 'failed' {
 }
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
-export async function generate({ request, onEvent, onProgress, signal, onSummary }: {
+export async function generate({ request, onSummary, signal, onEvent, onProgress }: {
   request: WorkerGenerateInput,
   onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void,
   signal: AbortSignal | undefined,
   onEvent: GenerationCallback,
   onProgress: ({ progress }: { progress: Progress }) => void,
+}): Promise<GenerationResult> {
+  if (request.options.profile === gpuProfilingProfile && !request.measurement) {
+    throw new LlamaCppBrowserError({ code: 'unavailable' });
+  }
+  const gpuProfile = request.options.profile === gpuProfilingProfile
+    ? (await import('@/features/llama-cpp-browser/runtime/gpu-profiler')).beginGpuProfileMeasurement() : undefined;
+  try {
+    return await generateInternal({ input: { request, onSummary, signal, onEvent, onProgress }, gpuProfile });
+  } finally {
+    // Finish is idempotent. Clear request attribution even when preparation or
+    // cleanup throws before a diagnostic can be delivered.
+    try {
+      gpuProfile?.finish();
+    } catch { /* Observation must not replace an inference result or failure. */ }
+  }
+}
+
+async function generateInternal({ input: { request, onEvent, onProgress, signal, onSummary }, gpuProfile }: {
+  input: Parameters<typeof generate>[0],
+  gpuProfile: GpuProfileMeasurement | undefined,
 }): Promise<GenerationResult> {
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
@@ -61,6 +83,29 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   const setStage = ({ value }: { value: DiagnosticStage }): void => {
     stage = value;
     measurements.enter({ next: value });
+    if (gpuProfile) {
+      switch (value) {
+      case 'prefill-decode': gpuProfile?.enter({ phase: 'prefill' });
+        break;
+      case 'generation-decode': case 'generation-overlap': gpuProfile?.enter({ phase: 'decode' });
+        break;
+      case 'cache-checkpoint': gpuProfile?.enter({ phase: 'checkpoint' });
+        break;
+      case 'audio-info': case 'audio-reference': case 'audio-input': case 'audio-prompt': case 'audio-frame': case 'audio-output':
+      case 'media-encode': case 'media-decode': case 'model-resolve': case 'model-load': case 'projector-trace': case 'projector-load':
+      case 'image-decode': case 'image-tokenize': case 'image-evaluate': case 'session': case 'cache-prepare': case 'cache-probe':
+      case 'prefill': case 'template': case 'tokenize': case 'sampler-create': case 'reasoning-state':
+      case 'grammar-switch': case 'native-sample': case 'reasoning-accept': case 'reasoning-replay': case 'token-render':
+      case 'partial-parse': case 'stream-emit': case 'final-parse': case 'cleanup': case 'event-loop-yield':
+      case 'worker-operation': case 'worker-callback': case 'worker-rpc': case 'worker-error': case 'worker-messageerror':
+        gpuProfile?.enter({ phase: 'other' });
+        break;
+      default: {
+        const exhaustive: never = value;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }
     if (session?.census) {
       switch (value) {
       case 'prefill-decode': session.census.setPhase({ value: 'prefill' });
@@ -92,6 +137,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   const reportPerformance = (): void => {
     try {
+      measurements.counters.gpuProfile = gpuProfile?.finish();
       if (session && request.measurement) {
         measurements.counters.backendCensus = session.census?.snapshot();
         measurements.counters.nativeGraphCounters = graphCounters?.snapshot();
@@ -902,11 +948,14 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     try {
       await cleanup();
     } finally {
-      if (graphCounters) {
-        await graphCounters.capture({ point: 'after' });
+      try {
+        if (graphCounters) {
+          await graphCounters.capture({ point: 'after' });
+        }
+        sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
+      } finally {
+        reportPerformance();
       }
-      sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
-      reportPerformance();
     }
     // The owning worker or a model/profile/file change releases the resident cache.
   }

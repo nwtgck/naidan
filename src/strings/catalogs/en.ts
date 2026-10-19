@@ -2484,6 +2484,7 @@ import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/l
 import { llamaCppPerformance__add_models } from '@/strings/messages/llamaCppPerformance__add_models/en';
 import { llamaCppPerformance__advanced_conditions } from '@/strings/messages/llamaCppPerformance__advanced_conditions/en';
 import { llamaCppPerformance__back_to_settings } from '@/strings/messages/llamaCppPerformance__back_to_settings/en';
+import { llamaCppPerformance__checking_profiling_support } from '@/strings/messages/llamaCppPerformance__checking_profiling_support/en';
 import { llamaCppPerformance__clear_selection } from '@/strings/messages/llamaCppPerformance__clear_selection/en';
 import { llamaCppPerformance__completed_trials } from '@/strings/messages/llamaCppPerformance__completed_trials/en';
 import { llamaCppPerformance__copy_model_list } from '@/strings/messages/llamaCppPerformance__copy_model_list/en';
@@ -2493,11 +2494,20 @@ import { llamaCppPerformance__elapsed_ms } from '@/strings/messages/llamaCppPerf
 import { llamaCppPerformance__environment_notes } from '@/strings/messages/llamaCppPerformance__environment_notes/en';
 import { llamaCppPerformance__first_received_ms } from '@/strings/messages/llamaCppPerformance__first_received_ms/en';
 import { llamaCppPerformance__generation_tokens_per_second } from '@/strings/messages/llamaCppPerformance__generation_tokens_per_second/en';
+import { llamaCppPerformance__gpu_pass_time_ms } from '@/strings/messages/llamaCppPerformance__gpu_pass_time_ms/en';
+import { llamaCppPerformance__gpu_profiling } from '@/strings/messages/llamaCppPerformance__gpu_profiling/en';
+import { llamaCppPerformance__gpu_profiling_help } from '@/strings/messages/llamaCppPerformance__gpu_profiling_help/en';
 import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/en';
+import { llamaCppPerformance__interrupt_current_and_continue } from '@/strings/messages/llamaCppPerformance__interrupt_current_and_continue/en';
+import { llamaCppPerformance__interrupt_current_help } from '@/strings/messages/llamaCppPerformance__interrupt_current_help/en';
+import { llamaCppPerformance__interrupting_and_preparing_next } from '@/strings/messages/llamaCppPerformance__interrupting_and_preparing_next/en';
 import { llamaCppPerformance__keep_page_visible } from '@/strings/messages/llamaCppPerformance__keep_page_visible/en';
 import { llamaCppPerformance__loading_models } from '@/strings/messages/llamaCppPerformance__loading_models/en';
 import { llamaCppPerformance__maximum_output_tokens } from '@/strings/messages/llamaCppPerformance__maximum_output_tokens/en';
+import { llamaCppPerformance__measure_both } from '@/strings/messages/llamaCppPerformance__measure_both/en';
+import { llamaCppPerformance__measure_both_help } from '@/strings/messages/llamaCppPerformance__measure_both_help/en';
 import { llamaCppPerformance__measure_saved_models } from '@/strings/messages/llamaCppPerformance__measure_saved_models/en';
+import { llamaCppPerformance__measurement_mode } from '@/strings/messages/llamaCppPerformance__measurement_mode/en';
 import { llamaCppPerformance__model_input } from '@/strings/messages/llamaCppPerformance__model_input/en';
 import { llamaCppPerformance__model_input_help } from '@/strings/messages/llamaCppPerformance__model_input_help/en';
 import { llamaCppPerformance__no_saved_models } from '@/strings/messages/llamaCppPerformance__no_saved_models/en';
@@ -2510,6 +2520,8 @@ import { llamaCppPerformance__output_preview } from '@/strings/messages/llamaCpp
 import { llamaCppPerformance__per_request_timeout_minutes } from '@/strings/messages/llamaCppPerformance__per_request_timeout_minutes/en';
 import { llamaCppPerformance__planned_calls } from '@/strings/messages/llamaCppPerformance__planned_calls/en';
 import { llamaCppPerformance__preparation_or_measurement } from '@/strings/messages/llamaCppPerformance__preparation_or_measurement/en';
+import { llamaCppPerformance__profiling_requires_hosted_mode } from '@/strings/messages/llamaCppPerformance__profiling_requires_hosted_mode/en';
+import { llamaCppPerformance__profiling_runtime_not_installed } from '@/strings/messages/llamaCppPerformance__profiling_runtime_not_installed/en';
 import { llamaCppPerformance__refresh_models } from '@/strings/messages/llamaCppPerformance__refresh_models/en';
 import { llamaCppPerformance__remove_model } from '@/strings/messages/llamaCppPerformance__remove_model/en';
 import { llamaCppPerformance__repeats } from '@/strings/messages/llamaCppPerformance__repeats/en';
@@ -2524,6 +2536,7 @@ import { llamaCppPerformance__select_all } from '@/strings/messages/llamaCppPerf
 import { llamaCppPerformance__speed_investigation } from '@/strings/messages/llamaCppPerformance__speed_investigation/en';
 import { llamaCppPerformance__standard_measurement } from '@/strings/messages/llamaCppPerformance__standard_measurement/en';
 import { llamaCppPerformance__standard_measurement_help } from '@/strings/messages/llamaCppPerformance__standard_measurement_help/en';
+import { llamaCppPerformance__standard_runtime_measurement_help } from '@/strings/messages/llamaCppPerformance__standard_runtime_measurement_help/en';
 import { llamaCppPerformance__start_measurement } from '@/strings/messages/llamaCppPerformance__start_measurement/en';
 import { llamaCppPerformance__stop_and_return_to_settings } from '@/strings/messages/llamaCppPerformance__stop_and_return_to_settings/en';
 import { llamaCppPerformance__stop_measurement } from '@/strings/messages/llamaCppPerformance__stop_measurement/en';
@@ -5351,6 +5364,7 @@ export const catalog = {
   llamaCppPerformance__add_models,
   llamaCppPerformance__advanced_conditions,
   llamaCppPerformance__back_to_settings,
+  llamaCppPerformance__checking_profiling_support,
   llamaCppPerformance__clear_selection,
   llamaCppPerformance__completed_trials,
   llamaCppPerformance__copy_model_list,
@@ -5360,11 +5374,20 @@ export const catalog = {
   llamaCppPerformance__environment_notes,
   llamaCppPerformance__first_received_ms,
   llamaCppPerformance__generation_tokens_per_second,
+  llamaCppPerformance__gpu_pass_time_ms,
+  llamaCppPerformance__gpu_profiling,
+  llamaCppPerformance__gpu_profiling_help,
   llamaCppPerformance__initial_short_long_or_continuation,
+  llamaCppPerformance__interrupt_current_and_continue,
+  llamaCppPerformance__interrupt_current_help,
+  llamaCppPerformance__interrupting_and_preparing_next,
   llamaCppPerformance__keep_page_visible,
   llamaCppPerformance__loading_models,
   llamaCppPerformance__maximum_output_tokens,
+  llamaCppPerformance__measure_both,
+  llamaCppPerformance__measure_both_help,
   llamaCppPerformance__measure_saved_models,
+  llamaCppPerformance__measurement_mode,
   llamaCppPerformance__model_input,
   llamaCppPerformance__model_input_help,
   llamaCppPerformance__no_saved_models,
@@ -5377,6 +5400,8 @@ export const catalog = {
   llamaCppPerformance__per_request_timeout_minutes,
   llamaCppPerformance__planned_calls,
   llamaCppPerformance__preparation_or_measurement,
+  llamaCppPerformance__profiling_requires_hosted_mode,
+  llamaCppPerformance__profiling_runtime_not_installed,
   llamaCppPerformance__refresh_models,
   llamaCppPerformance__remove_model,
   llamaCppPerformance__repeats,
@@ -5391,6 +5416,7 @@ export const catalog = {
   llamaCppPerformance__speed_investigation,
   llamaCppPerformance__standard_measurement,
   llamaCppPerformance__standard_measurement_help,
+  llamaCppPerformance__standard_runtime_measurement_help,
   llamaCppPerformance__start_measurement,
   llamaCppPerformance__stop_and_return_to_settings,
   llamaCppPerformance__stop_measurement,

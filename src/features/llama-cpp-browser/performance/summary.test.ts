@@ -135,3 +135,17 @@ describe('warm before/after preparation evidence', () => {
     expect(finding.afterToBeforeRatio).toBeUndefined();
   });
 });
+
+it('partitions a restarted cold request from later warm requests in the same segment', () => {
+  const snapshot = warmSnapshot({ models: 1, repeats: 2 });
+  snapshot.trials.forEach(trial => {
+    trial.runtimeSegment = 1;
+  });
+  snapshot.trials[0]!.warnings.push('runtime-restarted');
+  const groups = summarizePerformance({ snapshot });
+  expect(groups.filter(group => group.position === 'before')).toHaveLength(2);
+  expect(groups.filter(group => group.position === 'before').map(group => group.runtimeRestarted)).toEqual([true, false]);
+  expect(performanceFindings({ snapshot })[0]?.reasons).toContain('before-runtime-restarted');
+  expect(performanceFindings({ snapshot })[0]?.afterToBeforeRatio).toBeUndefined();
+  expect(performanceFindings({ snapshot })[1]?.afterToBeforeRatio).toBe(1);
+});

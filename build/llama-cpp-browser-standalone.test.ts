@@ -89,7 +89,7 @@ describe('manifest-verified standalone native artifacts', () => {
     expect(source).not.toContain('Naidan fix:');
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
+  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi-gpu-profile'])('rejects importing %s even before tree shaking', async profile => {
     const plugin = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin;
     const load = plugin.load;
     if (typeof load !== 'function') {

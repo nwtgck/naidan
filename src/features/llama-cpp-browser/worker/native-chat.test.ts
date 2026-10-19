@@ -35,11 +35,8 @@ const tools: NonNullable<GenerateInput['tools']> = [{
     },
   },
 }];
-// Emscripten requires Node 24 for memory64; CPU32 remains covered on older Node.
+// CPU32 remains covered on older Node; memory64/JSPI tests below require their native support.
 const profiles: LlamaCppProfile[] = ['cpu-wasm32'];
-if (Number(process.versions.node.split('.')[0]) >= 24) {
-  profiles.push('cpu-wasm64');
-}
 // The JSPI artifact can exercise native chat/sampling on CPU without a GPU adapter.
 if ('promising' in WebAssembly && 'Suspending' in WebAssembly) {
   profiles.push('webgpu-wasm32-jspi');

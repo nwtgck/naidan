@@ -1,0 +1,1 @@
+export const llamaCppPerformance__measure_both_help = (): string => "Run the same plan first with ordinary 64-bit WebGPU, then with GPU profiling. Each model is loaded separately for each run. The number of requests doubles; elapsed time may more than double.";

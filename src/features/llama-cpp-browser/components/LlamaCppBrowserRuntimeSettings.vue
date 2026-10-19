@@ -6,7 +6,7 @@ import { useSettings } from '@/composables/useSettings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { selectableProfiles } from '@/features/llama-cpp-browser/runtime/profile-policy';
 import { chatContextTokensSchema, defaultChatContextTokens, minimumChatContextTokens, maximumChatContextTokens, errorCode, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
-import { resolveProfilePreference, type ProfileCapabilities, type ProfileState, type ProfileUnavailableReason } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
+import { resolveProfilePreference, profileFeatures, type ProfileCapabilities, type ProfileState, type ProfileUnavailableReason } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 
 const props = defineProps<{ disabled: boolean, releaseDisabled: boolean }>();
 const emit = defineEmits<{ runtimeReady: [ready: boolean] }>();
@@ -29,19 +29,10 @@ const profileLabels = {
   'webgpu-wasm64-jspi': 'WebGPU / wasm64',
   'webgpu-wasm32-jspi': 'WebGPU / wasm32 / JSPI',
   'webgpu-wasm32-asyncify': 'WebGPU / wasm32 / Asyncify',
-  'cpu-wasm64': 'CPU / wasm64',
+  'webgpu-wasm64-jspi-gpu-profile': 'WebGPU / wasm64 / GPU profile',
   'cpu-wasm32': 'CPU / wasm32',
 } satisfies Record<Exclude<typeof options.value.profile, 'auto'>, string>;
-const profileFeatures = {
-  wasm: 'WebAssembly',
-  memory64: 'WebAssembly memory64',
-  jspi: 'WebAssembly JSPI',
-  webgpu: 'WebGPU',
-  'shader-f16': 'WebGPU shader-f16',
-  brotli: 'Brotli',
-  storage: 'OPFS',
-  worker: 'Worker',
-} satisfies Record<ProfileUnavailableReason, string>;
+
 const capabilities = computed(() => {
   const current = profileState.value;
   switch (current.status) {

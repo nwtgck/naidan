@@ -354,5 +354,87 @@ it('round-trips optional diagnostic completion groups and their interpretation w
   expect(readme).toContain('unfinishedNodes');
   expect(readme).toContain('maxNodeIndex');
   expect(readme).toContain('split-input copies');
-  expect(readme).toContain('no additional Wasm variant');
+  expect(readme).toContain('orthogonal to the selected standard/GPU-profiling lane');
+});
+
+describe('interrupted observations in the actual ZIP', () => {
+  it.each(['new-scope', 'not-needed', 'stopped', 'failed'] as const)('retains outputs, partial GPU timing, memory and recovery=%s', async recovery => {
+    const source = snapshot(), trial = source.trials[0]!;
+    trial.status = 'interrupted';
+    trial.runtimeSegment = 0;
+    trial.interruption = { reason: 'user-skip', requestedMs: 200, settledMs: 300, recovery };
+    trial.output = undefined;
+    trial.partialText = 'partial answer';
+    trial.partialReasoning = 'partial reasoning';
+    trial.exclusion = ['interrupted', 'instrumented', 'incomplete-output', 'incomplete-summary'];
+    trial.options = { ...trial.options, profile: 'webgpu-wasm64-jspi-gpu-profile' };
+    trial.summary = performanceReport({ outcome: 'aborted' });
+    trial.summary.performance!.gpuProfile = {
+      version: 1,
+      source: 'webgpu-pass-timestamps',
+      status: 'partial',
+      observedPasses: 2,
+      measuredPasses: 1,
+      pendingPasses: 1,
+      invalidPasses: 0,
+      droppedPasses: 0,
+      ungroupedPasses: 0,
+      ambiguousPasses: 0,
+      instrumentationErrors: 0,
+      zeroDurationPasses: 0,
+      totalGpuMs: 12.5,
+      precision: 'browser-defined',
+      rows: [{
+        phase: 'decode',
+        shader: 'fixture_q4_K',
+        passes: 1,
+        dispatches: 1,
+        multiDispatchPasses: 0,
+        totalGpuMs: 12.5,
+        meanPassMs: 12.5,
+        minimumPassMs: 12.5,
+        maximumPassMs: 12.5,
+        zeroDurationPasses: 0,
+      }],
+    };
+    trial.memoryDiagnostics = {
+      samples: [{ kind: 'naidan-llama-cpp-memory', instanceId: 'interrupted-core', profile: 'webgpu-wasm64-jspi-gpu-profile', checkpoint: 'generation-interrupted', capacityBytes: 65536, timestamp: 190 }],
+      droppedSamples: 1,
+      nativeAllocations: [],
+      droppedNativeAllocations: 0,
+      nativeSettings: [],
+      droppedNativeSettings: 0,
+    };
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const record = JSON.parse(await zip.file('trials.jsonl')!.async('string'));
+    expect(record).toMatchObject({ status: 'interrupted', interruption: trial.interruption, runtimeSegment: 0, gpuProfileCoverage: { status: 'partial', pendingPasses: 1 } });
+    expect(record.summary.performance.gpuProfile).toBeUndefined();
+    const output = JSON.parse(await zip.file(`outputs/${trial.id}.json`)!.async('string'));
+    expect(output).toMatchObject({ status: 'interrupted', interruption: trial.interruption, partialText: 'partial answer', partialReasoning: 'partial reasoning' });
+    expect(output.output).toBeUndefined();
+    expect(JSON.parse(await zip.file(`memory/${trial.id}.json`)!.async('string'))).toMatchObject({ status: 'interrupted', interruption: trial.interruption, ...trial.memoryDiagnostics });
+    expect(JSON.parse(await zip.file('gpu-profile.jsonl')!.async('string'))).toMatchObject({ status: 'interrupted', interruption: trial.interruption, observation: { totalGpuMs: 12.5, status: 'partial' } });
+    expect(JSON.parse(await zip.file('gpu-profile-summary.json')!.async('string'))).toMatchObject([{ status: 'interrupted', interruption: trial.interruption, runtimeSegment: 0, observationStatus: 'partial' }]);
+    expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toEqual([]);
+    const csv = await zip.file('summary.csv')!.async('string');
+    expect(csv).toContain('"interrupt_requested_ms"');
+    expect(csv).toContain(`"0","200","300","${recovery}",""`);
+    expect(await zip.file('README.md')!.async('string')).toContain('Unsaved Worker-local data cannot be recovered');
+  });
+
+  it('keeps missing summaries unavailable after forced termination instead of inventing a zero GPU time', async () => {
+    const source = snapshot(), trial = source.trials[0]!;
+    trial.status = 'interrupted';
+    trial.interruption = { reason: 'user-skip', requestedMs: 10, settledMs: 5010, recovery: 'new-scope' };
+    trial.options = { ...trial.options, profile: 'webgpu-wasm64-jspi-gpu-profile' };
+    trial.summary = undefined;
+    trial.output = undefined;
+    trial.exclusion = ['interrupted', 'missing-summary', 'incomplete-output', 'instrumented'];
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const gpu = JSON.parse(await zip.file('gpu-profile.jsonl')!.async('string'));
+    expect(gpu.observationStatus).toBe('missing');
+    expect(gpu.observation).toBeUndefined();
+    expect(gpu.status).toBe('interrupted');
+    expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string')).partialText).toBe('answer');
+  });
 });

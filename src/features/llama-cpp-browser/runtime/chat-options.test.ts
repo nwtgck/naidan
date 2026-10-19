@@ -19,7 +19,7 @@ describe('accepted chat context preferences', () => {
     expect(defaultChatContextTokens).toBe(32768);
     expect(await captureChatOptions({ options: { profile: 'auto' } })).toStrictEqual({ profile: 'auto' });
     host.load.mockResolvedValue(settings({ contextTokens: undefined }));
-    expect(await captureChatOptions({ options: { profile: 'cpu-wasm64' } })).toStrictEqual({ profile: 'cpu-wasm64' });
+    expect(await captureChatOptions({ options: { profile: 'cpu-wasm32' } })).toStrictEqual({ profile: 'cpu-wasm32' });
   });
 
   it.each([512, 32768, 65536, 131072, 1048576])('accepts an explicit safe allocation target %s', async contextTokens => {
@@ -38,7 +38,7 @@ describe('accepted chat context preferences', () => {
     host.load.mockReturnValue(pending.promise);
     const options = { profile: 'auto' as const };
     const accepted = captureChatOptions({ options });
-    Object.assign(options, { profile: 'cpu-wasm64', contextTokens: 4096 });
+    Object.assign(options, { profile: 'cpu-wasm32', contextTokens: 4096 });
     pending.resolve(settings({ contextTokens: 65536 }));
     expect(await accepted).toStrictEqual({ profile: 'auto', contextTokens: 65536 });
   });

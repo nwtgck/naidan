@@ -1,0 +1,1 @@
+export const llamaCppPerformance__profiling_runtime_not_installed = (): string => "El paquete de ejecución instalado no incluye el perfilado de GPU. Actualiza a un artefacto de browser-inference-core que contenga el perfil de diagnóstico para habilitarlo.";

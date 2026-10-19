@@ -113,7 +113,7 @@ beforeEach(async () => {
       recommended: 'webgpu-wasm64-jspi',
       profiles: [
         { profile: 'webgpu-wasm64-jspi', status: 'available' }, { profile: 'webgpu-wasm32-jspi', status: 'available' },
-        { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
+        { profile: 'webgpu-wasm32-asyncify', status: 'available' }, { profile: 'cpu-wasm32', status: 'available' },
       ],
     };
     for (const listener of notifications.capabilities) {
@@ -122,7 +122,7 @@ beforeEach(async () => {
     return capabilities;
   });
   notifications.confirm.mockResolvedValue(true);
-  notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
+  notifications.profiles.splice(0, notifications.profiles.length, 'auto', 'cpu-wasm32', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi');
   vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'auto' });
   vi.mocked(llamaCppBrowserService.getState).mockReturnValue({ status: 'idle' });
   vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([]);

@@ -1,3 +1,5 @@
+import { createPerformanceRunner } from './performance/runner';
+import { performancePlan, performanceEnvironment, performanceReport } from './test-utils/performance.test-support';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
@@ -25,7 +27,7 @@ beforeEach(async () => {
   worker.probeProfiles.mockResolvedValue({
     recommended: 'cpu-wasm32',
     profiles: [
-      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
     ],
   });
   worker.canReuse.mockReturnValue(true);
@@ -80,7 +82,7 @@ describe('serialized hosted model service', () => {
   it('isolates option snapshots from observers and callers', () => {
     const mutate = service.subscribeOptions({
       listener: ({ options }) => {
-        options.profile = 'cpu-wasm64';
+        options.profile = 'webgpu-wasm64-jspi';
       },
     });
     const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
@@ -196,7 +198,7 @@ describe('serialized hosted model service', () => {
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
     service.release();
     const second = service.probeProfiles({ signal: undefined });
-    old.resolve({ recommended: 'cpu-wasm64', profiles: [{ profile: 'cpu-wasm64', status: 'available' }] });
+    old.resolve({ recommended: 'webgpu-wasm64-jspi', profiles: [{ profile: 'webgpu-wasm64-jspi', status: 'available' }] });
     await failed;
     await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledTimes(2));
     const third = service.probeProfiles({ signal: undefined });
@@ -230,7 +232,7 @@ describe('serialized hosted model service', () => {
     const pendingInput = input();
     const second = service.generate({ input: pendingInput, onEvent: () => {}, signal: undefined });
     pendingInput.messages[0]!.content = 'mutated';
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generate).toHaveBeenCalledOnce();
     finish();
     await first;
@@ -429,7 +431,7 @@ describe('audio sharing the serialized inference lane', () => {
     const audio = service.generateAudio({ input: pendingInput, cancellationSignal: undefined });
     pendingInput.text = 'mutated';
     pendingInput.contextTokens = 8192;
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     expect(worker.generateAudio).not.toHaveBeenCalled();
     gate.resolve({ content: 'chat', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
     await chat;
@@ -686,11 +688,11 @@ describe('idle model preparation', () => {
     service.setOptions({ options: { profile: 'cpu-wasm32' } });
     const probe = service.probeProfiles({ signal: undefined });
     const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
-    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    service.setOptions({ options: { profile: 'webgpu-wasm64-jspi' } });
     gate.resolve({
-      recommended: 'cpu-wasm64',
+      recommended: 'webgpu-wasm64-jspi',
       profiles: [
-        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'webgpu-wasm64-jspi', status: 'available' },
       ],
     });
     await probe;
@@ -980,5 +982,72 @@ describe('stored chat allocation targets', () => {
     vi.mocked(storage.loadSettings).mockResolvedValue(null);
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('trial interruption through the unchanged real performance service', () => {
+  it.each([true, false])('retires the interrupted owner and reacquires without reusing a poisoned scope (canReuse=%s)', async canReuse => {
+    const plan = performancePlan({ models: 2 });
+    factory.mockImplementation(() => {
+      worker.canReuse.mockReturnValue(true);
+      return { ...worker };
+    });
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _stop = {
+      [Symbol.dispose]() {
+        runner.stop();
+      },
+    };
+    worker.generate.mockImplementationOnce(async ({ signal, onEvent, onSummary }) => {
+      await onEvent({ event: { type: 'text', text: 'partial' } });
+      expect(runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id })).toBe(true);
+      expect(signal?.aborted).toBe(true);
+      worker.canReuse.mockReturnValue(canReuse);
+      onSummary?.({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    }).mockImplementation(async ({ onEvent, onSummary }) => {
+      worker.canReuse.mockReturnValue(true);
+      await onEvent({ event: { type: 'text', text: 'answer' } });
+      onSummary?.({ diagnostic: performanceReport() });
+      return { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await runner.start({ plan, environment: performanceEnvironment() });
+    const result = runner.snapshot()!;
+    expect(result.modelErrors).toEqual([]);
+    expect(result.trials).toHaveLength(10);
+    expect(result.trials[0]).toMatchObject({ status: 'interrupted', partialText: 'partial', interruption: { recovery: 'new-scope' } });
+    expect(result.trials.slice(1).every(trial => trial.status === 'succeeded')).toBe(true);
+    expect(factory).toHaveBeenCalledTimes(3);
+    expect(worker.dispose).toHaveBeenCalledTimes(3);
+    expect(worker.generate).toHaveBeenCalledTimes(10);
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('does not start the next request before the real service finishes asynchronous retirement', async () => {
+    const plan = performancePlan();
+    vi.mocked(listStoredModels).mockResolvedValue(plan.models);
+    const retirement = Promise.withResolvers<void>();
+    const runner = createPerformanceRunner({ service, now: () => 100, date: () => plan.createdAt, hidden: () => false, waitUntilVisible: async ({ signal }) => signal.throwIfAborted(), publish: () => {} });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        retirement.resolve();
+        runner.stop();
+      },
+    };
+    // Worker retirement is not just releaseRuntime; its transport handle must settle.
+    worker.dispose.mockReturnValueOnce(retirement.promise);
+    worker.generate.mockImplementationOnce(async () => {
+      runner.interruptCurrent({ trialId: runner.snapshot()!.trials[0]!.id });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    const pending = runner.start({ plan, environment: performanceEnvironment() });
+    await vi.waitFor(() => expect(worker.dispose).toHaveBeenCalledOnce());
+    expect(worker.generate).toHaveBeenCalledOnce();
+    expect(factory).toHaveBeenCalledOnce();
+    retirement.resolve();
+    await pending;
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(runner.snapshot()!.trials[0]?.interruption?.recovery).toBe('new-scope');
   });
 });

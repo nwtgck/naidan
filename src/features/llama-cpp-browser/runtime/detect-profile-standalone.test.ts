@@ -98,7 +98,7 @@ describe('standalone Worker capability detection', () => {
     expect(environment.root.removeEntry).toHaveBeenCalledWith(name);
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded profile %s without probes', async profile => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify'] as const)('rejects non-embedded profile %s without probes', async profile => {
     await expect(resolveRuntimeProfile({ profile })).rejects.toThrow('unavailable');
     expect(environment.wasm.validate).not.toHaveBeenCalled();
   });

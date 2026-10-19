@@ -1,15 +1,15 @@
 import { gzipSync } from 'node:zlib';
 import type { Plugin } from 'vite';
-import { profileSchema } from './types';
-import { readLlamaArtifactPackage } from './build-artifact-package';
+import { hostedArtifactProfiles, readLlamaArtifactPackage } from './build-artifact-package';
 
 /** Copy the installed artifact, never compile llama.cpp as part of Naidan's build. */
 export function createLlamaCppRuntimeAssetsPlugin({ rootDir }: { rootDir: string }): Plugin {
   const prefix = 'llama-cpp-browser-runtime/';
   function assets(): Map<string, Uint8Array> {
     const result = new Map<string, Uint8Array>();
-    const { readArtifact } = readLlamaArtifactPackage({ rootDir });
-    for (const profile of profileSchema.options) {
+    const artifact = readLlamaArtifactPackage({ rootDir });
+    const { readArtifact } = artifact;
+    for (const profile of hostedArtifactProfiles(artifact)) {
       const relative = `profiles/${profile}/browser/core.wasm`;
       const { data } = readArtifact({ relative });
       result.set(`profiles/${profile}/core.wasm.gz`, gzipSync(data, { level: 9 }));

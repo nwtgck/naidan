@@ -1,3 +1,4 @@
+import { isGpuProfileTrial } from './gpu-profile-summary';
 import type { PerformanceSnapshot, PerformanceTrial } from './types';
 
 export function trialRates({ trial }: { trial: PerformanceTrial }) {
@@ -25,17 +26,19 @@ function median({ values }: { values: number[] }): number | undefined {
 /** Partition by effective context/batch, finish reason and actual work. Never
  * average an allocation fallback or a shortened answer into another condition. */
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
-  const groups = new Map<string, { modelIndex: number, scenario: string, position: string, profile: string, contextTokens: number | undefined,
+  const groups = new Map<string, { modelIndex: number, runtimeSegment: number, runtimeRestarted: boolean, scenario: string, position: string, profile: string, contextTokens: number | undefined,
     batchTokens: number | undefined, finishReason: string | undefined, parentFinishReason: string | undefined, promptTokens: number | undefined,
     reusedTokens: number | undefined, generatedTokens: number | undefined, trials: PerformanceTrial[] }>();
   for (const trial of snapshot.trials) {
     const step = snapshot.plan.steps.find(step => step.id === trial.stepId);
-    if (!step || step.role !== 'measurement' || trial.status !== 'succeeded' || trial.exclusion.length) {
+    if (!step || step.role !== 'measurement' || isGpuProfileTrial({ trial, snapshot }) || trial.status !== 'succeeded' || trial.exclusion.length) {
       continue;
     }
     const metrics = trial.summary?.performance;
     const condition = {
       modelIndex: trial.modelIndex,
+      runtimeSegment: trial.runtimeSegment ?? 0,
+      runtimeRestarted: trial.warnings.includes('runtime-restarted'),
       scenario: step.scenario,
       position: step.position,
       profile: trial.options.profile,
@@ -72,6 +75,9 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
 function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial, position: 'before' | 'after' }) {
   const events = trial.summary?.performance?.preparationEvents;
   const reasons: string[] = [], uncertainties: string[] = [];
+  if (trial.warnings.includes('runtime-restarted')) {
+    reasons.push(`${position}-runtime-restarted`);
+  }
   if (events === undefined || !events.some(event => event.event === 'model-reused')) {
     uncertainties.push(`${position}-model-reuse-unconfirmed`);
   }
@@ -91,8 +97,8 @@ function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial,
  * both attempts and explain every rejected comparison instead of filtering by
  * which direction a result moved. */
 export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapshot }) {
-  return snapshot.plan.steps.filter(step => step.position === 'before').map(beforeStep => {
-    const afterStep = snapshot.plan.steps.find(step => step.modelIndex === beforeStep.modelIndex && step.repetition === beforeStep.repetition && step.position === 'after');
+  return snapshot.plan.steps.filter(step => step.position === 'before' && step.lane !== 'gpu-profile').map(beforeStep => {
+    const afterStep = snapshot.plan.steps.find(step => step.modelIndex === beforeStep.modelIndex && step.repetition === beforeStep.repetition && step.position === 'after' && step.lane !== 'gpu-profile');
     const before = snapshot.trials.find(trial => trial.stepId === beforeStep.id);
     const after = snapshot.trials.find(trial => trial.stepId === afterStep?.id);
     const reasons: string[] = [], uncertainties: string[] = [];
@@ -107,8 +113,11 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       if (before.status !== 'succeeded' || after.status !== 'succeeded') {
         reasons.push('unsuccessful-attempt');
       }
-      if (before.exclusion.length || after.exclusion.length) {
+      if (before.exclusion.length || after.exclusion.length || isGpuProfileTrial({ trial: before, snapshot }) || isGpuProfileTrial({ trial: after, snapshot })) {
         reasons.push('excluded-attempt');
+      }
+      if ((before.runtimeSegment ?? 0) !== (after.runtimeSegment ?? 0)) {
+        reasons.push('different-runtime-segment');
       }
       const a = before.summary?.performance, b = after.summary?.performance;
       if (!a || !b) {
@@ -139,6 +148,8 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
       modelIndex: beforeStep.modelIndex,
       repetition: beforeStep.repetition,
       beforeAttempt: before?.id,
+      beforeRuntimeSegment: before?.runtimeSegment,
+      afterRuntimeSegment: after?.runtimeSegment,
       afterAttempt: after?.id,
       meaning: 'chronological-same-workload-comparison-not-a-causal-estimate',
       reasons,

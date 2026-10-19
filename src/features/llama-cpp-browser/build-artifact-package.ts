@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { chatProfileSchema, gpuProfilingProfile } from './types';
 
 const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegative().refine(Number.isSafeInteger), sha256: z.string().regex(/^[0-9a-f]{64}$/) });
 const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);
@@ -65,6 +66,24 @@ export function readLlamaArtifactPackage({ rootDir }: { rootDir: string }) {
     return readRootFile({ relative: innerPrefix + relative });
   }
   return { packageRoot, profileRoot: path.join(packageRoot, innerPrefix, 'profiles'), manifestPaths: [rootManifestPath, innerManifestPath], files, readArtifact };
+}
+
+
+/** Old published packages remain buildable until the new source-bound artifact
+ * is published and pinned. A partially published diagnostic profile is an error. */
+export function hostedArtifactProfiles({ files, readArtifact }: { files: ReturnType<typeof readLlamaArtifactPackage>['files'], readArtifact: ReturnType<typeof readLlamaArtifactPackage>['readArtifact'] }) {
+  const paths = ['core.mjs', 'core.wasm', 'core.d.ts'].map(name => `profiles/${gpuProfilingProfile}/browser/${name}`);
+  const present = paths.filter(relative => files.has(relative));
+  if (present.length === 0 && ![...files.keys()].some(relative => relative.startsWith(`profiles/${gpuProfilingProfile}/`))) {
+    return [...chatProfileSchema.options];
+  }
+  if (present.length !== paths.length) {
+    throw new Error('Incomplete GPU profiling artifact');
+  }
+  for (const relative of paths) {
+    readArtifact({ relative });
+  }
+  return [...chatProfileSchema.options, gpuProfilingProfile];
 }
 
 export const TEST_ONLY = {

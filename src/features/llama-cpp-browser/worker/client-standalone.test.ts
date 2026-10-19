@@ -123,7 +123,7 @@ describe('standalone llama Worker lifetime', () => {
     expect(calls.release).toHaveBeenCalledOnce();
   });
 
-  it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm32-asyncify'] as const)('rejects %s before creating the Worker', async profile => {
     const client = createLlamaCppWorkerClient();
     await expect(client.generate({ request: { ...request(), options: { profile } }, onEvent: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow('unavailable');
     expect(calls.factory).not.toHaveBeenCalled();

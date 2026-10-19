@@ -59,7 +59,7 @@ describe('hosted Worker lifetime', () => {
       data: {
         kind: 'naidan-llama-cpp-memory',
         instanceId: 'core-one',
-        profile: 'cpu-wasm64',
+        profile: 'webgpu-wasm64-jspi',
         checkpoint: 'runtime-ready',
         capacityBytes: 2 ** 33,
         timestamp: 1000,

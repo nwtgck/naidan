@@ -10,7 +10,7 @@ describe('passive Wasm memory checkpoints', () => {
     const core = { module: { HEAPU8: new Uint8Array(65536) } };
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
-    beginMemoryDiagnostics({ core, profile: 'cpu-wasm64' });
+    beginMemoryDiagnostics({ core, profile: 'webgpu-wasm64-jspi' });
     core.module.HEAPU8 = new Uint8Array(131072);
     sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
     sampleMemoryDiagnostics({ core, checkpoint: 'model-released' });

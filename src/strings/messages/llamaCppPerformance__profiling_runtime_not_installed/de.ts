@@ -1,0 +1,1 @@
+export const llamaCppPerformance__profiling_runtime_not_installed = (): string => "Das installierte Laufzeitpaket enthält kein GPU-Profiling. Verwenden Sie ein browser-inference-core-Artefakt mit Diagnoseprofil, um es zu aktivieren.";
