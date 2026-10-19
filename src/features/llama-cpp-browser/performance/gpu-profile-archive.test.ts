@@ -82,6 +82,31 @@ describe('GPU profiling archive attribution and quality', () => {
     expect(source.trials[0]!.summary!.performance!.gpuProfile!.rows).toHaveLength(3);
   });
 
+  it('exports existing readback waits separately without adding them to phase GPU times', async () => {
+    using measurement = createMeasurementFixture();
+    let time = 1;
+    using gpu = createGpuProfileFixture({ now: () => time++ });
+    measurement.enter({ phase: 'decode' });
+    const querySet = gpu.query();
+    gpu.pass({ querySet }).end();
+    const buffer = gpu.resolve({ querySet });
+    const host = gpu.hostBuffer();
+    gpu.encoder.copyBufferToBuffer(buffer, 0, host, 0, 16);
+    await host.mapAsync(1);
+    host.getMappedRange();
+    const observation = measurement.finish();
+    const source = snapshot();
+    source.trials[0]!.summary!.performance!.gpuProfile = observation;
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const raw = JSON.parse(await zip.file('gpu-profile.jsonl')!.async('string'));
+    const summary = JSON.parse(await zip.file('gpu-profile-summary.json')!.async('string'));
+    expect(raw.observation.readbacks).toEqual(observation.readbacks);
+    expect(summary[0].readbacks).toEqual(observation.readbacks);
+    expect(summary[0].phases.find((phase: { phase: string }) => phase.phase === 'decode').retainedGpuMs).toBe(2);
+    expect(raw.observation.readbacks.rows[0]).toMatchObject({ completed: 1, totalWaitMs: 1 });
+    expect(JSON.parse(await zip.file('summary.json')!.async('string'))).toEqual([]);
+  });
+
   it('does not fabricate zero timings when a profiled request failed before producing timestamps', async () => {
     const source = snapshot();
     source.trials[0]!.status = 'failed';
@@ -110,6 +135,10 @@ describe('GPU profiling archive attribution and quality', () => {
     expect(gpuProfileSchema.safeParse({ ...result, totalGpuMs: Infinity }).success).toBe(false);
     expect(gpuProfileSchema.safeParse({ ...result, rows: Array.from({ length: maximumGpuProfileGroups + 1 }, () => result.rows[0]) }).success).toBe(false);
     expect(gpuProfileSchema.safeParse({ ...result, measuredPasses: -1 }).success).toBe(false);
+    const readback = { phase: 'decode', requested: 1, completed: 1, rejected: 0, pending: 0, invalidTimings: 0, totalWaitMs: 0, maximumWaitMs: 0 };
+    const readbacks = { source: 'existing-timestamp-buffer-mapAsync', phaseAt: 'map-request', rows: [readback] };
+    expect(gpuProfileSchema.safeParse({ ...result, readbacks: { ...readbacks, rows: Array.from({ length: 5 }, () => readback) } }).success).toBe(false);
+    expect(gpuProfileSchema.safeParse({ ...result, readbacks: { ...readbacks, rows: [{ ...readback, totalWaitMs: Infinity }] } }).success).toBe(false);
   });
 
   it('rejects forged cross-lane plans and non-matching reference runtime settings', () => {

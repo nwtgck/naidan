@@ -25,6 +25,7 @@ export function summarizeGpuProfiles({ snapshot }: { snapshot: PerformanceSnapsh
       interruption: trial.interruption,
       runtimeSegment: trial.runtimeSegment,
       observationStatus: profile?.status ?? 'missing',
+      readbacks: profile?.readbacks,
       phases: gpuProfilePhaseSchema.options.map(phase => {
         const rows = profile?.rows.filter(row => row.phase === phase) ?? [];
         const retainedGpuMs = rows.reduce((sum, row) => sum + row.totalGpuMs, 0);
