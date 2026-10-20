@@ -1,3 +1,6 @@
+import { Blob as NodeBlob } from 'node:buffer';
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
+import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import type { AudioPreviewEvent } from '@/features/audio-generation/types';
@@ -838,5 +841,35 @@ describe('measured partial memory evidence', () => {
     transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'missing-model' }));
     await expect(client.generate(args)).rejects.toThrow('missing-model');
     client.dispose();
+  });
+});
+
+describe('temporary files on the existing worker transport', () => {
+  it('attaches only the selected model for chat, preparation and audio, including a recreated Worker', async () => {
+    const bytes = new Uint8Array(32);
+    bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+    const file = new File([bytes], 'transport-temp.gguf', { lastModified: 123 });
+    Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+    const [model] = await temporaryModels.registerDirectory({ directory: directoryForModelFile({ file }), signal: undefined });
+    using _registration = { [Symbol.dispose]: () => temporaryModels.remove({ name: model!.id }) };
+    const client = createLlamaCppWorkerClient();
+    using _first = { [Symbol.dispose]: () => client.dispose() };
+    transport.remote.prepareModel.mockResolvedValue(undefined);
+    transport.remote.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await client.prepareModel({ request: { model: model!.id, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls.at(-1)?.[0].temporaryModel.files[0].file).toBe(file);
+    await client.generate({ request: { ...generationInput(), model: model!.id }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.generate.mock.calls.at(-1)?.[0].temporaryModel.id).toBe(model!.id);
+    await client.generateAudio({ request: { ...audioInput(), model: model!.id }, onProgress: () => {}, cancellationSignal: undefined });
+    expect(transport.remote.generateAudio.mock.calls.at(-1)?.[0].temporaryModel.files[0].file).toBe(file);
+    client.dispose();
+    const replacement = createLlamaCppWorkerClient();
+    using _second = { [Symbol.dispose]: () => replacement.dispose() };
+    await replacement.prepareModel({ request: { model: model!.id, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined });
+    expect(transport.remote.prepareModel.mock.calls.at(-1)?.[0].temporaryModel.files[0].file).toBe(file);
+    temporaryModels.remove({ name: model!.id });
+    const count = transport.remote.prepareModel.mock.calls.length;
+    await expect(replacement.prepareModel({ request: { model: model!.id, options: { profile: 'cpu-wasm32' } }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
+    expect(transport.remote.prepareModel.mock.calls).toHaveLength(count);
   });
 });

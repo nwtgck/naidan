@@ -1,3 +1,4 @@
+import { isTemporaryModelReference } from './runtime/temporary-model-reference';
 import { z } from 'zod';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
 import { huggingFaceModelId } from '../../01-models/llama-cpp-browser-model-launch';
@@ -36,6 +37,9 @@ export const runtimeOptionsSchema = z.object({
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
 export const modelSchema = z.object({
   id: z.string().min(1).max(1024).refine(value => {
+    if (value.startsWith('temp/')) {
+      return isTemporaryModelReference({ name: value });
+    }
     if (value.startsWith('host/')) {
       try {
         parseHostModelReference({ name: value });
@@ -52,6 +56,9 @@ export const modelSchema = z.object({
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
 }).strict().refine(({ id, name }) => {
+  if (id.startsWith('temp/')) {
+    return name === id;
+  }
   if (!id.startsWith('host/')) {
     return name.length <= 512;
   }
@@ -152,6 +159,9 @@ export const generateInputSchema = z.object({
   model: z.string().min(1).max(1024).refine(value => {
     // Generation must admit every canonical linked name accepted by inventory,
     // without widening the existing limit for ordinary model names.
+    if (value.startsWith('temp/')) {
+      return isTemporaryModelReference({ name: value });
+    }
     if (!value.startsWith('host/')) {
       if (value.length <= 512) {
         return true;

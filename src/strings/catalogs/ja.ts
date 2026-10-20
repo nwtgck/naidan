@@ -1054,16 +1054,25 @@ import { LlamaCppBrowserHuggingFaceSearch__show_trending_models } from '@/string
 import { LlamaCppBrowserHuggingFaceSearch__task } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__task/ja';
 import { LlamaCppBrowserHuggingFaceSearch__up_to_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__up_to_parameters/ja';
 import { LlamaCppBrowserHuggingFaceSearch__updated } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__updated/ja';
+import { LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file } from '@/strings/messages/LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file/ja';
+import { LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder } from '@/strings/messages/LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder/ja';
 import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserManager__could_not_create_or_open_chat_group/ja';
 import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/ja';
 import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/ja';
 import { LlamaCppBrowserManager__folder } from '@/strings/messages/LlamaCppBrowserManager__folder/ja';
 import { LlamaCppBrowserManager__model_name } from '@/strings/messages/LlamaCppBrowserManager__model_name/ja';
+import { LlamaCppBrowserManager__remove_temporary_model } from '@/strings/messages/LlamaCppBrowserManager__remove_temporary_model/ja';
 import { LlamaCppBrowserManager__repository } from '@/strings/messages/LlamaCppBrowserManager__repository/ja';
+import { LlamaCppBrowserManager__temporary } from '@/strings/messages/LlamaCppBrowserManager__temporary/ja';
 import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/ja';
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/ja';
 import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/ja';
 import { LlamaCppBrowserModelAction__set_this_model_as_the_global_default } from '@/strings/messages/LlamaCppBrowserModelAction__set_this_model_as_the_global_default/ja';
+import { LlamaCppBrowserModelImport__how_to_use_model_files } from '@/strings/messages/LlamaCppBrowserModelImport__how_to_use_model_files/ja';
+import { LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload } from '@/strings/messages/LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload/ja';
+import { LlamaCppBrowserModelImport__save_in_browser } from '@/strings/messages/LlamaCppBrowserModelImport__save_in_browser/ja';
+import { LlamaCppBrowserModelImport__temporary_files_are_available_until_reload } from '@/strings/messages/LlamaCppBrowserModelImport__temporary_files_are_available_until_reload/ja';
+import { LlamaCppBrowserModelImport__use_temporarily } from '@/strings/messages/LlamaCppBrowserModelImport__use_temporarily/ja';
 import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/ja';
 import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/ja';
 import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/ja';
@@ -3965,16 +3974,25 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__task,
   LlamaCppBrowserHuggingFaceSearch__up_to_parameters,
   LlamaCppBrowserHuggingFaceSearch__updated,
+  LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file,
+  LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder,
   LlamaCppBrowserManager__could_not_create_or_open_chat_group,
   LlamaCppBrowserManager__details,
   LlamaCppBrowserManager__file,
   LlamaCppBrowserManager__folder,
   LlamaCppBrowserManager__model_name,
+  LlamaCppBrowserManager__remove_temporary_model,
   LlamaCppBrowserManager__repository,
+  LlamaCppBrowserManager__temporary,
   LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
   LlamaCppBrowserModelAction__create_chat_group,
   LlamaCppBrowserModelAction__model_actions,
   LlamaCppBrowserModelAction__set_this_model_as_the_global_default,
+  LlamaCppBrowserModelImport__how_to_use_model_files,
+  LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload,
+  LlamaCppBrowserModelImport__save_in_browser,
+  LlamaCppBrowserModelImport__temporary_files_are_available_until_reload,
+  LlamaCppBrowserModelImport__use_temporarily,
   LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
   LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
   LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,

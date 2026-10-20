@@ -1,3 +1,4 @@
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { observeMeasurementMemory } from './memory-observation';
 import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
@@ -259,7 +260,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
-      const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerPrepareCallSchema.parse({ ...request, temporaryModel: temporaryModels.source({ name: request.model }), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
@@ -283,6 +284,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
+        temporaryModel: temporaryModels.source({ name: request.model }),
         generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
@@ -364,7 +366,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
-      const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerAudioCallSchema.parse({ ...request, temporaryModel: temporaryModels.source({ name: request.model }), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       let started = false;
       const finish = (): void => {

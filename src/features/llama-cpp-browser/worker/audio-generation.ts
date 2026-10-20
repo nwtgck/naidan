@@ -65,7 +65,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
   onProgress: ({ progress }: { progress: Progress }) => void, cancellationSignal: AbortSignal | undefined, shouldComplete?: () => boolean, preview?: NativeAudioPreview,
 }): Promise<AudioGenerationResult> {
   // The wire schema also includes transport-only fields; validate the model input separately.
-  const { assetBaseURL: _assetBaseURL, ...input } = request;
+  const { assetBaseURL: _assetBaseURL, temporaryModel: _temporaryModel, ...input } = request;
   const accepted = audioGenerationInputSchema.parse(input);
   const api = core.api;
   let stage: DiagnosticStage = 'audio-info';

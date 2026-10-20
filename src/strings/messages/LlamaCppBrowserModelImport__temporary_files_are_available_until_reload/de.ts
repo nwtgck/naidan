@@ -1,0 +1,1 @@
+export const LlamaCppBrowserModelImport__temporary_files_are_available_until_reload = (): string => "Dateien ohne gespeicherte Kopie verwenden. Verfügbar, bis diese Seite neu geladen oder geschlossen wird.";

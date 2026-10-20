@@ -1,3 +1,5 @@
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
+import { temporarySourceDirectory } from '@/features/llama-cpp-browser/runtime/temporary-model-source';
 import { storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
 import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { modelSchema, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -63,7 +65,9 @@ export async function inspectStoredAudioModel({ id, signal }: { id: string, sign
   signal?.throwIfAborted();
   try {
     const name = modelSchema.shape.id.parse(id);
-    const directory = await storedModelDirectory({ name });
+    const directory = name.startsWith('temp/')
+      ? temporarySourceDirectory({ name, source: temporaryModels.source({ name }) })
+      : await storedModelDirectory({ name });
     return await detectAudioModelFiles({ directory, signal });
   } catch {
     signal?.throwIfAborted();

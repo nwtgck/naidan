@@ -1,3 +1,4 @@
+import { isTemporaryModelReference } from '@/features/llama-cpp-browser/runtime/temporary-model-reference';
 import { z } from 'zod';
 import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
 import { parsePublicHostModelReference } from '@/features/llama-cpp-browser/runtime/model-destination-types';
@@ -24,6 +25,9 @@ export const relativeModelPathSchema = z.string().min(1).max(4096).refine(path =
 }, 'Use a relative path inside an existing model root');
 
 export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value => {
+  if (value.startsWith('temp/')) {
+    return isTemporaryModelReference({ name: value });
+  }
   if (value.startsWith('host/')) {
     try {
       // Public aliases remain opaque here; only the serving host resolves them.

@@ -1,3 +1,4 @@
+import { preservesUnlistedModel } from '@/logic/unlisted-model-selection';
 import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { ChatGroup, Endpoint } from '@/01-models/types';
@@ -64,10 +65,7 @@ export async function fetchModelsForChat({
       && isSupportedEndpoint(endpoint)
       && mutableChat.modelId
       && !models.includes(mutableChat.modelId)
-      && !(endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(mutableChat.modelId))
-      // RPC can still resolve saved Host file references after its catalog starts
-      // publishing variant names; an absent listing must not erase that choice.
-      && !(endpoint.type === 'naidan_rpc' && mutableChat.modelId.startsWith('host/'))
+      && !preservesUnlistedModel({ endpoint, modelId: mutableChat.modelId })
     ) {
       let replacement = '';
       switch (endpoint.type) {

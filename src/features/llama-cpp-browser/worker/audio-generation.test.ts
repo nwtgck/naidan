@@ -464,3 +464,17 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
     expect(native.owned.size).toBe(0);
   });
 });
+
+it('does not feed worker-only temporary sources into the strict audio input schema', async () => {
+  const native = audioNativeFixture({ pointerBytes: 4 });
+  const model = 'temp/voice';
+  const result = await synthesizeAudio({
+    core: native.core,
+    context: 20n,
+    projector: 30n,
+    request: { ...request(), model, temporaryModel: { id: model, revision: 1, files: [{ path: 'model.gguf', file: new File(['fixture'], 'model.gguf') }], modelPath: 'model.gguf' } },
+    cancellationSignal: undefined,
+    onProgress: () => {},
+  });
+  expect(result).toEqual(audioResult());
+});

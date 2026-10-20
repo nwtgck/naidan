@@ -193,3 +193,18 @@ it('strips extensions in known chat events while rejecting missing fields and un
   expect(peerChatEventSchema.safeParse({ type: 'text', elapsedSeconds: 1 }).success).toBe(false);
   expect(peerChatEventSchema.safeParse({ type: 'new-event', text: 'hello' }).success).toBe(false);
 });
+
+it.each(['temp/Model-GGUF', 'temp/Models-2/owner/repo:subdir%2Fmodel.gguf', 'temp/variants:Q4.gguf'])('uses temporary name %s in ordinary listing and generation contracts without a special RPC', ref => {
+  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
+  expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
+  const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
+    throw new Error('Expected a model item stream');
+  }
+  expect(plan.node.capability.item.parse({ ref, label: ref })).toEqual({ ref, label: ref });
+});
+
+it.each(['temp/..', 'temp/root:..%2Fmodel.gguf', 'temp/root:dir/model.gguf', 'temp/root:%ZZ'])('rejects malformed temporary references without loosening ordinary file paths: %s', ref => {
+  expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+  expect(relativeModelPathSchema.safeParse('a/%2e%2e/b').success).toBe(false);
+});

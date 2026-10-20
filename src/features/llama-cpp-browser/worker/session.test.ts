@@ -5,13 +5,13 @@ import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagn
 import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import type { ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
+import type { ModelDirectory, StoredModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
 
-const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
+const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as (Omit<ModelDirectory, 'files'> & { files: StoredModelFile[] }) | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
 vi.mock('../runtime/detect-profile', () => ({ resolveRuntimeProfile: async () => 'cpu-wasm32' }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => host.directory }));
@@ -1250,5 +1250,38 @@ describe('chat context target changes without weight reload', () => {
     await prepareAudioSession({ request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens: 131072 } }, contextTokens: 4096, audioBackend: 'profile', signal: undefined, onProgress: () => {} });
     expect(targets()).toEqual([4096]);
     expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+});
+
+describe('temporary resident model cache', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reuses the same registration but reloads replacement files with identical public ID, size and mtime', async () => {
+    vi.stubGlobal('FileReaderSync', class {
+      readAsArrayBuffer(): ArrayBuffer {
+        return new ArrayBuffer(1);
+      }
+    });
+    const model = 'temp/Models';
+    const file = new File(['x'], 'model.gguf', { lastModified: 123 });
+    const source = { id: model, revision: 1, files: [{ path: 'model.gguf', file }], modelPath: 'model.gguf' };
+    const first = { ...request({ debug: 'off' }), model, temporaryModel: source };
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);
+    const replacement = { ...first, temporaryModel: { ...source, revision: 2, files: [{ path: 'model.gguf', file: new File(['y'], 'model.gguf', { lastModified: 123 }) }] } };
+    await prepareSession({ request: replacement, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+    expect(host.core!.api.llama_model_free).toHaveBeenCalledTimes(1);
+    // Releasing the runtime does not require an independent worker-side registry.
+    await releaseSession({ releaseRuntime: true });
+    await prepareSession({ request: replacement, onProgress: () => {}, signal: undefined });
+    expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not substitute the resident model when a temporary source is absent', async () => {
+    await expect(prepareSession({ request: { ...request({ debug: 'off' }), model: 'temp/missing' }, onProgress: () => {}, signal: undefined })).rejects.toThrow('missing-model');
+    expect(host.core!.api.llama_model_load_from_file).not.toHaveBeenCalled();
   });
 });

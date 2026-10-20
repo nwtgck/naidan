@@ -20,8 +20,9 @@ export interface LlamaCppBrowserService {
   subscribe({ listener }: { listener: ({ state }: { state: EngineState }) => void }): () => void;
   subscribeModelList({ listener }: { listener: () => void }): () => void;
   listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
-  importModel({ file, signal }: { file: File, signal: AbortSignal | undefined }): Promise<void>;
-  importDirectory({ directory, signal }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined }): Promise<void>;
+  importModel({ file, signal, storage }: { file: File, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
+  importDirectory({ directory, signal, storage }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
+  removeTemporaryModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<void>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
   generate({ input, onEvent, signal }: {
     input: Omit<GenerateInput, 'options'>, onEvent: GenerationCallback, signal: AbortSignal | undefined,

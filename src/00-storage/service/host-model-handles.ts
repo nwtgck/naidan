@@ -8,7 +8,7 @@ export type HostModelDirectoryHandle = FileSystemDirectoryHandle & {
   queryPermission({ mode }: { mode: 'read' | 'readwrite' }): Promise<PermissionState>,
   requestPermission({ mode }: { mode: 'read' | 'readwrite' }): Promise<PermissionState>,
 };
-const handleSchema = z.custom<HostModelDirectoryHandle>(value =>
+export const hostModelDirectoryHandleSchema = z.custom<HostModelDirectoryHandle>(value =>
   typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'directory'
   && 'getDirectoryHandle' in value && typeof value.getDirectoryHandle === 'function'
   && 'queryPermission' in value && typeof value.queryPermission === 'function'
@@ -66,10 +66,10 @@ async function transact({ mode, operation }: {
 export const hostModelHandles = {
   async get({ id }: { id: HostModelDirectoryId }): Promise<HostModelDirectoryHandle | undefined> {
     const value = await transact({ mode: 'readonly', operation: ({ store }) => store.get(idToRaw({ id })) });
-    return value === undefined ? undefined : handleSchema.parse(value);
+    return value === undefined ? undefined : hostModelDirectoryHandleSchema.parse(value);
   },
   async put({ id, handle }: { id: HostModelDirectoryId, handle: FileSystemDirectoryHandle }): Promise<void> {
-    await transact({ mode: 'readwrite', operation: ({ store }) => store.put(handleSchema.parse(handle), idToRaw({ id })) });
+    await transact({ mode: 'readwrite', operation: ({ store }) => store.put(hostModelDirectoryHandleSchema.parse(handle), idToRaw({ id })) });
   },
   async delete({ id }: { id: HostModelDirectoryId }): Promise<void> {
     await transact({ mode: 'readwrite', operation: ({ store }) => store.delete(idToRaw({ id })) });

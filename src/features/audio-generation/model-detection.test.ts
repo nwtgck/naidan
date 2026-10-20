@@ -1,3 +1,4 @@
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { detectAudioModelFiles, inspectStoredAudioModel, preferredAudioModel, type AudioModelDetection } from './model-detection';
 import { ggufFixture, textMetadata, boolMetadata } from './test-utils/gguf.test-support';
@@ -55,6 +56,23 @@ describe('audio candidate metadata', () => {
     const controller = new AbortController();
     controller.abort();
     await expect(detectAudioModelFiles({ directory: files, signal: controller.signal })).rejects.toThrow();
+  });
+
+  it('inspects temporary model metadata through captured Files without consulting persistent storage', async () => {
+    const base = ggufFixture({ entries: [textMetadata({ key: 'general.architecture', value: 'qwen3tts' })] });
+    const companion = ggufFixture({ entries: [boolMetadata({ key: 'clip.has_gen_audio_encoder', value: true }), textMetadata({ key: 'clip.gen.audio.projector_type', value: 'qwen3tts_gen' })] });
+    const files = await Promise.all([{ path: 'voice.gguf', blob: base }, { path: 'mmproj.gguf', blob: companion }].map(async ({ path, blob }) => {
+      const file = new File([await blob.arrayBuffer()], path);
+      Object.defineProperty(file, 'slice', { value: (start: number, end: number) => blob.slice(start, end) });
+      return { path, file };
+    }));
+    const [model] = await temporaryModels.registerDirectory({ directory: { name: 'temporary-voice', files }, signal: undefined });
+    using _registration = { [Symbol.dispose]: () => temporaryModels.remove({ name: model!.id }) };
+    expect(await inspectStoredAudioModel({ id: model!.id, signal: undefined })).toEqual({ status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
+    expect(storage.resolve).not.toHaveBeenCalled();
+    temporaryModels.remove({ name: model!.id });
+    expect(await inspectStoredAudioModel({ id: model!.id, signal: undefined })).toMatchObject({ status: 'unverified' });
+    expect(storage.resolve).not.toHaveBeenCalled();
   });
 
   it('resolves stored user and Hugging Face IDs through the existing local loader', async () => {

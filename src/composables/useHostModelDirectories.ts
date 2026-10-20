@@ -2,10 +2,10 @@ import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { useSettings } from '@/composables/useSettings';
-import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
+import { hostModelHandles, hostModelDirectoryHandleSchema, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import type { Settings } from '@/01-models/types';
-import { hostModelDirectoryLock, hostModelPermissionGranted, unregisterHostModelDirectory } from '@/logic/host-model-directories';
+import { missingHostModelDirectoryApis, hostModelDirectoryLock, hostModelPermissionGranted, unregisterHostModelDirectory } from '@/logic/host-model-directories';
 
 export type HostModelDirectoryRegistration = { id: string, name: string };
 export type HostModelDownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
@@ -19,6 +19,7 @@ export type HostModelDirectoriesView = {
   destination: Ref<string>,
   destinationKind?: ComputedRef<'opfs' | 'host'>,
   add(): Promise<void>,
+  addDroppedDirectory?({ directory, signal }: { directory: FileSystemDirectoryHandle, signal: AbortSignal }): Promise<void>,
   reconnect({ id }: { id: string }): Promise<void>,
   remove({ id }: { id: string }): Promise<void>,
   selectDestination({ id, kind }: { id: string, kind?: 'opfs' | 'host' }): void,
@@ -26,8 +27,9 @@ export type HostModelDirectoriesView = {
 
 const pickerSchema = z.custom<({ mode }: { mode: 'readwrite' }) => Promise<HostModelDirectoryHandle>>(value => typeof value === 'function');
 
-export function useHostModelDirectories({ blocked, stopDownload, added, changed, failed }: {
+export function useHostModelDirectories({ blocked, stopDownload, added, changed, failed, validateDirectory }: {
   blocked: () => boolean,
+  validateDirectory?: ({ directory, signal }: { directory: FileSystemDirectoryHandle, signal: AbortSignal | undefined }) => Promise<void>,
   stopDownload: ({ id }: { id: string }) => Promise<void>,
   added: (({ id }: { id: string }) => Promise<void>) | undefined,
   changed: () => Promise<void>,
@@ -41,8 +43,7 @@ export function useHostModelDirectories({ blocked, stopDownload, added, changed,
   hostDownloadDestination: ({ id }: { id: string }) => Promise<Extract<HostModelDownloadDestination, { kind: 'host' }>>,
 } {
   const { settings, updateExperimental, captureExperimentalStorage } = useSettings();
-  const supported = computed(() => typeof window !== 'undefined' && pickerSchema.safeParse(Reflect.get(window, 'showDirectoryPicker')).success
-    && typeof indexedDB !== 'undefined' && typeof navigator.locks?.request === 'function');
+  const supported = computed(() => missingHostModelDirectoryApis().length === 0);
   const busy = ref(false), destination = ref('opfs');
   const observed = shallowRef(new Map<string, Pick<HostModelDirectoryChoice, 'access' | 'error'>>());
   const handles = new Map<string, HostModelDirectoryHandle>();
@@ -112,6 +113,14 @@ export function useHostModelDirectories({ blocked, stopDownload, added, changed,
     if (!hostModelPermissionGranted({ permission: await handle.queryPermission({ mode: 'readwrite' }) })) {
       throw new Error('Model directory needs read and write permission');
     }
+    return register({ handle, existingId, signal: undefined });
+  }
+  // Picker and drop registrations intentionally share deduplication, persistence,
+  // rollback and identity. Only acquiring permission differs: a dropped folder
+  // can be read-only; reconnect requests write access in a fresh click gesture.
+  async function register({ handle, existingId, signal }: { handle: HostModelDirectoryHandle, existingId: string | undefined, signal: AbortSignal | undefined }): Promise<string> {
+    await validateDirectory?.({ directory: handle, signal });
+    signal?.throwIfAborted();
     for (const entry of registrations()) {
       if (entry.id === existingId) {
         continue;
@@ -123,9 +132,12 @@ export function useHostModelDirectories({ blocked, stopDownload, added, changed,
     }
     const id = toHostModelDirectoryId({ raw: existingId ?? nanoid() });
     await navigator.locks.request(hostModelDirectoryLock({ id }), async () => {
+      signal?.throwIfAborted();
       const previous = await hostModelHandles.get({ id });
+      signal?.throwIfAborted();
       await hostModelHandles.put({ id, handle });
       try {
+        signal?.throwIfAborted();
         await updateExperimental({
           updater: ({ experimental }) => {
             const directories = experimental?.hostModelDirectories ?? [];
@@ -154,6 +166,22 @@ export function useHostModelDirectories({ blocked, stopDownload, added, changed,
     // awaited by add(). Other mounted selectors refresh their own caches.
     handles.set(idToRaw({ id }), handle);
     return idToRaw({ id });
+  }
+  async function addSelected({ select }: { select: () => Promise<string> }): Promise<void> {
+    let id: string | undefined, isCurrent: (() => boolean) | undefined;
+    await perform({
+      operation: async () => {
+        isCurrent = captureExperimentalStorage();
+        id = await select();
+      },
+      refreshed: async () => {
+        if (id === undefined || !isCurrent?.() || !registrations().some(entry => entry.id === id)) {
+          return;
+        }
+        destination.value = id;
+        await added?.({ id });
+      },
+    });
   }
   async function reconnect({ id }: { id: string }): Promise<void> {
     await perform({
@@ -232,22 +260,18 @@ export function useHostModelDirectories({ blocked, stopDownload, added, changed,
       entries,
       busy,
       destination,
-      async add() {
-        let id: string | undefined, isCurrent: (() => boolean) | undefined;
-        await perform({
-          operation: async () => {
-            isCurrent = captureExperimentalStorage();
-            id = await pick({ existingId: undefined });
-          },
-          refreshed: async () => {
-            if (id === undefined || !isCurrent?.() || !registrations().some(entry => entry.id === id)) {
-              return;
-            }
-            destination.value = id;
-            await added?.({ id });
-          },
-        });
-      },
+      add: () => addSelected({ select: () => pick({ existingId: undefined }) }),
+      addDroppedDirectory: ({ directory, signal }) => addSelected({
+        select: async () => {
+          signal.throwIfAborted();
+          const handle = hostModelDirectoryHandleSchema.parse(directory);
+          if (!hostModelPermissionGranted({ permission: await handle.queryPermission({ mode: 'read' }) })) {
+            throw new Error('Model directory needs read permission');
+          }
+          signal.throwIfAborted();
+          return register({ handle, existingId: undefined, signal });
+        },
+      }),
       reconnect,
       remove,
       selectDestination({ id }) {

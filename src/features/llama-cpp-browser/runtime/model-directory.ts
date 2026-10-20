@@ -1,3 +1,4 @@
+import { modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
 import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
 import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
@@ -7,8 +8,9 @@ import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-var
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
-const pendingName = '.llama-cpp-import-pending';
-export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File, storageKind?: 'host' };
+const pendingName = modelImportPendingName;
+export type ModelFile = { path: string, file: File } & ({ handle: FileSystemFileHandle, storageKind?: 'host' } | { storageKind: 'temp', revision: number });
+export type StoredModelFile = Extract<ModelFile, { handle: FileSystemFileHandle }>;
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {
@@ -68,8 +70,8 @@ export async function validGguf({ file }: { file: File }): Promise<boolean> {
   return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70 && [2, 3].includes(new DataView(bytes.buffer).getUint32(4, true));
 }
 
-export async function readModelFiles({ folder, prefix }: { folder: FileSystemDirectoryHandle, prefix: string }): Promise<ModelFile[]> {
-  const result: ModelFile[] = [];
+export async function readModelFiles({ folder, prefix }: { folder: FileSystemDirectoryHandle, prefix: string }): Promise<StoredModelFile[]> {
+  const result: StoredModelFile[] = [];
   for await (const [name, entry] of folder.entries()) {
     if (!validSegment({ name })) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
@@ -188,27 +190,9 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     }
   };
   checkCancelled();
-  const rootName = directory.name.replaceAll(':', '_');
-  if (!allowedModelDirectory({ name: rootName }) || directory.files.length === 0) {
-    throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  }
-  const paths = new Set<string>();
-  for (const { path } of directory.files) {
-    if (!path.split('/').every(name => validSegment({ name })) || path.split('/')[0] === pendingName || paths.has(path)) {
-      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-    }
-    paths.add(path);
-  }
-  for (const path of paths) {
-    const parts = path.split('/');
-    parts.pop();
-    while (parts.length) {
-      if (paths.has(parts.join('/'))) {
-        throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-      }
-      parts.pop();
-    }
-  }
+  directory = normalizeModelDirectoryInput({ directory });
+  const rootName = directory.name;
+  const paths = new Set(directory.files.map(entry => entry.path));
   const ggufs = directory.files.filter(entry => /\.gguf$/i.test(entry.path));
   try {
     resolveModelFiles({ files: ggufs });
