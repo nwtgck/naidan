@@ -472,7 +472,7 @@ it('does not feed worker-only temporary sources into the strict audio input sche
     core: native.core,
     context: 20n,
     projector: 30n,
-    request: { ...request(), model, temporaryModel: { id: model, revision: 1, files: [{ path: 'model.gguf', file: new File(['fixture'], 'model.gguf') }], modelPath: 'model.gguf' } },
+    request: { ...request(), model, temporaryModel: { id: model, revision: 1, files: [{ path: 'model.gguf', file: new File(['fixture'], 'model.gguf') }], modelPath: 'model.gguf', variantRepository: 'voice' } },
     cancellationSignal: undefined,
     onProgress: () => {},
   });

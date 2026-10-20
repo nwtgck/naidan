@@ -1264,7 +1264,7 @@ describe('temporary resident model cache', () => {
     });
     const model = 'temp/Models';
     const file = new File(['x'], 'model.gguf', { lastModified: 123 });
-    const source = { id: model, revision: 1, files: [{ path: 'model.gguf', file }], modelPath: 'model.gguf' };
+    const source = { id: model, revision: 1, files: [{ path: 'model.gguf', file }], modelPath: 'model.gguf', variantRepository: 'Models' };
     const first = { ...request({ debug: 'off' }), model, temporaryModel: source };
     await prepareSession({ request: first, onProgress: () => {}, signal: undefined });
     expect(host.core!.api.llama_model_load_from_file).toHaveBeenCalledTimes(1);

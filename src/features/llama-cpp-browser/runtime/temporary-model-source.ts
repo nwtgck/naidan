@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LlamaCppBrowserError, modelDirectoryInputSchema } from '@/features/llama-cpp-browser/types';
+import { modelVariantName } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { normalizeModelDirectoryInput } from './model-directory-input';
 import { resolveModelFiles, type ModelDirectory } from './model-directory';
 import { isTemporaryModelReference, parseTemporaryModelReference } from './temporary-model-reference';
@@ -12,6 +13,8 @@ export const temporaryModelSourceSchema = z.object({
   revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   files: modelDirectoryInputSchema.shape.files,
   modelPath: z.string(),
+  // An unscoped folder can be renamed with -2 without changing variant labels.
+  variantRepository: z.string().min(1),
   projectorPath: z.string().optional(),
 }).strict();
 export type TemporaryModelSource = z.infer<typeof temporaryModelSourceSchema>;
@@ -28,7 +31,8 @@ export function temporarySourceDirectory({ name, source }: { name: string, sourc
   }
   const resolved = resolveModelFiles({ files });
   if (resolved.modelPath !== parsed.modelPath || resolved.projectorPath !== parsed.projectorPath
-    || (reference.modelPath !== undefined && reference.modelPath !== parsed.modelPath)) {
+    || (reference.repository !== undefined && parsed.variantRepository !== reference.repository)
+    || (reference.selector !== undefined && reference.selector !== modelVariantName({ repository: parsed.variantRepository, path: parsed.modelPath }))) {
     throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   }
   return {

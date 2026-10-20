@@ -146,8 +146,8 @@ async function putModelFile({ name }: { name: string }): Promise<StoredDirectory
 async function selectedFile({ name }: { name: string }): Promise<FileSystemFileHandle> {
   const directory = await storedModelDirectory({ name });
   const file = directory.files.find(file => file.path === directory.modelPath);
-  if (!file) {
-    throw new Error('Missing selected file');
+  if (!file || !('handle' in file)) {
+    throw new Error('Missing selected stored file');
   }
   return file.handle;
 }

@@ -46,7 +46,7 @@ describe('page-local model directories', () => {
   it('enumerates linked-root layouts and independent variants while retaining repository paths', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ paths: ['Qwen/Model/Q4/model.gguf', 'Qwen/Model/Q8/model.gguf', 'other/Repo/model.gguf'] }), signal: undefined });
-    expect(models.map(model => model.id).sort()).toEqual(['temp/Models/Qwen/Model:Q4%2Fmodel.gguf', 'temp/Models/Qwen/Model:Q8%2Fmodel.gguf', 'temp/Models/other/Repo:model.gguf'].sort());
+    expect(models.map(model => model.id).sort()).toEqual(['temp/Models/Qwen/Model:Q4/model', 'temp/Models/Qwen/Model:Q8/model', 'temp/Models/other/Repo:model'].sort());
     for (const model of models) {
       const source = store.source({ name: model.id });
       expect(source!.files).toHaveLength(1);
@@ -55,12 +55,42 @@ describe('page-local model directories', () => {
     }
   });
 
+  it('uses the shared repository quantization label rather than the literal filename', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    const repository = 'google/gemma-4-E2B-it-qat-q4_0-gguf';
+    const file = 'gemma-4-E2B_q4_0-it.gguf';
+    const [model] = await store.registerDirectory({ directory: tree({ name: 'models-for-browser-2', paths: [`${repository}/${file}`] }), signal: undefined });
+    expect(model!.id).toBe(`temp/models-for-browser-2/${repository}:q4_0-it`);
+    expect(store.source({ name: model!.id })?.modelPath).toBe(file);
+    expect(temporarySourceDirectory({ name: model!.id, source: store.source({ name: model!.id }) }).modelPath).toBe(file);
+  });
+
+  it('keeps selectors stable when a duplicate root gets a numeric suffix', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    const input = tree({ name: 'Model-GGUF', paths: ['Model-Q4.gguf', 'Model-Q8.gguf'] });
+    const first = await store.registerDirectory({ directory: input, signal: undefined });
+    const second = await store.registerDirectory({ directory: input, signal: undefined });
+    expect(first.map(model => model.id)).toEqual(['temp/Model-GGUF:Q4', 'temp/Model-GGUF:Q8']);
+    expect(second.map(model => model.id)).toEqual(['temp/Model-GGUF-2:Q4', 'temp/Model-GGUF-2:Q8']);
+    expect(store.source({ name: second[0]!.id })!.modelPath).toBe('Model-Q4.gguf');
+    expect(temporarySourceDirectory({ name: second[0]!.id, source: store.source({ name: second[0]!.id }) }).modelPath).toBe('Model-Q4.gguf');
+  });
+
+  it('rejects colliding repository labels rather than registering an ambiguous temporary name', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    await expect(store.registerDirectory({
+      directory: tree({ paths: ['owner/Model-GGUF/Model-Q4.gguf', 'owner/Model-GGUF/Q4/Model-Q4.gguf'] }),
+      signal: undefined,
+    })).rejects.toThrow('unsupported-input');
+    expect(store.list()).toEqual([]);
+  });
+
   it('never borrows a projector from another repository in a linked-layout root', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ paths: ['owner/WithProjector/model.gguf', 'owner/WithProjector/mmproj.gguf', 'owner/TextOnly/model.gguf'] }), signal: undefined });
     expect(models).toHaveLength(2);
-    const multimodal = store.source({ name: 'temp/Models/owner/WithProjector:model.gguf' })!;
-    const text = store.source({ name: 'temp/Models/owner/TextOnly:model.gguf' })!;
+    const multimodal = store.source({ name: 'temp/Models/owner/WithProjector:model' })!;
+    const text = store.source({ name: 'temp/Models/owner/TextOnly:model' })!;
     expect(multimodal.projectorPath).toBe('mmproj.gguf');
     expect(text.projectorPath).toBeUndefined();
     expect(text.files.map(file => file.path)).toEqual(['model.gguf']);
@@ -69,7 +99,7 @@ describe('page-local model directories', () => {
   it('ignores companion-only repositories without losing independent models or crossing repository boundaries', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const [model] = await store.registerDirectory({ directory: tree({ paths: ['owner/Chat/model.gguf', 'owner/Companion/mmproj.gguf'] }), signal: undefined });
-    expect(model!.id).toBe('temp/Models/owner/Chat:model.gguf');
+    expect(model!.id).toBe('temp/Models/owner/Chat:model');
     expect(store.list()).toHaveLength(1);
     expect(store.source({ name: model!.id })!.projectorPath).toBeUndefined();
     await expect(store.registerDirectory({ directory: tree({ paths: ['owner/Companion/mmproj.gguf'] }), signal: undefined })).rejects.toThrow('unsupported-input');
@@ -96,7 +126,7 @@ describe('page-local model directories', () => {
   it('uses selectors for multiple loose variants rather than changing the file tree', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ name: 'variants', paths: ['Q4.gguf', 'Q8.gguf'] }), signal: undefined });
-    expect(models.map(model => model.id)).toEqual(['temp/variants:Q4.gguf', 'temp/variants:Q8.gguf']);
+    expect(models.map(model => model.id)).toEqual(['temp/variants:Q4', 'temp/variants:Q8']);
   });
 
   it('reserves only live root names and permits intentional same-name replacement', async () => {
@@ -201,14 +231,14 @@ describe('shared input and temporary-reference boundaries', () => {
     }
   });
 
-  it.each(['temp/', 'temp/..', 'temp/.hidden', 'temp/root/owner/repo', 'temp/root:..%2Fmodel.gguf', 'temp/root:%2Fmodel.gguf', 'temp/root:model.txt', 'temp/root:dir%2fmodel.gguf', 'temp/root:%ZZ', 'temp/root:dir/model.gguf'])('rejects noncanonical model name %s', name => {
+  it.each(['temp/', 'temp/..', 'temp/.hidden', 'temp/root/owner/repo', 'temp/root:..', 'temp/root:/model', 'temp/root:dir//model', 'temp/root:dir/../model', 'temp/root:dir/./model', 'temp/root:dir\\model'])('rejects noncanonical model name %s', name => {
     expect(isTemporaryModelReference({ name })).toBe(false);
     expect(modelSchema.shape.id.safeParse(name).success).toBe(false);
     expect(generateInputSchema.shape.model.safeParse(name).success).toBe(false);
   });
 
-  it('round-trips literal percent, colon and Unicode in a file selector without double decoding', () => {
-    const parts = { rootName: 'Models', repository: 'owner/repo', modelPath: '日本語/a%2Fb:model.gguf' };
+  it('round-trips public variant labels with literal percent, colon and Unicode without decoding', () => {
+    const parts = { rootName: 'Models', repository: 'owner/repo', selector: '日本語/a%2Fb:model' };
     const name = temporaryModelReference(parts);
     expect(parseTemporaryModelReference({ name })).toEqual(parts);
   });

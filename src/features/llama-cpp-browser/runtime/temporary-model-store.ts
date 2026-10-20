@@ -1,5 +1,6 @@
 import { modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
-import { modelGroups } from '@/features/llama-cpp-browser/hugging-face/model-variants';
+import { modelGroups, modelVariantName } from '@/features/llama-cpp-browser/hugging-face/model-variants';
+import { selectRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/model-selector';
 import { LlamaCppBrowserError, modelDirectoryInputSchema, modelsSchema, type LocalModel, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { describeDirectory, resolveModelFiles, validGguf } from './model-directory';
 import { normalizeModelDirectoryInput } from './model-directory-input';
@@ -38,10 +39,19 @@ function createTemporaryModelStore() {
     if (!name.startsWith('temp/')) {
       return undefined;
     }
-    const { rootName } = parseTemporaryModelReference({ name });
-    const found = roots.get(rootName)?.get(name);
-    if (!found) {
+    const { rootName, selector } = parseTemporaryModelReference({ name });
+    const models = roots.get(rootName);
+    const found = models?.get(name);
+    if (!models || !found) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
+    }
+    if (selector !== undefined) {
+      // Share the same exact-path-or-variant resolution and ambiguity rules as
+      // Hugging Face and linked folders, even after a sibling is removed.
+      const siblings = [...models.values()].filter(entry => entry.variantRepository === found.variantRepository);
+      if (selectRepositoryModel({ models: siblings, repository: found.variantRepository, selectors: [selector] }) !== found) {
+        throw new LlamaCppBrowserError({ code: 'missing-model' });
+      }
     }
     // Do not expose mutable registry arrays. File itself is an immutable snapshot.
     return temporaryModelSourceSchema.parse(found);
@@ -81,7 +91,7 @@ function createTemporaryModelStore() {
       files.push({ path: collection ? parts.slice(2).join('/') : entry.path, file: entry.file });
       directories.set(repository, files);
     }
-    const pending: { repository: string | undefined, selector: string | undefined, files: ModelDirectoryInput['files'], modelPath: string, projectorPath: string | undefined }[] = [];
+    const pending: { repository: string | undefined, variantRepository: string, files: ModelDirectoryInput['files'], modelPath: string, projectorPath: string | undefined }[] = [];
     for (const [repository, files] of directories) {
       const { models, projectors } = modelGroups({ files });
       if (!models.length) {
@@ -97,7 +107,7 @@ function createTemporaryModelStore() {
         const resolved = resolveModelFiles({ files: [...model, ...projectors] });
         pending.push({
           repository,
-          selector: collection || models.length > 1 ? resolved.modelPath : undefined,
+          variantRepository: repository ?? input.name,
           files: [...model, ...projectors.filter(entry => entry.path === resolved.projectorPath)],
           ...resolved,
         });
@@ -107,14 +117,29 @@ function createTemporaryModelStore() {
     if (!pending.length) {
       throw new LlamaCppBrowserError({ code: 'unsupported-input' });
     }
+    // A public variant is only accepted if the shared resolver can select its
+    // exact file unambiguously. An ambiguous directory is rejected atomically.
+    // Unlike a saved repository, an import is a single user action: silently
+    // hiding models here would make a successful drop look misleading.
+    for (const entry of pending) {
+      if (!collection && pending.length === 1) {
+        continue;
+      }
+      const selector = modelVariantName({ repository: entry.variantRepository, path: entry.modelPath });
+      const candidates = pending.filter(candidate => candidate.variantRepository === entry.variantRepository);
+      if (selectRepositoryModel({ models: candidates, repository: entry.variantRepository, selectors: [selector] }) !== entry) {
+        throw new LlamaCppBrowserError({ code: 'unsupported-input' });
+      }
+    }
     // Reserve and publish synchronously after validation. Concurrent drops cannot
     // choose the same live name; a failed/cancelled import leaves no partial root.
     const rootName = availableRootName({ name: input.name });
     const nextRevision = ++revision;
     const models = new Map<string, TemporaryModelSource>();
-    for (const { repository, selector, files, modelPath, projectorPath } of pending) {
-      const id = temporaryModelReference({ rootName, repository, modelPath: selector });
-      models.set(id, { id, revision: nextRevision, files, modelPath, projectorPath });
+    for (const { repository, variantRepository, files, modelPath, projectorPath } of pending) {
+      const selector = collection || pending.length > 1 ? modelVariantName({ repository: variantRepository, path: modelPath }) : undefined;
+      const id = temporaryModelReference({ rootName, repository, selector });
+      models.set(id, { id, revision: nextRevision, files, modelPath, projectorPath, variantRepository });
     }
     const result = modelsSchema.parse([...models.values()].map(source => describeDirectory({ directory: temporarySourceDirectory({ name: source.id, source }) })));
     roots.set(rootName, models);

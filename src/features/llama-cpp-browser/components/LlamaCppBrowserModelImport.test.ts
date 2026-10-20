@@ -50,6 +50,15 @@ afterEach(() => {
 });
 
 describe('model import modes', () => {
+  it('keeps a visible gap between the folder and file picker buttons', () => {
+    const wrapper = render();
+    const folder = wrapper.get('[data-testid="llama-cpp-browser-choose-directory"]').element;
+    const files = wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element;
+    expect(folder.parentElement).toBe(files.parentElement);
+    expect(folder.parentElement?.classList).toContain('gap-3');
+    expect(folder.parentElement?.classList).toContain('flex-wrap');
+  });
+
   it('defaults to browser storage and keeps an unavailable link mode selectable and inspectable', async () => {
     const wrapper = render();
     const saved = wrapper.get('[data-testid="llama-import-mode-opfs"]');

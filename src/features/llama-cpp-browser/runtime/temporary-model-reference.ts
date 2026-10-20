@@ -6,22 +6,22 @@ import { isModelSourceSegment, modelSourceRepositorySchema } from '../../../01-m
  * be missing or resolve to different files registered under the same name.
  * Do not migrate, invalidate, reserve old names or require reconfirmation merely
  * because a reference uses temp/. Only live directory names need disambiguation. */
-export function temporaryModelReference({ rootName, repository, modelPath }: {
-  rootName: string, repository: string | undefined, modelPath: string | undefined,
+export function temporaryModelReference({ rootName, repository, selector }: {
+  rootName: string, repository: string | undefined, selector: string | undefined,
 }): string {
   if (!isModelSourceSegment({ name: rootName }) || rootName.startsWith('.') || rootName.includes(':')) {
     throw new Error('Invalid temporary model directory');
   }
   if (repository !== undefined) {
     modelSourceRepositorySchema.parse(repository);
-    if (modelPath === undefined) {
+    if (selector === undefined) {
       throw new Error('A temporary repository model needs a file selector');
     }
   }
-  if (modelPath !== undefined && (!modelPath.split('/').every(name => isModelSourceSegment({ name })) || !/\.gguf$/i.test(modelPath))) {
-    throw new Error('Invalid temporary model path');
+  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
+    throw new Error('Invalid temporary model selector');
   }
-  const name = `temp/${rootName}${repository === undefined ? '' : `/${repository}`}${modelPath === undefined ? '' : `:${encodeURIComponent(modelPath)}`}`;
+  const name = `temp/${rootName}${repository === undefined ? '' : `/${repository}`}${selector === undefined ? '' : `:${selector}`}`;
   if (name.length > 1024 || name.includes('\x7f')) {
     throw new Error('Invalid temporary model reference');
   }
@@ -29,7 +29,7 @@ export function temporaryModelReference({ rootName, repository, modelPath }: {
 }
 
 export function parseTemporaryModelReference({ name }: { name: string }): {
-  rootName: string, repository: string | undefined, modelPath: string | undefined,
+  rootName: string, repository: string | undefined, selector: string | undefined,
 } {
   const match = /^temp\/([^/:]+)(?:\/([^/:]+\/[^/:]+))?(?::(.+))?$/.exec(name);
   if (!match) {
@@ -37,11 +37,11 @@ export function parseTemporaryModelReference({ name }: { name: string }): {
   }
   const rootName = match[1]!;
   const repository = match[2];
-  const modelPath = match[3] === undefined ? undefined : decodeURIComponent(match[3]);
-  if (temporaryModelReference({ rootName, repository, modelPath }) !== name) {
+  const selector = match[3];
+  if (temporaryModelReference({ rootName, repository, selector }) !== name) {
     throw new Error('Non-canonical temporary model reference');
   }
-  return { rootName, repository, modelPath };
+  return { rootName, repository, selector };
 }
 
 export function isTemporaryModelReference({ name }: { name: string }): boolean {
