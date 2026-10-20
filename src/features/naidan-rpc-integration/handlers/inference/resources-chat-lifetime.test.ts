@@ -1,3 +1,4 @@
+import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/types';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
@@ -132,4 +133,27 @@ it('does not tear down a queued local call while retiring the previous owner', a
     await closing;
   }
   expect(fixture.worker.dispose).not.toHaveBeenCalled();
+});
+
+it("advertises and serves this page's temporary models through the ordinary RPC resources", async () => {
+  const bytes = new Uint8Array(32);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const file = new File([bytes], 'rpc-local.gguf');
+  Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+  await service.importModel({ file, storage: 'temp', signal: undefined });
+  const id = 'temp/rpc-local-GGUF';
+  await using _model = { [Symbol.asyncDispose]: () => service.removeTemporaryModel({ id, signal: undefined }) };
+  const resources = create({ directories: () => [] });
+  await using _resources = {
+    [Symbol.asyncDispose]: async () => {
+      await resources.dispose();
+    },
+  };
+  expect(await resources.listChatModels({ signal: new AbortController().signal })).toContainEqual({ ref: id, label: id });
+  expect(fixture.create).not.toHaveBeenCalled();
+  await expect(resources.generateChat({ ...args(), input: { ...input(), model: id } })).resolves.toEqual(result);
+  expect(fixture.worker.generate).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ model: id }) }));
+  await resources.dispose();
+  // Retiring RPC/native resources does not unregister the page's model files.
+  expect((await service.listModels({ signal: undefined })).map(model => model.id)).toContain(id);
 });

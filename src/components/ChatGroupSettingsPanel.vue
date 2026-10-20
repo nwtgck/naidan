@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { preservesUnlistedModel } from '@/logic/unlisted-model-selection';
 import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
 import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
@@ -1740,9 +1741,7 @@ watch(activeTitleEndpoint, endpoint => {
   }
 }, { deep: true, flush: 'sync' });
 
-function preservesUnlistedModel({ endpoint, modelId }: { endpoint: Endpoint, modelId: string }): boolean {
-  return (endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(modelId)) || (endpoint.type === 'naidan_rpc' && modelId.startsWith('host/'));
-}
+
 
 watch(() => currentChatGroup.value?.id, () => {
   modelRequest++;

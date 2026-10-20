@@ -48,6 +48,7 @@ vi.mock('@/features/llama-cpp-browser', () => ({
     importModel: vi.fn(),
     importDirectory: vi.fn(),
     removeModel: vi.fn(),
+    removeTemporaryModel: vi.fn(),
     release: vi.fn(),
     cancel: vi.fn(),
   },
@@ -152,7 +153,8 @@ describe('local GGUF manager', () => {
     const signal = vi.mocked(searchModels).mock.calls[0]![0].signal;
     expect(signal.aborted).toBe(false);
     expect(wrapper.get('[data-testid="llama-hf-search"]').attributes('aria-busy')).toBe('true');
-    expect(wrapper.get('[data-testid="llama-cpp-browser-import"] fieldset').attributes('disabled')).toBeDefined();
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-import-mode-host"]').element.matches(':disabled')).toBe(false);
     await wrapper.setProps({ suspended: true });
     expect(signal.aborted).toBe(true);
     expect(wrapper.get('[data-testid="llama-hf-search-query"]').attributes('disabled')).toBeDefined();
@@ -1204,4 +1206,17 @@ describe('local-model chat group action', () => {
       expect(wrapper.get('[data-testid="llama-model-action-main"]').element.matches(':disabled')).toBe(true);
     }
   });
+});
+
+it('unregisters temporary models without a file deletion plan or confirmation', async () => {
+  const model = { id: 'temp/local-GGUF', name: 'temp/local-GGUF', size: 32, importedAt: 123 };
+  vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([model]);
+  const wrapper = render();
+  await flushPromises();
+  expect(wrapper.get('[data-testid="llama-temporary-model-badge"]').text()).toBe('Temporary');
+  await wrapper.get('[data-testid="llama-cpp-browser-delete-temp/local-GGUF"]').trigger('click');
+  await flushPromises();
+  expect(llamaCppBrowserService.removeTemporaryModel).toHaveBeenCalledWith({ id: model.id, signal: expect.any(AbortSignal) });
+  expect(prepareModelRemoval).not.toHaveBeenCalled();
+  expect(llamaCppBrowserService.removeModel).not.toHaveBeenCalled();
 });

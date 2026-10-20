@@ -47,6 +47,9 @@ describe('local model chat-group names', () => {
     { name: 'user/Model-Q4_K_M-00001-of-00002-GGUF', expected: 'Model-Q4_K_M' },
     { name: 'user/Model.GGUF-GGUF', expected: 'Model.GGUF' },
     { name: 'user/Custom folder', expected: 'Custom folder' },
+    { name: 'temp/MyModel-Q4_K_M-GGUF', expected: 'MyModel-Q4_K_M' },
+    { name: 'temp/Models/owner/repo:nested%2FFull%20Model-Q6_K.gguf', expected: 'Full Model-Q6_K' },
+    { name: 'temp/Models:Model-00001-of-00002.gguf', expected: 'Model' },
   ])('uses the raw manual import stem for $name', ({ name, expected }) => {
     expect(localModelChatGroupName({ model: model({ id: name, name, source: undefined }) })).toBe(expected);
   });

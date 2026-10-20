@@ -122,6 +122,9 @@ describe.each(['opfs', 'host'] as const)('%s directory tree to public IDs and se
         const parts = `${model.directory}/${file.path}`.split('/');
         const filename = parts.pop()!;
         const folder = await directoryAt({ root, path: parts.join('/') });
+        if (!('handle' in file)) {
+          throw new Error('A stored repository file must have a handle');
+        }
         expect(file.handle).toBe(await folder.getFileHandle(filename));
       }
     }

@@ -1,3 +1,4 @@
+import { directoryForModelFile } from './model-directory-input';
 import { withModelFileMarkers } from '@/logic/model-file-publication';
 import { hostDownloadMarker, hostDownloadMarkerPath } from '@/features/llama-cpp-browser/hugging-face/host-download-marker';
 import { resolveHostModel } from './host-model-store';
@@ -7,7 +8,7 @@ import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-var
 import { deletionPlanSchema, executeDeletionPlan, scanDeletionTree, type DeletionPlan, type DeletionResult } from './deletion-plan';
 import { listHuggingFaceModels, withRepositoryLock, resolveRepositoryModel, parseModelReference, readJournal, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { pendingName } from '@/features/llama-cpp-browser/hugging-face/types';
-import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, userModelDirectory, existingUserModelDirectory, validSegment, type ModelDirectory } from './model-directory';
+import { allowedModelDirectory, describeDirectory, opfsRoot, resolveDirectory, importModelDirectory, userModelDirectory, existingUserModelDirectory, type ModelDirectory } from './model-directory';
 import { LlamaCppBrowserError, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { logDiagnostic } from "@/features/llama-cpp-browser/debug-log";
 
@@ -61,12 +62,10 @@ export async function listStoredModels(): Promise<LocalModel[]> {
 }
 
 export async function importStoredModel({ file, onProgress, signal }: { file: File, signal: AbortSignal | undefined, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
-  if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) {
-    throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  }
+  const directory = directoryForModelFile({ file });
   const started = performance.now();
   logDiagnostic({ diagnostic: { event: 'import-start', bytes: file.size } });
-  const model = await importModelDirectory({ signal, directory: { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] }, onProgress });
+  const model = await importModelDirectory({ signal, directory, onProgress });
   logDiagnostic({ diagnostic: { event: 'import-complete', bytes: model.size, elapsedMs: performance.now() - started } });
   return model;
 }

@@ -6,6 +6,8 @@ import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
 import { modelGroups, modelVariantName, isProjector } from './model-variants';
+import { selectRepositoryModel } from './model-selector';
+export { selectRepositoryModel } from './model-selector';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -191,17 +193,6 @@ export function parseModelReference({ name }: { name: string }): { repository: s
   const value = name.slice('hf.co/'.length);
   const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
-}
-
-/** Exact file identities and public variants share one namespace. Never let an
- * exact match silently win over a different model's variant (or vice versa).
- */
-export function selectRepositoryModel({ models, repository, selectors }: { models: ModelDirectory[], repository: string, selectors: string[] | undefined }): ModelDirectory {
-  const matching = selectors === undefined ? models : models.filter(model => selectors.some(selector => model.modelPath === selector || modelVariantName({ repository, path: model.modelPath }) === selector));
-  if (matching.length !== 1) {
-    throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
-  }
-  return matching[0]!;
 }
 
 function repositorySelectors({ variant }: { variant: string | undefined }): string[] | undefined {

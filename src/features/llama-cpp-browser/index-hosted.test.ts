@@ -1,3 +1,4 @@
+import { Blob as NodeBlob } from 'node:buffer';
 import { createPerformanceRunner } from './performance/runner';
 import { performancePlan, performanceEnvironment, performanceReport } from './test-utils/performance.test-support';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
@@ -1050,4 +1051,29 @@ describe('trial interruption through the unchanged real performance service', ()
     expect(factory).toHaveBeenCalledTimes(2);
     expect(runner.snapshot()!.trials[0]?.interruption?.recovery).toBe('new-scope');
   });
+});
+
+it('registers and removes temporary files without acquiring a Worker or copying to persistent storage', async () => {
+  const bytes = new Uint8Array(32);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const file = new File([bytes], 'direct.gguf');
+  Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+  const stream = vi.fn(() => {
+    throw new Error('No copying');
+  });
+  Object.defineProperty(file, 'stream', { value: stream });
+  const changed = vi.fn();
+  using _subscription = { [Symbol.dispose]: service.subscribeModelList({ listener: changed }) };
+  await service.importModel({ file, storage: 'temp', signal: undefined });
+  expect(factory).not.toHaveBeenCalled();
+  expect(worker.importModel).not.toHaveBeenCalled();
+  expect(stream).not.toHaveBeenCalled();
+  expect(changed).toHaveBeenCalledTimes(1);
+  vi.mocked(listStoredModels).mockRejectedValue(new Error('Browser storage unavailable'));
+  const models = await service.listModels({ signal: undefined });
+  expect(models.map(model => model.id)).toEqual(['temp/direct-GGUF']);
+  await service.removeTemporaryModel({ id: models[0]!.id, signal: undefined });
+  expect(changed).toHaveBeenCalledTimes(2);
+  expect(removeStoredModel).not.toHaveBeenCalled();
+  expect(factory).not.toHaveBeenCalled();
 });

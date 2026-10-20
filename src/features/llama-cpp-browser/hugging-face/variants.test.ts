@@ -1,4 +1,5 @@
 import { openSyncAccess } from './sync-access';
+import type { ModelFile } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadWriter } from './writer';
 import { ggufBytes, memoryDirectory } from './test-opfs';
@@ -9,6 +10,14 @@ import { quantizationChoices } from './presentation';
 import { groupModelFiles } from './catalog';
 import type { DownloadSelection } from './types';
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
+
+function storedFileHandle({ file }: { file: ModelFile }): FileSystemFileHandle {
+  if (!('handle' in file)) {
+    throw new Error('Expected a stored model file');
+  }
+  return file.handle;
+}
+
 const repository = 'owner/Model-GGUF';
 const revision = 'a'.repeat(40);
 const projector = { path: 'mmproj-Q8_0.gguf', size: 128 };
@@ -81,7 +90,7 @@ describe('independent HF variants in one repository', () => {
     const after = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
     expect(after.id).toBe(before.id);
     expect(after.name).toBe(before.name);
-    expect(after.files.map(file => [file.path, file.file.size, file.file.lastModified, file.handle])).toEqual(before.files.map(file => [file.path, file.file.size, file.file.lastModified, file.handle]));
+    expect(after.files.map(file => [file.path, file.file.size, file.file.lastModified, storedFileHandle({ file })])).toEqual(before.files.map(file => [file.path, file.file.size, file.file.lastModified, storedFileHandle({ file })]));
     expect((await listHuggingFaceModels()).map(model => model.name)).toEqual([`hf.co/${repository}:Q4_K_M`, `hf.co/${repository}:Q8_0`]);
     await expect(resolveRepositoryModel({ name: `hf.co/${repository}` })).rejects.toThrow('unsupported-input');
   });

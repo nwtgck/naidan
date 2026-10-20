@@ -1,3 +1,4 @@
+import { temporarySourceDirectory } from '@/features/llama-cpp-browser/runtime/temporary-model-source';
 import { fileBackedRowsCapability } from '@/features/llama-cpp-browser/runtime/file-backed-rows';
 import { createModelFileDiagnostics } from '@/features/llama-cpp-browser/runtime/model-file-diagnostics';
 import { readLoadedModelDescriptor } from './loaded-model-descriptor';
@@ -129,7 +130,16 @@ export async function invalidateStoredModel({ id }: { id: string }): Promise<voi
   }
 }
 
-type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement'>;
+// This is resident-cache invalidation, not public identity protection. Reusing a
+// temporary name must load its current files, even when size/mtime are identical.
+async function sameModelFile({ previous, next }: { previous: ModelFile, next: ModelFile }): Promise<boolean> {
+  if (previous.storageKind === 'temp' || next.storageKind === 'temp') {
+    return previous.storageKind === 'temp' && next.storageKind === 'temp' && previous.revision === next.revision;
+  }
+  return previous.handle.isSameEntry(next.handle);
+}
+
+type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement' | 'temporaryModel'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
 type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
 type SessionPreparation = {
@@ -258,7 +268,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core;
   const api = core.api;
-  const directory = await storedModelDirectory({ name: request.model });
+  const directory = request.model.startsWith('temp/')
+    ? temporarySourceDirectory({ name: request.model, source: request.temporaryModel })
+    : await storedModelDirectory({ name: request.model });
   if (purpose.kind === 'audio' && !directory.projectorPath) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
@@ -267,7 +279,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     for (let index = 0; index < directory.files.length; index++) {
       const next = directory.files[index]!;
       const previous = resident.files[index]!;
-      if (previous.path !== next.path || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await previous.handle.isSameEntry(next.handle)) {
+      if (previous.path !== next.path || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await sameModelFile({ previous, next })) {
         unchanged = false;
         break;
       }

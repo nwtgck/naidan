@@ -1,3 +1,5 @@
+import { Blob as NodeBlob } from 'node:buffer';
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { resolveRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -103,4 +105,18 @@ describe('bounded availability observation cache', () => {
     expect(await cache.check({ modelId: 'bad' })).toBe('unreadable');
     expect(await cache.check({ modelId: 'bad' })).toBe('missing');
   });
+});
+
+it('finds page-local temporary models without any storage lookup and reports them missing after unregister', async () => {
+  const bytes = new Uint8Array(32);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const file = new File([bytes], 'model.gguf');
+  Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+  const [model] = await temporaryModels.registerDirectory({ directory: { name: 'available', files: [{ path: 'model.gguf', file }] }, signal: undefined });
+  using _registration = { [Symbol.dispose]: () => temporaryModels.remove({ name: model!.id }) };
+  expect(await inspectLocalModel({ modelId: model!.id })).toBe('available');
+  temporaryModels.remove({ name: model!.id });
+  expect(await inspectLocalModel({ modelId: model!.id })).toBe('missing');
+  expect(calls.read).not.toHaveBeenCalled();
+  expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
 });

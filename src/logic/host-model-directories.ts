@@ -1,6 +1,14 @@
 import { hostModelHandles } from '@/00-storage/service/host-model-handles';
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 
+export function missingHostModelDirectoryApis(): string[] {
+  return [
+    ...(typeof window === 'undefined' || typeof Reflect.get(window, 'showDirectoryPicker') !== 'function' ? ['showDirectoryPicker'] : []),
+    ...(typeof indexedDB === 'undefined' ? ['IndexedDB'] : []),
+    ...(typeof navigator === 'undefined' || typeof navigator.locks?.request !== 'function' ? ['Web Locks'] : []),
+  ];
+}
+
 export function hostModelPermissionGranted({ permission }: { permission: PermissionState }): boolean {
   switch (permission) {
   case 'granted': return true;

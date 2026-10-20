@@ -428,7 +428,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
     <div tw-class="flex flex-wrap items-center gap-x-2 gap-y-1">
       <h3 tw-class="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-white"><DownloadIcon tw-class="w-4 h-4 text-blue-500" />Hugging Face</h3>
       <span tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository() }}</span>
-      <LlamaCppBrowserDownloadDestination tw-class="ml-auto" :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
+      <LlamaCppBrowserDownloadDestination management="hidden" tw-class="ml-auto" :view="downloadDestination.view" :disabled="disabled || deleting" :layout-file="catalog && selectedFiles[0] ? { repository: catalog.repository, path: selectedFiles[0].path } : undefined" />
     </div>
     <p v-if="destinationFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" @busy="searching = $event" @select="inspectRepository({ input: $event })" />

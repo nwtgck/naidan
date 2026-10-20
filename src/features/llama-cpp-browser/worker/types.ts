@@ -1,3 +1,4 @@
+import { temporaryModelSourceSchema } from '@/features/llama-cpp-browser/runtime/temporary-model-source';
 import type { MemoryDiagnostics } from '@/features/llama-cpp-browser/performance/memory-schema';
 import type { AudioPreviewDelivery } from '@/features/audio-generation/preview-requests';
 import { audioGenerationInputSchema, type AudioPreviewEvent, type AudioGenerationInput, type AudioGenerationResult } from '@/features/audio-generation/types';
@@ -9,10 +10,10 @@ import { generateInputSchema, profileSchema, runtimeOptionsSchema } from '@/feat
 import type { WorkerProxy } from '@/utils/worker-transport';
 import type { ModelDirectoryInput, GenerateInput, GenerationResult, GenerationCallback, GenerationEvent, LocalModel, Progress } from '@/features/llama-cpp-browser/types';
 
-export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.literal('placement').optional() }).strict().optional(), assetBaseURL: z.url().optional() }).strict();
+export const workerGenerateInputSchema = generateInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), measurement: z.object({ sequence: z.enum(['fresh', 'continue']), observation: z.literal('placement').optional() }).strict().optional(), assetBaseURL: z.url().optional(), temporaryModel: temporaryModelSourceSchema.optional() }).strict();
 export type WorkerGenerateInput = z.infer<typeof workerGenerateInputSchema>;
 
-export const workerPrepareInputSchema = workerGenerateInputSchema.pick({ model: true, options: true, debug: true, assetBaseURL: true }).strict();
+export const workerPrepareInputSchema = workerGenerateInputSchema.pick({ model: true, options: true, debug: true, assetBaseURL: true, temporaryModel: true }).strict();
 export type WorkerPrepareInput = z.infer<typeof workerPrepareInputSchema>;
 export const workerPrepareCallSchema = workerPrepareInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerPrepareCall = z.infer<typeof workerPrepareCallSchema>;
@@ -20,7 +21,7 @@ export type WorkerPrepareCall = z.infer<typeof workerPrepareCallSchema>;
 export const workerGenerateCallSchema = workerGenerateInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerGenerateCall = z.infer<typeof workerGenerateCallSchema>;
 
-export const workerAudioInputSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional() }).strict();
+export const workerAudioInputSchema = audioGenerationInputSchema.extend({ options: runtimeOptionsSchema.extend({ profile: profileSchema }), assetBaseURL: z.url().optional(), temporaryModel: temporaryModelSourceSchema.optional() }).strict();
 export type WorkerAudioInput = z.infer<typeof workerAudioInputSchema>;
 export const workerAudioCallSchema = workerAudioInputSchema.extend({ generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type WorkerAudioCall = z.infer<typeof workerAudioCallSchema>;

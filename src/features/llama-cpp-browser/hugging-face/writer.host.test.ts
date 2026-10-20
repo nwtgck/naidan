@@ -67,7 +67,7 @@ describe('direct linked-folder model storage', () => {
     const name = (await selectHostModel({ name: reference })).id;
     expect(name).toBe(models[0]!.id);
     const loaded = await storedModelDirectory({ name });
-    expect(loaded.files[0]?.handle).toBe(saved);
+    expect(loaded.files[0]).toHaveProperty('handle', saved);
     expect(loaded.files[0]?.storageKind).toBe('host');
     expect((await installedSelection({ selection, destination }))?.id).toBe(models[0]?.id);
   });

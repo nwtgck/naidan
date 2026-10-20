@@ -1,3 +1,5 @@
+import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
+import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
 import { captureChatOptions, capturePerformanceOptions } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
 import { z } from 'zod';
@@ -481,33 +483,52 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   subscribeModelList({ listener }) {
     modelListeners.add(listener);
+    const unsubscribeTemporary = temporaryModels.subscribe({ listener });
     return () => {
       modelListeners.delete(listener);
+      unsubscribeTemporary();
     };
   },
   async listModels({ signal }) {
     signal?.throwIfAborted();
-    const directories = await storageService.loadHostModelDirectories();
+    const temporary = temporaryModels.list();
+    // The page-local inventory also works when browser persistence is unavailable.
+    const directories = await storageService.loadHostModelDirectories().catch(error => {
+      if (!temporary.length) {
+        throw error;
+      }
+      return [];
+    });
     let models: LocalModel[];
     let opfsFailure: { error: unknown } | undefined;
     try {
       models = await listStoredModels();
     } catch (error) {
       // An unavailable browser store must not hide usable linked folders.
-      if (!directories.length) {
+      if (!directories.length && !temporary.length) {
         throw error;
       }
       models = [];
       opfsFailure = { error };
     }
-    models.push(...await listHostStoredModels({ directories, signal }));
+    models.push(...await listHostStoredModels({ directories, signal }), ...temporary);
     if (opfsFailure) {
       recordOpfsInventoryIssue(opfsFailure);
     }
     signal?.throwIfAborted();
     return models.sort((a, b) => a.name.localeCompare(b.name));
   },
-  importModel({ file, signal }) {
+  async importModel({ file, signal, storage }) {
+    switch (storage) {
+    case 'temp':
+      await temporaryModels.registerDirectory({ directory: directoryForModelFile({ file }), signal });
+      return;
+    case 'opfs': case undefined: break;
+    default: {
+      const exhaustive: never = storage;
+      throw new Error(String(exhaustive));
+    }
+    }
     return run({
       ready: undefined,
       kind: 'operation',
@@ -526,7 +547,17 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       },
     });
   },
-  importDirectory({ directory, signal }) {
+  async importDirectory({ directory, signal, storage }) {
+    switch (storage) {
+    case 'temp':
+      await temporaryModels.registerDirectory({ directory, signal });
+      return;
+    case 'opfs': case undefined: break;
+    default: {
+      const exhaustive: never = storage;
+      throw new Error(String(exhaustive));
+    }
+    }
     return run({
       ready: undefined,
       kind: 'operation',
@@ -544,6 +575,10 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
         }
       },
     });
+  },
+  async removeTemporaryModel({ id, signal }) {
+    signal?.throwIfAborted();
+    temporaryModels.remove({ name: id });
   },
   async removeModel({ plan, signal }) {
     // Deletion is deliberately optimistic: it does not wait for chats or keep a
