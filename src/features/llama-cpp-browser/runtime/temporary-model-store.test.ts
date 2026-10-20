@@ -129,6 +129,22 @@ describe('page-local model directories', () => {
     expect(models.map(model => model.id)).toEqual(['temp/variants:Q4', 'temp/variants:Q8']);
   });
 
+  it('resolves nested model paths and literal percent filenames without URL-decoding selectors', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    const paths = ['..%2Fmodel.gguf', '%ZZ.gguf', 'dir/model.gguf'];
+    const models = await store.registerDirectory({ directory: tree({ name: 'root', paths }), signal: undefined });
+    expect(models.map(model => model.id)).toEqual(['temp/root:..%2Fmodel', 'temp/root:%ZZ', 'temp/root:dir/model']);
+    for (const [index, path] of paths.entries()) {
+      const name = models[index]!.id;
+      expect(modelSchema.shape.id.parse(name)).toBe(name);
+      expect(generateInputSchema.shape.model.parse(name)).toBe(name);
+      const source = store.source({ name })!;
+      expect(source.modelPath).toBe(path);
+      expect(source.files.map(file => file.path)).toEqual([path]);
+      expect(temporarySourceDirectory({ name, source }).modelPath).toBe(path);
+    }
+  });
+
   it('reserves only live root names and permits intentional same-name replacement', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const input = tree({ name: 'Models', paths: ['model.gguf'] });

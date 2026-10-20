@@ -194,7 +194,18 @@ it('strips extensions in known chat events while rejecting missing fields and un
   expect(peerChatEventSchema.safeParse({ type: 'new-event', text: 'hello' }).success).toBe(false);
 });
 
-it.each(['temp/Model-GGUF', 'temp/Models-2/owner/repo:subdir%2Fmodel.gguf', 'temp/variants:Q4.gguf'])('uses temporary name %s in ordinary listing and generation contracts without a special RPC', ref => {
+it.each([
+  'temp/Model-GGUF',
+  'temp/Models-2/owner/repo:subdir%2Fmodel.gguf',
+  'temp/variants:Q4.gguf',
+  'temp/root:..%2Fmodel.gguf',
+  'temp/root:dir/model.gguf',
+  'temp/root:%ZZ',
+  'temp/root:dir%2fmodel.gguf',
+  'temp/root:日本語/a%2Fb:model',
+])('preserves temporary model names as literal selectors in ordinary listing and generation contracts: %s', ref => {
+  // The public selector is not URL-decoded: encoded-looking text may be an
+  // actual filename, and '/' may be an actual relative directory separator.
   expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
   expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
@@ -204,7 +215,27 @@ it.each(['temp/Model-GGUF', 'temp/Models-2/owner/repo:subdir%2Fmodel.gguf', 'tem
   expect(plan.node.capability.item.parse({ ref, label: ref })).toEqual({ ref, label: ref });
 });
 
-it.each(['temp/..', 'temp/root:..%2Fmodel.gguf', 'temp/root:dir/model.gguf', 'temp/root:%ZZ'])('rejects malformed temporary references without loosening ordinary file paths: %s', ref => {
+it.each([
+  'temp/..',
+  'temp/.hidden',
+  'temp/root:..',
+  'temp/root:../model.gguf',
+  'temp/root:./model.gguf',
+  'temp/root:dir/../model.gguf',
+  'temp/root:dir/./model.gguf',
+  'temp/root:/model.gguf',
+  'temp/root:dir//model.gguf',
+  'temp/root:dir\\model.gguf',
+  'temp/root:dir/\0model.gguf',
+  'temp/root/owner/repo',
+  'temp/root/owner/repo:',
+])('rejects structurally malformed temporary references: %s', ref => {
   expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+  expect(naidanPeerContract.methods.generateChat.input.shape.model.safeParse(ref).success).toBe(false);
+});
+
+it('does not apply temporary-selector literal-percent rules to ordinary RPC file paths', () => {
+  expect(relativeModelPathSchema.safeParse('dir/model.gguf').success).toBe(true);
   expect(relativeModelPathSchema.safeParse('a/%2e%2e/b').success).toBe(false);
+  expect(relativeModelPathSchema.safeParse('a/%ZZ/b').success).toBe(false);
 });
