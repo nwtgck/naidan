@@ -59,7 +59,7 @@ export async function openModelFileAccess({ entry }: { entry: ModelFile }): Prom
       },
     };
   }
-  case undefined: {
+  case 'opfs': {
     const handle = entry.handle as FileSystemFileHandle & { createSyncAccessHandle?: () => Promise<ModelFileAccess> };
     if (!handle.createSyncAccessHandle) {
       throw new LlamaCppBrowserError({ code: 'unavailable' });

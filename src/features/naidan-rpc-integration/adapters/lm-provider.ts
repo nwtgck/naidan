@@ -35,7 +35,7 @@ export class NaidanRpcLmProvider implements LmProvider {
           if (result.length >= 256) {
             throw new Error('Too many remote models');
           }
-          result.push(item.value.ref);
+          result.push(item.value.modelId);
         }
       } finally {
         reader.releaseLock();
@@ -52,7 +52,7 @@ export class NaidanRpcLmProvider implements LmProvider {
     return async ({ input, signal, onEvent }) => {
       signal?.throwIfAborted();
       const call = client.generateChat({
-        input: { model: input.model, ...prepareTranscript({ input }) },
+        input: { modelId: input.modelId, ...prepareTranscript({ input }) },
         on: { progress: undefined },
         signal,
         timeoutMs: undefined,

@@ -5,13 +5,13 @@ import { chatRequest, deliverNativeResult, finalText } from './test-utils/chat.t
 import type { LlamaCppBrowserService } from './service-contract';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
-const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModels: vi.fn<LlamaCppBrowserService['listModels']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
+const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModelEntries: vi.fn<LlamaCppBrowserService['listModelEntries']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 
 beforeEach(async () => {
   vi.clearAllMocks();
   await ensureAllStringsForTest({ locale: 'en' });
-  service.listModels.mockResolvedValue([]);
+  service.listModelEntries.mockResolvedValue([]);
   service.generate.mockImplementation(async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'answer' }), onEvent }));
 });
 

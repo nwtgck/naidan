@@ -79,7 +79,7 @@ describe('local import cancellation through service and Worker boundaries', () =
     const copy = ({ signal }: { signal: AbortSignal | undefined }) => {
       switch (kind) {
       case 'file': return llamaCppBrowserService.importModel({ file, signal });
-      case 'folder': return llamaCppBrowserService.importDirectory({ directory: { name: 'same-GGUF', files: [{ path: file.name, file }] }, signal });
+      case 'folder': return llamaCppBrowserService.importDirectory({ directory: { rootName: 'same-GGUF', files: [{ relativePath: file.name, file }] }, signal });
       default: {
         const exhaustive: never = kind;
         throw new Error(String(exhaustive));
@@ -94,13 +94,13 @@ describe('local import cancellation through service and Worker boundaries', () =
     };
     await expect(copy({ signal: controller.signal })).rejects.toThrow('aborted');
     expect((await userFolder()).children.size).toBe(0);
-    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([]);
+    expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([]);
     expect(llamaCppBrowserService.getState()).toEqual({ status: 'idle' });
     expect(imported).not.toHaveBeenCalled();
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
     await copy({ signal: undefined });
-    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([
-      { id: 'user/same-GGUF', name: 'user/same-GGUF', size: file.size, importedAt: 123 },
+    expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([
+      { modelId: 'user/same-GGUF', size: file.size, importedAt: 123 },
     ]);
     expect(imported).toHaveBeenCalledOnce();
     expect(TestWorker.instances).toHaveLength(1);
@@ -145,7 +145,7 @@ describe('local import cancellation through service and Worker boundaries', () =
     rollback.resolve();
     await rejected;
     await second;
-    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toHaveLength(1);
+    expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toHaveLength(1);
     expect(TestWorker.instances).toHaveLength(1);
   });
 
@@ -155,9 +155,9 @@ describe('local import cancellation through service and Worker boundaries', () =
     const folder = await user.getDirectoryHandle('same-GGUF', { create: true });
     await folder.getFileHandle('.llama-cpp-import-pending', { create: true });
     await folder.getFileHandle(file.name, { create: true });
-    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([]);
+    expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toEqual([]);
     await llamaCppBrowserService.importModel({ file, signal: undefined });
-    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toHaveLength(1);
+    expect(await llamaCppBrowserService.listModelEntries({ signal: undefined })).toHaveLength(1);
     const installed = await user.getDirectoryHandle('same-GGUF');
     expect([...installed.children.keys()]).toEqual([file.name]);
     expect(new Uint8Array(await (await (await installed.getFileHandle(file.name)).getFile()).arrayBuffer())).toEqual(ggufBytes());

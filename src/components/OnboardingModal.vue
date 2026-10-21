@@ -309,21 +309,21 @@ function acceptLocalModels({ models }: { models: LocalModel[] }): void {
   if (!isLlamaCppBrowser.value) {
     return;
   }
-  availableModels.value = models.map(model => model.name);
+  availableModels.value = models.map(model => model.modelId);
   if (!availableModels.value.includes(selectedModel.value)) {
     selectedModel.value = availableModels.value[0] ?? '';
   }
 }
 
-function selectLocalModel({ name }: { name: string }): void {
-  if (isLlamaCppBrowser.value && availableModels.value.includes(name)) {
-    selectedModel.value = name;
+function selectLocalModel({ modelId }: { modelId: string }): void {
+  if (isLlamaCppBrowser.value && availableModels.value.includes(modelId)) {
+    selectedModel.value = modelId;
   }
 }
 
 async function refreshLocalModels({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
   try {
-    const models = await llamaCppBrowserService.listModels({ signal });
+    const models = await llamaCppBrowserService.listModelEntries({ signal });
     if (signal?.aborted || !isLlamaCppBrowser.value) {
       return;
     }
@@ -558,9 +558,9 @@ async function handleClose() {
 // This explicit action sets the actual default even during onboarding. Keep
 // the onboarding draft selection aligned; downloading alone never saves it.
 const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) => {
-  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId, expected: previous });
   switch (result) {
-  case 'applied': selectLocalModel({ name: model.name });
+  case 'applied': selectLocalModel({ modelId: model.modelId });
     break;
   case 'changed': break;
   default: {
@@ -764,7 +764,7 @@ defineExpose({
                 </div>
 
                 <TransformersJsManager v-if="isTransformersJs" @model-loaded="modelId => handleModelLoaded({ modelId })" />
-                <LlamaCppBrowserManager v-else :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ name: $event })" />
+                <LlamaCppBrowserManager v-else :model-preset="modelPreset" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" @runtime-ready="localRuntimeReady = $event" @models-changed="acceptLocalModels({ models: $event })" @model-selected="selectLocalModel({ modelId: $event })" />
                 <div v-if="isLlamaCppBrowser && availableModels.length" tw-class="space-y-2">
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400">{{ lazyStrings.OnboardingModal__default_model() }}</label>
                   <ModelSelector v-model="selectedModel" :models="sortedModels" :loading="false" @refresh="refreshLocalModels({ signal: undefined })" :placeholder="lazyStrings.OnboardingModal__select_a_model()" />

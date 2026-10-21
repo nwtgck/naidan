@@ -151,12 +151,13 @@ export function parseRepository({ input }: { input: string }): { repository: str
 }
 
 export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<RepositoryCatalog, 'models' | 'projectors'> {
-  const { models: groups, projectors } = modelGroups({ files });
+  const { models: groups, projectors } = modelGroups({ files: files.map(file => ({ relativePath: file.path, source: file })) });
   const models: ModelCandidate[] = [];
-  for (const group of groups) {
+  for (const entries of groups) {
+    const group = entries.map(entry => entry.source);
     group.sort((a, b) => a.path.localeCompare(b.path));
     try {
-      resolveModelFiles({ files: group });
+      resolveModelFiles({ files: group.map(file => ({ relativePath: file.path })) });
     } catch {
       continue;
     }
@@ -165,7 +166,7 @@ export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<Re
       models.push({ label: group[0]!.path, files: group, size });
     }
   }
-  return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.sort((a, b) => a.path.localeCompare(b.path)) };
+  return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.map(entry => entry.source).sort((a, b) => a.path.localeCompare(b.path)) };
 }
 
 async function fetchJson({ url, signal }: { url: string, signal: AbortSignal }): Promise<{ value: unknown, headers: Headers }> {

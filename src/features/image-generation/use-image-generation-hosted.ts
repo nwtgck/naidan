@@ -223,10 +223,10 @@ export function useImageGeneration(): ImageGenerationView {
     },
   });
   // A retained local model is not evidence about the model on a remote peer.
-  const recommendation = computed(() => remote.value ? undefined : recommendationForSelection({ model: library.main.value ? library.selectedFacts.value : manualFacts.value }));
+  const recommendation = computed(() => remote.value ? undefined : recommendationForSelection({ model: library.selectedCandidateKey.value ? library.selectedFacts.value : manualFacts.value }));
   // Adapters and input images belong to the selected base model; do not carry
   // them silently to another model with a different conditioning contract.
-  watch([library.main, layout, () => files.value.model, () => files.value.diffusion], () => {
+  watch([library.selectedCandidateKey, layout, () => files.value.model, () => files.value.diffusion], () => {
     restoredModels = undefined;
     if (preferenceFilesMissing && !preferenceRestoring.value && (library.selectedFacts.value || files.value.model || files.value.diffusion)) {
       clearHistoryMissingFiles();
@@ -262,7 +262,7 @@ export function useImageGeneration(): ImageGenerationView {
       const next = await inspectImageInventory({
         signal: controller.signal,
         onProgress() {},
-        repositories: [{ id: 'manual', name: 'manual', files: [{ path: file.name, file }] }],
+        repositories: [{ repositoryKey: 'manual', repositoryLabel: 'manual', files: [{ relativePath: file.name, file }] }],
       });
       if (!disposed && manualInspection === controller && !controller.signal.aborted) {
         const candidate = next.candidates.find(item => item.roles.includes(slot) && !item.issue);
@@ -629,7 +629,7 @@ export function useImageGeneration(): ImageGenerationView {
       }
       }
     })();
-    const models = library.main.value ? library.selectedModels() ?? [] : restoredModels ?? slots.flatMap(slot => {
+    const models = library.selectedCandidateKey.value ? library.selectedModels() ?? [] : restoredModels ?? slots.flatMap(slot => {
       const file = files.value[slot];
       return file ? [{ slot, file }] : [];
     });
@@ -1062,7 +1062,7 @@ export function useImageGeneration(): ImageGenerationView {
       const file = files.value[slot];
       return file === undefined ? [] : [{ slot, file }];
     });
-    const models = library.main.value ? library.selectedModels() : restoredModels ?? manualModels;
+    const models = library.selectedCandidateKey.value ? library.selectedModels() : restoredModels ?? manualModels;
     if (!models) {
       invalid.value = true;
       return;

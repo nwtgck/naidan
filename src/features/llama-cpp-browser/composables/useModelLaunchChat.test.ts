@@ -1,3 +1,4 @@
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import type { ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch';
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
@@ -105,7 +106,7 @@ beforeEach(async () => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
   download.mockImplementation(async ({ selection }: { selection: DownloadSelection }) => {
     const path = selection.files[0]!.path;
-    installed.add(`hf.co/${selection.repository}:${encodeURIComponent(path)}`);
+    installed.add(formatHuggingFaceModelId({ repository: selection.repository, mainFilePath: path }));
   });
   queue = createDownloadQueue({ download });
   prepare.mockImplementation(async ({ request }: { request: ModelLaunchChatRequest }): Promise<Chat> => {

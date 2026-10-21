@@ -58,7 +58,7 @@ it('counts every image use but reads each distinct payload once before rejecting
     resources: engine.value,
     inputBudget: budget,
     deliveryBudget: budget,
-    input: { model: 'local/model', transcript: transcript({ attachments: Array(32).fill(0) }), images: [{ mimeType: 'image/png', byteLength: bytes.length, data: bytesSource({ bytes }) }] },
+    input: { modelId: 'user/local', transcript: transcript({ attachments: Array(32).fill(0) }), images: [{ mimeType: 'image/png', byteLength: bytes.length, data: bytesSource({ bytes }) }] },
     signal,
     notify: { progress() {} },
   });
@@ -76,7 +76,7 @@ it('permits repeated small images without copying their encoded payload for each
     resources: engine.value,
     inputBudget: budget,
     deliveryBudget: budget,
-    input: { model: 'local/model', transcript: transcript({ attachments: [0, 0, 0] }), images: [{ mimeType: 'image/png', byteLength: bytes.length, data: bytesSource({ bytes }) }] },
+    input: { modelId: 'user/local', transcript: transcript({ attachments: [0, 0, 0] }), images: [{ mimeType: 'image/png', byteLength: bytes.length, data: bytesSource({ bytes }) }] },
     signal,
     notify: { progress() {} },
   });
@@ -91,7 +91,7 @@ it('rejects an impossible attachment reference before pulling any uploaded image
     controller.close();
   });
   await expect(receiveTranscript({
-    model: 'local/model',
+    modelId: 'user/local',
     transcript: transcript({ attachments: [7] }),
     images: [{ mimeType: 'image/png', byteLength: 1, data: new ReadableStream({ pull: pulled }, { highWaterMark: 0 }) }],
     signal: new AbortController().signal,
@@ -125,13 +125,13 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
   const input = (() => {
     switch (attack) {
     case 'depth': return {
-      model: 'local/model',
+      modelId: 'user/local',
       // A hostile peer can send byte documents without our outbound helper.
       transcript: bytesSource({ bytes: new TextEncoder().encode('{"child":'.repeat(256) + 'null' + '}'.repeat(256)) }),
       images: [],
     };
     case 'repeated-image': return {
-      model: 'local/model',
+      modelId: 'user/local',
       transcript: transcript({ attachments: Array(32).fill(0) }),
       images: [{ mimeType: 'image/png' as const, byteLength: bytes.length, data: bytesSource({ bytes }) }],
     };
@@ -150,7 +150,7 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
   expect(engine.generate).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(budget.reserved).toBe(0));
   const accepted = client.generateChat({
-    input: { model: 'local/model', transcript: transcript({ attachments: [] }), images: [] },
+    input: { modelId: 'user/local', transcript: transcript({ attachments: [] }), images: [] },
     on: { progress: undefined },
     signal: lifetime.signal,
     timeoutMs: undefined,

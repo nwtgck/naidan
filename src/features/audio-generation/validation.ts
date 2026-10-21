@@ -8,7 +8,7 @@ export function audioValidationFields({ issues }: { issues: readonly ZodIssue[] 
 
 export function audioFieldLabel({ field }: { field: string }): string | undefined {
   switch (field) {
-  case 'model': return lazyStrings.audioGeneration__audio_model();
+  case 'modelId': return lazyStrings.audioGeneration__audio_model();
   case 'text': return lazyStrings.audioGeneration__input_text();
   case 'reference': return lazyStrings.audioGeneration__reference_voice();
   case 'language': return lazyStrings.audioGeneration__language();
@@ -27,7 +27,7 @@ export function audioFieldValidationMessage({ field }: { field: string }): strin
   switch (field) {
   case 'text': return lazyStrings.audioGeneration__invalid_text();
   case 'reference': return lazyStrings.audioGeneration__invalid_reference();
-  case 'model': return lazyStrings.audioGeneration__choose_model();
+  case 'modelId': return lazyStrings.audioGeneration__choose_model();
   case 'contextTokens': return lazyStrings.audioGeneration__integer_range({ minimum: 1024, maximum: MAX_AUDIO_CONTEXT_TOKENS });
   case 'maxFrames': return lazyStrings.audioGeneration__integer_range({ minimum: 1, maximum: 2048 });
   case 'topK': return lazyStrings.audioGeneration__integer_range({ minimum: 1, maximum: 256 });

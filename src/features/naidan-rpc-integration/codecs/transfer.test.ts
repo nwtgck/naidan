@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { bytesSource, collectBytes, computationSource, encodeDocument } from '@/features/naidan-rpc-integration/codecs/transfer';
 import { prepareTranscript, receiveTranscript, receiveEvents, eventBytes, TRANSCRIPT_LIMIT } from '@/features/naidan-rpc-integration/codecs/chat-wire';
 import { validatePng } from '@/features/naidan-rpc-integration/codecs/png';
-import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
+import type { PeerChatInput } from '@/features/naidan-rpc-integration/handlers/inference/resources';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -11,9 +11,9 @@ function signal(): AbortSignal {
   return new AbortController().signal;
 }
 
-function request(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
+function request(): PeerChatInput {
   return {
-    model: 'local-model',
+    modelId: 'user/local',
     messages: [{ role: 'user', content: 'hello', reasoning_content: undefined, tool_calls: undefined, tool_call_id: undefined, name: undefined }],
     tools: undefined,
     temperature: .7,
@@ -177,8 +177,8 @@ it('transcript projects image blobs and tools without serializing browser object
 input.messages[0]!.content = [{ type: 'text', text: 'image?' }, { type: 'image', blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) }];
 input.tools = [{ type: 'function', function: { name: 'tool', description: '', parameters: { type: 'object', example: null } } }];
 const prepared = prepareTranscript({ input });
-const restored = await receiveTranscript({ ...prepared, model: 'provided-model', signal: signal() });
-expect(restored.model).toBe('provided-model');
+const restored = await receiveTranscript({ ...prepared, modelId: 'user/provided', signal: signal() });
+expect(restored.modelId).toBe('user/provided');
 expect(restored.debug).toBe('off');
 expect(restored.maxTokens).toBe(4096);
 expect(restored.tools).toEqual(input.tools);
@@ -191,7 +191,7 @@ expect(new Uint8Array(await content[1].blob.arrayBuffer())).toEqual(new Uint8Arr
 
 it('transcript verifies attachment length and references before invoking a native engine', async () => {
   const prepared = prepareTranscript({ input: request() });
-  await expect(receiveTranscript({ transcript: prepared.transcript, model: 'local', signal: signal(), images: [{ byteLength: 2, mimeType: 'image/png', data: bytesSource({ bytes: new Uint8Array([1]) }) }] })).rejects.toThrow('length mismatch');
+  await expect(receiveTranscript({ transcript: prepared.transcript, modelId: 'user/local', signal: signal(), images: [{ byteLength: 2, mimeType: 'image/png', data: bytesSource({ bytes: new Uint8Array([1]) }) }] })).rejects.toThrow('length mismatch');
 });
 
 it('transcript rejects input outside the finite metadata budget', () => {

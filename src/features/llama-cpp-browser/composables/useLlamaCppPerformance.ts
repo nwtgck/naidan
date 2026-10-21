@@ -1,5 +1,4 @@
 import { buildAllowsGpuProfiling, gpuProfilingUnavailableReason } from '@/features/llama-cpp-browser/performance/profiling-mode';
-import { localModelDisplayName } from '@/features/llama-cpp-browser/default-model';
 import { resolvePerformanceModelInput } from '@/features/llama-cpp-browser/performance/model-input';
 import rawRuntimeManifest from 'llama-cpp-browser-core/manifest.json';
 import { runtimeBuildEvidence } from '@/features/llama-cpp-browser/performance/runtime-evidence';
@@ -40,16 +39,16 @@ export function useLlamaCppPerformance() {
   let disposed = false, seeded = false;
   let currentLive: PerformanceTrial | undefined;
   let startController: AbortController | undefined;
-  const filteredModels = computed(() => models.value.filter(model => `${model.name} ${model.id}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
+  const filteredModels = computed(() => models.value.filter(model => model.modelId.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())));
   const draftResolution = computed(() => resolvePerformanceModelInput({ text: modelDraft.value, models: models.value, selected: selected.value }));
   const modelInputError = computed(() => draftResolution.value.errors.join('\n'));
   const selectedModels = computed(() => draftResolution.value.selected.flatMap(id => {
-    const model = models.value.find(model => model.id === id);
+    const model = models.value.find(model => model.modelId === id);
     return model ? [model] : [];
   }));
   const otherWork = computed(() => !running.value && (serviceState.value.status === 'working' || queue.jobs.value.some(job => jobIsBusy({ job }))));
   const valid = computed(() => !draftResolution.value.errors.length && selectedModels.value.length > 0 && selectedModels.value.length <= 16 && selectedModels.value.length === draftResolution.value.selected.length
-    && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.name)).size === selectedModels.value.length
+    && notes.value.length <= 10000 && new Set(selectedModels.value.map(model => model.modelId)).size === selectedModels.value.length
     && protocolSchema.safeParse({ mode: mode.value, repeats: repeats.value, maxTokens: maxTokens.value, timeoutMs: timeoutMinutes.value * 60000 }).success);
   const canStart = computed(() => !running.value && !exporting.value && !loading.value && !otherWork.value && valid.value && (mode.value === 'standard' || profilingSupported.value));
   const callCount = computed(() => selectedModels.value.length * (1 + repeats.value * 4 + (diagnostics.value ? 1 : 0)) * measurementLanes({ mode: mode.value }).length);
@@ -123,16 +122,16 @@ export function useLlamaCppPerformance() {
     const control = new AbortController();
     refreshController = control;
     try {
-      const found = await service.listModels({ signal: control.signal });
+      const found = await service.listModelEntries({ signal: control.signal });
       if (disposed) {
         return;
       }
       models.value = found;
-      selected.value = selected.value.filter(id => found.some(model => model.id === id));
+      selected.value = selected.value.filter(id => found.some(model => model.modelId === id));
       if (!seeded) {
-        const candidate = found.find(model => model.name === defaultModel || model.id === defaultModel);
+        const candidate = found.find(model => model.modelId === defaultModel);
         if (candidate) {
-          selected.value = [candidate.id];
+          selected.value = [candidate.modelId];
         }
         seeded = true;
       }
@@ -162,10 +161,6 @@ export function useLlamaCppPerformance() {
       }
       refreshController = undefined;
     }
-  }
-  function modelDisplayName({ id }: { id: string }): string {
-    const model = models.value.find(model => model.id === id);
-    return model ? localModelDisplayName({ model }) : id;
   }
   async function download(): Promise<void> {
     const value = snapshot.value;
@@ -240,9 +235,9 @@ export function useLlamaCppPerformance() {
       return;
     }
     try {
-      // IDs round-trip even when display names are ambiguous. Include a valid
-      // uncommitted draft, just like the Transformers.js model list.
-      await navigator.clipboard.writeText(selectedModels.value.map(model => model.id).join('\n'));
+      // Copy the same modelId values that are displayed and accepted on paste.
+      // Include a valid uncommitted draft.
+      await navigator.clipboard.writeText(selectedModels.value.map(model => model.modelId).join('\n'));
     } catch { /* Clipboard failure is non-semantic and must not change the list. */ }
   }
   function stop(): void {
@@ -367,7 +362,6 @@ export function useLlamaCppPerformance() {
     mode,
     profilingUnavailableReason,
     profilingSupported,
-    modelDisplayName,
     modelDraft,
     modelInputError,
     diagnostics,

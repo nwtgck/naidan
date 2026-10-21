@@ -43,9 +43,14 @@ vi.mock('@/00-storage/service', () => ({
     },
   },
 }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
+vi.mock('../runtime/model-resolution', () => ({
+  resolveModel: (args: unknown) => {
+    calls.resolve(args);
+    return calls.read(args);
+  },
+}));
 vi.mock('../model-recovery/download-target', () => ({ resolveRecoveryDownload: calls.plan }));
-vi.mock('../hugging-face/storage', () => ({ installedSelection: calls.installed, resolveRepositoryModel: calls.resolve }));
+vi.mock('../hugging-face/storage', () => ({ installedSelection: calls.installed }));
 vi.mock('../hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => queue }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
@@ -59,7 +64,7 @@ vi.mock('@/features/llama-cpp-browser', () => ({
     },
   },
 }));
-const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
+const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model:Q4_K_M', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
 const scopes: ReturnType<typeof effectScope>[] = [];
 const wrappers: ReturnType<typeof mount>[] = [];
 
@@ -92,7 +97,6 @@ beforeEach(async () => {
   settings.value = { ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'opfs' };
   current.value = { id: toChatId({ raw: 'ordinary-chat' }), title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
   resolved.value = { endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId };
-  calls.resolve.mockImplementation(async ({ name }: { name: string }) => ({ id: name, name, modelPath: target.mainFilePath, projectorPath: undefined, files: [] }));
   calls.read.mockRejectedValue(new LlamaCppBrowserError({ code: 'missing-model' }));
   calls.plan.mockResolvedValue(target);
   calls.installed.mockResolvedValue(undefined);
@@ -117,7 +121,7 @@ describe('ordinary Chat model recovery', () => {
     expect(calls.read).not.toHaveBeenCalled();
     expect(state.visible.value).toBe(false);
     await checkNow();
-    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ name: target.modelId });
+    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: target.modelId, signal: undefined });
     expect(state.availability.value).toBe('missing');
     expect(state.visible.value).toBe(true);
     expect(state.maySend.value).toBe(false);
@@ -143,11 +147,11 @@ describe('ordinary Chat model recovery', () => {
   it('uses the effective model even if the Chat has no local model override', async () => {
     const { state } = start();
     await checkNow();
-    expect(calls.read).toHaveBeenCalledWith({ name: target.modelId });
+    expect(calls.read).toHaveBeenCalledWith({ modelId: target.modelId, signal: undefined });
     resolved.value.modelId = 'user/changed';
     await checkNow();
     expect(state.modelId.value).toBe('user/changed');
-    expect(calls.read).toHaveBeenLastCalledWith({ name: 'user/changed' });
+    expect(calls.read).toHaveBeenLastCalledWith({ modelId: 'user/changed', signal: undefined });
     expect(state.canDownload.value).toBe(false);
   });
 
@@ -185,7 +189,7 @@ describe('ordinary Chat model recovery', () => {
     const { state } = start();
     await checkNow();
     await state.review();
-    calls.installed.mockResolvedValue({ id: target.modelId });
+    calls.installed.mockResolvedValue({ modelId: target.modelId });
     calls.read.mockResolvedValue({});
     await state.download();
     await checkNow();
@@ -335,7 +339,7 @@ describe('ordinary recovery notice with real controls', () => {
     const { state, wrapper } = await render();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     await checkNow();
-    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toContain('Model-Q4_K_M.gguf');
+    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe(target.modelId);
     await wrapper.get('[data-testid="model-recovery-review"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-testid="model-recovery-size"]').text()).toContain('256');
@@ -345,6 +349,14 @@ describe('ordinary recovery notice with real controls', () => {
     await checkNow();
     expect(state.visible.value).toBe(false);
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+  });
+
+  it.each(['Q%20A', 'Q%2FA', '%invalid'])('displays literal modelId variant %s without decoding it', async variant => {
+    const modelId = `hf.co/owner/Model:${variant}`;
+    resolved.value = { endpoint: { type: 'llama_cpp_browser' }, modelId };
+    const { wrapper } = await render();
+    await checkNow();
+    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe(modelId);
   });
 
   it('provides model management without changing Chat or navigating to a new Chat', async () => {

@@ -5,9 +5,9 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageModelPicker from './ImageModelPicker.vue';
 import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 const choices: ImageModelChoice[] = [
-  { id: 'matching', label: 'Compatible dimensions', detail: 'OPFS: user/encoder/model.gguf', evidence: ['width: 2560; layers: 36'], status: 'matching', issue: undefined },
-  { id: 'wrong', label: 'Wrong model family', detail: 'Host folder: user/gemma/model.gguf', evidence: ['architecture: gemma'], status: 'incompatible', issue: 'Wrong encoder dimensions' },
-  { id: 'unknown', label: 'Unverified', detail: 'Host folder: user/custom/model.gguf', evidence: [], status: 'unverified', issue: undefined },
+  { candidateKey: 'matching', label: 'Compatible dimensions', detail: 'OPFS: user/encoder/model.gguf', evidence: ['width: 2560; layers: 36'], status: 'matching', issue: undefined },
+  { candidateKey: 'wrong', label: 'Wrong model family', detail: 'Host folder: user/gemma/model.gguf', evidence: ['architecture: gemma'], status: 'incompatible', issue: 'Wrong encoder dimensions' },
+  { candidateKey: 'unknown', label: 'Unverified', detail: 'Host folder: user/custom/model.gguf', evidence: [], status: 'unverified', issue: undefined },
 ];
 let view: VueWrapper | undefined;
 let host: HTMLElement | undefined;
@@ -79,7 +79,7 @@ it('shows structural evidence, and never emits a known-incompatible choice', asy
 });
 
 it('keeps the current selection inspectable while filtering, and closes when disabled', async () => {
-  const many = [...choices, ...Array.from({ length: 6 }, (_, i) => ({ ...choices[0]!, id: `extra-${i}` }))];
+  const many = [...choices, ...Array.from({ length: 6 }, (_, i) => ({ ...choices[0]!, candidateKey: `extra-${i}` }))];
   const wrapper = create({ props: { choices: many, required: true } });
   const menu = await open({ wrapper });
   await menu.get('[data-testid="image-model-picker-search"]').setValue('nothing matches');
@@ -188,7 +188,7 @@ it('closes on outside pointer/focus while keeping focus with the destination', a
 });
 
 it('bounds a large local candidate list to the viewport and cleans up its portal on unmount', async () => {
-  const wrapper = create({ props: { choices: Array.from({ length: 250 }, (_, i) => ({ ...choices[0]!, id: `file-${i}`, label: `Model ${i}` })) } });
+  const wrapper = create({ props: { choices: Array.from({ length: 250 }, (_, i) => ({ ...choices[0]!, candidateKey: `file-${i}`, label: `Model ${i}` })) } });
   const menu = await open({ wrapper });
   expect(menu.findAll('[role="option"]')).toHaveLength(251);
   expect(Number.parseInt(menu.element.style.maxHeight)).toBeLessThanOrEqual(400);
@@ -204,8 +204,8 @@ it('keeps long component filenames and inspection evidence inspectable and searc
   const filename = `Qwen_Image_2.1-${'text_encoder_'.repeat(12)}Q8_0.gguf`;
   const detail = `OPFS: local/models/Qwen-Image-2.1/${filename}`;
   const evidence = `tensor: ${'transformer.layers.0.attention.'.repeat(12)}weight; dimensions: 3584 × 3584`;
-  const choice = { ...choices[0]!, id: 'long-qwen-encoder', label: filename, detail, evidence: [evidence] };
-  const wrapper = create({ props: { modelValue: choice.id, choices: [choice, ...choices], label: 'Text encoder', required: true } });
+  const choice = { ...choices[0]!, candidateKey: 'long-qwen-encoder', label: filename, detail, evidence: [evidence] };
+  const wrapper = create({ props: { modelValue: choice.candidateKey, choices: [choice, ...choices], label: 'Text encoder', required: true } });
   const trigger = wrapper.get('[data-testid="image-model-picker-trigger"]');
   expect(trigger.text()).toBe(filename);
   expect(trigger.attributes('title')).toBe(detail);
@@ -222,6 +222,6 @@ it('keeps long component filenames and inspection evidence inspectable and searc
   await menu.get('[data-testid="image-model-picker-search"]').setValue('Qwen-Image-2.1 Q8_0.gguf');
   expect(menu.findAll('[role="option"]')).toHaveLength(2);
   await menu.get('[data-value="long-qwen-encoder"]').trigger('click');
-  expect(wrapper.emitted('update:modelValue')).toEqual([[choice.id]]);
+  expect(wrapper.emitted('update:modelValue')).toEqual([[choice.candidateKey]]);
   expect(document.activeElement).toBe(trigger.element);
 });

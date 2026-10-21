@@ -42,7 +42,7 @@ function readyInventory() {
       const name = source.path.split('/').at(-1)!;
       const file = source.role === 'vae' ? safetensorsFixture({ name, tensors: fluxVaeTensors }).file
         : ggufFixture({ name, tensors: source.role === 'diffusion' ? zImageTensors : qwenTextTensors({ width: 2560, layers: 36 }), metadata: source.role === 'lm' ? { 'general.architecture': 'qwen3' } : { 'general.name': 'Z-Image-Turbo' }, extraBytes: 0 }).file;
-      return { id: `huggingface.co/${source.repository}/resolve/main`, name: source.repository, files: [{ path: source.path, file }] };
+      return { repositoryKey: `huggingface.co/${source.repository}/resolve/main`, repositoryLabel: source.repository, files: [{ relativePath: source.path, file }] };
     }),
     signal: undefined,
   });
@@ -156,7 +156,7 @@ it('publishes downloaded inventory while a history image is being read without r
   pendingDownload.resolve();
   await downloading;
   expect(view.library.downloadState.value).toBe('complete');
-  expect(view.library.main.value).toBe('');
+  expect(view.library.selectedCandidateKey.value).toBe('');
   expect(view.historyActions.busy.value).toBe(true);
   pendingImage.resolve(new Blob(['image'], { type: 'image/png' }));
   await flushPromises();
@@ -198,7 +198,7 @@ it('publishes downloaded inventory during independent history save retries witho
   await flushPromises();
   expect(view.historySaving.status.value).toBe('saved');
   expect(view.library.downloadState.value).toBe('complete');
-  expect(view.library.main.value).toBe('');
+  expect(view.library.selectedCandidateKey.value).toBe('');
   expect(view.results.value).toHaveLength(1);
   expect(mocks.inspect).toHaveBeenCalledTimes(previousInspections + 1);
 });
@@ -208,7 +208,7 @@ it('generates with saved files during downloads and keeps the active request whe
   wrapper = mount(ImageGenerationLab);
   await flushPromises();
   const view = wrapper.getComponent(ImageGenerationEditor).props('view');
-  const originalModel = view.library.main.value;
+  const originalModel = view.library.selectedCandidateKey.value;
   expect(view.library.ready.value).toBe(true);
   const transfer = Promise.withResolvers<void>();
   mocks.download.mockReturnValueOnce(transfer.promise);
@@ -229,11 +229,11 @@ it('generates with saved files during downloads and keeps the active request whe
   transfer.resolve();
   await Promise.all([downloading, queued]);
   expect(view.busy.value).toBe(true);
-  expect(view.library.main.value).toBe(originalModel);
+  expect(view.library.selectedCandidateKey.value).toBe(originalModel);
   expect(activeRequest.parameters.prompt).toBe('the current request');
   expect(mocks.generate).toHaveBeenCalledOnce();
   native.resolve({ png: new Blob(['png']), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false });
   await flushPromises();
   expect(view.results.value).toHaveLength(1);
-  expect(view.library.main.value).toBe(originalModel);
+  expect(view.library.selectedCandidateKey.value).toBe(originalModel);
 });

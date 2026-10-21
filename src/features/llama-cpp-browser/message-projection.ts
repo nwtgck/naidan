@@ -173,7 +173,7 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
   }
   signal?.throwIfAborted();
   return {
-    model,
+    modelId: model,
     debug,
     messages: accepted,
     tools: snapshot.tools?.map(tool => ({ type: 'function', function: { ...tool } })),

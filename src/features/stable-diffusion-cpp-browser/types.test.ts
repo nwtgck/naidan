@@ -7,11 +7,20 @@ describe('image experiment boundary', () => {
     expect(requestSchema.parse(requestFixture()).models[0]?.file.size).toBe(24);
   });
 
+  it('preserves runtime relative paths and the file reuse key while validating the complete mount group', () => {
+    const request = requestFixture(), file = ggufFile();
+    const model = { slot: 'model', file, relativePath: 'weights/model.gguf', modelFilesReuseKey: 'published-file-group', companions: [{ relativePath: 'weights/part.gguf', file }] };
+    expect(requestSchema.parse({ ...request, models: [model] }).models).toEqual([model]);
+    for (const relativePath of ['weights/model.gguf', 'weights', '../part.gguf', '/part.gguf']) {
+      expect(requestSchema.safeParse({ ...request, models: [{ ...model, companions: [{ relativePath, file }] }] }).success).toBe(false);
+    }
+  });
+
   it('validates bounded run-local LoRA selections without reading adapter bytes', () => {
     const request = requestFixture(), file = ggufFile();
     expect(requestSchema.parse({ ...request, loras: [{ file, strength: 0 }] }).loras[0]?.strength).toBe(0);
-    expect(requestSchema.parse({ ...request, loras: [{ file, path: 'style/adapter.gguf', strength: -0.5 }] }).loras).toHaveLength(1);
-    for (const loras of [[{ file, strength: Infinity }], [{ file, strength: NaN }], [{ file, strength: 11 }], [{ file, path: '../adapter.gguf', strength: 1 }], [{ file, path: '/adapter.gguf', strength: 1 }], Array.from({ length: 17 }, () => ({ file, strength: 1 }))]) {
+    expect(requestSchema.parse({ ...request, loras: [{ file, relativePath: 'style/adapter.gguf', strength: -0.5 }] }).loras).toHaveLength(1);
+    for (const loras of [[{ file, strength: Infinity }], [{ file, strength: NaN }], [{ file, strength: 11 }], [{ file, relativePath: '../adapter.gguf', strength: 1 }], [{ file, relativePath: '/adapter.gguf', strength: 1 }], Array.from({ length: 17 }, () => ({ file, strength: 1 }))]) {
       expect(requestSchema.safeParse({ ...request, loras }).success).toBe(false);
     }
     const { loras: _loras, ...withoutAdapters } = request;

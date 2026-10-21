@@ -50,45 +50,48 @@ async function prepareImageRequestReuse({ record, findFile, getImage, purpose }:
   const missing: string[] = [];
   const missingInactive: string[] = [];
   const models: Request['models'] = [];
-  for (const model of record.request.models) {
-    const file = findFile({ location: model.file });
-    const companions: { path: string, file: File }[] = [];
+  for (const { slot, path, file: location, companions: storedCompanions, ...unhandledModel } of record.request.models) {
+    unhandledModel satisfies Record<PropertyKey, never>;
+    const file = findFile({ location });
+    const companions: { relativePath: string, file: File }[] = [];
     if (!file) {
-      missing.push(model.file.name);
+      missing.push(location.name);
     }
-    for (const companion of model.companions) {
-      const file = findFile({ location: companion.file });
+    for (const { path, file: location, ...unhandledCompanion } of storedCompanions) {
+      unhandledCompanion satisfies Record<PropertyKey, never>;
+      const file = findFile({ location });
       if (!file) {
-        missing.push(companion.file.name);
+        missing.push(location.name);
       } else {
-        companions.push({ path: companion.path, file });
+        companions.push({ relativePath: path, file });
       }
     }
     if (file) {
-      models.push(modelFileSchema.parse({ slot: model.slot, path: model.path, file, companions }));
+      models.push(modelFileSchema.parse({ slot, relativePath: path, file, companions }));
     }
   }
   const modelFilesMissing = missing.length > 0;
   const loras: ImageLoraSelection[] = [];
-  for (const [index, lora] of record.request.loras.entries()) {
+  for (const [index, { path, file: location, strength: storedStrength, ...unhandledLora }] of record.request.loras.entries()) {
+    unhandledLora satisfies Record<PropertyKey, never>;
     const state = options.states?.[index];
-    const enabled = state?.enabled ?? lora.strength !== 0, strength = state?.strength ?? lora.strength;
-    const file = findFile({ location: lora.file });
+    const enabled = state?.enabled ?? storedStrength !== 0, strength = state?.strength ?? storedStrength;
+    const file = findFile({ location });
     if (!file) {
       // An unavailable disabled adapter is informational. An enabled adapter
       // requires explicit re-selection or acknowledgement before generation.
       if (!enabled) {
-        missingInactive.push(lora.file.name);
+        missingInactive.push(location.name);
       } else {
-        missing.push(lora.file.name);
+        missing.push(location.name);
       }
       continue;
     }
     // History represents disabled selections as zero strength. Restore the
     // choice even if its file is now invalid; only enabling it requires a
     // usable adapter. The persisted shape does not retain its former strength.
-    const selection = { file, path: lora.path, strength };
-    loras.push({ ...(!enabled || options.draft ? selection : loraFileSchema.parse(selection)), enabled, sourceLabel: lora.file.name });
+    const selection = { file, relativePath: path, strength };
+    loras.push({ ...(!enabled || options.draft ? selection : loraFileSchema.parse(selection)), enabled, locationLabel: location.name });
   }
   async function input({ image }: { image: { binaryObjectId: BinaryObjectId, name: string } }): Promise<File> {
     const blob = await getImage({ binaryObjectId: image.binaryObjectId });

@@ -5,7 +5,7 @@ describe('model directory input', () => {
   it('uses webkitRelativePath rather than deriving a directory from a GGUF filename', () => {
     const file = new File(['bytes'], 'weights.gguf');
     Object.defineProperty(file, 'webkitRelativePath', { value: 'my-Qwen-VL-GGUF/nested/weights.gguf' });
-    expect(directoryFromFiles({ files: [file] })).toEqual({ name: 'my-Qwen-VL-GGUF', files: [{ path: 'nested/weights.gguf', file }] });
+    expect(directoryFromFiles({ files: [file] })).toEqual({ rootName: 'my-Qwen-VL-GGUF', files: [{ relativePath: 'nested/weights.gguf', file }] });
   });
 
   it('drains every drag entry batch and preserves the dropped directory name', async () => {
@@ -14,7 +14,7 @@ describe('model directory input', () => {
     let batch = 0;
     const folder = { isDirectory: true, name: 'my-Qwen-VL-GGUF', createReader: () => ({ readEntries: (resolve: (entries: unknown[]) => void) => resolve(batch++ === 0 ? [child] : []) }) };
     const transfer = { items: [{ kind: 'file', webkitGetAsEntry: () => folder }], files: [] } as unknown as DataTransfer;
-    expect(await droppedModels({ transfer })).toEqual({ files: [], directories: [{ name: 'my-Qwen-VL-GGUF', files: [{ path: 'model.gguf', file }] }] });
+    expect(await droppedModels({ transfer })).toEqual({ files: [], directories: [{ rootName: 'my-Qwen-VL-GGUF', files: [{ relativePath: 'model.gguf', file }] }] });
     expect(batch).toBe(2);
   });
 

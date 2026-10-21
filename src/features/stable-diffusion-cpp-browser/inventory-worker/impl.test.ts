@@ -25,7 +25,7 @@ it('lists OPFS before inspecting headers and never reuses the parser realm', asy
 });
 
 it('inspects explicitly supplied manual files without touching stored models', async () => {
-  const entries = [{ id: 'manual', name: 'manual', files: [{ path: 'renamed.data', file: new File(['x'], 'renamed.data') }] }];
+  const entries = [{ repositoryKey: 'manual', repositoryLabel: 'manual', files: [{ relativePath: 'renamed.data', file: new File(['x'], 'renamed.data') }] }];
   await createInventoryWorker().inspect(entries, vi.fn());
   expect(mocks.list).not.toHaveBeenCalled();
   expect(mocks.scan).toHaveBeenCalledWith(expect.objectContaining({ repositories: entries }));
@@ -40,33 +40,33 @@ it('releases the reporting proxy when rejecting an invalid targeted inspection',
 });
 
 it('adds temporary repositories to OPFS and linked repositories instead of replacing them', async () => {
-  const saved = { id: 'user/saved', name: 'saved', files: [] };
-  const linked = { id: 'host/root/owner/repo', name: 'linked', files: [] };
-  const temporary = { id: 'temp/shared', name: 'shared', files: [{ path: 'nested/model.gguf', file: new File(['x'], 'model.gguf') }] };
+  const saved = { repositoryKey: 'user/saved', repositoryLabel: 'saved', files: [] };
+  const linked = { repositoryKey: 'host/root/owner/repo', repositoryLabel: 'linked', files: [] };
+  const temporary = { repositoryKey: 'temp/shared', repositoryLabel: 'shared', files: [{ relativePath: 'nested/model.gguf', file: new File(['x'], 'model.gguf') }] };
   mocks.list.mockResolvedValue([saved]);
   mocks.host.mockResolvedValue([linked]);
-  await createInventoryWorker().inspect(undefined, vi.fn(), [{ id: 'root', name: 'models' }], undefined, [temporary]);
+  await createInventoryWorker().inspect(undefined, vi.fn(), [{ directoryId: 'root', directoryName: 'models' }], undefined, [temporary]);
   expect(mocks.scan).toHaveBeenCalledWith(expect.objectContaining({ repositories: [saved, linked, temporary] }));
 });
 
 it('routes mixed targeted scans without sending temporary paths to the OPFS store', async () => {
-  const temporary = { id: 'temp/shared', name: 'shared', files: [] };
-  const saved = { id: 'user/saved', name: 'saved', files: [] };
+  const temporary = { repositoryKey: 'temp/shared', repositoryLabel: 'shared', files: [] };
+  const saved = { repositoryKey: 'user/saved', repositoryLabel: 'saved', files: [] };
   mocks.list.mockResolvedValue([saved]);
-  await createInventoryWorker().inspect(undefined, vi.fn(), undefined, [saved.id, temporary.id], [temporary]);
-  expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ repositoryIds: ['user/saved'] }));
+  await createInventoryWorker().inspect(undefined, vi.fn(), undefined, [saved.repositoryKey, temporary.repositoryKey], [temporary]);
+  expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ repositoryKeys: ['user/saved'] }));
   expect(mocks.scan).toHaveBeenCalledWith(expect.objectContaining({ repositories: [saved, temporary] }));
 });
 
 it('inspects temporary roots without OPFS and never persists File references', async () => {
   vi.stubGlobal('navigator', {});
-  const temporary = { id: 'temp/shared', name: 'shared', files: [] };
-  await createInventoryWorker().inspect(undefined, vi.fn(), undefined, [temporary.id], [temporary]);
+  const temporary = { repositoryKey: 'temp/shared', repositoryLabel: 'shared', files: [] };
+  await createInventoryWorker().inspect(undefined, vi.fn(), undefined, [temporary.repositoryKey], [temporary]);
   expect(mocks.list).not.toHaveBeenCalled();
   expect(mocks.scan).toHaveBeenCalledWith(expect.objectContaining({ repositories: [temporary] }));
 });
 
 it('rejects malformed temporary roots even on the separate additional-repository input', async () => {
-  await expect(createInventoryWorker().inspect(undefined, vi.fn(), undefined, undefined, [{ id: 'temp/../escape', name: 'bad', files: [] }])).rejects.toThrow();
+  await expect(createInventoryWorker().inspect(undefined, vi.fn(), undefined, undefined, [{ repositoryKey: 'temp/../escape', repositoryLabel: 'bad', files: [] }])).rejects.toThrow();
   expect(mocks.scan).not.toHaveBeenCalled();
 });

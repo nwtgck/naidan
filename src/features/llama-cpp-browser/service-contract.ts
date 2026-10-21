@@ -8,7 +8,7 @@ import type { ModelDirectoryInput, EngineState, GenerateInput, GenerationResult,
 
 export interface LlamaCppBrowserService {
   /** Best-effort preparation: never queues behind an existing operation. */
-  prepareModel({ model, signal, onProgress }: { model: string, signal: AbortSignal | undefined, onProgress?: ({ progress }: { progress: Progress }) => void }): Promise<'ready' | 'skipped-busy'>;
+  prepareModel({ modelId, signal, onProgress }: { modelId: string, signal: AbortSignal | undefined, onProgress?: ({ progress }: { progress: Progress }) => void }): Promise<'ready' | 'skipped-busy'>;
   generateAudio({ input, cancellationSignal, completionSignal, preview }: { input: Omit<AudioGenerationInput, 'options'>, cancellationSignal: AbortSignal | undefined, completionSignal?: AbortSignal, preview?: AudioPreviewDelivery }): Promise<AudioGenerationResult>;
   getProfileState(): ProfileState;
   subscribeProfiles({ listener }: { listener: ({ state }: { state: ProfileState }) => void }): () => void;
@@ -19,10 +19,10 @@ export interface LlamaCppBrowserService {
   setOptions({ options }: { options: RuntimeOptions }): void;
   subscribe({ listener }: { listener: ({ state }: { state: EngineState }) => void }): () => void;
   subscribeModelList({ listener }: { listener: () => void }): () => void;
-  listModels({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
+  listModelEntries({ signal }: { signal: AbortSignal | undefined }): Promise<LocalModel[]>;
   importModel({ file, signal, storage }: { file: File, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
   importDirectory({ directory, signal, storage }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined, storage?: 'opfs' | 'temp' }): Promise<void>;
-  removeTemporaryModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<void>;
+  removeTemporaryModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<void>;
   removeModel({ plan, signal }: { plan: DeletionPlan, signal: AbortSignal | undefined }): Promise<DeletionResult>;
   generate({ input, onEvent, signal }: {
     input: Omit<GenerateInput, 'options'>, onEvent: GenerationCallback, signal: AbortSignal | undefined,

@@ -23,11 +23,11 @@ import { sanitizeImageLog } from '@/features/stable-diffusion-cpp-browser/diagno
 import { createVerifiedImageModelFiles } from './verified-image-model-files';
 
 function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFile {
-  const file = candidate.files.find(item => item.path === candidate.path)?.file;
+  const file = candidate.files.find(item => item.relativePath === candidate.primaryRelativePath)?.file;
   if (!file) {
     throw new Error('The model file is missing');
   }
-  const location = imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: candidate.path });
+  const location = imageModelLocation({ repositoryKey: candidate.repositoryKey, hostSource: candidate.hostSource, relativePath: candidate.primaryRelativePath });
   return {
     location: (() => {
       switch (location.kind) {
@@ -68,15 +68,15 @@ function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: Model
   if (candidate.issue || !candidate.roles.includes(slot)) {
     throw new Error('The model cannot serve the requested role');
   }
-  const main = candidate.files.find(file => file.path === candidate.path);
+  const main = candidate.files.find(file => file.relativePath === candidate.primaryRelativePath);
   if (!main) {
     throw new Error('The model file is missing');
   }
   return {
     slot,
     file: main.file,
-    path: candidate.path,
-    companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })).sort((left, right) => left.path.localeCompare(right.path)),
+    relativePath: candidate.primaryRelativePath,
+    companions: candidate.files.filter(file => file.relativePath !== candidate.primaryRelativePath).map(({ file, relativePath }) => ({ file, relativePath })).sort((left, right) => left.relativePath.localeCompare(right.relativePath)),
   };
 }
 
@@ -104,22 +104,22 @@ export function createReadOnlyResources({ directories }: { directories(): readon
       }
       throw error;
     });
-    const host = await listHostImageRepositories({ directories: directories().map(({ id, name }) => ({ id: idToRaw({ id }), name })), signal });
+    const host = await listHostImageRepositories({ directories: directories().map(({ id, name }) => ({ directoryId: idToRaw({ id }), directoryName: name })), signal });
     signal.throwIfAborted();
     const roots = temporaryModelFiles.list();
     const result = await scanImageRepositories({ repositories: [...opfs, ...host, ...temporaryImageRepositories({ roots })], signal });
     signal.throwIfAborted();
-    const stale = new Set(roots.filter(root => temporaryModelFiles.get({ rootId: root.id }) !== root).map(root => root.id));
+    const stale = new Set(roots.filter(root => temporaryModelFiles.get({ rootPath: root.rootPath }) !== root).map(root => root.rootPath));
     // A removed root must not reappear through a late scan. This only protects
     // an in-flight read; the next request freely resolves any same-name replacement.
-    return { ...result, candidates: result.candidates.filter(candidate => !stale.has(candidate.repositoryId)) };
+    return { ...result, candidates: result.candidates.filter(candidate => !stale.has(candidate.repositoryKey)) };
   };
   return {
     async listChatModels({ signal }) {
       signal = operationSignal({ signal });
-      const models = await llamaCppBrowserService.listModels({ signal });
+      const models = await llamaCppBrowserService.listModelEntries({ signal });
       signal.throwIfAborted();
-      return models.map(model => ({ ref: model.name, label: model.name }));
+      return models.map(({ modelId }) => ({ modelId }));
     },
     async generateChat({ input, signal, onEvent, onProgress }) {
       signal = operationSignal({ signal });
@@ -172,7 +172,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         // A split diffusion file is not a ready-to-generate model bundle. Do
         // not infer missing encoders/VAE or use the owner's saved editor preset.
         const selection = candidate.roles.includes('model') && !candidate.classes.includes('lora') ? { primary: { slot: 'model' as const, file }, components: [], loras: [] } : undefined;
-        result.push(imageCatalogItemSchema.parse({ label: candidate.path, file, roles, selection, facts: { family: candidate.family, classes: candidate.classes } }));
+        result.push(imageCatalogItemSchema.parse({ label: candidate.primaryRelativePath, file, roles, selection, facts: { family: candidate.family, classes: candidate.classes } }));
         if (result.length > 256) {
           throw new NaidanRpcError({ code: 'RESOURCE_EXHAUSTED' });
         }
@@ -214,7 +214,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
             throw new Error('The requested adapter is not a single LoRA file');
           }
           selectedLoras.push(candidate);
-          return { file: candidate.files[0]!.file, path: candidate.path, strength };
+          return { file: candidate.files[0]!.file, relativePath: candidate.primaryRelativePath, strength };
         });
         stage = 'runtime-init';
         reason = 'runtime-unavailable';
@@ -259,8 +259,8 @@ export function createReadOnlyResources({ directories }: { directories(): readon
         const preparedModels = await verifiedModels.prepare({
           signal,
           files: [...selectedModels.map(({ candidate }) => candidate), ...selectedLoras].flatMap(candidate =>
-            candidate.files.map(({ path, file, receipt }) => ({
-              key: JSON.stringify({ location: selectedFile({ candidate }).location, member: path, publication: receipt?.source }),
+            candidate.files.map(({ relativePath, file, receipt }) => ({
+              key: JSON.stringify({ location: selectedFile({ candidate }).location, member: relativePath, publication: receipt?.source }),
               file,
               expectedSha256: (() => {
                 const source = receipt?.source;

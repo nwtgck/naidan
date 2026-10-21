@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { listChatModels } from './handlers';
 import type { ReadOnlyInferenceResources } from './resources';
 
-function resources({ models }: { models: { ref: string, label: string }[] }): ReadOnlyInferenceResources {
+function resources({ models }: { models: { modelId: string }[] }): ReadOnlyInferenceResources {
   const unavailable = (): never => {
     throw new Error('Unexpected inference');
   };
@@ -20,30 +20,31 @@ it.each([
   { kind: 'literal percent filename', variant: 'Q4_K_M%00' },
   { kind: 'literal percent filename', variant: 'Q4_K_M%' },
 ])('streams the complete $kind $variant without truncation, decoding or inference', async ({ variant }) => {
-  const ref = `host/${encodeURIComponent('語'.repeat(255))}/owner/repo:${variant}`;
-  const model = { ref, label: ref };
+  const modelId = `host/${encodeURIComponent('語'.repeat(255))}/owner/repo:${variant}`;
+  const model = { modelId };
   const reader = listChatModels({ input: {}, notify: {}, resources: resources({ models: [model] }), signal: new AbortController().signal }).getReader();
-  expect(ref.length).toBeGreaterThan(1024);
+  expect(modelId.length).toBeGreaterThan(1024);
   expect(await reader.read()).toEqual({ value: model, done: false });
   expect(await reader.read()).toEqual({ value: undefined, done: true });
   reader.releaseLock();
 });
 
 it.each([
-  'host/Models/owner/repo:',
-  'host/Models/owner/repo:../Q4_K_M',
-  'host/Models/owner/repo:nested//Q4_K_M',
-  'host/Models/owner/repo:nested/./Q4_K_M',
-  'host/Models/owner/repo:Q4_K_M\0',
-  'host/Models/owner/repo:nested\\Q4_K_M',
-])('rejects malformed public Host selectors: %s', async ref => {
-  const reader = listChatModels({ input: {}, notify: {}, resources: resources({ models: [{ ref, label: ref }] }), signal: new AbortController().signal }).getReader();
-  await expect(reader.read()).rejects.toThrow();
+  'host/MyModels1/owner/repo:',
+  'host/MyModels1/owner/repo:../Q4_K_M',
+  'host/MyModels1/owner/repo:nested//Q4_K_M',
+  'host/MyModels1/owner/repo:nested/./Q4_K_M',
+  'host/MyModels1/owner/repo:Q4_K_M\0',
+  'host/MyModels1/owner/repo:nested\\Q4_K_M',
+])('returns Host strings without interpreting or decoding them: %s', async modelId => {
+  const reader = listChatModels({ input: {}, notify: {}, resources: resources({ models: [{ modelId }] }), signal: new AbortController().signal }).getReader();
+  expect(await reader.read()).toEqual({ value: { modelId }, done: false });
+  expect(await reader.read()).toEqual({ value: undefined, done: true });
   reader.releaseLock();
 });
 
-it('retains ordinary label bounds and rejects unknown catalog properties', async () => {
-  for (const model of [{ ref: 'user/local', label: 'a'.repeat(1025) }, { ref: 'host/Models/owner/repo:model.gguf', label: 'Model', extra: true }]) {
+it('rejects unknown catalog properties while accepting modelId strings structurally', async () => {
+  for (const model of [{ modelId: 'user/local', label: 'Local' }, { modelId: 'host/MyModels1/owner/repo:model.gguf', extra: true }]) {
     const reader = listChatModels({ input: {}, notify: {}, resources: resources({ models: [model] }), signal: new AbortController().signal }).getReader();
     await expect(reader.read()).rejects.toThrow();
     reader.releaseLock();

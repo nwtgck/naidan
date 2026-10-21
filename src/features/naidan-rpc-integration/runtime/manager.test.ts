@@ -52,7 +52,7 @@ function snapshot({ registrations }: { registrations: NaidanRpcRegistration[] })
 function fixture() {
   const links: ReturnType<typeof transportPair>[] = [];
   const resources: ReadOnlyInferenceResources = {
-    listChatModels: vi.fn(async () => [{ ref: 'models/local.gguf', label: 'Local' }]),
+    listChatModels: vi.fn(async () => [{ modelId: 'user/local' }]),
     listImageModels: vi.fn(async () => []),
     generateChat: vi.fn(async () => ({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' as const })),
     generateImage: vi.fn(async () => {
@@ -375,7 +375,7 @@ it('caller-only registrations start with no inbound authority', async () => {
   await manager.updateInboundAllowedMethods({ id: record.id, inboundAllowedMethods: ['listChatModels'] });
   const accepted = other.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const reader = (await accepted.result).getReader();
-  expect((await reader.read()).value?.ref).toBe('models/local.gguf');
+  expect((await reader.read()).value?.modelId).toBe('user/local');
   expect((await reader.read()).done).toBe(true);
   await accepted.closed;
   other.dispose();
@@ -870,7 +870,7 @@ it('suspends inbound admission while checking storage without connecting or scan
   await confirmed.closed;
   const accepted = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const reader = (await accepted.result).getReader();
-  expect((await reader.read()).value?.ref).toBe('models/local.gguf');
+  expect((await reader.read()).value?.modelId).toBe('user/local');
   expect((await reader.read()).done).toBe(true);
   await accepted.closed;
 });
@@ -1160,7 +1160,7 @@ it('a saved session established during revalidation stays suspended until the re
   }
   const accepted = other.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   const reader = (await accepted.result).getReader();
-  expect((await reader.read()).value?.ref).toBe('models/local.gguf');
+  expect((await reader.read()).value?.modelId).toBe('user/local');
   expect((await reader.read()).done).toBe(true);
   reader.releaseLock();
   await accepted.closed;

@@ -6,6 +6,7 @@ import { validModelPath } from './model-path';
 import { hostModelHandles } from '@/00-storage/service/host-model-handles';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { hostModelPermissionGranted } from '@/logic/host-model-directories';
+import { readStoredModelFile } from '@/logic/model-file-system';
 
 // Use the existing model-import marker and mutation lock. Other model readers
 // therefore cannot expose an incomplete repository while the copy is in flight.
@@ -13,14 +14,14 @@ const pendingName = '.llama-cpp-import-pending';
 const lockName = 'naidan-llama-cpp-browser-model-mutation';
 const fileSchema = z.custom<File>(value => typeof File !== 'undefined' && value instanceof File && Number.isSafeInteger(value.size) && value.size >= 0);
 const inputSchema = z.object({
-  name: z.string().min(1).max(255).refine(value => validModelPath({ path: value }) && !value.includes('/') && !value.startsWith('.')),
-  files: z.array(z.object({ path: z.string().refine(path => validModelPath({ path })), file: fileSchema })).min(1).max(20_000),
+  rootName: z.string().min(1).max(255).refine(value => validModelPath({ path: value }) && !value.includes('/') && !value.startsWith('.')),
+  files: z.array(z.object({ relativePath: z.string().refine(path => validModelPath({ path })), file: fileSchema })).min(1).max(20_000),
 });
 export type RepositoryInput = z.infer<typeof inputSchema>;
-export type RepositoryFile = { path: string, file: File, receipt?: ModelFileReceipt };
+export type RepositoryFile = { relativePath: string, file: File, receipt?: ModelFileReceipt };
 export type HostImageRepositorySource = { directoryId: string, directoryName: string, repository: string };
-export type HostImageDirectory = { id: string, name: string };
-export type LocalImageRepository = { id: string, name: string, files: RepositoryFile[], issues?: { path: string, message: string }[], hostSource?: HostImageRepositorySource };
+export type HostImageDirectory = { directoryId: string, directoryName: string };
+export type LocalImageRepository = { repositoryKey: string, repositoryLabel: string, files: RepositoryFile[], issues?: { relativePath: string, message: string }[], hostSource?: HostImageRepositorySource };
 export type ImportProgress = { completed: number, total: number, path: string };
 
 function missing({ error }: { error: unknown }): boolean {
@@ -34,7 +35,7 @@ function unreadableRepository({ error, signal }: { error: unknown, signal: Abort
   }
   // A failed tree cannot expose its partial file list as a usable model, but
   // independent repositories remain available and the failure stays visible.
-  return { files: [], issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }] };
+  return { files: [], issues: [{ relativePath: '', message: error instanceof Error ? error.message : String(error) }] };
 }
 
 async function optionalDirectory({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<FileSystemDirectoryHandle | undefined> {
@@ -64,12 +65,13 @@ async function pending({ folder }: { folder: FileSystemDirectoryHandle }): Promi
   }
 }
 
-async function readTree({ folder, id, hidden, signal, onProgress, publication }: { folder: FileSystemDirectoryHandle, id: string, hidden: Set<string>, signal: AbortSignal | undefined, onProgress?: InspectionReport, publication: 'opfs-user' | 'opfs-hugging-face' | 'host' }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
-  const files: RepositoryFile[] = [], issues: { path: string, message: string }[] = [];
-  const requiresReceipt = (() => {
+async function readTree({ folder, repositoryKey, hidden, signal, onProgress, publication }: { folder: FileSystemDirectoryHandle, repositoryKey: string, hidden: Set<string>, signal: AbortSignal | undefined, onProgress?: InspectionReport, publication: 'opfs-user' | 'opfs-hugging-face' | 'host' }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
+  const files: RepositoryFile[] = [], issues: { relativePath: string, message: string }[] = [];
+  const { requiresReceipt, storageKind } = (() => {
     switch (publication) {
-    case 'opfs-hugging-face': return true;
-    case 'opfs-user': case 'host': return false;
+    case 'opfs-hugging-face': return { requiresReceipt: true, storageKind: 'opfs' as const };
+    case 'opfs-user': return { requiresReceipt: false, storageKind: 'opfs' as const };
+    case 'host': return { requiresReceipt: false, storageKind: 'host' as const };
     default: {
       const exhaustive: never = publication;
       throw new Error(String(exhaustive));
@@ -91,7 +93,7 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
         throw new Error('Local model repository contains too many entries');
       }
       const path = prefix + name;
-      onProgress?.({ progress: { phase: 'listing', completed: count, total: 0, path: `${id}/${path}`.slice(0, 2048) } });
+      onProgress?.({ progress: { phase: 'listing', completed: count, total: 0, entryPath: `${repositoryKey}/${path}`.slice(0, 2048) } });
       if (!validModelPath({ path })) {
         throw new Error('Unsafe path in local model repository');
       }
@@ -100,10 +102,11 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
         break;
       case 'file': {
         if (hidden.has(path) || await modelFileIsPending({ directory, name })) {
-          issues.push({ path, message: 'Download is incomplete. Resume the catalog download.' });
+          issues.push({ relativePath: path, message: 'Download is incomplete. Resume the catalog download.' });
           break;
         }
-        const file = await entry.getFile();
+        const storedFile = await readStoredModelFile({ relativePath: path, handle: entry, storageKind, signal });
+        const file = storedFile.file;
         const receipt = await readModelFileReceipt({ directory, name, file });
         // Legacy user imports were committed with a repository-wide marker.
         // Remote files require a per-file receipt: the old image downloader
@@ -111,14 +114,14 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
         if (requiresReceipt) {
           const source = receipt?.source;
           if (!receipt || source?.kind !== 'hugging-face' || source.path !== path ||
-              ![ `huggingface.co/${source.repository}/resolve/main`, `huggingface.co/${source.repository}/resolve/${source.revision}` ].includes(id)) {
+              ![ `huggingface.co/${source.repository}/resolve/main`, `huggingface.co/${source.repository}/resolve/${source.revision}` ].includes(repositoryKey)) {
             if (/\.(gguf|safetensors|sft)$/i.test(path)) {
-              issues.push({ path, message: 'No valid completion receipt. Use Download in the catalog to verify this saved file.' });
+              issues.push({ relativePath: path, message: 'No valid completion receipt. Use Download in the catalog to verify this saved file.' });
             }
             break;
           }
         }
-        files.push({ path, file, ...(receipt ? { receipt } : {}) });
+        files.push({ relativePath: storedFile.relativePath, file: storedFile.file, ...(receipt ? { receipt } : {}) });
         break;
       }
       default: {
@@ -129,11 +132,11 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
     }
   }
   await walk({ directory: folder, prefix: '', depth: 0 });
-  return { files: files.sort((a, b) => a.path.localeCompare(b.path)), issues };
+  return { files: files.sort((a, b) => a.relativePath.localeCompare(b.relativePath)), issues };
 }
 
 /** Read the existing model tree only. No Hugging Face/network requests. */
-export async function listImageRepositories({ signal, onProgress, repositoryIds }: { signal: AbortSignal | undefined, onProgress?: InspectionReport, repositoryIds?: readonly string[] }): Promise<LocalImageRepository[]> {
+export async function listImageRepositories({ signal, onProgress, repositoryKeys }: { signal: AbortSignal | undefined, onProgress?: InspectionReport, repositoryKeys?: readonly string[] }): Promise<LocalImageRepository[]> {
   signal?.throwIfAborted();
   if (!navigator.storage?.getDirectory) {
     throw new Error('Local model storage is unavailable');
@@ -143,18 +146,18 @@ export async function listImageRepositories({ signal, onProgress, repositoryIds 
     return [];
   }
   const result: LocalImageRepository[] = [];
-  async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
+  async function append({ folder, repositoryKey }: { folder: FileSystemDirectoryHandle, repositoryKey: string }): Promise<void> {
     signal?.throwIfAborted();
     // A known publication invalidates only its repository. Do not acquire new
     // File snapshots (or reread headers) for unrelated retained model sources.
-    if (repositoryIds && !repositoryIds.includes(id)) {
+    if (repositoryKeys && !repositoryKeys.includes(repositoryKey)) {
       return;
     }
-    onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, path: id.slice(0, 2048) } });
+    onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, entryPath: repositoryKey.slice(0, 2048) } });
     try {
       const hidden = new Set<string>();
       if (await pending({ folder })) {
-        if (id.startsWith('user/')) {
+        if (repositoryKey.startsWith('user/')) {
           return;
         }
         // Respect llama.cpp's existing download journal without hiding unrelated
@@ -174,19 +177,19 @@ export async function listImageRepositories({ signal, onProgress, repositoryIds 
           throw error;
         }
       }
-      const content = await readTree({ folder, id, hidden, signal, onProgress, publication: id.startsWith('huggingface.co/') ? 'opfs-hugging-face' : 'opfs-user' });
+      const content = await readTree({ folder, repositoryKey, hidden, signal, onProgress, publication: repositoryKey.startsWith('huggingface.co/') ? 'opfs-hugging-face' : 'opfs-user' });
       if (content.files.length || content.issues?.length) {
-        result.push({ id, name: id, ...content });
+        result.push({ repositoryKey, repositoryLabel: repositoryKey, ...content });
       }
     } catch (error) {
-      result.push({ id, name: id, ...unreadableRepository({ error, signal }) });
+      result.push({ repositoryKey, repositoryLabel: repositoryKey, ...unreadableRepository({ error, signal }) });
     }
   }
   const user = await optionalDirectory({ parent: root, name: 'user' });
   if (user) {
     for await (const [name, entry] of user.entries()) {
       if (entry.kind === 'directory' && !name.startsWith('.')) {
-        await append({ folder: entry, id: `user/${name}` });
+        await append({ folder: entry, repositoryKey: `user/${name}` });
       }
     }
   }
@@ -218,7 +221,7 @@ export async function listImageRepositories({ signal, onProgress, repositoryIds 
         }
         for await (const [revision, folder] of resolve.entries()) {
           switch (folder.kind) {
-          case 'directory': await append({ folder, id: `huggingface.co/${owner}/${repo}/resolve/${revision}` });
+          case 'directory': await append({ folder, repositoryKey: `huggingface.co/${owner}/${repo}/resolve/${revision}` });
             break;
           case 'file': break;
           default: {
@@ -231,7 +234,7 @@ export async function listImageRepositories({ signal, onProgress, repositoryIds 
     }
   }
   signal?.throwIfAborted();
-  return result.sort((a, b) => a.id.localeCompare(b.id));
+  return result.sort((a, b) => a.repositoryKey.localeCompare(b.repositoryKey));
 }
 
 /** Linked roots contain owner/repository directly. Unlike OPFS downloads,
@@ -244,9 +247,9 @@ export async function listHostImageRepositories({ directories, signal, onProgres
   const result: LocalImageRepository[] = [];
   for (const directory of directories) {
     signal?.throwIfAborted();
-    const issueId = `host/${encodeURIComponent(directory.id)}`;
+    const issueId = `host/${encodeURIComponent(directory.directoryId)}`;
     try {
-      const root = await hostModelHandles.get({ id: toHostModelDirectoryId({ raw: directory.id }) });
+      const root = await hostModelHandles.get({ id: toHostModelDirectoryId({ raw: directory.directoryId }) });
       if (!root) {
         throw new Error('Reconnect this model directory');
       }
@@ -266,19 +269,19 @@ export async function listHostImageRepositories({ directories, signal, onProgres
           if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repository)) {
             continue;
           }
-          const id = `${issueId}/${repository}`;
+          const repositoryKey = `${issueId}/${repository}`;
           let content: Pick<LocalImageRepository, 'files' | 'issues'>;
           try {
-            content = await readTree({ folder, id, hidden: new Set(), signal, onProgress, publication: 'host' });
+            content = await readTree({ folder, repositoryKey, hidden: new Set(), signal, onProgress, publication: 'host' });
           } catch (error) {
             content = unreadableRepository({ error, signal });
           }
           if (content.files.length || content.issues?.length) {
             result.push({
-              id,
-              name: `${directory.name}/${repository}`,
+              repositoryKey,
+              repositoryLabel: `${directory.directoryName}/${repository}`,
               ...content,
-              hostSource: { directoryId: directory.id, directoryName: directory.name, repository },
+              hostSource: { directoryId: directory.directoryId, directoryName: directory.directoryName, repository },
             });
           }
         }
@@ -286,7 +289,7 @@ export async function listHostImageRepositories({ directories, signal, onProgres
     } catch (error) {
       // A disconnected external root must not hide usable models in other roots
       // or OPFS. Preserve and display this failure; never erase its registration.
-      result.push({ id: issueId, name: directory.name, ...unreadableRepository({ error, signal }) });
+      result.push({ repositoryKey: issueId, repositoryLabel: directory.directoryName, ...unreadableRepository({ error, signal }) });
     }
   }
   return result;
@@ -301,10 +304,10 @@ export async function importImageRepository({ input, signal, onProgress }: {
   // Validate BEFORE the first persistent write. A README/config/tokenizer file is
   // retained; unsupported weights are reported by inspection, not discarded.
   for (const entry of directory.files) {
-    if (entry.path.split('/')[0] === pendingName || entry.path.split('/').includes('.git') || entry.path.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.path)) {
+    if (entry.relativePath.split('/')[0] === pendingName || entry.relativePath.split('/').includes('.git') || entry.relativePath.split('/').some(part => /^\..*\.(complete|pending)$/.test(part)) || paths.has(entry.relativePath)) {
       throw new Error('Reserved or duplicate repository path');
     }
-    paths.add(entry.path);
+    paths.add(entry.relativePath);
   }
   for (const path of paths) {
     const parent = path.split('/');
@@ -330,12 +333,12 @@ export async function importImageRepository({ input, signal, onProgress }: {
     // Reject files as well as directories with that name; never overwrite, rename
     // or merge a previous import (including incomplete ones) implicitly.
     for await (const [name] of user.entries()) {
-      if (name === directory.name) {
+      if (name === directory.rootName) {
         throw new Error(`A local repository named "${name}" already exists`);
       }
     }
     signal?.throwIfAborted();
-    const root = await user.getDirectoryHandle(directory.name, { create: true });
+    const root = await user.getDirectoryHandle(directory.rootName, { create: true });
     const created: { parent: FileSystemDirectoryHandle, name: string, handle: FileSystemFileHandle, size: number, modified: number }[] = [];
     const folders: { parent: FileSystemDirectoryHandle, name: string }[] = [];
     const known = new Map<string, FileSystemDirectoryHandle>([['', root]]);
@@ -354,7 +357,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
     }
     try {
       const marker = await makeFile({ parent: root, name: pendingName });
-      for (const { path, file } of directory.files) {
+      for (const { relativePath: path, file } of directory.files) {
         signal?.throwIfAborted();
         const segments = path.split('/'), name = segments.pop()!;
         let parent = root, prefix = '';
@@ -422,7 +425,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       }
       signal?.throwIfAborted();
       await root.removeEntry(marker.name);
-      return `user/${directory.name}`;
+      return `user/${directory.rootName}`;
     } catch (error) {
       // An unrelated file explorer need not honor our lock. Remove only files
       // still matching this import's handles/metadata, then EMPTY directories.
@@ -447,7 +450,7 @@ export async function importImageRepository({ input, signal, onProgress }: {
       }
       if (remaining.length === 0) {
         await root.removeEntry(pendingName).catch(() => undefined);
-        await user.removeEntry(directory.name).catch(() => undefined);
+        await user.removeEntry(directory.rootName).catch(() => undefined);
       }
       // Otherwise the marker deliberately keeps this partial import unpublished.
       throw error;

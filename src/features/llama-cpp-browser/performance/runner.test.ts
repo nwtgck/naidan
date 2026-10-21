@@ -12,7 +12,7 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
   const order: string[] = [];
   let clock = 0, hidden = false;
   const generate = vi.fn<LlamaCppPerformanceScope['generate']>(async ({ input, sequence, onEvent, onSummary }) => {
-    order.push(input.model);
+    order.push(input.modelId);
     clock += 100;
     await onEvent({ event: { type: 'reasoning', text: 'reasoning' } });
     clock += 100;
@@ -21,7 +21,7 @@ function setup({ models = 1, diagnostics = 'none', mode, repeats = 1 }: { repeat
     return { content: 'answer', reasoningContent: 'reasoning', toolCalls: [], finishReason: 'stop' };
   });
   const service = {
-    listModels: vi.fn<LlamaCppBrowserService['listModels']>(async () => plan.models),
+    listModelEntries: vi.fn<LlamaCppBrowserService['listModelEntries']>(async () => plan.models),
     runPerformanceOperation: vi.fn<LlamaCppBrowserService['runPerformanceOperation']>(async ({ options, signal, operation }) => {
       order.push('acquire');
       using _cleanupResource = {
@@ -80,7 +80,7 @@ describe('in-memory sequential performance measurement', () => {
   it('owns one model at a time, retains exact parent output, and performs no alternate inference', async () => {
     const test = setup({ models: 2 });
     await test.start();
-    expect(test.order).toEqual(['acquire', ...Array(5).fill('model0.gguf'), 'release', 'acquire', ...Array(5).fill('model1.gguf'), 'release']);
+    expect(test.order).toEqual(['acquire', ...Array(5).fill('user/m0'), 'release', 'acquire', ...Array(5).fill('user/m1'), 'release']);
     expect(test.generate).toHaveBeenCalledTimes(10);
     const snapshot = snapshotSchema.parse(test.runner.snapshot());
     expect(snapshot.status).toBe('completed');
@@ -97,7 +97,7 @@ describe('in-memory sequential performance measurement', () => {
 
   it('rejects changed model inventory without beginning that model', async () => {
     const test = setup();
-    test.service.listModels.mockResolvedValue([{ ...test.plan.models[0]!, importedAt: 2 }]);
+    test.service.listModelEntries.mockResolvedValue([{ ...test.plan.models[0]!, importedAt: 2 }]);
     await test.start();
     expect(test.generate).not.toHaveBeenCalled();
     expect(test.runner.snapshot()?.trials.every(trial => trial.status === 'skipped')).toBe(true);
@@ -421,7 +421,7 @@ describe('runtime profiling lane isolation', () => {
   it('runs both complete plans serially, releases each worker scope and doubles calls rather than mixing contexts', async () => {
     const test = setup({ models: 2, diagnostics: 'placement', mode: 'both' });
     await test.start();
-    expect(test.order).toEqual([0, 0, 1, 1].flatMap(index => ['acquire', ...Array(6).fill(`model${index}.gguf`), 'release']));
+    expect(test.order).toEqual([0, 0, 1, 1].flatMap(index => ['acquire', ...Array(6).fill(`user/m${index}`), 'release']));
     expect(test.service.runPerformanceOperation.mock.calls.map(([args]) => args.options.profile)).toEqual(['webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile', 'webgpu-wasm64-jspi', 'webgpu-wasm64-jspi-gpu-profile']);
     const snapshot = snapshotSchema.parse(test.runner.snapshot());
     expect(snapshot.trials).toHaveLength(24);
@@ -514,7 +514,7 @@ describe('interrupt only the current performance trial', () => {
     expect(snapshot.trials[3]).toMatchObject({ status: 'succeeded', runtimeSegment: 1, warnings: expect.arrayContaining(['runtime-restarted']) });
     expect(snapshot.trials[4]).toMatchObject({ status: 'succeeded', runtimeSegment: 1 });
     expect(snapshot.trials.slice(6).every(trial => trial.status === 'succeeded' && trial.runtimeSegment === 0)).toBe(true);
-    expect(test.order.slice(0, 8)).toEqual(['acquire', 'model0.gguf', 'release', 'acquire', 'model0.gguf', 'model0.gguf', 'model0.gguf', 'release']);
+    expect(test.order.slice(0, 8)).toEqual(['acquire', 'user/m0', 'release', 'acquire', 'user/m0', 'user/m0', 'user/m0', 'release']);
     const expected = mode === 'both' ? 24 : 12;
     expect(snapshot.trials).toHaveLength(expected);
     expect(test.generate).toHaveBeenCalledTimes(expected - 1);
@@ -541,7 +541,7 @@ describe('interrupt only the current performance trial', () => {
     expect(result.trials.filter(trial => trial.status === 'skipped')).toEqual([]);
     expect(test.generate).toHaveBeenCalledTimes(6);
     expect(test.service.runPerformanceOperation).toHaveBeenCalledTimes(index === 5 ? 1 : 2);
-    expect(test.service.listModels).toHaveBeenCalledTimes(index === 5 ? 1 : 2);
+    expect(test.service.listModelEntries).toHaveBeenCalledTimes(index === 5 ? 1 : 2);
   });
 
   it('waits for generation settlement and asynchronous scope retirement before reacquiring', async () => {
@@ -728,7 +728,7 @@ describe('interrupt only the current performance trial', () => {
       test.runner.interruptCurrent({ trialId: runningId({ test }) });
       throw new LlamaCppBrowserError({ code: 'aborted' });
     });
-    test.service.listModels.mockResolvedValueOnce(test.plan.models).mockResolvedValueOnce(test.plan.models.map(model => ({ ...model, importedAt: 999 })));
+    test.service.listModelEntries.mockResolvedValueOnce(test.plan.models).mockResolvedValueOnce(test.plan.models.map(model => ({ ...model, importedAt: 999 })));
     await test.start();
     expect(test.runner.snapshot()!.trials[0]?.interruption?.recovery).toBe('failed');
     expect(test.runner.snapshot()!.modelErrors[0]?.error).toContain('inventory changed');

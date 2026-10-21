@@ -24,7 +24,7 @@ const configurationOpen = ref(false);
 const { seedMode, randomizeSeed, retainModel, modelResident, profile, layout, files, loras, imageInputs, parameters, weightResidency, gpuBudgetMiB, invalid, cancelled, stopping, progress, recommendation, manualInspectionState, library, busy, supported, formDisabled, draftDisabled, chooseFile, resetFiles, generate, cancel, forceCancel, releaseModel, applyRecommendedSettings } = props.view;
 const inferenceRunning = computed(() => busy.value && progress.value !== undefined);
 const remote = computed(() => props.view.inferenceLocation?.kind.value === 'naidan_rpc');
-const hasModel = computed(() => remote.value ? !!props.view.inferenceLocation?.ready.value && !!props.view.inferenceLocation?.connected.value : !!library.main.value || !!files.value.model || !!files.value.diffusion);
+const hasModel = computed(() => remote.value ? !!props.view.inferenceLocation?.ready.value && !!props.view.inferenceLocation?.connected.value : !!library.selectedCandidateKey.value || !!files.value.model || !!files.value.diffusion);
 const slots = computed(() => {
   switch (layout.value) {
   case 'checkpoint': return [{ slot: 'model' as const, label: lazyStrings.stableDiffusionCppBrowser__model_file() }];
@@ -88,7 +88,7 @@ const componentSummary = computed(() => {
   const location = props.view.inferenceLocation;
   const components = remote.value && location ? location.components.value : library.components.value;
   return [location ? (remote.value ? location.label.value || 'Naidan RPC' : lazyStrings.ImageInferenceLocation__this_device()) : undefined,
-    ...components.map(component => component.choices.find(choice => choice.id === component.selected)?.label)].filter(Boolean).join(' · ');
+    ...components.map(component => component.choices.find(choice => choice.candidateKey === component.selectedCandidateKey)?.label)].filter(Boolean).join(' · ');
 });
 
 function changeRetention({ event }: { event: Event }): void {
@@ -147,7 +147,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="flex items-center justify-between gap-2"><label :for="id + '-negative-prompt'" tw-class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.stableDiffusionCppBrowser__negative_prompt() }}</label><div tw-class="flex items-center gap-1"><slot name="prompt-actions" :field="'negativePrompt'" :text="parameters.negativePrompt" /><ImageGenerationCopyButton :text="parameters.negativePrompt" :label="lazyStrings.imageGeneration__copy_negative_prompt()" data-testid="image-copy-draft-negative-prompt" /></div></div>
       <textarea :id="id + '-negative-prompt'" :disabled="draftDisabled" :placeholder="lazyStrings.stableDiffusionCppBrowser__negative_prompt()" v-model="parameters.negativePrompt" rows="1" maxlength="4096" data-testid="image-negative-prompt" tw-class="block w-full resize-y rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-gray-800 dark:text-gray-100 shadow-sm outline-none transition-all hover:border-gray-300 dark:hover:border-gray-600 focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed" />
       <div tw-class="flex flex-wrap items-center gap-2" data-testid="image-generation-actions">
-        <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (library.importing.value || (!!library.main.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
+        <button type="submit" :disabled="formDisabled || !supported || !hasModel || (!remote && (library.importing.value || (!!library.selectedCandidateKey.value && !library.ready.value)))" data-testid="image-generate" tw-class="flex-1 min-h-11 flex items-center justify-center gap-2 rounded-xl md:rounded-2xl px-5 py-2.5 bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold shadow-lg shadow-blue-500/30 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none motion-reduce:transition-none motion-reduce:transform-none"><ImageIcon aria-hidden="true" tw-class="w-4 h-4" />{{ lazyStrings.stableDiffusionCppBrowser__generate() }}</button>
 
         <button type="button" :disabled="!inferenceRunning || stopping" @click="cancel" data-testid="image-cancel" tw-class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed">
           <SquareIcon aria-hidden="true" tw-class="h-4 w-4 fill-current" />{{ lazyStrings.stableDiffusionCppBrowser__cancel() }}</button>
@@ -288,7 +288,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button type="button" @click="applyRecommendedSettings" :disabled="draftDisabled || library.importing.value" data-testid="image-apply-recommendation" tw-class="ml-auto shrink-0 min-h-12 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-sm hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">{{ lazyStrings.stableDiffusionCppBrowser__apply_recommended_settings() }}</button>
       </div>
       <p v-else-if="!remote && manualInspectionState === 'scanning'" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }}</p>
-      <p v-else-if="!remote && (library.main.value || files.model || files.diffusion)" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>
+      <p v-else-if="!remote && (library.selectedCandidateKey.value || files.model || files.diffusion)" role="status" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__preset_unknown() }}</p>
     </fieldset>
     <div tw-class="flex flex-wrap items-center gap-3 text-sm" v-if="!remote" data-testid="image-model-retention">
       <label tw-class="min-h-10 cursor-pointer inline-flex items-center gap-2">

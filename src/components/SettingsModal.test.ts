@@ -286,13 +286,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     const manager = wrapper.getComponent({ name: 'LlamaCppBrowserManager' });
     const apply = manager.props('applyDefaultModel') as ApplyDefaultModel;
-    const model = { id: 'user/local', name: 'Local Q4_K_M', size: 128, importedAt: 1 };
+    const model = { modelId: 'user/Local-Q4_K_M', size: 128, importedAt: 1 };
     expect(await apply({ model, previous })).toBe('applied');
-    expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+    expect(update).toHaveBeenCalledWith({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId, expected: previous });
     route.query.settings = 'connection';
     await flushPromises();
     const updated = wrapper.getComponent(ConnectionTab);
-    expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.name, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
+    expect(updated.props('modelValue')).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: model.modelId, systemPrompt: dirty ? 'Unsaved prompt' : 'Saved prompt' });
     expect(updated.props('hasUnsavedChanges')).toBe(dirty);
     expect(mockSave).not.toHaveBeenCalled();
     wrapper.unmount();

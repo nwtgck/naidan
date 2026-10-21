@@ -1,3 +1,5 @@
+import { localModelDirectory } from './model-directory.test-support';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DOMWrapper, mount, flushPromises, type VueWrapper } from '@vue/test-utils';
@@ -16,7 +18,7 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedS
 const muse = preferredQuantizationHint({ suggestion: modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')! });
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
-const local: LocalModel = { id: `hf.co/${muse.hfRepository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
+const local: LocalModel = { modelId: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
 
@@ -31,6 +33,7 @@ beforeEach(async () => {
   queueTest.reset();
   metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
+  vi.mocked(repositoryDirectories).mockResolvedValue([localModelDirectory({ primaryRelativePath: main, projectorRelativePath: undefined })]);
   vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.hfRepository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
   await ensureAllStringsForTest({ locale: 'en' });
 });
@@ -231,10 +234,10 @@ describe('offline-first suggested model UI', () => {
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(false);
     await row.get('[data-testid="llama-default-model-action"]').trigger('click');
     expect(wrapper.emitted('selectDefault')).toEqual([[local]]);
-    await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.name } });
+    await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } });
     expect(row.get('[data-testid="llama-default-model-action"]').text()).toBe('In use');
     expect(row.get('[data-testid="llama-default-model-action"]').attributes('disabled')).toBeDefined();
-    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.hfRepository}:model-Q8_0.gguf` }] });
+    await wrapper.setProps({ models: [{ ...local, modelId: `hf.co/${muse.hfRepository}:Q8_0` }] });
     await flushPromises();
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
@@ -283,7 +286,7 @@ describe('offline-first suggested model UI', () => {
   it('disables both catalog controls and shows progress only for the model being used to create a chat group', async () => {
     const createChatGroup = vi.fn().mockResolvedValue(undefined);
     const wrapper = render({ models: [local] });
-    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.id });
+    await wrapper.setProps({ createChatGroup, disabled: true, creatingChatGroupModelId: local.modelId });
     await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     expect(row.get('[data-testid="llama-model-action-main"]').attributes('aria-busy')).toBe('true');
@@ -327,14 +330,16 @@ describe('the original catalog reused for audio', () => {
 
   it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
-    const saved: LocalModel = { id: `hf.co/${hint.hfRepository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
+    const saved: LocalModel = { modelId: formatHuggingFaceModelId({ repository: hint.hfRepository, mainFilePath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf' }), size: 128, importedAt: 1 };
     const view = audioCatalog();
     const createChatGroup = vi.fn().mockResolvedValue(undefined);
     await view.setProps({ models: [saved], createChatGroup });
     await flushPromises();
     const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
     // Required companion mode checks actual stored selection, not just a name.
-    vi.mocked(repositoryDirectories).mockResolvedValue([{ id: saved.id, name: saved.name, modelPath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', projectorPath: 'mmproj-Q8_0.gguf', files: [] }]);
+    const primaryFile = { relativePath: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', file: new File(['GGUF'], 'model.gguf'), storageKind: 'temp' as const, registrationRevision: 1 };
+    const projectorFile = { ...primaryFile, relativePath: 'mmproj-Q8_0.gguf', file: new File(['GGUF'], 'mmproj.gguf') };
+    vi.mocked(repositoryDirectories).mockResolvedValue([{ primaryFile, projectorFile, files: [primaryFile, projectorFile] }]);
     await view.setProps({ models: [{ ...saved, importedAt: 2 }] });
     await flushPromises();
     const action = row.find('[data-testid="llama-suggestion-use"]');

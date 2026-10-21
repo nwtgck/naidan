@@ -11,7 +11,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   for (const root of temporaryModelFiles.list()) {
-    temporaryModelFiles.remove({ rootId: root.id });
+    temporaryModelFiles.remove({ rootPath: root.rootPath });
   }
 });
 
@@ -24,12 +24,12 @@ it('shows the same roots in two feature panes, unregisters globally and does not
       b.unmount();
     },
   };
-  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'weights/model.gguf', file: new File(['weights'], 'model.gguf') }] }, signal: undefined });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: [{ relativePath: 'weights/model.gguf', file: new File(['weights'], 'model.gguf') }] }, signal: undefined });
   await nextTick();
-  expect(a.text()).toContain(root.id);
-  expect(b.text()).toContain(root.id);
+  expect(a.text()).toContain(root.rootPath);
+  expect(b.text()).toContain(root.rootPath);
   expect(a.text()).toContain('both');
-  const disabled = b.get<HTMLButtonElement>(`[data-testid="unregister-${root.id}"]`);
+  const disabled = b.get<HTMLButtonElement>(`[data-testid="unregister-${root.rootPath}"]`);
   expect(disabled.element.disabled).toBe(true);
   await disabled.trigger('click');
   expect(temporaryModelFiles.list()).toHaveLength(1);

@@ -64,21 +64,21 @@ export function snapshotImageGeneration({ request, sourceCommit, locateFile, cre
     createdAt,
     request: exactObject<ImageGenerationRecord['request']>()({
       parameters: exactObject<ImageGenerationRecord['request']['parameters']>()({ ...parameters }),
-      models: models.map(({ slot, file, path, companions, sourceId: _sourceId, ...rest }) => {
+      models: models.map(({ slot, file, relativePath, companions, modelFilesReuseKey: _modelFilesReuseKey, ...rest }) => {
         rest satisfies Record<PropertyKey, never>;
         return {
           slot,
-          path: path ?? file.name,
+          path: relativePath ?? file.name,
           file: locateFile({ file }),
-          companions: (companions ?? []).map(({ path, file, ...rest }) => {
+          companions: (companions ?? []).map(({ relativePath, file, ...rest }) => {
           rest satisfies Record<PropertyKey, never>;
-          return { path, file: locateFile({ file }) };
+          return { path: relativePath, file: locateFile({ file }) };
           }),
         };
       }),
-      loras: loras.map(({ file, path, strength, ...rest }) => {
+      loras: loras.map(({ file, relativePath, strength, ...rest }) => {
         rest satisfies Record<PropertyKey, never>;
-        return { path: path ?? file.name, file: locateFile({ file }), strength };
+        return { path: relativePath ?? file.name, file: locateFile({ file }), strength };
       }),
       imageInputs: {
         initImage: imageInputs.initImage && inputImage({ file: imageInputs.initImage }),

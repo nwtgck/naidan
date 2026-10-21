@@ -1,4 +1,4 @@
-import { parseHostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination-types';
+import { type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { artifactRole } from './artifact-role';
 import { type RepositoryCatalog, type ModelCandidate } from './catalog';
 import { preferredProjector, quantizationName } from './presentation';
@@ -46,7 +46,7 @@ export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { q
   return selectionSchema.parse({ repository: catalog.repository, revision: catalog.revision, files });
 }
 
-/** Uses already validated LOCAL model listings; never triggers remote discovery. */
+/** Find a public selection to inspect locally; its file role still needs verification. */
 export function findLocalSuggestedModel({ quantization, models, destination }: { quantization: SuggestedQuantization, models: readonly LocalModel[], destination?: ModelDestination }): LocalModel | undefined {
   const target = destination ?? { kind: 'opfs' };
   const matches = models.filter(model => {
@@ -55,15 +55,16 @@ export function findLocalSuggestedModel({ quantization, models, destination }: {
         switch (target.kind) {
         case 'opfs': {
           const prefix = `hf.co/${quantization.hfRepository}:`.toLowerCase();
-          return model.id.toLowerCase().startsWith(prefix) ? decodeURIComponent(model.id.slice(prefix.length)) : undefined;
+          return model.modelId.toLowerCase().startsWith(prefix) ? model.modelId.slice(prefix.length) : undefined;
         }
         case 'host': {
-          if (!model.id.startsWith('host/')) {
+          if (!model.modelId.startsWith('host/')) {
             return undefined;
           }
-          const reference = parseHostModelReference({ name: model.id });
-          // Native directory IDs and filesystem paths are case-sensitive.
-          return reference.destination.directoryId === target.directoryId && reference.repository === quantization.hfRepository ? reference.modelPath : undefined;
+          const source = model.source;
+          // The public modelId carries the folder alias; provenance identifies
+          // the registered destination without embedding its ID in modelId.
+          return source?.directoryId === target.directoryId && source.repository === quantization.hfRepository ? source.primaryRelativePath : undefined;
         }
         default: {
           const exhaustive: never = target;

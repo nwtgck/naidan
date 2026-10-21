@@ -32,10 +32,6 @@ export const progressSchema = z.object({ fileProgress: z.array(z.object({ comple
 export type DownloadProgress = z.infer<typeof progressSchema>;
 export const pendingName = '.llama-cpp-import-pending';
 
-export function modelName({ repository }: { repository: string }): string {
-  return `hf.co/${repositorySchema.parse(repository)}`;
-}
-
 export function repositoryUrlPath({ repository }: { repository: string }): string {
   return repositorySchema.parse(repository).split('/').map(encodeURIComponent).join('/');
 }

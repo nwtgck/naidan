@@ -1,7 +1,5 @@
-import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { readonly, ref } from 'vue';
-import { storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
-import { resolveStoredModelName } from '@/features/llama-cpp-browser/host-model-names';
+import { resolveModel } from '@/features/llama-cpp-browser/runtime/model-resolution';
 import { errorCode } from '@/features/llama-cpp-browser/types';
 
 export type ModelAvailability = 'available' | 'missing' | 'unreadable';
@@ -11,11 +9,7 @@ export type ModelAvailability = 'available' | 'missing' | 'unreadable';
  * it does not enumerate every repository or load weights into memory. */
 export async function inspectLocalModel({ modelId }: { modelId: string }): Promise<ModelAvailability> {
   try {
-    if (modelId.startsWith('temp/')) {
-      await temporaryModels.resolveSource({ name: modelId, signal: undefined });
-    } else {
-      await storedModelDirectory({ name: await resolveStoredModelName({ name: modelId }) });
-    }
+    await resolveModel({ modelId, signal: undefined });
     return 'available';
   } catch (error) {
     if ((error instanceof DOMException && error.name === 'NotFoundError') || errorCode({ error }) === 'missing-model') {

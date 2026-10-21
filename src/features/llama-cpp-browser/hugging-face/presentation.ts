@@ -5,7 +5,7 @@ import type { RepositoryFile } from './types';
 
 // A fixed preference order, independent of device capabilities or repository order.
 const quantizationPreference = ['Q4_K_M', 'Q4_K_S', 'Q4_0', 'Q4_1', 'IQ4_NL', 'IQ4_XS', 'MXFP4', 'NVFP4', 'Q5_K_M', 'Q5_K_S', 'Q5_0', 'Q5_1', 'IQ5_XS', 'Q6_K', 'IQ6_K', 'Q8_0', 'Q8_1', 'Q3_K_M', 'Q3_K_L', 'Q3_K_S', 'IQ3_M', 'IQ3_S', 'IQ3_XS', 'IQ3_XXS', 'Q2_K', 'IQ2_M', 'IQ2_S', 'IQ2_XS', 'IQ2_XXS', 'IQ1_M', 'IQ1_S', 'BF16', 'F16', 'F32'];
-export type QuantizationChoice = { id: string, label: string, quantization: string | undefined, models: ModelCandidate[] };
+export type QuantizationChoice = { primaryRelativePath: string, label: string, quantization: string | undefined, models: ModelCandidate[] };
 
 export function quantizationName({ path }: { path: string }): string | undefined {
   const name = (path.split('/').at(-1) ?? '').toUpperCase();
@@ -38,7 +38,7 @@ export function quantizationChoices({ repository, models }: { repository: string
     // Keep the existing preference and tie-break order independent of display
     // labels, which retain the complete variant in its original order.
     const sortLabel = quantizationFirstLabel({ variant, quantization });
-    return { choice: { id: path, label: variant, quantization, models: [model] }, sortLabel };
+    return { choice: { primaryRelativePath: path, label: variant, quantization, models: [model] }, sortLabel };
   }).sort((a, b) => {
     const rank = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => {
       if (choice.quantization !== undefined && quantizationPreference.includes(choice.quantization)) {
@@ -48,7 +48,7 @@ export function quantizationChoices({ repository, models }: { repository: string
       return /(?:^|[-_.])(?:I?Q|MXFP|NVFP)4(?:[-_.]|$)/i.test(sortLabel) ? 7.5 : quantizationPreference.length;
     };
     const ordinary = ({ choice, sortLabel }: { choice: QuantizationChoice, sortLabel: string }): number => sortLabel.split('/').at(-1)?.toUpperCase() === choice.quantization ? 0 : 1;
-    return Number(artifactRole({ path: a.choice.id }) === 'auxiliary') - Number(artifactRole({ path: b.choice.id }) === 'auxiliary') || rank(a) - rank(b) || ordinary(a) - ordinary(b) || lexical({ left: a.sortLabel, right: b.sortLabel }) || lexical({ left: a.choice.id, right: b.choice.id });
+    return Number(artifactRole({ path: a.choice.primaryRelativePath }) === 'auxiliary') - Number(artifactRole({ path: b.choice.primaryRelativePath }) === 'auxiliary') || rank(a) - rank(b) || ordinary(a) - ordinary(b) || lexical({ left: a.sortLabel, right: b.sortLabel }) || lexical({ left: a.choice.primaryRelativePath, right: b.choice.primaryRelativePath });
   }).map(({ choice }) => choice);
 }
 

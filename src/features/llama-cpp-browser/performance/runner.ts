@@ -6,7 +6,7 @@ import { planSchema, type PerformanceSnapshot, type PerformanceStep, type Perfor
 
 /** No chat store, alternate inference loop, rendering or archive work here. */
 export function createPerformanceRunner({ service, now, date, hidden, waitUntilVisible, publish }: {
-  service: Pick<LlamaCppBrowserService, 'runPerformanceOperation' | 'listModels'>,
+  service: Pick<LlamaCppBrowserService, 'runPerformanceOperation' | 'listModelEntries'>,
   now: () => number, date: () => string, hidden: () => boolean,
   waitUntilVisible: ({ signal }: { signal: AbortSignal }) => Promise<void>,
   publish: ({ snapshot, current }: { snapshot: PerformanceSnapshot, current: PerformanceTrial | undefined }) => void,
@@ -133,7 +133,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
               await visible({ modelIndex, lane, runtimeSegment });
               control.signal.throwIfAborted();
               const inventory = interval({ kind: 'model-inventory', modelIndex, lane, runtimeSegment });
-              const stored = await service.listModels({ signal: control.signal }).then(value => {
+              const stored = await service.listModelEntries({ signal: control.signal }).then(value => {
                 inventory({ outcome: 'completed' });
                 return value;
               }, error => {
@@ -141,8 +141,8 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                 throw error;
               });
               control.signal.throwIfAborted();
-              const matching = stored.filter(entry => entry.name === model.name);
-              if (matching.length !== 1 || matching[0]?.id !== model.id || matching[0]?.size !== model.size || matching[0]?.importedAt !== model.importedAt) {
+              const matching = stored.filter(entry => entry.modelId === model.modelId);
+              if (matching.length !== 1 || matching[0]?.size !== model.size || matching[0]?.importedAt !== model.importedAt) {
                 throw new Error('Selected model inventory changed');
               }
               const acquired = interval({ kind: 'model-acquire', modelIndex, lane, runtimeSegment });
@@ -240,7 +240,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
                           }
                         })();
                         const input: Omit<GenerateInput, 'options'> = {
-                          model: model.name,
+                          modelId: model.modelId,
                           messages,
                           debug: 'off',
                           temperature: 0,

@@ -504,7 +504,7 @@ export async function performanceArchive({ snapshot: input }: { snapshot: Perfor
           throw new Error(String(exhaustive));
         }
         }
-        rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.name, snapshot.plan.settings.mode ?? 'standard', trial.lane ?? step?.lane ?? 'standard', trial.options.profile, trial.summary?.profile, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,
+        rows.push([trial.id, snapshot.plan.models[trial.modelIndex]?.modelId, snapshot.plan.settings.mode ?? 'standard', trial.lane ?? step?.lane ?? 'standard', trial.options.profile, trial.summary?.profile, step?.scenario, step?.position, step?.maxTokens, step?.role, trial.status,
           trial.warnings.join(';'), trial.exclusion.join(';'), trial.elapsedMs, trial.firstReceivedMs, trial.firstTextMs, trial.firstReasoningMs,
           instrumented ? undefined : rates.prefillTokensPerSecond, instrumented ? undefined : rates.generationTokensPerSecond, metrics?.promptTokens, metrics?.reusedTokens,
           metrics?.contextTokens, metrics?.prefillBatchTokens, trial.output?.finishReason,

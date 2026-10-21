@@ -10,8 +10,8 @@ function localFile({ path }: { path: string }): File {
 
 it('keeps a repository working tree, including metadata and tokenizer files, but not Git objects', () => {
   const input = imageDirectoryFromFiles({ files: ['repo/README.md', 'repo/vae/ae.safetensors', 'repo/config.json', 'repo/tokenizer/vocab.json', 'repo/.git/objects/aa'].map(path => localFile({ path })) });
-  expect(input.name).toBe('repo');
-  expect(input.files.map(file => file.path)).toEqual(['README.md', 'vae/ae.safetensors', 'config.json', 'tokenizer/vocab.json']);
+  expect(input.rootName).toBe('repo');
+  expect(input.files.map(file => file.relativePath)).toEqual(['README.md', 'vae/ae.safetensors', 'config.json', 'tokenizer/vocab.json']);
   expect(() => imageDirectoryFromFiles({ files: [localFile({ path: 'a/file' }), localFile({ path: 'b/file' })] })).toThrow('different roots');
 });
 
@@ -32,7 +32,7 @@ it('captures directory entries synchronously and reads every readEntries batch',
 
 it('preserves roots in FileList fallback and rejects partial/opaque directory drops', async () => {
   const transfer = { items: [], files: [localFile({ path: 'A/a.gguf' }), localFile({ path: 'B/b.gguf' })] } as unknown as DataTransfer;
-  expect((await imageDirectoriesFromDrop({ transfer, signal: undefined })).map(input => input.name)).toEqual(['A', 'B']);
+  expect((await imageDirectoriesFromDrop({ transfer, signal: undefined })).map(input => input.rootName)).toEqual(['A', 'B']);
   await expect(imageDirectoriesFromDrop({ transfer: { items: [], files: [new File(['x'], 'folder')] } as unknown as DataTransfer, signal: undefined })).rejects.toThrow('Choose GGUF or safetensors');
 });
 
@@ -59,7 +59,7 @@ it('cancels traversal before a delayed entry batch can become a stored repositor
 it('wraps loose GGUF and safetensors as model directories without changing their File objects', async () => {
   const files = [new File(['weights'], 'chat.gguf'), new File(['weights'], 'image.safetensors')];
   const inputs = await imageDirectoriesFromDrop({ transfer: { items: [], files } as unknown as DataTransfer, signal: undefined });
-  expect(inputs.map(input => input.name)).toEqual(['chat-GGUF', 'image-Safetensors']);
+  expect(inputs.map(input => input.rootName)).toEqual(['chat-GGUF', 'image-Safetensors']);
   expect(inputs[0]?.files[0]?.file).toBe(files[0]);
   expect(inputs[1]?.files[0]?.file).toBe(files[1]);
 });

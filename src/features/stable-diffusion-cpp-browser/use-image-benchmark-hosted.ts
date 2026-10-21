@@ -50,11 +50,11 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     if (busy.value) {
       return;
     }
-    const selectable = values.filter(value => value.models !== undefined).map(value => value.id);
+    const selectable = values.filter(value => value.models !== undefined).map(value => value.candidateKey);
     // A deliberate deselection (including Clear all) survives inventory refreshes.
     // An incomplete component edit keeps its target selected so validation blocks
     // the batch instead of silently dropping a model from the measurement.
-    form.selected.value = [...form.selected.value.filter(id => values.some(value => value.id === id)), ...selectable.filter(id => !seen.has(id))];
+    form.selected.value = [...form.selected.value.filter(id => values.some(value => value.candidateKey === id)), ...selectable.filter(id => !seen.has(id))];
     for (const id of selectable) {
       seen.add(id);
     }
@@ -74,7 +74,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     if (!artifact) {
       throw new Error('Image runtime is unavailable');
     }
-    const chosen = targets.value.filter(t => form.selected.value.includes(t.id));
+    const chosen = targets.value.filter(t => form.selected.value.includes(t.candidateKey));
     if (chosen.length !== form.selected.value.length) {
       throw new Error('Selected model inventory changed');
     }
@@ -216,7 +216,7 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
         return;
       }
       switch (mode) {
-      case 'all': form.selected.value = targets.value.filter(t => t.models !== undefined).map(t => t.id);
+      case 'all': form.selected.value = targets.value.filter(t => t.models !== undefined).map(t => t.candidateKey);
         break;
       case 'none': form.selected.value = [];
         break;
@@ -227,13 +227,13 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       }
     },
     toggle({ id, selected }) {
-      if (busy.value || !targets.value.some(t => t.id === id && (!selected || t.models))) {
+      if (busy.value || !targets.value.some(t => t.candidateKey === id && (!selected || t.models))) {
         return;
       }
       form.selected.value = selected ? [...new Set([...form.selected.value, id])] : form.selected.value.filter(value => value !== id);
     },
     effective({ target }) {
-      return benchmarkParameters({ common: form.common.value, target, strategy: form.strategy.value, overrides: form.overrides.value[target.id] ?? {} }).parameters;
+      return benchmarkParameters({ common: form.common.value, target, strategy: form.strategy.value, overrides: form.overrides.value[target.candidateKey] ?? {} }).parameters;
     },
     change({ id, change }) {
       if (busy.value) {
@@ -249,24 +249,24 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
       delete next[key];
       form.overrides.value = { ...form.overrides.value, [id]: next };
     },
-    chooseComponent({ targetId, slot, id }) {
+    chooseComponent({ targetId, slot, candidateKey }) {
       if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value) {
         return;
       }
-      const component = targets.value.find(target => target.id === targetId)?.components.find(component => component.slot === slot);
-      if (!component || id && !component.choices.some(choice => choice.id === id && choice.status !== 'incompatible')) {
+      const component = targets.value.find(target => target.candidateKey === targetId)?.components.find(component => component.slot === slot);
+      if (!component || candidateKey && !component.choices.some(choice => choice.candidateKey === candidateKey && choice.status !== 'incompatible')) {
         return;
       }
-      form.componentSelections.value = { ...form.componentSelections.value, [targetId]: { ...form.componentSelections.value[targetId], [slot]: id } };
+      form.componentSelections.value = { ...form.componentSelections.value, [targetId]: { ...form.componentSelections.value[targetId], [slot]: candidateKey } };
     },
     chooseLoras({ targetId, selections }) {
-      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.id === targetId)) {
+      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.candidateKey === targetId)) {
         return;
       }
       form.loras.value = { ...form.loras.value, [targetId]: selections };
     },
     chooseImageInputs({ targetId, inputs }) {
-      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.id === targetId)) {
+      if (busy.value || form.exporting.value || form.runs.value.length || generation.busy.value || !available.value || !generation.supported.value || !targets.value.some(target => target.candidateKey === targetId)) {
         return;
       }
       form.imageInputs.value = { ...form.imageInputs.value, [targetId]: inputs };

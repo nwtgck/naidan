@@ -15,7 +15,7 @@ export function imageDirectoryForFile({ file }: { file: File }): RepositoryInput
   if (match[2]!.toLowerCase() === 'gguf') {
     return directoryForGgufFile({ file });
   }
-  return { name: `${match[1]}-Safetensors`, files: [{ path: file.name, file }] };
+  return { rootName: `${match[1]}-Safetensors`, files: [{ relativePath: file.name, file }] };
 }
 
 export async function imageDirectoriesFromDrop({ transfer, signal }: { transfer: DataTransfer, signal: AbortSignal | undefined }): Promise<RepositoryInput[]> {

@@ -26,7 +26,7 @@ let service: LlamaCppBrowserService;
 const result: Awaited<ReturnType<LlamaCppWorkerClient['generate']>> = { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
 
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+  return { modelId: 'temp/lifetime-GGUF', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 
 function args() {
@@ -43,6 +43,11 @@ beforeEach(async () => {
   fixture.worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   create = (await import('./resources-hosted')).createReadOnlyResources;
   service = (await import('@/features/llama-cpp-browser/index-hosted')).llamaCppBrowserService;
+  const bytes = new Uint8Array(32);
+  bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
+  const file = new File([bytes], 'lifetime.gguf');
+  Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
+  await service.importModel({ file, storage: 'temp', signal: undefined });
 });
 
 afterEach(() => {
@@ -55,6 +60,18 @@ it('does not create a native worker to dispose an unused resource owner', async 
   await resources.dispose();
   await resources.dispose();
   expect(fixture.create).not.toHaveBeenCalled();
+});
+
+it.each(['', 'unknown', 'user/../outside', 'temp/not-registered'])('fails current model resolution before starting a worker for %j', async modelId => {
+  const resources = create({ directories: () => [] });
+  await using _resources = {
+    async [Symbol.asyncDispose]() {
+      await resources.dispose();
+    },
+  };
+  await expect(resources.generateChat({ ...args(), input: { ...input(), modelId } })).rejects.toThrow('missing-model');
+  expect(fixture.create).not.toHaveBeenCalled();
+  expect(fixture.worker.generate).not.toHaveBeenCalled();
 });
 
 it('releases the chat cache once when its resource owner retires', async () => {
@@ -142,18 +159,18 @@ it("advertises and serves this page's temporary models through the ordinary RPC 
   Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
   await service.importModel({ file, storage: 'temp', signal: undefined });
   const id = 'temp/rpc-local-GGUF';
-  await using _model = { [Symbol.asyncDispose]: () => service.removeTemporaryModel({ id, signal: undefined }) };
+  await using _model = { [Symbol.asyncDispose]: () => service.removeTemporaryModel({ modelId: id, signal: undefined }) };
   const resources = create({ directories: () => [] });
   await using _resources = {
     [Symbol.asyncDispose]: async () => {
       await resources.dispose();
     },
   };
-  expect(await resources.listChatModels({ signal: new AbortController().signal })).toContainEqual({ ref: id, label: id });
+  expect(await resources.listChatModels({ signal: new AbortController().signal })).toContainEqual({ modelId: id });
   expect(fixture.create).not.toHaveBeenCalled();
-  await expect(resources.generateChat({ ...args(), input: { ...input(), model: id } })).resolves.toEqual(result);
-  expect(fixture.worker.generate).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ model: id }) }));
+  await expect(resources.generateChat({ ...args(), input: { ...input(), modelId: id } })).resolves.toEqual(result);
+  expect(fixture.worker.generate).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ modelId: id }) }));
   await resources.dispose();
   // Retiring RPC/native resources does not unregister the page's model files.
-  expect((await service.listModels({ signal: undefined })).map(model => model.id)).toContain(id);
+  expect((await service.listModelEntries({ signal: undefined })).map(model => model.modelId)).toContain(id);
 });

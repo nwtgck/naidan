@@ -49,7 +49,7 @@ function fixture({ size }: { size: number }): {
   const sync = vi.fn().mockRejectedValue(new DOMException('Host handles are not OPFS', 'InvalidStateError'));
   const entry: StoredModelFile = {
     storageKind: 'host',
-    path: 'nested/model.gguf',
+    relativePath: 'nested/model.gguf',
     file,
     handle: { getFile, createSyncAccessHandle: sync } as unknown as FileSystemFileHandle,
   };
@@ -156,7 +156,7 @@ describe('direct linked-folder model reads', () => {
     const failure = new DOMException('OPFS read denied', 'NotAllowedError');
     host.sync.mockRejectedValue(failure);
 
-    await expect(openModelFileAccess({ entry })).rejects.toBe(failure);
+    await expect(openModelFileAccess({ entry: { ...entry, storageKind: 'opfs' } })).rejects.toBe(failure);
     expect(host.getFile).not.toHaveBeenCalled();
     expect(readAsArrayBuffer).not.toHaveBeenCalled();
   });

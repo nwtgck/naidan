@@ -1,3 +1,4 @@
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { describe, expect, it } from 'vitest';
 import { groupModelFiles } from './catalog';
 import { modelSuggestions, preferredQuantizationHint, matchesMemoryHint, suggestedMemoryFilters, moreGgufModelsUrl } from './model-suggestions';
@@ -58,13 +59,13 @@ describe('bundled suggestions and exact download plans', () => {
   });
 
   it('matches local repository identity and the exact main quantization, not approximate bytes or a filename coincidence', () => {
-    const local = { id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(main)}`, name: 'already installed', size: 128, importedAt: 1 };
+    const local = { modelId: formatHuggingFaceModelId({ repository: quantization.hfRepository, mainFilePath: main }), size: 128, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization, models: [local] })).toEqual(local);
-    expect(findLocalSuggestedModel({ quantization, models: [{ ...local, id: `user/${main}` }] })).toBeUndefined();
+    expect(findLocalSuggestedModel({ quantization, models: [{ ...local, modelId: `user/${main}` }] })).toBeUndefined();
     for (const path of ['model-Q8_0.gguf', 'model-Q4_K_XL.gguf', 'dflash-Q4_K_M.gguf']) {
-      expect(findLocalSuggestedModel({ quantization, models: [{ ...local, id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(path)}` }] })).toBeUndefined();
+      expect(findLocalSuggestedModel({ quantization, models: [{ ...local, modelId: formatHuggingFaceModelId({ repository: quantization.hfRepository, mainFilePath: path }) }] })).toBeUndefined();
     }
-    expect(findLocalSuggestedModel({ quantization, models: [local, { ...local, id: `hf.co/${quantization.hfRepository}:other-Q4_K_M.gguf` }] })).toBeUndefined();
+    expect(findLocalSuggestedModel({ quantization, models: [local, { ...local, modelId: formatHuggingFaceModelId({ repository: quantization.hfRepository, mainFilePath: 'other-Q4_K_M.gguf' }) }] })).toBeUndefined();
   });
 
   it('pins normal file-save links, encodes nested filenames and does not confuse decimal bytes with GiB', () => {

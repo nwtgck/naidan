@@ -6,7 +6,7 @@ import type { NaidanRpcExposure, ReceiveValue } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { promiseAllKeyed } from '@/utils/promise';
 import {
-  chatModelReferenceSchema,
+  chatModelIdSchema,
   imageFileSchema,
   imageModelSelectionSchema,
   naidanPeerContract,
@@ -15,6 +15,7 @@ import {
   peerProgressSchema,
 } from './contract';
 import { bytesSource, collectBytes } from './codecs/transfer';
+import type { NaidanPeerImplementation } from './contract';
 
 const stops: (() => void)[] = [];
 
@@ -219,14 +220,14 @@ it.each([undefined, '256'])('rejects a missing or wrongly typed required input w
   expect(invoked).not.toHaveBeenCalled();
 });
 
-it.each([undefined, 42])('rejects a missing or wrongly typed required catalog label (%s) at the caller', async label => {
+it.each([undefined, 42])('rejects a missing or wrongly typed required catalog modelId (%s) at the caller', async modelId => {
   const current = naidanPeerContract.methods.listChatModels;
   const newer = contract({
     name: naidanPeerContract.name,
     methods: {
       listChatModels: procedure({
         input: current.input,
-        result: rpc.stream({ item: z.object({ ref: chatModelReferenceSchema, label: z.union([z.string(), z.number()]).optional() }) }),
+        result: rpc.stream({ item: z.object({ modelId: z.union([chatModelIdSchema, z.number()]).optional() }) }),
         notifications: {},
       }),
     },
@@ -235,7 +236,7 @@ it.each([undefined, 42])('rejects a missing or wrongly typed required catalog la
     exposure: expose({
       contract: newer,
       allowedMethods: ['listChatModels'],
-      implementation: { listChatModels: () => source({ items: [{ ref: 'models/chat.gguf', label }] }) },
+      implementation: { listChatModels: () => source({ items: [{ modelId }] }) },
     }),
   });
   const call = caller.client({ contract: naidanPeerContract }).listChatModels({
@@ -246,4 +247,108 @@ it.each([undefined, 42])('rejects a missing or wrongly typed required catalog la
   });
   await expect(collect({ stream: await call.result })).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });
   await expect(call.closed).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });
+});
+
+it.each([
+  'user/MyModel',
+  'user/My:Model',
+  'user/literal%2F',
+  'hf.co/owner/Chat-GGUF:literal%2F/Q4',
+  'host/MyModels1/owner/Chat-GGUF:literal%2F/Q4',
+  `host/${encodeURIComponent('語'.repeat(150))}/owner/Chat-GGUF:Q4`,
+  'temp/MyModel',
+  'temp/MyModel:Q4',
+  'temp/MyModels1/owner/Chat-GGUF:Q4',
+])('passes listed modelId %s unchanged into generation on the selected peer', async modelId => {
+  const unexpected = (): never => {
+    throw new Error('Unexpected peer method');
+  };
+  const generateChat = vi.fn<NaidanPeerImplementation['generateChat']>(({ input }) => {
+    expect(input.modelId).toBe(modelId);
+    expect(input).not.toHaveProperty('model');
+    return { events: bytesSource({ bytes: new Uint8Array([1]) }) };
+  });
+  const { caller, signal } = peers({
+    exposure: expose({
+      contract: naidanPeerContract,
+      allowedMethods: ['listChatModels', 'generateChat'],
+      implementation: {
+        getProvidedMethods: unexpected,
+        listChatModels: () => source({ items: [{ modelId }] }),
+        generateChat,
+        listImageModels: unexpected,
+        generateImage: unexpected,
+      },
+    }),
+  });
+  const client = caller.client({ contract: naidanPeerContract });
+  const listing = client.listChatModels({ input: {}, on: {}, signal, timeoutMs: undefined });
+  const models = await collect({ stream: await listing.result });
+  await listing.closed;
+  expect(models).toEqual([{ modelId }]);
+  const selected = models[0]!;
+  const generation = client.generateChat({
+    input: { modelId: selected.modelId, transcript: bytesSource({ bytes: new Uint8Array() }), images: [] },
+    on: { progress: undefined },
+    signal,
+    timeoutMs: undefined,
+  });
+  const output = await generation.result;
+  expect(await collectBytes({ readable: output.events, limit: 8, signal })).toEqual(new Uint8Array([1]));
+  await generation.closed;
+  expect(generateChat).toHaveBeenCalledOnce();
+});
+
+it.each([
+  { direction: 'old caller to v2 provider', callerName: 'naidan.peer', providerName: 'naidan.peer.v2', method: 'getProvidedMethods' },
+  { direction: 'v2 caller to old provider', callerName: 'naidan.peer.v2', providerName: 'naidan.peer', method: 'getProvidedMethods' },
+  { direction: 'old caller to v2 provider', callerName: 'naidan.peer', providerName: 'naidan.peer.v2', method: 'generateChat' },
+  { direction: 'v2 caller to old provider', callerName: 'naidan.peer.v2', providerName: 'naidan.peer', method: 'generateChat' },
+  { direction: 'old caller to v2 provider', callerName: 'naidan.peer', providerName: 'naidan.peer.v2', method: 'generateImage' },
+  { direction: 'v2 caller to old provider', callerName: 'naidan.peer.v2', providerName: 'naidan.peer', method: 'generateImage' },
+] as const)('rejects $method from $direction before invoking a handler', async ({ callerName, providerName, method }) => {
+  // The payload definitions can be identical: the application namespace must
+  // reject before inspecting them, including unchanged image/status methods.
+  const callerContract = contract({ name: callerName, methods: naidanPeerContract.methods });
+  const providerContract = contract({ name: providerName, methods: naidanPeerContract.methods });
+  const invoked = vi.fn((): never => {
+    throw new Error('A different application version reached its handler');
+  });
+  const { caller, transport, signal } = peers({
+    exposure: expose({
+      contract: providerContract,
+      allowedMethods: ['getProvidedMethods', 'generateChat', 'generateImage'],
+      implementation: {
+        getProvidedMethods: invoked,
+        listChatModels: invoked,
+        generateChat: invoked,
+        listImageModels: invoked,
+        generateImage: invoked,
+      },
+    }),
+  });
+  const inputPull = vi.fn(), inputCancel = vi.fn();
+  const input = new ReadableStream<Uint8Array>({ pull: inputPull, cancel: inputCancel }, { highWaterMark: 0 });
+  const client = caller.client({ contract: callerContract });
+  const call = (() => {
+    switch (method) {
+    case 'getProvidedMethods': return client.getProvidedMethods({ input: {}, on: {}, signal, timeoutMs: undefined });
+    case 'generateChat': return client.generateChat({ input: { modelId: 'user/MyModel', transcript: input, images: [] }, on: { progress: undefined }, signal, timeoutMs: undefined });
+    case 'generateImage': return client.generateImage({ input: imageInput(), on: { progress: undefined }, signal, timeoutMs: undefined });
+    default: {
+      const exhaustive: never = method;
+      throw new Error(String(exhaustive));
+    }
+    }
+  })();
+  await expect(call.result).rejects.toMatchObject({ code: 'METHOD_NOT_FOUND' });
+  await expect(call.closed).rejects.toMatchObject({ code: 'METHOD_NOT_FOUND' });
+  expect(invoked).not.toHaveBeenCalled();
+  expect(inputPull).not.toHaveBeenCalled();
+  if (method === 'generateChat') {
+    expect(inputCancel).toHaveBeenCalledOnce();
+  } else {
+    await input.cancel();
+  }
+  expect(transport.stats().active).toBe(0);
 });

@@ -52,10 +52,10 @@ async function inventory(): Promise<ModelInventory> {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return scanImageRepositories({
     repositories: [{
-      id: 'host/linked-models/org/repo',
-      name: 'linked weights',
+      repositoryKey: 'host/linked-models/org/repo',
+      repositoryLabel: 'linked weights',
       hostSource: { directoryId: 'linked-models', directoryName: 'weights', repository: 'org/repo' },
-      files: [{ path: file.name, file }],
+      files: [{ relativePath: file.name, file }],
     }],
     signal: undefined,
   });

@@ -81,9 +81,9 @@ afterEach(() => {
 async function ready(): Promise<VueWrapper> {
   wrapper = mount(AudioGenerationView);
   const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-  manager.vm.$emit('modelsChanged', [{ id: 'user/voice', name: 'Voice', size: 100, importedAt: 1 }]);
+  manager.vm.$emit('modelsChanged', [{ modelId: 'user/voice', size: 100, importedAt: 1 }]);
   manager.vm.$emit('runtimeReady', true);
-  manager.vm.$emit('modelSelected', 'Voice');
+  manager.vm.$emit('modelSelected', 'user/voice');
   await nextTick();
   await wrapper.get('[data-testid="audio-text"]').setValue('Hello');
   return wrapper;
@@ -197,7 +197,7 @@ describe('independent audio generation screen', () => {
     await view.get('[data-testid="audio-language"]').setValue('ja');
     await submit({ view });
     expect(service.generateAudio).toHaveBeenCalledOnce();
-    expect(service.generateAudio.mock.calls[0]?.[0].input).toMatchObject({ model: 'user/voice', text: 'Hello', language: 'ja', audioBackend: 'profile', contextTokens: 4096, debug: 'off' });
+    expect(service.generateAudio.mock.calls[0]?.[0].input).toMatchObject({ modelId: 'user/voice', text: 'Hello', language: 'ja', audioBackend: 'profile', contextTokens: 4096, debug: 'off' });
     expect(service.generateAudio.mock.calls[0]?.[0].input).not.toHaveProperty('messages');
     const player = view.get('[data-testid="audio-player"]');
     expect(player.attributes('src')).toBe('blob:generated-audio');
@@ -206,6 +206,24 @@ describe('independent audio generation screen', () => {
     expect(urls.create.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
     expect((urls.create.mock.calls[0]?.[0] as Blob).type).toBe('audio/wav');
     expect(view.find('[data-testid="audio-truncated"]').exists()).toBe(false);
+  });
+
+  it.each(['user/voice', 'hf.co/owner/Voice-GGUF:Q8_0', 'host/MyModels1/owner/Voice-GGUF:Q8_0', 'temp/Voice-GGUF'])('selects, generates and displays the same readable modelId: %s', async modelId => {
+    wrapper = mount(AudioGenerationView);
+    const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
+    manager.vm.$emit('modelsChanged', [{ modelId, size: 100, importedAt: 1 }]);
+    manager.vm.$emit('runtimeReady', true);
+    manager.vm.$emit('modelSelected', modelId);
+    await flushPromises();
+    expect(detection.inspect).toHaveBeenCalledWith({ modelId, signal: expect.any(AbortSignal) });
+    const selector = wrapper.findComponent(ModelSelector);
+    expect(selector.props('modelValue')).toBe(modelId);
+    expect(selector.props('models')).toEqual([modelId]);
+    expect(selector.props('modelLabels')).toBeUndefined();
+    await wrapper.get('[data-testid="audio-text"]').setValue('Hello');
+    await submit({ view: wrapper });
+    expect(service.generateAudio.mock.calls[0]![0].input.modelId).toBe(modelId);
+    expect(wrapper.get('[data-testid="audio-result-model"]').text()).toBe(modelId);
   });
 
   it.each(['frame-limit', 'context-limit'] as const)('labels truncated output: %s', async finishReason => {
@@ -332,11 +350,11 @@ it('distinguishes waveform decoding from frame generation without a misleading p
 
 describe('audio candidates and in-memory history in the view', () => {
   it('selects a metadata-detected model and offers the all-models override', async () => {
-    detection.inspect.mockImplementation(async ({ id }) => id === 'user/chat'
+    detection.inspect.mockImplementation(async ({ modelId }) => modelId === 'user/chat'
       ? { status: 'unverified', reason: 'architecture' } : { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
     wrapper = mount(AudioGenerationView);
     const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ id: 'user/chat', name: 'Chat', size: 10, importedAt: 1 }, { id: 'user/voice', name: 'Voice', size: 100, importedAt: 1 }]);
+    manager.vm.$emit('modelsChanged', [{ modelId: 'user/chat', size: 10, importedAt: 1 }, { modelId: 'user/voice', size: 100, importedAt: 1 }]);
     manager.vm.$emit('runtimeReady', true);
     await flushPromises();
     const select = wrapper.findComponent(ModelSelector);
@@ -348,14 +366,15 @@ describe('audio candidates and in-memory history in the view', () => {
     await nextTick();
     await wrapper.get('[data-testid="audio-text"]').setValue('Unknown candidate');
     await submit({ view: wrapper });
-    expect(service.generateAudio.mock.calls[0]![0].input.model).toBe('user/chat');
+    expect(service.generateAudio.mock.calls[0]![0].input.modelId).toBe('user/chat');
+    expect(wrapper.get('[data-testid="audio-model-unverified"]').text()).not.toBe('');
   });
 
   it('keeps the escape hatch accessible when no metadata can be read', async () => {
     detection.inspect.mockRejectedValue(new Error('storage temporarily unavailable'));
     wrapper = mount(AudioGenerationView);
     const manager = wrapper.findComponent({ name: 'LlamaCppBrowserManager' });
-    manager.vm.$emit('modelsChanged', [{ id: 'user/model', name: 'Model', size: 100, importedAt: 1 }]);
+    manager.vm.$emit('modelsChanged', [{ modelId: 'user/model', size: 100, importedAt: 1 }]);
     await flushPromises();
     expect(wrapper.findComponent(ModelSelector).props('modelValue')).toBeUndefined();
     await wrapper.get('[data-testid="audio-show-all"]').trigger('click');

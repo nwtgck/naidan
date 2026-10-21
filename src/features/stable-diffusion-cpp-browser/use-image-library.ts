@@ -67,12 +67,12 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const inventory = shallowRef<ModelInventory>({ candidates: [], issues: [] });
   let inventoryReady = false;
   const inspectedMissingFiles = new Set<string>();
-  const main = ref('');
+  const selectedCandidateKey = ref('');
   // Track only Files issued by the inspected local inventory. A later scan
   // creates fresh File objects without changing a selected adapter's origin.
   const knownLocations = new WeakMap<File, BrowserImageModelLocation>();
   const showAll = ref(false);
-  const selections = shallowRef<Partial<Record<ModelSlot, string>>>({});
+  const componentCandidateKeys = shallowRef<Partial<Record<ModelSlot, string>>>({});
   const overrides = new Set<ModelSlot>();
   const scanState = ref<'idle' | 'scanning'>('idle');
   const scanProgress = shallowRef<InspectionProgress>();
@@ -147,7 +147,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       const controller = new AbortController();
       hostPublication = controller;
       try {
-        await refreshAfterMutation({ signal: controller.signal, completingImport: undefined, repositoryIds: undefined });
+        await refreshAfterMutation({ signal: controller.signal, completingImport: undefined, repositoryKeys: undefined });
       } finally {
         if (hostPublication === controller) {
           hostPublication = undefined;
@@ -201,14 +201,14 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   watch([hostDirectories.busy, downloadsDisabled, importing], () => {
     void processDownloads();
   });
-  const selected = computed(() => inventory.value.candidates.find(item => item.id === main.value));
+  const selected = computed(() => inventory.value.candidates.find(item => item.candidateKey === selectedCandidateKey.value));
   const selectedFacts = computed(() => selected.value && !selected.value.issue ? { family: selected.value.family, variant: selected.value.variant, evidence: selected.value.evidence } : undefined);
   const requirements = computed(() => componentRequirements({ family: selected.value?.family ?? 'unknown' }));
   function describe({ candidate, status }: { candidate: ModelCandidate, status: ImageModelChoice['status'] }): ImageModelChoice {
     return {
-      id: candidate.id,
-      label: candidate.path.split('/').at(-1) ?? candidate.path,
-      detail: `${candidate.hostSource ? `${candidate.hostSource.directoryName}/${candidate.hostSource.repository}` : candidate.repositoryId}/${candidate.path} · ${candidate.format} · ${(candidate.size / 1024 ** 3).toFixed(2)} GiB`,
+      candidateKey: candidate.candidateKey,
+      label: candidate.primaryRelativePath.split('/').at(-1) ?? candidate.primaryRelativePath,
+      detail: `${candidate.hostSource ? `${candidate.hostSource.directoryName}/${candidate.hostSource.repository}` : candidate.repositoryKey}/${candidate.primaryRelativePath} · ${candidate.format} · ${(candidate.size / 1024 ** 3).toFixed(2)} GiB`,
       evidence: candidate.evidence,
       status: candidate.issue ? 'incompatible' : status,
       issue: candidate.issue,
@@ -218,7 +218,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     if (candidate.classes.includes('lora')) {
       return false;
     }
-    if (candidate.id === main.value || showAll.value) {
+    if (candidate.candidateKey === selectedCandidateKey.value || showAll.value) {
       return true;
     }
     return candidate.family !== 'unknown' && candidate.roles.some(role => role === 'model' || role === 'diffusion');
@@ -226,7 +226,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const savedLoras = computed<SavedImageLoraChoice[]>(() => inventory.value.candidates.flatMap(candidate => {
     const entry = candidate.files[0];
     // Native LoRA requests mount one original file, not a shard/index bundle.
-    if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || !entry || !/\.(gguf|safetensors)$/i.test(entry.path)) {
+    if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || !entry || !/\.(gguf|safetensors)$/i.test(entry.relativePath)) {
       return [];
     }
     const source = candidate.hostSource;
@@ -234,8 +234,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     const detail = (() => {
       switch (location.kind) {
       case 'temp': return `Temporary: ${location.path}`;
-      case 'opfs': return `OPFS: ${candidate.repositoryId}/${entry.path}`;
-      case 'host': return `Host: ${source!.directoryName}/${source!.repository}/${entry.path}`;
+      case 'opfs': return `OPFS: ${candidate.repositoryKey}/${entry.relativePath}`;
+      case 'host': return `Host: ${source!.directoryName}/${source!.repository}/${entry.relativePath}`;
       default: {
         const exhaustive: never = location;
         throw new Error(String(exhaustive));
@@ -243,22 +243,22 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
     })();
     return [{
-      id: candidate.id,
+      candidateKey: candidate.candidateKey,
       label: entry.file.name,
-      path: entry.path,
+      relativePath: entry.relativePath,
       file: entry.file,
       detail,
     }];
-  }).sort((a, b) => a.detail.localeCompare(b.detail) || a.id.localeCompare(b.id)));
+  }).sort((a, b) => a.detail.localeCompare(b.detail) || a.candidateKey.localeCompare(b.candidateKey)));
   const components = computed(() => requirements.value.map(requirement => ({
     slot: requirement.slot,
-    selected: selections.value[requirement.slot] ?? '',
+    selectedCandidateKey: componentCandidateKeys.value[requirement.slot] ?? '',
     required: requirement.required,
-    choices: inventory.value.candidates.filter(candidate => candidate.id !== main.value && !candidate.classes.includes('lora')).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
-      .filter(choice => showAll.value || choice.status === 'matching' || choice.id === selections.value[requirement.slot])
+    choices: inventory.value.candidates.filter(candidate => candidate.candidateKey !== selectedCandidateKey.value && !candidate.classes.includes('lora')).map(candidate => describe({ candidate, status: componentMatch({ candidate, requirement }) }))
+      .filter(choice => showAll.value || choice.status === 'matching' || choice.candidateKey === componentCandidateKeys.value[requirement.slot])
       .sort((a, b) => Number(b.status === 'matching') - Number(a.status === 'matching') || a.detail.localeCompare(b.detail)),
   })));
-  const issues = computed(() => inventory.value.issues.map(issue => `${issue.repositoryId}/${issue.path}: ${issue.message}`));
+  const issues = computed(() => inventory.value.issues.map(issue => `${issue.repositoryKey}/${issue.relativePath}: ${issue.message}`));
   const ready = computed(() => {
     if (!selected.value || selected.value.issue || scanState.value === 'scanning' || importing.value || origin === 'files') {
       return false;
@@ -269,22 +269,22 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return false;
     }
     return requirements.value.every(requirement => {
-      const id = selections.value[requirement.slot];
+      const id = componentCandidateKeys.value[requirement.slot];
       if (!requirement.required && !id) {
         return overrides.has(requirement.slot) || !recipeIntent?.files.some(file => file.role === requirement.slot);
       }
-      const candidate = inventory.value.candidates.find(item => item.id === id);
+      const candidate = inventory.value.candidates.find(item => item.candidateKey === id);
       return candidate !== undefined && componentMatch({ candidate, requirement }) !== 'incompatible';
     });
   });
   function resolve(): void {
     if (!selected.value) {
-      selections.value = {};
+      componentCandidateKeys.value = {};
       return;
     }
-    const next = { ...selections.value };
+    const next = { ...componentCandidateKeys.value };
     for (const requirement of requirements.value) {
-      const previous = inventory.value.candidates.find(item => item.id === next[requirement.slot]);
+      const previous = inventory.value.candidates.find(item => item.candidateKey === next[requirement.slot]);
       if (overrides.has(requirement.slot)) {
         // Losing an explicit optional override must not silently select the
         // checkpoint's built-in component. Retain the unavailable selection.
@@ -299,51 +299,51 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       const requested = recipeIntent?.files.find(file => file.role === requirement.slot);
       // A complete checkpoint already contains its VAE. Use an external one only
       // when the user selects it or explicitly chooses a recipe that names it.
-      next[requirement.slot] = requested ? findRecipeFile({ file: requested, destinationId: recipeIntent!.destinationId, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.id ?? ''
+      next[requirement.slot] = requested ? findRecipeFile({ file: requested, destinationId: recipeIntent!.destinationId, match: ({ candidate }) => componentMatch({ candidate, requirement }) === 'matching' })?.candidateKey ?? ''
         : requirement.required ? defaultCompanion({ main: selected.value, candidates: inventory.value.candidates, requirement }) ?? '' : '';
     }
-    selections.value = next;
+    componentCandidateKeys.value = next;
   }
-  function chooseMain({ id }: { id: string }): void {
+  function chooseMain({ candidateKey }: { candidateKey: string }): void {
     if (blocked() || importing.value || scanState.value === 'scanning' || disposed) {
       return;
     }
-    const candidate = inventory.value.candidates.find(item => item.id === id);
-    if (id && !candidate || candidate?.issue || candidate && candidate.family === 'unknown' && candidate.roles.length) {
+    const candidate = inventory.value.candidates.find(item => item.candidateKey === candidateKey);
+    if (candidateKey && !candidate || candidate?.issue || candidate && candidate.family === 'unknown' && candidate.roles.length) {
       return;
     }
     selectionVersion++;
     unavailableLoras = [];
     recipeIntent = undefined;
-    if (id === main.value) {
+    if (candidateKey === selectedCandidateKey.value) {
       return;
     }
-    main.value = id;
+    selectedCandidateKey.value = candidateKey;
     origin = 'manual';
     overrides.clear();
-    selections.value = {};
+    componentCandidateKeys.value = {};
     resolve();
     if (candidate) {
       onSelection({ family: candidate.family, turbo: candidate.turboHint });
     }
   }
-  function chooseComponent({ slot, id }: { slot: ModelSlot, id: string }): void {
+  function chooseComponent({ slot, candidateKey }: { slot: ModelSlot, candidateKey: string }): void {
     if (blocked() || importing.value || scanState.value === 'scanning' || disposed) {
       return;
     }
     const requirement = requirements.value.find(item => item.slot === slot);
-    const candidate = inventory.value.candidates.find(item => item.id === id);
-    if (!requirement || candidate && componentMatch({ candidate, requirement }) === 'incompatible' || id && !candidate) {
+    const candidate = inventory.value.candidates.find(item => item.candidateKey === candidateKey);
+    if (!requirement || candidate && componentMatch({ candidate, requirement }) === 'incompatible' || candidateKey && !candidate) {
       return;
     }
     selectionVersion++;
     overrides.add(slot);
-    selections.value = { ...selections.value, [slot]: id };
+    componentCandidateKeys.value = { ...componentCandidateKeys.value, [slot]: candidateKey };
   }
   function findRecipeFile({ file, match, destinationId }: { file: ImageRecipeFile, destinationId: string, match: ({ candidate }: { candidate: ModelCandidate }) => boolean }): ModelCandidate | undefined {
     const target = `huggingface.co/${file.repository}/resolve/main`;
     const matches = inventory.value.candidates.filter(candidate => {
-      if (candidate.issue || candidate.path !== file.path || !match({ candidate })) {
+      if (candidate.issue || candidate.primaryRelativePath !== file.path || !match({ candidate })) {
         return false;
       }
       // Catalog availability belongs to the explicitly selected destination.
@@ -356,18 +356,18 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         if (candidate.hostSource.repository !== file.repository) {
           return false;
         }
-      } else if (!candidate.repositoryId.startsWith('user/') && candidate.repositoryId !== target && candidate.repositoryId !== `huggingface.co/${file.repository}/resolve/${file.revision}`) {
+      } else if (!candidate.repositoryKey.startsWith('user/') && candidate.repositoryKey !== target && candidate.repositoryKey !== `huggingface.co/${file.repository}/resolve/${file.revision}`) {
         return false;
       }
-      const receipt = candidate.files.find(entry => entry.path === file.path)?.receipt;
+      const receipt = candidate.files.find(entry => entry.relativePath === file.path)?.receipt;
       if (receipt?.source.kind === 'hugging-face' && receipt.source.revision !== file.revision) {
         return false;
       }
       return true;
     });
     const preferred = ({ candidate }: { candidate: ModelCandidate }) => destinationId === 'opfs'
-      ? candidate.repositoryId === target : candidate.hostSource?.directoryId === destinationId;
-    matches.sort((a, b) => Number(preferred({ candidate: b })) - Number(preferred({ candidate: a })) || a.id.localeCompare(b.id));
+      ? candidate.repositoryKey === target : candidate.hostSource?.directoryId === destinationId;
+    matches.sort((a, b) => Number(preferred({ candidate: b })) - Number(preferred({ candidate: a })) || a.candidateKey.localeCompare(b.candidateKey));
     return matches[0];
   }
   function recipeAvailability({ recipeId, selections }: { recipeId: string, selections: ImageRecipeSelection }): ImageRecipeAvailability {
@@ -421,8 +421,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         }
         const role = files[index]!.role;
         switch (role) {
-        case 'model': case 'diffusion': return candidate.id === main.value;
-        case 'vae': case 'lm': return candidate.id === selections.value[role];
+        case 'model': case 'diffusion': return candidate.candidateKey === selectedCandidateKey.value;
+        case 'vae': case 'lm': return candidate.candidateKey === componentCandidateKeys.value[role];
         default: {
           const exhaustive: never = role;
           throw new Error(String(exhaustive));
@@ -438,8 +438,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     const file = recipeIntent.files.find(file => file.role === 'model' || file.role === 'diffusion');
     const candidate = file && findRecipeFile({ file, destinationId: recipeIntent.destinationId, match: ({ candidate: item }) => item.family === recipeIntent?.family });
-    if (candidate && candidate.id !== main.value) {
-      main.value = candidate.id;
+    if (candidate && candidate.candidateKey !== selectedCandidateKey.value) {
+      selectedCandidateKey.value = candidate.candidateKey;
       onSelection({ family: candidate.family, turbo: candidate.turboHint });
     }
   }
@@ -453,7 +453,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     const expected = entry.source;
     return inventory.value.candidates.some(candidate => {
-      if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || candidate.path !== expected.path) {
+      if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || candidate.primaryRelativePath !== expected.path) {
         return false;
       }
       if (destinationId === 'opfs' ? modelLocation({ candidate }).kind !== 'opfs'
@@ -500,8 +500,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     }
     }
     origin = 'manual';
-    main.value = '';
-    selections.value = {};
+    selectedCandidateKey.value = '';
+    componentCandidateKeys.value = {};
     overrides.clear();
     resolveRecipe();
     resolve();
@@ -562,7 +562,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       error: '',
       completion: Promise.withResolvers<void>(),
       selectionVersion,
-      selectWhenComplete: !main.value && origin !== 'files',
+      selectWhenComplete: !selectedCandidateKey.value && origin !== 'files',
     };
     jobs.value = [...jobs.value, job];
     void processDownloads();
@@ -770,9 +770,9 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           // OPFS catalog downloads publish under resolve/main. A failed or
           // host transfer still uses a full scan; completed unrelated OPFS
           // publications need not replace every retained File snapshot.
-          const repositoryIds = transferred && inventoryReady && destinationId === 'opfs'
+          const repositoryKeys = transferred && inventoryReady && destinationId === 'opfs'
             ? [...new Set(files.map(file => `huggingface.co/${file.repository}/resolve/main`))] : undefined;
-          scanned = await refreshInventory({ completingImport: undefined, preserveSelection: true, repositoryIds });
+          scanned = await refreshInventory({ completingImport: undefined, preserveSelection: true, repositoryKeys });
         } finally {
           controller.signal.removeEventListener('abort', abort);
         }
@@ -898,8 +898,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
     });
   }
-  async function refreshAfterMutation({ signal, completingImport, repositoryIds }: { signal: AbortSignal, completingImport: AbortController | undefined, repositoryIds: string[] | undefined }): Promise<boolean> {
-    const selectedRepositories = inventoryReady ? repositoryIds : undefined;
+  async function refreshAfterMutation({ signal, completingImport, repositoryKeys }: { signal: AbortSignal, completingImport: AbortController | undefined, repositoryKeys: string[] | undefined }): Promise<boolean> {
+    const selectedRepositories = inventoryReady ? repositoryKeys : undefined;
     inventoryReady = false;
     inspectedMissingFiles.clear();
     const abort = () => cancelScan();
@@ -914,7 +914,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         if (disposed || signal.aborted) {
           return false;
         }
-        const result = await refreshInventory({ completingImport, preserveSelection: false, repositoryIds: selectedRepositories });
+        const result = await refreshInventory({ completingImport, preserveSelection: false, repositoryKeys: selectedRepositories });
         switch (result) {
         case 'scanned': return true;
         case 'failed': return false;
@@ -984,7 +984,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     scanState.value = 'idle';
     scanProgress.value = undefined;
   }
-  function refreshInventory({ completingImport, preserveSelection, repositoryIds }: { completingImport: AbortController | undefined, preserveSelection: boolean, repositoryIds?: string[] }): Promise<InventoryRefreshResult> {
+  function refreshInventory({ completingImport, preserveSelection, repositoryKeys }: { completingImport: AbortController | undefined, preserveSelection: boolean, repositoryKeys?: string[] }): Promise<InventoryRefreshResult> {
     if (disposed || activeImport.value !== completingImport) {
       return Promise.resolve('failed');
     }
@@ -1000,7 +1000,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     activeScan = operation;
     scanState.value = 'scanning';
     failure.value = '';
-    scanProgress.value = { phase: 'listing', completed: 0, total: 0, path: '' };
+    scanProgress.value = { phase: 'listing', completed: 0, total: 0, entryPath: '' };
     const temporaryRoots = temporaryModelFiles.list();
     operation.promise = (async () => {
       try {
@@ -1016,16 +1016,16 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         const inspected = await awaitInspection({
           signal: scan.signal,
           task: dependencies ? (async () => {
-            const storedIds = repositoryIds?.filter(id => !id.startsWith('temp/'));
+            const storedIds = repositoryKeys?.filter(id => !id.startsWith('temp/'));
             const stored = storedIds?.length === 0 ? []
-              : await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds: storedIds }), signal: scan.signal });
+              : await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryKeys: storedIds }), signal: scan.signal });
             const repositories = [...stored, ...temporaryImageRepositories({ roots: temporaryRoots })];
             scan.signal.throwIfAborted();
-            return dependencies.scan({ repositories: repositoryIds ? repositories.filter(repository => repositoryIds.includes(repository.id)) : repositories, signal: scan.signal, onProgress });
-          })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds, temporaryRepositories: temporaryImageRepositories({ roots: temporaryRoots }) }),
+            return dependencies.scan({ repositories: repositoryKeys ? repositories.filter(repository => repositoryKeys.includes(repository.repositoryKey)) : repositories, signal: scan.signal, onProgress });
+          })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations().map(({ id, name }) => ({ directoryId: id, directoryName: name })), repositoryKeys, temporaryRepositories: temporaryImageRepositories({ roots: temporaryRoots }) }),
         });
         if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport
-          || temporaryRoots.some(root => temporaryModelFiles.get({ rootId: root.id }) !== root)) {
+          || temporaryRoots.some(root => temporaryModelFiles.get({ rootPath: root.rootPath }) !== root)) {
           return 'failed';
         }
         if (blocked() && !preparingHistoryFiles && !preserveSelection) {
@@ -1034,15 +1034,15 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         const next = restoreTemporaryImageFiles({ inventory: inspected, roots: temporaryRoots });
         // A targeted scan is not evidence that other repositories disappeared.
         // Preserve their exact original File objects, not metadata lookalikes.
-        const published = repositoryIds ? {
-          candidates: [...inventory.value.candidates.filter(candidate => !repositoryIds.includes(candidate.repositoryId)), ...next.candidates],
-          issues: [...inventory.value.issues.filter(issue => !repositoryIds.includes(issue.repositoryId)), ...next.issues],
+        const published = repositoryKeys ? {
+          candidates: [...inventory.value.candidates.filter(candidate => !repositoryKeys.includes(candidate.repositoryKey)), ...next.candidates],
+          issues: [...inventory.value.issues.filter(issue => !repositoryKeys.includes(issue.repositoryKey)), ...next.issues],
         } : next;
         inventory.value = published;
         inventoryReady = true;
         inspectedMissingFiles.clear();
         for (const candidate of published.candidates) {
-          const file = candidate.files.find(entry => entry.path === candidate.path)?.file;
+          const file = candidate.files.find(entry => entry.relativePath === candidate.primaryRelativePath)?.file;
           if (file && !candidate.issue) {
             knownLocations.set(file, modelLocation({ candidate }));
           }
@@ -1058,16 +1058,16 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           }
           return 'scanned';
         }
-        if (!published.candidates.some(candidate => candidate.id === main.value)) {
-          main.value = '';
-          selections.value = {};
+        if (!published.candidates.some(candidate => candidate.candidateKey === selectedCandidateKey.value)) {
+          selectedCandidateKey.value = '';
+          componentCandidateKeys.value = {};
           overrides.clear();
           if (automaticOrigin({ origin })) {
             const candidates = published.candidates.filter(candidate => candidate.family !== 'unknown' && !candidate.issue);
-            candidates.sort((a, b) => a.size - b.size || a.id.localeCompare(b.id));
+            candidates.sort((a, b) => a.size - b.size || a.candidateKey.localeCompare(b.candidateKey));
             const first = candidates[0];
             if (first) {
-              main.value = first.id;
+              selectedCandidateKey.value = first.candidateKey;
               onSelection({ family: first.family, turbo: first.turboHint });
             }
           }
@@ -1106,13 +1106,13 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       controller.signal.throwIfAborted();
       for (const input of directories) {
         controller.signal.throwIfAborted();
-        let repositoryId: string;
+        let repositoryKey: string;
         switch (storage) {
         case 'temp':
-          repositoryId = temporaryModelFiles.register({ directory: input, signal: controller.signal }).id;
+          repositoryKey = temporaryModelFiles.register({ directory: input, signal: controller.signal }).rootPath;
           break;
         case 'opfs': case undefined:
-          repositoryId = await deps.import({
+          repositoryKey = await deps.import({
             input,
             signal: controller.signal,
             onProgress: ({ progress }) => {
@@ -1127,7 +1127,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           throw new Error(String(exhaustive));
         }
         }
-        publishedRepositories.push(repositoryId);
+        publishedRepositories.push(repositoryKey);
       }
     } catch (error) {
       if (!disposed && !controller.signal.aborted) {
@@ -1139,7 +1139,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           // Keep this import's ownership through publication; waiting for another
           // save must not admit a second import or lose the completed files.
           const importFailure = failure.value;
-          await refreshAfterMutation({ signal: controller.signal, completingImport: controller, repositoryIds: publishedRepositories.every(id => typeof id === 'string' && id.length > 0) ? publishedRepositories : undefined });
+          await refreshAfterMutation({ signal: controller.signal, completingImport: controller, repositoryKeys: publishedRepositories.every(id => typeof id === 'string' && id.length > 0) ? publishedRepositories : undefined });
           if (!disposed && activeImport.value === controller && importFailure) {
             failure.value = [importFailure, failure.value].filter(Boolean).join('\n');
           }
@@ -1192,7 +1192,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return undefined;
     }
     const selectionsToUse = [{ slot, candidate: selected.value }, ...requirements.value.flatMap(({ slot }) => {
-      const candidate = inventory.value.candidates.find(item => item.id === selections.value[slot]);
+      const candidate = inventory.value.candidates.find(item => item.candidateKey === componentCandidateKeys.value[slot]);
       return candidate ? [{ slot, candidate }] : [];
     })];
     return selectionsToUse.map(({ slot, candidate }) => modelForCandidate({ slot, candidate }));
@@ -1204,7 +1204,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (!entry) {
         continue;
       }
-      const location = imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: entry.path });
+      const location = imageModelLocation({ repositoryKey: candidate.repositoryKey, hostSource: candidate.hostSource, relativePath: entry.relativePath });
       switch (location.kind) {
       case 'opfs': case 'temp': return { ...metadata, type: location.kind, path: location.path };
       case 'host': return { ...metadata, type: 'host', directoryId: location.directoryId, path: location.path };
@@ -1234,17 +1234,17 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         case 'file': return undefined;
         case 'temp':
           // temp/ is a current pathname, not a metadata/content identity promise.
-          if (modelLocation({ candidate }).kind === 'temp' && `${candidate.repositoryId}/${entry.path}` === location.path) {
+          if (modelLocation({ candidate }).kind === 'temp' && `${candidate.repositoryKey}/${entry.relativePath}` === location.path) {
             return file;
           }
           break;
         case 'opfs':
-          if (modelLocation({ candidate }).kind === 'opfs' && `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` === location.path) {
+          if (modelLocation({ candidate }).kind === 'opfs' && `${OPFS_MODELS_DIR}/${candidate.repositoryKey}/${entry.relativePath}` === location.path) {
             return file;
           }
           break;
         case 'host':
-          if (candidate.hostSource?.directoryId === idToRaw({ id: location.directoryId }) && `${candidate.hostSource.repository}/${entry.path}` === location.path) {
+          if (candidate.hostSource?.directoryId === idToRaw({ id: location.directoryId }) && `${candidate.hostSource.repository}/${entry.relativePath}` === location.path) {
             return file;
           }
           break;
@@ -1258,7 +1258,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     return undefined;
   }
   function modelLocation({ candidate }: { candidate: ModelCandidate }): BrowserImageModelLocation {
-    return imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: candidate.path });
+    return imageModelLocation({ repositoryKey: candidate.repositoryKey, hostSource: candidate.hostSource, relativePath: candidate.primaryRelativePath });
   }
   function candidateAt({ location }: { location: BrowserImageModelLocation }): ModelCandidate | undefined {
     return inventory.value.candidates.find(candidate => !candidate.issue && sameImageModelLocation({ left: modelLocation({ candidate }), right: location }));
@@ -1274,21 +1274,21 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     origin = 'manual';
     recipeIntent = undefined;
     overrides.clear();
-    selections.value = {};
-    main.value = candidate && primarySlot({ family: candidate.family }) === primary.slot ? candidate.id : `unavailable:${JSON.stringify(primary.location)}`;
-    if (main.value !== candidate?.id) {
+    componentCandidateKeys.value = {};
+    selectedCandidateKey.value = candidate && primarySlot({ family: candidate.family }) === primary.slot ? candidate.candidateKey : `unavailable:${JSON.stringify(primary.location)}`;
+    if (selectedCandidateKey.value !== candidate?.candidateKey) {
       missing.push(primary.location.path);
     }
     for (const { slot, choice } of savedComponents) {
       overrides.add(slot);
       const requirement = requirements.value.find(item => item.slot === slot);
       switch (choice.kind) {
-      case 'none': selections.value = { ...selections.value, [slot]: '' };
+      case 'none': componentCandidateKeys.value = { ...componentCandidateKeys.value, [slot]: '' };
         break;
       case 'file': {
         const component = candidateAt({ location: choice.location });
         const usable = component && requirement && componentMatch({ candidate: component, requirement }) !== 'incompatible';
-        selections.value = { ...selections.value, [slot]: usable ? component.id : `unavailable:${JSON.stringify(choice.location)}` };
+        componentCandidateKeys.value = { ...componentCandidateKeys.value, [slot]: usable ? component.candidateKey : `unavailable:${JSON.stringify(choice.location)}` };
         if (!usable) {
           missing.push(choice.location.path);
         }
@@ -1307,7 +1307,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       const { location, enabled, strength, ...unhandled } = selection;
       unhandled satisfies Record<PropertyKey, never>;
       const candidate = candidateAt({ location });
-      const file = candidate?.files.find(entry => entry.path === candidate.path)?.file;
+      const file = candidate?.files.find(entry => entry.relativePath === candidate.primaryRelativePath)?.file;
       if (!file) {
         unavailableLoras.push({ index, selection });
         switch (enabled) {
@@ -1321,7 +1321,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         }
         }
       } else {
-        restoredLoras.push({ file, path: candidate!.path, sourceLabel: location.path, enabled: enabled === 'enabled', strength });
+        restoredLoras.push({ file, relativePath: candidate!.primaryRelativePath, locationLabel: location.path, enabled: enabled === 'enabled', strength });
       }
     });
     return { loras: restoredLoras, missing, missingInactive };
@@ -1341,8 +1341,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (!overrides.has(requirement.slot) && !recipeIntent?.files.some(file => file.role === requirement.slot)) {
         continue;
       }
-      const id = selections.value[requirement.slot];
-      const candidate = inventory.value.candidates.find(item => item.id === id);
+      const id = componentCandidateKeys.value[requirement.slot];
+      const candidate = inventory.value.candidates.find(item => item.candidateKey === id);
       if (!candidate && id) {
         return undefined;
       }
@@ -1371,19 +1371,19 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     return { primary: { slot, location: modelLocation({ candidate: selected.value }) }, components: savedComponents, loras: savedLoras };
   }
   function modelForCandidate({ slot, candidate }: { slot: ModelSlot, candidate: ModelCandidate }): Request['models'][number] {
-    const file = candidate.files.find(entry => entry.path === candidate.path);
+    const file = candidate.files.find(entry => entry.relativePath === candidate.primaryRelativePath);
     if (!file) {
       throw new Error('Selected model file disappeared from the inventory');
     }
     // Preserve publication identity and shard membership; never copy weight bytes.
     // Host files can change outside Naidan. Fresh File snapshots deliberately
     // invalidate retained-model identity, even when an old receipt still matches.
-    const sourceId = modelLocation({ candidate }).kind === 'opfs' && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
-      repository: candidate.repositoryId,
-      path: candidate.path,
-      files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
+    const modelFilesReuseKey = modelLocation({ candidate }).kind === 'opfs' && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
+      repository: candidate.repositoryKey,
+      path: candidate.primaryRelativePath,
+      files: candidate.files.map(entry => ({ relativePath: entry.relativePath, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
     }) : undefined;
-    return { slot, ...(sourceId ? { sourceId } : {}), file: file.file, path: candidate.path, companions: candidate.files.filter(entry => entry.path !== candidate.path) };
+    return { slot, ...(modelFilesReuseKey ? { modelFilesReuseKey } : {}), file: file.file, relativePath: candidate.primaryRelativePath, companions: candidate.files.filter(entry => entry.relativePath !== candidate.primaryRelativePath).map(({ relativePath, file }) => ({ relativePath, file })) };
   }
   function benchmarkTargets({ selections: benchmarkSelections }: { selections: Readonly<Record<string, Partial<Record<ModelSlot, string>>>> }): ImageBenchmarkTarget[] {
     return inventory.value.candidates.flatMap(candidate => {
@@ -1391,24 +1391,24 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (!slot) {
         return [];
       }
-      const useSelection = candidate.id === main.value && origin !== 'files';
+      const useSelection = candidate.candidateKey === selectedCandidateKey.value && origin !== 'files';
       const missing: ModelSlot[] = [];
       const members = [{ slot, candidate }];
       const components: ImageComponentChoice[] = [];
-      const benchmarkOverrides = benchmarkSelections[candidate.id];
+      const benchmarkOverrides = benchmarkSelections[candidate.candidateKey];
       for (const requirement of componentRequirements({ family: candidate.family })) {
         // Benchmark overrides are independent per primary model. Empty selections
         // are intentional; never silently replace them with an automatic companion.
-        const id = benchmarkOverrides?.[requirement.slot] ?? (useSelection ? selections.value[requirement.slot] : requirement.required ? defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement }) : undefined);
+        const id = benchmarkOverrides?.[requirement.slot] ?? (useSelection ? componentCandidateKeys.value[requirement.slot] : requirement.required ? defaultCompanion({ main: candidate, candidates: inventory.value.candidates, requirement }) : undefined);
         components.push({
           slot: requirement.slot,
-          selected: id ?? '',
+          selectedCandidateKey: id ?? '',
           required: requirement.required,
-          choices: inventory.value.candidates.filter(item => item.id !== candidate.id && (item.roles.includes(requirement.slot) || item.id === id || componentMatch({ candidate: item, requirement }) !== 'incompatible'))
+          choices: inventory.value.candidates.filter(item => item.candidateKey !== candidate.candidateKey && (item.roles.includes(requirement.slot) || item.candidateKey === id || componentMatch({ candidate: item, requirement }) !== 'incompatible'))
             .map(item => describe({ candidate: item, status: componentMatch({ candidate: item, requirement }) }))
             .sort((a, b) => a.detail.localeCompare(b.detail)),
         });
-        const component = inventory.value.candidates.find(item => item.id === id);
+        const component = inventory.value.candidates.find(item => item.candidateKey === id);
         if (component && componentMatch({ candidate: component, requirement }) !== 'incompatible') {
           members.push({ slot: requirement.slot, candidate: component });
         } else if (requirement.required || id || useSelection && benchmarkOverrides?.[requirement.slot] === undefined
@@ -1416,11 +1416,11 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           missing.push(requirement.slot);
         }
       }
-      const issue = candidate.issue ?? (members.some(item => !item.candidate.files.some(file => file.path === item.candidate.path)) ? 'Missing local file' : undefined);
+      const issue = candidate.issue ?? (members.some(item => !item.candidate.files.some(file => file.relativePath === item.candidate.primaryRelativePath)) ? 'Missing local file' : undefined);
       return [{
-        id: candidate.id,
-        label: candidate.path.split('/').at(-1) ?? candidate.path,
-        detail: `${candidate.repositoryId}/${candidate.path}`,
+        candidateKey: candidate.candidateKey,
+        label: candidate.primaryRelativePath.split('/').at(-1) ?? candidate.primaryRelativePath,
+        detail: `${candidate.repositoryKey}/${candidate.primaryRelativePath}`,
         facts: { family: candidate.family, variant: candidate.variant, evidence: [...candidate.evidence] },
         composition: useSelection || benchmarkOverrides ? 'selected' as const : 'automatic' as const,
         components,
@@ -1428,7 +1428,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
         issue,
         models: !issue && missing.length === 0 ? members.map(item => modelForCandidate(item)) : undefined,
       }];
-    }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    }).sort((a, b) => a.candidateKey < b.candidateKey ? -1 : a.candidateKey > b.candidateKey ? 1 : 0);
   }
 
   function cancelImport(): void {
@@ -1439,8 +1439,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     unavailableLoras = [];
     recipeIntent = undefined;
     origin = 'files';
-    main.value = '';
-    selections.value = {};
+    selectedCandidateKey.value = '';
+    componentCandidateKeys.value = {};
     overrides.clear();
   }
   const pendingTemporaryRoots = new Set<string>();
@@ -1452,25 +1452,25 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     refreshingTemporary = true;
     try {
       while (!disposed && !activeImport.value && pendingTemporaryRoots.size) {
-        const repositoryIds = inventoryReady ? [...pendingTemporaryRoots] : undefined;
+        const repositoryKeys = inventoryReady ? [...pendingTemporaryRoots] : undefined;
         pendingTemporaryRoots.clear();
         cancelScan();
-        await refreshInventory({ completingImport: undefined, preserveSelection: true, repositoryIds });
+        await refreshInventory({ completingImport: undefined, preserveSelection: true, repositoryKeys });
       }
     } finally {
       refreshingTemporary = false;
     }
   }
   const unsubscribeTemporary = temporaryModelFiles.subscribe({
-    listener: ({ rootId }) => {
+    listener: ({ rootPath }) => {
       // A removed/replaced root must stop resolving immediately, not after a slow
       // Worker scan. Keep selection IDs untouched so re-registration can resolve them.
       inventory.value = {
-        candidates: inventory.value.candidates.filter(candidate => candidate.repositoryId !== rootId),
-        issues: inventory.value.issues.filter(issue => issue.repositoryId !== rootId),
+        candidates: inventory.value.candidates.filter(candidate => candidate.repositoryKey !== rootPath),
+        issues: inventory.value.issues.filter(issue => issue.repositoryKey !== rootPath),
       };
       inspectedMissingFiles.clear();
-      pendingTemporaryRoots.add(rootId);
+      pendingTemporaryRoots.add(rootPath);
       cancelScan();
       queueMicrotask(() => {
         void refreshTemporaryRoots();
@@ -1504,7 +1504,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     selectedFacts,
     models,
     savedLoras,
-    main,
+    selectedCandidateKey,
     components,
     scanState,
     scanProgress,

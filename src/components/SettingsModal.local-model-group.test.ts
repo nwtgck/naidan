@@ -9,7 +9,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import SettingsModal from './SettingsModal.vue';
 
 const mocks = vi.hoisted(() => ({
-  listModels: vi.fn(),
+  listModelEntries: vi.fn(),
   createChatGroup: vi.fn(),
   createChatWithoutSelecting: vi.fn(),
   showConfirm: vi.fn(),
@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   loadChat: vi.fn(),
 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { loadChatGroup: mocks.loadChatGroup, loadHierarchy: mocks.loadHierarchy, loadChat: mocks.loadChat } }));
-vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: { listModels: mocks.listModels } }));
+vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: { listModelEntries: mocks.listModelEntries } }));
 vi.mock('@/composables/chat/ui/useChatOrganization', () => ({ useChatOrganization: () => ({ createChatGroup: mocks.createChatGroup }) }));
 vi.mock('@/composables/chat/ui/useChatLifecycle', () => ({ useChatLifecycle: () => ({ createChatWithoutSelecting: mocks.createChatWithoutSelecting }) }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.showConfirm }) }));
@@ -35,8 +35,8 @@ vi.mock('@/utils/vue', async importOriginal => {
 vi.mock('@/composables/useSettings', () => ({ useSettings: vi.fn() }));
 import { useSettings } from '@/composables/useSettings';
 
-const model: LocalModel = { id: 'hf.co/owner/repo:Model-Q4_K_M.gguf', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
-const expectedChatGroupName = 'Model-Q4_K_M';
+const model: LocalModel = { modelId: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
+const expectedChatGroupName = 'repo:Q4_K_M';
 const chatGroupId = toChatGroupId({ raw: 'local-group' });
 const chat: Chat = { id: toChatId({ raw: 'local-chat' }), groupId: chatGroupId, title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
 const settings: Settings = {
@@ -102,11 +102,11 @@ async function render({ dirty }: { dirty: boolean }) {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  mocks.listModels.mockResolvedValue([model]);
+  mocks.listModelEntries.mockResolvedValue([model]);
   mocks.createChatGroup.mockResolvedValue(chatGroupId);
   mocks.createChatWithoutSelecting.mockResolvedValue(chat);
   mocks.showConfirm.mockResolvedValue(true);
-  mocks.loadChatGroup.mockResolvedValue({ id: chatGroupId, name: expectedChatGroupName, endpoint: { type: 'llama_cpp_browser' }, modelId: model.name });
+  mocks.loadChatGroup.mockResolvedValue({ id: chatGroupId, name: expectedChatGroupName, endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId });
   mocks.loadHierarchy.mockResolvedValue({ items: [{ type: 'chat_group', id: chatGroupId, chat_ids: [chat.id] }] });
   mocks.loadChat.mockResolvedValue(chat);
   vi.mocked(useSettings).mockReturnValue({
@@ -132,8 +132,8 @@ it('creates a local-model group and one inheriting chat, then closes Settings th
   await create({ model, signal: controller.signal });
   await flushPromises();
   expect(mocks.showConfirm).not.toHaveBeenCalled();
-  expect(mocks.listModels).toHaveBeenCalledWith({ signal: controller.signal });
-  expect(mocks.createChatGroup).toHaveBeenCalledExactlyOnceWith({ name: expectedChatGroupName, options: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.name } });
+  expect(mocks.listModelEntries).toHaveBeenCalledWith({ signal: controller.signal });
+  expect(mocks.createChatGroup).toHaveBeenCalledExactlyOnceWith({ name: expectedChatGroupName, options: { endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId } });
   expect(mocks.createChatWithoutSelecting).toHaveBeenCalledExactlyOnceWith({ groupId: chatGroupId, modelId: undefined, systemPrompt: undefined });
   expect(push).toHaveBeenCalledExactlyOnceWith('/chat/local-chat');
   expect(router.currentRoute.value.query).toEqual({});
@@ -175,32 +175,32 @@ it('asks before discarding Connection edits and creates nothing when the user ke
   const { modal, create, controller } = await render({ dirty: true });
   await create({ model, signal: controller.signal });
   expect(mocks.showConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Discard Unsaved Changes?', confirmButtonText: 'Discard' }));
-  expect(mocks.listModels).not.toHaveBeenCalled();
+  expect(mocks.listModelEntries).not.toHaveBeenCalled();
   expect(mocks.createChatGroup).not.toHaveBeenCalled();
   expect(modal.props('isOpen')).toBe(true);
 });
 
-it('revalidates the selected id after confirmation and stores the latest model reference', async () => {
+it('rejects a renamed model selection after confirmation', async () => {
   const confirm = Promise.withResolvers<boolean>();
   mocks.showConfirm.mockReturnValue(confirm.promise);
   const { create, controller } = await render({ dirty: true });
   const result = create({ model, signal: controller.signal });
   await flushPromises();
-  expect(mocks.listModels).not.toHaveBeenCalled();
-  const renamed = { ...model, name: 'Renamed local model' };
-  mocks.listModels.mockResolvedValue([renamed]);
+  expect(mocks.listModelEntries).not.toHaveBeenCalled();
+  const renamed = { ...model, modelId: 'hf.co/owner/Renamed-GGUF:Q4_K_M' };
+  mocks.listModelEntries.mockResolvedValue([renamed]);
   confirm.resolve(true);
-  await result;
-  expect(mocks.createChatGroup).toHaveBeenCalledWith({ name: expectedChatGroupName, options: { endpoint: { type: 'llama_cpp_browser' }, modelId: renamed.name } });
+  await expect(result).rejects.toThrow('Local model unavailable');
+  expect(mocks.createChatGroup).not.toHaveBeenCalled();
 });
 
 it.each(['missing', 'listing failed'])('does not create or navigate when the local model is unavailable (%s)', async failure => {
   const { router, create, controller } = await render({ dirty: false });
   const push = vi.spyOn(router, 'push');
   if (failure === 'missing') {
-    mocks.listModels.mockResolvedValue([]);
+    mocks.listModelEntries.mockResolvedValue([]);
   } else {
-    mocks.listModels.mockRejectedValue(new Error('storage unavailable'));
+    mocks.listModelEntries.mockRejectedValue(new Error('storage unavailable'));
   }
   await expect(create({ model, signal: controller.signal })).rejects.toThrow();
   expect(mocks.createChatGroup).not.toHaveBeenCalled();
@@ -287,13 +287,13 @@ it.each(['close', 'route', 'suspend', 'abort', 'unmount'])('does not create afte
   await leaveSettings({ reason, ...context });
   confirm.resolve(true);
   await result;
-  expect(mocks.listModels).not.toHaveBeenCalled();
+  expect(mocks.listModelEntries).not.toHaveBeenCalled();
   expect(mocks.createChatGroup).not.toHaveBeenCalled();
 });
 
 it.each(['close', 'route', 'suspend', 'abort', 'unmount'])('does not create or navigate after delayed listing is invalidated (%s)', async reason => {
   const list = Promise.withResolvers<LocalModel[]>();
-  mocks.listModels.mockReturnValue(list.promise);
+  mocks.listModelEntries.mockReturnValue(list.promise);
   const context = await render({ dirty: false });
   const result = context.create({ model, signal: context.controller.signal });
   await flushPromises();
@@ -328,7 +328,7 @@ it.each(['group', 'chat'])('stops before the next step when the modal closes dur
 
 it('suppresses a late failure after the user navigates away', async () => {
   const list = Promise.withResolvers<LocalModel[]>();
-  mocks.listModels.mockReturnValue(list.promise);
+  mocks.listModelEntries.mockReturnValue(list.promise);
   const { router, create, controller } = await render({ dirty: false });
   const result = create({ model, signal: controller.signal });
   await flushPromises();
@@ -345,7 +345,7 @@ it.each(['missing group', 'changed endpoint', 'changed model', 'missing hierarch
   switch (change) {
   case 'missing group': mocks.loadChatGroup.mockResolvedValue(null);
     break;
-  case 'changed endpoint': mocks.loadChatGroup.mockResolvedValue({ endpoint: { type: 'openai', url: 'https://other.invalid' }, modelId: model.name });
+  case 'changed endpoint': mocks.loadChatGroup.mockResolvedValue({ endpoint: { type: 'openai', url: 'https://other.invalid' }, modelId: model.modelId });
     break;
   case 'changed model': mocks.loadChatGroup.mockResolvedValue({ endpoint: { type: 'llama_cpp_browser' }, modelId: 'another-model' });
     break;

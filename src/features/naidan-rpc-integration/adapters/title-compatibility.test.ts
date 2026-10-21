@@ -82,7 +82,7 @@ function fixture({ generate }: { generate: ReadOnlyInferenceResources['generateC
       provider,
       endpoint: { type: 'naidan_rpc', registrationId },
       messages,
-      model: 'models/local.gguf',
+      model: 'user/local',
       parameters: effective,
       signal: new AbortController().signal,
     }),
@@ -114,7 +114,7 @@ it('never retries regular chat or discloses the provider error text', async () =
   const output = await collectChatGeneration({
     items: provider.chat({
       messages,
-      model: 'models/local.gguf',
+      model: 'user/local',
       parameters,
       tools: undefined,
       readBinaryObject: undefined,

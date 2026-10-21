@@ -217,7 +217,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       }
       await releaseSession({ releaseRuntime: true });
     },
-    listModels: () => guarded({ operation: async () => modelsSchema.parse(await listStoredModels()) }),
+    listModelEntries: () => guarded({ operation: async () => modelsSchema.parse(await listStoredModels()) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callback is a top-level argument.
     importModel: async (request, onProgress) => {
       const { file, generationId } = z.object({ file: z.instanceof(File), generationId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict().parse(request);
@@ -232,7 +232,16 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     removeModel: (request) => guarded({
       operation: async () => {
         const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
-        await invalidateStoredModel({ id: plan.id });
+        switch (plan.target.kind) {
+        case 'model': await invalidateStoredModel({ modelId: plan.target.modelId });
+          break;
+        case 'repository': await releaseSession({ releaseRuntime: false });
+          break;
+        default: {
+          const exhaustive: never = plan.target;
+          throw new Error(String(exhaustive));
+        }
+        }
         return removeStoredModel({ plan });
       },
     }),

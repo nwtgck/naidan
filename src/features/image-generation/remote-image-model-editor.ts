@@ -125,7 +125,7 @@ export function remoteImageModelChoices({ catalog, slot, family }: {
     }
     }
     return [{
-      id: remoteImageFileKey({ file: item.file }),
+      candidateKey: remoteImageFileKey({ file: item.file }),
       label: item.label,
       detail: item.file.location.path,
       evidence: [],

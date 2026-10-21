@@ -98,6 +98,8 @@ The app, runtime, and model files must remain available for offline use.
 
 Audio candidates are detected from bounded local GGUF metadata, not file names.
 Read the backbone architecture and the selected companion's generation metadata.
+The shared llama.cpp resolver supplies both files from the current `modelId`,
+including OPFS, linked host folders, and registered temporary File objects.
 Known Qwen3-TTS and Pocket TTS pairs are suggestions, not compatibility proofs.
 Unknown metadata, incomplete pairs, and future architectures remain selectable
 through the explicit all-models mode. This scan must not download files, load
@@ -118,8 +120,8 @@ Metadata references (pinned llama.cpp, not a downstream model implementation):
 
 
 Candidate ordering is deterministic: a detected model that does not require a
-reference is preferred, followed by smaller stored file size, then stable model
-ID. This is a convenience default, not a quality or peak-memory ranking. Refresh
+reference is preferred, followed by smaller stored file size, then readable
+`modelId`. This is a convenience default, not a quality or peak-memory ranking. Refresh
 must preserve a manual selection and a still-detected automatic selection. A new
 inventory aborts the old scan; late results cannot replace current choices.
 Metadata read/format limits yield an unverified model, never an execution ban.
@@ -129,7 +131,7 @@ Metadata read/format limits yield an unverified model, never an execution ban.
 Each successful completion prepends an audio result without clearing older ones
 on submit, failure, validation errors, or cancellation. Capture settings before
 awaiting inference; never read current form values when a result arrives. Keep
-text, language, model identity/name, and requested numeric/runtime parameters.
+text, language, the submitted `modelId`, and requested numeric/runtime parameters.
 Do not store the reference audio Blob or its file bytes in a history entry.
 Requested profile/context are not necessarily the resolved native profile/context;
 a random seed sentinel is not the actual sampled seed. This is an inspection
@@ -169,10 +171,14 @@ off; ambiguous/missing companions fail instead of downloading only the talker.
 File sizes are rounded editorial hints from the repositories, not identities.
 Audio hides the text-catalog memory filter, which is not a TTS runtime guarantee.
 
-Audio choices use the shared `ModelSelector` with an explicit list of stable IDs
-and separate display labels. Searching considers both. Refresh explicitly reloads
-the local inventory; it must not fetch an unrelated chat provider. Candidate
-filtering, the all-models escape hatch, and user-selection preservation are unchanged.
+Audio choices use the shared `ModelSelector` with the readable `modelId` as both
+the selection value and displayed text. Detection status is shown separately.
+The same `modelId` is inspected, submitted to generation, and captured in history;
+file paths and host registration IDs are resolved separately. Refresh explicitly
+reloads the local inventory; it must not fetch an unrelated chat provider.
+Candidate filtering, the all-models escape hatch, and user-selection preservation
+are unchanged. A temporary reference denotes the current registration and can
+become unresolved after removal or page reload.
 
 ## Recovery after runtime errors
 

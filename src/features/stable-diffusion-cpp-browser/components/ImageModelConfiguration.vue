@@ -12,9 +12,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div tw-class="min-w-0 max-w-full space-y-4">
     <div v-if="components.length" tw-class="min-w-0 space-y-3">
       <h3 tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.stableDiffusionCppBrowser__components_detected() }}</h3>
-      <ImageModelPicker :active="active" v-for="component in components" :key="component.slot" :model-value="component.selected" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="disabled || importing || view.scanState.value === 'scanning'" @update:model-value="view.chooseComponent({ slot: component.slot, id: $event })" :data-testid="'image-component-' + component.slot" />
+      <ImageModelPicker :active="active" v-for="component in components" :key="component.slot" :model-value="component.selectedCandidateKey" :choices="component.choices" :required="component.required" :label="componentLabel({ slot: component.slot })" :disabled="disabled || importing || view.scanState.value === 'scanning'" @update:model-value="view.chooseComponent({ slot: component.slot, candidateKey: $event })" :data-testid="'image-component-' + component.slot" />
     </div>
-    <p v-if="view.main.value && !view.ready.value && !importing && view.scanState.value !== 'scanning'" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__incomplete_components() }}</p>
+    <p v-if="view.selectedCandidateKey.value && !view.ready.value && !importing && view.scanState.value !== 'scanning'" role="status" tw-class="text-xs text-amber-700 dark:text-amber-300">{{ lazyStrings.stableDiffusionCppBrowser__incomplete_components() }}</p>
     <ImageSettingsSection embedded :title="lazyStrings.llamaCppBrowserDownloads__details()" :summary="undefined">
       <label tw-class="min-h-10 cursor-pointer flex items-center gap-2 py-2 text-xs font-medium text-gray-700 dark:text-gray-300">
         <span tw-class="relative inline-flex shrink-0 items-center">

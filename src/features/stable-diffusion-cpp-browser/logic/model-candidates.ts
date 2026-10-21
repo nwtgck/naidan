@@ -4,6 +4,7 @@ import type { InspectionReport } from '@/features/stable-diffusion-cpp-browser/i
 import type { ModelSlot } from '@/features/stable-diffusion-cpp-browser/types';
 import { inspectWeightFile, readModelJson, type TensorInfo, type WeightMetadata } from './model-metadata';
 import { relativeCompanionPath } from './model-path';
+import { parseGgufSplitPath } from '@/utils/gguf-file-paths';
 import { hasLoraTensors } from './lora-metadata';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
@@ -12,13 +13,13 @@ import type { ImageFamily, ComponentClass } from '@/features/image-generation/mo
 export { componentRequirements, componentMatch } from '@/features/image-generation/model-configuration';
 export type { ImageFamily, ComponentClass } from '@/features/image-generation/model-configuration';
 export type ModelCandidate = {
-  id: string; repositoryId: string; path: string; files: RepositoryFile[];
+  candidateKey: string; repositoryKey: string; primaryRelativePath: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
   size: number; family: ImageFamily; classes: ComponentClass[]; roles: ModelSlot[];
   evidence: string[]; issue: string | undefined; turboHint: boolean; variant: 'turbo' | 'base' | 'distilled' | 'unknown';
   hostSource?: HostImageRepositorySource;
 };
-export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
+export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryKey: string, relativePath: string, message: string }[] };
 const configSchema = z.object({
   model_type: z.string().optional(),
   _class_name: z.string().optional(),
@@ -197,16 +198,16 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   let completed = 0;
   for (const repository of repositories) {
     for (const issue of repository.issues ?? []) {
-      issues.push({ repositoryId: repository.id, ...issue });
+      issues.push({ repositoryKey: repository.repositoryKey, ...issue });
     }
     const inspected = new Map<string, WeightMetadata>();
-    const fileMap = new Map(repository.files.map(file => [file.path, file]));
+    const fileMap = new Map(repository.files.map(file => [file.relativePath, file]));
     const configs = new Map<string, z.infer<typeof configSchema>>();
     const indices: { path: string, map: Record<string, string> }[] = [];
     const failures = new Map<string, string>();
     for (const entry of repository.files) {
       signal?.throwIfAborted();
-      const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, path: `${repository.id}/${entry.path}`.slice(0, 2048) } });
+      const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, entryPath: `${repository.repositoryKey}/${entry.relativePath}`.slice(0, 2048) } });
       progress();
       completed++;
       // Report real I/O progress without reading any additional bytes.
@@ -223,35 +224,35 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           };
         },
       };
-      if (/\.json$/i.test(entry.path)) {
-        if (!/(?:^|\/)(?:config|model_index)\.json$|\.index\.json$/i.test(entry.path)) {
+      if (/\.json$/i.test(entry.relativePath)) {
+        if (!/(?:^|\/)(?:config|model_index)\.json$|\.index\.json$/i.test(entry.relativePath)) {
           continue;
         }
         try {
           const data = await readModelJson({ file, signal });
-          if (/\.index\.json$/i.test(entry.path)) {
-            indices.push({ path: entry.path, map: indexSchema.parse(data).weight_map });
+          if (/\.index\.json$/i.test(entry.relativePath)) {
+            indices.push({ path: entry.relativePath, map: indexSchema.parse(data).weight_map });
           } else {
-            configs.set(entry.path, configSchema.parse(data));
+            configs.set(entry.relativePath, configSchema.parse(data));
           }
         } catch (error) {
           signal?.throwIfAborted();
-          failures.set(entry.path, error instanceof Error ? error.message : String(error));
+          failures.set(entry.relativePath, error instanceof Error ? error.message : String(error));
         }
         continue;
       }
-      if (/\.(md|txt|png|jpg|jpeg|webp|gitattributes|gitignore)$/i.test(entry.path) || entry.path.startsWith('.')) {
+      if (/\.(md|txt|png|jpg|jpeg|webp|gitattributes|gitignore)$/i.test(entry.relativePath) || entry.relativePath.startsWith('.')) {
         continue;
       }
       const inspection = await inspectWeightFile({ file, signal });
       switch (inspection.status) {
-      case 'weights': inspected.set(entry.path, inspection.value);
+      case 'weights': inspected.set(entry.relativePath, inspection.value);
         break;
-      case 'invalid': case 'lfs-pointer': failures.set(entry.path, inspection.reason);
+      case 'invalid': case 'lfs-pointer': failures.set(entry.relativePath, inspection.reason);
         break;
       case 'unknown':
-        if (/\.(gguf|safetensors|sft)$/i.test(entry.path)) {
-          failures.set(entry.path, inspection.reason);
+        if (/\.(gguf|safetensors|sft)$/i.test(entry.relativePath)) {
+          failures.set(entry.relativePath, inspection.reason);
         }
         break;
       default: {
@@ -347,9 +348,9 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
         }
       }
       candidates.push({
-        id: JSON.stringify([repository.id, path]),
-        repositoryId: repository.id,
-        path,
+        candidateKey: JSON.stringify([repository.repositoryKey, path]),
+        repositoryKey: repository.repositoryKey,
+        primaryRelativePath: path,
         files,
         format,
         size: files.reduce((n, f) => n + f.file.size, 0),
@@ -382,9 +383,9 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       if (consumed.has(path)) {
         continue;
       }
-      const match = /^(.*)-([0-9]{5})-of-([0-9]{5})(\.gguf)$/i.exec(path);
-      if (data.format === 'gguf' && (data.split && data.split.count > 1 || match && Number(match[3]) > 1)) {
-        const key = match ? `${match[1]}-of-${match[3]}${match[4]}` : path;
+      const match = parseGgufSplitPath({ relativePath: path });
+      if (data.format === 'gguf' && (data.split && data.split.count > 1 || match && match.count > 1)) {
+        const key = match ? `${match.stem}-of-${String(match.count).padStart(5, '0')}${match.extension}` : path;
         const group = groups.get(key) ?? [];
         group.push(path);
         groups.set(key, group);
@@ -396,16 +397,16 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       group.sort();
       const first = group[0]!;
       const data = inspected.get(first)!;
-      const match = /^(.*)-([0-9]{5})-of-([0-9]{5})(\.gguf)$/i.exec(first);
+      const match = parseGgufSplitPath({ relativePath: first });
       let issue: string | undefined;
       const count = data.split?.count;
-      if (!match || count === undefined || count !== Number(match[3]) || count !== group.length) {
+      if (!match || count === undefined || count !== match.count || count !== group.length) {
         issue = 'Incomplete GGUF shard group';
       }
       let total = 0;
       for (let i = 0; i < group.length; i++) {
         const value = inspected.get(group[i]!)!;
-        if (!match || group[i] !== `${match[1]}-${String(i + 1).padStart(5, '0')}-of-${match[3]}${match[4]}` || !value.split || value.split.index !== i || value.split.count !== count || value.split.tensors !== data.split?.tensors) {
+        if (!match || group[i] !== `${match.stem}-${String(i + 1).padStart(5, '0')}-of-${String(match.count).padStart(5, '0')}${match.extension}` || !value.split || value.split.index !== i || value.split.count !== count || value.split.tensors !== data.split?.tensors) {
           issue = 'GGUF shard names or split metadata disagree';
         }
         total += value.tensors.length;
@@ -416,24 +417,24 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       add({ path: first, members: group, format: 'gguf', issue });
     }
     for (const [path, message] of failures) {
-      issues.push({ repositoryId: repository.id, path, message });
+      issues.push({ repositoryKey: repository.repositoryKey, relativePath: path, message });
     }
   }
   for (const candidate of candidates) {
     if (candidate.issue) {
-      issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
+      issues.push({ repositoryKey: candidate.repositoryKey, relativePath: candidate.primaryRelativePath, message: candidate.issue });
     }
   }
   signal?.throwIfAborted();
-  onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } });
+  onProgress?.({ progress: { phase: 'headers', completed: total, total, entryPath: '' } });
   return { candidates, issues };
 }
 
 export function defaultCompanion({ main, candidates, requirement }: { main: ModelCandidate, candidates: ModelCandidate[], requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): string | undefined {
-  const entries = candidates.filter(candidate => candidate.id !== main.id && componentMatch({ candidate, requirement }) === 'matching');
+  const entries = candidates.filter(candidate => candidate.candidateKey !== main.candidateKey && componentMatch({ candidate, requirement }) === 'matching');
   // Smaller files are a footprint preference, not a quality or memory guarantee.
-  entries.sort((a, b) => Number(b.repositoryId === main.repositoryId) - Number(a.repositoryId === main.repositoryId) || a.size - b.size || a.id.localeCompare(b.id));
-  return entries[0]?.id;
+  entries.sort((a, b) => Number(b.repositoryKey === main.repositoryKey) - Number(a.repositoryKey === main.repositoryKey) || a.size - b.size || a.candidateKey.localeCompare(b.candidateKey));
+  return entries[0]?.candidateKey;
 }
 
 export const TEST_ONLY = {

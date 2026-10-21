@@ -163,10 +163,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
                 <p role="status">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="library.scanProgress.value?.total">{{ library.scanProgress.value.completed }} / {{ library.scanProgress.value.total }}</span></p>
                 <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="rounded-lg px-2 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.SHARED__cancel() }}</button>
               </div>
-              <p v-if="library.scanProgress.value?.path" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.path }}</p>
+              <p v-if="library.scanProgress.value?.entryPath" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.entryPath }}</p>
             </div>
             <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
-              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.main.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ id: $event })" data-testid="image-saved-main-model" />
+              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.selectedCandidateKey.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ candidateKey: $event })" data-testid="image-saved-main-model" />
             </ImageSettingsSection>
             <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
               <div tw-class="min-w-0 space-y-4">
