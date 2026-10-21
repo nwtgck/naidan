@@ -83,3 +83,17 @@ it.each(['error', 'messageerror'])('settles and retires the Worker after %s', as
   await expect(task).rejects.toThrow('inspection Worker failed');
   expect(mocks.terminate).toHaveBeenCalledOnce();
 });
+
+it('passes temporary repositories separately from persisted inventory and keeps Files out of transfer lists', async () => {
+  const file = new File(['model bytes'], 'model.gguf');
+  const temporaryRepositories = [{ id: 'temp/shared', name: 'shared', files: [{ path: file.name, file }] }];
+  mocks.inspect.mockResolvedValueOnce({ candidates: [], issues: [] });
+  await inspectImageInventory({ signal: new AbortController().signal, onProgress: () => {}, repositoryIds: ['temp/shared'], temporaryRepositories });
+  const args = mocks.inspect.mock.calls[0]!;
+  expect(args[0]).toBeUndefined();
+  expect(args[3]).toEqual(['temp/shared']);
+  expect(args[4]).toBe(temporaryRepositories);
+  expect(args[4][0].files[0].file).toBe(file);
+  expect(mocks.terminate).toHaveBeenCalledOnce();
+  expect(mocks.release).toHaveBeenCalledOnce();
+});

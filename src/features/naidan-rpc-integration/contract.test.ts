@@ -239,3 +239,12 @@ it('does not apply temporary-selector literal-percent rules to ordinary RPC file
   expect(relativeModelPathSchema.safeParse('a/%2e%2e/b').success).toBe(false);
   expect(relativeModelPathSchema.safeParse('a/%ZZ/b').success).toBe(false);
 });
+
+it.each(['temp/shared/owner/repository/subdir/model.gguf', 'temp/shared/dir/%ZZ.safetensors', 'temp/shared/..%2Fmodel.gguf'])('accepts a temporary image locator without URL decoding: %s', path => {
+  const selection = { primary: { slot: 'diffusion', file: { location: { kind: 'temp', path } } }, components: [], loras: [] };
+  expect(imageModelSelectionSchema.parse(selection)).toEqual(selection);
+});
+
+it.each(['temp/../model.gguf', 'temp/root/../model.gguf', 'temp/root//model.gguf', 'temp/root/./file', 'temp/root', '/temp/root/file', 'models/user/model.gguf'])('rejects malformed temporary image locations: %s', path => {
+  expect(imageModelSelectionSchema.safeParse({ primary: { slot: 'model', file: { location: { kind: 'temp', path } } }, components: [], loras: [] }).success).toBe(false);
+});

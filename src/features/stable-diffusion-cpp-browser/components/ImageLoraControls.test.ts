@@ -55,7 +55,12 @@ it('rejects an entire over-limit selection without silently truncating it', asyn
   expect(wrapper!.get('[data-testid="image-lora-file-error"]').text()).toContain('16');
 });
 
-it.each([new File(['not an adapter'], 'model.json'), new File([], 'empty.safetensors'), new File(['1234567'], 'short.gguf')])('rejects invalid file input %s', async file => {
+it.each([
+  { name: 'unsupported extension', content: 'not an adapter', filename: 'model.json' },
+  { name: 'empty safetensors', content: '', filename: 'empty.safetensors' },
+  { name: 'short GGUF', content: '1234567', filename: 'short.gguf' },
+])('rejects invalid file input $name', async ({ content, filename }) => {
+  const file = new File([content], filename);
   await choose({ files: [file] });
   expect(selections).toEqual([]);
   expect(wrapper!.find('[data-testid="image-lora-file-error"]').exists()).toBe(true);

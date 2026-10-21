@@ -16,6 +16,22 @@ import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED_
 import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/ko';
 import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/ko';
 import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/ko';
+import { SHARED__model_folders_choose_folder_above_owner } from '@/strings/messages/SHARED__model_folders_choose_folder_above_owner/ko';
+import { SHARED__model_folders_choose_one_parent_folder_not_a_file } from '@/strings/messages/SHARED__model_folders_choose_one_parent_folder_not_a_file/ko';
+import { SHARED__model_folders_folder_access } from '@/strings/messages/SHARED__model_folders_folder_access/ko';
+import { SHARED__model_folders_link_folder_to_download } from '@/strings/messages/SHARED__model_folders_link_folder_to_download/ko';
+import { SHARED__model_folders_linked_folders_unavailable } from '@/strings/messages/SHARED__model_folders_linked_folders_unavailable/ko';
+import { SHARED__model_folders_reconnect } from '@/strings/messages/SHARED__model_folders_reconnect/ko';
+import { SHARED__model_folders_unlink } from '@/strings/messages/SHARED__model_folders_unlink/ko';
+import { SHARED__model_folders_unlink_keeps_files } from '@/strings/messages/SHARED__model_folders_unlink_keeps_files/ko';
+import { SHARED__model_folders_use_the_folder_button_to_link_this_folder } from '@/strings/messages/SHARED__model_folders_use_the_folder_button_to_link_this_folder/ko';
+import { SHARED__model_import_how_to_use_files } from '@/strings/messages/SHARED__model_import_how_to_use_files/ko';
+import { SHARED__model_import_link_folder } from '@/strings/messages/SHARED__model_import_link_folder/ko';
+import { SHARED__model_import_save_for_after_reload } from '@/strings/messages/SHARED__model_import_save_for_after_reload/ko';
+import { SHARED__model_import_save_in_browser } from '@/strings/messages/SHARED__model_import_save_in_browser/ko';
+import { SHARED__model_import_temporary_until_reload } from '@/strings/messages/SHARED__model_import_temporary_until_reload/ko';
+import { SHARED__model_import_unavailable } from '@/strings/messages/SHARED__model_import_unavailable/ko';
+import { SHARED__model_import_use_temporarily } from '@/strings/messages/SHARED__model_import_use_temporarily/ko';
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/ko';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/ko';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/ko';
@@ -887,6 +903,8 @@ import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/message
 import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/ko';
 import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/ko';
 import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/ko';
+import { ImageRepositoryImport__choose_files } from '@/strings/messages/ImageRepositoryImport__choose_files/ko';
+import { ImageRepositoryImport__drop_help } from '@/strings/messages/ImageRepositoryImport__drop_help/ko';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/ko';
 import { ImportExportModal__analyzing_file } from '@/strings/messages/ImportExportModal__analyzing_file/ko';
 import { ImportExportModal__append_keeps_current_data } from '@/strings/messages/ImportExportModal__append_keeps_current_data/ko';
@@ -953,19 +971,10 @@ import { LanguageSelector__language } from '@/strings/messages/LanguageSelector_
 import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/ko';
 import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/ko';
 import { LlamaCppBrowserDownloadDestination__browser_storage } from '@/strings/messages/LlamaCppBrowserDownloadDestination__browser_storage/ko';
-import { LlamaCppBrowserDownloadDestination__choose_folder_above_owner } from '@/strings/messages/LlamaCppBrowserDownloadDestination__choose_folder_above_owner/ko';
 import { LlamaCppBrowserDownloadDestination__download_to } from '@/strings/messages/LlamaCppBrowserDownloadDestination__download_to/ko';
-import { LlamaCppBrowserDownloadDestination__folder_access } from '@/strings/messages/LlamaCppBrowserDownloadDestination__folder_access/ko';
-import { LlamaCppBrowserDownloadDestination__link_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder/ko';
-import { LlamaCppBrowserDownloadDestination__link_folder_to_download } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder_to_download/ko';
 import { LlamaCppBrowserDownloadDestination__linked_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folder/ko';
-import { LlamaCppBrowserDownloadDestination__linked_folders_unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folders_unavailable/ko';
 import { LlamaCppBrowserDownloadDestination__not_linked } from '@/strings/messages/LlamaCppBrowserDownloadDestination__not_linked/ko';
-import { LlamaCppBrowserDownloadDestination__reconnect } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect/ko';
 import { LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings/ko';
-import { LlamaCppBrowserDownloadDestination__unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unavailable/ko';
-import { LlamaCppBrowserDownloadDestination__unlink } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink/ko';
-import { LlamaCppBrowserDownloadDestination__unlink_keeps_files } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink_keeps_files/ko';
 import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/ko';
 import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/ko';
 import { LlamaCppBrowserDownloadSources__current_file } from '@/strings/messages/LlamaCppBrowserDownloadSources__current_file/ko';
@@ -1054,8 +1063,6 @@ import { LlamaCppBrowserHuggingFaceSearch__show_trending_models } from '@/string
 import { LlamaCppBrowserHuggingFaceSearch__task } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__task/ko';
 import { LlamaCppBrowserHuggingFaceSearch__up_to_parameters } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__up_to_parameters/ko';
 import { LlamaCppBrowserHuggingFaceSearch__updated } from '@/strings/messages/LlamaCppBrowserHuggingFaceSearch__updated/ko';
-import { LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file } from '@/strings/messages/LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file/ko';
-import { LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder } from '@/strings/messages/LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder/ko';
 import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserManager__could_not_create_or_open_chat_group/ko';
 import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/ko';
 import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/ko';
@@ -1068,11 +1075,6 @@ import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } 
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/ko';
 import { LlamaCppBrowserModelAction__model_actions } from '@/strings/messages/LlamaCppBrowserModelAction__model_actions/ko';
 import { LlamaCppBrowserModelAction__set_this_model_as_the_global_default } from '@/strings/messages/LlamaCppBrowserModelAction__set_this_model_as_the_global_default/ko';
-import { LlamaCppBrowserModelImport__how_to_use_model_files } from '@/strings/messages/LlamaCppBrowserModelImport__how_to_use_model_files/ko';
-import { LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload } from '@/strings/messages/LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload/ko';
-import { LlamaCppBrowserModelImport__save_in_browser } from '@/strings/messages/LlamaCppBrowserModelImport__save_in_browser/ko';
-import { LlamaCppBrowserModelImport__temporary_files_are_available_until_reload } from '@/strings/messages/LlamaCppBrowserModelImport__temporary_files_are_available_until_reload/ko';
-import { LlamaCppBrowserModelImport__use_temporarily } from '@/strings/messages/LlamaCppBrowserModelImport__use_temporarily/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/ko';
 import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/ko';
@@ -1725,6 +1727,9 @@ import { StorageTab__switch_and_lose_attachments } from '@/strings/messages/Stor
 import { StorageTab__switch_and_migrate } from '@/strings/messages/StorageTab__switch_and_migrate/ko';
 import { StorageTab__understand } from '@/strings/messages/StorageTab__understand/ko';
 import { StorageTab__unsupported } from '@/strings/messages/StorageTab__unsupported/ko';
+import { TemporaryModelFolders__help } from '@/strings/messages/TemporaryModelFolders__help/ko';
+import { TemporaryModelFolders__title } from '@/strings/messages/TemporaryModelFolders__title/ko';
+import { TemporaryModelFolders__unregister } from '@/strings/messages/TemporaryModelFolders__unregister/ko';
 import { ThemeToggle__dark_mode } from '@/strings/messages/ThemeToggle__dark_mode/ko';
 import { ThemeToggle__light_mode } from '@/strings/messages/ThemeToggle__light_mode/ko';
 import { ThemeToggle__system_mode } from '@/strings/messages/ThemeToggle__system_mode/ko';
@@ -2936,6 +2941,22 @@ export const catalog = {
   SHARED__expose_chat_discovery_paths,
   SHARED__generated_image,
   SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
+  SHARED__model_folders_choose_folder_above_owner,
+  SHARED__model_folders_choose_one_parent_folder_not_a_file,
+  SHARED__model_folders_folder_access,
+  SHARED__model_folders_link_folder_to_download,
+  SHARED__model_folders_linked_folders_unavailable,
+  SHARED__model_folders_reconnect,
+  SHARED__model_folders_unlink,
+  SHARED__model_folders_unlink_keeps_files,
+  SHARED__model_folders_use_the_folder_button_to_link_this_folder,
+  SHARED__model_import_how_to_use_files,
+  SHARED__model_import_link_folder,
+  SHARED__model_import_save_for_after_reload,
+  SHARED__model_import_save_in_browser,
+  SHARED__model_import_temporary_until_reload,
+  SHARED__model_import_unavailable,
+  SHARED__model_import_use_temporarily,
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
@@ -3807,6 +3828,8 @@ export const catalog = {
   ImageRecoveredOutputs__recovery_explanation,
   ImageRecoveredOutputs__unconfirmed,
   ImageRecoveredOutputs__unconfirmed_images,
+  ImageRepositoryImport__choose_files,
+  ImageRepositoryImport__drop_help,
   ImportExportModal__add_new,
   ImportExportModal__analyzing_file,
   ImportExportModal__append_keeps_current_data,
@@ -3873,19 +3896,10 @@ export const catalog = {
   LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
   LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
   LlamaCppBrowserDownloadDestination__browser_storage,
-  LlamaCppBrowserDownloadDestination__choose_folder_above_owner,
   LlamaCppBrowserDownloadDestination__download_to,
-  LlamaCppBrowserDownloadDestination__folder_access,
-  LlamaCppBrowserDownloadDestination__link_folder,
-  LlamaCppBrowserDownloadDestination__link_folder_to_download,
   LlamaCppBrowserDownloadDestination__linked_folder,
-  LlamaCppBrowserDownloadDestination__linked_folders_unavailable,
   LlamaCppBrowserDownloadDestination__not_linked,
-  LlamaCppBrowserDownloadDestination__reconnect,
   LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings,
-  LlamaCppBrowserDownloadDestination__unavailable,
-  LlamaCppBrowserDownloadDestination__unlink,
-  LlamaCppBrowserDownloadDestination__unlink_keeps_files,
   LlamaCppBrowserDownloadSources__copy_failed,
   LlamaCppBrowserDownloadSources__copy_url,
   LlamaCppBrowserDownloadSources__current_file,
@@ -3974,8 +3988,6 @@ export const catalog = {
   LlamaCppBrowserHuggingFaceSearch__task,
   LlamaCppBrowserHuggingFaceSearch__up_to_parameters,
   LlamaCppBrowserHuggingFaceSearch__updated,
-  LlamaCppBrowserLinkedDirectories__choose_one_parent_folder_not_a_file,
-  LlamaCppBrowserLinkedDirectories__use_the_folder_button_to_link_this_folder,
   LlamaCppBrowserManager__could_not_create_or_open_chat_group,
   LlamaCppBrowserManager__details,
   LlamaCppBrowserManager__file,
@@ -3988,11 +4000,6 @@ export const catalog = {
   LlamaCppBrowserModelAction__create_chat_group,
   LlamaCppBrowserModelAction__model_actions,
   LlamaCppBrowserModelAction__set_this_model_as_the_global_default,
-  LlamaCppBrowserModelImport__how_to_use_model_files,
-  LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload,
-  LlamaCppBrowserModelImport__save_in_browser,
-  LlamaCppBrowserModelImport__temporary_files_are_available_until_reload,
-  LlamaCppBrowserModelImport__use_temporarily,
   LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
   LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
   LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,
@@ -4645,6 +4652,9 @@ export const catalog = {
   StorageTab__switch_and_migrate,
   StorageTab__understand,
   StorageTab__unsupported,
+  TemporaryModelFolders__help,
+  TemporaryModelFolders__title,
+  TemporaryModelFolders__unregister,
   ThemeToggle__dark_mode,
   ThemeToggle__light_mode,
   ThemeToggle__system_mode,

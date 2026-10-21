@@ -1,1 +1,0 @@
-export const LlamaCppBrowserDownloadDestination__choose_folder_above_owner = (): string => 'Escolha a pasta que contém as pastas dos proprietários do Hugging Face. Mantenha os caminhos dos arquivos de cada repositório.';

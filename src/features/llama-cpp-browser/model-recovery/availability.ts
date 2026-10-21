@@ -12,7 +12,7 @@ export type ModelAvailability = 'available' | 'missing' | 'unreadable';
 export async function inspectLocalModel({ modelId }: { modelId: string }): Promise<ModelAvailability> {
   try {
     if (modelId.startsWith('temp/')) {
-      temporaryModels.source({ name: modelId });
+      await temporaryModels.resolveSource({ name: modelId, signal: undefined });
     } else {
       await storedModelDirectory({ name: await resolveStoredModelName({ name: modelId }) });
     }

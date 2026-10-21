@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TemporaryModelFolders from '@/components/TemporaryModelFolders.vue';
 import { onUnmounted, ref, useId, watch } from 'vue';
 import { AlertCircleIcon, FileUpIcon, FolderOpenIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -6,7 +7,7 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type ErrorCode, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
-import LlamaCppBrowserLinkedDirectories from './LlamaCppBrowserLinkedDirectories.vue';
+import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
 import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
 
 const props = defineProps<{ disabled: boolean }>();
@@ -144,7 +145,7 @@ async function dropFiles({ event }: { event: DragEvent }): Promise<void> {
   if (!transfer) {
     return;
   }
-  await importFiles({ collect: () => droppedModels({ transfer }) });
+  await importFiles({ collect: () => droppedModels({ transfer, signal: active.value?.signal }) });
 }
 
 function cancel(): void {
@@ -164,14 +165,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <FileUpIcon tw-class="w-5 h-5 text-blue-500" />
         <span tw-class="text-sm font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
       </legend>
-      <div role="group" :aria-label="lazyStrings.LlamaCppBrowserModelImport__how_to_use_model_files()" tw-class="grid grid-cols-1 sm:grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-        <button type="button" :aria-pressed="mode === 'opfs'" data-testid="llama-import-mode-opfs" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'opfs' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'opfs'">{{ lazyStrings.LlamaCppBrowserModelImport__save_in_browser() }}</button>
-        <button type="button" :aria-pressed="mode === 'host'" :aria-describedby="!linkSupported ? `${id}-link-unavailable` : undefined" data-testid="llama-import-mode-host" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'host' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300', !linkSupported ? 'opacity-50' : 'opacity-100']" @click="mode = 'host'">{{ lazyStrings.LlamaCppBrowserDownloadDestination__link_folder() }}<span v-if="!linkSupported" :id="`${id}-link-unavailable`" tw-class="block text-[10px] font-normal">{{ lazyStrings.LlamaCppBrowserDownloadDestination__unavailable() }}</span></button>
-        <button type="button" :aria-pressed="mode === 'temp'" data-testid="llama-import-mode-temp" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'temp' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'temp'">{{ lazyStrings.LlamaCppBrowserModelImport__use_temporarily() }}</button>
+      <div role="group" :aria-label="lazyStrings.SHARED__model_import_how_to_use_files()" tw-class="grid grid-cols-1 sm:grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
+        <button type="button" :aria-pressed="mode === 'opfs'" data-testid="llama-import-mode-opfs" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'opfs' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'opfs'">{{ lazyStrings.SHARED__model_import_save_in_browser() }}</button>
+        <button type="button" :aria-pressed="mode === 'host'" :aria-describedby="!linkSupported ? `${id}-link-unavailable` : undefined" data-testid="llama-import-mode-host" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'host' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300', !linkSupported ? 'opacity-50' : 'opacity-100']" @click="mode = 'host'">{{ lazyStrings.SHARED__model_import_link_folder() }}<span v-if="!linkSupported" :id="`${id}-link-unavailable`" tw-class="block text-[10px] font-normal">{{ lazyStrings.SHARED__model_import_unavailable() }}</span></button>
+        <button type="button" :aria-pressed="mode === 'temp'" data-testid="llama-import-mode-temp" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'temp' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'temp'">{{ lazyStrings.SHARED__model_import_use_temporarily() }}</button>
       </div>
-      <LlamaCppBrowserLinkedDirectories v-if="mode === 'host'" :view="linked.view" :disabled="disabled || active !== undefined" />
+      <LinkedModelDirectories v-if="mode === 'host'" :view="linked.view" :disabled="disabled || active !== undefined" />
       <p v-if="mode === 'host' && linkFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
-      <p v-if="mode !== 'host'" data-testid="llama-import-mode-description" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ mode === 'temp' ? lazyStrings.LlamaCppBrowserModelImport__temporary_files_are_available_until_reload() : lazyStrings.LlamaCppBrowserModelImport__save_a_copy_for_use_after_reload() }}</p>
+      <p v-if="mode !== 'host'" data-testid="llama-import-mode-description" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ mode === 'temp' ? lazyStrings.SHARED__model_import_temporary_until_reload() : lazyStrings.SHARED__model_import_save_for_after_reload() }}</p>
       <div v-if="mode !== 'host'"
            data-testid="llama-cpp-browser-drop-zone"
            :tw-class="['rounded-2xl border-2 border-dashed p-4 text-center transition-colors', dragDepth > 0 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30']"
@@ -193,6 +194,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
     </fieldset>
+    <TemporaryModelFolders v-if="mode === 'temp'" :disabled="disabled || active !== undefined" />
     <div v-if="active" tw-class="rounded-2xl border border-blue-100 dark:border-blue-900/30 p-4 space-y-3">
       <LlamaCppBrowserLoadingIndicator scope="import" />
       <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>

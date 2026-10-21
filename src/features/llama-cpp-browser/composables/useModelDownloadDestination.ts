@@ -1,3 +1,5 @@
+import { hostModelDirectoryLabel } from '@/logic/host-model-directories';
+export { hostModelDirectoryLabel } from '@/logic/host-model-directories';
 import { validateLinkedModelDirectory } from '@/features/llama-cpp-browser/runtime/linked-directory-input';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { LlamaCppBrowserSettings } from '@/01-models/types';
@@ -23,9 +25,6 @@ type DestinationIntent = {
 const destinationIntent = shallowRef<DestinationIntent>();
 let destinationRevision = 0;
 
-export function hostModelDirectoryLabel({ id, name, entries }: { id: string, name: string, entries: readonly { id: string, name: string }[] }): string {
-  return entries.some(entry => entry.name === name && entry.id !== id) ? `${name} (${id})` : name;
-}
 
 /** Both LM download entry points share one persisted choice; image generation remains independent. */
 export function useModelDownloadDestination({ blocked, changed }: {

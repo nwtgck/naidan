@@ -6,6 +6,7 @@ export type ImageGenerationModelFile = {
   size: number,
   lastModified: number,
 } & (
+  | { type: 'temp', path: string }
   | { type: 'opfs', path: string }
   | { type: 'host', directoryId: HostModelDirectoryId, path: string }
   | { type: 'file' }
@@ -14,7 +15,7 @@ export type ImageGenerationModelFile = {
 /** Remote model references belong to the provider, never to this browser's
  * model library. These shared data types do not authorize filesystem access. */
 export type RemoteImageModelFile = {
-  location: { kind: 'opfs', path: string } | { kind: 'host', directoryId: string, path: string },
+  location: { kind: 'temp', path: string } | { kind: 'opfs', path: string } | { kind: 'host', directoryId: string, path: string },
   expected?: { size: number, lastModified: number },
 };
 export type RemoteImageModelSelection = {

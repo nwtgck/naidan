@@ -491,6 +491,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   async listModels({ signal }) {
     signal?.throwIfAborted();
+    await temporaryModels.ensure({ signal });
     const temporary = temporaryModels.list();
     // The page-local inventory also works when browser persistence is unavailable.
     const directories = await storageService.loadHostModelDirectories().catch(error => {

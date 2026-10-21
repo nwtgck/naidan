@@ -1,3 +1,6 @@
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import { temporaryImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/temporary-repositories';
+import { imageModelLocation } from '@/features/stable-diffusion-cpp-browser/logic/model-location';
 import { createReadOnlyLlamaCppClient, llamaCppBrowserService } from '@/features/llama-cpp-browser/index-hosted';
 import { idToRaw } from '@/01-models/ids';
 import type { HostModelDirectoryId } from '@/01-models/ids';
@@ -24,10 +27,18 @@ function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFi
   if (!file) {
     throw new Error('The model file is missing');
   }
+  const location = imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: candidate.path });
   return {
-    location: candidate.hostSource
-      ? { kind: 'host', directoryId: candidate.hostSource.directoryId, path: `${candidate.hostSource.repository}/${candidate.path}` }
-      : { kind: 'opfs', path: `models/${candidate.repositoryId}/${candidate.path}` },
+    location: (() => {
+      switch (location.kind) {
+      case 'opfs': case 'temp': return location;
+      case 'host': return { ...location, directoryId: idToRaw({ id: location.directoryId }) };
+      default: {
+        const exhaustive: never = location;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })(),
     expected: { size: file.size, lastModified: file.lastModified },
   };
 }
@@ -37,7 +48,7 @@ function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerIma
   const own = selectedFile({ candidate });
   const present = (() => {
     switch (location.kind) {
-    case 'opfs': return own.location.kind === 'opfs' && own.location.path === location.path;
+    case 'opfs': case 'temp': return own.location.kind === location.kind && own.location.path === location.path;
     case 'host': return own.location.kind === 'host' && own.location.directoryId === location.directoryId && own.location.path === location.path;
     default: {
       const exhaustive: never = location;
@@ -45,7 +56,9 @@ function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerIma
     }
     }
   })();
-  if (present && expected && (own.expected?.size !== expected.size || own.expected.lastModified !== expected.lastModified)) {
+  // Temporary names intentionally accept the currently registered file, even
+  // when a persisted caller supplies metadata from a previous registration.
+  if (location.kind !== 'temp' && present && expected && (own.expected?.size !== expected.size || own.expected.lastModified !== expected.lastModified)) {
     throw new Error('The selected model changed since it was listed');
   }
   return present;
@@ -85,10 +98,21 @@ export function createReadOnlyResources({ directories }: { directories(): readon
   let imageRetirement: Promise<void> = Promise.resolve();
   const inventory = async ({ signal }: { signal: AbortSignal }) => {
     signal.throwIfAborted();
-    const opfs = await listImageRepositories({ signal });
+    const opfs = await listImageRepositories({ signal }).catch(error => {
+      if (typeof navigator.storage?.getDirectory !== 'function') {
+        return [];
+      }
+      throw error;
+    });
     const host = await listHostImageRepositories({ directories: directories().map(({ id, name }) => ({ id: idToRaw({ id }), name })), signal });
     signal.throwIfAborted();
-    return scanImageRepositories({ repositories: [...opfs, ...host], signal });
+    const roots = temporaryModelFiles.list();
+    const result = await scanImageRepositories({ repositories: [...opfs, ...host, ...temporaryImageRepositories({ roots })], signal });
+    signal.throwIfAborted();
+    const stale = new Set(roots.filter(root => temporaryModelFiles.get({ rootId: root.id }) !== root).map(root => root.id));
+    // A removed root must not reappear through a late scan. This only protects
+    // an in-flight read; the next request freely resolves any same-name replacement.
+    return { ...result, candidates: result.candidates.filter(candidate => !stale.has(candidate.repositoryId)) };
   };
   return {
     async listChatModels({ signal }) {

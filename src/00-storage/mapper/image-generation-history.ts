@@ -10,7 +10,7 @@ type ModelFileDto = ExperimentalImageGenerationDto['request']['models'][number][
 function fileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFile {
   switch (file.type) {
   case 'file': return exactObject<Extract<ImageGenerationModelFile, { type: 'file' }>>()({ ...file });
-  case 'opfs': return exactObject<Extract<ImageGenerationModelFile, { type: 'opfs' }>>()({ ...file });
+  case 'opfs': case 'temp': return exactObject<Extract<ImageGenerationModelFile, { type: 'opfs' | 'temp' }>>()({ ...file });
   case 'host': return exactObject<Extract<ImageGenerationModelFile, { type: 'host' }>>()({ ...file, directoryId: toHostModelDirectoryId({ raw: file.directoryId }) });
   default: {
     const exhaustive: never = file;
@@ -22,7 +22,7 @@ function fileToDomain({ file }: { file: ModelFileDto }): ImageGenerationModelFil
 function fileToDto({ file }: { file: ImageGenerationModelFile }): ModelFileDto {
   switch (file.type) {
   case 'file': return exactObject<Extract<ModelFileDto, { type: 'file' }>>()({ ...file });
-  case 'opfs': return exactObject<Extract<ModelFileDto, { type: 'opfs' }>>()({ ...file });
+  case 'opfs': case 'temp': return exactObject<Extract<ModelFileDto, { type: 'opfs' | 'temp' }>>()({ ...file });
   case 'host': return exactObject<Extract<ModelFileDto, { type: 'host' }>>()({ ...file, directoryId: idToRaw({ id: file.directoryId }) });
   default: {
     const exhaustive: never = file;

@@ -1,0 +1,1 @@
+export const TemporaryModelFolders__help = (): string => "Se comparten entre la generación de texto e imágenes en esta página. Al quitar una carpeta, deja de estar disponible en ambas; los archivos originales no se eliminan.";

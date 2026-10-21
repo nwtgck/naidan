@@ -29,7 +29,7 @@ export function remoteImageFileKey({ file }: { file: RemoteImageModelFile }): st
   const { location, expected: _expected, ...unhandled } = file;
   unhandled satisfies Record<PropertyKey, never>;
   switch (location.kind) {
-  case 'opfs': {
+  case 'opfs': case 'temp': {
     const { kind, path, ...unhandledLocation } = location;
     unhandledLocation satisfies Record<PropertyKey, never>;
     return JSON.stringify([kind, path]);

@@ -1,3 +1,7 @@
+import { validateLinkedModelRoot } from '@/logic/model-directory-input';
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import { temporaryImageRepositories, restoreTemporaryImageFiles } from './logic/temporary-repositories';
+import { imageModelLocation, sameImageModelLocation } from './logic/model-location';
 import { createDownloadManager, getDownloadManager, type DownloadExecution, type DownloadManager } from '@/logic/download-manager';
 import { downloadFilesForDisplay } from '@/logic/hugging-face-download/presentation';
 import { hostModelHandles } from '@/00-storage/service/host-model-handles';
@@ -12,7 +16,7 @@ import type { ImageDownloadSource } from './logic/catalog-source';
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { type listImageRepositories, importImageRepository } from './logic/repository-store';
 import { type scanImageRepositories, componentRequirements, componentMatch, defaultCompanion, type ModelInventory, type ModelCandidate } from './logic/model-candidates';
-import { imageDirectoryFromFiles, imageDirectoriesFromDrop } from './logic/repository-input';
+import { imageDirectoryFromFiles, imageDirectoriesFromDrop, imageDirectoryForFile } from './logic/repository-input';
 import type { ModelSlot, Request } from './types';
 import type { ImageBenchmarkTarget, ImageComponentChoice, ImageLibraryView, ImageModelChoice, ImageRecipeAvailability, SavedImageLoraChoice } from './library-view';
 import { useHostModelDirectories } from './composables/use-host-model-directories';
@@ -133,6 +137,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
   const host = dependencies ? undefined : useHostModelDirectories({
     blocked: () => blocked() || importing.value,
     added: undefined,
+    validateDirectory: validateLinkedModelRoot,
     async stopDownload({ id }) {
       await manager.stopDirectory({ directoryId: id });
     },
@@ -225,12 +230,24 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       return [];
     }
     const source = candidate.hostSource;
+    const location = modelLocation({ candidate });
+    const detail = (() => {
+      switch (location.kind) {
+      case 'temp': return `Temporary: ${location.path}`;
+      case 'opfs': return `OPFS: ${candidate.repositoryId}/${entry.path}`;
+      case 'host': return `Host: ${source!.directoryName}/${source!.repository}/${entry.path}`;
+      default: {
+        const exhaustive: never = location;
+        throw new Error(String(exhaustive));
+      }
+      }
+    })();
     return [{
       id: candidate.id,
       label: entry.file.name,
       path: entry.path,
       file: entry.file,
-      detail: source ? `Host: ${source.directoryName}/${source.repository}/${entry.path}` : `OPFS: ${candidate.repositoryId}/${entry.path}`,
+      detail,
     }];
   }).sort((a, b) => a.detail.localeCompare(b.detail) || a.id.localeCompare(b.id)));
   const components = computed(() => requirements.value.map(requirement => ({
@@ -331,7 +348,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
       // Catalog availability belongs to the explicitly selected destination.
       // A copy in another root must not suppress Download for this root.
-      if (destinationId === 'opfs' ? candidate.hostSource !== undefined
+      if (destinationId === 'opfs' ? modelLocation({ candidate }).kind !== 'opfs'
         : candidate.hostSource?.directoryId !== destinationId) {
         return false;
       }
@@ -439,7 +456,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (candidate.issue || !candidate.classes.includes('lora') || candidate.files.length !== 1 || candidate.path !== expected.path) {
         return false;
       }
-      if (destinationId === 'opfs' ? candidate.hostSource !== undefined
+      if (destinationId === 'opfs' ? modelLocation({ candidate }).kind !== 'opfs'
         : candidate.hostSource?.directoryId !== destinationId) {
         return false;
       }
@@ -984,6 +1001,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     scanState.value = 'scanning';
     failure.value = '';
     scanProgress.value = { phase: 'listing', completed: 0, total: 0, path: '' };
+    const temporaryRoots = temporaryModelFiles.list();
     operation.promise = (async () => {
       try {
         if (host) {
@@ -995,20 +1013,25 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
           }
         };
         // Dependency injection remains read-only and abort-raced for regression tests.
-        const next = await awaitInspection({
+        const inspected = await awaitInspection({
           signal: scan.signal,
           task: dependencies ? (async () => {
-            const repositories = await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds }), signal: scan.signal });
+            const storedIds = repositoryIds?.filter(id => !id.startsWith('temp/'));
+            const stored = storedIds?.length === 0 ? []
+              : await awaitInspection({ task: dependencies.list({ signal: scan.signal, onProgress, repositoryIds: storedIds }), signal: scan.signal });
+            const repositories = [...stored, ...temporaryImageRepositories({ roots: temporaryRoots })];
             scan.signal.throwIfAborted();
             return dependencies.scan({ repositories: repositoryIds ? repositories.filter(repository => repositoryIds.includes(repository.id)) : repositories, signal: scan.signal, onProgress });
-          })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds }),
+          })() : inspectImageInventory({ signal: scan.signal, onProgress, hostDirectories: host?.registrations(), repositoryIds, temporaryRepositories: temporaryImageRepositories({ roots: temporaryRoots }) }),
         });
-        if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport) {
+        if (disposed || scan.signal.aborted || activeScan !== operation || activeImport.value !== completingImport
+          || temporaryRoots.some(root => temporaryModelFiles.get({ rootId: root.id }) !== root)) {
           return 'failed';
         }
         if (blocked() && !preparingHistoryFiles && !preserveSelection) {
           return 'blocked';
         }
+        const next = restoreTemporaryImageFiles({ inventory: inspected, roots: temporaryRoots });
         // A targeted scan is not evidence that other repositories disappeared.
         // Preserve their exact original File objects, not metadata lookalikes.
         const published = repositoryIds ? {
@@ -1067,7 +1090,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     })();
     return operation.promise;
   }
-  async function importInputs({ collect }: { collect: ({ signal }: { signal: AbortSignal }) => Promise<Parameters<typeof importImageRepository>[0]['input'][]> }): Promise<void> {
+  async function importInputs({ collect, storage }: { storage: 'opfs' | 'temp' | undefined, collect: ({ signal }: { signal: AbortSignal }) => Promise<Parameters<typeof importImageRepository>[0]['input'][]> }): Promise<void> {
     if (blocked() || importing.value || activeDownload.value !== undefined || disposed) {
       return;
     }
@@ -1083,15 +1106,27 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       controller.signal.throwIfAborted();
       for (const input of directories) {
         controller.signal.throwIfAborted();
-        const repositoryId = await deps.import({
-          input,
-          signal: controller.signal,
-          onProgress: ({ progress }) => {
-            if (!disposed) {
-              importProgress.value = progress;
-            }
-          },
-        });
+        let repositoryId: string;
+        switch (storage) {
+        case 'temp':
+          repositoryId = temporaryModelFiles.register({ directory: input, signal: controller.signal }).id;
+          break;
+        case 'opfs': case undefined:
+          repositoryId = await deps.import({
+            input,
+            signal: controller.signal,
+            onProgress: ({ progress }) => {
+              if (!disposed) {
+                importProgress.value = progress;
+              }
+            },
+          });
+          break;
+        default: {
+          const exhaustive: never = storage;
+          throw new Error(String(exhaustive));
+        }
+        }
         publishedRepositories.push(repositoryId);
       }
     } catch (error) {
@@ -1117,7 +1152,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       }
     }
   }
-  async function importDirectory({ event }: { event: Event }): Promise<void> {
+  async function importDirectory({ event, storage }: { event: Event, storage?: 'opfs' | 'temp' }): Promise<void> {
     const input = event.target;
     if (!(input instanceof HTMLInputElement)) {
       return;
@@ -1127,14 +1162,26 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     if (!files.length) {
       return;
     }
-    await importInputs({ collect: async () => [imageDirectoryFromFiles({ files })] });
+    await importInputs({ collect: async () => [imageDirectoryFromFiles({ files })], storage });
   }
-  async function dropDirectory({ event }: { event: DragEvent }): Promise<void> {
+  async function dropDirectory({ event, storage }: { event: DragEvent, storage?: 'opfs' | 'temp' }): Promise<void> {
     const transfer = event.dataTransfer;
     if (!transfer) {
       return;
     }
-    await importInputs({ collect: ({ signal }) => imageDirectoriesFromDrop({ transfer, signal }) });
+    await importInputs({ collect: ({ signal }) => imageDirectoriesFromDrop({ transfer, signal }), storage });
+  }
+  async function importFiles({ event, storage }: { event: Event, storage: 'opfs' | 'temp' }): Promise<void> {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    if (!files.length) {
+      return;
+    }
+    await importInputs({ collect: async () => files.map(file => imageDirectoryForFile({ file })), storage });
   }
   function selectedModels(): Request['models'] | undefined {
     if (!ready.value || !selected.value) {
@@ -1157,31 +1204,42 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
       if (!entry) {
         continue;
       }
-      if (candidate.hostSource) {
-        return { ...metadata, type: 'host', directoryId: toHostModelDirectoryId({ raw: candidate.hostSource.directoryId }), path: `${candidate.hostSource.repository}/${entry.path}` };
+      const location = imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: entry.path });
+      switch (location.kind) {
+      case 'opfs': case 'temp': return { ...metadata, type: location.kind, path: location.path };
+      case 'host': return { ...metadata, type: 'host', directoryId: location.directoryId, path: location.path };
+      default: {
+        const exhaustive: never = location;
+        throw new Error(String(exhaustive));
       }
-      return { ...metadata, type: 'opfs', path: `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` };
+      }
     }
     return { ...metadata, type: 'file' };
   }
   function findHistoryFile({ location }: { location: ImageGenerationModelFile }): File | undefined {
-    // Only the already inspected local inventory is consulted. A same-named
-    // file or a remote repository is never substituted for a missing source.
-    // This is a location/metadata check, not content identity: an external
-    // replacement retaining the same size and modification time is undetectable.
+    // Only the inspected local inventory is consulted, never another source.
+    // Stored/linked files retain their location-and-metadata checks. A temp/
+    // locator intentionally resolves whatever is currently registered there,
+    // including a different same-named file after unregister/re-registration.
     for (const candidate of inventory.value.candidates) {
       if (candidate.issue) {
         continue;
       }
       for (const entry of candidate.files) {
         const file = entry.file;
-        if (file.name !== location.name || file.size !== location.size || file.lastModified !== location.lastModified) {
+        if (location.type !== 'temp' && (file.name !== location.name || file.size !== location.size || file.lastModified !== location.lastModified)) {
           continue;
         }
         switch (location.type) {
         case 'file': return undefined;
+        case 'temp':
+          // temp/ is a current pathname, not a metadata/content identity promise.
+          if (modelLocation({ candidate }).kind === 'temp' && `${candidate.repositoryId}/${entry.path}` === location.path) {
+            return file;
+          }
+          break;
         case 'opfs':
-          if (!candidate.hostSource && `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` === location.path) {
+          if (modelLocation({ candidate }).kind === 'opfs' && `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${entry.path}` === location.path) {
             return file;
           }
           break;
@@ -1200,26 +1258,10 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     return undefined;
   }
   function modelLocation({ candidate }: { candidate: ModelCandidate }): BrowserImageModelLocation {
-    if (candidate.hostSource) {
-      return { kind: 'host', directoryId: toHostModelDirectoryId({ raw: candidate.hostSource.directoryId }), path: `${candidate.hostSource.repository}/${candidate.path}` };
-    }
-    return { kind: 'opfs', path: `${OPFS_MODELS_DIR}/${candidate.repositoryId}/${candidate.path}` };
+    return imageModelLocation({ repositoryId: candidate.repositoryId, hostSource: candidate.hostSource, path: candidate.path });
   }
   function candidateAt({ location }: { location: BrowserImageModelLocation }): ModelCandidate | undefined {
-    return inventory.value.candidates.find(candidate => {
-      if (candidate.issue) {
-        return false;
-      }
-      const actual = modelLocation({ candidate });
-      switch (location.kind) {
-      case 'opfs': return actual.kind === 'opfs' && actual.path === location.path;
-      case 'host': return actual.kind === 'host' && actual.directoryId === location.directoryId && actual.path === location.path;
-      default: {
-        const exhaustive: never = location;
-        throw new Error(String(exhaustive));
-      }
-      }
-    });
+    return inventory.value.candidates.find(candidate => !candidate.issue && sameImageModelLocation({ left: modelLocation({ candidate }), right: location }));
   }
   let unavailableLoras: { index: number, selection: BrowserImageModelSelection['loras'][number] }[] = [];
   function restoreModelSelection({ selection }: { selection: BrowserImageModelSelection }) {
@@ -1313,7 +1355,8 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     const savedLoras: BrowserImageModelSelection['loras'] = [];
     for (const lora of loras) {
       const location = knownLocations.get(lora.file);
-      // A temporary File must not erase a previous restorable model selection.
+      // An unregistered loose File must not erase a previous restorable selection.
+      // Files from a shared temporary folder do have a persistable temp/ location.
       if (!location || !Number.isFinite(lora.strength) || lora.strength < -10 || lora.strength > 10) {
         return undefined;
       }
@@ -1335,7 +1378,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     // Preserve publication identity and shard membership; never copy weight bytes.
     // Host files can change outside Naidan. Fresh File snapshots deliberately
     // invalidate retained-model identity, even when an old receipt still matches.
-    const sourceId = !candidate.hostSource && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
+    const sourceId = modelLocation({ candidate }).kind === 'opfs' && candidate.files.every(entry => entry.receipt?.source.kind === 'hugging-face') ? JSON.stringify({
       repository: candidate.repositoryId,
       path: candidate.path,
       files: candidate.files.map(entry => ({ path: entry.path, size: entry.file.size, modified: entry.file.lastModified, receipt: entry.receipt ?? null })),
@@ -1400,8 +1443,48 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     selections.value = {};
     overrides.clear();
   }
+  const pendingTemporaryRoots = new Set<string>();
+  let refreshingTemporary = false;
+  async function refreshTemporaryRoots(): Promise<void> {
+    if (disposed || activeImport.value || refreshingTemporary || pendingTemporaryRoots.size === 0) {
+      return;
+    }
+    refreshingTemporary = true;
+    try {
+      while (!disposed && !activeImport.value && pendingTemporaryRoots.size) {
+        const repositoryIds = inventoryReady ? [...pendingTemporaryRoots] : undefined;
+        pendingTemporaryRoots.clear();
+        cancelScan();
+        await refreshInventory({ completingImport: undefined, preserveSelection: true, repositoryIds });
+      }
+    } finally {
+      refreshingTemporary = false;
+    }
+  }
+  const unsubscribeTemporary = temporaryModelFiles.subscribe({
+    listener: ({ rootId }) => {
+      // A removed/replaced root must stop resolving immediately, not after a slow
+      // Worker scan. Keep selection IDs untouched so re-registration can resolve them.
+      inventory.value = {
+        candidates: inventory.value.candidates.filter(candidate => candidate.repositoryId !== rootId),
+        issues: inventory.value.issues.filter(issue => issue.repositoryId !== rootId),
+      };
+      inspectedMissingFiles.clear();
+      pendingTemporaryRoots.add(rootId);
+      cancelScan();
+      queueMicrotask(() => {
+        void refreshTemporaryRoots();
+      });
+    },
+  });
+  watch(importing, value => {
+    if (!value) {
+      void refreshTemporaryRoots();
+    }
+  });
   onScopeDispose(() => {
     disposed = true;
+    unsubscribeTemporary();
     unsubscribeDownloads();
     cancelScan();
     activeImport.value?.abort();
@@ -1451,6 +1534,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     chooseMain,
     chooseComponent,
     importDirectory,
+    importFiles,
     dropDirectory,
     cancelImport,
     useManualFiles,

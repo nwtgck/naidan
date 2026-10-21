@@ -1,3 +1,5 @@
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import type { LocalImageRepository } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ModelCandidate } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
@@ -82,6 +84,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const root of temporaryModelFiles.list()) {
+    temporaryModelFiles.remove({ rootId: root.id });
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -328,4 +333,83 @@ it('waits for an in-flight result even when disposing its image worker throws', 
   await rejected;
   await closingFailure;
   expect(resources.dispose()).toBe(closing);
+});
+
+function temporaryCandidate({ repository }: { repository: LocalImageRepository }): ModelCandidate {
+  const entry = repository.files[0]!;
+  return { ...candidate({ path: entry.path, roles: ['model'] }), id: JSON.stringify([repository.id, entry.path]), repositoryId: repository.id, files: repository.files };
+}
+
+it('adds shared temporary folders to the read-only RPC catalog without hiding saved or linked models', async () => {
+  const file = new File(['model bytes'], 'model.gguf', { lastModified: 789 });
+  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'owner/repo/model.gguf', file }] }, signal: undefined });
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: [candidate({ path: 'saved.gguf', roles: ['model'] }), ...repositories.filter(repository => repository.id.startsWith('temp/')).map(repository => temporaryCandidate({ repository }))] }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const catalog = await resources.value.listImageModels({ signal: new AbortController().signal });
+  expect(catalog.map(item => item.file.location)).toEqual([{ kind: 'opfs', path: 'models/user/model/saved.gguf' }, { kind: 'temp', path: `${root.id}/owner/repo/model.gguf` }]);
+  expect(mocks.scan.mock.calls[0]![0].repositories.at(-1).files[0].file).toBe(file);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('uses the provider page files and accepts persisted metadata for a same-name temporary replacement', async () => {
+  const makeRoot = ({ file }: { file: File }) => temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file }] }, signal: undefined });
+  const first = new File(['first model bytes'], 'model.gguf', { lastModified: 1 });
+  const root = makeRoot({ file: first });
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: repositories.filter(repository => repository.id.startsWith('temp/')).map(repository => temporaryCandidate({ repository })) }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const input = request();
+  input.modelSelection.primary.file = { location: { kind: 'temp', path: `${root.id}/model.gguf` }, expected: { size: 999, lastModified: 999 } };
+  const execute = () => resources.value.generateImage({ input, signal: new AbortController().signal, onPreview: () => {}, onProgress: () => {} });
+  await execute();
+  expect(mocks.generate.mock.calls[0]![0].request.models[0].file).toBe(first);
+  temporaryModelFiles.remove({ rootId: root.id });
+  await expect(execute()).rejects.toMatchObject({ details: { stage: 'model-selection' } });
+  const second = new File(['second different bytes'], 'model.gguf', { lastModified: 2 });
+  expect(makeRoot({ file: second }).id).toBe(root.id);
+  await execute();
+  expect(mocks.generate.mock.calls[1]![0].request.models[0].file).toBe(second);
+});
+
+it('does not publish or generate from a temporary root removed during an RPC scan', async () => {
+  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file: new File(['old'], 'model.gguf') }] }, signal: undefined });
+  const gate = Promise.withResolvers<{ candidates: ModelCandidate[] }>();
+  mocks.scan.mockReturnValueOnce(gate.promise);
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  const pending = resources.value.listImageModels({ signal: new AbortController().signal });
+  await vi.waitFor(() => expect(mocks.scan).toHaveBeenCalledOnce());
+  const repository: LocalImageRepository = mocks.scan.mock.calls[0]![0].repositories[0];
+  temporaryModelFiles.remove({ rootId: root.id });
+  temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file: new File(['replacement'], 'model.gguf') }] }, signal: undefined });
+  gate.resolve({ candidates: [temporaryCandidate({ repository }), candidate({ path: 'saved.gguf', roles: ['model'] })] });
+  expect((await pending).map(item => item.file.location.kind)).toEqual(['opfs']);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it('can list temporary image models when OPFS is unavailable', async () => {
+  vi.stubGlobal('navigator', {});
+  temporaryModelFiles.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file: new File(['model'], 'model.gguf') }] }, signal: undefined });
+  mocks.opfs.mockRejectedValueOnce(new Error('OPFS unavailable'));
+  mocks.scan.mockImplementation(async ({ repositories }: { repositories: LocalImageRepository[] }) => ({ candidates: repositories.map(repository => temporaryCandidate({ repository })) }));
+  await using resources = {
+    value: resource(),
+    async [Symbol.asyncDispose]() {
+      await this.value.dispose();
+    },
+  };
+  expect((await resources.value.listImageModels({ signal: new AbortController().signal }))[0]?.file.location).toEqual({ kind: 'temp', path: 'temp/shared/model.gguf' });
 });

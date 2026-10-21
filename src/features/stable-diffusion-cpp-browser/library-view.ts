@@ -75,8 +75,9 @@ export type ImageLibraryView = {
   refreshAccess(): Promise<void>;
   chooseMain({ id }: { id: string }): void;
   chooseComponent({ slot, id }: { slot: ModelSlot, id: string }): void;
-  importDirectory({ event }: { event: Event }): Promise<void>;
-  dropDirectory({ event }: { event: DragEvent }): Promise<void>;
+  importDirectory({ event, storage }: { event: Event, storage?: 'opfs' | 'temp' }): Promise<void>;
+  dropDirectory({ event, storage }: { event: DragEvent, storage?: 'opfs' | 'temp' }): Promise<void>;
+  importFiles({ event, storage }: { event: Event, storage: 'opfs' | 'temp' }): Promise<void>;
   cancelImport(): void;
   useManualFiles(): void;
   selectedModels(): Request['models'] | undefined;

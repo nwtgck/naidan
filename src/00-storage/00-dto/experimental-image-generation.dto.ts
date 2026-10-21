@@ -43,6 +43,7 @@ const ImageGenerationFileMetadataSchemaDto = {
   lastModified: dtozod.number(),
 };
 const ImageGenerationModelFileSchemaDto = dtozod.discriminatedUnion('type', [
+  dtozod.object({ type: dtozod.literal('temp'), path: ExperimentalImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
   dtozod.object({ type: dtozod.literal('opfs'), path: ExperimentalImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
   dtozod.object({ type: dtozod.literal('host'), directoryId: dtozod.string(), path: ExperimentalImageGenerationPathSchemaDto, ...ImageGenerationFileMetadataSchemaDto }),
   dtozod.object({ type: dtozod.literal('file'), ...ImageGenerationFileMetadataSchemaDto }),

@@ -260,7 +260,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
-      const accepted = workerPrepareCallSchema.parse({ ...request, temporaryModel: temporaryModels.source({ name: request.model }), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerPrepareCallSchema.parse({ ...request, temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal }) : undefined, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
@@ -284,7 +284,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
-        temporaryModel: temporaryModels.source({ name: request.model }),
+        temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal }) : undefined,
         generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
@@ -366,7 +366,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
-      const accepted = workerAudioCallSchema.parse({ ...request, temporaryModel: temporaryModels.source({ name: request.model }), generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerAudioCallSchema.parse({ ...request, temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal: cancellationSignal }) : undefined, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       let started = false;
       const finish = (): void => {

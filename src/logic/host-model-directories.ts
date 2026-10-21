@@ -45,5 +45,9 @@ export async function unregisterHostModelDirectory({ id, save, restore }: {
   });
 }
 
+export function hostModelDirectoryLabel({ id, name, entries }: { id: string, name: string, entries: readonly { id: string, name: string }[] }): string {
+  return entries.some(entry => entry.name === name && entry.id !== id) ? `${name} (${id})` : name;
+}
+
 export const TEST_ONLY = {
 };

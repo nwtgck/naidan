@@ -333,7 +333,7 @@ it('removes non-active queue entries during import without enabling retry or sta
   expect(failed.element.disabled).toBe(true);
 });
 
-it('keeps host mutation buttons aligned with the editor guard without blocking destination changes', async () => {
+it('keeps destination selection independent of the editor and moves folder mutations out of the catalog', async () => {
   const view = createDisabledImageLibrary();
   view.hostDirectories = {
     ...view.hostDirectories,
@@ -345,16 +345,12 @@ it('keeps host mutation buttons aligned with the editor guard without blocking d
     selectDestination: vi.fn(),
   };
   wrapper = mount(ImageModelCatalog, { props: { disabled: true, downloadDisabled: false, view } });
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-reconnect-model-directory-root-a"]').element.disabled).toBe(true);
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-unregister-model-directory-root-a"]').element.disabled).toBe(true);
+  expect(wrapper.find('[data-testid="image-add-model-directory"]').exists()).toBe(false);
   const destination = wrapper.get<HTMLSelectElement>('[data-testid="image-download-destination"]');
   expect(destination.element.disabled).toBe(false);
   await destination.setValue('root-a');
   expect(view.hostDirectories.selectDestination).toHaveBeenCalledWith({ id: 'root-a' });
   await wrapper.setProps({ disabled: false });
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(false);
   await wrapper.setProps({ disabled: true, downloadDisabled: true });
   expect(destination.element.disabled).toBe(true);
-  expect(wrapper.get<HTMLButtonElement>('[data-testid="image-add-model-directory"]').element.disabled).toBe(true);
 });

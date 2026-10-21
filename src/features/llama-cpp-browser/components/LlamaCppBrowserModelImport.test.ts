@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import LlamaCppBrowserModelImport from './LlamaCppBrowserModelImport.vue';
-import LlamaCppBrowserLinkedDirectories from './LlamaCppBrowserLinkedDirectories.vue';
+import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
 
 const mocks = vi.hoisted(() => ({ supported: false, add: vi.fn(async () => {}), drop: vi.fn(async () => {}), importModel: vi.fn(async () => {}), importDirectory: vi.fn(async () => {}) }));
@@ -26,7 +26,7 @@ function render(): VueWrapper {
 }
 
 function renderLinks(): VueWrapper {
-  const wrapper = mount(LlamaCppBrowserLinkedDirectories, { props: { disabled: false, view: view() } });
+  const wrapper = mount(LinkedModelDirectories, { props: { disabled: false, view: view() } });
   wrappers.push(wrapper);
   return wrapper;
 }
@@ -70,14 +70,14 @@ describe('model import modes', () => {
     expect(linked.classes()).toContain('opacity-50');
     await linked.trigger('click');
     expect(linked.attributes('aria-pressed')).toBe('true');
-    expect(wrapper.get('[data-testid="llama-host-folder-layout"]').text()).toContain('owner/');
-    expect(wrapper.get('[data-testid="llama-host-folder-layout"]').text()).toContain('subdir/');
-    expect(wrapper.get('[data-testid="llama-add-model-directory"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('owner/');
+    expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('subdir/');
+    expect(wrapper.get('[data-testid="linked-add-model-directory"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="llama-cpp-browser-directory"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="llama-host-folders-unavailable"]').text()).toContain('showDirectoryPicker');
+    expect(wrapper.get('[data-testid="linked-host-folders-unavailable"]').text()).toContain('showDirectoryPicker');
     await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
-    expect(wrapper.find('[data-testid="llama-host-folder-layout"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="linked-host-folder-layout"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="llama-import-mode-description"]').text()).toContain('reloaded or closed');
     expect(wrapper.find('[data-testid="llama-cpp-browser-file"]').exists()).toBe(true);
   });
@@ -90,8 +90,8 @@ describe('model import modes', () => {
     const linked = wrapper.get<HTMLButtonElement>('[data-testid="llama-import-mode-host"]');
     expect(linked.element.matches(':disabled')).toBe(false);
     await linked.trigger('click');
-    expect(wrapper.get('[data-testid="llama-host-folder-layout"]').text()).toContain('repository/');
-    expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-add-model-directory"]').element.matches(':disabled')).toBe(true);
+    expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('repository/');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="linked-add-model-directory"]').element.matches(':disabled')).toBe(true);
     await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
     expect(wrapper.get('[data-testid="llama-import-mode-temp"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get<HTMLButtonElement>('[data-testid="llama-cpp-browser-choose-files"]').element.matches(':disabled')).toBe(true);
@@ -145,7 +145,7 @@ describe('durable linked-directory drops', () => {
     const wrapper = renderLinks();
     const directory = { kind: 'directory', name: 'Models' };
     const getAsFileSystemHandle = vi.fn(async () => directory);
-    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle }] }, target: 'llama-linked-folders-panel' });
+    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle }] }, target: 'linked-linked-folders-panel' });
     expect(getAsFileSystemHandle).toHaveBeenCalledOnce();
     await flushPromises();
     expect(mocks.drop).toHaveBeenCalledWith({ directory, signal: expect.any(AbortSignal) });
@@ -156,9 +156,9 @@ describe('durable linked-directory drops', () => {
   it('rejects standalone files without switching mode or falling back to another import', async () => {
     mocks.supported = true;
     const wrapper = renderLinks();
-    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle: async () => ({ kind: 'file', name: 'model.gguf' }) }] }, target: 'llama-linked-folders-panel' });
+    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle: async () => ({ kind: 'file', name: 'model.gguf' }) }] }, target: 'linked-linked-folders-panel' });
     await flushPromises();
-    expect(wrapper.get('[data-testid="llama-link-drop-error"]').text()).toContain('not an individual file');
+    expect(wrapper.get('[data-testid="linked-link-drop-error"]').text()).toContain('not an individual file');
     expect(mocks.drop).not.toHaveBeenCalled();
     expect(mocks.importModel).not.toHaveBeenCalled();
   });
@@ -166,9 +166,9 @@ describe('durable linked-directory drops', () => {
   it('directs legacy-only drops to the folder picker instead of pretending a File can be linked', async () => {
     mocks.supported = true;
     const wrapper = renderLinks();
-    drop({ wrapper, transfer: { items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }) }] }, target: 'llama-linked-folders-panel' });
+    drop({ wrapper, transfer: { items: [{ kind: 'file', webkitGetAsEntry: () => ({ isDirectory: true }) }] }, target: 'linked-linked-folders-panel' });
     await flushPromises();
-    expect(wrapper.get('[data-testid="llama-link-drop-error"]').text()).toContain('folder button');
+    expect(wrapper.get('[data-testid="linked-link-drop-error"]').text()).toContain('folder button');
     expect(mocks.drop).not.toHaveBeenCalled();
   });
 
@@ -176,10 +176,21 @@ describe('durable linked-directory drops', () => {
     mocks.supported = true;
     const wrapper = renderLinks();
     const pending = Promise.withResolvers<object>();
-    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle: () => pending.promise }] }, target: 'llama-linked-folders-panel' });
+    drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle: () => pending.promise }] }, target: 'linked-linked-folders-panel' });
     wrapper.unmount();
     pending.resolve({ kind: 'directory', name: 'Models' });
     await flushPromises();
     expect(mocks.drop).not.toHaveBeenCalled();
   });
+});
+
+it.each(['disabled', 'reconnectDisabled'] as const)('does not register a dropped handle when %s changes during handle acquisition', async prop => {
+  mocks.supported = true;
+  const wrapper = renderLinks();
+  const handle = Promise.withResolvers<{ kind: 'directory', name: string }>();
+  drop({ wrapper, transfer: { items: [{ kind: 'file', getAsFileSystemHandle: () => handle.promise }] }, target: 'linked-linked-folders-panel' });
+  await wrapper.setProps({ [prop]: true });
+  handle.resolve({ kind: 'directory', name: 'Models' });
+  await flushPromises();
+  expect(mocks.drop).not.toHaveBeenCalled();
 });

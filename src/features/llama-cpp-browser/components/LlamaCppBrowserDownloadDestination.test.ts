@@ -42,8 +42,8 @@ describe('compact linked-folder download controls', () => {
     const options = wrapper.get('[data-testid="llama-download-destination"]').findAll('option');
     expect(options.map(option => option.text())).toEqual(['Browser storage (OPFS)', 'Linked folder · Unavailable']);
     expect(options[1]!.attributes('disabled')).toBeDefined();
-    expect(wrapper.get('[data-testid="llama-host-folders-unavailable"]').text()).toContain('showDirectoryPicker');
-    expect(wrapper.get('[data-testid="llama-add-model-directory"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="linked-host-folders-unavailable"]').text()).toContain('showDirectoryPicker');
+    expect(wrapper.get('[data-testid="linked-add-model-directory"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="llama-model-directory-registrations"]').attributes('open')).toBeUndefined();
     expect(wrapper.get('[data-testid="llama-manage-model-directories"]').attributes('title')).toContain('showDirectoryPicker');
   });
@@ -51,12 +51,12 @@ describe('compact linked-folder download controls', () => {
   it('distinguishes unconfigured folders from registered folders needing permission', async () => {
     const empty = render({ supported: true, entries: [], destination: 'opfs' });
     expect(empty.wrapper.get('select').text()).toContain('Not linked');
-    expect(empty.wrapper.get('[data-testid="llama-host-folders-unconfigured"]').text()).toContain('Link a folder');
+    expect(empty.wrapper.get('[data-testid="linked-host-folders-unconfigured"]').text()).toContain('Link a folder');
     const { wrapper, view } = render({ supported: true, entries: [{ id: 'root-a', name: 'Models', access: 'prompt', error: undefined }], destination: 'root-a' });
-    expect(wrapper.get('[data-testid="llama-host-folder-permission-root-a"]').text()).toBe('Permission expired; reconnect');
-    await wrapper.get('[data-testid="llama-reconnect-model-directory-root-a"]').trigger('click');
+    expect(wrapper.get('[data-testid="linked-host-folder-permission-root-a"]').text()).toBe('Permission expired; reconnect');
+    await wrapper.get('[data-testid="linked-reconnect-model-directory-root-a"]').trigger('click');
     expect(view.reconnect).toHaveBeenCalledWith({ id: 'root-a' });
-    await wrapper.get('[data-testid="llama-unregister-model-directory-root-a"]').trigger('click');
+    await wrapper.get('[data-testid="linked-unregister-model-directory-root-a"]').trigger('click');
     expect(view.remove).toHaveBeenCalledWith({ id: 'root-a' });
     expect(wrapper.text()).toContain('Unlinking keeps all files');
   });
@@ -76,6 +76,6 @@ describe('compact linked-folder download controls', () => {
     expect(wrapper.get('[data-testid="llama-missing-download-destination"]').attributes('disabled')).toBeDefined();
     await wrapper.get('select').setValue('host:root-b');
     expect(view.selectDestination).toHaveBeenCalledWith({ id: 'root-b', kind: 'host' });
-    expect(wrapper.get('[data-testid="llama-host-folder-layout"]').text()).toContain('subdir');
+    expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('subdir');
   });
 });

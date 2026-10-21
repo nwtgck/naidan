@@ -66,7 +66,7 @@ export async function inspectStoredAudioModel({ id, signal }: { id: string, sign
   try {
     const name = modelSchema.shape.id.parse(id);
     const directory = name.startsWith('temp/')
-      ? temporarySourceDirectory({ name, source: temporaryModels.source({ name }) })
+      ? temporarySourceDirectory({ name, source: await temporaryModels.resolveSource({ name, signal }) })
       : await storedModelDirectory({ name });
     return await detectAudioModelFiles({ directory, signal });
   } catch {

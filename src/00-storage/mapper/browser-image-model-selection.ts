@@ -9,10 +9,10 @@ type BrowserImageModelLocationDto = BrowserImageModelSelectionDto['primary']['lo
 
 const browserImageModelLocationToDomain = ({ dto }: { dto: BrowserImageModelLocationDto }): BrowserImageModelLocation => {
   switch (dto.kind) {
-  case 'opfs': {
+  case 'opfs': case 'temp': {
     const { kind, path, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
-    return exactObject<Extract<BrowserImageModelLocation, { kind: 'opfs' }>>()({ kind, path });
+    return exactObject<Extract<BrowserImageModelLocation, { kind: 'opfs' | 'temp' }>>()({ kind, path });
   }
   case 'host': {
     const { kind, directoryId, path, ...unhandled } = dto;
@@ -28,10 +28,10 @@ const browserImageModelLocationToDomain = ({ dto }: { dto: BrowserImageModelLoca
 
 const browserImageModelLocationToDto = ({ domain }: { domain: BrowserImageModelLocation }): BrowserImageModelLocationDto => {
   switch (domain.kind) {
-  case 'opfs': {
+  case 'opfs': case 'temp': {
     const { kind, path, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
-    return exactObject<Extract<BrowserImageModelLocationDto, { kind: 'opfs' }>>()({ kind, path });
+    return exactObject<Extract<BrowserImageModelLocationDto, { kind: 'opfs' | 'temp' }>>()({ kind, path });
   }
   case 'host': {
     const { kind, directoryId, path, ...unhandled } = domain;

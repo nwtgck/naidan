@@ -408,6 +408,7 @@ export interface ProviderProfile {
 }
 
 export type BrowserImageModelLocation =
+  | { kind: 'temp', path: string }
   | { kind: 'opfs', path: string }
   | { kind: 'host', directoryId: HostModelDirectoryId, path: string };
 

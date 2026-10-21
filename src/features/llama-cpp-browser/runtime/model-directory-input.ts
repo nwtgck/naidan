@@ -1,3 +1,4 @@
+import { directoryForGgufFile } from '@/logic/model-directory-input';
 import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
 import { LlamaCppBrowserError, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 
@@ -5,10 +6,11 @@ export const modelImportPendingName = '.llama-cpp-import-pending';
 
 /** A loose GGUF has the same model-directory shape regardless of its lifetime. */
 export function directoryForModelFile({ file }: { file: File }): ModelDirectoryInput {
-  if (!/^.+\.gguf$/i.test(file.name) || !isModelSourceSegment({ name: file.name })) {
+  try {
+    return directoryForGgufFile({ file });
+  } catch {
     throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   }
-  return { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] };
 }
 
 /** These tree invariants deliberately apply to both saved and temporary imports.

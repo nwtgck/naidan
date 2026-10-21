@@ -701,7 +701,7 @@ export function useImageGeneration(): ImageGenerationView {
         // refresh. Only directly chosen files are owned by the memory draft.
         switch (location.type) {
         case 'file': return findDraftModelFile({ entries: draft.modelFiles, location });
-        case 'opfs': case 'host': return library.findHistoryFile({ location });
+        case 'opfs': case 'host': case 'temp': return library.findHistoryFile({ location });
         default: {
           const exhaustive: never = location;
           throw new Error(String(exhaustive));

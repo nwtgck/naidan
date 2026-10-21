@@ -1,3 +1,4 @@
+import { temporaryFilePathSchema } from '@/01-models/temporary-model-files';
 import { isTemporaryModelReference } from '@/features/llama-cpp-browser/runtime/temporary-model-reference';
 import { z } from 'zod';
 import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
@@ -55,6 +56,7 @@ export const chatCatalogItemSchema = z.object({
   'Non-Host model labels must not exceed 1024 characters');
 
 export const imageLocationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('temp'), path: temporaryFilePathSchema }),
   z.object({
     kind: z.literal('opfs'),
     path: relativeModelPathSchema,

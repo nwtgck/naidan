@@ -141,6 +141,7 @@ const pathSchema = dtozod.string();
 export const ExperimentalRemoteImageModelFileSchemaDto = dtozod.object({
   location: dtozod.discriminatedUnion('kind', [
     dtozod.object({ kind: dtozod.literal('opfs'), path: pathSchema }),
+    dtozod.object({ kind: dtozod.literal('temp'), path: pathSchema }),
     dtozod.object({ kind: dtozod.literal('host'), directoryId: dtozod.string(), path: pathSchema }),
   ]),
   expected: dtozod.object({ size: dtozod.number(), lastModified: dtozod.number() }).optional(),
@@ -185,6 +186,7 @@ export type ExperimentalRemoteImageModelEditorPreferenceDto = dtozod.infer<typeo
 export const ExperimentalImageGenerationPathSchemaDto = dtozod.string();
 const BrowserImageModelLocationSchemaDto = dtozod.discriminatedUnion('kind', [
   dtozod.object({ kind: dtozod.literal('opfs'), path: ExperimentalImageGenerationPathSchemaDto }),
+  dtozod.object({ kind: dtozod.literal('temp'), path: ExperimentalImageGenerationPathSchemaDto }),
   dtozod.object({ kind: dtozod.literal('host'), directoryId: dtozod.string(), path: ExperimentalImageGenerationPathSchemaDto }),
 ]);
 export const ExperimentalBrowserImageModelSelectionSchemaDto = dtozod.object({

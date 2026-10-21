@@ -33,7 +33,7 @@ it('captures directory entries synchronously and reads every readEntries batch',
 it('preserves roots in FileList fallback and rejects partial/opaque directory drops', async () => {
   const transfer = { items: [], files: [localFile({ path: 'A/a.gguf' }), localFile({ path: 'B/b.gguf' })] } as unknown as DataTransfer;
   expect((await imageDirectoriesFromDrop({ transfer, signal: undefined })).map(input => input.name)).toEqual(['A', 'B']);
-  await expect(imageDirectoriesFromDrop({ transfer: { items: [], files: [new File(['x'], 'folder')] } as unknown as DataTransfer, signal: undefined })).rejects.toThrow('repository folder');
+  await expect(imageDirectoriesFromDrop({ transfer: { items: [], files: [new File(['x'], 'folder')] } as unknown as DataTransfer, signal: undefined })).rejects.toThrow('Choose GGUF or safetensors');
 });
 
 it('cancels traversal before a delayed entry batch can become a stored repository', async () => {
@@ -54,4 +54,12 @@ it('cancels traversal before a delayed entry batch can become a stored repositor
   controller.abort();
   finish?.([]);
   await expect(pending).rejects.toThrow();
+});
+
+it('wraps loose GGUF and safetensors as model directories without changing their File objects', async () => {
+  const files = [new File(['weights'], 'chat.gguf'), new File(['weights'], 'image.safetensors')];
+  const inputs = await imageDirectoriesFromDrop({ transfer: { items: [], files } as unknown as DataTransfer, signal: undefined });
+  expect(inputs.map(input => input.name)).toEqual(['chat-GGUF', 'image-Safetensors']);
+  expect(inputs[0]?.files[0]?.file).toBe(files[0]);
+  expect(inputs[1]?.files[0]?.file).toBe(files[1]);
 });

@@ -62,6 +62,7 @@ export function createDisabledImageLibrary(): ImageLibraryView {
     chooseMain() {},
     chooseComponent() {},
     async importDirectory() {},
+    async importFiles() {},
     async dropDirectory() {},
     cancelImport() {},
     useManualFiles() {},
