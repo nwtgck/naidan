@@ -21,6 +21,18 @@ export const gpuProfileRowSchema = z.object({
   maximumPassMs: milliseconds,
   zeroDurationPasses: count,
 }).strict();
+export const gpuProfileReadbackRowSchema = z.object({
+  // Phase at the existing map request, not the timestamp's encoding phase.
+  phase: gpuProfilePhaseSchema,
+  requested: count,
+  completed: count,
+  rejected: count,
+  pending: count,
+  invalidTimings: count,
+  totalWaitMs: milliseconds,
+  maximumWaitMs: milliseconds,
+}).strict();
+export type GpuProfileReadbackRow = z.infer<typeof gpuProfileReadbackRowSchema>;
 export const gpuProfileSchema = z.object({
   version: z.literal(1),
   source: z.literal('webgpu-pass-timestamps'),
@@ -39,6 +51,13 @@ export const gpuProfileSchema = z.object({
   totalGpuMs: milliseconds,
   precision: z.literal('browser-defined'),
   rows: z.array(gpuProfileRowSchema).max(maximumGpuProfileGroups),
+  // Optional so older profiling archives remain valid. This host interval
+  // includes GPU completion and Promise delivery; it is not GPU idle time.
+  readbacks: z.object({
+    source: z.literal('existing-timestamp-buffer-mapAsync'),
+    phaseAt: z.literal('map-request'),
+    rows: z.array(gpuProfileReadbackRowSchema).max(4),
+  }).strict().optional(),
 }).strict();
 export type GpuProfile = z.infer<typeof gpuProfileSchema>;
 export type GpuProfileRow = z.infer<typeof gpuProfileRowSchema>;

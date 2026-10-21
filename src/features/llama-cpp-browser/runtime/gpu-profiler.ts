@@ -1,10 +1,11 @@
-import { gpuProfileSchema, maximumGpuProfileGroups, maximumPendingGpuProfilePasses, type GpuProfile, type GpuProfilePhase, type GpuProfileRow } from '@/features/llama-cpp-browser/performance/gpu-profile-schema';
+import { gpuProfileSchema, maximumGpuProfileGroups, maximumPendingGpuProfilePasses, type GpuProfile, type GpuProfilePhase, type GpuProfileRow, type GpuProfileReadbackRow } from '@/features/llama-cpp-browser/performance/gpu-profile-schema';
 
 type Measurement = {
   open: boolean,
   phase: GpuProfilePhase,
   result: GpuProfile,
   groups: Map<string, GpuProfileRow>,
+  readbacks: Map<GpuProfilePhase, GpuProfileReadbackRow>,
 };
 type Sample = {
   owner: Measurement,
@@ -31,6 +32,7 @@ export function beginGpuProfileMeasurement() {
     open: true,
     phase: 'other',
     groups: new Map(),
+    readbacks: new Map(),
     result: {
       version: 1,
       source: 'webgpu-pass-timestamps',
@@ -66,13 +68,16 @@ export function beginGpuProfileMeasurement() {
         measurement = undefined;
       }
       const state = current.result;
-      const partial = state.pendingPasses + state.invalidPasses + state.droppedPasses + state.ungroupedPasses + state.ambiguousPasses + state.instrumentationErrors > 0;
+      const incompleteReadbacks = [...current.readbacks.values()].some(row => row.pending + row.rejected + row.invalidTimings > 0);
+      const partial = incompleteReadbacks || state.pendingPasses + state.invalidPasses + state.droppedPasses + state.ungroupedPasses + state.ambiguousPasses + state.instrumentationErrors > 0;
       result = gpuProfileSchema.parse({
         ...state,
         status: state.measuredPasses === 0 ? 'unavailable' : partial ? 'partial' : 'complete',
         rows: [...current.groups.values()].map(row => ({ ...row, meanPassMs: row.totalGpuMs / row.passes })),
+        readbacks: { source: 'existing-timestamp-buffer-mapAsync', phaseAt: 'map-request', rows: [...current.readbacks.values()] },
       });
       current.groups.clear();
+      current.readbacks.clear();
       return result;
     },
   };
@@ -153,9 +158,9 @@ function completeSample({ sample }: { sample: Sample }): void {
 
 /** Observe public WebGPU calls made by the upstream profiling build, not private
  * ggml structures or its destructor log. Only diagnostic-owned MAP_READ buffers
- * get an own getMappedRange method. Their identity and native WebIDL brand stay
+ * get own mapAsync/getMappedRange methods. Their identity and native WebIDL brand stay
  * intact; browser prototypes and other devices are never modified. */
-export function createGpuProfileObserver() {
+export function createGpuProfileObserver({ now = () => performance.now() }: { now?: () => number } = {}) {
   const queries = new WeakMap<GPUQuerySet, Map<number, Timestamp>>();
   const buffers = new WeakMap<GPUBuffer, Map<number, Timestamp>>();
   const maximumTimestamps = maximumPendingGpuProfilePasses * 2;
@@ -204,6 +209,84 @@ export function createGpuProfileObserver() {
       sample[timestamp.point] = view.getBigUint64(at - offset, true);
       completeSample({ sample });
     }
+  }
+
+  function mapReadback({ buffer, mapAsync, args }: { buffer: GPUBuffer, mapAsync: GPUBuffer['mapAsync'], args: Parameters<GPUBuffer['mapAsync']> }): Promise<void> {
+    const records: { owner: Measurement, row: GpuProfileReadbackRow, start?: number }[] = [];
+    function clock(): number | undefined {
+      try {
+        const value = now();
+        return Number.isFinite(value) && value >= 0 ? value : undefined;
+      } catch {
+        return undefined;
+      }
+    }
+    observe({
+      run() {
+        const offset = args[1] ?? 0;
+        const size = args[2] ?? buffer.size - offset;
+        const owners = new Set<Measurement>();
+        for (const [at, timestamp] of buffers.get(buffer) ?? []) {
+          if (at >= offset && at + 8 <= offset + size && timestamp.sample.owner.open && !timestamp.sample.settled) {
+            owners.add(timestamp.sample.owner);
+          }
+        }
+        // No clock, Promise reaction, or result row for an unrelated readback.
+        for (const owner of owners) {
+          let row = owner.readbacks.get(owner.phase);
+          if (!row) {
+            row = { phase: owner.phase, requested: 0, completed: 0, rejected: 0, pending: 0, invalidTimings: 0, totalWaitMs: 0, maximumWaitMs: 0 };
+            owner.readbacks.set(owner.phase, row);
+          }
+          row.requested++;
+          row.pending++;
+          records.push({ owner, row, start: clock() });
+        }
+      },
+    });
+    function settle({ rejected }: { rejected: boolean }): void {
+      for (const { owner, row, start } of records) {
+        if (!owner.open) {
+          continue;
+        }
+        observe({
+          owner,
+          run() {
+            row.pending--;
+            if (rejected) {
+              row.rejected++;
+            } else {
+              row.completed++;
+            }
+            const end = clock();
+            const elapsed = start !== undefined && end !== undefined ? end - start : NaN;
+            if (!Number.isFinite(elapsed) || elapsed < 0 || !Number.isFinite(row.totalWaitMs + elapsed)) {
+              row.invalidTimings++;
+              return;
+            }
+            row.totalWaitMs += elapsed;
+            row.maximumWaitMs = Math.max(row.maximumWaitMs, elapsed);
+          },
+        });
+      }
+    }
+    let promise: Promise<void>;
+    try {
+      promise = mapAsync(...args);
+    } catch (error) {
+      settle({ rejected: true });
+      throw error;
+    }
+    if (records.length > 0) {
+      observe({
+        run() {
+          // Return the original native Promise and preserve its rejection. The
+          // side reaction observes existing work; it submits/maps/waits nothing.
+          void promise.then(() => settle({ rejected: false }), () => settle({ rejected: true }));
+        },
+      });
+    }
+    return promise;
   }
 
   function wrapEncoder({ encoder }: { encoder: GPUCommandEncoder }): GPUCommandEncoder {
@@ -366,6 +449,16 @@ export function createGpuProfileObserver() {
                       },
                     });
                     return range;
+                  },
+                });
+                // Keep timestamp collection working if this optional hook is
+                // unavailable on a particular native buffer implementation.
+                const mapAsync = buffer.mapAsync.bind(buffer);
+                Object.defineProperty(buffer, 'mapAsync', {
+                  configurable: true,
+                  writable: true,
+                  value(...args: Parameters<GPUBuffer['mapAsync']>): Promise<void> {
+                    return mapReadback({ buffer, mapAsync, args });
                   },
                 });
               },

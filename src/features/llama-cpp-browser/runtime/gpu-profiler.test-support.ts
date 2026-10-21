@@ -13,14 +13,16 @@ export function createMeasurementFixture() {
 
 /** A strict-receiver WebGPU fixture. Only the application issues GPU work;
  * readback calls and pass/dispatch counts expose accidental observer work. */
-export function createGpuProfileFixture() {
+export function createGpuProfileFixture({ now }: { now?: () => number } = {}) {
   const calls = { buffers: 0, passes: 0, dispatches: 0, resolves: 0, copies: 0, maps: 0, reads: 0, submits: 0 };
   const storage = new WeakMap<GPUBuffer, ArrayBuffer>();
   const timestamps = new WeakMap<GPUQuerySet, bigint[]>();
   const rawBuffers: GPUBuffer[] = [];
   let frozenBuffer = false;
+  let frozenMapMethod = false;
   const nativeFailure = new Error('native read failure');
   let readFailure = false;
+  let mapResult: (() => Promise<void>) | undefined;
   function brand({ received, expected }: { received: unknown, expected: unknown }): void {
     if (received !== expected) {
       throw new Error('illegal native receiver');
@@ -35,9 +37,10 @@ export function createGpuProfileFixture() {
       const raw = {
         size: Number(descriptor.size),
         usage: descriptor.usage,
-        async mapAsync() {
+        mapAsync() {
           brand({ received: this, expected: raw });
           calls.maps++;
+          return mapResult ? mapResult() : Promise.resolve();
         },
         getMappedRange(offset = 0, size = data.byteLength - offset) {
           brand({ received: this, expected: raw });
@@ -54,6 +57,9 @@ export function createGpuProfileFixture() {
       const buffer = raw as unknown as GPUBuffer;
       storage.set(buffer, data);
       rawBuffers.push(buffer);
+      if (frozenMapMethod) {
+        Object.defineProperty(buffer, 'mapAsync', { configurable: false, writable: false });
+      }
       if (frozenBuffer) {
         Object.freeze(buffer);
       }
@@ -109,7 +115,7 @@ export function createGpuProfileFixture() {
       return encoder as unknown as GPUCommandEncoder;
     },
   };
-  const observer = createGpuProfileObserver();
+  const observer = createGpuProfileObserver({ now });
   const device = observer.wrapDevice({ device: native as unknown as GPUDevice });
   const encoder = device.createCommandEncoder();
   function query({ values = [1000000n, 3000000n] }: { values?: bigint[] } = {}): GPUQuerySet {
@@ -152,6 +158,12 @@ export function createGpuProfileFixture() {
     calls,
     rawBuffers,
     nativeFailure,
+    setMapResult({ run }: { run: () => Promise<void> }) {
+      mapResult = run;
+    },
+    freezeMapMethods() {
+      frozenMapMethod = true;
+    },
     freezeBuffers() {
       frozenBuffer = true;
     },
