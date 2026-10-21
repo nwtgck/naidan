@@ -109,7 +109,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       };
     },
     probeProfiles: async ({ signal }) => (await getClient({ signal })).probeProfiles({ signal }),
-    listModels: async ({ signal }) => (await getClient({ signal })).listModels({ signal }),
+    listModelEntries: async ({ signal }) => (await getClient({ signal })).listModelEntries({ signal }),
     importModel: async ({ file, onProgress, signal }) => (await getClient({ signal })).importModel({ file, onProgress, signal }),
     importDirectory: async ({ directory, onProgress, signal }) => (await getClient({ signal })).importDirectory({ directory, onProgress, signal }),
     removeModel: async ({ plan, signal }) => (await getClient({ signal })).removeModel({ plan, signal }),

@@ -14,7 +14,7 @@ export function applicableModelLaunchTarget({ chat, endpoint, modelId }: {
 
 export async function isModelLaunchTargetReady({ target }: { target: ModelLaunchTarget }): Promise<boolean> {
   const model = await installedSelection({ selection: target.selection });
-  return model?.id === target.modelId;
+  return model?.modelId === target.modelId;
 }
 
 /** Recheck bytes at the generation boundary, not only the visual button. */

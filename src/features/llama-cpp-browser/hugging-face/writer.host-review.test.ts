@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toHostModelDirectoryId } from '@/01-models/ids';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
-import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
+import { prepareRepositoryRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { createDownloadWriter } from './writer';
 import { deleteRepository, listHuggingFaceModels, readJournal, repositoryDirectories } from './storage';
 import { ggufBytes } from './test-opfs';
@@ -15,6 +16,7 @@ vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { 
 let root: MemoryDirectory;
 const opfs = vi.fn();
 const destination = { kind: 'host' as const, directoryId: 'root-a' };
+const directories = [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'same root name' }];
 const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
 
 beforeEach(() => {
@@ -44,8 +46,8 @@ async function payload(): Promise<MemoryFile> {
 }
 
 async function imageFiles(): Promise<string[]> {
-  const repositories = await listHostImageRepositories({ directories: [{ id: destination.directoryId, name: root.name }], signal: undefined });
-  return repositories.flatMap(repository => repository.files.map(file => file.path));
+  const repositories = await listHostImageRepositories({ directories: [{ directoryId: destination.directoryId, directoryName: root.name }], signal: undefined });
+  return repositories.flatMap(repository => repository.files.map(file => file.relativePath));
 }
 
 async function completeFile({ writer, index, start }: { writer: ReturnType<typeof createDownloadWriter>, index: number, start: number }): Promise<void> {
@@ -65,7 +67,7 @@ describe('independent direct-host download publication', () => {
 
     expect((await payload()).data).toEqual(ggufBytes().slice(0, 48));
     expect((await readJournal({ folder: await folder() as unknown as FileSystemDirectoryHandle })).bytes).toEqual([48]);
-    expect(await listHuggingFaceModels({ destination })).toEqual([]);
+    expect(await listHuggingFaceModels({ destination, directories })).toEqual([]);
     expect(await imageFiles()).toEqual([]);
 
     writer = createDownloadWriter();
@@ -73,7 +75,7 @@ describe('independent direct-host download publication', () => {
     await completeFile({ writer, index: 0, start: 48 });
     await writer.finish();
     expect((await payload()).data).toEqual(ggufBytes());
-    expect((await listHuggingFaceModels({ destination })).map(model => model.id)).toEqual(['host/root-a/owner/repo:nested%2Fmodel.gguf']);
+    expect((await listHuggingFaceModels({ destination, directories })).map(model => model.modelId)).toEqual(['host/same%20root%20name/owner/repo:nested/model']);
     expect(await imageFiles()).toEqual(['nested/model.gguf']);
     expect(opfs).not.toHaveBeenCalled();
   });
@@ -91,15 +93,15 @@ describe('independent direct-host download publication', () => {
     await writer.begin({ selection: split, destination });
     for (let index = 0; index < split.files.length; index++) {
       await completeFile({ writer, index, start: 0 });
-      expect(await listHuggingFaceModels({ destination })).toEqual([]);
+      expect(await listHuggingFaceModels({ destination, directories })).toEqual([]);
       expect(await imageFiles()).toEqual([]);
     }
     await writer.finish();
 
     const models = await repositoryDirectories({ repository: split.repository, destination });
     expect(models).toHaveLength(1);
-    expect(models[0]?.modelPath).toBe(split.files[0]?.path);
-    expect(models[0]?.projectorPath).toBe('mmproj-F16.gguf');
+    expect(models[0]?.primaryFile.relativePath).toBe(split.files[0]?.path);
+    expect(models[0]?.projectorFile?.relativePath).toBe('mmproj-F16.gguf');
     expect(models[0]?.files.every(file => file.storageKind === 'host')).toBe(true);
     expect(await imageFiles()).toEqual(expect.arrayContaining(split.files.map(file => file.path)));
     expect(opfs).not.toHaveBeenCalled();
@@ -165,7 +167,7 @@ describe('independent direct-host download publication', () => {
     await expect(writer.pause()).rejects.toThrow('Cannot commit file');
     expect(model.data).toHaveLength(0);
     expect(await imageFiles()).toEqual([]);
-    expect(await listHuggingFaceModels({ destination })).toEqual([]);
+    expect(await listHuggingFaceModels({ destination, directories })).toEqual([]);
 
     failClose.mockRestore();
     const retry = createDownloadWriter();
@@ -184,9 +186,9 @@ describe('independent direct-host download publication', () => {
     const repository = await folder();
     const unrelated = await repository.getFileHandle('notes.txt', { create: true });
     unrelated.data = new TextEncoder().encode('Keep this user file');
-    const { plan } = await prepareModelRemoval({ id: 'host/root-a/owner/repo' });
+    const { plan } = await prepareRepositoryRemoval({ location: { ...destination, repository: selection.repository }, signal: undefined });
 
-    expect(plan.files.map(file => file.path)).not.toContain('notes.txt');
+    expect(plan.files.map(file => file.relativePath)).not.toContain('notes.txt');
     expect(await deleteRepository({ repository: selection.repository, destination, plan })).toBe('deleted');
     expect(await (await repository.getFileHandle('notes.txt')).getFile().then(file => file.text())).toBe('Keep this user file');
     expect(await root.getDirectoryHandle('owner')).toBeDefined();

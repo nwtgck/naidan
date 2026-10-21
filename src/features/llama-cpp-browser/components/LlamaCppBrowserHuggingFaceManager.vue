@@ -2,7 +2,7 @@
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
-import { destinationKey, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
+import { destinationKey, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
@@ -60,9 +60,9 @@ const visiblePending = computed(() => pending.value.filter(pendingJob => !queue.
 const catalogCurrent = computed(() => input.value.trim() === checkedInput.value);
 const choices = computed(() => {
   const options = quantizationChoices({ repository: catalog.value?.repository ?? '', models: catalog.value?.models ?? [] });
-  return options.map(option => ({ ...option, displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.id})` : option.label }));
+  return options.map(option => ({ ...option, displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.primaryRelativePath})` : option.label }));
 });
-const selectedChoice = computed(() => choices.value.find(choice => choice.id === quantization.value));
+const selectedChoice = computed(() => choices.value.find(choice => choice.primaryRelativePath === quantization.value));
 const selected = computed(() => {
   const variants = selectedChoice.value?.models ?? [];
   return variants.find(model => model.label === candidate.value) ?? (variants.length === 1 ? variants[0] : undefined);
@@ -213,12 +213,12 @@ async function inspect(): Promise<void> {
       // Resolve complete variant names before falling back to quantization.
       // Never select a drafter by its quant alone.
       const exact = nextChoices.filter(choice => matchesQuantizationChoice({ choice, variant: requestedVariant }));
-      const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.id }) === 'model');
-      quantization.value = matches.length === 1 ? matches[0]!.id : '';
+      const matches = exact.length ? exact : nextChoices.filter(choice => choice.quantization === requestedVariant.toUpperCase() && artifactRole({ path: choice.primaryRelativePath }) === 'model');
+      quantization.value = matches.length === 1 ? matches[0]!.primaryRelativePath : '';
       candidate.value = '';
       requestedVariantUnresolved.value = matches.length !== 1;
-    } else if (!sameRepository || !nextChoices.some(choice => choice.id === quantization.value)) {
-      quantization.value = nextChoices[0]?.id ?? '';
+    } else if (!sameRepository || !nextChoices.some(choice => choice.primaryRelativePath === quantization.value)) {
+      quantization.value = nextChoices[0]?.primaryRelativePath ?? '';
       candidate.value = '';
     }
     if (sameRepository) {
@@ -284,17 +284,17 @@ async function remove({ repository, destination: requestedDestination }: { repos
   error.value = undefined;
   try {
     await downloadDestination.authorize({ destination: requestedDestination });
-    const id = (() => {
+    const location = (() => {
       switch (requestedDestination.kind) {
-      case 'opfs': return `hf.co/${repository}`;
-      case 'host': return hostModelReference({ directoryId: requestedDestination.directoryId, repository, modelPath: undefined });
+      case 'opfs': return { kind: 'hugging-face' as const, repository };
+      case 'host': return { kind: 'host' as const, directoryId: requestedDestination.directoryId, repository };
       default: {
         const exhaustive: never = requestedDestination;
         throw new Error(String(exhaustive));
       }
       }
     })();
-    const plan = await confirmRemoval({ id });
+    const plan = await confirmRemoval({ target: { kind: 'repository', location } });
     if (!plan || disposed) {
       return;
     }
@@ -447,7 +447,7 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
             <div tw-class="relative w-40 max-w-full">
               <select :id="`${id}-model`" v-model="quantization" :title="selectedChoiceLabel" data-testid="llama-hf-model" tw-class="appearance-none block w-full pl-3 pr-9 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
                 <option v-if="!selectedChoice" value="">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_model_files() }}</option>
-                <option v-for="choice in choices" :key="choice.id" :value="choice.id">{{ choice.displayLabel }} · {{ size({ bytes: choice.models[0]!.size }) }}</option>
+                <option v-for="choice in choices" :key="choice.primaryRelativePath" :value="choice.primaryRelativePath">{{ choice.displayLabel }} · {{ size({ bytes: choice.models[0]!.size }) }}</option>
               </select>
               <span aria-hidden="true" data-testid="llama-hf-selected-model" tw-class="absolute inset-px flex items-center rounded-xl bg-white dark:bg-gray-900 pl-3 pr-9 text-sm font-medium text-gray-800 dark:text-gray-100 pointer-events-none"><span tw-class="truncate">{{ selectedChoiceLabel }}</span></span>
               <ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />

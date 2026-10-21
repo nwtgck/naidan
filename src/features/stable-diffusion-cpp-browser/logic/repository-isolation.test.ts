@@ -34,7 +34,7 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     return { bad, unreadable, good };
   }
   function list({ signal }: { signal: AbortSignal | undefined }) {
-    return kind === 'opfs' ? listImageRepositories({ signal }) : listHostImageRepositories({ directories: [{ id: 'linked', name: 'Models' }], signal });
+    return kind === 'opfs' ? listImageRepositories({ signal }) : listHostImageRepositories({ directories: [{ directoryId: 'linked', directoryName: 'Models' }], signal });
   }
   const prefix = kind === 'opfs' ? 'user' : 'host/linked/owner';
 
@@ -42,10 +42,10 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     const { unreadable } = await fixtures();
     vi.spyOn(unreadable, 'getFile').mockRejectedValue(new DOMException('Source file is unavailable', name));
     const result = await list({ signal: undefined });
-    expect(result.map(repo => repo.id)).toEqual([`${prefix}/bad`, `${prefix}/good`]);
+    expect(result.map(repo => repo.repositoryKey)).toEqual([`${prefix}/bad`, `${prefix}/good`]);
     expect(result[0]?.files).toEqual([]);
-    expect(result[0]?.issues).toEqual([{ path: '', message: 'Source file is unavailable' }]);
-    expect(result[1]?.files.map(file => file.path)).toEqual(['model.gguf']);
+    expect(result[0]?.issues).toEqual([{ relativePath: '', message: 'Source file is unavailable' }]);
+    expect(result[1]?.files.map(file => file.relativePath)).toEqual(['model.gguf']);
   });
 
   it('reports unsafe paths without exposing the partially read repository', async () => {
@@ -54,7 +54,7 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     const result = await list({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
     expect(result[0]?.issues?.[0]?.message).toContain('Unsafe path');
-    expect(result[1]?.id).toBe(`${prefix}/good`);
+    expect(result[1]?.repositoryKey).toBe(`${prefix}/good`);
   });
 
   it('keeps the path nesting limit and does not return partial files', async () => {
@@ -66,7 +66,7 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     const result = await list({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
     expect(result[0]?.issues?.[0]?.message).toContain('Unsafe path');
-    expect(result[1]?.id).toBe(`${prefix}/good`);
+    expect(result[1]?.repositoryKey).toBe(`${prefix}/good`);
   });
 
   it('keeps the repository entry limit and continues with the next repository', async () => {
@@ -79,7 +79,7 @@ describe.each(['opfs', 'host'] as const)('%s repository failure isolation', kind
     const result = await list({ signal: undefined });
     expect(result[0]?.files).toEqual([]);
     expect(result[0]?.issues?.[0]?.message).toContain('too many entries');
-    expect(result[1]?.id).toBe(`${prefix}/good`);
+    expect(result[1]?.repositoryKey).toBe(`${prefix}/good`);
   });
 
   it.each(['signal', 'filesystem'] as const)('propagates cancellation from %s without visiting another repository', async source => {
@@ -110,8 +110,8 @@ it('continues through the inventory worker from an unreadable OPFS repository to
   const fixture = ggufFixture({ name: 'weights.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 });
   vi.spyOn(handle, 'getFile').mockResolvedValue(fixture.file);
   vi.mocked(hostModelHandles.get).mockResolvedValue(host as unknown as HostModelDirectoryHandle);
-  const inventory = await createInventoryWorker().inspect(undefined, vi.fn(), [{ id: 'linked', name: 'Models' }]);
-  expect(inventory.issues).toEqual([{ repositoryId: 'user/broken', path: '', message: 'OPFS file is unavailable' }]);
+  const inventory = await createInventoryWorker().inspect(undefined, vi.fn(), [{ directoryId: 'linked', directoryName: 'Models' }]);
+  expect(inventory.issues).toEqual([{ repositoryKey: 'user/broken', relativePath: '', message: 'OPFS file is unavailable' }]);
   expect(inventory.candidates).toHaveLength(1);
-  expect(inventory.candidates[0]).toMatchObject({ repositoryId: 'host/linked/owner/good', family: 'z-image', issue: undefined });
+  expect(inventory.candidates[0]).toMatchObject({ repositoryKey: 'host/linked/owner/good', family: 'z-image', issue: undefined });
 });

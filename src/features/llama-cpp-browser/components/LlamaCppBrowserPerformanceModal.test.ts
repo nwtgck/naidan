@@ -7,7 +7,7 @@ import LlamaCppBrowserPerformanceModal from './LlamaCppBrowserPerformanceModal.v
 
 const mocks = vi.hoisted(() => ({
   hosted: vi.fn(() => true),
-  listModels: vi.fn<LlamaCppBrowserService['listModels']>(),
+  listModelEntries: vi.fn<LlamaCppBrowserService['listModelEntries']>(),
   probeProfiles: vi.fn<LlamaCppBrowserService['probeProfiles']>(),
   runPerformanceOperation: vi.fn<LlamaCppBrowserService['runPerformanceOperation']>(),
   getOptions: vi.fn(() => ({ profile: 'auto' as const })),
@@ -21,7 +21,7 @@ vi.mock('@/features/llama-cpp-browser/performance/profiling-mode', async importO
 }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
-    listModels: mocks.listModels,
+    listModelEntries: mocks.listModelEntries,
     probeProfiles: mocks.probeProfiles,
     runPerformanceOperation: mocks.runPerformanceOperation,
     getOptions: mocks.getOptions,
@@ -42,7 +42,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.hosted.mockReturnValue(true);
   mocks.getOptions.mockReturnValue({ profile: 'auto' });
-  mocks.listModels.mockResolvedValue(performancePlan({ models: 2 }).models);
+  mocks.listModelEntries.mockResolvedValue(performancePlan({ models: 2 }).models);
   mocks.probeProfiles.mockResolvedValue({ recommended: 'webgpu-wasm64-jspi', profiles: [{ profile: 'webgpu-wasm64-jspi', status: 'available' }] });
   mocks.archive.mockResolvedValue(new Blob(['zip']));
   mocks.runPerformanceOperation.mockImplementation(async ({ options, signal, operation }) => operation({
@@ -91,7 +91,7 @@ afterEach(() => {
 
 describe('in-app llama performance screen', () => {
   it('opens, selects the default model and probes support without loading a runtime or generating', async () => {
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' }, attachTo: document.body });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' }, attachTo: document.body });
     await flushPromises();
     const models = wrapper.findAll<HTMLInputElement>('[data-testid="llama-performance-model"]');
     expect(models).toHaveLength(2);
@@ -104,7 +104,7 @@ describe('in-app llama performance screen', () => {
   });
 
   it('runs multiple selected models with one click, exports only on a separate click and retains results on close', async () => {
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.findAll<HTMLInputElement>('[data-testid="llama-performance-model"]')[1]!.setValue(true);
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
@@ -126,7 +126,7 @@ describe('in-app llama performance screen', () => {
     mocks.runPerformanceOperation.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
     }));
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await vi.waitFor(() => expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce());
@@ -152,7 +152,7 @@ describe('in-app llama performance screen', () => {
         }),
       },
     }));
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await vi.waitFor(() => expect(wrapper!.find('[data-testid="model-load-percentage"]').text()).toBe('50%'));
@@ -163,7 +163,7 @@ describe('in-app llama performance screen', () => {
 
   it('does not wait indefinitely for an optional wake lock before running', async () => {
     Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: () => new Promise(() => {}) } });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -173,7 +173,7 @@ describe('in-app llama performance screen', () => {
   it('exports completed results without waiting for an optional wake-lock release', async () => {
     const release = vi.fn(() => new Promise<void>(() => {}));
     Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => ({ release }) } });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -183,7 +183,7 @@ describe('in-app llama performance screen', () => {
 
   it('does not silently substitute a CPU backend when auto has no WebGPU', async () => {
     mocks.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await saveManually();
@@ -196,19 +196,19 @@ it('accepts a multiline model draft on start, preserves its order, and performs 
   wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: undefined } });
   await flushPromises();
   await wrapper.get('[data-testid="llama-performance-model-input"]').setValue(`\
-model1.gguf
+user/m1
 user/m0`);
   expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
   await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
   await saveManually();
-  expect(mocks.archive.mock.calls[0]![0].snapshot.plan.models.map((model: { id: string }) => model.id)).toEqual(['user/m1', 'user/m0']);
+  expect(mocks.archive.mock.calls[0]![0].snapshot.plan.models.map((model: { modelId: string }) => model.modelId)).toEqual(['user/m1', 'user/m0']);
 });
 
 it('keeps invalid multiline input visible and does not run a partial list', async () => {
   wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: undefined } });
   await flushPromises();
   await wrapper.get('[data-testid="llama-performance-model-input"]').setValue(`\
-model1.gguf
+user/m1
 missing`);
   await wrapper.get('[data-testid="llama-performance-model-input"]').trigger('keydown', { key: 'Enter' });
   expect(wrapper.find('[role="alert"]').text()).toContain('Line 2');
@@ -228,7 +228,7 @@ describe('Transformers.js model-list interaction parity', () => {
   it('places full-width committed rows before the two-line draft, with no Add button', async () => {
     await open();
     await draft().setValue(`\
-model1.gguf
+user/m1
 user/m0`);
     await draft().trigger('keydown', { key: 'Enter' });
     expect(rows().map(row => row.get('span[title]').attributes('title'))).toEqual(['user/m1', 'user/m0']);
@@ -242,22 +242,22 @@ user/m0`);
   });
 
   it.each(['user/m1', `\
-model1.gguf
-model0.gguf
+user/m1
+user/m0
 user/m1`])('commits single/multiline paste atomically in input order: %s', async text => {
     await open();
     await draft().trigger('paste', { clipboardData: { getData: () => text } });
     expect(rows().map(row => row.get('span[title]').attributes('title'))).toEqual(text.includes('\n') ? ['user/m1', 'user/m0'] : ['user/m1']);
     expect(draft().element.value).toBe('');
-    expect(mocks.listModels).toHaveBeenCalledOnce();
+    expect(mocks.listModelEntries).toHaveBeenCalledOnce();
     expect(mocks.runPerformanceOperation).not.toHaveBeenCalled();
   });
 
   it('appends pasted lines to the existing draft instead of replacing the selected text', async () => {
     await open();
-    await draft().setValue('model0.gguf');
+    await draft().setValue('user/m0');
     draft().element.select();
-    await draft().trigger('paste', { clipboardData: { getData: () => 'model1.gguf' } });
+    await draft().trigger('paste', { clipboardData: { getData: () => 'user/m1' } });
     expect(rows().map(row => row.get('span[title]').attributes('title'))).toEqual(['user/m0', 'user/m1']);
   });
 
@@ -291,10 +291,10 @@ user/m1`);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     await open();
-    await draft().setValue('model1.gguf');
+    await draft().setValue('user/m1');
     await draft().trigger('keydown', { key: 'Enter' });
     await draft().setValue(`\
-model0.gguf
+user/m0
 user/m1`);
     await copy().trigger('click');
     await flushPromises();
@@ -306,7 +306,7 @@ user/m0`);
     await copy().trigger('click');
     await flushPromises();
     expect(draft().element.value).toBe(`\
-model0.gguf
+user/m0
 user/m1`);
     expect(wrapper!.find('[data-testid="llama-performance-model-input-errors"]').exists()).toBe(false);
     await draft().setValue('missing');
@@ -315,7 +315,7 @@ user/m1`);
 });
 
 it('never exports on completion/reopen, serializes manual saves, and retains results after export failure', async () => {
-  wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+  wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
   await flushPromises();
   await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
   await vi.waitFor(() => expect(wrapper!.get<HTMLButtonElement>('[data-testid="llama-performance-download"]').element.disabled).toBe(false));
@@ -350,7 +350,7 @@ describe('profiling modes and safe result actions', () => {
     });
   }
   async function open(): Promise<void> {
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
   }
 
@@ -421,18 +421,18 @@ describe('profiling modes and safe result actions', () => {
     expect(replace.classes()).toContain('border');
   });
 
-  it('uses the shared friendly host model name for display while copying the canonical identity', async () => {
-    const model = { ...performancePlan().models[0]!, name: 'host/models-for-browser-2/unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL', id: 'host/opaque-host/unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL%2Fpart-00001.gguf' };
-    mocks.listModels.mockResolvedValue([model]);
+  it('uses the same public modelId for display, title and copying', async () => {
+    const model = { ...performancePlan().models[0]!, modelId: 'host/MyModels1/unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL' };
+    mocks.listModelEntries.mockResolvedValue([model]);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: model.id } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: model.modelId } });
     await flushPromises();
     const label = wrapper.get('[data-testid="llama-performance-target-row"] span[title]');
-    expect(label.text()).toBe(model.name);
-    expect(label.attributes('title')).toBe(model.id);
+    expect(label.text()).toBe(model.modelId);
+    expect(label.attributes('title')).toBe(model.modelId);
     await wrapper.get('[data-testid="llama-performance-copy-models"]').trigger('click');
-    expect(writeText).toHaveBeenCalledExactlyOnceWith(model.id);
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(model.modelId);
   });
 });
 
@@ -464,7 +464,7 @@ describe('current-trial interruption controls', () => {
         },
       });
     });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await vi.waitFor(() => expect(wrapper!.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(false));
@@ -490,7 +490,7 @@ describe('current-trial interruption controls', () => {
     mocks.runPerformanceOperation.mockImplementationOnce(({ signal }) => new Promise((_, reject) => {
       signal?.addEventListener('abort', () => reject(new DOMException('Stopped', 'AbortError')), { once: true });
     }));
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await vi.waitFor(() => expect(mocks.runPerformanceOperation).toHaveBeenCalledOnce());
@@ -526,7 +526,7 @@ describe('current-trial interruption controls', () => {
         },
       });
     });
-    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+    wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
     await flushPromises();
     await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
     await vi.waitFor(() => expect(wrapper!.get<HTMLButtonElement>('[data-testid="llama-performance-interrupt"]').element.disabled).toBe(false));
@@ -557,7 +557,7 @@ it('does not redirect a queued click on the old button to the next trial', async
       },
     },
   }));
-  wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'model0.gguf' } });
+  wrapper = mount(LlamaCppBrowserPerformanceModal, { props: { isOpen: true, defaultModel: 'user/m0' } });
   await flushPromises();
   await wrapper.get('[data-testid="llama-performance-start"]').trigger('click');
   await vi.waitFor(() => expect(observed).toHaveLength(1));

@@ -3,7 +3,7 @@ import { createTemporaryModelFiles } from '@/logic/temporary-model-files';
 import { describe, expect, it, vi } from 'vitest';
 import { directoryForModelFile, normalizeModelDirectoryInput } from './model-directory-input';
 import { TEST_ONLY } from './temporary-model-store';
-import { temporarySourceDirectory } from './temporary-model-source';
+import { resolvedModelSchema } from './resolved-model-schema';
 import { isTemporaryModelReference, parseTemporaryModelReference, temporaryModelReference } from './temporary-model-reference';
 import { generateInputSchema, modelSchema, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 
@@ -14,8 +14,8 @@ function gguf({ name = 'model.gguf', lastModified = 123, marker = 0 }: { name?: 
   return new File([bytes], name, { lastModified });
 }
 
-function tree({ name = 'Models', paths }: { name?: string, paths: string[] }): ModelDirectoryInput {
-  return { name, files: paths.map(path => ({ path, file: gguf({ name: path.split('/').at(-1)! }) })) };
+function tree({ rootName = 'Models', paths }: { rootName?: string, paths: string[] }): ModelDirectoryInput {
+  return { rootName, files: paths.map(relativePath => ({ relativePath, file: gguf({ name: relativePath.split('/').at(-1)! }) })) };
 }
 
 describe('page-local model directories', () => {
@@ -27,31 +27,31 @@ describe('page-local model directories', () => {
       throw new Error('Persistence is forbidden');
     });
     const directory = directoryForModelFile({ file });
-    expect(directory).toEqual({ name: 'Qwen3-Q4-GGUF', files: [{ path: file.name, file }] });
+    expect(directory).toEqual({ rootName: 'Qwen3-Q4-GGUF', files: [{ relativePath: file.name, file }] });
     const [model] = await store.registerDirectory({ directory, signal: undefined });
-    expect(model).toMatchObject({ id: 'temp/Qwen3-Q4-GGUF', name: 'temp/Qwen3-Q4-GGUF', size: 32 });
-    expect(store.source({ name: model!.id })!.files[0]!.file).toBe(file);
+    expect(model).toMatchObject({ modelId: 'temp/Qwen3-Q4-GGUF', size: 32 });
+    expect((await store.resolveModel({ modelId: model!.modelId, signal: undefined }))!.directory.files[0]!.file).toBe(file);
     expect(read).not.toHaveBeenCalled();
     expect(stream).not.toHaveBeenCalled();
   });
 
   it('preserves a dropped root and nested paths without inventing a repository', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
-    const [model] = await store.registerDirectory({ directory: tree({ name: 'dir1', paths: ['dir2/model.gguf'] }), signal: undefined });
-    expect(model!.id).toBe('temp/dir1');
-    const source = store.source({ name: model!.id });
-    expect(source!.files[0]!.path).toBe('dir2/model.gguf');
-    expect(temporarySourceDirectory({ name: model!.id, source }).modelPath).toBe('dir2/model.gguf');
+    const [model] = await store.registerDirectory({ directory: tree({ rootName: 'dir1', paths: ['dir2/model.gguf'] }), signal: undefined });
+    expect(model!.modelId).toBe('temp/dir1');
+    const resolvedModel = (await store.resolveModel({ modelId: model!.modelId, signal: undefined }));
+    expect(resolvedModel!.directory.files[0]!.relativePath).toBe('dir2/model.gguf');
+    expect(resolvedModel!.directory.primaryFile).toBe(resolvedModel!.directory.files[0]);
   });
 
   it('enumerates linked-root layouts and independent variants while retaining repository paths', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ paths: ['Qwen/Model/Q4/model.gguf', 'Qwen/Model/Q8/model.gguf', 'other/Repo/model.gguf'] }), signal: undefined });
-    expect(models.map(model => model.id).sort()).toEqual(['temp/Models/Qwen/Model:Q4/model', 'temp/Models/Qwen/Model:Q8/model', 'temp/Models/other/Repo:model'].sort());
+    expect(models.map(model => model.modelId).sort()).toEqual(['temp/Models/Qwen/Model:Q4/model', 'temp/Models/Qwen/Model:Q8/model', 'temp/Models/other/Repo:model'].sort());
     for (const model of models) {
-      const source = store.source({ name: model.id });
-      expect(source!.files).toHaveLength(1);
-      expect(temporarySourceDirectory({ name: model.id, source }).modelPath).toBe(source!.files[0]!.path);
+      const resolvedModel = (await store.resolveModel({ modelId: model.modelId, signal: undefined }));
+      expect(resolvedModel!.directory.files).toHaveLength(1);
+      expect(resolvedModel!.directory.primaryFile).toBe(resolvedModel!.directory.files[0]);
       expect(modelSchema.safeParse(model).success).toBe(true);
     }
   });
@@ -60,21 +60,21 @@ describe('page-local model directories', () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const repository = 'google/gemma-4-E2B-it-qat-q4_0-gguf';
     const file = 'gemma-4-E2B_q4_0-it.gguf';
-    const [model] = await store.registerDirectory({ directory: tree({ name: 'models-for-browser-2', paths: [`${repository}/${file}`] }), signal: undefined });
-    expect(model!.id).toBe(`temp/models-for-browser-2/${repository}:q4_0-it`);
-    expect(store.source({ name: model!.id })?.modelPath).toBe(file);
-    expect(temporarySourceDirectory({ name: model!.id, source: store.source({ name: model!.id }) }).modelPath).toBe(file);
+    const [model] = await store.registerDirectory({ directory: tree({ rootName: 'models-for-browser-2', paths: [`${repository}/${file}`] }), signal: undefined });
+    expect(model!.modelId).toBe(`temp/models-for-browser-2/${repository}:q4_0-it`);
+    expect((await store.resolveModel({ modelId: model!.modelId, signal: undefined }))?.directory.primaryFile.relativePath).toBe(file);
+    expect(resolvedModelSchema.safeParse(await store.resolveModel({ modelId: model!.modelId, signal: undefined })).success).toBe(true);
   });
 
   it('keeps selectors stable when a duplicate root gets a numeric suffix', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
-    const input = tree({ name: 'Model-GGUF', paths: ['Model-Q4.gguf', 'Model-Q8.gguf'] });
+    const input = tree({ rootName: 'Model-GGUF', paths: ['Model-Q4.gguf', 'Model-Q8.gguf'] });
     const first = await store.registerDirectory({ directory: input, signal: undefined });
     const second = await store.registerDirectory({ directory: input, signal: undefined });
-    expect(first.map(model => model.id)).toEqual(['temp/Model-GGUF:Q4', 'temp/Model-GGUF:Q8']);
-    expect(second.map(model => model.id)).toEqual(['temp/Model-GGUF-2:Q4', 'temp/Model-GGUF-2:Q8']);
-    expect(store.source({ name: second[0]!.id })!.modelPath).toBe('Model-Q4.gguf');
-    expect(temporarySourceDirectory({ name: second[0]!.id, source: store.source({ name: second[0]!.id }) }).modelPath).toBe('Model-Q4.gguf');
+    expect(first.map(model => model.modelId)).toEqual(['temp/Model-GGUF:Q4', 'temp/Model-GGUF:Q8']);
+    expect(second.map(model => model.modelId)).toEqual(['temp/Model-GGUF-2:Q4', 'temp/Model-GGUF-2:Q8']);
+    expect((await store.resolveModel({ modelId: second[0]!.modelId, signal: undefined }))!.directory.primaryFile.relativePath).toBe('Model-Q4.gguf');
+    expect(resolvedModelSchema.safeParse(await store.resolveModel({ modelId: second[0]!.modelId, signal: undefined })).success).toBe(true);
   });
 
   it('rejects colliding repository labels rather than registering an ambiguous temporary name', async () => {
@@ -90,19 +90,19 @@ describe('page-local model directories', () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ paths: ['owner/WithProjector/model.gguf', 'owner/WithProjector/mmproj.gguf', 'owner/TextOnly/model.gguf'] }), signal: undefined });
     expect(models).toHaveLength(2);
-    const multimodal = store.source({ name: 'temp/Models/owner/WithProjector:model' })!;
-    const text = store.source({ name: 'temp/Models/owner/TextOnly:model' })!;
-    expect(multimodal.projectorPath).toBe('mmproj.gguf');
-    expect(text.projectorPath).toBeUndefined();
-    expect(text.files.map(file => file.path)).toEqual(['model.gguf']);
+    const multimodal = (await store.resolveModel({ modelId: 'temp/Models/owner/WithProjector:model', signal: undefined }))!;
+    const text = (await store.resolveModel({ modelId: 'temp/Models/owner/TextOnly:model', signal: undefined }))!;
+    expect(multimodal.directory.projectorFile?.relativePath).toBe('mmproj.gguf');
+    expect(text.directory.projectorFile?.relativePath).toBeUndefined();
+    expect(text.directory.files.map(file => file.relativePath)).toEqual(['model.gguf']);
   });
 
   it('ignores companion-only repositories without losing independent models or crossing repository boundaries', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const [model] = await store.registerDirectory({ directory: tree({ paths: ['owner/Chat/model.gguf', 'owner/Companion/mmproj.gguf'] }), signal: undefined });
-    expect(model!.id).toBe('temp/Models/owner/Chat:model');
+    expect(model!.modelId).toBe('temp/Models/owner/Chat:model');
     expect(store.list()).toHaveLength(1);
-    expect(store.source({ name: model!.id })!.projectorPath).toBeUndefined();
+    expect((await store.resolveModel({ modelId: model!.modelId, signal: undefined }))!.directory.projectorFile?.relativePath).toBeUndefined();
     await expect(store.registerDirectory({ directory: tree({ paths: ['owner/Companion/mmproj.gguf'] }), signal: undefined })).rejects.toThrow('unsupported-input');
     expect(store.list()).toHaveLength(1);
   });
@@ -111,81 +111,105 @@ describe('page-local model directories', () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     await expect(store.registerDirectory({ directory: tree({ paths: ['owner/Good/model.gguf', 'owner/Broken/model-00001-of-00002.gguf'] }), signal: undefined })).rejects.toThrow('invalid-gguf');
     expect(store.list()).toEqual([]);
-    expect((await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined }))[0]!.id).toBe('temp/Models-2');
+    expect((await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined }))[0]!.modelId).toBe('temp/Models-2');
   });
 
   it('groups split files and the selected companion as one model', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
-    const models = await store.registerDirectory({ directory: tree({ name: 'split', paths: ['weights/model-00001-of-00002.gguf', 'weights/model-00002-of-00002.gguf', 'mmproj.gguf'] }), signal: undefined });
+    const models = await store.registerDirectory({ directory: tree({ rootName: 'split', paths: ['weights/model-00001-of-00002.gguf', 'weights/model-00002-of-00002.gguf', 'mmproj.gguf'] }), signal: undefined });
     expect(models).toHaveLength(1);
-    const source = store.source({ name: 'temp/split' })!;
-    expect(source.files).toHaveLength(3);
-    expect(source.projectorPath).toBe('mmproj.gguf');
-    expect(source.modelPath).toBe('weights/model-00001-of-00002.gguf');
+    const resolvedModel = (await store.resolveModel({ modelId: 'temp/split', signal: undefined }))!;
+    expect(resolvedModel.directory.files).toHaveLength(3);
+    expect(resolvedModel.directory.projectorFile?.relativePath).toBe('mmproj.gguf');
+    expect(resolvedModel.directory.primaryFile.relativePath).toBe('weights/model-00001-of-00002.gguf');
   });
 
   it('uses selectors for multiple loose variants rather than changing the file tree', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
-    const models = await store.registerDirectory({ directory: tree({ name: 'variants', paths: ['Q4.gguf', 'Q8.gguf'] }), signal: undefined });
-    expect(models.map(model => model.id)).toEqual(['temp/variants:Q4', 'temp/variants:Q8']);
+    const models = await store.registerDirectory({ directory: tree({ rootName: 'variants', paths: ['Q4.gguf', 'Q8.gguf'] }), signal: undefined });
+    expect(models.map(model => model.modelId)).toEqual(['temp/variants:Q4', 'temp/variants:Q8']);
+  });
+
+  it('matches only readable variants and keeps literal percent and whitespace distinct', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    const models = await store.registerDirectory({ directory: tree({ rootName: 'Model-GGUF', paths: ['Q4.gguf', 'Q4.gguf.gguf', 'Q%20A.gguf', 'Q A.gguf'] }), signal: undefined });
+    expect(models).toHaveLength(4);
+    expect(models.map(model => model.modelId)).toEqual(expect.arrayContaining(['temp/Model-GGUF:Q A', 'temp/Model-GGUF:Q%20A', 'temp/Model-GGUF:Q4', 'temp/Model-GGUF:Q4.gguf']));
+    const expected = new Map([
+      ['temp/Model-GGUF:Q A', 'Q A.gguf'],
+      ['temp/Model-GGUF:Q%20A', 'Q%20A.gguf'],
+      ['temp/Model-GGUF:Q4', 'Q4.gguf'],
+      ['temp/Model-GGUF:Q4.gguf', 'Q4.gguf.gguf'],
+    ]);
+    for (const { modelId } of models) {
+      expect((await store.resolveModel({ modelId, signal: undefined }))?.directory.primaryFile.relativePath).toBe(expected.get(modelId));
+    }
   });
 
   it('resolves nested model paths and literal percent filenames without URL-decoding selectors', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const paths = ['..%2Fmodel.gguf', '%ZZ.gguf', 'dir/model.gguf'];
-    const models = await store.registerDirectory({ directory: tree({ name: 'root', paths }), signal: undefined });
-    expect(models.map(model => model.id)).toEqual(['temp/root:..%2Fmodel', 'temp/root:%ZZ', 'temp/root:dir/model']);
+    const models = await store.registerDirectory({ directory: tree({ rootName: 'root', paths }), signal: undefined });
+    expect(models.map(model => model.modelId)).toEqual(['temp/root:..%2Fmodel', 'temp/root:%ZZ', 'temp/root:dir/model']);
     for (const [index, path] of paths.entries()) {
-      const name = models[index]!.id;
-      expect(modelSchema.shape.id.parse(name)).toBe(name);
-      expect(generateInputSchema.shape.model.parse(name)).toBe(name);
-      const source = store.source({ name })!;
-      expect(source.modelPath).toBe(path);
-      expect(source.files.map(file => file.path)).toEqual([path]);
-      expect(temporarySourceDirectory({ name, source }).modelPath).toBe(path);
+      const modelId = models[index]!.modelId;
+      expect(modelSchema.shape.modelId.parse(modelId)).toBe(modelId);
+      expect(generateInputSchema.shape.modelId.parse(modelId)).toBe(modelId);
+      const resolvedModel = (await store.resolveModel({ modelId, signal: undefined }))!;
+      expect(resolvedModel.directory.primaryFile.relativePath).toBe(path);
+      expect(resolvedModel.directory.files.map(file => file.relativePath)).toEqual([path]);
+      expect(resolvedModel.directory.primaryFile).toBe(resolvedModel.directory.files[0]);
     }
   });
 
   it('reserves only live root names and permits intentional same-name replacement', async () => {
     const registry = createTemporaryModelFiles();
     const store = TEST_ONLY.createWithRegistry({ registry });
-    const input = tree({ name: 'Models', paths: ['model.gguf'] });
+    const input = tree({ rootName: 'Models', paths: ['model.gguf'] });
     const first = (await store.registerDirectory({ directory: input, signal: undefined }))[0]!;
-    const before = store.source({ name: first.id })!;
-    await store.registerDirectory({ directory: tree({ name: 'Models-2', paths: ['model.gguf'] }), signal: undefined });
+    const before = (await store.resolveModel({ modelId: first.modelId, signal: undefined }))!;
+    await store.registerDirectory({ directory: tree({ rootName: 'Models-2', paths: ['model.gguf'] }), signal: undefined });
     const next = (await store.registerDirectory({ directory: input, signal: undefined }))[0]!;
-    expect(next.id).toBe('temp/Models-3');
-    registry.remove({ rootId: first.id });
-    expect(() => store.source({ name: first.id })).toThrow('missing-model');
+    expect(next.modelId).toBe('temp/Models-3');
+    if (before.location.kind !== 'temp') {
+      throw new Error('Expected temporary root location');
+    }
+    registry.remove({ rootPath: before.location.rootPath });
+    await expect(store.resolveModel({ modelId: first.modelId, signal: undefined })).rejects.toThrow('missing-model');
     const replacement = gguf({ marker: 7 });
-    const replaced = (await store.registerDirectory({ directory: { name: 'Models', files: [{ path: 'model.gguf', file: replacement }] }, signal: undefined }))[0]!;
-    expect(replaced.id).toBe(first.id);
-    const after = store.source({ name: replaced.id })!;
-    expect(after.files[0]!.file).toBe(replacement);
-    expect(after.revision).not.toBe(before.revision);
-    expect(before.files[0]!.file).not.toBe(replacement);
+    const replaced = (await store.registerDirectory({ directory: { rootName: 'Models', files: [{ relativePath: 'model.gguf', file: replacement }] }, signal: undefined }))[0]!;
+    expect(replaced.modelId).toBe(first.modelId);
+    const after = (await store.resolveModel({ modelId: replaced.modelId, signal: undefined }))!;
+    expect(after.directory.files[0]!.file).toBe(replacement);
+    const beforeFile = before.directory.files[0]!;
+    const afterFile = after.directory.files[0]!;
+    if (afterFile.storageKind !== 'temp' || beforeFile.storageKind !== 'temp') {
+      throw new Error('Expected temporary file provenance');
+    }
+    expect(afterFile.registrationRevision).not.toBe(beforeFile.registrationRevision);
+    expect(before.directory.files[0]!.file).not.toBe(replacement);
     // A page reload needs no persisted generation, tombstone, or DTO migration.
     const reloaded = TEST_ONLY.createTemporaryModelStore();
-    expect((await reloaded.registerDirectory({ directory: input, signal: undefined }))[0]!.id).toBe(first.id);
+    expect((await reloaded.registerDirectory({ directory: input, signal: undefined }))[0]!.modelId).toBe(first.modelId);
   });
 
   it('allocates different root names for concurrent asynchronous registrations', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const directory = tree({ paths: ['model.gguf'] });
     const results = await Promise.all(Array.from({ length: 4 }, () => store.registerDirectory({ directory, signal: undefined })));
-    expect(new Set(results.flat().map(model => model.id)).size).toBe(4);
+    expect(new Set(results.flat().map(model => model.modelId)).size).toBe(4);
     expect(store.list()).toHaveLength(4);
   });
 
   it('removes only the selected variant without deleting files shared with image generation', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     const models = await store.registerDirectory({ directory: tree({ paths: ['Q4.gguf', 'Q8.gguf', 'mmproj.gguf'] }), signal: undefined });
-    store.remove({ name: models[0]!.id });
-    expect(store.list().map(model => model.id)).toEqual([models[1]!.id]);
-    expect(store.source({ name: models[1]!.id })!.projectorPath).toBe('mmproj.gguf');
-    store.remove({ name: models[1]!.id });
+    store.removeModel({ modelId: models[0]!.modelId });
+    expect(store.list().map(model => model.modelId)).toEqual([models[1]!.modelId]);
+    expect((await store.resolveModel({ modelId: models[1]!.modelId, signal: undefined }))!.directory.projectorFile?.relativePath).toBe('mmproj.gguf');
+    store.removeModel({ modelId: models[1]!.modelId });
     expect(store.list()).toEqual([]);
-    expect((await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined }))[0]!.id).toBe('temp/Models-2');
+    expect((await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined }))[0]!.modelId).toBe('temp/Models-2');
   });
 
   it('does not expose mutable file lists and notifies observers only for accepted changes', async () => {
@@ -193,11 +217,16 @@ describe('page-local model directories', () => {
     const listener = vi.fn();
     using _subscription = { [Symbol.dispose]: store.subscribe({ listener }) };
     await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined });
-    const source = store.source({ name: 'temp/Models' })!;
-    source.files.length = 0;
-    expect(store.source({ name: 'temp/Models' })!.files).toHaveLength(1);
-    store.remove({ name: 'temp/Models' });
+    const resolvedModel = (await store.resolveModel({ modelId: 'temp/Models', signal: undefined }))!;
+    resolvedModel.directory.files.length = 0;
+    expect((await store.resolveModel({ modelId: 'temp/Models', signal: undefined }))!.directory.files).toHaveLength(1);
+    store.removeModel({ modelId: 'temp/Models' });
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not claim a modelId from another storage source', async () => {
+    const store = TEST_ONLY.createTemporaryModelStore();
+    expect(await store.resolveModel({ modelId: 'hf.co/owner/repo:Q4', signal: undefined })).toBeUndefined();
   });
 
   it.each(['model-00002-of-00002.gguf', 'model-00001-of-00002.gguf', 'mmproj.gguf'])('rejects incomplete model %s without publishing a partial root', async path => {
@@ -209,8 +238,8 @@ describe('page-local model directories', () => {
   it('rejects invalid GGUF headers and keeps any previously registered root unchanged', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined });
-    await expect(store.registerDirectory({ directory: { name: 'bad', files: [{ path: 'bad.gguf', file: new File(['not a model'], 'bad.gguf') }] }, signal: undefined })).rejects.toThrow('invalid-gguf');
-    expect(store.list().map(model => model.id)).toEqual(['temp/Models']);
+    await expect(store.registerDirectory({ directory: { rootName: 'bad', files: [{ relativePath: 'bad.gguf', file: new File(['not a model'], 'bad.gguf') }] }, signal: undefined })).rejects.toThrow('invalid-gguf');
+    expect(store.list().map(model => model.modelId)).toEqual(['temp/Models']);
   });
 
   it('honors cancellation after an asynchronous header read without registering anything', async () => {
@@ -222,17 +251,17 @@ describe('page-local model directories', () => {
       controller.abort();
       return slice(start, end);
     });
-    await expect(store.registerDirectory({ directory: { name: 'cancelled', files: [{ path: 'model.gguf', file }] }, signal: controller.signal })).rejects.toThrow();
+    await expect(store.registerDirectory({ directory: { rootName: 'cancelled', files: [{ relativePath: 'model.gguf', file }] }, signal: controller.signal })).rejects.toThrow();
     expect(store.list()).toEqual([]);
   });
 
   it('disambiguates maximum-size UTF-8 root names without creating an invalid path', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
-    const name = '界'.repeat(85);
-    const directory = tree({ name, paths: ['model.gguf'] });
+    const rootName = '界'.repeat(85);
+    const directory = tree({ rootName, paths: ['model.gguf'] });
     await store.registerDirectory({ directory, signal: undefined });
     const second = (await store.registerDirectory({ directory, signal: undefined }))[0]!;
-    const parsed = parseTemporaryModelReference({ name: second.id });
+    const parsed = parseTemporaryModelReference({ modelId: second.modelId });
     expect(parsed.rootName.endsWith('-2')).toBe(true);
     expect(new TextEncoder().encode(parsed.rootName).length).toBeLessThanOrEqual(255);
   });
@@ -249,25 +278,27 @@ describe('shared input and temporary-reference boundaries', () => {
     }
   });
 
-  it.each(['temp/', 'temp/..', 'temp/.hidden', 'temp/root/owner/repo', 'temp/root:..', 'temp/root:/model', 'temp/root:dir//model', 'temp/root:dir/../model', 'temp/root:dir/./model', 'temp/root:dir\\model'])('rejects noncanonical model name %s', name => {
-    expect(isTemporaryModelReference({ name })).toBe(false);
-    expect(modelSchema.shape.id.safeParse(name).success).toBe(false);
-    expect(generateInputSchema.shape.model.safeParse(name).success).toBe(false);
+  it.each(['temp/', 'temp/..', 'temp/.hidden', 'temp/root/owner/repo', 'temp/root:..', 'temp/root:/model', 'temp/root:dir//model', 'temp/root:dir/../model', 'temp/root:dir/./model', 'temp/root:dir\\model'])('distinguishes temporary source parsing from modelId data: %s', modelId => {
+    expect(isTemporaryModelReference({ modelId })).toBe(false);
+    expect(modelSchema.shape.modelId.parse(modelId)).toBe(modelId);
+    expect(generateInputSchema.shape.modelId.parse(modelId)).toBe(modelId);
   });
 
   it('round-trips public variant labels with literal percent, colon and Unicode without decoding', () => {
     const parts = { rootName: 'Models', repository: 'owner/repo', selector: '日本語/a%2Fb:model' };
-    const name = temporaryModelReference(parts);
-    expect(parseTemporaryModelReference({ name })).toEqual(parts);
+    const modelId = temporaryModelReference(parts);
+    expect(parseTemporaryModelReference({ modelId })).toEqual(parts);
   });
 
-  it('binds worker sources to the requested model and recomputes the selected file layout', async () => {
+  it('validates resolved temporary files and recomputes the selected file layout', async () => {
     const store = TEST_ONLY.createTemporaryModelStore();
     await store.registerDirectory({ directory: tree({ paths: ['model.gguf'] }), signal: undefined });
-    const source = store.source({ name: 'temp/Models' })!;
-    expect(() => temporarySourceDirectory({ name: 'temp/elsewhere', source })).toThrow('missing-model');
-    expect(() => temporarySourceDirectory({ name: source.id, source: { ...source, modelPath: 'other.gguf' } })).toThrow('invalid-gguf');
-    expect(() => temporarySourceDirectory({ name: source.id, source: undefined })).toThrow('missing-model');
+    const resolved = (await store.resolveModel({ modelId: 'temp/Models', signal: undefined }))!;
+    expect(resolvedModelSchema.safeParse(resolved).success).toBe(true);
+    expect(resolved.location).toEqual({ kind: 'temp', rootPath: 'temp/Models' });
+    expect(resolvedModelSchema.safeParse({ ...resolved, modelId: 'temp/elsewhere' }).success).toBe(false);
+    expect(resolvedModelSchema.safeParse({ ...resolved, directory: { ...resolved.directory, primaryFile: { ...resolved.directory.primaryFile, relativePath: 'other.gguf' } } }).success).toBe(false);
+    expect(resolvedModelSchema.safeParse(undefined).success).toBe(false);
   });
 });
 
@@ -275,34 +306,39 @@ it('projects a root registered by the image tab and keeps every non-GGUF compani
   const registry = createTemporaryModelFiles();
   const store = TEST_ONLY.createWithRegistry({ registry });
   const file = gguf();
-  const root = registry.register({ directory: { name: 'shared', files: [{ path: 'owner/repo/model.gguf', file }, { path: 'owner/repo/vae.safetensors', file: new File(['vae'], 'vae.safetensors') }] }, signal: undefined });
-  const source = await store.resolveSource({ name: 'temp/shared/owner/repo:model', signal: undefined });
-  expect(source?.files[0]?.file).toBe(file);
-  store.remove({ name: source!.id });
+  const root = registry.register({ directory: { rootName: 'shared', files: [{ relativePath: 'owner/repo/model.gguf', file }, { relativePath: 'owner/repo/vae.safetensors', file: new File(['vae'], 'vae.safetensors') }, { relativePath: 'vae.safetensors', file: new File(['vae'], 'vae.safetensors') }] }, signal: undefined });
+  const resolvedModel = await store.resolveModel({ modelId: 'temp/shared/owner/repo:model', signal: undefined });
+  expect(resolvedModel?.directory.files[0]?.file).toBe(file);
+  store.removeModel({ modelId: resolvedModel!.modelId });
   expect(store.list()).toEqual([]);
-  expect(registry.get({ rootId: root.id })?.files).toHaveLength(2);
+  expect(registry.get({ rootPath: root.rootPath })?.files).toHaveLength(3);
   await store.ensure({ signal: undefined });
   expect(store.list()).toEqual([]);
-  registry.remove({ rootId: root.id });
-  expect(() => store.source({ name: source!.id })).toThrow('missing-model');
+  await expect(store.resolveModel({ modelId: resolvedModel!.modelId, signal: undefined })).rejects.toThrow('missing-model');
+  registry.remove({ rootPath: root.rootPath });
+  await expect(store.resolveModel({ modelId: resolvedModel!.modelId, signal: undefined })).rejects.toThrow('missing-model');
+  registry.register({ directory: { rootName: root.rootName, files: [{ relativePath: 'owner/repo/model.gguf', file }] }, signal: undefined });
+  const restored = await store.resolveModel({ modelId: resolvedModel!.modelId, signal: undefined });
+  expect(restored?.directory.primaryFile.file).toBe(file);
+  expect(restored?.directory.primaryFile).not.toEqual(resolvedModel!.directory.primaryFile);
 });
 
 it('keeps an image-only directory without inventing a language model', async () => {
   const registry = createTemporaryModelFiles();
   const store = TEST_ONLY.createWithRegistry({ registry });
-  expect(await store.registerDirectory({ directory: { name: 'images', files: [{ path: 'model.safetensors', file: new File(['weights'], 'model.safetensors') }] }, signal: undefined })).toEqual([]);
-  expect(registry.list()[0]?.id).toBe('temp/images');
+  expect(await store.registerDirectory({ directory: { rootName: 'images', files: [{ relativePath: 'model.safetensors', file: new File(['weights'], 'model.safetensors') }] }, signal: undefined })).toEqual([]);
+  expect(registry.list()[0]?.rootPath).toBe('temp/images');
   expect(store.issues()).toEqual([]);
 });
 
 it('retains invalid language files for other engines while reporting the projection failure', async () => {
   const registry = createTemporaryModelFiles();
   const store = TEST_ONLY.createWithRegistry({ registry });
-  const directory = { name: 'mixed', files: [{ path: 'bad.gguf', file: new File(['bad'], 'bad.gguf') }, { path: 'image.safetensors', file: new File(['weights'], 'image.safetensors') }] };
+  const directory = { rootName: 'mixed', files: [{ relativePath: 'bad.gguf', file: new File(['bad'], 'bad.gguf') }, { relativePath: 'image.safetensors', file: new File(['weights'], 'image.safetensors') }] };
   await expect(store.registerDirectory({ directory, signal: undefined })).rejects.toThrow('invalid-gguf');
   expect(registry.list()[0]?.files).toHaveLength(2);
-  expect(store.issues()).toEqual([{ rootId: 'temp/mixed', message: 'llama.cpp browser: invalid-gguf' }]);
-  registry.remove({ rootId: 'temp/mixed' });
+  expect(store.issues()).toEqual([{ rootPath: 'temp/mixed', message: 'llama.cpp browser: invalid-gguf' }]);
+  registry.remove({ rootPath: 'temp/mixed' });
   expect(store.issues()).toEqual([]);
 });
 
@@ -318,13 +354,13 @@ it('does not publish a delayed language projection after its shared root was rep
       return original(start, end).arrayBuffer();
     },
   }) as Blob);
-  const root = registry.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file: oldFile }] }, signal: undefined });
+  const root = registry.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file: oldFile }] }, signal: undefined });
   const pending = store.ensure({ signal: undefined });
-  registry.remove({ rootId: root.id });
+  registry.remove({ rootPath: root.rootPath });
   const replacement = gguf({ marker: 7 });
-  registry.register({ directory: { name: 'shared', files: [{ path: 'model.gguf', file: replacement }] }, signal: undefined });
+  registry.register({ directory: { rootName: 'shared', files: [{ relativePath: 'model.gguf', file: replacement }] }, signal: undefined });
   await store.ensure({ signal: undefined });
   gate.resolve();
   await pending;
-  expect(store.source({ name: 'temp/shared' })?.files[0]?.file).toBe(replacement);
+  expect((await store.resolveModel({ modelId: 'temp/shared', signal: undefined }))?.directory.files[0]?.file).toBe(replacement);
 });

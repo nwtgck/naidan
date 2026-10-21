@@ -40,8 +40,8 @@ it('recognizes saved GGUF and safetensors adapters without a filename or publica
   const files = [ggufFixture({ name: 'opaque.gguf', tensors, metadata: {}, extraBytes: 0 }).file,
     safetensorsFixture({ name: 'opaque.safetensors', tensors }).file,
     safetensorsFixture({ name: 'named-lora.safetensors', tensors: zImageTensors }).file];
-  const inventory = await scanImageRepositories({ repositories: [{ id: 'user/adapters', name: 'adapters', files: files.map(file => ({ path: file.name, file })) }], signal: undefined });
-  expect(inventory.candidates.filter(candidate => candidate.classes.includes('lora')).map(candidate => candidate.path)).toEqual(['opaque.gguf', 'opaque.safetensors']);
+  const inventory = await scanImageRepositories({ repositories: [{ repositoryKey: 'user/adapters', repositoryLabel: 'adapters', files: files.map(file => ({ relativePath: file.name, file })) }], signal: undefined });
+  expect(inventory.candidates.filter(candidate => candidate.classes.includes('lora')).map(candidate => candidate.primaryRelativePath)).toEqual(['opaque.gguf', 'opaque.safetensors']);
   expect(inventory.candidates.filter(candidate => candidate.classes.includes('lora')).every(candidate => candidate.family === 'unknown' && candidate.roles.length === 0)).toBe(true);
-  expect(inventory.candidates.find(candidate => candidate.path === 'named-lora.safetensors')?.family).toBe('z-image');
+  expect(inventory.candidates.find(candidate => candidate.primaryRelativePath === 'named-lora.safetensors')?.family).toBe('z-image');
 });

@@ -7,16 +7,16 @@ import { ggufFile, requestFixture } from './test-fixtures';
 it('omits explicitly disabled adapters before validation while preserving enabled zero strength and order', () => {
   const file = ggufFile();
   const selections: ImageLoraSelection[] = [
-    { file, path: 'first.gguf', strength: 0.75, enabled: true },
+    { file, relativePath: 'first.gguf', strength: 0.75, enabled: true, locationLabel: 'OPFS: user/styles/first.gguf' },
     { file: new File([], 'unavailable.gguf'), strength: NaN, enabled: false },
-    { file, path: 'zero.gguf', strength: 0, enabled: true },
-    { file, path: 'last.gguf', strength: -0.5, enabled: true },
+    { file, relativePath: 'zero.gguf', strength: 0, enabled: true },
+    { file, relativePath: 'last.gguf', strength: -0.5, enabled: true },
   ];
   const loras = imageLoraRequests({ selections });
   expect(loras).toEqual([
-    { file, path: 'first.gguf', strength: 0.75 },
-    { file, path: 'zero.gguf', strength: 0 },
-    { file, path: 'last.gguf', strength: -0.5 },
+    { file, relativePath: 'first.gguf', strength: 0.75 },
+    { file, relativePath: 'zero.gguf', strength: 0 },
+    { file, relativePath: 'last.gguf', strength: -0.5 },
   ]);
   expect(requestSchema.safeParse({ ...requestFixture(), loras }).success).toBe(true);
   expect(selections[1]).toMatchObject({ enabled: false, strength: NaN });
@@ -28,8 +28,8 @@ it('ignores disabled selection changes in the session key and replaces the conte
   const keys = createImageSessionKeys();
   const request = requestFixture();
   const selections: ImageLoraSelection[] = [
-    { file: ggufFile(), path: 'first.gguf', strength: 1, enabled: true },
-    { file: ggufFile(), path: 'second.gguf', strength: 0.75, enabled: false },
+    { file: ggufFile(), relativePath: 'first.gguf', strength: 1, enabled: true },
+    { file: ggufFile(), relativePath: 'second.gguf', strength: 0.75, enabled: false },
   ];
   const key = () => keys.key({ request: { ...request, loras: imageLoraRequests({ selections }) } });
   const disabled = key();

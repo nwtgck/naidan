@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import { prepareModelLaunchChat, readModelLaunch, restoreModelLaunch, TEST_ONLY, detachRemovedModelLaunchOwners, type ModelLaunchChatRequest } from './model-launch';
 import { toChatId, toChatGroupId, toMessageId } from '@/01-models/ids';
-import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { hierarchyToDomain } from '@/00-storage/mapper/mappers';
 
@@ -15,7 +15,7 @@ function request({ suffix, quant }: { suffix: string, quant: string }): ModelLau
     chatGroupName: `Model · ${quant}`,
     input: `hf.co/${repository}`,
     requestedVariant: undefined,
-    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: huggingFaceModelId({ repository, modelPath: mainFilePath }) },
+    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: formatHuggingFaceModelId({ repository, mainFilePath }) },
     titleGeneration: { endpoint: { type: 'openai', url: 'https://external.example' }, model: { id: 'external' }, lmParameters: { ...EMPTY_LM_PARAMETERS } },
     mode: 'create-or-resume',
     expectedTarget: undefined,

@@ -1,6 +1,7 @@
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
-import { hostModelSelector, parseHostModelSelector, parsePublicHostModelReference } from './model-destination-types';
+import { parsePublicHostModelReference } from './model-destination-types';
+import { modelVariantName } from '@/01-models/llama-cpp-browser-model-id';
 
 type Directories = readonly { id: HostModelDirectoryId, name: string }[];
 
@@ -30,41 +31,24 @@ export function hostModelDirectoryAliases({ directories }: { directories: Direct
   return aliases;
 }
 
-export function hostModelPublicName({ name, directories }: { name: string, directories: Directories }): string {
-  if (!name.startsWith('host/')) {
-    return name;
-  }
-  const { destination, repository, selector } = parseHostModelSelector({ name });
-  const alias = hostModelDirectoryAliases({ directories }).get(destination.directoryId);
+export function formatHostModelId({ directoryId, repository, primaryRelativePath, directories }: { directoryId: string, repository: string, primaryRelativePath: string, directories: Directories }): string {
+  const alias = hostModelDirectoryAliases({ directories }).get(directoryId);
   if (alias === undefined) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  return `host/${encodeURIComponent(alias)}/${repository}${selector === undefined ? '' : `:${selector}`}`;
+  return `host/${encodeURIComponent(alias)}/${repository}:${modelVariantName({ repository, path: primaryRelativePath })}`;
 }
 
-export function resolveHostModelName({ name, directories }: { name: string, directories: Directories }): string {
-  if (!name.startsWith('host/')) {
-    return name;
-  }
+/** Resolve only the current public alias. Storage locations remain structured. */
+export function resolveHostModelLocation({ modelId, directories }: { modelId: string, directories: Directories }): { directoryId: string, repository: string } {
   try {
-    const aliases = hostModelDirectoryAliases({ directories });
-    // Registered IDs are reserved from public aliases. Preserve an existing
-    // internal reference without interpreting its encoded selector as raw text.
-    const root = /^host\/([^/]+)\//.exec(name)?.[1];
-    if (root !== undefined && aliases.has(decodeURIComponent(root))) {
-      if (parseHostModelSelector({ name }).selector === undefined) {
-        throw new LlamaCppBrowserError({ code: 'missing-model' });
-      }
-      return name;
-    }
-    const { alias, repository, selector } = parsePublicHostModelReference({ name });
-    const directoryId = [...aliases].find(([, value]) => value === alias)?.[0];
+    const { alias, repository, selector } = parsePublicHostModelReference({ modelId });
+    const directoryId = [...hostModelDirectoryAliases({ directories })].find(([, value]) => value === alias)?.[0];
     if (directoryId === undefined || selector === undefined) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
     }
-    return hostModelSelector({ directoryId, repository, selector });
+    return { directoryId, repository };
   } catch {
-    // Never guess a root, fall back to OPFS, or resolve an unregistered ID.
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
 }

@@ -11,7 +11,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { LlamaCppBrowserService } from './service-contract';
 import { LlamaCppBrowserProvider } from './provider-hosted';
 import { chatRequest, createChatFixture, deliverNativeResult, finalText } from './test-utils/chat.test-support';
-const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModels: vi.fn<LlamaCppBrowserService['listModels']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
+const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModelEntries: vi.fn<LlamaCppBrowserService['listModelEntries']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 
 beforeEach(async () => {
@@ -32,6 +32,16 @@ function called({ argumentsText, name, id }: { argumentsText: string, name: stri
 }
 
 describe('local model provider', () => {
+  it.each(['hf.co/owner/Chat-GGUF:Q4', 'host/MyModels/owner/Chat-GGUF:Q4', 'temp/Chat:Q4'])('lists and submits the same public modelId: %s', async modelId => {
+    service.listModelEntries.mockResolvedValue([{ modelId, size: 100, importedAt: 1 }]);
+    const provider = new LlamaCppBrowserProvider();
+    const modelIds = await provider.listModels({ signal: undefined });
+    expect(modelIds).toEqual([modelId]);
+    await read({ request: { ...chatRequest(), model: modelIds[0]! } });
+    expect(service.generate.mock.calls[0]?.[0].input.modelId).toBe(modelId);
+    expect(service.generate.mock.calls[0]?.[0].input).not.toHaveProperty('model');
+  });
+
   it('leaves an omitted completion limit unset and preserves explicit limit validation', async () => {
     await read({ request: chatRequest() });
     await read({ request: { ...chatRequest(), parameters: { ...EMPTY_LM_PARAMETERS, maxCompletionTokens: 37 } } });
@@ -55,15 +65,15 @@ describe('local model provider', () => {
   });
 
   it('maps model identity and text messages without normalizing away content', async () => {
-    service.listModels.mockResolvedValue([{ id: 'user/local-GGUF', name: 'local-GGUF', size: 100, importedAt: 1 }]);
-    expect(await new LlamaCppBrowserProvider().listModels({ signal: undefined })).toEqual(['local-GGUF']);
+    service.listModelEntries.mockResolvedValue([{ modelId: 'user/local-GGUF', size: 100, importedAt: 1 }]);
+    expect(await new LlamaCppBrowserProvider().listModels({ signal: undefined })).toEqual(['user/local-GGUF']);
     const request = chatRequest();
-    request.model = 'local-GGUF';
+    request.model = 'user/local-GGUF';
     request.messages = [{ id: toMessageId({ raw: 's' }), role: 'system', parts: [{ type: 'text', text: 'rules', completeness: 'complete' }] },
       { id: toMessageId({ raw: 'u' }), role: 'user', parts: ['first ', 'second'].map((text) => ({ type: 'text', text, completeness: 'complete' })) }];
     expect((await read({ request })).text).toBe('done');
     expect(service.generate.mock.calls[0]?.[0].input.messages).toEqual([{ role: 'system', content: 'rules' }, { role: 'user', content: 'first second' }]);
-    expect(service.generate.mock.calls[0]?.[0].input.model).toBe('local-GGUF');
+    expect(service.generate.mock.calls[0]?.[0].input.modelId).toBe('user/local-GGUF');
   });
 
   it('rejects remote image references instead of fetching arbitrary resources', async () => {

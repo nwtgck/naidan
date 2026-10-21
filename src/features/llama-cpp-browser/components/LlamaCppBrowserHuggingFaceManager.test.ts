@@ -1,9 +1,10 @@
+import { modelRemovalPlan } from './model-removal.test-support';
 import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 import { MODEL_LAUNCH_QUERY } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import { resolveModelLaunchTarget } from '@/features/llama-cpp-browser/model-launch/target';
-import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
+import { prepareRepositoryRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -19,8 +20,11 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadR
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(), installedSelection: vi.fn() }));
 const confirm = vi.hoisted(() => vi.fn());
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: confirm }) }));
-vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
-const plan = { id: 'hf.co/owner/repo', files: [{ path: 'model-Q4_K_M.gguf', size: 48, lastModified: 1 }] };
+vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn(), prepareRepositoryRemoval: vi.fn() }));
+const plan = {
+  ...modelRemovalPlan({ modelId: 'hf.co/owner/repo:Q4_K_M', files: [{ relativePath: 'model-Q4_K_M.gguf', size: 48, lastModified: 1 }] }),
+  target: { kind: 'repository' as const, location: { kind: 'hugging-face' as const, repository: 'owner/repo' }, journal: undefined },
+};
 const selection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'model-Q4_K_M.gguf', size: 128 }] };
 const wrappers: VueWrapper[] = [];
 
@@ -36,7 +40,7 @@ beforeEach(async () => {
   vi.resetAllMocks();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
   confirm.mockResolvedValue(true);
-  vi.mocked(prepareModelRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 });
+  vi.mocked(prepareRepositoryRemoval).mockResolvedValue({ plan, sharedPlan: undefined, affectedVariants: 0 });
   vi.mocked(cancelDownload).mockResolvedValue('deleted');
   vi.mocked(listPendingDownloads).mockResolvedValue([]);
   vi.mocked(searchModels).mockResolvedValue({ results: [], nextCursor: undefined });
@@ -295,7 +299,7 @@ describe('Hugging Face download controls', () => {
   });
 
   it('marks existing selections downloaded and publishes the exact local model without downloading', async () => {
-    const model = { id: 'hf-model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
+    const model = { modelId: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 };
     vi.mocked(installedSelection).mockResolvedValue(model);
     vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models: [{ label: 'model-Q4_K_M.gguf', files: selection.files, size: 128 }], projectors: [] });
     const wrapper = render();
@@ -320,7 +324,7 @@ describe('Hugging Face download controls', () => {
   it('rechecks completed downloads and ignores an earlier selection check', async () => {
     const stale = Promise.withResolvers<Awaited<ReturnType<typeof installedSelection>>>();
     const models = ['repo-Q4_K_M.gguf', 'repo-Q8_0.gguf'].map(path => ({ label: path, files: [{ path, size: 128 }], size: 128 }));
-    const ready = { id: 'q8', name: 'hf.co/owner/repo:Q8_0', size: 128, importedAt: 1 };
+    const ready = { modelId: 'hf.co/owner/repo:Q8_0', size: 128, importedAt: 1 };
     vi.mocked(discoverRepository).mockResolvedValue({ ...selection, models, projectors: [] });
     vi.mocked(installedSelection).mockReturnValueOnce(stale.promise);
     const wrapper = render();
@@ -331,7 +335,7 @@ describe('Hugging Face download controls', () => {
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeDefined();
     await wrapper.get('[data-testid="llama-hf-model"]').setValue('repo-Q8_0.gguf');
     await flushPromises();
-    stale.resolve({ ...ready, id: 'q4', name: 'hf.co/owner/repo:Q4_K_M' });
+    stale.resolve({ ...ready, modelId: 'hf.co/owner/repo:Q4_K_M' });
     await flushPromises();
     expect(wrapper.emitted('modelReady')).toBeUndefined();
     expect(wrapper.get('[data-testid="llama-hf-download"]').attributes('disabled')).toBeUndefined();
@@ -610,7 +614,7 @@ describe('Hugging Face download controls', () => {
     await flushPromises();
     await wrapper.get('[data-testid="dialog-confirm-button"]').trigger('click');
     await flushPromises();
-    expect(prepareModelRemoval).toHaveBeenCalledTimes(2);
+    expect(prepareRepositoryRemoval).toHaveBeenCalledTimes(2);
     expect(wrapper.get('[role="alert"]').text()).toContain('Deletion stopped because the files changed');
     expect(listPendingDownloads).toHaveBeenCalledTimes(2);
   });

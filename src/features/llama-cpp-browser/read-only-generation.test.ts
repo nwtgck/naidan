@@ -1,3 +1,5 @@
+import { resolveModel } from './runtime/model-resolution';
+import { createResolvedModelForTest } from './test-utils/resolved-model.test-support';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import type { LlamaCppBrowserService } from './service-contract';
@@ -14,12 +16,14 @@ const fixture = vi.hoisted(() => ({
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: () => ({ ...fixture }) }));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ resolveRuntimeProfile: fixture.resolve }));
 vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ listStoredModels: vi.fn(async () => []), removeStoredModel: vi.fn(), withModelMutationLock: vi.fn() }));
+vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 let module: typeof import('./index-hosted');
 let reader: ReturnType<typeof module.createReadOnlyLlamaCppClient>;
 
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => createResolvedModelForTest({ modelId, relativePath: 'model.gguf' }));
   fixture.canReuse.mockReturnValue(true);
   const { storageService } = await import('@/00-storage/service');
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
@@ -36,7 +40,7 @@ afterEach(async () => {
 });
 
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [], debug: 'on' };
+  return { modelId: 'user/local', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [], debug: 'on' };
 }
 
 it('uses existing files without probing writable storage and forces debugging off', async () => {
@@ -44,6 +48,10 @@ it('uses existing files without probing writable storage and forces debugging of
   expect(fixture.probeProfiles).not.toHaveBeenCalled();
   expect(fixture.resolve).toHaveBeenCalledOnce();
   expect(fixture.generate).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ debug: 'off', options: { profile: 'cpu-wasm32' } }) }));
+  const request = fixture.generate.mock.calls[0]![0].request;
+  expect(request.modelId).toBe('user/local');
+  expect(request.resolvedModel.modelId).toBe('user/local');
+  expect(request.resolvedModel.directory.primaryFile.relativePath).toBe('model.gguf');
 });
 
 it('keeps the shared lane reserved until cancelled physical work actually finishes', async () => {
@@ -262,7 +270,7 @@ it('does not start welcome warmup when an advisory probe is queued behind read-o
   const service = module.llamaCppBrowserService;
   const probe = service.probeProfiles({ signal: undefined });
   try {
-    await expect(service.prepareModel({ model: 'welcome.gguf', signal: undefined })).resolves.toBe('skipped-busy');
+    await expect(service.prepareModel({ modelId: 'user/welcome', signal: undefined })).resolves.toBe('skipped-busy');
     service.cancel();
     service.release();
     expect(fixture.generate.mock.calls[0]?.[0].signal?.aborted).toBe(false);
@@ -302,7 +310,7 @@ it('does not revive a retired read-only cache through warmup waiting on an advis
   fixture.probeProfiles.mockReturnValueOnce(checking.promise);
   const service = module.llamaCppBrowserService;
   const probe = service.probeProfiles({ signal: undefined });
-  const preparing = service.prepareModel({ model: 'welcome.gguf', signal: undefined });
+  const preparing = service.prepareModel({ modelId: 'user/welcome', signal: undefined });
   const rejected = expect(preparing).rejects.toThrow('aborted');
   const retiring = reader.dispose();
   checking.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -320,11 +328,11 @@ it('transfers cache ownership to welcome warmup after a shared advisory probe', 
   fixture.probeProfiles.mockReturnValueOnce(checking.promise);
   const service = module.llamaCppBrowserService;
   const probe = service.probeProfiles({ signal: undefined });
-  const preparing = service.prepareModel({ model: 'welcome.gguf', signal: undefined });
+  const preparing = service.prepareModel({ modelId: 'user/welcome', signal: undefined });
   checking.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   await probe;
   await expect(preparing).resolves.toBe('ready');
-  expect(fixture.prepareModel).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ model: 'welcome.gguf' }) }));
+  expect(fixture.prepareModel).toHaveBeenCalledWith(expect.objectContaining({ request: expect.objectContaining({ modelId: 'user/welcome' }) }));
   await reader.dispose();
   // The retired read-only owner must not evict a model now owned by the local UI.
   expect(fixture.dispose).not.toHaveBeenCalled();

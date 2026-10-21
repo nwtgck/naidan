@@ -78,7 +78,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article tw-class="rounded-2xl border border-gray-200 dark:border-gray-700 p-5 space-y-4" data-testid="audio-result" :data-history-id="entry.id">
     <div tw-class="flex flex-wrap items-start justify-between gap-3">
       <div tw-class="min-w-0 space-y-1">
-        <h3 tw-class="break-all text-sm font-semibold">{{ entry.settings.modelName }}</h3>
+        <h3 data-testid="audio-result-model" tw-class="break-all text-sm font-semibold">{{ entry.settings.modelId }}</h3>
         <p tw-class="text-xs text-gray-500 dark:text-gray-400"><time :datetime="new Date(entry.createdAt).toISOString()">{{ createdAt }}</time> · {{ entry.result.pipeline }} · {{ (entry.result.samples / entry.result.sampleRate).toFixed(2) }} s · {{ entry.result.sampleRate }} Hz</p>
       </div>
       <button type="button" @click="emit('remove', entry.id)" data-testid="audio-delete" tw-class="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"><Trash2Icon tw-class="h-4 w-4" />{{ lazyStrings.audioGeneration__delete_audio() }}</button>
@@ -96,7 +96,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <div tw-class="space-y-4 pt-4 text-sm">
         <p tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__recorded_settings_help() }}</p>
         <dl tw-class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-          <div tw-class="space-y-1"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__audio_model() }}</dt><dd tw-class="break-all">{{ entry.settings.model }}</dd></div>
+          <div tw-class="space-y-1"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__audio_model() }}</dt><dd tw-class="break-all">{{ entry.settings.modelId }}</dd></div>
           <div tw-class="space-y-1"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__language() }}</dt><dd data-testid="audio-result-language">{{ language }}</dd></div>
           <div tw-class="space-y-1"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__context_tokens() }}</dt><dd>{{ entry.settings.contextTokens }}</dd></div>
           <div tw-class="space-y-1"><dt tw-class="text-gray-500 dark:text-gray-400">{{ lazyStrings.audioGeneration__captured_steps() }}</dt><dd data-testid="audio-result-steps">{{ entry.result.frames }}</dd></div>

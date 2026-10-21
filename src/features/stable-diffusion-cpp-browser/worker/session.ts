@@ -218,10 +218,10 @@ export function createImageGenerationSession({ core, helpers, reader }: {
       const { file } = input;
       emit({ event: 'start', stage: 'model-header', message: undefined, fields: { slot, bytes: file.size } });
       const plan = await validateModelMounts({ input, reader, capabilities });
-      emit({ event: 'file-summary', stage: 'model-header', message: 'File tensor types are source metadata, not proof of CPU/GPU placement', fields: { slot, path: plan.path.slice(0, 512), members: plan.files.length, ...plan.summary } });
+      emit({ event: 'file-summary', stage: 'model-header', message: 'File tensor types are source metadata, not proof of CPU/GPU placement', fields: { slot, path: plan.relativePath.slice(0, 512), members: plan.files.length, ...plan.summary } });
       const root = '/models/' + slot + '/';
       for (const entry of plan.files) {
-        const path = root + entry.path;
+        const path = root + entry.relativePath;
         const parts = path.split('/').slice(1, -1);
         let parent = '';
         for (const part of parts) {
@@ -249,7 +249,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
             message: 'Cumulative per-file reads; readMs includes blobReadMs. cacheHits counts fully cached nonempty reads.',
             fields: {
               slot,
-              path: entry.path.slice(0, 512),
+              path: entry.relativePath.slice(0, 512),
               report,
               ...source.metrics(),
               fileBytes: source.size,
@@ -273,7 +273,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
               metric: 'file-read-run',
               perfVersion: 1,
               slot,
-              path: entry.path.slice(0, 512),
+              path: entry.relativePath.slice(0, 512),
               reads: current.reads - previousRun.reads,
               bytes: current.bytes - previousRun.bytes,
               readMs: current.readMs - previousRun.readMs,
@@ -308,7 +308,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         }, { maxChunkBytes: MODEL_FILE_PAGE_BYTES }));
       }
       log({ message: `Mounted ${slot}: ${file.size} bytes; original paths, bounded random access` });
-      return root + plan.path;
+      return root + plan.relativePath;
     }
     for (const input of request.models) {
       paths.set(input.slot, await mount({ slot: input.slot, input }));
@@ -492,11 +492,11 @@ export function createImageGenerationSession({ core, helpers, reader }: {
         core.setField('sd_img_gen_params_t', params, 'loras', 0n);
       }
       core.setField('sd_img_gen_params_t', params, 'lora_count', selectedLoras.length);
-      request.loras.forEach(({ file, path, strength }, index) => emit({
+      request.loras.forEach(({ file, relativePath, strength }, index) => emit({
         event: 'native',
         stage: 'generation',
         message: 'Requested LoRA configuration; image generation success does not verify adapter compatibility or effect',
-        fields: { metric: 'lora-request', index, path: (path ?? file.name).slice(0, 512), bytes: file.size, strength, enabled: strength !== 0 },
+        fields: { metric: 'lora-request', index, path: (relativePath ?? file.name).slice(0, 512), bytes: file.size, strength, enabled: strength !== 0 },
       }));
       const sample = core.fieldAddress('sd_img_gen_params_t', params, 'sample_params');
       const sampleMethod = await (async () => {

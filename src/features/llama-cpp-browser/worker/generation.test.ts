@@ -21,6 +21,7 @@ import { tokenizePrompt } from './tokenize-prompt';
 import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
 import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 import type { WorkerGenerateInput } from './types';
+import type { ResolvedModel } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { profileSchema, type GenerationEvent } from '@/features/llama-cpp-browser/types';
 import { diagnosticSchema, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { createProjectorTrace } from './projector-trace';
@@ -36,32 +37,30 @@ import { prepareChat } from './native-chat';
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
 
 const host = vi.hoisted(() => ({ bytes: new Uint8Array(), reads: 0, maxRead: 0, revision: 123, sameFile: true, modelLoads: 0, close: vi.fn(), companion: false, openCompanion: vi.fn(), core: undefined as Core | undefined }));
-vi.mock('../runtime/model-store', () => ({
-  storedModelDirectory: async () => ({
-    id: 'user/private-local-name-GGUF',
-    name: 'fixture',
-    modelPath: 'fixture.gguf',
-    projectorPath: host.companion ? 'mmproj.gguf' : undefined,
-    files: [{
-      path: 'fixture.gguf',
-      file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }),
-      handle: {
-        isSameEntry: async () => host.sameFile,
-        createSyncAccessHandle: async () => ({
-          getSize: () => host.bytes.length,
-          read: (target: Uint8Array, { at }: { at: number }) => {
-            host.reads++;
-            host.maxRead = Math.max(host.maxRead, target.length);
-            const n = Math.min(target.length, host.bytes.length - at);
-            target.set(host.bytes.subarray(at, at + n));
-            return n;
-          },
-          close: host.close,
-        }),
-      },
-    }, ...(host.companion ? [{ path: 'mmproj.gguf', file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }), handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } }] : [])],
-  }),
-}));
+
+function capturedModel({ modelId }: { modelId: string }): ResolvedModel {
+  const files = [{
+    relativePath: 'fixture.gguf',
+    storageKind: 'opfs' as const,
+    file: new NodeFile([host.bytes], 'fixture.gguf', { lastModified: host.revision }) as unknown as File,
+    handle: {
+      isSameEntry: async () => host.sameFile,
+      createSyncAccessHandle: async () => ({
+        getSize: () => host.bytes.length,
+        read: (target: Uint8Array, { at }: { at: number }) => {
+          host.reads++;
+          host.maxRead = Math.max(host.maxRead, target.length);
+          const n = Math.min(target.length, host.bytes.length - at);
+          target.set(host.bytes.subarray(at, at + n));
+          return n;
+        },
+        close: host.close,
+      }),
+    } as unknown as FileSystemFileHandle,
+  }, ...(host.companion ? [{ relativePath: 'mmproj.gguf', storageKind: 'opfs' as const, file: new NodeFile(['not a native projector'], 'mmproj.gguf', { lastModified: 1 }) as unknown as File, handle: { isSameEntry: async () => true, createSyncAccessHandle: host.openCompanion } as unknown as FileSystemFileHandle }] : [])];
+  return { modelId, location: { kind: 'opfs-user' as const, rootName: modelId.slice('user/'.length) }, directory: { files, primaryFile: files[0]!, projectorFile: files[1] } };
+}
+
 vi.mock('../runtime/load-runtime', () => ({
   loadRuntime: async () => {
   // Real supplied Wasm, not a mock core. Only file access and runtime deployment are injected.
@@ -89,7 +88,31 @@ afterAll(async () => {
 });
 
 function request({ messages }: { messages: WorkerGenerateInput['messages'] }): WorkerGenerateInput {
-  return { model: 'private-local-name.gguf', messages, temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/' };
+  return { modelId: 'user/private-local-name-GGUF', resolvedModel: capturedModel({ modelId: 'user/private-local-name-GGUF' }), messages, temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/' };
+}
+
+/** Copy mutable request data for mutation assertions. Native handle test doubles
+ * contain functions, so retain captured File/handle references while copying
+ * their directory entries and selecting the corresponding copied entries. */
+function snapshotWorkerRequest({ request }: { request: WorkerGenerateInput }): WorkerGenerateInput {
+  const { resolvedModel, ...input } = request;
+  const { modelId, location, directory, ...unhandledResolvedModel } = resolvedModel;
+  unhandledResolvedModel satisfies Record<PropertyKey, never>;
+  const { files, primaryFile, projectorFile, ...unhandledDirectory } = directory;
+  unhandledDirectory satisfies Record<PropertyKey, never>;
+  const copiedFiles = files.map(entry => ({ ...entry }));
+  return {
+    ...structuredClone(input),
+    resolvedModel: {
+      modelId,
+      location: structuredClone(location),
+      directory: {
+        files: copiedFiles,
+        primaryFile: copiedFiles[files.indexOf(primaryFile)]!,
+        projectorFile: projectorFile === undefined ? undefined : copiedFiles[files.indexOf(projectorFile)]!,
+      },
+    },
+  };
 }
 
 async function sequencePosition(): Promise<number> {
@@ -456,7 +479,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const synchronize = vi.spyOn(core.api, 'llama_synchronize');
     const req = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] });
     req.stop = ['A', 'B'];
-    const original = structuredClone(req);
+    const original = snapshotWorkerRequest({ request: req });
     await using _cleanupResource = {
       async [Symbol.asyncDispose]() {
         batch.mockRestore();
@@ -714,16 +737,17 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(host.reads).toBeGreaterThan(reads);
   }, 30000);
 
-  it.each(['private-local-name.gguf', 'private-local-name-GGUF'])('releases only the matching resident model before removing its stored file: %s', async name => {
+  it.each(['user/private-local-name.gguf', 'user/private-local-name-GGUF'])('releases only the matching resident model before removing its stored file: %s', async name => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
     const req = request({ messages: [{ role: 'user', content: 'hello' }] });
-    req.model = name;
+    req.modelId = name;
+    req.resolvedModel = capturedModel({ modelId: name });
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const reads = host.reads;
-    await invalidateStoredModel({ id: 'user/unrelated-GGUF' });
+    await invalidateStoredModel({ modelId: 'user/unrelated-GGUF' });
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(host.reads).toBe(reads);
-    await invalidateStoredModel({ id: 'user/private-local-name-GGUF' });
+    await invalidateStoredModel({ modelId: name });
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(host.reads).toBeGreaterThan(reads);
   }, 30000);
@@ -983,7 +1007,7 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const next = request({ messages: nextMessages });
     next.stop = ['A', 'B'];
-    const originalRequest = structuredClone(next);
+    const originalRequest = snapshotWorkerRequest({ request: next });
     const expectedTokens = [1, ...Array.from(new TextEncoder().encode(nextPrompt), byte => byte + 3)];
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -1155,8 +1179,9 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     expect(restored).toEqual(original);
     expect(content).toEqual(original);
     const makeRequest = async ({ chat }: { chat: ChatContent }): Promise<WorkerGenerateInput> => ({
+      resolvedModel: capturedModel({ modelId: 'user/private-local-name-GGUF' }),
       ...await prepareLlamaCppRequest({
-        model: 'private-local-name.gguf',
+        model: 'user/private-local-name-GGUF',
         messages: buildChatGenerationMessages({ chat, excludedMessageId: undefined, systemPromptMessages: [] }),
         parameters: { temperature: 0, topP: 0.95, maxCompletionTokens: 5, presencePenalty: undefined, frequencyPenalty: undefined, stop: ['A'], reasoning: { effort: undefined } },
         tools: undefined,
@@ -1176,7 +1201,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     });
     const liveRequest = await makeRequest({ chat: content });
     const restoredRequest = await makeRequest({ chat: restored });
-    expect(restoredRequest).toEqual(liveRequest);
+    const { resolvedModel: restoredSnapshot, ...restoredInput } = restoredRequest;
+    const { resolvedModel: liveSnapshot, ...liveInput } = liveRequest;
+    expect(restoredInput).toEqual(liveInput);
+    expect(restoredSnapshot.modelId).toBe(liveSnapshot.modelId);
+    expect(restoredSnapshot.directory.primaryFile.relativePath).toBe(liveSnapshot.directory.primaryFile.relativePath);
     expect(restoredRequest.messages).toEqual([
       { role: 'user', content: 'Q ' },
       {
@@ -1920,7 +1949,7 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     next.stop = ['A', 'B'];
     const expectedText = scenario === 'reasoning-omission' ? 'aaaaaaaabbbbGG' : scenario === 'shortened-header' ? 'aaaaaaab' : 'baaaaaaaGG';
     const expectedTokens = [1, ...byteTokens({ text: expectedText })];
-    const originalRequest = structuredClone(next);
+    const originalRequest = snapshotWorkerRequest({ request: next });
     const { batches, spy } = observeBatches({ core });
     const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
@@ -3453,12 +3482,14 @@ describe('text generation without eager companion allocation', () => {
     host.companion = true;
     host.openCompanion.mockReset().mockRejectedValue(new Error('Text must not open the companion'));
     log.mockClear();
-    const actual = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    const actualRequest = { ...req, resolvedModel: capturedModel({ modelId: req.modelId }) };
+    const actualNextRequest = { ...next, resolvedModel: actualRequest.resolvedModel };
+    const actual = await generate({ request: actualRequest, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     expect(actual).toEqual(reference);
     expect(await readNativeLogits()).toEqual(referenceLogits);
     expect(await sequencePosition()).toBe(referencePosition);
     expect(diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance?.sessionPreparation).toEqual({ projector: 'deferred', releasedTextContext: false });
-    const actualNext = await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    const actualNext = await generate({ request: actualNextRequest, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     expect(actualNext).toEqual(referenceNext);
     expect(await readNativeLogits()).toEqual(referenceNextLogits);
     expect(host.openCompanion).not.toHaveBeenCalled();

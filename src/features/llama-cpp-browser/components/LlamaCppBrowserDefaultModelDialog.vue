@@ -4,9 +4,9 @@ import { ArrowDownIcon, ArrowRightIcon, Loader2Icon, XIcon } from 'lucide-vue-ne
 import { lazyStrings } from '@/strings';
 import { cloneEndpoint } from '@/01-models/endpoint';
 import { endpointTypeLabel } from '@/components/endpoint-type-label';
-import { isDefaultLocalModel, localModelDisplayName, type ApplyDefaultModel, type DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
+import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
-const props = defineProps<{ model: LocalModel | undefined, current: DefaultModelContext | undefined, models: LocalModel[], apply: ApplyDefaultModel | undefined }>();
+const props = defineProps<{ model: LocalModel | undefined, current: DefaultModelContext | undefined, apply: ApplyDefaultModel | undefined }>();
 const emit = defineEmits<{ close: [] }>();
 const id = useId();
 const dialog = ref<HTMLElement>();
@@ -14,11 +14,7 @@ const saving = ref(false);
 const failure = ref<'failed' | 'changed'>();
 let previousFocus: HTMLElement | undefined;
 let disposed = false;
-const oldName = computed(() => {
-  const name = props.current?.modelId;
-  const model = props.models.find(entry => isDefaultLocalModel({ model: entry, current: props.current }));
-  return model ? localModelDisplayName({ model }) : name ?? lazyStrings.llamaCppBrowserDownloads__not_set();
-});
+const previousModelId = computed(() => props.current?.modelId ?? lazyStrings.llamaCppBrowserDownloads__not_set());
 
 function close(): void {
   if (!saving.value) {
@@ -125,9 +121,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div data-testid="llama-default-model-change" tw-class="space-y-2">
               <p tw-class="text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__default_model() }}</p>
               <div tw-class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3 items-center">
-                <p tw-class="text-sm break-all text-gray-500 dark:text-gray-400">{{ oldName }}</p>
+                <p tw-class="text-sm break-all text-gray-500 dark:text-gray-400">{{ previousModelId }}</p>
                 <ArrowRightIcon tw-class="hidden sm:block w-4 h-4 text-gray-400" /><ArrowDownIcon tw-class="sm:hidden w-4 h-4 text-gray-400" />
-                <p tw-class="text-sm font-bold break-words text-blue-700 dark:text-blue-300">{{ localModelDisplayName({ model }) }}</p>
+                <p tw-class="text-sm font-bold break-words text-blue-700 dark:text-blue-300">{{ model.modelId }}</p>
               </div>
             </div>
             <div v-if="current && current.endpoint.type !== 'llama_cpp_browser'" data-testid="llama-default-endpoint-change" tw-class="space-y-2">

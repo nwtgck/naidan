@@ -31,10 +31,10 @@ function repositories({ id, storageRevision }: { id: 'flux2-klein-4b' | 'anima-t
     // The downloader stores under main; pinned directories remain valid for
     // already-present inventory. The receipt keeps the source commit in both.
     return {
-      id: `huggingface.co/${entry.repository}/resolve/${storageRevision === 'main' ? 'main' : entry.revision}`,
-      name: entry.repository,
+      repositoryKey: `huggingface.co/${entry.repository}/resolve/${storageRevision === 'main' ? 'main' : entry.revision}`,
+      repositoryLabel: entry.repository,
       files: [{
-        path: entry.path,
+        relativePath: entry.path,
         file,
         receipt: {
           version: 1,
@@ -72,7 +72,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
   expect(library.selectedModels()?.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
   for (const [index, model] of library.selectedModels()!.entries()) {
     expect(model.file).toBe(entries[index]!.files[0]!.file);
-    expect(model.path).toBe(entries[index]!.files[0]!.path);
+    expect(model.relativePath).toBe(entries[index]!.files[0]!.relativePath);
   }
   const target = library.benchmarkTargets({ selections: {} })[0]!;
   expect(target.missing).toEqual([]);
@@ -93,7 +93,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
   const download = vi.fn(async () => {
     available = entries;
   });
-  const list = vi.fn<typeof listImageRepositories>(async ({ repositoryIds }) => repositoryIds ? available.filter(entry => repositoryIds.includes(entry.id)) : available);
+  const list = vi.fn<typeof listImageRepositories>(async ({ repositoryKeys }) => repositoryKeys ? available.filter(entry => repositoryKeys.includes(entry.repositoryKey)) : available);
   const library = scope.run(() => useImageLibrary({
     downloadsBlocked: () => false,
     blocked: () => false,
@@ -114,7 +114,7 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
   expect(download).toHaveBeenCalledOnce();
   expect(download).toHaveBeenCalledWith(expect.objectContaining({ files: imageModelRecipes.find(recipe => recipe.id === id)!.files }));
   expect(list).toHaveBeenCalledTimes(2);
-  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryIds: [...new Set(entries.map(entry => entry.id))] }));
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryKeys: [...new Set(entries.map(entry => entry.repositoryKey))] }));
   expect(library.downloadState.value).toBe('complete');
   expect(library.ready.value).toBe(true);
   expect(library.selectedModels()?.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
@@ -138,10 +138,10 @@ it('rejects cross-family companion overrides in main and diagnostics', async () 
   await library.refresh();
   library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });
   const original = library.selectedModels();
-  const wrongVae = JSON.stringify([entries[4]!.id, entries[4]!.files[0]!.path]);
-  library.chooseComponent({ slot: 'vae', id: wrongVae });
+  const wrongVae = JSON.stringify([entries[4]!.repositoryKey, entries[4]!.files[0]!.relativePath]);
+  library.chooseComponent({ slot: 'vae', candidateKey: wrongVae });
   expect(library.selectedModels()).toEqual(original);
-  const targets = library.benchmarkTargets({ selections: { [library.main.value]: { vae: wrongVae } } });
-  expect(targets.find(target => target.id === library.main.value)).toMatchObject({ models: undefined, missing: ['vae'] });
+  const targets = library.benchmarkTargets({ selections: { [library.selectedCandidateKey.value]: { vae: wrongVae } } });
+  expect(targets.find(target => target.candidateKey === library.selectedCandidateKey.value)).toMatchObject({ models: undefined, missing: ['vae'] });
   expect(targets.find(target => target.facts.family === 'anima')?.missing).toEqual([]);
 });

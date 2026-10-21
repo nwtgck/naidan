@@ -8,6 +8,7 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { selectionKey } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import { installedSelection } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { targetForSelection } from '@/features/llama-cpp-browser/model-launch/target';
 import { readModelLaunchReference } from '@/features/llama-cpp-browser/model-launch/reference';
 import { localModelAvailability, type ModelAvailability } from '@/features/llama-cpp-browser/model-recovery/availability';
 import { resolveRecoveryDownload } from '@/features/llama-cpp-browser/model-recovery/download-target';
@@ -34,8 +35,16 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     if (source === undefined) {
       return undefined;
     }
-    const matching = queue.jobs.value.filter(candidate => candidate.selection?.repository === source.repository
-      && candidate.selection.files.some(file => file.path === source.mainFilePath));
+    const matching = queue.jobs.value.filter(candidate => {
+      if (candidate.selection?.repository !== source.repository) {
+        return false;
+      }
+      try {
+        return targetForSelection({ selection: candidate.selection }).modelId === source.modelId;
+      } catch {
+        return false;
+      }
+    });
     return matching.find(candidate => jobIsBusy({ job: candidate })) ?? matching.at(-1);
   });
   const busy = computed(() => operation.value !== 'idle' || jobIsBusy({ job: job.value }));
@@ -159,11 +168,7 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
         throw new Error(String(exhaustive));
       }
       }
-      const plan = target.value ?? (job.value?.selection === undefined || reference.value === undefined ? undefined : {
-        modelId: id,
-        mainFilePath: reference.value.mainFilePath,
-        selection: job.value.selection,
-      });
+      const plan = target.value ?? (job.value?.selection === undefined ? undefined : targetForSelection({ selection: job.value.selection }));
       if (plan === undefined || plan.modelId !== id) {
         return;
       }
@@ -173,7 +178,7 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
       if (!isCurrent()) {
         return;
       }
-      if (installed?.id === id) {
+      if (installed?.modelId === id) {
         localModelAvailability.invalidate();
         return;
       }

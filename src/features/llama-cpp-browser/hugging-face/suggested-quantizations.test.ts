@@ -1,5 +1,6 @@
+import { isDefaultLocalModel } from '@/features/llama-cpp-browser/default-model';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { describe, expect, it } from 'vitest';
-import { localModelDisplayName } from '@/features/llama-cpp-browser/default-model';
 import { groupModelFiles } from './catalog';
 import { modelSuggestions, preferredQuantizationHint, suggestedQuantizationLabel, suggestionDownloadKey } from './model-suggestions';
 import { findLocalSuggestedModel, resolveSuggestionPlan, SuggestionPlanError } from './suggestion-plan';
@@ -47,17 +48,17 @@ describe('static quantization intent', () => {
     const sameTokenOtherSource = { ...qat, hfRepository: q4.hfRepository, checkpoint: 'standard' as const };
     expect(() => resolveSuggestionPlan({ quantization: sameTokenOtherSource, catalog: googleCatalog, multimodal: 'off' })).toThrow(SuggestionPlanError);
     expect(() => resolveSuggestionPlan({ quantization: q4, catalog: { ...googleCatalog, repository: q4.hfRepository }, multimodal: 'off' })).toThrow(SuggestionPlanError);
-    const local = { id: `hf.co/${qat.hfRepository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
+    const local = { modelId: formatHuggingFaceModelId({ repository: qat.hfRepository, mainFilePath: main.path }), size: main.size, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization: sameTokenOtherSource, models: [local] })).toBeUndefined();
-    expect(localModelDisplayName({ model: local })).toBe('Gemma 4 E2B it · Q4_0 (QAT)');
-    const community = { ...local, id: `hf.co/${q4.hfRepository}:gemma-4-E2B-it-Q4_K_M.gguf` };
-    expect(localModelDisplayName({ model: community })).toBe('Gemma 4 E2B it · Q4_K_M');
+    expect(isDefaultLocalModel({ model: local, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } })).toBe(true);
+    const community = { ...local, modelId: formatHuggingFaceModelId({ repository: q4.hfRepository, mainFilePath: 'gemma-4-E2B-it-Q4_K_M.gguf' }) };
+    expect(isDefaultLocalModel({ model: community, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } })).toBe(false);
   });
 });
 
 // Synthetic sizes/filenames deliberately do not equal the bundled hints: the
 // requested token/source must resolve against discovered data, not a file allowlist.
-describe.each(modelSuggestions.flatMap(suggestion => suggestion.quantizationHints.map(quantization => ({ suggestion, quantization, title: `${suggestion.id}/${quantization.id}` }))))('$title resolution', ({ suggestion, quantization }) => {
+describe.each(modelSuggestions.flatMap(suggestion => suggestion.quantizationHints.map(quantization => ({ suggestion, quantization, title: `${suggestion.id}/${quantization.id}` }))))('$title resolution', ({ quantization }) => {
   it('resolves only the requested main token and same-repository projector using discovered sizes', () => {
     const main = { path: `updated-name-${quantization.preferredQuantization}.gguf`, size: 128 };
     const projector = { path: 'mmproj-updated-name-F16.gguf', size: 96 };
@@ -65,9 +66,9 @@ describe.each(modelSuggestions.flatMap(suggestion => suggestion.quantizationHint
     const catalog = { repository: quantization.hfRepository, revision, ...groupModelFiles({ files: [projector, other, main] }) };
     expect(resolveSuggestionPlan({ quantization, catalog, multimodal: 'off' })).toEqual({ repository: quantization.hfRepository, revision, files: [main] });
     expect(resolveSuggestionPlan({ quantization, catalog, multimodal: 'on' }).files).toEqual([main, projector]);
-    const local = { id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
+    const local = { modelId: formatHuggingFaceModelId({ repository: quantization.hfRepository, mainFilePath: main.path }), size: main.size, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization, models: [local] })).toBe(local);
-    expect(localModelDisplayName({ model: local })).toBe(`${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`);
+    expect(isDefaultLocalModel({ model: local, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } })).toBe(true);
     expect(() => resolveSuggestionPlan({ quantization, catalog: { ...catalog, ...groupModelFiles({ files: [main, { ...main, path: `another-${main.path}` }] }) }, multimodal: 'off' })).toThrow(SuggestionPlanError);
   });
 });

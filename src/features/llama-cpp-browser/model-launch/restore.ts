@@ -1,7 +1,8 @@
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { modelLaunchTargetSchema, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import { isMissing, readJournal, repositoryFolder, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
-import { rememberLaunchCatalog, targetForChoice } from './target';
+import { rememberLaunchCatalog, targetForChoice, targetForSelection, modelLaunchChoices } from './target';
 import { readModelLaunchReference } from './reference';
 import type { ModelLaunchView } from './history';
 
@@ -12,14 +13,17 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
   if (reference === undefined) {
     throw new Error('Invalid model launch identity');
   }
-  const { repository, mainFilePath, modelId } = reference;
+  const { repository, modelId } = reference;
   try {
     const folder = await repositoryFolder({ repository, create: false });
     const journal = await readJournal({ folder });
     signal.throwIfAborted();
-    if (journal.selection.repository === repository && journal.selection.files.some(file => file.path === mainFilePath)) {
-      // An interrupted transfer owns its pinned revision, not today's catalog.
-      return modelLaunchTargetSchema.parse({ selection: journal.selection, mainFilePath, modelId });
+    if (journal.selection.repository === repository) {
+      const target = targetForSelection({ selection: journal.selection });
+      if (target.modelId === modelId) {
+        // An interrupted transfer owns its pinned revision, not today's catalog.
+        return target;
+      }
     }
   } catch (error) {
     if (!isMissing({ error })) {
@@ -28,13 +32,17 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
   }
   signal.throwIfAborted();
   try {
-    const directory = (await repositoryDirectories({ repository })).find(candidate => candidate.id === modelId);
+    const matching = (await repositoryDirectories({ repository })).filter(candidate => formatHuggingFaceModelId({ repository, mainFilePath: candidate.primaryFile.relativePath }) === modelId);
+    if (matching.length > 1) {
+      throw new Error('Ambiguous model launch selection');
+    }
+    const directory = matching[0];
     signal.throwIfAborted();
     if (directory !== undefined) {
       return modelLaunchTargetSchema.parse({
         modelId,
-        mainFilePath,
-        selection: { repository, revision: view.revision, files: directory.files.map(file => ({ path: file.path, size: file.file.size })) },
+        mainFilePath: directory.primaryFile.relativePath,
+        selection: { repository, revision: view.revision, files: directory.files.map(file => ({ path: file.relativePath, size: file.file.size })) },
       });
     }
   } catch (error) {
@@ -49,7 +57,11 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
   if (catalog.repository !== repository) {
     throw new Error('Model launch repository changed');
   }
-  const target = targetForChoice({ catalog, path: mainFilePath });
+  const matching = modelLaunchChoices({ catalog }).filter(choice => formatHuggingFaceModelId({ repository, mainFilePath: choice.primaryRelativePath }) === modelId);
+  if (matching.length !== 1) {
+    throw new Error('Model launch selection unavailable');
+  }
+  const target = targetForChoice({ catalog, path: matching[0]!.primaryRelativePath });
   rememberLaunchCatalog({ catalog });
   return target;
 }

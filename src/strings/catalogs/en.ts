@@ -1067,9 +1067,10 @@ import { LlamaCppBrowserManager__could_not_create_or_open_chat_group } from '@/s
 import { LlamaCppBrowserManager__details } from '@/strings/messages/LlamaCppBrowserManager__details/en';
 import { LlamaCppBrowserManager__file } from '@/strings/messages/LlamaCppBrowserManager__file/en';
 import { LlamaCppBrowserManager__folder } from '@/strings/messages/LlamaCppBrowserManager__folder/en';
-import { LlamaCppBrowserManager__model_name } from '@/strings/messages/LlamaCppBrowserManager__model_name/en';
+import { LlamaCppBrowserManager__model_id } from '@/strings/messages/LlamaCppBrowserManager__model_id/en';
 import { LlamaCppBrowserManager__remove_temporary_model } from '@/strings/messages/LlamaCppBrowserManager__remove_temporary_model/en';
 import { LlamaCppBrowserManager__repository } from '@/strings/messages/LlamaCppBrowserManager__repository/en';
+import { LlamaCppBrowserManager__search_models } from '@/strings/messages/LlamaCppBrowserManager__search_models/en';
 import { LlamaCppBrowserManager__temporary } from '@/strings/messages/LlamaCppBrowserManager__temporary/en';
 import { LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it } from '@/strings/messages/LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it/en';
 import { LlamaCppBrowserModelAction__create_chat_group } from '@/strings/messages/LlamaCppBrowserModelAction__create_chat_group/en';
@@ -2484,7 +2485,6 @@ import { llamaCppBrowserDownloads__required_companion_included } from '@/strings
 import { llamaCppBrowserDownloads__resume } from '@/strings/messages/llamaCppBrowserDownloads__resume/en';
 import { llamaCppBrowserDownloads__retry } from '@/strings/messages/llamaCppBrowserDownloads__retry/en';
 import { llamaCppBrowserDownloads__save_file_to_device } from '@/strings/messages/llamaCppBrowserDownloads__save_file_to_device/en';
-import { llamaCppBrowserDownloads__search_model_names } from '@/strings/messages/llamaCppBrowserDownloads__search_model_names/en';
 import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/llamaCppBrowserDownloads__set_as_default/en';
 import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/en';
 import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/en';
@@ -3995,9 +3995,10 @@ export const catalog = {
   LlamaCppBrowserManager__details,
   LlamaCppBrowserManager__file,
   LlamaCppBrowserManager__folder,
-  LlamaCppBrowserManager__model_name,
+  LlamaCppBrowserManager__model_id,
   LlamaCppBrowserManager__remove_temporary_model,
   LlamaCppBrowserManager__repository,
+  LlamaCppBrowserManager__search_models,
   LlamaCppBrowserManager__temporary,
   LlamaCppBrowserModelAction__create_a_chat_close_settings_and_open_it,
   LlamaCppBrowserModelAction__create_chat_group,
@@ -5412,7 +5413,6 @@ export const catalog = {
   llamaCppBrowserDownloads__resume,
   llamaCppBrowserDownloads__retry,
   llamaCppBrowserDownloads__save_file_to_device,
-  llamaCppBrowserDownloads__search_model_names,
   llamaCppBrowserDownloads__set_as_default,
   llamaCppBrowserDownloads__settings_changed_review_again,
   llamaCppBrowserDownloads__total,

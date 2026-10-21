@@ -25,7 +25,7 @@ export function createDisabledImageLibrary(): ImageLibraryView {
     selectedFacts: computed(() => undefined),
     models: computed(() => []),
     savedLoras: computed(() => []),
-    main: ref(''),
+    selectedCandidateKey: ref(''),
     components: computed(() => []),
     scanState: ref('idle'),
     scanProgress: shallowRef(),

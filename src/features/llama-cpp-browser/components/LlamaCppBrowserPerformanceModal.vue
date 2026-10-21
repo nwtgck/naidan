@@ -145,9 +145,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               </button>
             </div>
             <div v-if="selected.length" data-testid="llama-performance-target-list" tw-class="space-y-1.5">
-              <div v-for="id in selected" :key="id" data-testid="llama-performance-target-row" tw-class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
-                <span :title="id" tw-class="min-w-0 flex-1 break-words text-xs text-gray-800 dark:text-gray-100">{{ view.modelDisplayName({ id }) }}</span>
-                <button type="button" :aria-label="`${lazyStrings.llamaCppPerformance__remove_model()}: ${view.modelDisplayName({ id })}`" data-testid="llama-performance-target-remove" tw-class="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20" @click="selected = selected.filter(value => value !== id)">
+              <div v-for="modelId in selected" :key="modelId" data-testid="llama-performance-target-row" tw-class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+                <span :title="modelId" tw-class="min-w-0 flex-1 break-words text-xs text-gray-800 dark:text-gray-100">{{ modelId }}</span>
+                <button type="button" :aria-label="`${lazyStrings.llamaCppPerformance__remove_model()}: ${modelId}`" data-testid="llama-performance-target-remove" tw-class="shrink-0 rounded-lg p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20" @click="selected = selected.filter(value => value !== modelId)">
                   <XIcon tw-class="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -162,16 +162,16 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               <div tw-class="mt-3 space-y-3">
                 <input v-model="query" type="search" :placeholder="lazyStrings.llamaCppPerformance__search_models()" :aria-label="lazyStrings.llamaCppPerformance__search_models()" tw-class="w-full rounded-lg border border-gray-300 bg-transparent p-2 text-sm dark:border-gray-700" />
                 <div tw-class="flex flex-wrap gap-3 text-xs">
-                  <button type="button" @click="selected = [...new Set([...selected, ...filteredModels.map(model => model.id)])]">{{ lazyStrings.llamaCppPerformance__select_all() }}</button>
+                  <button type="button" @click="selected = [...new Set([...selected, ...filteredModels.map(model => model.modelId)])]">{{ lazyStrings.llamaCppPerformance__select_all() }}</button>
                   <button type="button" @click="selected = []; modelDraft = ''">{{ lazyStrings.llamaCppPerformance__clear_selection() }}</button>
                   <button type="button" :disabled="loading" @click="view.refresh({ defaultModel: props.defaultModel })">{{ lazyStrings.llamaCppPerformance__refresh_models() }}</button>
                 </div>
                 <p v-if="loading" role="status" tw-class="text-sm">{{ lazyStrings.llamaCppPerformance__loading_models() }}</p>
                 <p v-else-if="!models.length" tw-class="text-sm">{{ lazyStrings.llamaCppPerformance__no_saved_models() }}</p>
                 <div tw-class="max-h-72 space-y-2 overflow-y-auto">
-                  <label v-for="model in filteredModels" :key="model.id" tw-class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
-                    <input v-model="selected" type="checkbox" :value="model.id" data-testid="llama-performance-model" tw-class="mt-1" />
-                    <span tw-class="min-w-0 break-all">{{ view.modelDisplayName({ id: model.id }) }}<small tw-class="mt-1 block text-gray-500">{{ (model.size / 1024 ** 3).toFixed(2) }} GiB · {{ model.id }}</small></span>
+                  <label v-for="model in filteredModels" :key="model.modelId" tw-class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-800">
+                    <input v-model="selected" type="checkbox" :value="model.modelId" data-testid="llama-performance-model" tw-class="mt-1" />
+                    <span tw-class="min-w-0 break-all">{{ model.modelId }}<small tw-class="mt-1 block text-gray-500">{{ (model.size / 1024 ** 3).toFixed(2) }} GiB</small></span>
                   </label>
                 </div>
               </div>
@@ -203,7 +203,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__operation_diagnostic_help() }}</p>
             </fieldset>
             <p tw-class="text-sm font-medium">{{ lazyStrings.llamaCppPerformance__planned_calls({ models: selectedModels.length, calls: callCount }) }}</p>
-            <p tw-class="break-words text-xs text-gray-500">{{ selectedModels.map(model => model.name).join(' → ') }}</p>
+            <p tw-class="break-words text-xs text-gray-500">{{ selectedModels.map(model => model.modelId).join(' → ') }}</p>
           </section>
         </div>
         <p v-if="otherWork" role="status" tw-class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{{ lazyStrings.llamaCppPerformance__wait_for_other_work() }}</p>
@@ -218,7 +218,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
             <span v-else-if="running && pageHidden">{{ lazyStrings.llamaCppPerformance__waiting_for_visible_page() }}</span>
           </div>
           <template v-if="current && currentStep">
-            <p tw-class="break-words font-medium">{{ snapshot.plan.models[current.modelIndex]?.name }}</p>
+            <p tw-class="break-words font-medium">{{ snapshot.plan.models[current.modelIndex]?.modelId }}</p>
             <p tw-class="text-sm">{{ lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: currentStep.scenario }) }} · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: currentStep.role }) }} {{ currentStep.repetition }} · {{ current.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}</p>
             <LlamaCppBrowserModelLoadProgress v-if="current.lastProgress?.phase === 'loading' || current.lastProgress?.phase === 'initializing'" :progress="current.lastProgress" />
             <p v-else-if="phaseLabel" role="status" data-testid="llama-performance-phase" tw-class="text-sm text-gray-600 dark:text-gray-400">{{ phaseLabel }}</p>
@@ -230,13 +230,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { view } }) || {}) })
               <table tw-class="w-full text-left text-xs tabular-nums">
                 <thead><tr tw-class="border-b border-gray-200 dark:border-gray-800"><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__saved_models() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__standard_measurement() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__first_received_ms() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__generation_tokens_per_second() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__elapsed_ms() }}</th><th tw-class="p-2">{{ lazyStrings.llamaCppPerformance__gpu_pass_time_ms() }}</th></tr></thead>
                 <tbody><tr v-for="trial in snapshot.trials" :key="trial.id" tw-class="border-b border-gray-100 align-top dark:border-gray-900">
-                  <td tw-class="max-w-56 break-words p-2">{{ snapshot.plan.models[trial.modelIndex]?.name }}</td>
+                  <td tw-class="max-w-56 break-words p-2">{{ snapshot.plan.models[trial.modelIndex]?.modelId }}</td>
                   <td tw-class="p-2"><template v-if="stepFor({ trial })">{{ lazyStrings.llamaCppPerformance__initial_short_long_or_continuation({ value: stepFor({ trial })!.scenario }) }} ({{ stepFor({ trial })!.position }}) · {{ lazyStrings.llamaCppPerformance__preparation_or_measurement({ value: stepFor({ trial })!.role }) }}</template><br />{{ trial.lane === 'gpu-profile' ? lazyStrings.llamaCppPerformance__gpu_profiling() : lazyStrings.llamaCppPerformance__standard_measurement() }}<br />{{ lazyStrings.llamaCppPerformance__trial_status({ value: trial.status }) }}<span v-if="trial.error || trial.exclusion.length || trial.warnings.length" tw-class="block max-w-64 break-words text-amber-700 dark:text-amber-400">{{ trial.error }} {{ trial.exclusion.join(', ') }} {{ trial.warnings.join(', ') }}</span></td>
                   <td tw-class="p-2">{{ numberText({ value: trial.firstReceivedMs }) }}</td><td tw-class="p-2">{{ trial.exclusion.includes('instrumented') ? '—' : numberText({ value: trialRates({ trial }).generationTokensPerSecond }) }}</td><td tw-class="p-2">{{ numberText({ value: trial.elapsedMs }) }}</td><td tw-class="p-2">{{ numberText({ value: trial.summary?.performance?.gpuProfile?.status === 'unavailable' ? undefined : trial.summary?.performance?.gpuProfile?.totalGpuMs }) }}</td>
                 </tr></tbody>
               </table>
             </div>
-            <p v-for="failure in snapshot.modelErrors" :key="`${failure.modelIndex}-${failure.lane}`" tw-class="mt-2 break-words text-xs text-red-700 dark:text-red-300">{{ snapshot.plan.models[failure.modelIndex]?.name }} ({{ failure.lane }}): {{ failure.error }}</p>
+            <p v-for="failure in snapshot.modelErrors" :key="`${failure.modelIndex}-${failure.lane}`" tw-class="mt-2 break-words text-xs text-red-700 dark:text-red-300">{{ snapshot.plan.models[failure.modelIndex]?.modelId }} ({{ failure.lane }}): {{ failure.error }}</p>
           </details>
         </section>
         <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__results_are_memory_only() }}</p>

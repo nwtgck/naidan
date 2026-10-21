@@ -132,7 +132,7 @@ describe('OnboardingModal.vue', () => {
 
   it.each([false, true])('starts local browser onboarding only after a stored model is selected with standalone=%s', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
-    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
+    const list = vi.spyOn(llamaCppBrowserService, 'listModelEntries').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q4_K_M', target: 'onboarding', claim: () => true });
     const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', props: ['modelPreset'], emits: ['runtimeReady'], template: '<div data-testid="preset-manager">{{ modelPreset?.input }}</div>' } } } });
     await flushPromises();
@@ -142,7 +142,7 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.find('[data-testid="onboarding-connect-button"]').exists()).toBe(false);
     expect(mockSave).not.toHaveBeenCalled();
     expect(listModelsMock).not.toHaveBeenCalled();
-    list.mockResolvedValue([{ id: 'model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);
+    list.mockResolvedValue([{ modelId: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);
     preset.value = { input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true };
     await flushPromises();
     // Returning to the endpoint refreshes its authoritative local model list.
@@ -163,14 +163,14 @@ describe('OnboardingModal.vue', () => {
   });
 
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
-    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
+    const list = vi.spyOn(llamaCppBrowserService, 'listModelEntries').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
     const wrapper = mount(OnboardingModal, { global: { provide: { [modelPresetTestOnly.presetKey as symbol]: preset }, stubs: { LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['modelsChanged', 'modelSelected', 'runtimeReady'], template: '<div />' } } } });
     await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
     const child = wrapper.findComponent({ name: 'PreparedManager' });
     const target = 'hf.co/owner/repo:Q8_0';
-    child.vm.$emit('modelsChanged', [{ id: 'first', name: 'first', size: 128, importedAt: 1 }, { id: 'target', name: target, size: 128, importedAt: 1 }]);
+    child.vm.$emit('modelsChanged', [{ modelId: 'first', size: 128, importedAt: 1 }, { modelId: target, size: 128, importedAt: 1 }]);
     child.vm.$emit('modelSelected', target);
     await flushPromises();
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
@@ -372,8 +372,8 @@ describe('OnboardingModal.vue', () => {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
     }));
-    const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([
-      { id: 'model-1', name: 'model-1', size: 128, importedAt: 1 },
+    const list = vi.spyOn(llamaCppBrowserService, 'listModelEntries').mockResolvedValue([
+      { modelId: 'model-1', size: 128, importedAt: 1 },
     ]);
     const wrapper = mount(OnboardingModal, {
       global: {

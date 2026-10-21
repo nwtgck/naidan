@@ -1,7 +1,7 @@
 import type { ImageLora } from './types';
 
 /** Temporary UI selections. Disabling an adapter preserves its editable strength. */
-export type ImageLoraSelection = ImageLora & { enabled: boolean, sourceLabel?: string };
+export type ImageLoraSelection = ImageLora & { enabled: boolean, locationLabel?: string };
 
 /** Only enabled selections reach validation, session identity and native mounts.
  * An enabled adapter with zero strength still keeps its existing session behavior. */
@@ -12,9 +12,9 @@ export function imageLoraRequests({ selections }: { selections: readonly ImageLo
 /** Preserve the existing history representation without reading adapter bytes.
  * Disabled selections use zero strength in history; they are not inference inputs. */
 export function imageLoraHistorySelections({ selections }: { selections: readonly ImageLoraSelection[] }): ImageLora[] {
-  return selections.map(({ file, path, strength, enabled, sourceLabel: _sourceLabel, ...unhandled }) => {
+  return selections.map(({ file, relativePath, strength, enabled, locationLabel: _locationLabel, ...unhandled }) => {
     unhandled satisfies Record<PropertyKey, never>;
-    return { file, path, strength: enabled ? strength : 0 };
+    return { file, relativePath, strength: enabled ? strength : 0 };
   });
 }
 

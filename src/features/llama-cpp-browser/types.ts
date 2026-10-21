@@ -1,9 +1,4 @@
-import { isTemporaryModelReference } from './runtime/temporary-model-reference';
 import { z } from 'zod';
-// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
-import { huggingFaceModelId } from '../../01-models/llama-cpp-browser-model-launch';
-
-import { parseHostModelReference, parseHostModelSelector, parsePublicHostModelReference } from './runtime/model-destination-types';
 
 export const chatProfileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm32']);
 // Diagnostic artifacts are deliberately not part of ordinary chat selection.
@@ -35,49 +30,16 @@ export const runtimeOptionsSchema = z.object({
   profile: z.union([z.literal('auto'), profileSchema]),
 }).strict();
 export type RuntimeOptions = z.infer<typeof runtimeOptionsSchema>;
+/** The public selection value crosses data boundaries unchanged. Operations
+ * resolve its meaning against the current model files. */
+export const modelIdSchema = z.string();
 export const modelSchema = z.object({
-  id: z.string().min(1).max(1024).refine(value => {
-    if (value.startsWith('temp/')) {
-      return isTemporaryModelReference({ name: value });
-    }
-    if (value.startsWith('host/')) {
-      try {
-        parseHostModelReference({ name: value });
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return /^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i.test(value);
-  }).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)),
-  // Public aliases can be longer than opaque IDs after percent encoding.
-  name: z.string().min(1).max(4096),
-  source: z.object({ kind: z.literal('host'), directoryId: z.string(), directoryName: z.string(), repository: z.string(), path: z.string() }).strict().optional(),
+  modelId: modelIdSchema,
+  source: z.object({ kind: z.literal('host'), directoryId: z.string(), directoryName: z.string(), repository: z.string(), primaryRelativePath: z.string() }).strict().optional(),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
-}).strict().refine(({ id, name }) => {
-  if (id.startsWith('temp/')) {
-    return name === id;
-  }
-  if (!id.startsWith('host/')) {
-    return name.length <= 512;
-  }
-  try {
-    return parsePublicHostModelReference({ name }).selector !== undefined;
-  } catch {
-    // Repository scans also return internal encoded selectors, before replacing
-    // the opaque root with its public alias. Keep that inventory boundary intact.
-    try {
-      return parseHostModelSelector({ name }).selector !== undefined;
-    } catch {
-      return false;
-    }
-  }
-}, {
-  path: ['name'],
-  error: 'Linked model names must be valid public linked references',
-});
-export const modelDirectoryInputSchema = z.object({ name: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), file: z.instanceof(File) }).strict()).min(1) }).strict();
+}).strict();
+export const modelDirectoryInputSchema = z.object({ rootName: z.string().min(1), files: z.array(z.object({ relativePath: z.string().min(1), file: z.instanceof(File) }).strict()).min(1) }).strict();
 export type ModelDirectoryInput = z.infer<typeof modelDirectoryInputSchema>;
 export type LocalModel = z.infer<typeof modelSchema>;
 export const modelsSchema = z.array(modelSchema);
@@ -156,38 +118,7 @@ export type GenerationResult = z.infer<typeof generationResultSchema>;
 export type GenerateInput = z.infer<typeof generateInputSchema>;
 export const generateInputSchema = z.object({
   debug: z.enum(['off', 'on']).optional(),
-  model: z.string().min(1).max(1024).refine(value => {
-    // Generation must admit every canonical linked name accepted by inventory,
-    // without widening the existing limit for ordinary model names.
-    if (value.startsWith('temp/')) {
-      return isTemporaryModelReference({ name: value });
-    }
-    if (!value.startsWith('host/')) {
-      if (value.length <= 512) {
-        return true;
-      }
-      // A readable public selector can expand when captured as an encoded exact
-      // HF identity. Admit that canonical internal form within the ID limit.
-      if (!value.startsWith('hf.co/')) {
-        return false;
-      }
-      const colon = value.indexOf(':');
-      if (colon < 0) {
-        return false;
-      }
-      try {
-        return huggingFaceModelId({ repository: value.slice('hf.co/'.length, colon), modelPath: decodeURIComponent(value.slice(colon + 1)) }) === value;
-      } catch {
-        return false;
-      }
-    }
-    try {
-      parseHostModelReference({ name: value });
-      return true;
-    } catch {
-      return false;
-    }
-  }),
+  modelId: modelIdSchema,
   messages: z.array(chatMessageSchema).min(1),
   tools: z.array(z.object({ type: z.literal('function'), function: z.object({ name: z.string().min(1), description: z.string(), parameters: z.record(z.string(), z.json()) }).strict() }).strict()).optional(),
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),

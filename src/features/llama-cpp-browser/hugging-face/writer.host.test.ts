@@ -1,19 +1,20 @@
-import { resolveHostModelName } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
-import { generateInputSchema } from '@/features/llama-cpp-browser/types';
 // @vitest-environment node
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { storageService } from '@/00-storage/service';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
 import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
+import { generateInputSchema } from '@/features/llama-cpp-browser/types';
 import { createDownloadWriter } from './writer';
 import { listHuggingFaceModels, listPendingDownloads, repositoryFolder, selectedFile, readJournal, installedSelection } from './storage';
-import { listHostStoredModels, getHostModelInventoryIssues, selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
-import { storedModelDirectory, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
+import { listHostStoredModels, getHostModelInventoryIssues, resolveHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
+import { prepareRepositoryRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import type { DownloadSelection } from './types';
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 const destination = { kind: 'host' as const, directoryId: 'root-one' };
+const directories = [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }];
 const selection: DownloadSelection = { repository: 'owner/repository', revision: 'a'.repeat(40), files: [{ path: 'nested/model.gguf', size: 128 }] };
 let root: MemoryDirectory, opfs: MemoryDirectory;
 
@@ -27,6 +28,7 @@ beforeEach(() => {
   root = new MemoryDirectory('models');
   opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(root as unknown as HostModelDirectoryHandle);
+  vi.spyOn(storageService, 'loadHostModelDirectories').mockResolvedValue(directories);
   vi.stubGlobal('navigator', {
     storage: { getDirectory: vi.fn(async () => opfs) },
     locks: {
@@ -59,17 +61,17 @@ describe('direct linked-folder model storage', () => {
     const folder = await root.getDirectoryHandle('owner').then(owner => owner.getDirectoryHandle('repository'));
     const saved = await folder.getDirectoryHandle('nested').then(nested => nested.getFileHandle('model.gguf'));
     expect(saved.data).toEqual(bytes());
-    const models = await listHostStoredModels({ directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }], signal: undefined });
+    const models = await listHostStoredModels({ directories, signal: undefined });
     expect(models).toHaveLength(1);
-    expect(models[0]?.name).toBe('host/models/owner/repository:nested/model');
-    expect(models[0]?.source).toMatchObject({ directoryName: 'models', path: 'nested/model.gguf' });
-    const reference = resolveHostModelName({ name: models[0]!.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
-    const name = (await selectHostModel({ name: reference })).id;
-    expect(name).toBe(models[0]!.id);
-    const loaded = await storedModelDirectory({ name });
+    expect(models[0]?.modelId).toBe('host/models/owner/repository:nested/model');
+    expect(models[0]?.source).toMatchObject({ directoryName: 'models', primaryRelativePath: 'nested/model.gguf' });
+    const resolved = await resolveHostModel({ modelId: models[0]!.modelId, directories, signal: undefined });
+    expect(resolved.modelId).toBe(models[0]!.modelId);
+    expect(resolved.location).toEqual({ kind: 'host', directoryId: destination.directoryId, repository: selection.repository });
+    const loaded = resolved.directory;
     expect(loaded.files[0]).toHaveProperty('handle', saved);
     expect(loaded.files[0]?.storageKind).toBe('host');
-    expect((await installedSelection({ selection, destination }))?.id).toBe(models[0]?.id);
+    expect((await installedSelection({ selection, destination }))?.modelId).toBe(models[0]?.modelId);
   });
 
   it('keeps deep linked paths and ordinary variants together without shortening routable names', async () => {
@@ -81,17 +83,16 @@ describe('direct linked-folder model storage', () => {
       await writable.write(bytes());
       await writable.close();
     }
-    const models = await listHostStoredModels({ directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }], signal: undefined });
+    const models = await listHostStoredModels({ directories, signal: undefined });
     expect(models).toHaveLength(2);
-    const deep = models.find(model => model.source?.path === path)!;
-    expect(deep.name.length).toBeGreaterThan(512);
-    expect(deep.name.length).toBeLessThanOrEqual(1024);
-    expect(deep.name).toBe(`host/models/owner/repository:${path.replace(/\.gguf$/, '')}`);
-    const reference = resolveHostModelName({ name: deep.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
-    const name = (await selectHostModel({ name: reference })).id;
-    expect(name).toBe(deep.id);
-    expect(generateInputSchema.shape.model.parse(name)).toBe(name);
-    expect((await storedModelDirectory({ name })).modelPath).toBe(path);
+    const deep = models.find(model => model.source?.primaryRelativePath === path)!;
+    expect(deep.modelId.length).toBeGreaterThan(512);
+    expect(deep.modelId.length).toBeLessThanOrEqual(4096);
+    expect(deep.modelId).toBe(`host/models/owner/repository:${path.replace(/\.gguf$/, '')}`);
+    expect(generateInputSchema.shape.modelId.parse(deep.modelId)).toBe(deep.modelId);
+    const resolved = await resolveHostModel({ modelId: deep.modelId, directories, signal: undefined });
+    expect(resolved.modelId).toBe(deep.modelId);
+    expect(resolved.directory.primaryFile.relativePath).toBe(path);
     expect(getHostModelInventoryIssues()).toEqual([]);
   });
 
@@ -102,7 +103,7 @@ describe('direct linked-folder model storage', () => {
     await writer.append({ bytes: bytes().slice(0, 48) });
     await writer.pause();
     expect(await listHuggingFaceModels({ destination })).toEqual([]);
-    expect((await listHostImageRepositories({ directories: [{ id: destination.directoryId, name: root.name }], signal: undefined }))[0]?.files).toEqual([]);
+    expect((await listHostImageRepositories({ directories: [{ directoryId: destination.directoryId, directoryName: root.name }], signal: undefined }))[0]?.files).toEqual([]);
     expect((await listPendingDownloads({ destination }))[0]?.bytes).toEqual([48]);
     writer = createDownloadWriter();
     expect(await writer.begin({ selection, destination })).toMatchObject({ status: 'ready', journal: { bytes: [48] } });
@@ -120,14 +121,15 @@ describe('direct linked-folder model storage', () => {
     await writer.begin({ selection: split, destination });
     await finish({ writer, index: 0 });
     expect(await listHuggingFaceModels({ destination })).toEqual([]);
-    expect((await listHostImageRepositories({ directories: [{ id: destination.directoryId, name: root.name }], signal: undefined }))[0]?.files).toEqual([]);
+    expect((await listHostImageRepositories({ directories: [{ directoryId: destination.directoryId, directoryName: root.name }], signal: undefined }))[0]?.files).toEqual([]);
     await finish({ writer, index: 1 });
     await finish({ writer, index: 2 });
     await writer.finish();
     const model = (await listHuggingFaceModels({ destination }))[0]!;
-    const loaded = await storedModelDirectory({ name: model.id });
+    const loaded = (await resolveHostModel({ modelId: model.modelId, directories, signal: undefined })).directory;
     expect(loaded.files).toHaveLength(3);
-    expect(loaded.projectorPath).toBe('mmproj-F16.gguf');
+    expect(loaded.primaryFile.relativePath).toBe(split.files[0]!.path);
+    expect(loaded.projectorFile?.relativePath).toBe('mmproj-F16.gguf');
   });
 
   it('fails revoked permission without creating or reading OPFS', async () => {
@@ -144,7 +146,8 @@ describe('direct linked-folder model storage', () => {
     await writer.finish();
     vi.mocked(hostModelHandles.get).mockImplementation(async ({ id }) => idToRaw({ id }) === 'missing' ? undefined : root as unknown as HostModelDirectoryHandle);
     const models = await listHostStoredModels({ directories: ['root-one', 'missing', 'root-two'].map(raw => ({ id: toHostModelDirectoryId({ raw }), name: 'models' })), signal: undefined });
-    expect(models.map(model => model.id)).toEqual(['host/root-one/owner/repository:nested%2Fmodel.gguf', 'host/root-two/owner/repository:nested%2Fmodel.gguf']);
+    expect(models.map(model => model.modelId)).toEqual(['host/models/owner/repository:nested/model', 'host/models-3/owner/repository:nested/model']);
+    expect(models.map(model => model.source?.directoryId)).toEqual(['root-one', 'root-two']);
     expect(getHostModelInventoryIssues()).toMatchObject([{ directoryId: 'missing', directoryName: 'models' }]);
   });
 
@@ -159,8 +162,8 @@ describe('direct linked-folder model storage', () => {
     const writable = await keep.createWritable();
     await writable.write('keep');
     await writable.close();
-    const { plan } = await prepareModelRemoval({ id: 'host/root-one/owner/repository' });
-    expect(plan.files.map(file => file.path)).toContain('nested/.model.gguf.pending');
+    const { plan } = await prepareRepositoryRemoval({ location: { kind: 'host', directoryId: destination.directoryId, repository: selection.repository }, signal: undefined });
+    expect(plan.files.map(file => file.relativePath)).toContain('nested/.model.gguf.pending');
     expect(await removeStoredModel({ plan })).toBe('deleted');
     expect(await (await keep.getFile()).text()).toBe('keep');
     expect(await listPendingDownloads({ destination })).toEqual([]);

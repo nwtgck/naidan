@@ -1,24 +1,28 @@
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
 import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { detectAudioModelFiles, inspectStoredAudioModel, preferredAudioModel, type AudioModelDetection } from './model-detection';
 import { ggufFixture, textMetadata, boolMetadata } from './test-utils/gguf.test-support';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 const storage = vi.hoisted(() => ({ resolve: vi.fn() }));
-vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ storedModelDirectory: storage.resolve }));
+vi.mock('@/features/llama-cpp-browser/runtime/model-resolution', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/features/llama-cpp-browser/runtime/model-resolution')>();
+  return {
+    resolveModel: ({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }) => modelId.startsWith('temp/')
+      ? actual.resolveModel({ modelId, signal }) : storage.resolve({ modelId, signal }),
+  };
+});
 
 beforeEach(() => {
   storage.resolve.mockReset();
 });
 
 function directory({ architecture = 'qwen3tts', projector = 'qwen3tts_gen', generates = true }: { architecture?: string, projector?: string, generates?: boolean } = {}) {
-  return {
-    modelPath: 'renamed-00001-of-00002.gguf',
-    projectorPath: 'unusual-companion.gguf' as string | undefined,
-    files: [
-      { path: 'renamed-00001-of-00002.gguf', file: ggufFixture({ entries: [textMetadata({ key: 'general.architecture', value: architecture })] }) },
-      { path: 'unusual-companion.gguf', file: ggufFixture({ entries: [boolMetadata({ key: 'clip.has_gen_audio_encoder', value: generates }), textMetadata({ key: 'clip.gen.audio.projector_type', value: projector })] }) },
-    ],
-  };
+  const files = [
+    { relativePath: 'renamed-00001-of-00002.gguf', file: ggufFixture({ entries: [textMetadata({ key: 'general.architecture', value: architecture })] }) },
+    { relativePath: 'unusual-companion.gguf', file: ggufFixture({ entries: [boolMetadata({ key: 'clip.has_gen_audio_encoder', value: generates }), textMetadata({ key: 'clip.gen.audio.projector_type', value: projector })] }) },
+  ];
+  return { files, primaryFile: files[0]!, projectorFile: files[1] as typeof files[number] | undefined };
 }
 
 describe('audio candidate metadata', () => {
@@ -40,10 +44,11 @@ describe('audio candidate metadata', () => {
 
   it('inspects the selected companion rather than finding another matching file', async () => {
     const files = directory();
-    files.files.push({ path: 'wrong.gguf', file: ggufFixture({ entries: [] }) });
-    files.projectorPath = 'wrong.gguf';
+    const wrong = { relativePath: 'wrong.gguf', file: ggufFixture({ entries: [] }) };
+    files.files.push(wrong);
+    files.projectorFile = wrong;
     expect(await detectAudioModelFiles({ directory: files, signal: undefined })).toEqual({ status: 'unverified', reason: 'companion' });
-    files.projectorPath = undefined;
+    files.projectorFile = undefined;
     expect(await detectAudioModelFiles({ directory: files, signal: undefined })).toEqual({ status: 'unverified', reason: 'companion' });
   });
 
@@ -61,48 +66,51 @@ describe('audio candidate metadata', () => {
   it('inspects temporary model metadata through captured Files without consulting persistent storage', async () => {
     const base = ggufFixture({ entries: [textMetadata({ key: 'general.architecture', value: 'qwen3tts' })] });
     const companion = ggufFixture({ entries: [boolMetadata({ key: 'clip.has_gen_audio_encoder', value: true }), textMetadata({ key: 'clip.gen.audio.projector_type', value: 'qwen3tts_gen' })] });
-    const files = await Promise.all([{ path: 'voice.gguf', blob: base }, { path: 'mmproj.gguf', blob: companion }].map(async ({ path, blob }) => {
-      const file = new File([await blob.arrayBuffer()], path);
+    const files = await Promise.all([{ relativePath: 'voice.gguf', blob: base }, { relativePath: 'mmproj.gguf', blob: companion }].map(async ({ relativePath, blob }) => {
+      const file = new File([await blob.arrayBuffer()], relativePath);
       Object.defineProperty(file, 'slice', { value: (start: number, end: number) => blob.slice(start, end) });
-      return { path, file };
+      return { relativePath, file };
     }));
-    const [model] = await temporaryModels.registerDirectory({ directory: { name: 'temporary-voice', files }, signal: undefined });
-    using _registration = { [Symbol.dispose]: () => temporaryModels.remove({ name: model!.id }) };
-    expect(await inspectStoredAudioModel({ id: model!.id, signal: undefined })).toEqual({ status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
+    const [model] = await temporaryModels.registerDirectory({ directory: { rootName: 'temporary-voice', files }, signal: undefined });
+    using _registration = { [Symbol.dispose]: () => temporaryModelFiles.remove({ rootPath: 'temp/temporary-voice' }) };
+    expect(await inspectStoredAudioModel({ modelId: model!.modelId, signal: undefined })).toEqual({ status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' });
     expect(storage.resolve).not.toHaveBeenCalled();
-    temporaryModels.remove({ name: model!.id });
-    expect(await inspectStoredAudioModel({ id: model!.id, signal: undefined })).toMatchObject({ status: 'unverified' });
+    temporaryModels.removeModel({ modelId: model!.modelId });
+    expect(await inspectStoredAudioModel({ modelId: model!.modelId, signal: undefined })).toMatchObject({ status: 'unverified' });
     expect(storage.resolve).not.toHaveBeenCalled();
   });
 
-  it('resolves stored user and Hugging Face IDs through the existing local loader', async () => {
-    storage.resolve.mockResolvedValue(directory());
-    expect(await inspectStoredAudioModel({ id: 'user/voice', signal: undefined })).toMatchObject({ status: 'detected' });
-    expect(storage.resolve).toHaveBeenCalledWith({ name: 'user/voice' });
-    const hostedId = 'hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:voice-Q8_0.gguf';
-    expect(await inspectStoredAudioModel({ id: hostedId, signal: undefined })).toMatchObject({ status: 'detected' });
-    expect(storage.resolve).toHaveBeenCalledWith({ name: hostedId });
+  it('resolves stored user, host and Hugging Face modelIds through the same file resolver', async () => {
+    storage.resolve.mockResolvedValue({ directory: directory() });
+    expect(await inspectStoredAudioModel({ modelId: 'user/voice', signal: undefined })).toMatchObject({ status: 'detected' });
+    expect(storage.resolve).toHaveBeenCalledWith({ modelId: 'user/voice', signal: undefined });
+    const hostedId = 'hf.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF:Q8_0';
+    expect(await inspectStoredAudioModel({ modelId: hostedId, signal: undefined })).toMatchObject({ status: 'detected' });
+    expect(storage.resolve).toHaveBeenCalledWith({ modelId: hostedId, signal: undefined });
+    const hostModelId = 'host/MyModels1/owner/Voice-GGUF:Q8_0';
+    expect(await inspectStoredAudioModel({ modelId: hostModelId, signal: undefined })).toMatchObject({ status: 'detected' });
+    expect(storage.resolve).toHaveBeenCalledWith({ modelId: hostModelId, signal: undefined });
     storage.resolve.mockRejectedValueOnce(new Error('storage unavailable'));
-    expect(await inspectStoredAudioModel({ id: 'user/voice', signal: undefined })).toMatchObject({ status: 'unverified' });
+    expect(await inspectStoredAudioModel({ modelId: 'user/voice', signal: undefined })).toMatchObject({ status: 'unverified' });
   });
 });
 
 const detected: AudioModelDetection = { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' };
 
-function model({ id, size }: { id: string, size: number }): LocalModel {
-  return { id, size, name: id, importedAt: 1 };
+function model({ modelId, size }: { modelId: string, size: number }): LocalModel {
+  return { modelId, size, importedAt: 1 };
 }
 
 describe('default candidate selection', () => {
   it('prefers no-reference use, then smaller stored size, with deterministic ID ties', () => {
-    const models = [model({ id: 'chat', size: 1 }), model({ id: 'pocket', size: 10 }), model({ id: 'qwen-big', size: 200 }), model({ id: 'qwen-b', size: 100 }), model({ id: 'qwen-a', size: 100 })];
-    const detections = new Map<string, AudioModelDetection>([['pocket', { status: 'detected', pipeline: 'pocket-tts', reference: 'required' }], ...models.filter(m => m.id.startsWith('qwen')).map(m => [m.id, detected] as const)]);
+    const models = [model({ modelId: 'chat', size: 1 }), model({ modelId: 'pocket', size: 10 }), model({ modelId: 'qwen-big', size: 200 }), model({ modelId: 'qwen-b', size: 100 }), model({ modelId: 'qwen-a', size: 100 })];
+    const detections = new Map<string, AudioModelDetection>([['pocket', { status: 'detected', pipeline: 'pocket-tts', reference: 'required' }], ...models.filter(m => m.modelId.startsWith('qwen')).map(m => [m.modelId, detected] as const)]);
     expect(preferredAudioModel({ models, detections })).toBe('qwen-a');
     expect(preferredAudioModel({ models: [...models].reverse(), detections })).toBe('qwen-a');
-    expect(models[0]!.id).toBe('chat');
+    expect(models[0]!.modelId).toBe('chat');
   });
 
   it('does not pick an unverified chat model when detection fails', () => {
-    expect(preferredAudioModel({ models: [model({ id: 'chat', size: 1 })], detections: new Map() })).toBeUndefined();
+    expect(preferredAudioModel({ models: [model({ modelId: 'chat', size: 1 })], detections: new Map() })).toBeUndefined();
   });
 });

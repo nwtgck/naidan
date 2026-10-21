@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from './index';
 import type { ModelLaunchChatRequest } from './model-launch';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
-import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { LOCK_METADATA, SYNC_LOCK_KEY, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Storage tests do not exercise application string loading.
@@ -45,7 +45,7 @@ function request({ suffix }: { suffix: string }): ModelLaunchChatRequest {
     chatGroupName: 'Model · Q4_K_M',
     input: `hf.co/${repository}:Q4_K_M`,
     requestedVariant: 'Q4_K_M',
-    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: huggingFaceModelId({ repository, modelPath: mainFilePath }) },
+    target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId: formatHuggingFaceModelId({ repository, mainFilePath }) },
     titleGeneration: 'disabled',
     mode: 'create-or-resume',
     expectedTarget: undefined,

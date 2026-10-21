@@ -1,20 +1,11 @@
 import type { BrowserImageModelLocation } from '@/01-models/types';
-import { toHostModelDirectoryId } from '@/01-models/ids';
-import { temporaryRootIdSchema } from '@/01-models/temporary-model-files';
-import { OPFS_MODELS_DIR } from '@/constants';
+import { modelFileLocation } from '@/logic/model-file-system';
 import type { HostImageRepositorySource } from './repository-store';
 
 /** One source classification for UI, history and RPC. A temp repository is not
  * OPFS merely because it lacks a host handle. IDs are produced by the registry. */
-export function imageModelLocation({ repositoryId, hostSource, path }: { repositoryId: string, hostSource: HostImageRepositorySource | undefined, path: string }): BrowserImageModelLocation {
-  if (hostSource) {
-    return { kind: 'host', directoryId: toHostModelDirectoryId({ raw: hostSource.directoryId }), path: `${hostSource.repository}/${path}` };
-  }
-  if (repositoryId.startsWith('temp/')) {
-    temporaryRootIdSchema.parse(repositoryId);
-    return { kind: 'temp', path: `${repositoryId}/${path}` };
-  }
-  return { kind: 'opfs', path: `${OPFS_MODELS_DIR}/${repositoryId}/${path}` };
+export function imageModelLocation({ repositoryKey, hostSource, relativePath }: { repositoryKey: string, hostSource: HostImageRepositorySource | undefined, relativePath: string }): BrowserImageModelLocation {
+  return modelFileLocation({ repositoryKey, hostSource, relativePath });
 }
 
 export function sameImageModelLocation({ left, right }: { left: BrowserImageModelLocation, right: BrowserImageModelLocation }): boolean {

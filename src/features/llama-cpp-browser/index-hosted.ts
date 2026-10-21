@@ -2,8 +2,8 @@ import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-
 import { directoryForModelFile } from '@/features/llama-cpp-browser/runtime/model-directory-input';
 import { captureChatOptions, capturePerformanceOptions } from './runtime/chat-options';
 import { promiseAllKeyed } from '@/utils/promise';
-import { z } from 'zod';
-import { resolveStoredModelName } from './host-model-names';
+import { resolveModel } from './runtime/model-resolution';
+import type { ResolvedModel } from './runtime/model-directory';
 import { storageService } from '@/00-storage/service';
 import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { resolveRuntimeProfile } from './runtime/detect-profile';
@@ -12,30 +12,24 @@ import { profileCapabilitiesSchema, resolveProfilePreference, type ProfileCapabi
 import { defaultRuntimeOptions, parseRuntimeOptions } from '@/features/llama-cpp-browser/runtime/profile-policy';
 import { listStoredModels, removeStoredModel, withModelMutationLock } from './runtime/model-store';
 import { createLlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/client';
-import type { LlamaCppWorkerClient } from './worker/types';
-import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
+import type { AcceptedGenerateInput, LlamaCppWorkerClient } from './worker/types';
+import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerateInput, type GenerationResult } from './types';
 import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from './service-contract';
 import { logDiagnostic, logFailure } from './debug-log';
 
-// Public Host names may contain long, percent-encoded folder aliases. Validate
-// the rest of the request synchronously, then validate canonical worker input
-// after resolving the accepted name. Ordinary model constraints stay unchanged.
-const publicModelNameSchema = z.union([generateInputSchema.shape.model, z.string().startsWith('host/')]);
-const publicGenerateInputSchema = generateInputSchema.extend({ model: publicModelNameSchema });
-const publicAudioInputSchema = audioGenerationInputSchema.extend({ model: publicModelNameSchema });
-
-function acceptModelRequest<T extends { model: string }>({ request, validate }: {
-  request: T, validate: ({ request }: { request: T }) => T,
-}): Promise<T> {
-  const pending = resolveStoredModelName({ name: request.model }).then(model => validate({ request: { ...request, model } }));
-  // A request may wait behind another operation before its lane awaits it.
+/** Capture concrete file resources before an operation waits for its lane. */
+function acceptModelRequest<T extends { modelId: string }>({ request, signal }: {
+  request: T, signal: AbortSignal | undefined,
+}): Promise<T & { resolvedModel: ResolvedModel }> {
+  const pending = resolveModel({ modelId: request.modelId, signal }).then(resolvedModel => ({ ...request, resolvedModel }));
+  // A queued operation may not await its accepted resources immediately.
   void pending.catch(() => {});
   return pending;
 }
 
-function acceptChatRequest({ request }: { request: z.infer<typeof publicGenerateInputSchema> }): Promise<z.infer<typeof generateInputSchema>> {
+function acceptChatRequest({ request, signal }: { request: GenerateInput, signal: AbortSignal | undefined }): Promise<AcceptedGenerateInput> {
   const pending = promiseAllKeyed({
-    request: acceptModelRequest({ request, validate: ({ request }) => generateInputSchema.parse(request) }),
+    request: acceptModelRequest({ request, signal }),
     options: captureChatOptions({ options: request.options }),
   }).then(({ request, options }) => ({ ...request, options }));
   void pending.catch(() => {});
@@ -371,13 +365,13 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
 }
 
 export const llamaCppBrowserService: LlamaCppBrowserService = {
-  async prepareModel({ model, signal, onProgress }) {
+  async prepareModel({ modelId, signal, onProgress }) {
     if (signal?.aborted) {
       throw new LlamaCppBrowserError({ code: 'aborted' });
     }
     const acceptedOptions = captureChatOptions({ options: { ...options } });
     // Resolve at acceptance so a shared advisory probe cannot retarget warmup.
-    const accepted = acceptModelRequest({ request: { model }, validate: ({ request }) => ({ model: generateInputSchema.shape.model.parse(request.model) }) });
+    const accepted = acceptModelRequest({ request: { modelId: generateInputSchema.shape.modelId.parse(modelId) }, signal });
     // A capability-only probe owns no model. Share it instead of suppressing
     // the Welcome Screen's one-shot warmup when its advisory probes first.
     // Do not reserve a warmup lane while waiting: a foreground send still wins.
@@ -414,7 +408,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           if (signal.aborted) {
             throw new LlamaCppBrowserError({ code: 'aborted' });
           }
-          await worker.prepareModel({ request: { model: (await accepted).model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
+          await worker.prepareModel({ request: { ...await accepted, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
           return 'ready' as const;
         } finally {
           acceptingProgress = false;
@@ -489,7 +483,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       unsubscribeTemporary();
     };
   },
-  async listModels({ signal }) {
+  async listModelEntries({ signal }) {
     signal?.throwIfAborted();
     await temporaryModels.ensure({ signal });
     const temporary = temporaryModels.list();
@@ -517,7 +511,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       recordOpfsInventoryIssue(opfsFailure);
     }
     signal?.throwIfAborted();
-    return models.sort((a, b) => a.name.localeCompare(b.name));
+    return models.sort((a, b) => a.modelId.localeCompare(b.modelId));
   },
   async importModel({ file, signal, storage }) {
     switch (storage) {
@@ -577,9 +571,9 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       },
     });
   },
-  async removeTemporaryModel({ id, signal }) {
+  async removeTemporaryModel({ modelId, signal }) {
     signal?.throwIfAborted();
-    temporaryModels.remove({ name: id });
+    temporaryModels.removeModel({ modelId });
   },
   async removeModel({ plan, signal }) {
     // Deletion is deliberately optimistic: it does not wait for chats or keep a
@@ -603,7 +597,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   generate({ input, onEvent, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
-    const initialRequest = acceptChatRequest({ request: publicGenerateInputSchema.parse({ ...input, options: { ...options } }) });
+    const initialRequest = acceptChatRequest({ request: generateInputSchema.parse({ ...input, options: { ...options } }), signal });
     return run({
       ready: initialRequest,
       kind: 'operation',
@@ -622,7 +616,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     });
   },
   generateAudio({ input, cancellationSignal, completionSignal, preview }) {
-    const initialRequest = acceptModelRequest({ request: publicAudioInputSchema.parse({ ...input, options: { ...options } }), validate: ({ request }) => audioGenerationInputSchema.parse(request) });
+    const initialRequest = acceptModelRequest({ request: audioGenerationInputSchema.parse({ ...input, options: { ...options } }), signal: cancellationSignal });
     return run({
       ready: initialRequest,
       kind: 'operation',
@@ -685,7 +679,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
             if (controller.signal.aborted) {
               throw new LlamaCppBrowserError({ code: 'aborted' });
             }
-            const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: acceptedOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
+            const acceptedRequest = acceptModelRequest({ request: generateInputSchema.parse({ ...input, options: acceptedOptions }), signal });
             const local = new AbortController();
             const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
             const removers = sources.map(source => {
@@ -797,7 +791,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           if (failure) {
             throw failure.error;
           }
-          const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: concreteOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
+          const acceptedRequest = acceptModelRequest({ request: generateInputSchema.parse({ ...input, options: concreteOptions }), signal });
           const local = new AbortController();
           const abort = () => local.abort();
           const sources = [...new Set([signal, controller.signal])];
@@ -899,7 +893,7 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
   if (laneReservations !== 0) {
     throw new LlamaCppBrowserError({ code: 'busy' });
   }
-  const accepted = acceptChatRequest({ request: publicGenerateInputSchema.parse({ ...input, debug: 'off', options: { ...options } }) });
+  const accepted = acceptChatRequest({ request: generateInputSchema.parse({ ...input, debug: 'off', options: { ...options } }), signal });
   return run({
     ready: accepted,
     kind: 'read-only',

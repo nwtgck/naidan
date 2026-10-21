@@ -44,7 +44,9 @@ describe('portable performance results', () => {
     expect(JSON.parse(records).input).toBeUndefined();
     expect(records).not.toContain('answer');
     expect(JSON.parse(await zip.file('outputs/attempt_one.json')!.async('string')).output.content).toBe('answer');
-    expect(JSON.parse(await zip.file('plan.json')!.async('string')).id).toBe(source.plan.id);
+    const exportedPlan = JSON.parse(await zip.file('plan.json')!.async('string'));
+    expect(exportedPlan.id).toBe(source.plan.id);
+    expect(exportedPlan.models).toEqual([{ modelId: 'user/m0', size: 4096, importedAt: 1 }]);
     expect(JSON.parse(await zip.file('environment.json')!.async('string')).timeOrigin).toBe(1000);
     expect(Object.keys(zip.files).some(name => name.endsWith('.gguf'))).toBe(false);
     expect(source.trials[0]?.output?.content).toBe('answer');
@@ -94,7 +96,7 @@ source.trials[0]!.summary = undefined;
 
   it('quotes formula-like metadata and rejects path-like run identifiers', async () => {
     const source = snapshot();
-source.plan.models[0]!.name = '=1+1';
+source.trials[0]!.error = '=1+1';
 const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
 expect(await zip.file('summary.csv')!.async('string')).toContain('"\'=1+1"');
     source.trials[0]!.id = '../invalid';

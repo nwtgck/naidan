@@ -1,60 +1,46 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
-import { selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
-import { resolveRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { storageService } from '@/00-storage/service';
-import { toHostModelDirectoryId } from '@/01-models/ids';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { createModelAvailabilityCache, inspectLocalModel, type ModelAvailability } from './availability';
-const calls = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
-vi.mock('../runtime/host-model-store', () => ({ selectHostModel: vi.fn() }));
-vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
-vi.mock('../hugging-face/storage', () => ({ resolveRepositoryModel: vi.fn() }));
+const calls = vi.hoisted(() => ({ resolve: vi.fn() }));
+vi.mock('../runtime/model-resolution', () => ({ resolveModel: (args: unknown) => calls.resolve(args) }));
 
 beforeEach(() => vi.resetAllMocks());
 
 describe('local-only missing-model inspection', () => {
-  it('captures an HF public short name before inspecting its exact stored identity', async () => {
-    const name = 'hf.co/owner/Model-GGUF:Q4';
-    const id = 'hf.co/owner/Model-GGUF:Model-Q4.gguf';
-    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id, name, modelPath: 'Model-Q4.gguf', projectorPath: undefined, files: [] });
-    calls.read.mockResolvedValue({});
-    expect(await inspectLocalModel({ modelId: name })).toBe('available');
-    expect(resolveRepositoryModel).toHaveBeenCalledExactlyOnceWith({ name });
-    expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: id });
-    expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
+  it('resolves the public HF modelId without substituting an exact file locator', async () => {
+    const modelId = 'hf.co/owner/Model-GGUF:Q4';
+    calls.resolve.mockResolvedValue({});
+    expect(await inspectLocalModel({ modelId })).toBe('available');
+    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ modelId, signal: undefined });
   });
 
-  it.each(['model.gguf', 'Q4'])('resolves public folder aliases and %s before inspecting the canonical storage identity', async selector => {
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }]);
-    vi.mocked(selectHostModel).mockResolvedValue({ id: 'host/root/owner/repo:model.gguf', name: 'host/root/owner/repo:Q4', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
-    calls.read.mockResolvedValue({});
-    expect(await inspectLocalModel({ modelId: `host/Models/owner/repo:${selector}` })).toBe('available');
-    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: `host/root/owner/repo:${selector}` });
-    expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:model.gguf' });
+  it.each(['Q4', 'Q%20A'])('resolves a current host folder alias and literal public variant %s', async variant => {
+    const modelId = `host/MyModels1/owner/repo:${variant}`;
+    calls.resolve.mockResolvedValue({});
+    expect(await inspectLocalModel({ modelId })).toBe('available');
+    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ modelId, signal: undefined });
   });
 
-  it('does not inspect a different root when a public alias is no longer registered', async () => {
-    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([]);
-    expect(await inspectLocalModel({ modelId: 'host/Models/owner/repo:model.gguf' })).toBe('missing');
-    expect(calls.read).not.toHaveBeenCalled();
+  it('reports a removed public root alias as missing', async () => {
+    calls.resolve.mockRejectedValue(new LlamaCppBrowserError({ code: 'missing-model' }));
+    expect(await inspectLocalModel({ modelId: 'host/MyModels1/owner/repo:Q4' })).toBe('missing');
   });
 
   it('looks up the resolved model rather than listing all models or launching a Worker', async () => {
-    calls.read.mockResolvedValue({});
+    calls.resolve.mockResolvedValue({});
     expect(await inspectLocalModel({ modelId: 'user/example' })).toBe('available');
-    expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: 'user/example' });
+    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'user/example', signal: undefined });
   });
 
   it.each([new DOMException('no folder', 'NotFoundError'), new LlamaCppBrowserError({ code: 'missing-model' })])('recognizes confirmed absence', async error => {
-    calls.read.mockRejectedValue(error);
+    calls.resolve.mockRejectedValue(error);
     expect(await inspectLocalModel({ modelId: 'user/example' })).toBe('missing');
   });
 
   it.each([new DOMException('denied', 'NotAllowedError'), new DOMException('wrong kind', 'TypeMismatchError'), new LlamaCppBrowserError({ code: 'unavailable' }), new LlamaCppBrowserError({ code: 'invalid-gguf' }), new LlamaCppBrowserError({ code: 'unsupported-input' }), new Error('private storage path')])('does not relabel storage errors as absent model files', async error => {
-    calls.read.mockRejectedValue(error);
+    calls.resolve.mockRejectedValue(error);
     expect(await inspectLocalModel({ modelId: 'user/example' })).toBe('unreadable');
   });
 });
@@ -112,11 +98,11 @@ it('finds page-local temporary models without any storage lookup and reports the
   bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
   const file = new File([bytes], 'model.gguf');
   Object.defineProperty(file, 'slice', { value: (start: number, end: number) => new NodeBlob([bytes.slice(start, end)]) });
-  const [model] = await temporaryModels.registerDirectory({ directory: { name: 'available', files: [{ path: 'model.gguf', file }] }, signal: undefined });
-  using _registration = { [Symbol.dispose]: () => temporaryModels.remove({ name: model!.id }) };
-  expect(await inspectLocalModel({ modelId: model!.id })).toBe('available');
-  temporaryModels.remove({ name: model!.id });
-  expect(await inspectLocalModel({ modelId: model!.id })).toBe('missing');
-  expect(calls.read).not.toHaveBeenCalled();
-  expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
+  const [model] = await temporaryModels.registerDirectory({ directory: { rootName: 'available', files: [{ relativePath: 'model.gguf', file }] }, signal: undefined });
+  using _registration = { [Symbol.dispose]: () => temporaryModels.removeModel({ modelId: model!.modelId }) };
+  const actual = await vi.importActual<typeof import('@/features/llama-cpp-browser/runtime/model-resolution')>('../runtime/model-resolution');
+  calls.resolve.mockImplementation(actual.resolveModel);
+  expect(await inspectLocalModel({ modelId: model!.modelId })).toBe('available');
+  temporaryModels.removeModel({ modelId: model!.modelId });
+  expect(await inspectLocalModel({ modelId: model!.modelId })).toBe('missing');
 });

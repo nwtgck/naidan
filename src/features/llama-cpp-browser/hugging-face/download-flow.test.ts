@@ -6,6 +6,7 @@ import { createFileDownloadWorker } from '@/logic/hugging-face-download/worker/i
 import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { downloadImageRecipeInWorker } from '@/features/stable-diffusion-cpp-browser/download-worker/client';
 import { scanDeletionTree } from '@/features/llama-cpp-browser/runtime/deletion-plan';
+import { prepareRepositoryRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { downloadRepository, cancelDownload } from './download';
 import { listHuggingFaceModels, repositoryFolder } from './storage';
 import { ggufBytes } from './test-opfs';
@@ -60,7 +61,7 @@ function response({ bytes, status, headers }: { bytes: Uint8Array<ArrayBuffer>, 
 beforeEach(() => {
   vi.clearAllMocks();
   root = new MemoryDirectory('root');
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, _options: object, run: (lock: object) => Promise<unknown>) => run({}) } });
+  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, optionsOrOperation: object | (() => Promise<unknown>), operation?: (lock: object) => Promise<unknown>) => typeof optionsOrOperation === 'function' ? optionsOrOperation() : operation!({}) } });
   vi.stubGlobal('Worker', class extends EventTarget {
     terminate = vi.fn();
 
@@ -98,7 +99,7 @@ describe('shared HF transfer used by llama.cpp and images', () => {
   it('verifies streamed bytes and publishes generic per-file markers', async () => {
     const progress: DownloadProgress[] = [];
     await run({ progress: ({ progress: value }) => progress.push(value) });
-    expect((await listHuggingFaceModels()).map(model => model.name)).toEqual(['hf.co/owner/repo:model']);
+    expect((await listHuggingFaceModels()).map(model => model.modelId)).toEqual(['hf.co/owner/repo:model']);
     expect(payload).toHaveBeenCalledOnce();
     expect((await folder()).children.has('.model.gguf.pending')).toBe(false);
     expect((await folder()).children.has('.model.gguf.complete')).toBe(true);
@@ -109,7 +110,7 @@ describe('shared HF transfer used by llama.cpp and images', () => {
     await downloadImageRecipeInWorker({ files: [identity], signal: new AbortController().signal, onProgress() {} });
     await run({});
     expect(payload).toHaveBeenCalledOnce();
-    expect((await listHuggingFaceModels())[0]?.name).toBe('hf.co/owner/repo:model');
+    expect((await listHuggingFaceModels())[0]?.modelId).toBe('hf.co/owner/repo:model');
   });
 
   it('reuses llama.cpp-acquired GGUF bytes from the image entry point', async () => {
@@ -170,7 +171,9 @@ describe('shared HF transfer used by llama.cpp and images', () => {
     await run({});
     const directory = await repositoryFolder({ repository: selection.repository, create: false });
     const files = (await scanDeletionTree({ folder: directory })).files;
-    expect(await cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/owner/repo', files } })).toBe('deleted');
+    const { plan } = await prepareRepositoryRemoval({ location: { kind: 'hugging-face', repository: selection.repository }, signal: undefined });
+    expect(plan.files).toEqual(files);
+    expect(await cancelDownload({ repository: selection.repository, plan })).toBe('deleted');
     expect(await listHuggingFaceModels()).toEqual([]);
   });
 

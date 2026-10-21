@@ -123,7 +123,7 @@ export function useModelLaunchChat({ chat, resolved }: {
     warmup.value = 'loading';
     warmupProgress.value = undefined;
     void llamaCppBrowserService.prepareModel({
-      model: target.modelId,
+      modelId: target.modelId,
       signal: controller.signal,
       onProgress: ({ progress }) => {
       // Operation-local, not the engine's global progress: another chat may own

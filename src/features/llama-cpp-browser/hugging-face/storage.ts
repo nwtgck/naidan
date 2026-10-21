@@ -1,17 +1,18 @@
-import { withModelFileMarkers } from '@/logic/model-file-publication';
-import { hostModelSelector } from '@/features/llama-cpp-browser/runtime/model-destination-types';
-import { hostDownloadMarker, hostDownloadMarkerPath } from './host-download-marker';
-import { isHostDestination, hostModelRoot, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
-import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
+import { hostDownloadMarker } from './host-download-marker';
+import { isHostDestination, hostModelRoot, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
+import { storageService } from '@/00-storage/service';
+import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
+import { formatHostModelId } from '@/features/llama-cpp-browser/runtime/host-model-aliases';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
-import { modelGroups, modelVariantName, isProjector } from './model-variants';
+import { modelGroups, modelVariantName } from './model-variants';
 import { selectRepositoryModel } from './model-selector';
 export { selectRepositoryModel } from './model-selector';
-import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
-import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
+import { deletionPlanSchema, executeDeletionPlan, pruneCapturedModelRoot, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
+import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, modelDirectory, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
-import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJournal, type DownloadSelection } from './types';
+import { journalSchema, pendingName, repositorySchema, type DownloadJournal, type DownloadSelection } from './types';
 
 export function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
@@ -102,7 +103,7 @@ export async function visitRepositories({ visit, destination, onIssue }: { desti
   }
 }
 
-async function repositoryFiles({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory['files']> {
+async function repositoryFiles({ repository, destination, signal }: { repository: string, destination: ModelDestination | undefined, signal: AbortSignal | undefined }): Promise<ModelDirectory['files']> {
   const folder = await repositoryFolder({ repository, create: false, destination });
   let pending: DownloadJournal | undefined;
   try {
@@ -113,47 +114,60 @@ async function repositoryFiles({ repository, destination }: { repository: string
     }
   }
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
-  return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path)).map(file => isHostDestination(destination) ? { ...file, storageKind: 'host' as const } : file);
+  return (await readModelFiles({ folder, prefix: '', storageKind: isHostDestination(destination) ? 'host' : 'opfs', signal })).filter(file => !hidden.has(file.relativePath));
 }
 
-export async function repositoryDirectories({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
-  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository, destination }), destination });
+export async function repositoryDirectories({ repository, destination, signal }: { repository: string, destination?: ModelDestination, signal?: AbortSignal }): Promise<ModelDirectory[]> {
+  return describeRepositoryDirectories({ actual: await repositoryFiles({ repository, destination, signal }), onlyPrimaryRelativePath: undefined, signal });
 }
 
-async function describeRepositoryDirectories({ repository, actual, onlyModelPath, destination }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
+async function describeRepositoryDirectories({ actual, onlyPrimaryRelativePath, signal }: { actual: ModelDirectory['files'], onlyPrimaryRelativePath: string | undefined, signal: AbortSignal | undefined }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual });
   const result: ModelDirectory[] = [];
+  const projector = rankedProjectors({ files: projectors.map(entry => ({ path: entry.relativePath, entry })) })[0]?.entry;
   for (const group of models) {
-    const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
+    signal?.throwIfAborted();
+    const files = [...group, ...projector ? [projector] : []];
     try {
-      const resolved = resolveModelFiles({ files });
-      // A launch checks one exact model, not the headers of every quantization.
-      // Keep grouping and projector selection identical to normal model listing.
-      if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) {
+      const directory = modelDirectory({ files });
+      // Launch readiness checks the requested file, keeping the inventory's
+      // grouping and projector selection without reading every variant header.
+      if (onlyPrimaryRelativePath !== undefined && directory.primaryFile.relativePath !== onlyPrimaryRelativePath) {
         continue;
       }
-      if (!await allValid({ files })) {
-        continue;
+      if (await allValid({ files })) {
+        result.push(directory);
       }
-      const id = isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: resolved.modelPath }) : huggingFaceModelId({ repository, modelPath: resolved.modelPath });
-      const variant = modelVariantName({ repository, path: resolved.modelPath });
-      const name = isHostDestination(destination)
-        ? hostModelSelector({ directoryId: destination.directoryId, repository, selector: variant })
-        : `${modelName({ repository })}:${variant}`;
-      result.push({ id, name, files, ...resolved });
     } catch (error) {
       if (!(error instanceof LlamaCppBrowserError)) {
         throw error;
       }
     }
   }
+  signal?.throwIfAborted();
   return result;
+}
+
+type HostDirectories = readonly { id: HostModelDirectoryId, name: string }[];
+
+function describeRepositoryModel({ directory, repository, destination, directories }: { directory: ModelDirectory, repository: string, destination: ModelDestination | undefined, directories: HostDirectories }): LocalModel {
+  if (!isHostDestination(destination)) {
+    return describeDirectory({ directory, modelId: formatHuggingFaceModelId({ repository, mainFilePath: directory.primaryFile.relativePath }) });
+  }
+  const registration = directories.find(entry => idToRaw({ id: entry.id }) === destination.directoryId);
+  if (!registration) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
+  return {
+    ...describeDirectory({ directory, modelId: formatHostModelId({ directoryId: destination.directoryId, repository, primaryRelativePath: directory.primaryFile.relativePath, directories }) }),
+    source: { kind: 'host', directoryId: destination.directoryId, directoryName: registration.name, repository, primaryRelativePath: directory.primaryFile.relativePath },
+  };
 }
 
 export async function installedSelection({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<LocalModel | undefined> {
   let actual: ModelDirectory['files'];
   try {
-    actual = await repositoryFiles({ repository: selection.repository, destination });
+    actual = await repositoryFiles({ repository: selection.repository, destination, signal: undefined });
   } catch (error) {
     if (isMissing({ error })) {
       return undefined;
@@ -162,19 +176,41 @@ export async function installedSelection({ selection, destination }: { selection
   }
   const selectedFiles: ModelDirectory['files'] = [];
   for (const expected of selection.files) {
-    const found = actual.find(file => file.path === expected.path && file.file.size === expected.size);
+    const found = actual.find(file => file.relativePath === expected.path && file.file.size === expected.size);
     if (!found) {
       return undefined;
     }
     selectedFiles.push(found);
   }
-  // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
   if (!await allValid({ files: selectedFiles })) {
     return undefined;
   }
-  const requested = resolveModelFiles({ files: selection.files });
-  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath, destination })).find(model => model.modelPath === requested.modelPath);
-  return directory ? describeDirectory({ directory }) : undefined;
+  const requested = resolveModelFiles({ files: selection.files.map(file => ({ relativePath: file.path })) });
+  const directories = await describeRepositoryDirectories({ actual, onlyPrimaryRelativePath: requested.primaryRelativePath, signal: undefined });
+  const directory = directories.find(model => model.primaryFile.relativePath === requested.primaryRelativePath);
+  if (!directory) {
+    return undefined;
+  }
+  // Most launches inspect only the requested headers. If group names collide,
+  // apply the same complete/header admission as listing and resolution before
+  // deciding whether the readable modelId identifies the requested files.
+  const candidates = modelGroups({ files: actual }).models.map(group => ({ primaryFile: { relativePath: group[0]!.relativePath } }));
+  const modelId = formatHuggingFaceModelId({ repository: selection.repository, mainFilePath: requested.primaryRelativePath });
+  const variant = parseModelReference({ modelId }).variant;
+  try {
+    const matching = candidates.filter(candidate => modelVariantName({ repository: selection.repository, path: candidate.primaryFile.relativePath }) === variant);
+    const admitted = matching.length > 1 ? await repositoryDirectories({ repository: selection.repository, destination }) : candidates;
+    const selected = selectRepositoryModel({ models: admitted, repository: selection.repository, variant });
+    if (selected.primaryFile.relativePath !== requested.primaryRelativePath) {
+      return undefined;
+    }
+  } catch (error) {
+    if (error instanceof LlamaCppBrowserError) {
+      return undefined;
+    }
+    throw error;
+  }
+  return describeRepositoryModel({ directory, repository: selection.repository, destination, directories: isHostDestination(destination) ? await storageService.loadHostModelDirectories() : [] });
 }
 
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
@@ -186,59 +222,42 @@ async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<
   return true;
 }
 
-export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
-  if (!name.startsWith('hf.co/')) {
+export function parseModelReference({ modelId }: { modelId: string }): { repository: string, variant: string | undefined } {
+  if (!modelId.startsWith('hf.co/')) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  const value = name.slice('hf.co/'.length);
+  const value = modelId.slice('hf.co/'.length);
   const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
 
-function repositorySelectors({ variant }: { variant: string | undefined }): string[] | undefined {
-  // OPFS historically exposes raw labels and percent-encoded file identities.
-  // Match both spellings, rejecting collisions rather than preferring either.
-  const selectors = variant === undefined ? undefined : [variant];
-  if (variant !== undefined) {
-    try {
-      const decoded = decodeURIComponent(variant);
-      if (encodeURIComponent(decoded) === variant) {
-selectors!.push(decoded);
-      }
-    } catch { /* A literal percent in an existing raw label is not URI encoding. */ }
+export async function resolveRepositoryModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ modelId });
+  if (variant === undefined) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  return selectors;
+  return selectRepositoryModel({ models: await repositoryDirectories({ repository, signal }), repository, variant });
 }
 
-export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name });
-  return selectRepositoryModel({ models: await repositoryDirectories({ repository }), repository, selectors: repositorySelectors({ variant }) });
-}
-
-export async function listHuggingFaceModels({ destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void } = {}): Promise<LocalModel[]> {
+export async function listHuggingFaceModels({ destination, onIssue, directories, signal }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void, directories?: HostDirectories, signal?: AbortSignal } = {}): Promise<LocalModel[]> {
   const result: LocalModel[] = [];
+  const registrations = directories ?? (isHostDestination(destination) ? await storageService.loadHostModelDirectories() : []);
   await visitRepositories({
     destination,
     onIssue,
     visit: async ({ repository }) => {
-      const models = await repositoryDirectories({ repository, destination });
+      const models = await repositoryDirectories({ repository, destination, signal });
       for (const directory of models) {
-        const variant = modelVariantName({ repository, path: directory.modelPath });
-        const selectors = isHostDestination(destination) ? [variant] : repositorySelectors({ variant });
-        try {
-          // Resolve against the complete inventory, including hidden collisions.
-          // Exact locators remain available to launch, availability and deletion.
-          if (selectRepositoryModel({ models, repository, selectors }).id === directory.id) {
-            result.push(describeDirectory({ directory }));
-          }
-        } catch (error) {
-          if (!(error instanceof LlamaCppBrowserError)) {
-            throw error;
-          }
+        const entry = describeRepositoryModel({ directory, repository, destination, directories: registrations });
+        // Current literal readable IDs form one namespace. An ambiguous group
+        // is hidden rather than selected by inventory order.
+        if (models.filter(candidate => describeRepositoryModel({ directory: candidate, repository, destination, directories: registrations }).modelId === entry.modelId).length === 1) {
+          result.push(entry);
         }
       }
     },
   });
+  signal?.throwIfAborted();
   return result;
 }
 
@@ -272,50 +291,48 @@ export async function withRepositoryLock<T>({ repository, operation }: { reposit
 
 export async function deleteRepository({ repository, plan, destination }: { repository: string, plan: DeletionPlan, destination?: ModelDestination }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
-  if (plan.id !== (isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: undefined }) : modelName({ repository }))) {
+  const location = plan.target.location;
+  if (location.kind === 'opfs-user' || location.repository !== repository || (isHostDestination(destination) ? location.kind !== 'host' || location.directoryId !== destination.directoryId : location.kind !== 'hugging-face')) {
     throw new Error('Deletion plan does not match the repository');
   }
-  const [owner, repo] = repositorySchema.parse(repository).split('/');
-  let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'readwrite' }) : await opfsRoot();
-  for (const name of isHostDestination(destination) ? [owner!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) {
-    folder = await folder.getDirectoryHandle(name);
-  }
-  const leaf = isHostDestination(destination) ? repo! : 'main';
-  const current = await folder.getDirectoryHandle(leaf);
-  let journal: DownloadJournal | undefined;
-  try {
-    journal = await readJournal({ folder: current });
-  } catch (error) {
-    if (!isMissing({ error })) {
-      throw error;
-    }
-  }
-  if (journal && isHostDestination(destination)) {
-    for (let index = 0; index < journal.selection.files.length; index++) {
-      if (!journal.reused?.[index]) {
-        await hostDownloadMarker({ folder: current, selection: journal.selection, index, action: 'check' });
+  switch (plan.target.kind) {
+  case 'model': break;
+  case 'repository': {
+    let journal: DownloadJournal | undefined;
+    try {
+      journal = await readJournal({ folder: plan.folder });
+    } catch (error) {
+      if (!isMissing({ error })) {
+        throw error;
       }
     }
+    if (JSON.stringify(journal) !== JSON.stringify(plan.target.journal)) {
+      return 'changed';
+    }
+    if (journal && location.kind === 'host') {
+      for (let index = 0; index < journal.selection.files.length; index++) {
+        if (!journal.reused?.[index]) {
+          await hostDownloadMarker({ folder: plan.folder, selection: journal.selection, index, action: 'check' });
+        }
+      }
+    }
+    break;
   }
-  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).flatMap(file => isHostDestination(destination) ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])] : withModelFileMarkers({ paths: (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path) });
-  const result = await executeDeletionPlan({ folder: current, plan, selectedPaths });
+  default: {
+    const exhaustive: never = plan.target;
+    throw new Error(String(exhaustive));
+  }
+  }
+  const result = await executeDeletionPlan({ folder: plan.folder, files: plan.files, selectedRelativePaths: plan.selectedRelativePaths });
   switch (result) {
+  case 'deleted': await pruneCapturedModelRoot({ plan });
+    return result;
   case 'changed': return result;
-  case 'deleted': break;
   default: {
     const exhaustive: never = result;
     throw new Error(String(exhaustive));
   }
   }
-  try {
-    await folder.getDirectoryHandle(leaf);
-    await folder.removeEntry(leaf);
-  } catch (error) {
-    if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) {
-      throw error;
-    }
-  }
-  return result;
 }
 
 export const TEST_ONLY = {

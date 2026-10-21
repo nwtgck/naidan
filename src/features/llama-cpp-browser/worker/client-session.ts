@@ -1,11 +1,10 @@
-import { temporaryModels } from '@/features/llama-cpp-browser/runtime/temporary-model-store';
 import { observeMeasurementMemory } from './memory-observation';
 import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { workerCapability, workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
@@ -245,7 +244,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
-    listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
+    listModelEntries: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModelEntries(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     importModel: ({ file, onProgress, signal }) => importWithCancellation({
       signal,
       onProgress,
@@ -257,14 +256,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
     }),
     removeModel: async ({ plan, signal }) => {
-      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel({ plan: deletionPlanSchema.parse(plan) }), signal, onAbort: undefined, abortTimeoutMs: undefined }));
+      return deletionResultSchema.parse(await invoke({ call: () => remote.removeModel(workerCapability({ value: { plan: deletionPlanSchema.parse(plan) }, capability: 'file-system-handle-clone' })), signal, onAbort: undefined, abortTimeoutMs: undefined }));
     },
     prepareModel: async ({ request, onProgress, signal }) => {
-      const accepted = workerPrepareCallSchema.parse({ ...request, temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal }) : undefined, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
         await invoke({
-          call: () => remote.prepareModel(accepted, workerProxy({
+          call: () => remote.prepareModel(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }), workerProxy({
             value: ({ ...event }) => {
               if (acceptingEvents && !disposed && !signal?.aborted) {
                 onProgress({ progress: progressSchema.parse(event) });
@@ -284,7 +283,6 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
       const accepted = workerGenerateCallSchema.parse({
         ...request,
-        temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal }) : undefined,
         generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
@@ -293,7 +291,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const memory = started === undefined ? undefined : observeMeasurementMemory({ worker, now: () => performance.now() - started });
       try {
         const result = await invoke({
-          call: () => remote.generate(accepted,
+          call: () => remote.generate(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
             workerProxy({
               value: async ({ event }) => {
                 if (acceptingEvents && !disposed) {
@@ -366,7 +364,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
-      const accepted = workerAudioCallSchema.parse({ ...request, temporaryModel: request.model.startsWith('temp/') ? await temporaryModels.resolveSource({ name: request.model, signal: cancellationSignal }) : undefined, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
+      const accepted = workerAudioCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       let started = false;
       const finish = (): void => {
@@ -403,7 +401,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       try {
         const result = await invoke({
           call: () => {
-            const pending = remote.generateAudio(accepted,
+            const pending = remote.generateAudio(workerCapability({ value: accepted, capability: 'file-system-handle-clone' }),
               workerProxy({
                 value: ({ ...event }) => {
                   if (acceptingEvents && !disposed && !cancellationSignal?.aborted) {

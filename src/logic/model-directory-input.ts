@@ -1,4 +1,4 @@
-import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
+import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-id';
 import type { TemporaryModelDirectoryInput } from '@/01-models/temporary-model-files';
 
 /** Preserve the selected root separately from paths inside it. Both engines
@@ -10,13 +10,13 @@ export function modelDirectoryFromFiles({ files }: { files: File[] }): Temporary
   }
   const prefix = `${name}/`;
   return {
-    name,
+    rootName: name,
     files: files.map(file => {
       if (!file.webkitRelativePath.startsWith(prefix)) {
         throw new Error('Folder selection contains different roots');
       }
-      return { path: file.webkitRelativePath.slice(prefix.length), file };
-    }).filter(entry => !entry.path.split('/').includes('.git')),
+      return { relativePath: file.webkitRelativePath.slice(prefix.length), file };
+    }).filter(entry => !entry.relativePath.split('/').includes('.git')),
   };
 }
 
@@ -75,7 +75,7 @@ export async function droppedModelFiles({ transfer, signal }: { transfer: DataTr
           if (files.length >= 20_000) {
             throw new Error('Dropped repository contains too many files');
           }
-          files.push({ path: prefix + child.name, file: await readFile({ entry: child }) });
+          files.push({ relativePath: prefix + child.name, file: await readFile({ entry: child }) });
         }
       }
     }
@@ -88,7 +88,7 @@ export async function droppedModelFiles({ transfer, signal }: { transfer: DataTr
     if (entry.isDirectory) {
       const children: TemporaryModelDirectoryInput['files'] = [];
       await walk({ entry: entry as FileSystemDirectoryEntry, prefix: '', depth: 0, files: children });
-      directories.push({ name: entry.name, files: children });
+      directories.push({ rootName: entry.name, files: children });
     } else {
       files.push(await readFile({ entry }));
     }
@@ -131,7 +131,7 @@ export function directoryForGgufFile({ file }: { file: File }): TemporaryModelDi
   if (!/^.+\.gguf$/i.test(file.name) || !isModelSourceSegment({ name: file.name })) {
     throw new Error('Choose a GGUF model file');
   }
-  return { name: `${file.name.slice(0, -5)}-GGUF`, files: [{ path: file.name, file }] };
+  return { rootName: `${file.name.slice(0, -5)}-GGUF`, files: [{ relativePath: file.name, file }] };
 }
 
 export const TEST_ONLY = {

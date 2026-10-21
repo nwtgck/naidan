@@ -3,7 +3,7 @@ import { toChatId } from '@/01-models/ids';
 import { modelLaunchViewState, readModelLaunchView } from './history';
 import { readModelLaunchReference } from './reference';
 const chatId = toChatId({ raw: 'test-chat' });
-const modelId = 'hf.co/owner/Model-GGUF:folder%2FModel-Q4_K_M.gguf';
+const modelId = 'hf.co/owner/Model-GGUF:folder/Q4_K_M';
 
 function view() {
   return modelLaunchViewState({ chatId, input: 'hf.co/owner/Model-GGUF:Q4_K_M', modelId, revision: 'a'.repeat(40) });
@@ -14,7 +14,7 @@ describe('model launch navigation context', () => {
     const state = view();
     expect(Object.keys(state).sort()).toEqual(['chatId', 'input', 'modelId', 'revision', 'version']);
     expect(readModelLaunchView({ state, chatId, modelId })).toEqual(state);
-    expect(readModelLaunchReference({ modelId })).toEqual({ modelId, repository: 'owner/Model-GGUF', mainFilePath: 'folder/Model-Q4_K_M.gguf' });
+    expect(readModelLaunchReference({ modelId })).toEqual({ modelId, repository: 'owner/Model-GGUF', variant: 'folder/Q4_K_M' });
   });
 
   it('cannot override another chat or another selected model', () => {
@@ -30,7 +30,12 @@ describe('model launch navigation context', () => {
     expect(readModelLaunchView({ state: { ...view(), selection: { files: [] } }, chatId, modelId })).toBeUndefined();
   });
 
-  it.each([undefined, 'owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:..%2Fbad.gguf', 'hf.co/owner/Model-GGUF:%zz', 'hf.co/owner/Model-GGUF:folder%2fModel.gguf'])('rejects invalid or noncanonical local identity %s', modelId => {
+  it('preserves literal percent characters in a readable variant without decoding paths', () => {
+    const literal = 'hf.co/owner/Model-GGUF:Q%20A';
+    expect(readModelLaunchReference({ modelId: literal })).toEqual({ repository: 'owner/Model-GGUF', variant: 'Q%20A', modelId: literal });
+  });
+
+  it.each([undefined, 'owner/Model-GGUF:Q4_K_M', 'hf.co/owner/Model-GGUF:../bad', 'hf.co/owner/Model-GGUF:', 'hf.co/owner/Model-GGUF:folder//Model'])('rejects invalid public modelId %s', modelId => {
     expect(readModelLaunchReference({ modelId })).toBeUndefined();
   });
 });

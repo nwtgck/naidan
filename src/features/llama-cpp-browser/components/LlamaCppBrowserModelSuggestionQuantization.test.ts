@@ -1,3 +1,5 @@
+import { localModelDirectory } from './model-directory.test-support';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -40,8 +42,8 @@ const communityCatalog: RepositoryCatalog = {
     ],
   }),
 };
-const localQat: LocalModel = { id: `hf.co/${official.hfRepository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.hfRepository}:${qatPath}`, size: 128, importedAt: 1 };
-const localCommunity: LocalModel = { id: `hf.co/${community.hfRepository}:gemma-4-E2B-it-Q4_K_M.gguf`, name: `hf.co/${community.hfRepository}:Q4_K_M`, size: 144, importedAt: 1 };
+const localQat: LocalModel = { modelId: formatHuggingFaceModelId({ repository: official.hfRepository, mainFilePath: qatPath }), size: 128, importedAt: 1 };
+const localCommunity: LocalModel = { modelId: `hf.co/${community.hfRepository}:Q4_K_M`, size: 144, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
 
 function render({ suggestion, models }: { suggestion: ModelSuggestion, models: LocalModel[] }): VueWrapper {
@@ -80,7 +82,11 @@ beforeEach(async () => {
   queueTest.reset();
   metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
-  vi.mocked(repositoryDirectories).mockResolvedValue([]);
+  vi.mocked(repositoryDirectories).mockImplementation(async ({ repository }) => repository === official.hfRepository
+    ? [localModelDirectory({ primaryRelativePath: qatPath, projectorRelativePath: undefined })]
+    : repository === community.hfRepository
+      ? [localModelDirectory({ primaryRelativePath: 'gemma-4-E2B-it-Q4_K_M.gguf', projectorRelativePath: undefined })]
+      : []);
   vi.mocked(discoverRepository).mockImplementation(async ({ input }) => {
     if (input === official.hfRepository) {
       return officialCatalog;
@@ -283,10 +289,9 @@ describe('catalog quantization selection', () => {
     expect(discoverRepository).toHaveBeenCalledOnce();
   });
 
-  it.each([false, true])('uses the public inventory name when a repository lookup returns the canonical Host ID (split action=%s)', async splitAction => {
-    const canonical = { ...localQat, id: `host/root/${official.hfRepository}:${qatPath}`, name: `host/root/${official.hfRepository}:${qatPath}` };
-    const available = { ...canonical, name: `host/Models/${official.hfRepository}:${qatPath}` };
-    vi.mocked(installedSelection).mockResolvedValue(canonical);
+  it.each([false, true])('passes the same public modelId from local lookup to the selected action (split action=%s)', async splitAction => {
+    const available = { ...localQat, modelId: `host/MyModels1/${official.hfRepository}:q4_0-it` };
+    vi.mocked(installedSelection).mockResolvedValue(available);
     const wrapper = render({ suggestion: gemma, models: [available] });
     const createChatGroup = vi.fn().mockResolvedValue(undefined);
     if (splitAction) {
@@ -305,6 +310,22 @@ describe('catalog quantization selection', () => {
       await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
       expect(wrapper.emitted('selectDefault')).toEqual([[available]]);
     }
+  });
+
+  it('does not treat an auxiliary file as installed when its public variant loses the auxiliary prefix', async () => {
+    const repository = 'owner/mtp-Model-GGUF';
+    const primaryRelativePath = 'mtp-Model-Q4_0.gguf';
+    const quantization = { ...official, hfRepository: repository };
+    const suggestion: ModelSuggestion = { ...gemma, quantizationHints: [quantization] };
+    const model: LocalModel = { modelId: formatHuggingFaceModelId({ repository, mainFilePath: primaryRelativePath }), size: 128, importedAt: 1 };
+    expect(model.modelId).toBe('hf.co/owner/mtp-Model-GGUF:Q4_0');
+    vi.mocked(repositoryDirectories).mockResolvedValue([localModelDirectory({ primaryRelativePath, projectorRelativePath: undefined })]);
+    const wrapper = render({ suggestion, models: [model] });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="llama-default-model-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
+    expect(discoverRepository).not.toHaveBeenCalled();
+    expect(downloadRepository).not.toHaveBeenCalled();
   });
 
   it('passes only the selected installed source and quantization into chat-group creation without external I/O', async () => {
@@ -338,7 +359,7 @@ describe('catalog quantization selection', () => {
     expect(wrapper.emitted('selectDefault')).toBeUndefined();
     await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
     expect(wrapper.emitted('selectDefault')).toEqual([[localCommunity]]);
-    await wrapper.setProps({ models: [localQat, localCommunity], defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: localQat.name } });
+    await wrapper.setProps({ models: [localQat, localCommunity], defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: localQat.modelId } });
     await wrapper.get('select').setValue('qat-q4_0');
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-default-model-action"]').text()).toBe('In use');

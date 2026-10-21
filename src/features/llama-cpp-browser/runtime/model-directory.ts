@@ -1,17 +1,24 @@
 import { modelImportPendingName, normalizeModelDirectoryInput } from './model-directory-input';
-import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
+import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-id';
+import { readStoredModelFile, type ModelFile, type StoredModelFile } from '@/logic/model-file-system';
+import { resolveModelFiles } from './model-file-selection';
+export { resolveModelFiles } from './model-file-selection';
 import { modelFileIsPending } from '@/logic/model-file-publication';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { executeDeletionPlan, scanDeletionTree } from './deletion-plan';
-import { rankedProjectors } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
 const pendingName = modelImportPendingName;
-export type ModelFile = { path: string, file: File } & ({ handle: FileSystemFileHandle, storageKind?: 'host' } | { storageKind: 'temp', revision: number });
-export type StoredModelFile = Extract<ModelFile, { handle: FileSystemFileHandle }>;
-export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
+export type { ModelFile, StoredModelFile } from '@/logic/model-file-system';
+export type ModelDirectory = { files: ModelFile[], primaryFile: ModelFile, projectorFile: ModelFile | undefined };
+export type ModelRootLocation =
+  | { kind: 'opfs-user', rootName: string }
+  | { kind: 'hugging-face', repository: string }
+  | { kind: 'host', directoryId: string, repository: string }
+  | { kind: 'temp', rootPath: string };
+export type ResolvedModel = { modelId: string, location: ModelRootLocation, directory: ModelDirectory };
 
 export function validSegment({ name }: { name: string }): boolean {
   return isModelSourceSegment({ name });
@@ -70,19 +77,20 @@ export async function validGguf({ file }: { file: File }): Promise<boolean> {
   return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70 && [2, 3].includes(new DataView(bytes.buffer).getUint32(4, true));
 }
 
-export async function readModelFiles({ folder, prefix }: { folder: FileSystemDirectoryHandle, prefix: string }): Promise<StoredModelFile[]> {
+export async function readModelFiles({ folder, prefix, storageKind, signal }: { folder: FileSystemDirectoryHandle, prefix: string, storageKind: 'opfs' | 'host', signal: AbortSignal | undefined }): Promise<StoredModelFile[]> {
   const result: StoredModelFile[] = [];
   for await (const [name, entry] of folder.entries()) {
+    signal?.throwIfAborted();
     if (!validSegment({ name })) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     }
-    const path = prefix + name;
+    const relativePath = prefix + name;
     switch (entry.kind) {
-    case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${path}/` }));
+    case 'directory': result.push(...await readModelFiles({ folder: entry, prefix: `${relativePath}/`, storageKind, signal }));
       break;
     case 'file':
       if (/\.gguf$/i.test(name) && !await modelFileIsPending({ directory: folder, name })) {
-        result.push({ path, handle: entry, file: await entry.getFile() });
+        result.push(await readStoredModelFile({ relativePath, handle: entry, storageKind, signal }));
       }
       break;
     default: {
@@ -91,53 +99,37 @@ export async function readModelFiles({ folder, prefix }: { folder: FileSystemDir
     }
     }
   }
-  return result.sort((a, b) => a.path.localeCompare(b.path));
+  signal?.throwIfAborted();
+  return result.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
-export function resolveModelFiles({ files }: { files: { path: string }[] }): { modelPath: string, projectorPath: string | undefined } {
-  // Match upstream directory discovery without requiring a particular marker position.
-  // External file edits may leave several projectors. Select one deterministically;
-  // this preference does not claim model/projector compatibility.
-  const projectors = rankedProjectors({ files: files.filter(entry => isProjector({ path: entry.path })) });
-  const bases = files.filter(entry => !projectors.includes(entry));
-  if (bases.length === 0) {
-    throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-  }
-  const first = bases[0]!;
-  const split = /^(.*)-(\d{5})-of-(\d{5})(\.gguf)$/i.exec(first.path);
-  if (!split) {
-    if (bases.length !== 1) {
-      throw new LlamaCppBrowserError({ code: 'unsupported-input' });
-    }
-  } else {
-    const count = Number(split[3]);
-    if (count < 1 || count !== bases.length) {
-      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-    }
-    const expected = new Set(Array.from({ length: count }, (_, index) => `${split[1]}-${String(index + 1).padStart(5, '0')}-of-${split[3]}${split[4]}`));
-    if (bases.some(entry => !expected.delete(entry.path)) || expected.size) {
-      throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-    }
-  }
-  return { modelPath: first.path, projectorPath: projectors[0]?.path };
+
+export function modelDirectory({ files }: { files: ModelFile[] }): ModelDirectory {
+  const { primaryRelativePath, projectorRelativePath } = resolveModelFiles({ files });
+  return {
+    files: files.filter(file => !isProjector({ path: file.relativePath }) || file.relativePath === projectorRelativePath),
+    primaryFile: files.find(file => file.relativePath === primaryRelativePath)!,
+    projectorFile: files.find(file => file.relativePath === projectorRelativePath),
+  };
 }
 
-export async function resolveDirectory({ folder, id, name }: { folder: FileSystemDirectoryHandle, id: string, name: string }): Promise<ModelDirectory> {
+export async function resolveDirectory({ folder, signal }: { folder: FileSystemDirectoryHandle, signal: AbortSignal | undefined }): Promise<ModelDirectory> {
   if (await hasPendingImport({ folder })) {
     throw new LlamaCppBrowserError({ code: 'missing-model' });
   }
-  const files = await readModelFiles({ folder, prefix: '' });
+  const files = await readModelFiles({ folder, prefix: '', storageKind: 'opfs', signal });
   for (const entry of files) {
+    signal?.throwIfAborted();
     if (!await validGguf({ file: entry.file })) {
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     }
   }
-  const resolved = resolveModelFiles({ files });
-  return { id, name, files: files.filter(file => !isProjector({ path: file.path }) || file.path === resolved.projectorPath), ...resolved };
+  signal?.throwIfAborted();
+  return modelDirectory({ files });
 }
 
-export function describeDirectory({ directory }: { directory: ModelDirectory }): LocalModel {
-  return modelSchema.parse({ id: directory.id, name: directory.name, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
+export function describeDirectory({ directory, modelId }: { directory: ModelDirectory, modelId: string }): LocalModel {
+  return modelSchema.parse({ modelId, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
 }
 
 async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal }: {
@@ -152,8 +144,8 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
     return false;
   }
   const { files, directories } = await scanDeletionTree({ folder });
-  if (!files.some(file => file.path === pendingName && file.size === 0)
-    || files.some(file => file.size !== 0 || (file.path !== pendingName && !paths.has(file.path)))
+  if (!files.some(file => file.relativePath === pendingName && file.size === 0)
+    || files.some(file => file.size !== 0 || (file.relativePath !== pendingName && !paths.has(file.relativePath)))
     || directories.some(directory => !Array.from(paths).some(path => path.startsWith(`${directory}/`)))) {
     return false;
   }
@@ -162,7 +154,7 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
   }
   // Recheck file metadata and delete non-recursively: an external file editor
   // need not honor the model-store lock, and new content must not be swept away.
-  const result = await executeDeletionPlan({ folder, plan: { id: `user/${name}`, files }, selectedPaths: undefined });
+  const result = await executeDeletionPlan({ folder, files, selectedRelativePaths: undefined });
   switch (result) {
   case 'changed': return false;
   case 'deleted': break;
@@ -191,9 +183,9 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   };
   checkCancelled();
   directory = normalizeModelDirectoryInput({ directory });
-  const rootName = directory.name;
-  const paths = new Set(directory.files.map(entry => entry.path));
-  const ggufs = directory.files.filter(entry => /\.gguf$/i.test(entry.path));
+  const rootName = directory.rootName;
+  const paths = new Set(directory.files.map(entry => entry.relativePath));
+  const ggufs = directory.files.filter(entry => /\.gguf$/i.test(entry.relativePath));
   try {
     resolveModelFiles({ files: ggufs });
   } catch (error) {
@@ -226,9 +218,9 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
   const folder = await parent.getDirectoryHandle(rootName, { create: true });
   try {
     await folder.getFileHandle(pendingName, { create: true });
-    for (const { path, file } of directory.files) {
+    for (const { relativePath, file } of directory.files) {
       checkCancelled();
-      const parts = path.split('/');
+      const parts = relativePath.split('/');
       const name = parts.pop()!;
       let parent = folder;
       for (const segment of parts) {
@@ -281,7 +273,7 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     // Only the transient pending marker guards publication; each load resolves the files anew.
     checkCancelled();
     await folder.removeEntry(pendingName);
-    const model = describeDirectory({ directory: await resolveDirectory({ folder, id: `user/${rootName}`, name: rootName }) });
+    const model = describeDirectory({ directory: await resolveDirectory({ folder, signal }), modelId: `user/${rootName}` });
     checkCancelled();
     return model;
   } catch (error) {

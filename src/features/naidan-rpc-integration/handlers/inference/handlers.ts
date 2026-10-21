@@ -42,7 +42,7 @@ export function generateChat({ resources, inputBudget, input, signal, notify }: 
     events: computationSource<Uint8Array>({
       signal,
       run: async ({ signal, emit }) => {
-        const { model, transcript, images, ...rest } = input;
+        const { modelId, transcript, images, ...rest } = input;
 rest satisfies Record<PropertyKey, never>;
 const encoded = images.reduce((bytes, image) => bytes + image.byteLength, 0);
 if (encoded > 64 * 1024 * 1024) {
@@ -50,7 +50,7 @@ if (encoded > 64 * 1024 * 1024) {
 }
 const leases = [inputBudget.reserve({ bytes: 2 * (TRANSCRIPT_LIMIT + encoded) })];
 try {
-  const request = await receiveTranscript({ transcript, images, model, signal });
+  const request = await receiveTranscript({ transcript, images, modelId, signal });
   // One attachment can be referenced many times in the transcript. Inspect
   // each encoded Blob once, but reserve decoded work for every occurrence.
   // Never copy all repeated payloads and only then check the aggregate.

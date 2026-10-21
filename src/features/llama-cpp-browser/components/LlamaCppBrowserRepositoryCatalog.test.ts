@@ -22,7 +22,7 @@ const service = vi.hoisted(() => ({
   subscribe: vi.fn(() => () => {}),
   subscribeModelList: vi.fn(() => () => {}),
   subscribeProfiles: vi.fn(() => () => {}),
-  listModels: vi.fn(async () => []),
+  listModelEntries: vi.fn(async () => []),
   probeProfiles: vi.fn(async () => ({ profiles: [] })),
   release: vi.fn(),
 }));

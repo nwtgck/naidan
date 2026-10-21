@@ -10,14 +10,7 @@ import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 const props = defineProps<{ state: MissingLlamaCppBrowserModelUi }>();
 const router = useRouter();
 const headingId = useId();
-const modelName = computed(() => {
-  const id = props.state.modelId.value ?? '';
-  try {
-    return decodeURIComponent(id);
-  } catch {
-    return id;
-  }
-});
+const modelId = computed(() => props.state.modelId.value ?? '');
 const job = computed(() => {
   const candidate = props.state.job.value;
   return candidate?.status === 'complete' || candidate?.status === 'cancelled' ? undefined : candidate;
@@ -39,7 +32,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <DownloadIcon aria-hidden="true" tw-class="w-4 h-4 mt-1 shrink-0 text-gray-500 dark:text-gray-400" />
       <div tw-class="min-w-0 space-y-1">
         <h3 :id="headingId" role="status" tw-class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ state.availability.value === 'unreadable' ? lazyStrings.LlamaCppBrowserModelRecovery__could_not_check_model_storage() : lazyStrings.LlamaCppBrowserModelRecovery__model_not_in_this_browser() }}</h3>
-        <p data-testid="model-recovery-name" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ modelName }}</p>
+        <p data-testid="model-recovery-name" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ modelId }}</p>
         <p v-if="state.availability.value === 'missing'" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing() }}</p>
       </div>
     </div>

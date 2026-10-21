@@ -37,7 +37,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     free,
     setField: ({ field, value }: { field: string, value: number | bigint }) => fields.set(field, value),
   } as unknown as Core;
-  const file = { path: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;
+  const file = { storageKind: 'opfs', relativePath: 'mmproj.gguf', file: new File(['x'], 'mmproj.gguf'), handle: { createSyncAccessHandle: async () => ({ getSize: () => 1, read: () => 0, close }) } } as unknown as ModelFile;
   return { core, file, api, fields, addFunction, removeFunction, order, close, free };
 }
 

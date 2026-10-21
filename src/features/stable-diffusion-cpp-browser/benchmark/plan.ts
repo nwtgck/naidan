@@ -51,7 +51,7 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
   if (notes.length > 2048) {
     throw new Error('Environment notes exceed 2048 characters');
   }
-  if (new Set(targets.map(target => target.id)).size !== targets.length) {
+  if (new Set(targets.map(target => target.candidateKey)).size !== targets.length) {
     throw new Error('Duplicate benchmark target');
   }
   const ordered = (() => {
@@ -68,9 +68,9 @@ export function createBenchmarkPlan({ id, createdAt, appVersion, notes, protocol
     if (!target.models || target.issue || target.missing.length) {
       throw new Error(`Incomplete model: ${target.label}`);
     }
-    const changes = { ...overrides[target.id] };
+    const changes = { ...overrides[target.candidateKey] };
     const resolved = benchmarkParameters({ common, target, strategy, overrides: changes });
-    const request = requestSchema.parse({ artifact, baseUrl, models: target.models, loras: imageLoraRequests({ selections: loras[target.id] ?? [] }), imageInputs: imageInputs[target.id] ?? emptyImageInputs(), parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
+    const request = requestSchema.parse({ artifact, baseUrl, models: target.models, loras: imageLoraRequests({ selections: loras[target.candidateKey] ?? [] }), imageInputs: imageInputs[target.candidateKey] ?? emptyImageInputs(), parameters: resolved.parameters, debug: 'on', preview, weightResidency, gpuBudgetMiB });
     // -1 would resolve to different random seeds; never silently substitute one.
     if (request.parameters.seed === '-1') {
       throw new Error('Benchmark requires an explicit, non-random seed');

@@ -80,9 +80,9 @@ describe('host image model storage', () => {
     const folder = await directory(), handle = await folder.getFileHandle('model.gguf', { create: true });
     handle.data = bytes;
     const before = [...folder.children.keys()];
-    const repositories = await listHostImageRepositories({ directories: [{ id: 'root-1', name: 'models' }, { id: 'root-2', name: 'models' }], signal: undefined });
-    expect(repositories.map(repo => repo.id)).toEqual(['host/root-1/owner/repo', 'host/root-2/owner/repo']);
-    expect(repositories[0]?.files.map(entry => entry.path)).toEqual(['nested/model.gguf']);
+    const repositories = await listHostImageRepositories({ directories: [{ directoryId: 'root-1', directoryName: 'models' }, { directoryId: 'root-2', directoryName: 'models' }], signal: undefined });
+    expect(repositories.map(repo => repo.repositoryKey)).toEqual(['host/root-1/owner/repo', 'host/root-2/owner/repo']);
+    expect(repositories[0]?.files.map(entry => entry.relativePath)).toEqual(['nested/model.gguf']);
     expect(repositories[0]?.hostSource).toEqual({ directoryId: 'root-1', directoryName: 'models', repository: 'owner/repo' });
     expect([...folder.children.keys()]).toEqual(before);
     expect(root.children.has('huggingface.co')).toBe(false);
@@ -93,14 +93,14 @@ describe('host image model storage', () => {
     for (const name of ['model.gguf', 'other.gguf', '.model.gguf.pending']) {
       (await folder.getFileHandle(name, { create: true })).data = bytes;
     }
-    const result = await listHostImageRepositories({ directories: [{ id: 'root-1', name: 'models' }], signal: undefined });
-    expect(result[0]?.files.map(entry => entry.path)).toEqual(['nested/other.gguf']);
-    expect(result[0]?.issues).toEqual([{ path: 'nested/model.gguf', message: 'Download is incomplete. Resume the catalog download.' }]);
+    const result = await listHostImageRepositories({ directories: [{ directoryId: 'root-1', directoryName: 'models' }], signal: undefined });
+    expect(result[0]?.files.map(entry => entry.relativePath)).toEqual(['nested/other.gguf']);
+    expect(result[0]?.issues).toEqual([{ relativePath: 'nested/model.gguf', message: 'Download is incomplete. Resume the catalog download.' }]);
   });
 
   it('keeps missing handles and IDB errors visible rather than treating the registry as empty', async () => {
     vi.mocked(hostModelHandles.get).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('IDB unavailable'));
-    const result = await listHostImageRepositories({ directories: [{ id: 'missing', name: 'first' }, { id: 'broken', name: 'second' }], signal: undefined });
+    const result = await listHostImageRepositories({ directories: [{ directoryId: 'missing', directoryName: 'first' }, { directoryId: 'broken', directoryName: 'second' }], signal: undefined });
     expect(result.map(repo => repo.issues?.[0]?.message)).toEqual(['Reconnect this model directory', 'IDB unavailable']);
   });
 

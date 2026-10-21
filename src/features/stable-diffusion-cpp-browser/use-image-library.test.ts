@@ -23,7 +23,7 @@ function repositories(): LocalImageRepository[] {
     safetensorsFixture({ name: 'ae.safetensors', tensors: fluxVaeTensors }).file,
     ggufFixture({ name: 'text.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'qwen3' }, extraBytes: 0 }).file,
   ];
-  return files.map((file, i) => ({ id: `user/${i}`, name: `repo ${i}`, files: [{ path: `original/${file.name}`, file }] }));
+  return files.map((file, i) => ({ repositoryKey: `user/${i}`, repositoryLabel: `repo ${i}`, files: [{ relativePath: `original/${file.name}`, file }] }));
 }
 
 function harness({ entries, scan }: { entries: LocalImageRepository[], scan: typeof scanImageRepositories | undefined }) {
@@ -57,7 +57,7 @@ it('resolves required components across repositories and keeps the original file
   expect(h.onSelection).toHaveBeenCalledWith({ family: 'z-image', turbo: true });
   const models = h.library.selectedModels()!;
   expect(models.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
-  expect(models.map(model => model.path)).toEqual(['original/z_image_turbo.gguf', 'original/ae.safetensors', 'original/text.gguf']);
+  expect(models.map(model => model.relativePath)).toEqual(['original/z_image_turbo.gguf', 'original/ae.safetensors', 'original/text.gguf']);
   expect(models.every(model => model.companions?.length === 0)).toBe(true);
   h.library.showAll.value = true;
   expect(h.library.models.value).toHaveLength(3);
@@ -100,13 +100,13 @@ it('keeps the registered host directory identity separate from OPFS history path
 it('does not replace a deliberate empty component, even after refresh; generation stays blocked', async () => {
   const h = harness({ entries: repositories(), scan: undefined });
   await h.library.refresh();
-  h.library.chooseComponent({ slot: 'vae', id: '' });
+  h.library.chooseComponent({ slot: 'vae', candidateKey: '' });
   expect(h.library.ready.value).toBe(false);
   await h.library.refresh();
-  expect(h.library.components.value.find(component => component.slot === 'vae')?.selected).toBe('');
+  expect(h.library.components.value.find(component => component.slot === 'vae')?.selectedCandidateKey).toBe('');
   expect(h.library.selectedModels()).toBeUndefined();
   const choice = h.library.components.value.find(component => component.slot === 'vae')!.choices[0]!;
-  h.library.chooseComponent({ slot: 'vae', id: choice.id });
+  h.library.chooseComponent({ slot: 'vae', candidateKey: choice.candidateKey });
   expect(h.library.ready.value).toBe(true);
 });
 
@@ -114,40 +114,40 @@ it('preserves a manual component selection when another same-class file appears'
   const entries = repositories();
   const h = harness({ entries, scan: undefined });
   await h.library.refresh();
-  const selected = h.library.components.value.find(component => component.slot === 'lm')!.selected;
-  h.library.chooseComponent({ slot: 'lm', id: selected });
-  const alternative = { ...entries[2]!, id: 'user/alternative' };
+  const selected = h.library.components.value.find(component => component.slot === 'lm')!.selectedCandidateKey;
+  h.library.chooseComponent({ slot: 'lm', candidateKey: selected });
+  const alternative = { ...entries[2]!, repositoryKey: 'user/alternative' };
   h.entries({ next: [alternative, ...entries] });
   await h.library.refresh();
-  expect(h.library.components.value.find(component => component.slot === 'lm')!.selected).toBe(selected);
+  expect(h.library.components.value.find(component => component.slot === 'lm')!.selectedCandidateKey).toBe(selected);
 });
 
 it('does not auto-select a different primary after the user clears it or switches to manual files', async () => {
   const h = harness({ entries: repositories(), scan: undefined });
   await h.library.refresh();
-  h.library.chooseMain({ id: '' });
+  h.library.chooseMain({ candidateKey: '' });
   await h.library.refresh();
-  expect(h.library.main.value).toBe('');
-  const id = h.library.models.value[0]!.id;
-  h.library.chooseMain({ id });
+  expect(h.library.selectedCandidateKey.value).toBe('');
+  const id = h.library.models.value[0]!.candidateKey;
+  h.library.chooseMain({ candidateKey: id });
   h.library.useManualFiles();
   await h.library.refresh();
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
   expect(h.library.ready.value).toBe(false);
 });
 
 it('rejects known incompatible candidates instead of trusting an advanced selection', async () => {
   const entries = repositories();
   const bad = ggufFixture({ name: 'qwen3-4b.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'gemma' }, extraBytes: 0 }).file;
-  entries.push({ id: 'user/gemma', name: 'Gemma', files: [{ path: bad.name, file: bad }] });
+  entries.push({ repositoryKey: 'user/gemma', repositoryLabel: 'Gemma', files: [{ relativePath: bad.name, file: bad }] });
   const h = harness({ entries, scan: undefined });
   await h.library.refresh();
   h.library.showAll.value = true;
   const component = h.library.components.value.find(item => item.slot === 'lm')!;
   const gemma = component.choices.find(choice => choice.detail.includes('user/gemma'))!;
   expect(gemma.status).toBe('incompatible');
-  h.library.chooseComponent({ slot: 'lm', id: gemma.id });
-  expect(h.library.components.value.find(item => item.slot === 'lm')!.selected).toBe(component.selected);
+  h.library.chooseComponent({ slot: 'lm', candidateKey: gemma.candidateKey });
+  expect(h.library.components.value.find(item => item.slot === 'lm')!.selectedCandidateKey).toBe(component.selectedCandidateKey);
 });
 
 it('discards a stale asynchronous inventory rather than overwriting a newer result', async () => {
@@ -166,10 +166,10 @@ it('discards a stale asynchronous inventory rather than overwriting a newer resu
   h.library.cancelScan();
   await first;
   await h.library.refresh();
-  const main = h.library.main.value;
+  const main = h.library.selectedCandidateKey.value;
   finish?.({ candidates: [], issues: [] });
   await first;
-  expect(h.library.main.value).toBe(main);
+  expect(h.library.selectedCandidateKey.value).toBe(main);
   expect(h.library.ready.value).toBe(true);
 });
 
@@ -232,7 +232,7 @@ it('lets explicit history reuse await the initial scan without applying automati
   gate.resolve(actual);
   await Promise.all([initial, preparing]);
   expect(h.onSelection).not.toHaveBeenCalled();
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
   const file = entries[0]!.files[0]!.file;
   const location = h.library.historyFileLocation({ file });
   expect(h.library.findHistoryFile({ location })).toBe(file);
@@ -288,12 +288,12 @@ it('finishes all waiters when disposed during a stalled read', async () => {
 it('enumerates benchmark targets with the same companion choices, without switching the primary selection', async () => {
   const h = harness({ entries: repositories(), scan: undefined });
   await h.library.refresh();
-  const before = h.library.main.value;
+  const before = h.library.selectedCandidateKey.value;
   expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(1);
   expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toEqual(h.library.selectedModels());
   expect(h.library.benchmarkTargets({ selections: {} })[0]?.composition).toBe('selected');
-  expect(h.library.main.value).toBe(before);
-  h.library.chooseComponent({ slot: 'vae', id: '' });
+  expect(h.library.selectedCandidateKey.value).toBe(before);
+  h.library.chooseComponent({ slot: 'vae', candidateKey: '' });
   expect(h.library.benchmarkTargets({ selections: {} })[0]?.models).toBeUndefined();
   expect(h.library.benchmarkTargets({ selections: {} })[0]?.missing).toContain('vae');
 });
@@ -301,7 +301,7 @@ it('enumerates benchmark targets with the same companion choices, without switch
 it('enumerates every complete primary independently, excludes text/VAE-only and records missing components', async () => {
   const entries = repositories();
   const main = entries[0]!;
-  const h = harness({ entries: [...entries, { ...main, id: 'user/second-diffusion' }], scan: undefined });
+  const h = harness({ entries: [...entries, { ...main, repositoryKey: 'user/second-diffusion' }], scan: undefined });
   await h.library.refresh();
   expect(h.library.benchmarkTargets({ selections: {} })).toHaveLength(2);
   expect(h.library.benchmarkTargets({ selections: {} }).every(target => target.models?.map(model => model.slot).join(',') === 'diffusion,vae,lm')).toBe(true);
@@ -312,27 +312,27 @@ it('enumerates every complete primary independently, excludes text/VAE-only and 
 
 it('resolves benchmark component overrides independently and never replaces a missing or incompatible choice', async () => {
   const entries = repositories();
-  const alternative = { ...entries[1]!, id: 'user/alternative-vae' };
-  const h = harness({ entries: [...entries, { ...entries[0]!, id: 'user/second-model' }, alternative], scan: undefined });
+  const alternative = { ...entries[1]!, repositoryKey: 'user/alternative-vae' };
+  const h = harness({ entries: [...entries, { ...entries[0]!, repositoryKey: 'user/second-model' }, alternative], scan: undefined });
   await h.library.refresh();
   const before = h.library.selectedModels();
   const targets = h.library.benchmarkTargets({ selections: {} });
   const first = targets[0]!, second = targets[1]!;
-  const alternativeId = first.components.find(component => component.slot === 'vae')!.choices.find(choice => choice.detail.startsWith(alternative.id + '/'))!.id;
-  const selections = { [first.id]: { vae: alternativeId } };
+  const alternativeId = first.components.find(component => component.slot === 'vae')!.choices.find(choice => choice.detail.startsWith(alternative.repositoryKey + '/'))!.candidateKey;
+  const selections = { [first.candidateKey]: { vae: alternativeId } };
   const changed = h.library.benchmarkTargets({ selections });
-  expect(changed[0]!.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
+  expect(changed[0]!.components.find(component => component.slot === 'vae')!.selectedCandidateKey).toBe(alternativeId);
   expect(changed[1]!.components).toEqual(second.components);
   expect(h.library.selectedModels()).toEqual(before);
-  const incomplete = h.library.benchmarkTargets({ selections: { [first.id]: { vae: '' } } })[0]!;
+  const incomplete = h.library.benchmarkTargets({ selections: { [first.candidateKey]: { vae: '' } } })[0]!;
   expect(incomplete.models).toBeUndefined();
   expect(incomplete.missing).toContain('vae');
-  const textId = first.components.find(component => component.slot === 'lm')!.selected;
-  expect(h.library.benchmarkTargets({ selections: { [first.id]: { vae: textId } } })[0]!.models).toBeUndefined();
+  const textId = first.components.find(component => component.slot === 'lm')!.selectedCandidateKey;
+  expect(h.library.benchmarkTargets({ selections: { [first.candidateKey]: { vae: textId } } })[0]!.models).toBeUndefined();
   h.entries({ next: entries });
   await h.library.refresh();
-  const stale = h.library.benchmarkTargets({ selections }).find(target => target.id === first.id)!;
-  expect(stale.components.find(component => component.slot === 'vae')!.selected).toBe(alternativeId);
+  const stale = h.library.benchmarkTargets({ selections }).find(target => target.candidateKey === first.candidateKey)!;
+  expect(stale.components.find(component => component.slot === 'vae')!.selectedCandidateKey).toBe(alternativeId);
   expect(stale.missing).toContain('vae');
   expect(stale.models).toBeUndefined();
 });
@@ -365,7 +365,7 @@ it('keeps the exact main and component Files after an unrelated import, but refr
   const before = h.library.selectedModels()!;
   // These are sparse fixture Files: copying their Blob bytes would lose the mocked tensor data.
   const fresh = repositories();
-  const imported = { ...repositories()[0]!, id: 'user/imported' };
+  const imported = { ...repositories()[0]!, repositoryKey: 'user/imported' };
   h.entries({ next: [...fresh, imported] });
   const onSelectionCount = h.onSelection.mock.calls.length;
   const inputFile = new File(['imported'], 'readme.txt');
@@ -381,7 +381,7 @@ it('keeps the exact main and component Files after an unrelated import, but refr
   } finally {
     vi.unstubAllGlobals();
   }
-  expect(scan.mock.calls.at(-1)?.[0].repositories.map(repository => repository.id)).toEqual(['user/imported']);
+  expect(scan.mock.calls.at(-1)?.[0].repositories.map(repository => repository.repositoryKey)).toEqual(['user/imported']);
   const after = h.library.selectedModels()!;
   expect(after.map(model => model.slot)).toEqual(before.map(model => model.slot));
   after.forEach((model, index) => expect(model.file).toBe(before[index]!.file));

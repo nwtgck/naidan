@@ -42,7 +42,7 @@ describe('model launch onboarding presentation', () => {
 
   it('restores the same presentation from a saved launch chat without retaining a parameter', async () => {
     loadMeta.mockResolvedValue({ groupId: 'cg' });
-    loadChatGroup.mockResolvedValue({ endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/repo:model.gguf' });
+    loadChatGroup.mockResolvedValue({ endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/repo:Q4' });
     const { wrapper } = await mountBypass({ path: '/chat/saved' });
     await flushPromises();
     expect(wrapper.text()).toBe('true');

@@ -16,17 +16,17 @@ afterEach(() => {
     scope.stop();
   }
   for (const root of temporaryModelFiles.list()) {
-    temporaryModelFiles.remove({ rootId: root.id });
+    temporaryModelFiles.remove({ rootPath: root.rootPath });
   }
 });
 
 function files() {
   return [
-    { path: 'image/model/diffusion/model.gguf', file: ggufFixture({ name: 'model.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file },
-    { path: 'image/vae/vae.safetensors', file: safetensorsFixture({ name: 'vae.safetensors', tensors: fluxVaeTensors }).file },
-    { path: 'language/qwen/text.gguf', file: ggufFixture({ name: 'text.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'qwen3' }, extraBytes: 0 }).file },
-    { path: 'README.md', file: new File(['model collection'], 'README.md') },
-    { path: 'image/model/diffusion/.model.gguf.complete', file: new File(['untrusted receipt'], '.model.gguf.complete') },
+    { relativePath: 'image/model/diffusion/model.gguf', file: ggufFixture({ name: 'model.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file },
+    { relativePath: 'image/vae/vae.safetensors', file: safetensorsFixture({ name: 'vae.safetensors', tensors: fluxVaeTensors }).file },
+    { relativePath: 'language/qwen/text.gguf', file: ggufFixture({ name: 'text.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'qwen3' }, extraBytes: 0 }).file },
+    { relativePath: 'README.md', file: new File(['model collection'], 'README.md') },
+    { relativePath: 'image/model/diffusion/.model.gguf.complete', file: new File(['untrusted receipt'], '.model.gguf.complete') },
   ];
 }
 
@@ -53,21 +53,21 @@ async function settled({ library }: { library: ReturnType<typeof useImageLibrary
 it('uses a llama-tab root for image generation while preserving saved candidates and exact File objects', async () => {
   const entries = files();
   const storedFile = ggufFixture({ name: 'saved.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
-  const h = harness({ stored: [{ id: 'user/saved', name: 'saved', files: [{ path: storedFile.name, file: storedFile }] }], scan: undefined });
+  const h = harness({ stored: [{ repositoryKey: 'user/saved', repositoryLabel: 'saved', files: [{ relativePath: storedFile.name, file: storedFile }] }], scan: undefined });
   await h.library.refresh();
-  const selectedBefore = h.library.main.value;
-  const llama = await temporaryModels.registerDirectory({ directory: { name: 'shared', files: entries }, signal: undefined });
-  expect(llama.some(model => model.id.startsWith('temp/shared/language/qwen:'))).toBe(true);
-  await vi.waitFor(() => expect(h.library.models.value.some(model => model.id === JSON.stringify(['temp/shared', entries[0]!.path]))).toBe(true));
-  expect(h.library.models.value.some(model => model.id === JSON.stringify(['user/saved', storedFile.name]))).toBe(true);
-  expect(h.library.main.value).toBe(selectedBefore);
-  h.library.chooseMain({ id: JSON.stringify(['temp/shared', entries[0]!.path]) });
+  const selectedBefore = h.library.selectedCandidateKey.value;
+  const llama = await temporaryModels.registerDirectory({ directory: { rootName: 'shared', files: entries }, signal: undefined });
+  expect(llama.some(model => model.modelId.startsWith('temp/shared/language/qwen:'))).toBe(true);
+  await vi.waitFor(() => expect(h.library.models.value.some(model => model.candidateKey === JSON.stringify(['temp/shared', entries[0]!.relativePath]))).toBe(true));
+  expect(h.library.models.value.some(model => model.candidateKey === JSON.stringify(['user/saved', storedFile.name]))).toBe(true);
+  expect(h.library.selectedCandidateKey.value).toBe(selectedBefore);
+  h.library.chooseMain({ candidateKey: JSON.stringify(['temp/shared', entries[0]!.relativePath]) });
   expect(h.library.ready.value).toBe(true);
   const models = h.library.selectedModels()!;
   expect(models.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
   for (const [index, model] of models.entries()) {
     expect(model.file).toBe(entries[index]!.file);
-    expect(model.path).toBe(entries[index]!.path);
+    expect(model.relativePath).toBe(entries[index]!.relativePath);
   }
   expect(h.copy).not.toHaveBeenCalled();
   expect(h.download).not.toHaveBeenCalled();
@@ -81,54 +81,55 @@ it('registers an image-tab drop for llama resolution without any persistence and
   await h.library.dropDirectory({ event: { dataTransfer: { items: [], files: [entry.file] } } as unknown as DragEvent, storage: 'temp' });
   expect(h.copy).not.toHaveBeenCalled();
   const root = temporaryModelFiles.list()[0]!;
-  expect(root.id).toBe('temp/text-GGUF');
-  const source = await temporaryModels.resolveSource({ name: root.id, signal: undefined });
-  expect(source?.files[0]?.file).toBe(entry.file);
+  expect(root.rootPath).toBe('temp/text-GGUF');
+  const resolvedModel = await temporaryModels.resolveModel({ modelId: root.rootPath, signal: undefined });
+  expect(resolvedModel?.directory.files[0]?.file).toBe(entry.file);
   h.scope.stop();
-  expect(temporaryModelFiles.get({ rootId: root.id })).toBe(root);
-  expect(await temporaryModels.resolveSource({ name: root.id, signal: undefined })).toMatchObject({ id: root.id });
+  expect(temporaryModelFiles.get({ rootPath: root.rootPath })).toBe(root);
+  expect(await temporaryModels.resolveModel({ modelId: root.rootPath, signal: undefined })).toMatchObject({ modelId: root.rootPath });
 });
 
 it('invalidates both projections immediately on unregister and intentionally resolves a replacement at the same pathname', async () => {
   const entries = files();
-  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: entries }, signal: undefined });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: entries }, signal: undefined });
   const h = harness({ stored: [], scan: undefined });
   await h.library.refresh();
-  h.library.chooseMain({ id: JSON.stringify([root.id, entries[0]!.path]) });
+  h.library.chooseMain({ candidateKey: JSON.stringify([root.rootPath, entries[0]!.relativePath]) });
   const file = entries[0]!.file;
   const location = h.library.historyFileLocation({ file });
-  expect(location).toMatchObject({ type: 'temp', path: `${root.id}/${entries[0]!.path}` });
+  expect(location).toMatchObject({ type: 'temp', path: `${root.rootPath}/${entries[0]!.relativePath}` });
   const choice = h.library.captureModelSelection({ loras: [] })!;
   expect(choice.primary.location.kind).toBe('temp');
   await temporaryModels.ensure({ signal: undefined });
-  temporaryModelFiles.remove({ rootId: root.id });
+  temporaryModelFiles.remove({ rootPath: root.rootPath });
   expect(h.library.findHistoryFile({ location })).toBeUndefined();
   expect(h.library.ready.value).toBe(false);
-  expect(() => temporaryModels.source({ name: 'temp/shared/language/qwen:text' })).toThrow('missing-model');
+  expect(temporaryModels.list()).toEqual([]);
+  await expect(temporaryModels.resolveModel({ modelId: 'temp/shared/language/qwen:text', signal: undefined })).rejects.toThrow('missing-model');
   const replacement = files();
   Object.defineProperty(replacement[0]!.file, 'lastModified', { value: file.lastModified + 123 });
-  temporaryModelFiles.register({ directory: { name: 'shared', files: replacement }, signal: undefined });
+  temporaryModelFiles.register({ directory: { rootName: 'shared', files: replacement }, signal: undefined });
   await settled({ library: h.library });
   expect(h.library.findHistoryFile({ location: { ...location, name: 'old-name', size: 1, lastModified: 0 } })).toBe(replacement[0]!.file);
   expect(h.library.restoreModelSelection({ selection: choice }).missing).toEqual([]);
   expect(h.library.selectedModels()?.[0]?.file).toBe(replacement[0]!.file);
   expect(temporaryModels.list()).toEqual([]);
-  expect((await temporaryModels.resolveSource({ name: 'temp/shared/language/qwen:text', signal: undefined }))?.files[0]?.file).toBe(replacement[2]!.file);
+  expect((await temporaryModels.resolveModel({ modelId: 'temp/shared/language/qwen:text', signal: undefined }))?.directory.files[0]?.file).toBe(replacement[2]!.file);
 });
 
 it('preserves original temporary File identities after inspection clones and unrelated refreshes', async () => {
-  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: files() }, signal: undefined });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: files() }, signal: undefined });
   const inventory = await scanImageRepositories({ repositories: temporaryImageRepositories({ roots: [root] }), signal: undefined });
   const cloned: ModelInventory = { ...inventory, candidates: inventory.candidates.map(candidate => ({ ...candidate, files: candidate.files.map(entry => ({ ...entry, file: new File(['cloned wrapper'], entry.file.name) })) })) };
   const restored = restoreTemporaryImageFiles({ inventory: cloned, roots: [root] });
   for (const candidate of restored.candidates) {
     for (const entry of candidate.files) {
-      expect(entry.file).toBe(root.files.find(file => file.path === entry.path)?.file);
+      expect(entry.file).toBe(root.files.find(file => file.relativePath === entry.relativePath)?.file);
     }
   }
   const h = harness({ stored: [], scan: undefined });
   await h.library.refresh();
-  h.library.chooseMain({ id: JSON.stringify([root.id, root.files[0]!.path]) });
+  h.library.chooseMain({ candidateKey: JSON.stringify([root.rootPath, root.files[0]!.relativePath]) });
   const before = h.library.selectedModels()!;
   await h.library.refresh();
   expect(h.library.selectedModels()?.map(model => model.file)).toEqual(before.map(model => model.file));
@@ -139,18 +140,18 @@ it('preserves original temporary File identities after inspection clones and unr
 
 it('discards a late scan for an unregistered root and reschedules the replacement without resurrecting old files', async () => {
   const gate = Promise.withResolvers<ModelInventory>();
-  const stale = temporaryModelFiles.register({ directory: { name: 'shared', files: files() }, signal: undefined });
+  const stale = temporaryModelFiles.register({ directory: { rootName: 'shared', files: files() }, signal: undefined });
   const staleInventory = await scanImageRepositories({ repositories: temporaryImageRepositories({ roots: [stale] }), signal: undefined });
   const scan = vi.fn(scanImageRepositories).mockReturnValueOnce(gate.promise);
   const h = harness({ stored: [], scan });
   const initial = h.library.refresh();
   await vi.waitFor(() => expect(scan).toHaveBeenCalledOnce());
-  temporaryModelFiles.remove({ rootId: stale.id });
-  const replacement = temporaryModelFiles.register({ directory: { name: 'shared', files: files() }, signal: undefined });
+  temporaryModelFiles.remove({ rootPath: stale.rootPath });
+  const replacement = temporaryModelFiles.register({ directory: { rootName: 'shared', files: files() }, signal: undefined });
   await settled({ library: h.library });
   gate.resolve(staleInventory);
   await initial;
-  h.library.chooseMain({ id: JSON.stringify([replacement.id, replacement.files[0]!.path]) });
+  h.library.chooseMain({ candidateKey: JSON.stringify([replacement.rootPath, replacement.files[0]!.relativePath]) });
   expect(h.library.selectedModels()?.[0]?.file).toBe(replacement.files[0]!.file);
   expect(h.library.failure.value).toBe('');
 });
@@ -159,10 +160,10 @@ it('publishes shared roots while the editor is busy without changing the selecte
   const h = harness({ stored: [], scan: undefined });
   await h.library.refresh();
   h.blocked.value = true;
-  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: files() }, signal: undefined });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: files() }, signal: undefined });
   await settled({ library: h.library });
-  expect(h.library.models.value.some(model => model.id === JSON.stringify([root.id, root.files[0]!.path]))).toBe(true);
-  expect(h.library.main.value).toBe('');
+  expect(h.library.models.value.some(model => model.candidateKey === JSON.stringify([root.rootPath, root.files[0]!.relativePath]))).toBe(true);
+  expect(h.library.selectedCandidateKey.value).toBe('');
   expect(h.onSelection).not.toHaveBeenCalled();
 });
 
@@ -171,35 +172,35 @@ it('shares root-name reservations between image imports and llama imports withou
   const h = harness({ stored: [], scan: undefined });
   await h.library.dropDirectory({ event: { dataTransfer: { items: [], files: [file] } } as unknown as DragEvent, storage: 'temp' });
   const fromImage = temporaryModelFiles.list()[0]!;
-  const fromLlama = await temporaryModels.registerDirectory({ directory: { name: fromImage.name, files: [{ path: file.name, file }] }, signal: undefined });
-  expect(fromImage.id).toBe('temp/text-GGUF');
-  expect(fromLlama[0]?.id).toBe('temp/text-GGUF-2');
-  temporaryModelFiles.remove({ rootId: fromImage.id });
-  expect((await temporaryModels.resolveSource({ name: 'temp/text-GGUF-2', signal: undefined }))?.files[0]?.file).toBe(file);
-  expect(temporaryModelFiles.list().map(root => root.id)).toEqual(['temp/text-GGUF-2']);
+  const fromLlama = await temporaryModels.registerDirectory({ directory: { rootName: fromImage.rootName, files: [{ relativePath: file.name, file }] }, signal: undefined });
+  expect(fromImage.rootPath).toBe('temp/text-GGUF');
+  expect(fromLlama[0]?.modelId).toBe('temp/text-GGUF-2');
+  temporaryModelFiles.remove({ rootPath: fromImage.rootPath });
+  expect((await temporaryModels.resolveModel({ modelId: 'temp/text-GGUF-2', signal: undefined }))?.directory.files[0]?.file).toBe(file);
+  expect(temporaryModelFiles.list().map(root => root.rootPath)).toEqual(['temp/text-GGUF-2']);
 });
 
 it('keeps temporary LoRA selections and history locators restorable without storing or copying their bytes', async () => {
   const adapter = safetensorsFixture({ name: 'style.safetensors', tensors: ['layer.lora_A.weight', 'layer.lora_B.weight'].map(name => tensor({ name, shape: [4, 8] })) }).file;
-  const entries = [...files(), { path: 'adapters/styles/style.safetensors', file: adapter }];
-  const root = temporaryModelFiles.register({ directory: { name: 'shared', files: entries }, signal: undefined });
+  const entries = [...files(), { relativePath: 'adapters/styles/style.safetensors', file: adapter }];
+  const root = temporaryModelFiles.register({ directory: { rootName: 'shared', files: entries }, signal: undefined });
   const h = harness({ stored: [], scan: undefined });
   await h.library.refresh();
-  h.library.chooseMain({ id: JSON.stringify([root.id, entries[0]!.path]) });
+  h.library.chooseMain({ candidateKey: JSON.stringify([root.rootPath, entries[0]!.relativePath]) });
   const saved = h.library.savedLoras.value[0]!;
   expect(saved.file).toBe(adapter);
-  expect(saved.path).toBe('adapters/styles/style.safetensors');
-  const selected = { file: saved.file, path: saved.path, sourceLabel: saved.detail, enabled: true, strength: 0.7 };
+  expect(saved.relativePath).toBe('adapters/styles/style.safetensors');
+  const selected = { file: saved.file, relativePath: saved.relativePath, locationLabel: saved.detail, enabled: true, strength: 0.7 };
   const selection = h.library.captureModelSelection({ loras: [selected] })!;
   expect(selection.loras).toEqual([{ location: { kind: 'temp', path: 'temp/shared/adapters/styles/style.safetensors' }, enabled: 'enabled', strength: 0.7 }]);
   expect(h.library.restoreModelSelection({ selection }).loras[0]?.file).toBe(adapter);
   const request = imageLoraRequests({ selections: [selected] });
   expect(request[0]?.file).toBe(adapter);
-  expect(request[0]?.path).toBe(saved.path);
+  expect(request[0]?.relativePath).toBe(saved.relativePath);
   const location = h.library.historyFileLocation({ file: adapter });
   expect(location.type).toBe('temp');
   expect(h.library.findHistoryFile({ location })).toBe(adapter);
-  temporaryModelFiles.remove({ rootId: root.id });
+  temporaryModelFiles.remove({ rootPath: root.rootPath });
   expect(h.library.restoreModelSelection({ selection }).missing).toContain('temp/shared/adapters/styles/style.safetensors');
   expect(h.library.findHistoryFile({ location })).toBeUndefined();
   expect(h.copy).not.toHaveBeenCalled();
@@ -207,22 +208,22 @@ it('keeps temporary LoRA selections and history locators restorable without stor
 
 it('retains split weights and safetensors index files in shared directories, including their exact companion paths', async () => {
   const shards = zImageTensors.slice(0, 2).map((value, index) => ({
-    path: `diffusion/model-0000${index + 1}-of-00002.gguf`,
+    relativePath: `diffusion/model-0000${index + 1}-of-00002.gguf`,
     file: ggufFixture({ name: `model-0000${index + 1}-of-00002.gguf`, tensors: [value], metadata: { 'split.no': index, 'split.count': 2, 'split.tensors.count': 2 }, extraBytes: 0 }).file,
   }));
   const weight = safetensorsFixture({ name: 'part.safetensors', tensors: [tensor({ name: 'x', shape: [1] })] }).file;
   const index = new File([JSON.stringify({ weight_map: { x: 'part.safetensors' } })], 'model.safetensors.index.json');
-  const root = temporaryModelFiles.register({ directory: { name: 'sharded', files: [...shards, { path: 'encoder/model.safetensors.index.json', file: index }, { path: 'encoder/part.safetensors', file: weight }] }, signal: undefined });
+  const root = temporaryModelFiles.register({ directory: { rootName: 'sharded', files: [...shards, { relativePath: 'encoder/model.safetensors.index.json', file: index }, { relativePath: 'encoder/part.safetensors', file: weight }] }, signal: undefined });
   const h = harness({ stored: [], scan: undefined });
   await h.library.refresh();
   expect(h.library.issues.value).toEqual([]);
   for (const entry of root.files) {
     const location = h.library.historyFileLocation({ file: entry.file });
-    expect(location).toMatchObject({ type: 'temp', path: `${root.id}/${entry.path}` });
+    expect(location).toMatchObject({ type: 'temp', path: `${root.rootPath}/${entry.relativePath}` });
     expect(h.library.findHistoryFile({ location })).toBe(entry.file);
   }
   const inventory = await scanImageRepositories({ repositories: temporaryImageRepositories({ roots: [root] }), signal: undefined });
-  expect(inventory.candidates.map(candidate => candidate.files.map(entry => entry.path))).toEqual(expect.arrayContaining([
-    shards.map(entry => entry.path), ['encoder/model.safetensors.index.json', 'encoder/part.safetensors'],
+  expect(inventory.candidates.map(candidate => candidate.files.map(entry => entry.relativePath))).toEqual(expect.arrayContaining([
+    shards.map(entry => entry.relativePath), ['encoder/model.safetensors.index.json', 'encoder/part.safetensors'],
   ]));
 });

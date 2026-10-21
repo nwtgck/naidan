@@ -16,7 +16,7 @@ export type PeerImageInput = {
  * import, delete, settings mutation or history writer is an RPC capability.
  * Per-call file selection controls computation, never the provider's editor. */
 export interface ReadOnlyInferenceResources {
-  listChatModels({ signal }: { signal: AbortSignal }): Promise<{ ref: string; label: string }[]>;
+  listChatModels({ signal }: { signal: AbortSignal }): Promise<{ modelId: string }[]>;
   generateChat({ input, signal, onEvent, onProgress }: {
     input: PeerChatInput; signal: AbortSignal;
     onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent'];

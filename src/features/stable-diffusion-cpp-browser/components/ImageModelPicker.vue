@@ -19,7 +19,7 @@ const popup = ref<HTMLDivElement>();
 const input = ref<HTMLInputElement>();
 const list = ref<HTMLDivElement>();
 const floatingStyle = ref<CSSProperties>({});
-const selected = computed(() => props.choices.find(choice => choice.id === props.modelValue));
+const selected = computed(() => props.choices.find(choice => choice.candidateKey === props.modelValue));
 const emptyText = computed(() => props.emptyLabel || (props.required ? lazyStrings.stableDiffusionCppBrowser__select_component() : lazyStrings.ImageModelPicker__use_built_in_component()));
 const matched = computed(() => {
   const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
@@ -32,7 +32,7 @@ const visible = computed(() => {
 });
 const rows = computed(() => [
   { value: '', choice: undefined, disabled: false },
-  ...visible.value.map(choice => ({ value: choice.id, choice, disabled: choice.status === 'incompatible' })),
+  ...visible.value.map(choice => ({ value: choice.candidateKey, choice, disabled: choice.status === 'incompatible' })),
 ]);
 const highlightedRow = computed(() => rows.value[highlighted.value]);
 
@@ -131,7 +131,7 @@ function choose({ value }: { value: string }): void {
   if (props.disabled || !props.active || !open.value) {
     return;
   }
-  if (value && !props.choices.some(choice => choice.id === value && choice.status !== 'incompatible')) {
+  if (value && !props.choices.some(choice => choice.candidateKey === value && choice.status !== 'incompatible')) {
     return;
   }
   emit('update:modelValue', value);

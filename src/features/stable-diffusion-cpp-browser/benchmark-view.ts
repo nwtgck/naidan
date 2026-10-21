@@ -13,7 +13,7 @@ export type ImageBenchmarkView = ReturnType<typeof createBenchmarkForm> & {
   effective({ target }: { target: ImageBenchmarkTarget }): Parameters;
   change({ id, change }: { id: string, change: ParameterChange }): void;
   inherit({ id, key }: { id: string, key: keyof Parameters }): void;
-  chooseComponent({ targetId, slot, id }: { targetId: string, slot: ModelSlot, id: string }): void;
+  chooseComponent({ targetId, slot, candidateKey }: { targetId: string, slot: ModelSlot, candidateKey: string }): void;
   chooseLoras({ targetId, selections }: { targetId: string, selections: ImageLoraSelection[] }): void;
   chooseImageInputs({ targetId, inputs }: { targetId: string, inputs: ImageInputs }): void;
 };

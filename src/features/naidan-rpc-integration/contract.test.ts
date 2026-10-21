@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest';
 import { methodNames } from '@/features/naidan-rpc';
 import { compile } from '@/features/naidan-rpc/schema';
+import { modelIdSchema } from '@/features/llama-cpp-browser/types';
 import {
-  chatModelReferenceSchema,
+  chatModelIdSchema,
   describePeerMethods,
   imageCatalogItemSchema,
   imageModelSelectionSchema,
@@ -39,41 +40,41 @@ it.each(['../private', '/absolute', 'models//file', 'https://example.invalid/fil
   expect(relativeModelPathSchema.safeParse(path).success).toBe(false);
 });
 
-it('accepts only local repository references, including a named quantization', () => {
-  expect(chatModelReferenceSchema.safeParse('hf.co/example/model:Q4_K_M').success).toBe(true);
-  expect(chatModelReferenceSchema.safeParse('hf.co/example/model:../Q4').success).toBe(false);
-  expect(chatModelReferenceSchema.safeParse('user/local.gguf').success).toBe(true);
+it('passes modelId strings without deciding whether their model is present', () => {
+  expect(chatModelIdSchema.safeParse('hf.co/example/model:Q4_K_M').success).toBe(true);
+  expect(chatModelIdSchema.parse('hf.co/example/model:../Q4')).toBe('hf.co/example/model:../Q4');
+  expect(chatModelIdSchema.safeParse('user/local.gguf').success).toBe(true);
 });
 
 it.each(['imatrix/Q4_K_M', 'nested/custom:100%-日本語', 'literal%2F/Q4', 'model file.gguf'])('preserves the readable HF selector %s through listing and generation contracts', selector => {
-  const ref = `hf.co/owner/repo:${selector}`;
-  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
-  expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
+  const modelId = `hf.co/owner/repo:${selector}`;
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
+  expect(naidanPeerContract.methods.generateChat.input.shape.modelId.parse(modelId)).toBe(modelId);
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
   if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
     throw new Error('Expected a model item stream');
   }
-  expect(plan.node.capability.item.parse({ ref, label: ref })).toEqual({ ref, label: ref });
+  expect(plan.node.capability.item.parse({ modelId })).toEqual({ modelId });
 });
 
 it.each(['nested%2fmodel.gguf', '%2E%2E%2Fmodel.gguf', '%00model.gguf', '%ZZ.gguf', '%E0%A4%A.gguf'])('accepts literal percent characters without decoding a public Host filename: %s', selector => {
-  const ref = `host/Models/owner/repo:${selector}`;
-  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
+  const modelId = `host/MyModels1/owner/repo:${selector}`;
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
 });
 
 it.each([
-  'host/Models/owner/repo:model.gguf',
-  'host/Models/owner/repo:Q4_K_M',
-  'host/Models/owner/repo:model.bin',
-  'host/Models/owner/repo:nested/custom:100%',
-  'host/Models/owner/repo:literal%2F/custom%25',
-  'host/Models/owner/repo:UD-Q4_K_XL',
-  'host/Models-2/owner/repo:subdir/model.gguf',
+  'host/MyModels1/owner/repo:model.gguf',
+  'host/MyModels1/owner/repo:Q4_K_M',
+  'host/MyModels1/owner/repo:model.bin',
+  'host/MyModels1/owner/repo:nested/custom:100%',
+  'host/MyModels1/owner/repo:literal%2F/custom%25',
+  'host/MyModels1/owner/repo:UD-Q4_K_XL',
+  'host/MyModels1-2/owner/repo:subdir/model.gguf',
   'host/%E3%83%A2%E3%83%87%E3%83%AB%20Folder/owner/repo:model file.gguf',
   'host/legacy-directory-id/owner/repo:model.gguf',
-])('preserves a public Host selector without resolving its alias or inventory: %s', ref => {
-  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
-  expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
+])('preserves a public Host selector without resolving its alias or inventory: %s', modelId => {
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
+  expect(naidanPeerContract.methods.generateChat.input.shape.modelId.parse(modelId)).toBe(modelId);
 });
 
 it.each(['subdir/model.gguf', 'Q4_K_M', 'model.bin'])('accepts a Host selector in the listChatModels item contract: %s', selector => {
@@ -81,57 +82,54 @@ it.each(['subdir/model.gguf', 'Q4_K_M', 'model.bin'])('accepts a Host selector i
   if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
     throw new Error('Expected a model item stream');
   }
-  const item = { ref: `host/Models/owner/repo:${selector}`, label: 'Model' };
+  const item = { modelId: `host/MyModels1/owner/repo:${selector}` };
   expect(plan.node.capability.item.parse(item)).toEqual(item);
 });
 
-it('preserves long Host aliases as both references and labels in the full model item contract', () => {
+it('preserves a long Host modelId without a duplicate label in the catalog item', () => {
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
   if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
     throw new Error('Expected a model item stream');
   }
   const schema = plan.node.capability.item;
-  const ref = `host/${encodeURIComponent('模'.repeat(255))}/owner/repo:model.gguf`;
-  const item = { ref, label: ref };
-  expect(ref.length).toBeGreaterThan(1024);
+  const modelId = `host/${encodeURIComponent('模'.repeat(255))}/owner/repo:model.gguf`;
+  const item = { modelId };
+  expect(modelId.length).toBeGreaterThan(1024);
   expect(schema.parse(item)).toEqual(item);
-  expect(schema.safeParse({ ref, label: 'M'.repeat(4096) }).success).toBe(true);
-  expect(schema.safeParse({ ref, label: 'M'.repeat(4097) }).success).toBe(false);
-  expect(schema.safeParse({ ref: 'user/model.gguf', label: 'M'.repeat(1024) }).success).toBe(true);
-  expect(schema.safeParse({ ref: 'user/model.gguf', label: 'M'.repeat(1025) }).success).toBe(false);
+  expect(schema.parse({ modelId, ref: modelId, label: modelId })).toEqual(item);
+  expect(schema.safeParse({ ref: modelId, label: modelId }).success).toBe(false);
+  expect(schema.safeParse({ modelId: 42 }).success).toBe(false);
+  expect(schema.parse({ modelId: 'user/My:Model' })).toEqual({ modelId: 'user/My:Model' });
 });
 
 it.each([
-  'host/Models/owner/repo',
-  'host/Models/owner/repo:',
-  'host/Models/owner/repo:../model.gguf',
-  'host/Models/owner/repo:/model.gguf',
-  'host/Models/owner/repo:subdir//model.gguf',
-  'host/Models/owner/repo:subdir/./model.gguf',
-  'host/Models/owner/repo:\0model.gguf',
-  'host/Models/owner/repo:subdir\\model.gguf',
+  'host/MyModels1/owner/repo',
+  'host/MyModels1/owner/repo:',
+  'host/MyModels1/owner/repo:../model.gguf',
+  'host/MyModels1/owner/repo:/model.gguf',
+  'host/MyModels1/owner/repo:subdir//model.gguf',
+  'host/MyModels1/owner/repo:subdir/./model.gguf',
+  'host/MyModels1/owner/repo:\0model.gguf',
+  'host/MyModels1/owner/repo:subdir\\model.gguf',
   'host/%4Dodels/owner/repo:model.gguf',
   'host/%ZZ/owner/repo:model.gguf',
   'host//owner/repo:model.gguf',
-  'host/Models/../repo:model.gguf',
-])('rejects malformed, noncanonical, or incomplete Host reference %s', ref => {
-  expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+  'host/MyModels1/../repo:model.gguf',
+])('passes a Host string unchanged for the serving resolver: %s', modelId => {
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
 });
 
-it('reserves the larger reference bound for Host models and preserves remote restrictions', () => {
-  const suffix = '/owner/repo:model.gguf';
-  const encodedAlias = `host/${encodeURIComponent('模'.repeat(255))}${suffix}`;
-  expect(chatModelReferenceSchema.parse(encodedAlias)).toBe(encodedAlias);
-  const atLimit = `host/${'M'.repeat(4096 - 'host/'.length - suffix.length)}${suffix}`;
-  expect(chatModelReferenceSchema.parse(atLimit)).toBe(atLimit);
-  expect(chatModelReferenceSchema.safeParse(atLimit.replace('host/', 'host/M')).success).toBe(false);
-  expect(chatModelReferenceSchema.safeParse('m'.repeat(512)).success).toBe(true);
-  expect(chatModelReferenceSchema.safeParse('m'.repeat(513)).success).toBe(false);
-  const hfPath = `${'日'.repeat(40)}/${'本'.repeat(40)}.gguf`;
-  expect(chatModelReferenceSchema.safeParse(`hf.co/owner/repo:${hfPath}`).success).toBe(true);
-  expect(chatModelReferenceSchema.safeParse(`hf.co/owner/repo:${encodeURIComponent(hfPath)}`).success).toBe(false);
-  for (const ref of ['other/Models/owner/repo:model.gguf', 'user/model%20file.gguf']) {
-    expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+it('passes arbitrary modelId strings without imposing source grammar or length limits', () => {
+  const values = [
+    '', 'm'.repeat(512), 'm'.repeat(513), 'x'.repeat(8192),
+    'other/MyModels1/owner/repo:model.gguf', 'user/model%20file.gguf',
+    `hf.co/owner/repo:${'日'.repeat(40)}/${'本'.repeat(40)}.gguf`,
+    `host/${encodeURIComponent('模'.repeat(255))}/owner/repo:model.gguf`,
+    'user/My:Model', 'user/literal%2F',
+  ];
+  for (const modelId of values) {
+    expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
+    expect(naidanPeerContract.methods.generateChat.input.shape.modelId.parse(modelId)).toBe(modelId);
   }
 });
 
@@ -196,23 +194,23 @@ it('strips extensions in known chat events while rejecting missing fields and un
 
 it.each([
   'temp/Model-GGUF',
-  'temp/Models-2/owner/repo:subdir%2Fmodel.gguf',
+  'temp/MyModels1-2/owner/repo:subdir%2Fmodel.gguf',
   'temp/variants:Q4.gguf',
   'temp/root:..%2Fmodel.gguf',
   'temp/root:dir/model.gguf',
   'temp/root:%ZZ',
   'temp/root:dir%2fmodel.gguf',
   'temp/root:日本語/a%2Fb:model',
-])('preserves temporary model names as literal selectors in ordinary listing and generation contracts: %s', ref => {
+])('preserves temporary model names as literal selectors in ordinary listing and generation contracts: %s', modelId => {
   // The public selector is not URL-decoded: encoded-looking text may be an
   // actual filename, and '/' may be an actual relative directory separator.
-  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
-  expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
+  expect(naidanPeerContract.methods.generateChat.input.shape.modelId.parse(modelId)).toBe(modelId);
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
   if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') {
     throw new Error('Expected a model item stream');
   }
-  expect(plan.node.capability.item.parse({ ref, label: ref })).toEqual({ ref, label: ref });
+  expect(plan.node.capability.item.parse({ modelId })).toEqual({ modelId });
 });
 
 it.each([
@@ -229,9 +227,9 @@ it.each([
   'temp/root:dir/\0model.gguf',
   'temp/root/owner/repo',
   'temp/root/owner/repo:',
-])('rejects structurally malformed temporary references: %s', ref => {
-  expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
-  expect(naidanPeerContract.methods.generateChat.input.shape.model.safeParse(ref).success).toBe(false);
+])('passes a temporary string unchanged for the serving resolver: %s', modelId => {
+  expect(chatModelIdSchema.parse(modelId)).toBe(modelId);
+  expect(naidanPeerContract.methods.generateChat.input.shape.modelId.parse(modelId)).toBe(modelId);
 });
 
 it('does not apply temporary-selector literal-percent rules to ordinary RPC file paths', () => {
@@ -247,4 +245,25 @@ it.each(['temp/shared/owner/repository/subdir/model.gguf', 'temp/shared/dir/%ZZ.
 
 it.each(['temp/../model.gguf', 'temp/root/../model.gguf', 'temp/root//model.gguf', 'temp/root/./file', 'temp/root', '/temp/root/file', 'models/user/model.gguf'])('rejects malformed temporary image locations: %s', path => {
   expect(imageModelSelectionSchema.safeParse({ primary: { slot: 'model', file: { location: { kind: 'temp', path } } }, components: [], loras: [] }).success).toBe(false);
+});
+
+it('versions the application contract independently of transport framing', () => {
+  expect(naidanPeerContract.name).toBe('naidan.peer.v2');
+  expect(chatModelIdSchema).toBe(modelIdSchema);
+});
+
+it.each([undefined, 42, true, null, {}, []])('requires a string modelId at the structural boundary: %j', modelId => {
+  expect(chatModelIdSchema.safeParse(modelId).success).toBe(false);
+  expect(naidanPeerContract.methods.generateChat.input.shape.modelId.safeParse(modelId).success).toBe(false);
+});
+
+it('describes modelId as the only chat catalog field and required generation selection', () => {
+  const [catalog, generate] = describePeerMethods({ names: ['listChatModels', 'generateChat'] });
+  expect(catalog).toMatchObject({ result: { kind: 'stream', item: { properties: { modelId: { type: 'string' } }, required: ['modelId'] } } });
+  if (catalog?.result.kind !== 'stream' || generate?.input.kind !== 'object') {
+    throw new Error('Expected the catalog stream and generation input descriptors');
+  }
+  expect(catalog.result.item.properties).toEqual({ modelId: { type: 'string' } });
+  expect(generate.input.required).toContain('modelId');
+  expect(generate.input.properties).not.toHaveProperty('model');
 });

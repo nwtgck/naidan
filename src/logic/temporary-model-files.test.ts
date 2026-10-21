@@ -4,7 +4,7 @@ import { createTemporaryModelFiles } from './temporary-model-files';
 import { temporaryFilePathSchema } from '@/01-models/temporary-model-files';
 
 function directory({ name }: { name: string }) {
-  return { name, files: [{ path: 'owner/repository/weights/model.safetensors', file: new File(['weights'], 'model.safetensors') }, { path: 'config.json', file: new File(['{}'], 'config.json') }] };
+  return { rootName: name, files: [{ relativePath: 'owner/repository/weights/model.safetensors', file: new File(['weights'], 'model.safetensors') }, { relativePath: 'config.json', file: new File(['{}'], 'config.json') }] };
 }
 
 it('retains a whole directory as immutable File references without reading or copying bytes', () => {
@@ -16,9 +16,9 @@ it('retains a whole directory as immutable File references without reading or co
     throw new Error('No copying');
   });
   const root = registry.register({ directory: input, signal: undefined });
-  expect(root.id).toBe('temp/models');
+  expect(root.rootPath).toBe('temp/models');
   expect(root.files[0]!.file).toBe(file);
-  expect(root.files.map(entry => entry.path)).toEqual(input.files.map(entry => entry.path));
+  expect(root.files.map(entry => entry.relativePath)).toEqual(input.files.map(entry => entry.relativePath));
   input.files.length = 0;
   expect(root.files).toHaveLength(2);
   expect(Object.isFrozen(root.files)).toBe(true);
@@ -31,11 +31,11 @@ it('shares name reservations and permits same-name replacement after explicit ro
   const registry = createTemporaryModelFiles();
   const first = registry.register({ directory: directory({ name: 'models' }), signal: undefined });
   registry.register({ directory: directory({ name: 'models-2' }), signal: undefined });
-  expect(registry.register({ directory: directory({ name: 'models' }), signal: undefined }).id).toBe('temp/models-3');
-  registry.remove({ rootId: first.id });
+  expect(registry.register({ directory: directory({ name: 'models' }), signal: undefined }).rootPath).toBe('temp/models-3');
+  registry.remove({ rootPath: first.rootPath });
   const next = registry.register({ directory: directory({ name: 'models' }), signal: undefined });
-  expect(next.id).toBe(first.id);
-  expect(next.revision).not.toBe(first.revision);
+  expect(next.rootPath).toBe(first.rootPath);
+  expect(next.registrationRevision).not.toBe(first.registrationRevision);
   expect(next.files[0]!.file).not.toBe(first.files[0]!.file);
 });
 
@@ -44,33 +44,33 @@ it('bounds suffixed names in UTF-8 and normalizes the same colon separator as sa
   const input = directory({ name: '界'.repeat(85) });
   registry.register({ directory: input, signal: undefined });
   const next = registry.register({ directory: input, signal: undefined });
-  expect(new TextEncoder().encode(next.name).length).toBeLessThanOrEqual(255);
-  expect(next.name.endsWith('-2')).toBe(true);
-  expect(registry.register({ directory: directory({ name: 'a:b' }), signal: undefined }).name).toBe('a_b');
+  expect(new TextEncoder().encode(next.rootName).length).toBeLessThanOrEqual(255);
+  expect(next.rootName.endsWith('-2')).toBe(true);
+  expect(registry.register({ directory: directory({ name: 'a:b' }), signal: undefined }).rootName).toBe('a_b');
 });
 
 it.each(['../model.gguf', '/model.gguf', 'a//b', 'a/./b', 'a/../b', 'a\\b', 'a/\0b', 'a/\x7fb', '.git/config', 'a/'.repeat(64) + 'file'])('rejects unsafe/reserved path %s before publishing or reserving a name', path => {
   const registry = createTemporaryModelFiles();
   const listener = vi.fn();
   using _subscription = { [Symbol.dispose]: registry.subscribe({ listener }) };
-  expect(() => registry.register({ directory: { name: 'root', files: [{ path, file: new File(['x'], 'model.gguf') }] }, signal: undefined })).toThrow();
+  expect(() => registry.register({ directory: { rootName: 'root', files: [{ relativePath: path, file: new File(['x'], 'model.gguf') }] }, signal: undefined })).toThrow();
   expect(registry.list()).toEqual([]);
   expect(listener).not.toHaveBeenCalled();
-  expect(registry.register({ directory: directory({ name: 'root' }), signal: undefined }).id).toBe('temp/root');
+  expect(registry.register({ directory: directory({ name: 'root' }), signal: undefined }).rootPath).toBe('temp/root');
 });
 
 it.each([{ paths: ['x', 'x'] }, { paths: ['x', 'x/y'] }])('rejects duplicate and file-directory collisions: $paths', ({ paths }) => {
   const registry = createTemporaryModelFiles();
-  expect(() => registry.register({ directory: { name: 'root', files: paths.map(path => ({ path, file: new File(['x'], 'x') })) }, signal: undefined })).toThrow();
+  expect(() => registry.register({ directory: { rootName: 'root', files: paths.map(path => ({ relativePath: path, file: new File(['x'], 'x') })) }, signal: undefined })).toThrow();
   expect(registry.list()).toEqual([]);
 });
 
 it('treats encoded-looking path segments literally and validates the same path used by RPC', () => {
   const registry = createTemporaryModelFiles();
   const paths = ['..%2Fmodel.gguf', '%ZZ.safetensors', '日本語/model:1.sft'];
-  const root = registry.register({ directory: { name: 'root', files: paths.map(path => ({ path, file: new File(['x'], path.split('/').at(-1)!) })) }, signal: undefined });
+  const root = registry.register({ directory: { rootName: 'root', files: paths.map(path => ({ relativePath: path, file: new File(['x'], path.split('/').at(-1)!) })) }, signal: undefined });
   for (const path of paths) {
-    expect(temporaryFilePathSchema.parse(`${root.id}/${path}`)).toBe(`${root.id}/${path}`);
+    expect(temporaryFilePathSchema.parse(`${root.rootPath}/${path}`)).toBe(`${root.rootPath}/${path}`);
   }
 });
 
@@ -90,9 +90,9 @@ it('honors cancellation and isolates observers without retaining disposed listen
   expect(() => registry.register({ directory: directory({ name: 'root' }), signal: controller.signal })).toThrow();
   expect(listener).not.toHaveBeenCalled();
   const root = registry.register({ directory: directory({ name: 'root' }), signal: undefined });
-  expect(listener).toHaveBeenCalledWith({ rootId: root.id });
-  registry.remove({ rootId: root.id });
-  registry.remove({ rootId: root.id });
+  expect(listener).toHaveBeenCalledWith({ rootPath: root.rootPath });
+  registry.remove({ rootPath: root.rootPath });
+  registry.remove({ rootPath: root.rootPath });
   expect(listener).toHaveBeenCalledTimes(2);
   stop();
   registry.register({ directory: directory({ name: 'root' }), signal: undefined });
@@ -102,8 +102,8 @@ it('honors cancellation and isolates observers without retaining disposed listen
 it('retains local download receipts as opaque files without applying storage publication semantics', () => {
   const registry = createTemporaryModelFiles();
   const paths = ['owner/repo/model.gguf', 'owner/repo/.model.gguf.complete', 'owner/repo/.model.gguf.pending', 'owner/repo/.llama-cpp-import-pending'];
-  const entries = paths.map(path => ({ path, file: new File(['opaque user bytes'], path.split('/').at(-1)!) }));
-  const root = registry.register({ directory: { name: 'downloads', files: entries }, signal: undefined });
+  const entries = paths.map(path => ({ relativePath: path, file: new File(['opaque user bytes'], path.split('/').at(-1)!) }));
+  const root = registry.register({ directory: { rootName: 'downloads', files: entries }, signal: undefined });
   expect(root.files).toEqual(entries);
   for (const [index, entry] of root.files.entries()) {
     expect(entry.file).toBe(entries[index]!.file);

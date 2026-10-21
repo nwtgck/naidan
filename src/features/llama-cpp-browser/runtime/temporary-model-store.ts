@@ -1,19 +1,21 @@
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
 import { modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
 import type { TemporaryModelDirectory } from '@/01-models/temporary-model-files';
+import { readTemporaryModelFile } from '@/logic/model-file-system';
 import { createTemporaryModelFiles, temporaryModelFiles, type TemporaryModelFiles } from '@/logic/temporary-model-files';
 import { modelGroups, modelVariantName } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { selectRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/model-selector';
 import { LlamaCppBrowserError, modelsSchema, type LocalModel, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
-import { describeDirectory, resolveModelFiles, validGguf } from './model-directory';
+import { describeDirectory, modelDirectory, validGguf, type ModelDirectory, type ResolvedModel } from './model-directory';
+import { normalizeModelDirectoryInput } from './model-directory-input';
 import { parseTemporaryModelReference, temporaryModelReference } from './temporary-model-reference';
-import { temporaryModelSourceSchema, temporarySourceDirectory, type TemporaryModelSource } from './temporary-model-source';
+
+type ProjectionEntry = { resolvedModel: ResolvedModel, variantRepository: string };
 
 /** Model interpretation belongs to llama.cpp, not the shared file registry. */
-async function projectDirectory({ root, signal }: { root: TemporaryModelDirectory, signal: AbortSignal }): Promise<Map<string, TemporaryModelSource>> {
+async function projectDirectory({ root, signal }: { root: TemporaryModelDirectory, signal: AbortSignal }): Promise<Map<string, ProjectionEntry>> {
   signal.throwIfAborted();
-  const input = { name: root.sourceName, files: root.files };
-  const ggufs = input.files.filter(entry => /\.gguf$/i.test(entry.path));
+  const ggufs = root.files.filter(entry => /\.gguf$/i.test(entry.relativePath));
   if (!ggufs.length) {
     return new Map();
   }
@@ -23,73 +25,89 @@ async function projectDirectory({ root, signal }: { root: TemporaryModelDirector
       throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
     }
   }
-  // Files cannot reveal the user's semantic intent. Use the linked-root layout
-  // exactly when every GGUF is below a syntactically valid owner/repository.
-  // Otherwise treat the selected root as one ordinary model directory. Never
-  // search upward, invent an owner, or move bytes between repositories.
-  const collection = ggufs.every(({ path }) => {
-    const parts = path.split('/');
+  // Only GGUF layout determines the projection. Image components in the same
+  // shared root cannot change its model IDs or repository boundaries.
+  const collection = ggufs.every(({ relativePath }) => {
+    const parts = relativePath.split('/');
     return parts.length >= 3 && modelSourceRepositorySchema.safeParse(parts.slice(0, 2).join('/')).success;
   });
   const directories = new Map<string | undefined, ModelDirectoryInput['files']>();
   for (const entry of ggufs) {
-    const parts = entry.path.split('/');
+    const parts = entry.relativePath.split('/');
     const repository = collection ? parts.slice(0, 2).join('/') : undefined;
     const files = directories.get(repository) ?? [];
-    files.push({ path: collection ? parts.slice(2).join('/') : entry.path, file: entry.file });
+    files.push({ relativePath: collection ? parts.slice(2).join('/') : entry.relativePath, file: entry.file });
     directories.set(repository, files);
   }
-  const pending: { repository: string | undefined, variantRepository: string, files: ModelDirectoryInput['files'], modelPath: string, projectorPath: string | undefined }[] = [];
-  for (const [repository, files] of directories) {
+  const pending: { repository: string | undefined, variantRepository: string, directory: ModelDirectory }[] = [];
+  for (const [repository, inputs] of directories) {
+    const files = inputs.map(({ relativePath }) => ({
+      ...readTemporaryModelFile({ root, relativePath: repository === undefined ? relativePath : `${repository}/${relativePath}` }),
+      relativePath,
+    }));
     const { models, projectors } = modelGroups({ files });
     if (!models.length) {
-      // A collection can contain companion-only repositories. As in linked
-      // inventory, they are not independent models and cannot donate a
-      // projector to a different repository.
+      // Companion-only repositories cannot donate projectors across boundaries.
       if (collection) {
         continue;
       }
       throw new LlamaCppBrowserError({ code: 'unsupported-input' });
     }
     for (const model of models) {
-      const resolved = resolveModelFiles({ files: [...model, ...projectors] });
+      const directory = modelDirectory({ files: [...model, ...projectors] });
+      normalizeModelDirectoryInput({ directory: { rootName: root.rootName, files: directory.files.map(({ relativePath, file }) => ({ relativePath, file })) } });
       pending.push({
         repository,
-        variantRepository: repository ?? input.name,
-        files: [...model, ...projectors.filter(entry => entry.path === resolved.projectorPath)],
-        ...resolved,
+        variantRepository: repository ?? root.sourceRootName,
+        directory,
       });
     }
   }
   if (!pending.length) {
     throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   }
-  // A public variant is only accepted if the shared resolver can select its
-  // exact file unambiguously. An ambiguous directory is rejected atomically.
-  // Unlike a saved repository, an import is a single user action: silently
-  // hiding models here would make a successful drop look misleading.
+  // Reject the entire import when its readable variants are ambiguous.
   for (const entry of pending) {
     if (!collection && pending.length === 1) {
       continue;
     }
-    const selector = modelVariantName({ repository: entry.variantRepository, path: entry.modelPath });
-    const candidates = pending.filter(candidate => candidate.variantRepository === entry.variantRepository);
-    if (selectRepositoryModel({ models: candidates, repository: entry.variantRepository, selectors: [selector] }) !== entry) {
+    const variant = modelVariantName({ repository: entry.variantRepository, path: entry.directory.primaryFile.relativePath });
+    const candidates = pending.filter(candidate => candidate.variantRepository === entry.variantRepository).map(candidate => candidate.directory);
+    if (selectRepositoryModel({ models: candidates, repository: entry.variantRepository, variant }) !== entry.directory) {
       throw new LlamaCppBrowserError({ code: 'unsupported-input' });
     }
   }
-  const models = new Map<string, TemporaryModelSource>();
-  for (const { repository, variantRepository, files, modelPath, projectorPath } of pending) {
-    const selector = collection || pending.length > 1 ? modelVariantName({ repository: variantRepository, path: modelPath }) : undefined;
-    const id = temporaryModelReference({ rootName: root.name, repository, selector });
-    models.set(id, { id, revision: root.revision, files, modelPath, projectorPath, variantRepository });
+  const models = new Map<string, ProjectionEntry>();
+  for (const { repository, variantRepository, directory } of pending) {
+    const selector = collection || pending.length > 1 ? modelVariantName({ repository: variantRepository, path: directory.primaryFile.relativePath }) : undefined;
+    const modelId = temporaryModelReference({ rootName: root.rootName, repository, selector });
+    const resolvedModel: ResolvedModel = { modelId, location: { kind: 'temp', rootPath: root.rootPath }, directory };
+    models.set(modelId, { resolvedModel, variantRepository });
   }
-  modelsSchema.parse([...models.values()].map(source => describeDirectory({ directory: temporarySourceDirectory({ name: source.id, source }) })));
+  modelsSchema.parse([...models.values()].map(({ resolvedModel }) => describeDirectory({ modelId: resolvedModel.modelId, directory: resolvedModel.directory })));
   return models;
 }
 
+/** Keep the caller's file list mutations separate from the retained projection. */
+function copyResolvedModel({ resolvedModel }: { resolvedModel: ResolvedModel }): ResolvedModel {
+  const { modelId, location, directory, ...unhandled } = resolvedModel;
+  unhandled satisfies Record<PropertyKey, never>;
+  const { files, primaryFile, projectorFile, ...unhandledDirectory } = directory;
+  unhandledDirectory satisfies Record<PropertyKey, never>;
+  const copies = files.map(file => ({ ...file }));
+  return {
+    modelId,
+    location: { ...location },
+    directory: {
+      files: copies,
+      primaryFile: copies[files.indexOf(primaryFile)]!,
+      projectorFile: projectorFile === undefined ? undefined : copies[files.indexOf(projectorFile)]!,
+    },
+  };
+}
+
 function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles }) {
-  type Projection = { revision: number, controller: AbortController, ready: Promise<void>, models: Map<string, TemporaryModelSource>, issue: Error | undefined };
+  type Projection = { registrationRevision: number, controller: AbortController, ready: Promise<void>, models: Map<string, ProjectionEntry>, issue: Error | undefined };
   const projections = new Map<string, Projection>();
   const listeners = new Set<() => void>();
   function notify(): void {
@@ -100,29 +118,29 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
     }
   }
   registry.subscribe({
-    listener: ({ rootId }) => {
-      // Drop all retained File references, including exclusions, on root removal.
+    listener: ({ rootPath }) => {
+      // Drop retained File references on explicit root removal or replacement.
       // In-flight projections check their identity again before publishing.
-      projections.get(rootId)?.controller.abort();
-      projections.delete(rootId);
+      projections.get(rootPath)?.controller.abort();
+      projections.delete(rootPath);
       notify();
     },
   });
   async function ensure({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
     signal?.throwIfAborted();
     const pending = registry.list().map(root => {
-      const existing = projections.get(root.id);
-      if (existing?.revision === root.revision) {
+      const existing = projections.get(root.rootPath);
+      if (existing?.registrationRevision === root.registrationRevision) {
         return existing.ready;
       }
-      const projection: Projection = { revision: root.revision, controller: new AbortController(), ready: Promise.resolve(), models: new Map(), issue: undefined };
-      projections.set(root.id, projection);
+      const projection: Projection = { registrationRevision: root.registrationRevision, controller: new AbortController(), ready: Promise.resolve(), models: new Map(), issue: undefined };
+      projections.set(root.rootPath, projection);
       projection.ready = projectDirectory({ root, signal: projection.controller.signal }).then(models => {
-        if (registry.get({ rootId: root.id }) === root && projections.get(root.id) === projection) {
+        if (registry.get({ rootPath: root.rootPath }) === root && projections.get(root.rootPath) === projection) {
           projection.models = models;
         }
       }).catch(error => {
-        if (registry.get({ rootId: root.id }) === root && projections.get(root.id) === projection) {
+        if (registry.get({ rootPath: root.rootPath }) === root && projections.get(root.rootPath) === projection) {
           projection.issue = error instanceof Error ? error : new Error(String(error));
         }
       });
@@ -131,63 +149,61 @@ function createTemporaryModelStore({ registry }: { registry: TemporaryModelFiles
     await awaitInspection({ task: Promise.all(pending), signal });
     signal?.throwIfAborted();
   }
-  function source({ name }: { name: string }): TemporaryModelSource | undefined {
-    if (!name.startsWith('temp/')) {
-      return undefined;
-    }
-    const { rootName, selector } = parseTemporaryModelReference({ name });
-    const models = projections.get(`temp/${rootName}`)?.models;
-    const found = models?.get(name);
-    if (!models || !found || !registry.get({ rootId: `temp/${rootName}` })) {
+  function resolveProjectedModel({ modelId }: { modelId: string }): ResolvedModel {
+    const { rootName, selector } = parseTemporaryModelReference({ modelId });
+    const rootPath = `temp/${rootName}`;
+    const projection = projections.get(rootPath);
+    const found = projection?.models.get(modelId);
+    const root = registry.get({ rootPath });
+    if (!projection || !found || !root || projection.registrationRevision !== root.registrationRevision) {
       throw new LlamaCppBrowserError({ code: 'missing-model' });
     }
     if (selector !== undefined) {
-      const siblings = [...models.values()].filter(entry => entry.variantRepository === found.variantRepository);
-      if (selectRepositoryModel({ models: siblings, repository: found.variantRepository, selectors: [selector] }) !== found) {
+      const siblings = [...projection.models.values()].filter(entry => entry.variantRepository === found.variantRepository).map(entry => entry.resolvedModel.directory);
+      if (selectRepositoryModel({ models: siblings, repository: found.variantRepository, variant: selector }) !== found.resolvedModel.directory) {
         throw new LlamaCppBrowserError({ code: 'missing-model' });
       }
     }
-    return temporaryModelSourceSchema.parse(found);
+    return copyResolvedModel({ resolvedModel: found.resolvedModel });
   }
   function list(): LocalModel[] {
-    return [...projections.values()].flatMap(({ models }) => [...models.values()].map(source => describeDirectory({ directory: temporarySourceDirectory({ name: source.id, source }) })))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...projections.values()].flatMap(({ models }) => [...models.values()].map(({ resolvedModel }) => describeDirectory({ modelId: resolvedModel.modelId, directory: resolvedModel.directory })))
+      .sort((a, b) => a.modelId.localeCompare(b.modelId));
   }
   return {
     ensure,
-    source,
     list,
-    issues(): { rootId: string, message: string }[] {
-      return [...projections].flatMap(([rootId, projection]) => projection.issue ? [{ rootId, message: projection.issue.message }] : []);
+    issues(): { rootPath: string, message: string }[] {
+      return [...projections].flatMap(([rootPath, projection]) => projection.issue ? [{ rootPath, message: projection.issue.message }] : []);
     },
-    async resolveSource({ name, signal }: { name: string, signal: AbortSignal | undefined }): Promise<TemporaryModelSource | undefined> {
-      if (!name.startsWith('temp/')) {
+    async resolveModel({ modelId, signal }: { modelId: string, signal: AbortSignal | undefined }): Promise<ResolvedModel | undefined> {
+      if (!modelId.startsWith('temp/')) {
         return undefined;
       }
       await ensure({ signal });
-      return source({ name });
+      return resolveProjectedModel({ modelId });
     },
     async registerDirectory({ directory, signal }: { directory: ModelDirectoryInput, signal: AbortSignal | undefined }): Promise<LocalModel[]> {
       const root = registry.register({ directory, signal });
       try {
         await ensure({ signal });
       } catch (error) {
-        if (signal?.aborted && registry.get({ rootId: root.id }) === root) {
-          registry.remove({ rootId: root.id });
+        if (signal?.aborted && registry.get({ rootPath: root.rootPath }) === root) {
+          registry.remove({ rootPath: root.rootPath });
         }
         throw error;
       }
-      const issue = projections.get(root.id)?.issue;
+      const issue = projections.get(root.rootPath)?.issue;
       if (issue) {
         throw issue;
       }
-      return list().filter(model => parseTemporaryModelReference({ name: model.id }).rootName === root.name);
+      return list().filter(model => parseTemporaryModelReference({ modelId: model.modelId }).rootName === root.rootName);
     },
-    remove({ name }: { name: string }): void {
-      const { rootName } = parseTemporaryModelReference({ name });
-      // Remove only this engine's projection. The shared folder may still supply
-      // image-generation components. Its explicit folder-unregister action frees it.
-      if (projections.get(`temp/${rootName}`)?.models.delete(name)) {
+    removeModel({ modelId }: { modelId: string }): void {
+      const { rootName } = parseTemporaryModelReference({ modelId });
+      // Preserve shared files for image generation and preserve exclusions for
+      // this root revision. Explicit unregister starts a separate lifecycle.
+      if (projections.get(`temp/${rootName}`)?.models.delete(modelId)) {
         notify();
       }
     },

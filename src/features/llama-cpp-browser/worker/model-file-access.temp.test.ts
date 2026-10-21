@@ -29,7 +29,7 @@ describe('temporary File readers', () => {
         return new Uint8Array(part).buffer;
       }
     });
-    const access = await openModelFileAccess({ entry: { storageKind: 'temp', revision: 1, path: 'model.gguf', file } });
+    const access = await openModelFileAccess({ entry: { storageKind: 'temp', registrationRevision: 1, relativePath: 'model.gguf', file } });
     using _cleanup = { [Symbol.dispose]: () => access.close() };
     const destination = new Uint8Array(bytes.length);
     expect(access.getSize()).toBe(bytes.length);
@@ -48,6 +48,6 @@ describe('temporary File readers', () => {
 
   it('fails normally when the worker cannot read File slices', async () => {
     vi.stubGlobal('FileReaderSync', undefined);
-    await expect(openModelFileAccess({ entry: { storageKind: 'temp', revision: 1, path: 'model.gguf', file: new File(['x'], 'model.gguf') } })).rejects.toThrow('unavailable');
+    await expect(openModelFileAccess({ entry: { storageKind: 'temp', registrationRevision: 1, relativePath: 'model.gguf', file: new File(['x'], 'model.gguf') } })).rejects.toThrow('unavailable');
   });
 });

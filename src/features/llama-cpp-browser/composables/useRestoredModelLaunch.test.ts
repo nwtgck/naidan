@@ -16,7 +16,7 @@ vi.mock('../model-launch/restore', () => ({ restoreModelLaunchTarget: calls.targ
 vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: calls.get, restoreModelLaunch: calls.restore, captureModelLaunchStorage: () => () => storageCurrent } }));
 const chatId = toChatId({ raw: 'saved-chat' });
 const chatGroupId = toChatGroupId({ raw: 'saved-cg' });
-const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model-GGUF:Model-Q4_K_M.gguf', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
+const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model-GGUF:Q4_K_M', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model-GGUF', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
 const launch: ChatModelLaunch = { version: 1, input: 'owner/Model-GGUF:Q4_K_M', requestedVariant: 'Q4_K_M', target, chatGroupId, phase: 'active' };
 const current = shallowRef<Chat | null>(null);
 const hosts: ReturnType<typeof mount>[] = [];

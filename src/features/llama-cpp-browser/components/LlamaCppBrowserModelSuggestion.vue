@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
+import { quantizationName } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -148,16 +151,36 @@ watch([() => props.models, quantization, multimodal, plan, queue.changed, destin
     let found: LocalModel | undefined;
     if (plan.value) {
       found = await installedSelection({ selection: plan.value, destination: destination.value });
-    } else if (known && multimodal.value === 'off') {
-      found = known;
     } else if (known) {
       const directories = await repositoryDirectories({ repository: quantization.value.hfRepository, destination: destination.value });
-      if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) {
+      // A public variant can omit repository prefixes such as "mtp". Confirm
+      // role and quantization from the resolved main file, including text-only use.
+      const matching = directories.filter(directory => {
+        const path = directory.primaryFile.relativePath;
+        const sameSelection = (() => {
+          const source = known.source;
+          if (!source) {
+            return formatHuggingFaceModelId({ repository: quantization.value.hfRepository, mainFilePath: path }) === known.modelId;
+          }
+          const kind = source.kind;
+          switch (kind) {
+          case 'host': return path === source.primaryRelativePath;
+          default: {
+            const exhaustive: never = kind;
+            throw new Error(String(exhaustive));
+          }
+          }
+        })();
+        return sameSelection && artifactRole({ path }) === 'model'
+          && quantizationName({ path }) === quantization.value.preferredQuantization
+          && (multimodal.value === 'off' || directory.projectorFile !== undefined);
+      });
+      if (matching.length === 1) {
         found = known;
       }
     }
     if (!cancelled && !disposed) {
-      installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
+      installed.value = found ? props.models.find(model => model.modelId === found.modelId) ?? found : undefined;
     }
   } catch {
     if (!cancelled && !disposed) {
@@ -334,7 +357,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </div>
       </div>
       <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
-      <LlamaCppBrowserModelAction v-else-if="installed && !busy && props.createChatGroup" :key="installed.id" :model="installed" :current="defaultModel" :disabled="optionsLocked || checkingLocal || localError || destinationUnavailable === true" :default-action-disabled="defaultActionDisabled" :creating="creatingChatGroupModelId === installed.id" tw-class="ml-auto" @create-chat-group="handleCreateChatGroup" @select-default="emit('selectDefault', $event)" />
+      <LlamaCppBrowserModelAction v-else-if="installed && !busy && props.createChatGroup" :key="installed.modelId" :model="installed" :current="defaultModel" :disabled="optionsLocked || checkingLocal || localError || destinationUnavailable === true" :default-action-disabled="defaultActionDisabled" :creating="creatingChatGroupModelId === installed.modelId" tw-class="ml-auto" @create-chat-group="handleCreateChatGroup" @select-default="emit('selectDefault', $event)" />
       <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
       <button
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"

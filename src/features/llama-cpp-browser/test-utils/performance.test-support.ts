@@ -6,7 +6,7 @@ export function performancePlan({ models = 1, repeats = 1, diagnostics = 'none',
   return createPerformancePlan({
     id: 'test_run',
     createdAt: '2026-10-01T00:00:00.000Z',
-    models: Array.from({ length: models }, (_, index) => ({ id: `user/m${index}`, name: `model${index}.gguf`, size: 4096, importedAt: 1 })),
+    models: Array.from({ length: models }, (_, index) => ({ modelId: `user/m${index}`, size: 4096, importedAt: 1 })),
     settings: { repeats, diagnostics, mode, maxTokens: 128, timeoutMs: 1000 },
     options: { profile: 'webgpu-wasm64-jspi' },
     notes: '',

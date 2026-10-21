@@ -345,8 +345,8 @@ it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths an
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const request = requestFixture();
   request.loras = [
-    { file: request.models[0]!.file, path: 'same.gguf', strength: 1 },
-    { file: request.models[0]!.file, path: 'same.gguf', strength: -0.5 },
+    { file: request.models[0]!.file, relativePath: 'same.gguf', strength: 1 },
+    { file: request.models[0]!.file, relativePath: 'same.gguf', strength: -0.5 },
   ];
   const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
   const onDiagnostic = vi.fn();
@@ -389,9 +389,9 @@ it('never inspects or mounts disabled unreadable adapters but still checks an en
   });
   const request = requestFixture();
   const selections = [
-    { file: request.models[0]!.file, path: 'first.gguf', strength: 0.5, enabled: true },
+    { file: request.models[0]!.file, relativePath: 'first.gguf', strength: 0.5, enabled: true },
     { file: unavailable, strength: -0.75, enabled: false },
-    { file: request.models[0]!.file, path: 'last.gguf', strength: 1, enabled: true },
+    { file: request.models[0]!.file, relativePath: 'last.gguf', strength: 1, enabled: true },
   ];
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 });
   request.loras = imageLoraRequests({ selections });

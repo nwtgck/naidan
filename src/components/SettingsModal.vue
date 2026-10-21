@@ -103,7 +103,7 @@ function pickConnectionFields({ settings }: { settings: Settings }) {
 }
 
 const applyLocalDefaultModel: ApplyDefaultModel = async ({ model, previous }) => {
-  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.name, expected: previous });
+  const result = await updateGlobalModelAndEndpoint({ endpoint: { type: 'llama_cpp_browser' }, modelId: model.modelId, expected: previous });
   switch (result) {
   case 'applied': {
     const endpoint = cloneEndpoint({ endpoint: settings.value.endpoint });
@@ -154,15 +154,15 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
     }
     // Check after the discard dialog: the selected file may have disappeared
     // while the user was deciding. Listing never initializes or downloads it.
-    const models = await llamaCppBrowserService.listModels({ signal });
+    const models = await llamaCppBrowserService.listModelEntries({ signal });
     if (!isCurrent()) {
       return;
     }
-    const available = models.find(entry => entry.id === model.id);
+    const available = models.find(entry => entry.modelId === model.modelId);
     if (!available) {
       throw new Error('Local model unavailable');
     }
-    let pendingChatGroup = pendingLocalChatGroups.get(model.id);
+    let pendingChatGroup = pendingLocalChatGroups.get(model.modelId);
     if (pendingChatGroup) {
       const chatGroupId = pendingChatGroup.chatGroupId;
       const chatGroup = await storageService.loadChatGroup({ id: chatGroupId });
@@ -171,8 +171,8 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
         return;
       }
       const hierarchyChatGroup = hierarchy.items.filter(item => item.type === 'chat_group').find(item => item.id === chatGroupId);
-      if (!chatGroup || chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== available.name || !hierarchyChatGroup || (pendingChatGroup.chatId !== undefined && !hierarchyChatGroup.chat_ids.includes(pendingChatGroup.chatId))) {
-        pendingLocalChatGroups.delete(model.id);
+      if (!chatGroup || chatGroup.endpoint?.type !== 'llama_cpp_browser' || chatGroup.modelId !== available.modelId || !hierarchyChatGroup || (pendingChatGroup.chatId !== undefined && !hierarchyChatGroup.chat_ids.includes(pendingChatGroup.chatId))) {
+        pendingLocalChatGroups.delete(model.modelId);
         throw new Error('Previously created chat group changed');
       }
       if (pendingChatGroup.chatId) {
@@ -181,7 +181,7 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
           return;
         }
         if (!chat || chat.groupId !== pendingChatGroup.chatGroupId || chat.endpoint !== undefined || chat.modelId !== undefined) {
-          pendingLocalChatGroups.delete(model.id);
+          pendingLocalChatGroups.delete(model.modelId);
           throw new Error('Previously created chat changed');
         }
       }
@@ -189,10 +189,10 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
     if (!pendingChatGroup) {
       const chatGroupId = await chatOrganization.createChatGroup({
         name: localModelChatGroupName({ model: available }),
-        options: { endpoint: { type: 'llama_cpp_browser' }, modelId: available.name },
+        options: { endpoint: { type: 'llama_cpp_browser' }, modelId: available.modelId },
       });
       pendingChatGroup = { chatGroupId, chatId: undefined };
-      pendingLocalChatGroups.set(model.id, pendingChatGroup);
+      pendingLocalChatGroups.set(model.modelId, pendingChatGroup);
     }
     if (!isCurrent()) {
       return;
@@ -213,7 +213,7 @@ async function createLocalModelChatGroup({ model, signal }: { model: LocalModel,
     if (failure) {
       throw new Error('Could not open the created chat');
     }
-    pendingLocalChatGroups.delete(model.id);
+    pendingLocalChatGroups.delete(model.modelId);
   } catch (error) {
     if (isCurrent()) {
       throw error;

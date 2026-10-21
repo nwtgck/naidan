@@ -4,13 +4,14 @@ import { workerAudioCallSchema } from '@/features/llama-cpp-browser/worker/types
 import { audioResult } from './test-utils/wav.test-support';
 
 function input() {
-  return { ...defaultAudioParameters(), model: 'user/voice', text: 'こんにちは', reference: undefined, debug: 'off', options: { profile: 'auto' } };
+  return { ...defaultAudioParameters(), modelId: 'user/voice', text: 'こんにちは', reference: undefined, debug: 'off', options: { profile: 'auto' } };
 }
 
 describe('audio request boundaries', () => {
   it('accepts explicit defaults without borrowing chat request fields', () => {
     expect(audioGenerationInputSchema.parse(input()).contextTokens).toBe(4096);
     expect(audioGenerationInputSchema.safeParse({ ...input(), messages: [] }).success).toBe(false);
+    expect(audioGenerationInputSchema.safeParse({ ...input(), model: 'user/voice' }).success).toBe(false);
   });
 
   it.each(['', '  \n\t', 'a\0b', 'x'.repeat(8193)])('rejects invalid text', text => {
@@ -18,7 +19,7 @@ describe('audio request boundaries', () => {
   });
 
   it.each([
-    { model: '../../voice' }, { maxFrames: 0 }, { maxFrames: 2049 }, { contextTokens: 0 },
+    { modelId: 42 }, { maxFrames: 0 }, { maxFrames: 2049 }, { contextTokens: 0 },
     { contextTokens: 2147483648 }, { temperature: NaN }, { topP: 0 }, { topK: 0 }, { seed: -1 },
     { seed: 4294967296 }, { language: 'xx' }, { audioBackend: 'cuda' },
   ])('rejects invalid or unsupported parameters: %o', change => {
@@ -41,7 +42,9 @@ describe('audio request boundaries', () => {
   });
 
   it('requires a concrete profile and a bounded generation ID for the RPC', () => {
-    const request = { ...input(), options: { profile: 'cpu-wasm32' }, generationId: 1 };
+    const primaryFile = { relativePath: 'voice.gguf', file: new File(['GGUF'], 'voice.gguf'), storageKind: 'temp', registrationRevision: 1 };
+    const resolvedModel = { modelId: 'temp/voice', location: { kind: 'temp', rootPath: 'temp/voice' }, directory: { files: [primaryFile], primaryFile, projectorFile: undefined } };
+    const request = { ...input(), modelId: resolvedModel.modelId, resolvedModel, options: { profile: 'cpu-wasm32' }, generationId: 1 };
     expect(workerAudioCallSchema.safeParse(request).success).toBe(true);
     expect(workerAudioCallSchema.safeParse({ ...request, options: { profile: 'auto' } }).success).toBe(false);
     expect(workerAudioCallSchema.safeParse({ ...request, generationId: 0 }).success).toBe(false);

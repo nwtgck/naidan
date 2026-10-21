@@ -6,13 +6,13 @@ import { scanImageRepositories } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, zImageTensors } from './test-utils/weights.test-support';
 vi.mock('./logic/repository-input', () => ({
-  imageDirectoriesFromDrop: async () => [{ name: 'first', files: [] }, { name: 'second', files: [] }],
+  imageDirectoriesFromDrop: async () => [{ rootName: 'first', files: [] }, { rootName: 'second', files: [] }],
   imageDirectoryFromFiles: vi.fn(),
 }));
 
 function importedRepository(): LocalImageRepository {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
-  return { id: 'user/imported', name: 'imported', files: [{ path: file.name, file }] };
+  return { repositoryKey: 'user/imported', repositoryLabel: 'imported', files: [{ relativePath: file.name, file }] };
 }
 
 it.each(['before inspection', 'during inspection'] as const)('publishes an import after independent saving finishes %s', async timing => {

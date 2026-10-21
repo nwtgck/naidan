@@ -1,4 +1,3 @@
-import { temporarySourceDirectory } from '@/features/llama-cpp-browser/runtime/temporary-model-source';
 import { fileBackedRowsCapability } from '@/features/llama-cpp-browser/runtime/file-backed-rows';
 import { createModelFileDiagnostics } from '@/features/llama-cpp-browser/runtime/model-file-diagnostics';
 import { readLoadedModelDescriptor } from './loaded-model-descriptor';
@@ -12,7 +11,6 @@ import type { Core } from "@/features/llama-cpp-browser/runtime/core";
 import { mountReadOnlyFile } from "@/features/llama-cpp-browser/runtime/read-only-file";
 import { createModelReadCache } from "@/features/llama-cpp-browser/runtime/model-read-cache";
 import { LlamaCppBrowserError, chatContextTokensSchema, defaultChatContextTokens, usesWebGpu, type LlamaCppProfile, type Progress, type RuntimeOptions } from "@/features/llama-cpp-browser/types";
-import { storedModelDirectory } from "@/features/llama-cpp-browser/runtime/model-store";
 import { loadRuntime } from "@/features/llama-cpp-browser/runtime/load-runtime";
 import { resolveRuntimeProfile } from "@/features/llama-cpp-browser/runtime/detect-profile";
 import { logDiagnostic, logFailure } from "@/features/llama-cpp-browser/debug-log";
@@ -29,8 +27,7 @@ export type PromptCache = { tokens: number[], validity: 'valid' | 'invalid', che
 };
 
 type ResidentChatMetadata = { requestedContextTokens: number, vocab: bigint, contextTokens: number, memory: bigint, nativeRollbackTokens: number, prefillBatchTokens: number };
-type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, name: string,
-  id: string, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
+type ResidentModel = { releaseFiles: (() => void) | undefined, descriptor?: LoadedModelDescriptor, census?: ReturnType<typeof createBackendCensus>, model: bigint, context: bigint, sequenceRemoval: SequenceRemoval | undefined, slidingWindow: number, cache: PromptCache, modelId: string, files: ModelFile[], projector: ResidentProjector | undefined, chatMetadata: ResidentChatMetadata | undefined, contextProjector: 'absent' | 'present' | undefined };
 let runtime: { core: Core, profile: LlamaCppProfile, requestedProfile: RuntimeOptions['profile'], assetBaseURL: string | undefined } | undefined;
 let resident: ResidentModel | undefined;
 
@@ -124,8 +121,8 @@ export async function releaseSession({ releaseRuntime }: { releaseRuntime: boole
   }
 }
 
-export async function invalidateStoredModel({ id }: { id: string }): Promise<void> {
-  if (resident && resident.id === id) {
+export async function invalidateStoredModel({ modelId }: { modelId: string }): Promise<void> {
+  if (resident && resident.modelId === modelId) {
     await releaseSession({ releaseRuntime: false });
   }
 }
@@ -134,12 +131,12 @@ export async function invalidateStoredModel({ id }: { id: string }): Promise<voi
 // temporary name must load its current files, even when size/mtime are identical.
 async function sameModelFile({ previous, next }: { previous: ModelFile, next: ModelFile }): Promise<boolean> {
   if (previous.storageKind === 'temp' || next.storageKind === 'temp') {
-    return previous.storageKind === 'temp' && next.storageKind === 'temp' && previous.revision === next.revision;
+    return previous.storageKind === 'temp' && next.storageKind === 'temp' && previous.registrationRevision === next.registrationRevision;
   }
-  return previous.handle.isSameEntry(next.handle);
+  return previous.storageKind === next.storageKind && previous.handle.isSameEntry(next.handle);
 }
 
-type SessionRequest = Pick<WorkerGenerateInput, 'model' | 'options' | 'assetBaseURL' | 'debug' | 'measurement' | 'temporaryModel'>;
+type SessionRequest = Pick<WorkerGenerateInput, 'modelId' | 'options' | 'assetBaseURL' | 'debug' | 'measurement' | 'resolvedModel'>;
 type ProjectorPolicy = 'load-if-present' | 'defer';
 type SessionPurpose = { kind: 'chat', projector: ProjectorPolicy } | { kind: 'audio', contextTokens: number, audioBackend: AudioBackend };
 type SessionPreparation = {
@@ -244,6 +241,9 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     }
   };
   checkCancelled();
+  if (!request.resolvedModel || request.resolvedModel.modelId !== request.modelId) {
+    throw new LlamaCppBrowserError({ code: 'missing-model' });
+  }
   // Validate before acquiring a runtime or any model resources, including
   // direct native callers that did not pass through worker message validation.
   const requestedChatContext = (() => {
@@ -268,18 +268,16 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   runtime.requestedProfile = request.options.profile;
   const core = runtime.core;
   const api = core.api;
-  const directory = request.model.startsWith('temp/')
-    ? temporarySourceDirectory({ name: request.model, source: request.temporaryModel })
-    : await storedModelDirectory({ name: request.model });
-  if (purpose.kind === 'audio' && !directory.projectorPath) {
+  const directory = request.resolvedModel.directory;
+  if (purpose.kind === 'audio' && !directory.projectorFile) {
     throw new LlamaCppBrowserError({ code: 'audio-model-unsupported' });
   }
-  let unchanged = resident?.id === directory.id && resident.files.length === directory.files.length;
+  let unchanged = resident?.modelId === request.modelId && resident.files.length === directory.files.length;
   if (unchanged && resident) {
     for (let index = 0; index < directory.files.length; index++) {
       const next = directory.files[index]!;
       const previous = resident.files[index]!;
-      if (previous.path !== next.path || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await sameModelFile({ previous, next })) {
+      if (previous.relativePath !== next.relativePath || previous.file.size !== next.file.size || previous.file.lastModified !== next.file.lastModified || !await sameModelFile({ previous, next })) {
         unchanged = false;
         break;
       }
@@ -292,7 +290,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   if (!resident) {
     sampleMemoryDiagnostics({ core, checkpoint: 'before-model-load' });
     const fileRows = fileBackedRowsCapability({ core });
-    const weights = directory.files.filter(entry => entry.path !== directory.projectorPath);
+    const weights = directory.files.filter(entry => entry !== directory.projectorFile);
     const shardReads: ReturnType<typeof createModelFileDiagnostics>['counters'][] = [];
     let retainedReadCache = false;
     let loadFailure: { error: unknown } | undefined;
@@ -341,7 +339,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         shardReads.push(traced.counters);
         mounts.push(mountReadOnlyFile({
           core,
-          path: `/models/${entry.path}`,
+          path: `/models/${entry.relativePath}`,
           source: readCache.wrap({ source: traced.source }),
           maxChunkBytes: 8 * 1024 * 1024,
         }));
@@ -367,7 +365,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         return signal?.aborted ? 0 : 1;
       }, core.pointerBytes === 8 ? "ifj" : "ifi");
       core.setField({ name: "llama_model_params", pointer: params, field: "progress_callback", value: BigInt(callback) });
-      const path = core.utf8({ text: `/models/${directory.modelPath}` });
+      const path = core.utf8({ text: `/models/${directory.primaryFile.relativePath}` });
       allocations.push(path);
       onProgress({ progress: { phase: "loading", completed: 0, total: 1 } });
       checkCancelled();
@@ -376,7 +374,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
         const pointers = core.alloc({ bytes: weights.length * core.pointerBytes });
         allocations.push(pointers);
         const paths = weights.map(entry => {
-          const value = core.utf8({ text: `/models/${entry.path}` });
+          const value = core.utf8({ text: `/models/${entry.relativePath}` });
           allocations.push(value);
           return value;
         });
@@ -414,7 +412,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
           }
         };
       }
-      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, name: request.model, id: directory.id, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
+      resident = { releaseFiles, model, projector: undefined, context: 0n, sequenceRemoval: undefined, slidingWindow: 0, cache: { tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'unknown' }, modelId: request.modelId, files: directory.files, chatMetadata: undefined, contextProjector: undefined };
       model = 0n;
       sampleMemoryDiagnostics({ core, checkpoint: 'model-loaded' });
       onProgress({ progress: { phase: "loading", completed: 1, total: 1 } });
@@ -514,10 +512,10 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
   const debug = request.debug ?? 'off';
   const useProjector = purpose.kind === 'audio' || purpose.projector === 'load-if-present';
   const preparation: SessionPreparation = {
-    projector: directory.projectorPath ? (useProjector ? 'reused' : current.projector ? 'retained' : 'deferred') : 'absent',
+    projector: directory.projectorFile ? (useProjector ? 'reused' : current.projector ? 'retained' : 'deferred') : 'absent',
     releasedTextContext: false,
   };
-  if (useProjector && directory.projectorPath && (!current.projector || current.projector.debug !== debug)) {
+  if (useProjector && directory.projectorFile && (!current.projector || current.projector.debug !== debug)) {
     // Weight loading is complete, but companion/context setup has no measured
     // denominator. Do not keep advertising a completed load percentage here.
     onProgress({ progress: { phase: "initializing", completed: 0, total: 0 } });
@@ -532,10 +530,7 @@ async function prepareResidentSession({ request, purpose, onProgress, signal }: 
     await current.projector?.release();
     current.projector = undefined;
     checkCancelled();
-    const file = directory.files.find(file => file.path === directory.projectorPath);
-    if (!file) {
-      throw new LlamaCppBrowserError({ code: 'storage-error' });
-    }
+    const file = directory.projectorFile;
     switch (purpose.kind) {
     case 'chat': current.projector = await loadProjector({ core, model: current.model, file, profile, debug, signal });
       break;

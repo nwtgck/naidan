@@ -6,7 +6,7 @@ vi.mock('../hugging-face/storage', () => ({ repositoryFolder: calls.folder, read
 vi.mock('../hugging-face/metadata-session', () => ({ getMetadataSession: () => ({ inspect: calls.inspect }) }));
 const catalog: RepositoryCatalog = { repository: 'owner/Model', revision: 'b'.repeat(40), projectors: [], models: ['Q4_K_M', 'Q8_0'].map(q => ({ label: q, size: 256, files: [{ path: `nested/Model-${q}.gguf`, size: 256 }] })) };
 const path = 'nested/Model-Q8_0.gguf';
-const modelId = `hf.co/owner/Model:${encodeURIComponent(path)}`;
+const modelId = 'hf.co/owner/Model:nested/Q8_0';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -16,11 +16,16 @@ beforeEach(() => {
 });
 
 describe('explicit ordinary-chat recovery plan', () => {
-  it('selects the exact encoded file path, never the first quantization', async () => {
+  it('resolves the readable public variant to its current files, never the first quantization', async () => {
     const target = await resolveRecoveryDownload({ modelId, signal: new AbortController().signal });
     expect(target.modelId).toBe(modelId);
     expect(target.mainFilePath).toBe(path);
     expect(target.selection.files).toEqual([{ path, size: 256 }]);
+  });
+
+  it('rejects ambiguous current file groups instead of picking the first matching modelId', async () => {
+    calls.inspect.mockResolvedValue({ ...catalog, models: [catalog.models[1], { ...catalog.models[1], files: [{ path: 'nested/Model_Q8_0.gguf', size: 256 }] }] });
+    await expect(resolveRecoveryDownload({ modelId, signal: new AbortController().signal })).rejects.toThrow();
   });
 
   it('reuses the interrupted transfer revision without external metadata', async () => {
@@ -30,7 +35,7 @@ describe('explicit ordinary-chat recovery plan', () => {
     expect(calls.inspect).not.toHaveBeenCalled();
   });
 
-  it.each(['user/model', 'hf.co/owner/Model:Q8_0', 'hf.co/owner/Model', 'hf.co/owner/Model:%2e%2e%2fsecret.gguf'])('does not guess a remote source for %s', async modelId => {
+  it.each(['user/model', 'hf.co/owner/Model:', 'hf.co/owner/Model', 'hf.co/owner/Model:../secret'])('does not guess a remote source for %s', async modelId => {
     await expect(resolveRecoveryDownload({ modelId, signal: new AbortController().signal })).rejects.toThrow();
     expect(calls.inspect).not.toHaveBeenCalled();
     expect(calls.folder).not.toHaveBeenCalled();

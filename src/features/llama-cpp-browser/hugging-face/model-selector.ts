@@ -1,11 +1,11 @@
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { modelVariantName } from './model-variants';
 
-/** Exact file identities and public variants share one namespace. Never let an
- * exact match silently win over a different model's variant (or vice versa).
+/** Only current readable variants select a group. File paths are captured by
+ * the selected directory rather than encoded into a second model identity.
  */
-export function selectRepositoryModel<T extends { modelPath: string }>({ models, repository, selectors }: { models: T[], repository: string, selectors: string[] | undefined }): T {
-  const matching = selectors === undefined ? models : models.filter(model => selectors.some(selector => model.modelPath === selector || modelVariantName({ repository, path: model.modelPath }) === selector));
+export function selectRepositoryModel<T extends { primaryFile: { relativePath: string } }>({ models, repository, variant }: { models: T[], repository: string, variant: string | undefined }): T {
+  const matching = variant === undefined ? models : models.filter(model => modelVariantName({ repository, path: model.primaryFile.relativePath }) === variant);
   if (matching.length !== 1) {
     throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   }

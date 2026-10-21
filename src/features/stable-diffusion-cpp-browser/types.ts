@@ -103,14 +103,14 @@ const relativePathSchema = z.string().refine(path => validModelPath({ path }));
 export const modelFileSchema = z.object({
   slot: modelSlotSchema,
   // Issued only by the published local inventory; manual files use identity tokens in the client.
-  sourceId: z.string().min(1).max(1024 * 1024).optional(),
+  modelFilesReuseKey: z.string().min(1).max(1024 * 1024).optional(),
   file: localFileSchema,
   // Relative paths preserve source filenames and index references. Each role
   // receives its own mount root, so identically named files cannot collide.
-  path: relativePathSchema.optional(),
-  companions: z.array(z.object({ path: relativePathSchema, file: localFileSchema })).max(1024).optional(),
+  relativePath: relativePathSchema.optional(),
+  companions: z.array(z.object({ relativePath: relativePathSchema, file: localFileSchema })).max(1024).optional(),
 }).superRefine((model, ctx) => {
-  const paths = [model.path ?? model.file.name, ...(model.companions ?? []).map(file => file.path)];
+  const paths = [model.relativePath ?? model.file.name, ...(model.companions ?? []).map(file => file.relativePath)];
   const unique = new Set(paths);
   if (unique.size !== paths.length || paths.some(path => !validModelPath({ path }))) {
     ctx.addIssue({ code: 'custom', message: 'Model paths must be safe and unique' });
@@ -129,7 +129,7 @@ export const modelFileSchema = z.object({
 /** Run-local adapters. Preference persistence stores only local locators and controls. */
 export const loraFileSchema = z.object({
   file: localFileSchema,
-  path: relativePathSchema.optional(),
+  relativePath: relativePathSchema.optional(),
   strength: z.number().finite().min(-10).max(10),
 });
 export type ImageLora = z.infer<typeof loraFileSchema>;

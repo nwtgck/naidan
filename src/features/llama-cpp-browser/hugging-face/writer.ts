@@ -6,6 +6,7 @@ import { isHostDestination, modelDestinationSchema, type ModelDestination } from
 import { hostDownloadMarker } from './host-download-marker';
 import { releaseWorkerRemote, type WorkerRemote, type WorkerCapability, type WorkerProxy, type WorkerServerApi, type WorkerTransfer } from '@/utils/worker-transport';
 import { z } from 'zod';
+import { readStoredModelFile } from '@/logic/model-file-system';
 import { readModelFiles, resolveModelFiles, validGguf } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { isMissing, readJournal, repositoryFolder, selectedFile, writeJournal } from './storage';
 import { journalSchema, sharedProjectorConflictMessage, existingModelConflictMessage, pendingName, selectionSchema, type BeginDownloadResult, type DownloadJournal, type DownloadSelection } from './types';
@@ -71,7 +72,7 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
     async begin({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<BeginDownloadResult> {
       target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
       selection = selectionSchema.parse(selection);
-      resolveModelFiles({ files: selection.files });
+      resolveModelFiles({ files: selection.files.map(file => ({ relativePath: file.path })) });
       if (selection.files.filter(file => isProjector({ path: file.path })).length > 1) {
         throw new Error('Only one projector can be downloaded');
       }
@@ -93,10 +94,10 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
           throw error;
         }
         const contents = await scanDeletionTree({ folder });
-        const existing = new Map(contents.files.map(file => [file.path, file]));
-        const projectors = contents.files.filter(file => isProjector({ path: file.path }) && /\.gguf$/i.test(file.path));
+        const existing = new Map(contents.files.map(file => [file.relativePath, file]));
+        const projectors = contents.files.filter(file => isProjector({ path: file.relativePath }) && /\.gguf$/i.test(file.relativePath));
         const requestedProjector = selection.files.find(file => isProjector({ path: file.path }));
-        if (requestedProjector && projectors.some(file => file.path !== requestedProjector.path)) {
+        if (requestedProjector && projectors.some(file => file.relativePath !== requestedProjector.path)) {
           return { status: 'conflict', reason: 'projector-conflict' };
         }
         if (requestedProjector && existing.has(requestedProjector.path) && existing.get(requestedProjector.path)!.size !== requestedProjector.size) {
@@ -281,14 +282,14 @@ export function createDownloadWriter(): WorkerServerApi<DownloadWriterApi> {
       const files = isHostDestination(target)
         ? await Promise.all(journal.selection.files.map(async expected => {
           const handle = await selectedFile({ folder: folder!, path: expected.path, create: false });
-          return { path: expected.path, handle, file: await handle.getFile() };
+          return readStoredModelFile({ relativePath: expected.path, handle, storageKind: 'host', signal: undefined });
         }))
-        : (await readModelFiles({ folder, prefix: '' })).filter(file => journal!.selection.files.some(expected => expected.path === file.path));
+        : (await readModelFiles({ folder, prefix: '', storageKind: 'opfs', signal: undefined })).filter(file => journal!.selection.files.some(expected => expected.path === file.relativePath));
       if (files.length !== journal.selection.files.length) {
         throw new Error('Download file set changed');
       }
       for (const file of files) {
-        if (!journal.selection.files.some(expected => expected.path === file.path && expected.size === file.file.size) || !await validGguf({ file: file.file })) {
+        if (!journal.selection.files.some(expected => expected.path === file.relativePath && expected.size === file.file.size) || !await validGguf({ file: file.file })) {
           throw new Error('Invalid downloaded GGUF');
         }
       }

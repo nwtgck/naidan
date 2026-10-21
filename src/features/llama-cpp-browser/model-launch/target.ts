@@ -1,4 +1,6 @@
-import { huggingFaceModelId, modelLaunchTargetSchema, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import { modelLaunchTargetSchema, type ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
+import type { DownloadSelection } from '@/features/llama-cpp-browser/hugging-face/types';
 import { parseRepository, type RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact-role';
 import { variantLabel } from '@/features/llama-cpp-browser/hugging-face/model-variants';
@@ -17,7 +19,7 @@ export class ModelLaunchTargetError extends Error {
 
 export function modelLaunchChoices({ catalog }: { catalog: RepositoryCatalog }) {
   return quantizationChoices({ repository: catalog.repository, models: catalog.models })
-    .filter(choice => artifactRole({ path: choice.id }) === 'model');
+    .filter(choice => artifactRole({ path: choice.primaryRelativePath }) === 'model');
 }
 
 export function targetForChoice({ catalog, path }: { catalog: RepositoryCatalog, path: string }): ModelLaunchTarget {
@@ -31,11 +33,20 @@ export function targetForChoice({ catalog, path }: { catalog: RepositoryCatalog,
     throw new ModelLaunchTargetError({ problem: 'companion-required' });
   }
   const files = [...model.files, ...(projector === undefined ? [] : [projector])];
-  const { modelPath } = resolveModelFiles({ files });
+  const target = targetForSelection({ selection: { repository: catalog.repository, revision: catalog.revision, files } });
+  const matching = modelLaunchChoices({ catalog }).filter(choice => formatHuggingFaceModelId({ repository: catalog.repository, mainFilePath: choice.primaryRelativePath }) === target.modelId);
+  if (matching.length !== 1) {
+    throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
+  }
+  return target;
+}
+
+export function targetForSelection({ selection }: { selection: DownloadSelection }): ModelLaunchTarget {
+  const { primaryRelativePath } = resolveModelFiles({ files: selection.files.map(file => ({ relativePath: file.path })) });
   return modelLaunchTargetSchema.parse({
-    selection: { repository: catalog.repository, revision: catalog.revision, files },
-    mainFilePath: modelPath,
-    modelId: huggingFaceModelId({ repository: catalog.repository, modelPath }),
+    selection,
+    mainFilePath: primaryRelativePath,
+    modelId: formatHuggingFaceModelId({ repository: selection.repository, mainFilePath: primaryRelativePath }),
   });
 }
 
@@ -51,7 +62,7 @@ export function resolveModelLaunchTarget({ input, catalog }: { input: string, ca
   if (matching.length !== 1) {
     throw new ModelLaunchTargetError({ problem: 'variant-unavailable' });
   }
-  return { target: targetForChoice({ catalog, path: matching[0]!.id }), requestedVariant };
+  return { target: targetForChoice({ catalog, path: matching[0]!.primaryRelativePath }), requestedVariant };
 }
 
 export function modelLaunchChatGroupName({ target }: { target: ModelLaunchTarget }): string {

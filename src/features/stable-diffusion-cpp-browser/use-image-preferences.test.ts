@@ -25,7 +25,7 @@ function repositories(): LocalImageRepository[] {
     ggufFixture({ name: 'text.gguf', tensors: qwenTextTensors({ width: 2560, layers: 36 }), metadata: { 'general.architecture': 'qwen3' }, extraBytes: 0 }).file,
     ggufFixture({ name: 'adapter.gguf', tensors: [], metadata: {}, extraBytes: 8 }).file,
   ];
-  return files.map((file, index) => ({ id: `user/${index}`, name: `repo ${index}`, files: [{ path: file.name, file }] }));
+  return files.map((file, index) => ({ repositoryKey: `user/${index}`, repositoryLabel: `repo ${index}`, files: [{ relativePath: file.name, file }] }));
 }
 
 function harness({ saved, initialized, entries }: { saved: BrowserImageGenerationSettings | undefined, initialized: boolean, entries: LocalImageRepository[] }) {
@@ -112,7 +112,7 @@ it('defers local model discovery until switching back from a restored remote inf
   await vi.waitFor(() => expect(h.restoring.value).toBe(false));
   await settled();
   expect(h.list).toHaveBeenCalledOnce();
-  expect(h.library.main.value).toContain('user/0');
+  expect(h.library.selectedCandidateKey.value).toContain('user/0');
   expect(h.updateExperimental).not.toHaveBeenCalled();
 });
 
@@ -212,7 +212,7 @@ it('reports a save failure and retries the failed patch with the next valid edit
 it('restores exact host/OPFS locations, explicit component none and LoRA controls without applying a preset', async () => {
   const entries = repositories();
   entries[0]!.hostSource = { directoryId: 'chosen-root', directoryName: 'Chosen', repository: 'org/image' };
-  const sameNamed = { ...entries[0]!, id: 'other', hostSource: { directoryId: 'other-root', directoryName: 'Other', repository: 'org/image' } };
+  const sameNamed = { ...entries[0]!, repositoryKey: 'other', hostSource: { directoryId: 'other-root', directoryName: 'Other', repository: 'org/image' } };
   const saved: BrowserImageGenerationSettings = {
     modelSelection: {
       primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
@@ -225,8 +225,8 @@ it('restores exact host/OPFS locations, explicit component none and LoRA control
   const h = harness({ initialized: true, saved, entries: [sameNamed, ...entries] });
   await vi.waitFor(() => expect(h.restoring.value).toBe(false));
   await settled();
-  expect(h.library.main.value).toContain('user/0');
-  expect(h.library.components.value.find(item => item.slot === 'vae')?.selected).toBe('');
+  expect(h.library.selectedCandidateKey.value).toContain('user/0');
+  expect(h.library.components.value.find(item => item.slot === 'vae')?.selectedCandidateKey).toBe('');
   expect(h.form.loras.value).toHaveLength(1);
   expect(h.form.loras.value[0]).toMatchObject({ enabled: false, strength: 0.7 });
   expect(h.library.captureModelSelection({ loras: h.form.loras.value })).toEqual(saved.modelSelection);
@@ -250,7 +250,7 @@ it('retains a missing primary locator instead of selecting a different available
   await settled();
   expect(h.settings.value.experimental?.browserImageGeneration?.modelSelection).toEqual(saved.modelSelection);
   await h.library.refresh();
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
   expect(h.onSelection).not.toHaveBeenCalled();
 });
 
@@ -282,10 +282,10 @@ it('preserves automatic components separately from explicit none and file choice
   await vi.waitFor(() => expect(reopened.restoring.value).toBe(false));
   expect(reopened.library.ready.value).toBe(true);
   expect(reopened.library.captureModelSelection({ loras: [] })?.components).toEqual([]);
-  const vaeId = reopened.library.components.value.find(item => item.slot === 'vae')!.selected;
-  reopened.library.chooseComponent({ slot: 'vae', id: '' });
+  const vaeCandidateKey = reopened.library.components.value.find(item => item.slot === 'vae')!.selectedCandidateKey;
+  reopened.library.chooseComponent({ slot: 'vae', candidateKey: '' });
   expect(reopened.library.captureModelSelection({ loras: [] })?.components).toEqual([{ slot: 'vae', choice: { kind: 'none' } }]);
-  reopened.library.chooseComponent({ slot: 'vae', id: vaeId });
+  reopened.library.chooseComponent({ slot: 'vae', candidateKey: vaeCandidateKey });
   expect(reopened.library.captureModelSelection({ loras: [] })?.components).toEqual([{ slot: 'vae', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/1/vae.safetensors' } } }]);
 });
 

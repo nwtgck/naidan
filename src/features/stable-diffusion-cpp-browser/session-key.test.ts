@@ -68,7 +68,7 @@ it('retains a session for LoRA strength changes but replaces it for changed adap
   const keys = createImageSessionKeys(), request = requestFixture();
   const noAdapter = keys.key({ request });
   const file = request.models[0]!.file;
-  request.loras = [{ file, path: 'styles/adapter.gguf', strength: 1 }];
+  request.loras = [{ file, relativePath: 'styles/adapter.gguf', strength: 1 }];
   const selected = keys.key({ request });
   expect(selected).not.toBe(noAdapter);
   request.loras[0]!.strength = 0.5;
@@ -78,25 +78,25 @@ it('retains a session for LoRA strength changes but replaces it for changed adap
   request.loras[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).not.toBe(selected);
   request.loras[0]!.file = file;
-  request.loras[0]!.path = 'different/adapter.gguf';
+  request.loras[0]!.relativePath = 'different/adapter.gguf';
   expect(keys.key({ request })).not.toBe(selected);
   request.loras = [];
   expect(keys.key({ request })).toBe(noAdapter);
 });
 
-it('accepts a stable published identity across refresh and invalidates its companions and revision', () => {
+it('reuses a published file group across refresh and invalidates its companions and revision', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
-  request.models[0]!.sourceId = 'reviewed-publication-with-all-companions';
+  request.models[0]!.modelFilesReuseKey = 'reviewed-publication-with-all-companions';
   const first = keys.key({ request }), file = request.models[0]!.file;
   request.models[0]!.file = new File([file], file.name, { lastModified: file.lastModified });
   expect(keys.key({ request })).toBe(first);
-  request.models[0]!.sourceId = 'changed-companion-receipt';
+  request.models[0]!.modelFilesReuseKey = 'changed-companion-receipt';
   expect(keys.key({ request })).not.toBe(first);
 });
 
 it('invalidates on manual companion identity or path but does not depend on model order', () => {
   const keys = createImageSessionKeys(), request = requestFixture();
-  request.models[0]!.companions = [{ path: 'part.bin', file: request.models[0]!.file }];
+  request.models[0]!.companions = [{ relativePath: 'part.bin', file: request.models[0]!.file }];
   const first = keys.key({ request });
   request.models[0]!.companions![0]!.file = new File(['other content'], 'part.bin');
   expect(keys.key({ request })).not.toBe(first);

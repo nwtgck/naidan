@@ -1,3 +1,4 @@
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
@@ -129,7 +130,8 @@ function fixture() {
   host.sampler.mockResolvedValue({ sample: vi.fn(async () => 7), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
   const request: WorkerGenerateInput = {
     debug: 'on',
-    model: 'fixture',
+    modelId: 'user/fixture',
+    resolvedModel: resolvedModelFixture({ modelId: 'user/fixture' }),
     messages: [{ role: 'user', content: 'hello' }],
     temperature: 0,
     topP: 1,

@@ -1,3 +1,4 @@
+import { resolvedModelFixture } from './test-utils/resolved-model.test-support';
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { generate } from './generation';
@@ -10,7 +11,7 @@ import type { WorkerGenerateInput } from './types';
 vi.mock('./session', () => ({ prepareGenerationSession: vi.fn() }));
 
 function request(): WorkerGenerateInput {
-  return { model: 'fixture.gguf', messages: [{ role: 'user', content: 'fixture' }], temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: gpuProfilingProfile }, measurement: { sequence: 'fresh' } };
+  return { modelId: 'user/fixture.gguf', resolvedModel: resolvedModelFixture({ modelId: 'user/fixture.gguf' }), messages: [{ role: 'user', content: 'fixture' }], temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: gpuProfilingProfile }, measurement: { sequence: 'fresh' } };
 }
 
 beforeEach(() => {

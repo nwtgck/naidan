@@ -7,33 +7,33 @@ const fileSchema = z.custom<File>(value => typeof File !== 'undefined' && value 
  * Only references are retained; no model bytes, handles or DTOs are written. */
 export function createTemporaryModelFiles() {
   const roots = new Map<string, TemporaryModelDirectory>();
-  const listeners = new Set<({ rootId }: { rootId: string }) => void>();
+  const listeners = new Set<({ rootPath }: { rootPath: string }) => void>();
   let revision = 0;
-  function notify({ rootId }: { rootId: string }): void {
+  function notify({ rootPath }: { rootPath: string }): void {
     for (const listener of listeners) {
       try {
-        listener({ rootId });
+        listener({ rootPath });
       } catch { /* An observer cannot roll back a committed file registration. */ }
     }
   }
   function register({ directory, signal }: { directory: TemporaryModelDirectoryInput, signal: AbortSignal | undefined }): TemporaryModelDirectory {
     signal?.throwIfAborted();
-    const name = temporaryRootNameSchema.parse(directory.name.replaceAll(':', '_'));
+    const name = temporaryRootNameSchema.parse(directory.rootName.replaceAll(':', '_'));
     if (!directory.files.length || directory.files.length > 20_000) {
       throw new Error('A temporary model folder must contain between 1 and 20000 files');
     }
     const paths = new Set<string>();
-    const files = directory.files.map(({ path, file, ...unhandled }) => {
+    const files = directory.files.map(({ relativePath, file, ...unhandled }) => {
       unhandled satisfies Record<PropertyKey, never>;
-      temporaryFilePathSchema.parse(`temp/${name}/${path}`);
-      if (paths.has(path) || path.split('/').includes('.git')) {
+      temporaryFilePathSchema.parse(`temp/${name}/${relativePath}`);
+      if (paths.has(relativePath) || relativePath.split('/').includes('.git')) {
         throw new Error('Duplicate or reserved path in temporary model folder');
       }
-      paths.add(path);
+      paths.add(relativePath);
       // Local publication receipts/markers are opaque files, not authority.
       // Keeping them allows a downloaded linked-folder tree to be reused here;
       // unlike an OPFS import, no marker is replayed or written into storage.
-      return Object.freeze({ path, file: fileSchema.parse(file) });
+      return Object.freeze({ relativePath, file: fileSchema.parse(file) });
     });
     if (!Number.isSafeInteger(files.reduce((total, entry) => total + entry.file.size, 0))) {
       throw new Error('Temporary model folder size exceeds the safe integer range');
@@ -60,9 +60,9 @@ export function createTemporaryModelFiles() {
       }
       available = characters.join('') + ending;
     }
-    const root = Object.freeze({ id: `temp/${available}`, name: available, sourceName: name, revision: ++revision, files: Object.freeze(files) });
-    roots.set(root.id, root);
-    notify({ rootId: root.id });
+    const root = Object.freeze({ rootPath: `temp/${available}`, rootName: available, sourceRootName: name, registrationRevision: ++revision, files: Object.freeze(files) });
+    roots.set(root.rootPath, root);
+    notify({ rootPath: root.rootPath });
     return root;
   }
   return {
@@ -70,15 +70,15 @@ export function createTemporaryModelFiles() {
     list(): readonly TemporaryModelDirectory[] {
       return [...roots.values()];
     },
-    get({ rootId }: { rootId: string }): TemporaryModelDirectory | undefined {
-      return roots.get(rootId);
+    get({ rootPath }: { rootPath: string }): TemporaryModelDirectory | undefined {
+      return roots.get(rootPath);
     },
-    remove({ rootId }: { rootId: string }): void {
-      if (roots.delete(rootId)) {
-        notify({ rootId });
+    remove({ rootPath }: { rootPath: string }): void {
+      if (roots.delete(rootPath)) {
+        notify({ rootPath });
       }
     },
-    subscribe({ listener }: { listener: ({ rootId }: { rootId: string }) => void }): () => void {
+    subscribe({ listener }: { listener: ({ rootPath }: { rootPath: string }) => void }): () => void {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);

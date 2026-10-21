@@ -1,9 +1,10 @@
+import { isDefaultLocalModel } from '@/features/llama-cpp-browser/default-model';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
 import { describe, expect, it } from 'vitest';
 import { groupModelFiles } from './catalog';
 import { modelSuggestions, preferredQuantizationHint } from './model-suggestions';
 import { quantizationName } from './presentation';
 import { findLocalSuggestedModel, resolveSuggestionPlan, SuggestionPlanError } from './suggestion-plan';
-import { localModelDisplayName } from '@/features/llama-cpp-browser/default-model';
 
 // Observed Google repository paths, reviewed 2026-09-22. These are regression
 // fixtures, not a production filename allowlist. In particular, Google's main
@@ -78,13 +79,13 @@ describe.each(cases)('Gemma QAT suggestion $id', fixture => {
   });
 
   it('does not treat a previous non-QAT installation or another repository as the QAT checkpoint', () => {
-    const local = { id: `hf.co/${fixture.repository}:${encodeURIComponent(fixture.mainPath)}`, name: fixture.mainPath, size: 128, importedAt: 1 };
-    const previous = { ...local, id: `hf.co/${fixture.previousRepository}:model-Q4_K_M.gguf` };
-    const anotherSource = { ...local, id: `hf.co/${fixture.previousRepository}:${encodeURIComponent(fixture.mainPath)}` };
+    const local = { modelId: formatHuggingFaceModelId({ repository: fixture.repository, mainFilePath: fixture.mainPath }), size: 128, importedAt: 1 };
+    const previous = { ...local, modelId: formatHuggingFaceModelId({ repository: fixture.previousRepository, mainFilePath: 'model-Q4_K_M.gguf' }) };
+    const anotherSource = { ...local, modelId: formatHuggingFaceModelId({ repository: fixture.previousRepository, mainFilePath: fixture.mainPath }) };
     expect(findLocalSuggestedModel({ quantization, models: [previous, anotherSource] })).toBeUndefined();
     expect(findLocalSuggestedModel({ quantization, models: [previous, local] })).toEqual(local);
-    expect(localModelDisplayName({ model: local })).toBe(`${fixture.name} · Q4_0 (QAT)`);
-    expect(localModelDisplayName({ model: previous })).toBe(`${fixture.name} · Q4_K_M`);
+    expect(isDefaultLocalModel({ model: local, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } })).toBe(true);
+    expect(isDefaultLocalModel({ model: previous, current: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.modelId } })).toBe(false);
     expect(() => resolveSuggestionPlan({ quantization, catalog: { ...catalog, repository: fixture.previousRepository }, multimodal: 'off' })).toThrow(SuggestionPlanError);
   });
 });

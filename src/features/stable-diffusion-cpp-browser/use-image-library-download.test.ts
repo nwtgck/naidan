@@ -30,7 +30,7 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
       extraBytes: 0,
     }).file;
   const id = user ? `user/${file.repository.split('/')[1]}` : `huggingface.co/${file.repository}/resolve/main`;
-  return { id, name: id, files: [{ path: file.path, file: blob }] };
+  return { repositoryKey: id, repositoryLabel: id, files: [{ relativePath: file.path, file: blob }] };
 }
 
 function harness({ download, initial, manager }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[], manager?: DownloadManager }) {
@@ -72,9 +72,9 @@ it('publishes downloaded inventory during an independent save without changing t
   expect(h.list).toHaveBeenCalledOnce();
   expect(h.library.downloadState.value).toBe('complete');
   expect(h.library.models.value.length).toBeGreaterThan(0);
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
   h.unblock();
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
 });
 
 it('keeps an independent save that begins during final inspection from changing the editor', async () => {
@@ -88,7 +88,7 @@ it('keeps an independent save that begins during final inspection from changing 
   reading.resolve(wanted);
   await operation;
   expect(h.library.downloading.value).toBe(false);
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
   h.unblock();
   expect(h.list).toHaveBeenCalledOnce();
   expect(h.library.downloadState.value).toBe('complete');
@@ -171,30 +171,30 @@ it('does not fetch on construction, refresh, or explicit selection from local fi
   await h.library.refresh();
   h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.ready.value).toBe(true);
-  expect(h.library.selectedModels()?.map(model => model.path)).toEqual(files.map(file => file.path));
+  expect(h.library.selectedModels()?.map(model => model.relativePath)).toEqual(files.map(file => file.path));
   expect(h.downloader).not.toHaveBeenCalled();
 });
 
 it('keeps identical repository files in OPFS and two linked roots distinct and checks the selected destination', async () => {
   const files = selectedRecipeFiles({ recipe, selections: {} });
   const opfs = files.map(file => repository({ file, user: false }));
-  function host({ rootId }: { rootId: string }): LocalImageRepository[] {
+  function host({ rootPath }: { rootPath: string }): LocalImageRepository[] {
     return files.map(file => ({
       ...repository({ file, user: false }),
-      id: `host/${rootId}/${file.repository}`,
-      hostSource: { directoryId: rootId, directoryName: 'same-folder-name', repository: file.repository },
+      repositoryKey: `host/${rootPath}/${file.repository}`,
+      hostSource: { directoryId: rootPath, directoryName: 'same-folder-name', repository: file.repository },
     }));
   }
-  const h = harness({ initial: [...opfs, ...host({ rootId: 'first' }), ...host({ rootId: 'second' })], download: undefined });
+  const h = harness({ initial: [...opfs, ...host({ rootPath: 'first' }), ...host({ rootPath: 'second' })], download: undefined });
   await h.library.refresh();
   expect(h.library.models.value).toHaveLength(3);
-  expect(new Set(h.library.models.value.map(model => model.id)).size).toBe(3);
+  expect(new Set(h.library.models.value.map(model => model.candidateKey)).size).toBe(3);
   expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(3);
   h.library.hostDirectories.destination.value = 'second';
   h.library.chooseRecipe({ recipeId: recipe.id, selections: {} });
-  expect(h.library.main.value).toContain('host/second/');
-  expect(h.library.selectedModels()?.every(model => model.sourceId === undefined)).toBe(true);
-  h.update({ repositories: [...opfs, ...host({ rootId: 'first' })] });
+  expect(h.library.selectedCandidateKey.value).toContain('host/second/');
+  expect(h.library.selectedModels()?.every(model => model.modelFilesReuseKey === undefined)).toBe(true);
+  h.update({ repositories: [...opfs, ...host({ rootPath: 'first' })] });
   await h.library.refresh();
   expect(h.library.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(0);
   h.library.hostDirectories.destination.value = 'opfs';
@@ -214,11 +214,11 @@ it('downloads the requested quantization without replacing an existing model sel
   await h.library.downloadRecipe({ recipeId: recipe.id, selections: choices });
   expect(h.library.downloadState.value).toBe('complete');
   expect(h.library.ready.value).toBe(true);
-  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q4_K.gguf');
+  expect(h.library.selectedModels()?.[0]?.relativePath).toBe('z_image_turbo-Q4_K.gguf');
   h.library.chooseRecipe({ recipeId: recipe.id, selections: choices });
-  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
+  expect(h.library.selectedModels()?.[0]?.relativePath).toBe('z_image_turbo-Q8_0.gguf');
   await h.library.refresh();
-  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
+  expect(h.library.selectedModels()?.[0]?.relativePath).toBe('z_image_turbo-Q8_0.gguf');
 });
 
 it('keeps the desired recipe while directories arrive in separate actions; no conversion or merged repo is needed', async () => {
@@ -309,7 +309,7 @@ it('keeps uninspected files unavailable until post-download inventory resolves',
   expect(view.downloadState.value).toBe('downloading');
   expect(view.ready.value).toBe(false);
   view.chooseRecipe({ recipeId: recipe.id, selections: {} });
-  expect(view.main.value).toBe('');
+  expect(view.selectedCandidateKey.value).toBe('');
   pending.resolve(wanted);
   await operation;
   expect(view.downloading.value).toBe(false);
@@ -335,7 +335,7 @@ it('queues explicit downloads in click order with immutable variants while the e
   expect(h.downloader).toHaveBeenCalledTimes(3);
   expect(h.downloader.mock.calls[1]![0].files[0]!.path).toBe('z_image_turbo-Q8_0.gguf');
   expect(h.downloader.mock.calls[2]![0].files).toEqual(selectedRecipeFiles({ recipe: thirdRecipe, selections: {} }));
-  expect(h.library.main.value).toBe('');
+  expect(h.library.selectedCandidateKey.value).toBe('');
 });
 
 it('retains a failed entry and proceeds with other explicitly queued downloads without automatic retry', async () => {
@@ -399,10 +399,10 @@ it('keeps saved models usable and preserves a manual selection made during anoth
   const downloading = h.library.downloadRecipe({ recipeId: recipe.id, selections: {} });
   expect(h.library.ready.value).toBe(true);
   h.library.chooseRecipe({ recipeId: recipe.id, selections: { diffusion: 'q8-0' } });
-  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
+  expect(h.library.selectedModels()?.[0]?.relativePath).toBe('z_image_turbo-Q8_0.gguf');
   gate.resolve();
   await downloading;
-  expect(h.library.selectedModels()?.[0]?.path).toBe('z_image_turbo-Q8_0.gguf');
+  expect(h.library.selectedModels()?.[0]?.relativePath).toBe('z_image_turbo-Q8_0.gguf');
 });
 
 it('does not interrupt a history file read when another download is enqueued', async () => {

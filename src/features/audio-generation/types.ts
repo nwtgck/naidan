@@ -12,7 +12,7 @@ export const MAX_AUDIO_CONTEXT_TOKENS = 2147483647;
 export const audioLanguageSchema = z.enum(['default', 'en', 'ja', 'zh', 'de', 'it', 'pt', 'es', 'ko', 'fr', 'ru']);
 export const audioBackendSchema = z.enum(['profile', 'cpu']);
 export const audioGenerationInputSchema = z.object({
-  model: modelSchema.shape.id,
+  modelId: modelSchema.shape.modelId,
   text: z.string().min(1).max(8192).refine(value => value.trim().length > 0 && !value.includes('\0')),
   reference: z.instanceof(Blob).refine(value => value.size > 0 && value.size <= MAX_REFERENCE_BYTES).optional(),
   language: audioLanguageSchema,
@@ -46,7 +46,7 @@ export const audioPreviewEventSchema = z.object({
 export type AudioPreviewEvent = z.infer<typeof audioPreviewEventSchema>;
 export type AudioBackend = z.infer<typeof audioBackendSchema>;
 
-export function defaultAudioParameters(): Omit<AudioGenerationInput, 'model' | 'text' | 'reference' | 'options' | 'debug'> {
+export function defaultAudioParameters(): Omit<AudioGenerationInput, 'modelId' | 'text' | 'reference' | 'options' | 'debug'> {
   return { language: 'en', audioBackend: 'profile', contextTokens: 4096, maxFrames: 1024, temperature: 0.9, topK: 50, topP: 1, seed: 4294967295 };
 }
 

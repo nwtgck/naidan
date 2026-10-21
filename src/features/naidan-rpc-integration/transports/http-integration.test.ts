@@ -18,7 +18,7 @@ import { promiseAllKeyed } from '@/utils/promise';
 function endpoint({ identity, png }: { identity: NaidanPipingIdentity, png: Uint8Array<ArrayBuffer> }) {
   const answer = 'Private streamed answer. '.repeat(4096);
   const resources: ReadOnlyInferenceResources = {
-    listChatModels: vi.fn(async () => [{ ref: 'models/test.gguf', label: 'Private test model' }]),
+    listChatModels: vi.fn(async () => [{ modelId: 'user/test' }]),
     generateChat: vi.fn<ReadOnlyInferenceResources['generateChat']>(async ({ onEvent }) => {
       for (let at = 0; at < answer.length; at += 1024) {
         await onEvent({ event: { type: 'text', text: answer.slice(at, at + 1024) } });
@@ -98,7 +98,7 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
     expect(b.resources.listChatModels).not.toHaveBeenCalled();
     await b.manager.updateInboundAllowedMethods({ id: paired.bId, inboundAllowedMethods: ['listChatModels', 'generateChat', 'generateImage'] });
     const input = {
-      model: 'models/test.gguf',
+      modelId: 'user/test',
       messages: [{ role: 'user' as const, content: 'Private question.' }],
       temperature: 0.7,
       topP: 0.9,
@@ -107,7 +107,7 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
       frequencyPenalty: 0,
       stop: [],
     };
-    const chat = client.generateChat({ input: { model: input.model, ...prepareTranscript({ input }) }, on: { progress: undefined }, signal: lifetime.signal, timeoutMs: undefined });
+    const chat = client.generateChat({ input: { modelId: input.modelId, ...prepareTranscript({ input }) }, on: { progress: undefined }, signal: lifetime.signal, timeoutMs: undefined });
     const output = await chat.result;
     const answer = await receiveEvents({ readable: output.events, onEvent: () => {}, signal: lifetime.signal });
     await chat.closed;
@@ -147,7 +147,7 @@ it('pairs, denies, streams and reconnects explicitly over real loopback fetch', 
     expect(compared).toHaveLength(2);
     const catalog = a.manager.client({ id: paired.aId }).listChatModels({ input: {}, on: {}, signal: lifetime.signal, timeoutMs: undefined });
     const reader = (await catalog.result).getReader();
-    expect((await reader.read()).value?.ref).toBe('models/test.gguf');
+    expect((await reader.read()).value?.modelId).toBe('user/test');
     expect((await reader.read()).done).toBe(true);
     reader.releaseLock();
     await catalog.closed;

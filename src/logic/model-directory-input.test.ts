@@ -46,8 +46,8 @@ it('captures drag entries synchronously and preserves the chosen root plus every
   const pending = droppedModelFiles({ transfer, signal: undefined });
   protectedStore = true;
   const result = await pending;
-  expect(result.directories[0]).toEqual({ name: 'dir1', files: [{ path: 'dir2/model.gguf', file: weight }, { path: 'dir2/vae.safetensors', file: image }, { path: 'dir2/model.safetensors.index.json', file: metadata }] });
-  expect(result.directories[0]!.files.map(file => `${result.directories[0]!.name}/${file.path}`)).toContain('dir1/dir2/model.gguf');
+  expect(result.directories[0]).toEqual({ rootName: 'dir1', files: [{ relativePath: 'dir2/model.gguf', file: weight }, { relativePath: 'dir2/vae.safetensors', file: image }, { relativePath: 'dir2/model.safetensors.index.json', file: metadata }] });
+  expect(result.directories[0]!.files.map(file => `${result.directories[0]!.rootName}/${file.relativePath}`)).toContain('dir1/dir2/model.gguf');
   expect(getEntry).toHaveBeenCalledOnce();
 });
 
@@ -63,13 +63,13 @@ it('rejects mixed picker roots and retains literal percent names without path de
   const a = new File(['a'], 'a.gguf'), b = new File(['b'], 'b.safetensors');
   Object.defineProperty(a, 'webkitRelativePath', { value: 'root/sub/%ZZ.gguf' });
   Object.defineProperty(b, 'webkitRelativePath', { value: 'other/b.safetensors' });
-  expect(modelDirectoryFromFiles({ files: [a] })).toEqual({ name: 'root', files: [{ path: 'sub/%ZZ.gguf', file: a }] });
+  expect(modelDirectoryFromFiles({ files: [a] })).toEqual({ rootName: 'root', files: [{ relativePath: 'sub/%ZZ.gguf', file: a }] });
   expect(() => modelDirectoryFromFiles({ files: [a, b] })).toThrow('different roots');
 });
 
 it('uses exactly the same GGUF wrapper directory for text and image imports', () => {
   const file = new File(['model'], 'Example-Q4_K_M.GGUF');
-  const expected = { name: 'Example-Q4_K_M-GGUF', files: [{ path: file.name, file }] };
+  const expected = { rootName: 'Example-Q4_K_M-GGUF', files: [{ relativePath: file.name, file }] };
   expect(directoryForGgufFile({ file })).toEqual(expected);
   expect(directoryForModelFile({ file })).toEqual(expected);
   expect(imageDirectoryForFile({ file })).toEqual(expected);

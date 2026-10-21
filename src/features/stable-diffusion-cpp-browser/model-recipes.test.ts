@@ -104,7 +104,7 @@ it('recognizes every catalog layout without flattening paths or merging reposito
       const file = entry.role === 'model' ? safetensorsFixture({ name, tensors: sdCheckpointTensors }).file : entry.role === 'vae'
         ? safetensorsFixture({ name, tensors: facts.vae }).file
         : ggufFixture({ name, tensors: entry.role === 'diffusion' ? facts.diffusion : facts.architecture === 'mistral3' ? ministralTextTensors : qwenTextTensors({ width: facts.width, layers: facts.layers }), metadata: entry.role === 'lm' ? { 'general.architecture': facts.architecture } : {}, extraBytes: 0 }).file;
-      return { id: `user/${entry.directory}`, name: entry.directory, files: [{ path: entry.path, file }] };
+      return { repositoryKey: `user/${entry.directory}`, repositoryLabel: entry.directory, files: [{ relativePath: entry.path, file }] };
     });
     const inventory = await scanImageRepositories({ repositories, signal: undefined });
     expect(inventory.issues).toEqual([]);

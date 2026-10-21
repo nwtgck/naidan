@@ -29,14 +29,22 @@ describe('DTO-free model launch restoration', () => {
   });
 
   it('rebuilds an installed selection from existing files while offline', async () => {
-    io.directories.mockResolvedValue([{ id: target.modelId, files: [{ path: target.mainFilePath, file: new File([new Uint8Array(256)], 'model.gguf') }] }]);
+    const primaryFile = { relativePath: target.mainFilePath, file: new File([new Uint8Array(256)], 'model.gguf') };
+    io.directories.mockResolvedValue([{ primaryFile, projectorFile: undefined, files: [primaryFile] }]);
     expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual({ ...target, selection: { ...target.selection, revision: view.revision } });
     expect(io.inspect).not.toHaveBeenCalled();
   });
 
-  it('rechecks metadata only for the same exact main file when no local plan exists', async () => {
+  it('rechecks explicit history metadata for the same public modelId when no local plan exists', async () => {
     expect(await restoreModelLaunchTarget({ view, signal: new AbortController().signal })).toEqual(target);
     expect(io.inspect).toHaveBeenCalledWith({ input: view.input, signal: expect.any(AbortSignal), freshness: 'reuse' });
+  });
+
+  it('rejects multiple local groups with the same public modelId', async () => {
+    const primaryFile = { relativePath: target.mainFilePath, file: new File([new Uint8Array(256)], 'model.gguf') };
+    io.directories.mockResolvedValue(Array.from({ length: 2 }, () => ({ primaryFile, projectorFile: undefined, files: [primaryFile] })));
+    await expect(restoreModelLaunchTarget({ view, signal: new AbortController().signal })).rejects.toThrow('Ambiguous');
+    expect(io.inspect).not.toHaveBeenCalled();
   });
 
   it('does not substitute another quantization when the saved model disappeared', async () => {

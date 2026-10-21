@@ -64,8 +64,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <label v-if="state.launch.value.requestedVariant === undefined" tw-class="flex items-center gap-1 min-w-0">
             <span tw-class="sr-only">{{ lazyStrings.LlamaCppBrowserModelLaunch__quantization() }}</span>
             <select data-testid="model-launch-quantization" :value="state.selectedPath.value" :disabled="state.busy.value || !state.isActive.value" @change="selectVariant({ event: $event })" tw-class="max-w-full min-w-0 min-h-11 rounded-md border-0 bg-transparent px-2 py-2 text-xs font-normal text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50 disabled:cursor-default">
-              <option v-if="!state.choices.value.some(choice => choice.id === state.selectedPath.value)" :value="state.selectedPath.value">{{ state.label.value }}</option>
-              <option v-for="choice in state.choices.value" :key="choice.id" :value="choice.id">{{ choice.label }}</option>
+              <option v-if="!state.choices.value.some(choice => choice.primaryRelativePath === state.selectedPath.value)" :value="state.selectedPath.value">{{ state.label.value }}</option>
+              <option v-for="choice in state.choices.value" :key="choice.primaryRelativePath" :value="choice.primaryRelativePath">{{ choice.label }}</option>
             </select>
           </label>
           <span v-else data-testid="model-launch-fixed-quantization" tw-class="inline-flex min-h-11 items-center text-xs font-normal text-gray-500 dark:text-gray-400">{{ state.label.value }}</span>

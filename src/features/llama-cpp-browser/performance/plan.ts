@@ -53,8 +53,8 @@ export function createPerformancePlan({ id, createdAt, models, settings, options
     }
   }
   const plan = planSchema.parse({ version: 1, protocol: performanceProtocol, id, createdAt, models, settings, options: settings.mode === 'both' || settings.mode === 'gpu-profile' ? { ...options, profile: 'webgpu-wasm64-jspi' } : options, notes, steps });
-  if (new Set(models.map(model => model.id)).size !== models.length || new Set(models.map(model => model.name)).size !== models.length) {
-    throw new Error('Duplicate model identifiers or names');
+  if (new Set(models.map(model => model.modelId)).size !== models.length) {
+    throw new Error('Duplicate modelId');
   }
   return plan;
 }

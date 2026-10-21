@@ -1,3 +1,5 @@
+import { resolveModel } from './runtime/model-resolution';
+import { createResolvedModelForTest } from './test-utils/resolved-model.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppBrowserService } from './service-contract';
 import type { MemoryDiagnostics } from './performance/memory-schema';
@@ -64,10 +66,11 @@ class RetirementWorker extends EventTarget {
     harness.events.push(`create:${this.id}`);
   }
 }
+vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 let service: LlamaCppBrowserService;
 
 function input() {
-  return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+  return { modelId: 'user/local', messages: [{ role: 'user' as const, content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
 
 const snapshots: MemoryDiagnostics[] = [];
@@ -96,6 +99,7 @@ function measure({ signal, warm = false }: { signal?: AbortSignal, warm?: boolea
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => createResolvedModelForTest({ modelId, relativePath: 'model.gguf' }));
   harness.events.length = 0;
   harness.workers.length = 0;
   snapshots.length = 0;

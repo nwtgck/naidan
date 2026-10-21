@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function input(): AudioGenerationInput {
-  return { ...defaultAudioParameters(), model: 'user/model', text: 'Original text', language: 'ja', reference: new Blob(['reference']), options: { profile: 'auto' }, debug: 'off' };
+  return { ...defaultAudioParameters(), modelId: 'user/model', text: 'Original text', language: 'ja', reference: new Blob(['reference']), options: { profile: 'auto' }, debug: 'off' };
 }
 
 function setup() {
@@ -35,18 +35,20 @@ function setup() {
 describe('page-owned audio history', () => {
   it('captures requested settings before mutation and excludes reference data entirely', () => {
     const request = input();
-    const settings = captureAudioSettings({ input: request, modelName: 'Original name' });
+    const settings = captureAudioSettings({ input: request });
     request.text = 'Changed';
+    request.modelId = 'temp/another-voice';
     request.language = 'en';
     request.contextTokens = 20000;
     request.options.profile = 'cpu-wasm32';
-    expect(settings).toMatchObject({ text: 'Original text', language: 'ja', contextTokens: 4096, modelName: 'Original name', options: { profile: 'auto' } });
+    expect(settings).toMatchObject({ text: 'Original text', language: 'ja', contextTokens: 4096, modelId: 'user/model', options: { profile: 'auto' } });
     expect(settings).not.toHaveProperty('reference');
+    expect(settings).not.toHaveProperty('modelName');
   });
 
   it('prepends results without discarding or duplicating old WAV byte buffers', () => {
     const state = setup();
-    const settings = captureAudioSettings({ input: input(), modelName: 'Model' });
+    const settings = captureAudioSettings({ input: input() });
     const result = audioResult();
     state.append({ result, settings });
     state.append({ result, settings });
@@ -63,7 +65,7 @@ describe('page-owned audio history', () => {
 
   it('deletes only the requested result and safely ignores repeated deletion', () => {
     const state = setup();
-    const settings = captureAudioSettings({ input: input(), modelName: 'Model' });
+    const settings = captureAudioSettings({ input: input() });
     const result = audioResult();
     state.append({ result, settings });
     state.append({ result, settings });
@@ -78,7 +80,7 @@ describe('page-owned audio history', () => {
 
   it('clears all results while allowing later append with unique IDs', () => {
     const state = setup();
-    const settings = captureAudioSettings({ input: input(), modelName: 'Model' });
+    const settings = captureAudioSettings({ input: input() });
     state.append({ result: audioResult(), settings });
     state.append({ result: audioResult(), settings });
     state.clear();
@@ -93,7 +95,7 @@ describe('page-owned audio history', () => {
 
   it('keeps prior results when constructing a new Blob URL fails', () => {
     const state = setup();
-    const settings = captureAudioSettings({ input: input(), modelName: 'Model' });
+    const settings = captureAudioSettings({ input: input() });
     state.append({ result: audioResult(), settings });
     urls.create.mockImplementationOnce(() => {
       throw new Error('no memory');

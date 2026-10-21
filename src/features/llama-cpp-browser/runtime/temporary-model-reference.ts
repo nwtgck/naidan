@@ -21,32 +21,32 @@ export function temporaryModelReference({ rootName, repository, selector }: {
   if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) {
     throw new Error('Invalid temporary model selector');
   }
-  const name = `temp/${rootName}${repository === undefined ? '' : `/${repository}`}${selector === undefined ? '' : `:${selector}`}`;
-  if (name.length > 1024 || name.includes('\x7f')) {
+  const modelId = `temp/${rootName}${repository === undefined ? '' : `/${repository}`}${selector === undefined ? '' : `:${selector}`}`;
+  if (modelId.length > 1024 || modelId.includes('\x7f')) {
     throw new Error('Invalid temporary model reference');
   }
-  return name;
+  return modelId;
 }
 
-export function parseTemporaryModelReference({ name }: { name: string }): {
+export function parseTemporaryModelReference({ modelId }: { modelId: string }): {
   rootName: string, repository: string | undefined, selector: string | undefined,
 } {
-  const match = /^temp\/([^/:]+)(?:\/([^/:]+\/[^/:]+))?(?::(.+))?$/.exec(name);
+  const match = /^temp\/([^/:]+)(?:\/([^/:]+\/[^/:]+))?(?::(.+))?$/.exec(modelId);
   if (!match) {
     throw new Error('Invalid temporary model reference');
   }
   const rootName = match[1]!;
   const repository = match[2];
   const selector = match[3];
-  if (temporaryModelReference({ rootName, repository, selector }) !== name) {
+  if (temporaryModelReference({ rootName, repository, selector }) !== modelId) {
     throw new Error('Non-canonical temporary model reference');
   }
   return { rootName, repository, selector };
 }
 
-export function isTemporaryModelReference({ name }: { name: string }): boolean {
+export function isTemporaryModelReference({ modelId }: { modelId: string }): boolean {
   try {
-    parseTemporaryModelReference({ name });
+    parseTemporaryModelReference({ modelId });
     return true;
   } catch {
     return false;
