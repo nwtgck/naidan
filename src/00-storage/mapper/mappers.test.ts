@@ -842,7 +842,7 @@ describe('Legacy Migration (Flat to Tree)', () => {
 });
 
 describe('chat model source preference mapping', () => {
-  it.each(['files', 'hugging-face', 'saved'] as const)('round-trips only the source-tab key: %s', tab => {
+  it.each(['files', 'linked-folders', 'hugging-face', 'saved'] as const)('round-trips only the source-tab key: %s', tab => {
     const domain: Settings = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'user/model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: tab } };
     const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
     expect(dto.experimental?.chatBrowserModelPickerTab).toBe(tab);

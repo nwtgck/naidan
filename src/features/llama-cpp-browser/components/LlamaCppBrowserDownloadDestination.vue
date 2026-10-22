@@ -114,8 +114,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div data-testid="llama-host-model-directories" tw-class="w-fit min-w-0 max-w-full shrink-0">
-    <div tw-class="flex max-w-full items-center gap-2">
+  <!-- The containing toolbar is a grid: controls share its heading row, while
+       the management panel spans the following row without moving the heading. -->
+  <div data-testid="llama-host-model-directories" tw-class="contents">
+    <div tw-class="flex w-fit min-w-0 max-w-full items-center justify-self-end gap-2 sm:col-start-2">
       <label :for="`${id}-destination`" tw-class="shrink-0 whitespace-nowrap text-[11px] font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserDownloadDestination__download_to() }}</label>
       <div tw-class="flex min-w-0 max-w-full items-stretch rounded-lg border border-gray-200/80 bg-white/70 dark:border-gray-700/70 dark:bg-gray-800/50">
         <div tw-class="flex w-40 min-w-0 max-w-full overflow-hidden rounded-l-lg">
@@ -132,7 +134,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </div>
     <!-- Folder access remains available beside every download selector. Opening
          this panel only reveals controls; linking requires its own action. -->
-    <div :id="`${id}-registrations`" class="destination-management" :class="{ 'destination-management-open': managementOpen }" :inert="managementOpen ? undefined : true" :aria-hidden="!managementOpen" data-testid="llama-model-directory-registrations">
+    <div :id="`${id}-registrations`" class="destination-management" :class="{ 'destination-management-open': managementOpen }" :inert="managementOpen ? undefined : true" :aria-hidden="!managementOpen" data-testid="llama-model-directory-registrations" tw-class="col-span-full min-w-0">
       <div class="destination-management-inner"><LinkedModelDirectories :view="view" :disabled="disabled" :layout-file="layoutFile" /></div>
     </div>
   </div>

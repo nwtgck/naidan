@@ -54,7 +54,7 @@ describe('compact linked-folder download controls', () => {
   it('distinguishes unconfigured folders from registered folders needing permission', async () => {
     const empty = render({ supported: true, entries: [], destination: 'opfs' });
     expect(downloadDestinationControl({ view: empty.wrapper }).props('options')).toContainEqual(expect.objectContaining({ value: '', detail: 'Not linked', disabled: true }));
-    expect(empty.wrapper.get('[data-testid="linked-host-folders-unconfigured"]').text()).toContain('Link a folder');
+    expect(empty.wrapper.get('[data-testid="linked-host-folders-description"]').text()).toContain('Use model files directly');
     const { wrapper, view } = render({ supported: true, entries: [{ id: 'root-a', name: 'Models', access: 'prompt', error: undefined }], destination: 'root-a' });
     await wrapper.get('[data-testid="llama-manage-model-directories"]').trigger('click');
     expect(wrapper.get('[data-testid="linked-host-folder-permission-root-a"]').text()).toBe('Permission expired; reconnect');

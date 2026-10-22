@@ -5,12 +5,15 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ChatLocalModelOperation, ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import type { ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 import ChatLocalModelInput from './ChatLocalModelInput.vue';
-const preference = vi.hoisted(() => ({ tab: 'files' as 'files' | 'hugging-face' | 'saved', save: vi.fn(async () => {}) }));
+import type { ChatBrowserModelPickerTab } from '@/features/llama-cpp-browser/composables/useChatBrowserModelPickerTab';
+const preference = vi.hoisted(() => ({ tab: 'files' as ChatBrowserModelPickerTab, save: vi.fn(async () => {}) }));
+const linkedFolders = vi.hoisted(() => ({ mounts: 0 }));
 vi.mock('../composables/useChatBrowserModelPickerTab', () => ({ useChatBrowserModelPickerTab: () => ({ remembered: computed(() => preference.tab), remember: preference.save }) }));
 
 beforeEach(async () => {
   preference.tab = 'files';
   preference.save.mockClear();
+  linkedFolders.mounts = 0;
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -37,6 +40,17 @@ function inputState() {
 
 vi.mock('./LlamaCppBrowserRepositoryPicker.vue', () => ({ __esModule: true, default: { template: '<div data-testid="repository-source" />' } }));
 vi.mock('./LlamaCppBrowserSavedModelPicker.vue', () => ({ __esModule: true, default: { template: '<div data-testid="saved-source" />' } }));
+vi.mock('./LlamaCppBrowserModelImportLinkedFolders.vue', () => ({
+  __esModule: true,
+  default: {
+    props: ['disabled'],
+    setup() {
+      linkedFolders.mounts++;
+      return {};
+    },
+    template: '<button data-testid="linked-source" :disabled="disabled">Link folder</button>',
+  },
+}));
 
 describe('chat local file entry', () => {
   it('offers explicit retry even when file checking failed before candidates were available', async () => {
@@ -185,6 +199,20 @@ it('keeps all sources inside the same viewport and moves focus with the selected
   };
   const viewport = wrapper.get('[data-testid="chat-model-source-viewport"]').element;
   const files = wrapper.get('[data-testid="chat-model-tab-files"]');
+  expect(linkedFolders.mounts).toBe(0);
+  expect(wrapper.findAll('[role="tab"]')).toHaveLength(3);
+  expect(wrapper.find('[data-testid="llama-import-mode-opfs"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="llama-import-mode-host"]').trigger('click');
+  await vi.dynamicImportSettled();
+  await flushPromises();
+  expect(files.attributes('aria-selected')).toBe('true');
+  expect(wrapper.get('[data-testid="llama-import-mode-host"]').attributes('aria-pressed')).toBe('true');
+  expect(wrapper.get('[data-testid="llama-import-mode-temp"]').attributes('aria-pressed')).toBe('false');
+  expect(wrapper.get('[data-testid="chat-linked-folders-panel"]').attributes('inert')).toBeUndefined();
+  expect(preference.save).toHaveBeenLastCalledWith({ tab: 'linked-folders' });
+  expect(linkedFolders.mounts).toBe(1);
+  expect(wrapper.get('[data-testid="chat-model-source-viewport"]').element).toBe(viewport);
+  expect(wrapper.get('[data-testid="linked-source"]').attributes('disabled')).toBeUndefined();
   await files.trigger('keydown', { key: 'ArrowRight' });
   await flushPromises();
   const tab = wrapper.get('[data-testid="chat-model-tab-hugging-face"]');
@@ -194,13 +222,53 @@ it('keeps all sources inside the same viewport and moves focus with the selected
   expect(wrapper.get('[data-testid="chat-model-source-viewport"]').element).toBe(viewport);
   expect(wrapper.get('[data-testid="chat-model-picker-label"]').text()).toContain('Hugging Face');
   expect(wrapper.get(`#${files.attributes('aria-controls')}`).attributes('inert')).toBeDefined();
+  expect(wrapper.get('[data-testid="linked-source"]').attributes('disabled')).toBeDefined();
   expect(wrapper.get(`#${tab.attributes('aria-controls')}`).attributes('inert')).toBeUndefined();
   await tab.trigger('keydown', { key: 'End' });
   await flushPromises();
   expect(wrapper.get('[data-testid="chat-model-tab-saved"]').attributes('aria-selected')).toBe('true');
   expect(wrapper.get('[data-testid="chat-model-source-viewport"]').element).toBe(viewport);
+  await wrapper.get('[data-testid="chat-model-tab-saved"]').trigger('keydown', { key: 'Home' });
+  expect(files.attributes('aria-selected')).toBe('true');
+  expect(wrapper.get('[data-testid="llama-import-mode-host"]').attributes('aria-pressed')).toBe('true');
+  expect(linkedFolders.mounts).toBe(1);
+  await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
+  expect(wrapper.get('[data-testid="llama-import-mode-temp"]').attributes('aria-pressed')).toBe('true');
+  expect(preference.save).toHaveBeenLastCalledWith({ tab: 'files' });
+  expect(wrapper.get('[data-testid="chat-linked-folders-panel"]').attributes('inert')).toBeDefined();
   expect(state.accept).not.toHaveBeenCalled();
   expect(state.useRepositoryModel).not.toHaveBeenCalled();
+  expect(state.useModel).not.toHaveBeenCalled();
+});
+
+it('restores the folder-link entry without loading it until opened, then leads to saved models explicitly', async () => {
+  preference.tab = 'linked-folders';
+  const { state } = inputState();
+  const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' }, attachTo: document.body });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  expect(wrapper.get('[data-testid="chat-model-picker-label"]').text()).toBe('Link folder');
+  expect(linkedFolders.mounts).toBe(0);
+  expect(wrapper.find('[data-testid="linked-source"]').exists()).toBe(false);
+  await wrapper.setProps({ expansion: 'open' });
+  await vi.dynamicImportSettled();
+  await flushPromises();
+  expect(wrapper.get('[data-testid="chat-model-tab-files"]').attributes('aria-selected')).toBe('true');
+  expect(wrapper.get('[data-testid="llama-import-mode-host"]').attributes('aria-pressed')).toBe('true');
+  expect(linkedFolders.mounts).toBe(1);
+  expect(preference.save).not.toHaveBeenCalled();
+  expect(state.accept).not.toHaveBeenCalled();
+  expect(state.useModel).not.toHaveBeenCalled();
+  expect(state.useRepositoryModel).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="chat-linked-models-open-saved"]').trigger('click');
+  await flushPromises();
+  expect(wrapper.get('[data-testid="chat-model-tab-saved"]').attributes('aria-selected')).toBe('true');
+  expect(document.activeElement).toBe(wrapper.get('[data-testid="chat-model-tab-saved"]').element);
+  expect(preference.save).toHaveBeenLastCalledWith({ tab: 'saved' });
+  expect(wrapper.find('[data-testid="saved-source"]').exists()).toBe(true);
   expect(state.useModel).not.toHaveBeenCalled();
 });
 

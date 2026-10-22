@@ -21,15 +21,15 @@ it('defaults to files without saving or changing model settings', () => {
   expect(mocks.update).not.toHaveBeenCalled();
 });
 
-it('shares the remembered tab and preserves all other experimental and inference settings', async () => {
+it.each(['saved', 'linked-folders'] as const)('shares the remembered %s tab and preserves all other experimental and inference settings', async tab => {
   mocks.settings!.value.experimental = { locale: 'ja' };
   const before = { ...mocks.settings!.value };
   const view = useChatBrowserModelPickerTab();
   const other = useChatBrowserModelPickerTab();
-  const saving = view.remember({ tab: 'saved' });
-  expect(other.remembered.value).toBe('saved');
+  const saving = view.remember({ tab });
+  expect(other.remembered.value).toBe(tab);
   await saving;
-  expect(mocks.settings!.value).toEqual({ ...before, experimental: { locale: 'ja', chatBrowserModelPickerTab: 'saved' } });
+  expect(mocks.settings!.value).toEqual({ ...before, experimental: { locale: 'ja', chatBrowserModelPickerTab: tab } });
 });
 
 it('serializes rapid clicks while immediately showing the latest tab', async () => {

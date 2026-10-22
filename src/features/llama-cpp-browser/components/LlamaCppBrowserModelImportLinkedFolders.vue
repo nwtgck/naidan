@@ -13,5 +13,5 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <LinkedModelDirectories :view="linked.view" :disabled="disabled" />
-  <p v-if="failure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
+  <p v-if="failure" role="alert" tw-class="text-left text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
 </template>

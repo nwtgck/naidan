@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import TemporaryModelFolders from '@/components/TemporaryModelFolders.vue';
-import { computed, defineAsyncComponent, onUnmounted, ref, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, onUnmounted, ref, watch } from 'vue';
 import { AlertCircleIcon, FileUpIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
@@ -8,12 +8,12 @@ import { errorCode, type ErrorCode, type ModelDirectoryInput, type Progress } fr
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
 import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
 import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
+import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
 
 const LlamaCppBrowserModelImportLinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
 
 const props = defineProps<{ disabled: boolean }>();
 const emit = defineEmits<{ busy: [value: boolean], changed: [] }>();
-const id = useId();
 const active = ref<AbortController>();
 const importProgress = ref<Progress>();
 const percentage = computed(() => importProgress.value && importProgress.value.total > 0
@@ -23,6 +23,11 @@ let disposed = false;
 const mode = ref<'opfs' | 'host' | 'temp'>('opfs');
 const linkSupported = missingHostModelDirectoryApis().length === 0;
 const linkBusy = ref(false);
+const modes = computed(() => [
+  { mode: 'opfs' as const, label: lazyStrings.SHARED__model_import_save_in_browser(), availability: 'available' as const },
+  { mode: 'host' as const, label: lazyStrings.SHARED__model_import_link_folder(), availability: linkSupported ? 'available' as const : 'unavailable' as const },
+  { mode: 'temp' as const, label: lazyStrings.SHARED__model_import_use_temporarily(), availability: 'available' as const },
+]);
 // Switching modes is a local presentation choice, not a persisted preference.
 // In particular an unsupported link option stays keyboard/click selectable:
 // only actual file operations honor the parent's disabled state, so explanations
@@ -154,11 +159,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <FileUpIcon tw-class="w-5 h-5 text-blue-500" />
         <span tw-class="text-sm font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.llamaCppBrowser__gguf_model_files() }}</span>
       </legend>
-      <div role="group" :aria-label="lazyStrings.SHARED__model_import_how_to_use_files()" tw-class="grid grid-cols-1 sm:grid-cols-3 gap-1 rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-        <button type="button" :aria-pressed="mode === 'opfs'" data-testid="llama-import-mode-opfs" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'opfs' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'opfs'">{{ lazyStrings.SHARED__model_import_save_in_browser() }}</button>
-        <button type="button" :aria-pressed="mode === 'host'" :aria-describedby="!linkSupported ? `${id}-link-unavailable` : undefined" data-testid="llama-import-mode-host" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'host' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300', !linkSupported ? 'opacity-50' : 'opacity-100']" @click="mode = 'host'">{{ lazyStrings.SHARED__model_import_link_folder() }}<span v-if="!linkSupported" :id="`${id}-link-unavailable`" tw-class="block text-[10px] font-normal">{{ lazyStrings.SHARED__model_import_unavailable() }}</span></button>
-        <button type="button" :aria-pressed="mode === 'temp'" data-testid="llama-import-mode-temp" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'temp' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'temp'">{{ lazyStrings.SHARED__model_import_use_temporarily() }}</button>
-      </div>
+      <LlamaCppBrowserModelImportModes v-model="mode" :modes="modes" :disabled="active !== undefined || linkBusy" />
       <LlamaCppBrowserModelImportLinkedFolders v-if="mode === 'host'" :disabled="disabled || active !== undefined" @busy="linkBusy = $event; emit('busy', $event)" @changed="emit('changed')" />
       <LlamaCppBrowserModelFileInput v-if="mode !== 'host'" :disabled="disabled || active !== undefined" :mode="mode" layout="compact" @files="importFile({ event: $event })" @directory="importDirectory({ event: $event })" @drop-files="dropFiles({ event: $event })" />
     </fieldset>

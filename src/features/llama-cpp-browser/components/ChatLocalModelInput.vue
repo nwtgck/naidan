@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, shallowRef, useId, watch } from 'vue';
-import { ChevronDownIcon, CpuIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
+import { ArrowRightIcon, ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import { localModelDisplayName } from '@/components/browser-model-presentation';
@@ -8,9 +8,13 @@ import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/fea
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
+import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
+import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
+import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
 import { useChatBrowserModelPickerTab, type ChatBrowserModelPickerTab } from '@/features/llama-cpp-browser/composables/useChatBrowserModelPickerTab';
 const RepositoryPicker = defineAsyncComponent(() => import('./LlamaCppBrowserRepositoryPicker.vue'));
 const SavedModelPicker = defineAsyncComponent(() => import('./LlamaCppBrowserSavedModelPicker.vue'));
+const LinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
 
 const props = defineProps<{ state: ChatLocalModelUi, expansion: 'closed' | 'open', availability: 'available' | 'unavailable' }>();
 const emit = defineEmits<{ 'update:expansion': [value: 'closed' | 'open'], 'model-drop-area-active': [] }>();
@@ -35,6 +39,26 @@ const failure = computed(() => {
 
 const preference = useChatBrowserModelPickerTab();
 const activeTab = ref<ChatBrowserModelPickerTab>(preference.remembered.value);
+// Remember the selected file mode as a leaf in the existing preference. Both
+// leaves share the Files source tab; opening either one never selects a model.
+const fileTab = ref<'files' | 'linked-folders'>('files');
+const activeSource = computed(() => sourceTab({ tab: activeTab.value }));
+const linkSupported = missingHostModelDirectoryApis().length === 0;
+const fileMode = computed(() => {
+  const tab = fileTab.value;
+  switch (tab) {
+  case 'files': return 'temp';
+  case 'linked-folders': return 'host';
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+const fileModes = computed(() => [
+  { mode: 'temp' as const, label: lazyStrings.ChatLocalModelInput__load_model(), availability: 'available' as const },
+  { mode: 'host' as const, label: lazyStrings.SHARED__model_import_link_folder(), availability: linkSupported ? 'available' as const : 'unavailable' as const },
+]);
 const visited = shallowRef(new Set<ChatBrowserModelPickerTab>());
 const visibleTab = computed(() => {
   switch (props.expansion) {
@@ -51,14 +75,35 @@ const tabs = computed(() => [
   { key: 'hugging-face' as const, label: 'Hugging Face', icon: SearchIcon, action: lazyStrings.ChatLocalModelInput__find_a_model_on_hugging_face() },
   { key: 'saved' as const, label: lazyStrings.ChatLocalModelInput__saved_models(), icon: HardDriveIcon, action: lazyStrings.ChatLocalModelInput__use_a_saved_model() },
 ]);
-const currentTab = computed(() => tabs.value.find(tab => tab.key === visibleTab.value)!);
+const currentTab = computed(() => {
+  const tab = visibleTab.value;
+  switch (tab) {
+  case 'linked-folders': return { icon: FolderPlusIcon, action: lazyStrings.SHARED__model_import_link_folder() };
+  case 'files': case 'hugging-face': case 'saved': return tabs.value.find(choice => choice.key === tab)!;
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
 const disabled = computed(() => props.availability === 'unavailable' || props.state.operation.value !== undefined);
 watch(() => props.expansion, expansion => {
   switch (expansion) {
-  case 'open':
-    activeTab.value = preference.remembered.value;
+  case 'open': {
+    const remembered = preference.remembered.value;
+    activeTab.value = remembered;
+    switch (remembered) {
+    case 'files': case 'linked-folders': fileTab.value = remembered;
+      break;
+    case 'hugging-face': case 'saved': break;
+    default: {
+      const exhaustive: never = remembered;
+      throw new Error(String(exhaustive));
+    }
+    }
     visited.value = new Set(visited.value).add(activeTab.value);
     break;
+  }
   case 'closed': break;
   default: {
     const exhaustive: never = expansion;
@@ -80,21 +125,61 @@ function toggleExpansion(): void {
   }
 }
 
-function selectTab({ tab, focus }: { tab: ChatBrowserModelPickerTab, focus: boolean }): void {
+function sourceTab({ tab }: { tab: ChatBrowserModelPickerTab }): 'files' | 'hugging-face' | 'saved' {
+  switch (tab) {
+  case 'files': case 'linked-folders': return 'files';
+  case 'hugging-face': case 'saved': return tab;
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+function selectTab({ tab, focus }: { tab: 'files' | 'hugging-face' | 'saved', focus: boolean }): void {
   if (disabled.value) {
     return;
   }
-  activeTab.value = tab;
-  visited.value = new Set(visited.value).add(tab);
+  let next: ChatBrowserModelPickerTab;
+  switch (tab) {
+  case 'files': next = fileTab.value;
+    break;
+  case 'hugging-face': case 'saved': next = tab;
+    break;
+  default: {
+    const exhaustive: never = tab;
+    throw new Error(String(exhaustive));
+  }
+  }
+  activeTab.value = next;
+  visited.value = new Set(visited.value).add(next);
   // Storage reports persistence errors; switching the visible source is immediate.
-  void preference.remember({ tab }).catch(() => {});
+  void preference.remember({ tab: next }).catch(() => {});
   if (focus) {
     document.getElementById(`${panelId}-${tab}-tab`)?.focus();
   }
 }
 
+function selectFileMode({ mode }: { mode: 'opfs' | 'host' | 'temp' }): void {
+  if (disabled.value) {
+    return;
+  }
+  switch (mode) {
+  case 'temp': fileTab.value = 'files';
+    break;
+  case 'host': fileTab.value = 'linked-folders';
+    break;
+  case 'opfs': return;
+  default: {
+    const exhaustive: never = mode;
+    throw new Error(String(exhaustive));
+  }
+  }
+  selectTab({ tab: 'files', focus: false });
+}
+
 function tabKeydown({ event }: { event: KeyboardEvent }): void {
-  const index = tabs.value.findIndex(tab => tab.key === activeTab.value);
+  const index = tabs.value.findIndex(tab => tab.key === activeSource.value);
   let next: number;
   switch (event.key) {
   case 'ArrowRight': next = (index + 1) % tabs.value.length;
@@ -153,13 +238,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <template v-else>
             <div role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
-              <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeTab === tab.key" :tabindex="activeTab === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeTab === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
-              <span aria-hidden="true" :tw-class="['pointer-events-none absolute bottom-0 left-0 h-0.5 w-1/3 rounded-full bg-blue-500 transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', activeTab === 'files' ? 'translate-x-0' : activeTab === 'hugging-face' ? 'translate-x-full' : 'translate-x-[200%]']" />
+              <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeSource === tab.key" :tabindex="activeSource === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeSource === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
+              <span aria-hidden="true" :tw-class="['pointer-events-none absolute bottom-0 left-0 h-0.5 w-1/3 rounded-full bg-blue-500 transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', activeSource === 'files' ? 'translate-x-0' : activeSource === 'hugging-face' ? 'translate-x-full' : 'translate-x-[200%]']" />
             </div>
             <div data-testid="chat-model-source-viewport" tw-class="relative h-[min(24rem,42dvh)] min-h-0 overflow-hidden">
               <div data-testid="chat-model-source-panels" tw-class="relative h-full">
-                <div :id="`${panelId}-files-panel`" role="tabpanel" :aria-labelledby="`${panelId}-files-tab`" :inert="activeTab !== 'files' || undefined" :aria-hidden="activeTab !== 'files'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']" data-testid="chat-local-model-drop-zone">
-                  <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" layout="expanded" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
+                <div :id="`${panelId}-files-panel`" role="tabpanel" :aria-labelledby="`${panelId}-files-tab`" :inert="activeSource !== 'files' || undefined" :aria-hidden="activeSource !== 'files'" :tw-class="['absolute inset-0 flex flex-col gap-3 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeSource === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']" data-testid="chat-local-model-drop-zone">
+                  <LlamaCppBrowserModelImportModes :model-value="fileMode" :modes="fileModes" :disabled="disabled || expansion === 'closed' || activeSource !== 'files'" tw-class="mx-auto w-full max-w-sm shrink-0" @update:model-value="selectFileMode({ mode: $event })" />
+                  <div tw-class="relative min-h-0 flex-1">
+                    <div :inert="fileTab !== 'files' || undefined" :aria-hidden="fileTab !== 'files'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']">
+                      <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" layout="expanded" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
+                    </div>
+                    <div data-testid="chat-linked-folders-panel" :inert="fileTab !== 'linked-folders' || undefined" :aria-hidden="fileTab !== 'linked-folders'" :tw-class="['absolute inset-0 space-y-3 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'linked-folders' ? 'opacity-100' : 'pointer-events-none opacity-0']">
+                      <div tw-class="mx-auto w-full max-w-xl space-y-3">
+                        <LinkedFolders v-if="visited.has('linked-folders')" :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" />
+                        <div tw-class="flex justify-end"><LlamaCppBrowserModelActionButton :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" data-testid="chat-linked-models-open-saved" @click="selectTab({ tab: 'saved', focus: true })">{{ lazyStrings.ChatLocalModelInput__use_a_saved_model() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /></LlamaCppBrowserModelActionButton></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div :id="`${panelId}-hugging-face-panel`" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="visited.has('hugging-face')" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @select="state.useRepositoryModel({ target: $event })" /></div>
                 <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="visited.has('saved')" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>

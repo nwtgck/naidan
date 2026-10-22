@@ -19,11 +19,11 @@ import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp }
 import { SHARED__model_folders_choose_folder_above_owner } from '@/strings/messages/SHARED__model_folders_choose_folder_above_owner/ja';
 import { SHARED__model_folders_choose_one_parent_folder_not_a_file } from '@/strings/messages/SHARED__model_folders_choose_one_parent_folder_not_a_file/ja';
 import { SHARED__model_folders_folder_access } from '@/strings/messages/SHARED__model_folders_folder_access/ja';
-import { SHARED__model_folders_link_folder_to_download } from '@/strings/messages/SHARED__model_folders_link_folder_to_download/ja';
 import { SHARED__model_folders_linked_folders_unavailable } from '@/strings/messages/SHARED__model_folders_linked_folders_unavailable/ja';
 import { SHARED__model_folders_reconnect } from '@/strings/messages/SHARED__model_folders_reconnect/ja';
 import { SHARED__model_folders_unlink } from '@/strings/messages/SHARED__model_folders_unlink/ja';
 import { SHARED__model_folders_unlink_keeps_files } from '@/strings/messages/SHARED__model_folders_unlink_keeps_files/ja';
+import { SHARED__model_folders_use_models_directly_from_your_device } from '@/strings/messages/SHARED__model_folders_use_models_directly_from_your_device/ja';
 import { SHARED__model_folders_use_the_folder_button_to_link_this_folder } from '@/strings/messages/SHARED__model_folders_use_the_folder_button_to_link_this_folder/ja';
 import { SHARED__model_import_how_to_use_files } from '@/strings/messages/SHARED__model_import_how_to_use_files/ja';
 import { SHARED__model_import_link_folder } from '@/strings/messages/SHARED__model_import_link_folder/ja';
@@ -260,6 +260,7 @@ import { ChatInput__unlink_folder } from '@/strings/messages/ChatInput__unlink_f
 import { ChatLocalModelInput__checking_files } from '@/strings/messages/ChatLocalModelInput__checking_files/ja';
 import { ChatLocalModelInput__files } from '@/strings/messages/ChatLocalModelInput__files/ja';
 import { ChatLocalModelInput__find_a_model_on_hugging_face } from '@/strings/messages/ChatLocalModelInput__find_a_model_on_hugging_face/ja';
+import { ChatLocalModelInput__load_model } from '@/strings/messages/ChatLocalModelInput__load_model/ja';
 import { ChatLocalModelInput__model_source } from '@/strings/messages/ChatLocalModelInput__model_source/ja';
 import { ChatLocalModelInput__pause_download } from '@/strings/messages/ChatLocalModelInput__pause_download/ja';
 import { ChatLocalModelInput__saved_models } from '@/strings/messages/ChatLocalModelInput__saved_models/ja';
@@ -3059,11 +3060,11 @@ export const catalog = {
   SHARED__model_folders_choose_folder_above_owner,
   SHARED__model_folders_choose_one_parent_folder_not_a_file,
   SHARED__model_folders_folder_access,
-  SHARED__model_folders_link_folder_to_download,
   SHARED__model_folders_linked_folders_unavailable,
   SHARED__model_folders_reconnect,
   SHARED__model_folders_unlink,
   SHARED__model_folders_unlink_keeps_files,
+  SHARED__model_folders_use_models_directly_from_your_device,
   SHARED__model_folders_use_the_folder_button_to_link_this_folder,
   SHARED__model_import_how_to_use_files,
   SHARED__model_import_link_folder,
@@ -3300,6 +3301,7 @@ export const catalog = {
   ChatLocalModelInput__checking_files,
   ChatLocalModelInput__files,
   ChatLocalModelInput__find_a_model_on_hugging_face,
+  ChatLocalModelInput__load_model,
   ChatLocalModelInput__model_source,
   ChatLocalModelInput__pause_download,
   ChatLocalModelInput__saved_models,
