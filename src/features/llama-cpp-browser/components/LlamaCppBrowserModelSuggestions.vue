@@ -58,7 +58,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <span tw-class="mr-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__memory() }}</span>
               <button v-for="choice in suggestedMemoryFilters" :key="choice" type="button" :data-testid="`llama-suggestions-memory-${choice}`" :aria-pressed="memory === choice" :tw-class="['rounded-md border px-2 py-1 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 motion-reduce:transition-none', memory === choice ? 'border-blue-200/80 bg-blue-50/70 text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400' : 'border-gray-200/80 bg-white/70 text-gray-500 hover:bg-gray-100 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-400 dark:hover:bg-gray-800']" @click="memory = choice">{{ choice === 'all' ? lazyStrings.llamaCppBrowserDownloads__all() : `${choice} GiB` }}</button>
             </div>
-            <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled" />
+            <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled" tw-class="ml-auto" />
           </div>
           <ul tw-class="max-h-[28rem] space-y-2 overflow-y-auto overscroll-contain pr-1" data-testid="llama-suggestions-list">
             <li v-for="suggestion in entries" v-show="visible({ suggestion })" :key="suggestion.id">

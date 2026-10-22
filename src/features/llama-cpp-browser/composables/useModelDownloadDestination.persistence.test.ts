@@ -12,6 +12,7 @@ import { useHostModelDirectories } from '@/composables/useHostModelDirectories';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue';
+import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
 import { createDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY, useModelDownloadDestination } from './useModelDownloadDestination';
 
@@ -245,9 +246,9 @@ describe('persisted shared LM download destination', () => {
     await flushPromises();
     expect(first.state.destination.value).toEqual({ kind: 'opfs' });
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser).toBeUndefined();
-    await first.wrapper.get('[data-testid="llama-download-destination"]').setValue('host:root-a');
+    await downloadDestinationControl({ view: first.wrapper }).setValue('host:root-a');
     await flushPromises();
-    expect(second.wrapper.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('host:root-a');
+    expect(downloadDestinationControl({ view: second.wrapper }).props('modelValue')).toBe('host:root-a');
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-a' });
     expect((await storageService.loadSettings())?.experimental?.browserImageGeneration?.modelDownloadDestination).toEqual(imageTarget);
     unmountAll();
@@ -363,7 +364,8 @@ describe('persisted shared LM download destination', () => {
     await reloadSettings();
     const restored = create();
     await flushPromises();
-    expect(restored.wrapper.get('[data-testid="llama-missing-download-destination"]').text()).toContain('root-a');
+    expect(downloadDestinationControl({ view: restored.wrapper }).get('button').text()).toContain('root-a');
+    expect(downloadDestinationControl({ view: restored.wrapper }).props('options')).toContainEqual(expect.objectContaining({ value: 'host:root-a', disabled: true }));
     await expect(restored.state.authorize({ destination: restored.state.destination.value })).rejects.toThrow('Reconnect');
     expect(restored.state.destination.value).toEqual({ kind: 'host', directoryId: 'root-a' });
   });
@@ -386,7 +388,7 @@ describe('persisted shared LM download destination', () => {
     await flushPromises();
     expect(restored.state.view.destination.value).toBe('root-a');
     expect(restored.state.unavailable.value).toBe(true);
-    expect(restored.wrapper.get<HTMLOptionElement>('option[value="host:root-a"]').element.disabled).toBe(true);
+    expect(downloadDestinationControl({ view: restored.wrapper }).props('options')).toContainEqual(expect.objectContaining({ value: 'host:root-a', disabled: true }));
     expect((await storageService.loadSettings())?.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'host', directoryId: 'root-a' });
   });
 
@@ -405,9 +407,9 @@ describe('persisted shared LM download destination', () => {
     await reloadSettings();
     const first = create(), second = create();
     await flushPromises();
-    const selector = first.wrapper.get<HTMLSelectElement>('[data-testid="llama-download-destination"]');
-    expect(selector.element.value).toBe('host:opfs');
-    expect(selector.element.selectedOptions[0]?.textContent).toContain(root.name);
+    const selector = downloadDestinationControl({ view: first.wrapper });
+    expect(selector.props('modelValue')).toBe('host:opfs');
+    expect(selector.get('button').text()).toContain(root.name);
     expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'opfs' });
     const authorized = await first.state.authorize({ destination: first.state.destination.value });
     expect(authorized).toEqual({ destination: { kind: 'host', directoryId: 'opfs' }, expectedRoot: root });
@@ -437,13 +439,14 @@ describe('persisted shared LM download destination', () => {
     handles.delete('opfs');
     window.dispatchEvent(new Event('focus'));
     await flushPromises();
-    expect(selector.element.value).toBe('host:opfs');
+    expect(selector.props('modelValue')).toBe('host:opfs');
     expect(first.state.unavailable.value).toBe(true);
     await expect(first.state.authorize({ destination: first.state.destination.value })).rejects.toThrow('Reconnect');
     await first.state.view.remove({ id: 'opfs' });
     await flushPromises();
-    expect(selector.element.value).toBe('host:opfs');
-    expect(first.wrapper.get('[data-testid="llama-missing-download-destination"]').text()).toContain('opfs');
+    expect(selector.props('modelValue')).toBe('host:opfs');
+    expect(selector.get('button').text()).toContain('opfs');
+    expect(selector.props('options')).toContainEqual(expect.objectContaining({ value: 'host:opfs', disabled: true }));
     expect(first.state.destination.value).toEqual({ kind: 'host', directoryId: 'opfs' });
   });
 

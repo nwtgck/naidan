@@ -32,7 +32,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void,
 }>();
-defineSlots<{ option({ option }: { option: SettingsSelectOption }): unknown }>();
+defineSlots<{
+  leading?({ option }: { option: SettingsSelectOption | undefined }): unknown,
+  option({ option }: { option: SettingsSelectOption }): unknown,
+}>();
 
 const selected = computed(() => props.options.find(option => option.value === props.modelValue));
 const triggerRef = ref<HTMLButtonElement | null>(null);
@@ -184,6 +187,7 @@ defineExpose({
     @keydown.down.prevent="open || toggle()"
     @keydown.up.prevent="open || toggle()"
   >
+    <slot name="leading" :option="selected" />
     <span :class="{ 'settings-select-content-toolbar': presentation === 'toolbar' || presentation === 'inline' }" tw-class="block min-w-0 flex-1">
       <span class="settings-select-value" :tw-class="['block truncate', presentation === 'inline' ? 'text-[11px] font-normal leading-4 text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200' : size === 'compact' ? 'text-xs font-medium leading-4 text-gray-800 dark:text-gray-100' : 'text-sm font-medium leading-5 text-gray-800 dark:text-gray-100']">{{ selected?.label ?? modelValue }}</span>
       <span v-if="presentation !== 'toolbar' && presentation !== 'inline'" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5">

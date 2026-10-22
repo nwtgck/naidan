@@ -2,13 +2,12 @@
 import { computed, onUnmounted, ref } from 'vue';
 import { FolderPlusIcon } from 'lucide-vue-next';
 import { hostModelDirectoryLabel } from '@/logic/host-model-directories';
-import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
 import { lazyStrings } from '@/strings';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
 
 const props = defineProps<{ view: HostModelDirectoriesView, disabled: boolean, reconnectDisabled?: boolean, layoutFile?: { repository: string, path: string } }>();
 const { supported, entries, busy, destination } = props.view;
-const unavailableReason = computed(() => lazyStrings.SHARED__model_folders_linked_folders_unavailable({ apis: missingHostModelDirectoryApis().join(', ') }));
+const unavailableReason = computed(() => lazyStrings.SHARED__model_folders_linked_folders_unavailable());
 const layout = computed(() => {
   const root = entries.value.find(entry => entry.id === destination.value);
   const segments = props.layoutFile

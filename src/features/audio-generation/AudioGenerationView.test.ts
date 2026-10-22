@@ -1,4 +1,5 @@
 import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
+import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
 import { audioModelCatalog } from './model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
@@ -600,7 +601,8 @@ describe('catalog placement and continuing previews', () => {
     expect(catalog.exists()).toBe(true);
     expect(catalog.props('suggestions')).toEqual(audioModelCatalog);
     expect(catalog.props('selectionAction')).toBe('select');
-    expect(catalog.get<HTMLSelectElement>('[data-testid="llama-download-destination"]').element.value).toBe('opfs');
+    expect(downloadDestinationControl({ view: catalog }).props('modelValue')).toBe('opfs');
+    expect(catalog.get('[data-testid="llama-manage-model-directories"]').attributes('aria-expanded')).toBe('false');
     expect(catalog.element.closest('[data-testid="audio-model-manager"]')).toBeNull();
     expect(view.get('[data-testid="audio-model-manager"]').findComponent(LlamaCppBrowserModelSuggestions).exists()).toBe(false);
     expect(view.find('[data-testid="llama-repository-catalog"]').exists()).toBe(false);

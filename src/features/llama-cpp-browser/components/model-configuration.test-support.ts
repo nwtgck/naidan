@@ -13,6 +13,10 @@ export function runtimeProfileControl({ view }: { view: VueWrapper }) {
   return selectControl({ view, testId: 'llama-cpp-browser-profile' });
 }
 
+export function downloadDestinationControl({ view }: { view: VueWrapper }) {
+  return selectControl({ view, testId: 'llama-download-destination' });
+}
+
 function selectControl({ view, testId }: { view: VueWrapper, testId: string }) {
   const control = view.findAllComponents<typeof SettingsSelect>(SettingsSelect).find(candidate => candidate.vm.$attrs['data-testid'] === testId);
   if (!control) {
