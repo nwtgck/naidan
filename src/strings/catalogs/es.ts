@@ -1171,7 +1171,6 @@ import { LlamaCppBrowserQuantizationPicker__fetch_options } from '@/strings/mess
 import { LlamaCppBrowserQuantizationPicker__fetching_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetching_options/es';
 import { LlamaCppBrowserRepositoryPicker__back_to_search } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__back_to_search/es';
 import { LlamaCppBrowserRepositoryPicker__check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__check_repository/es';
-import { LlamaCppBrowserRepositoryPicker__connect_to_hugging_face_to_check_quantizations_and_size } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__connect_to_hugging_face_to_check_quantizations_and_size/es';
 import { LlamaCppBrowserRepositoryPicker__could_not_check_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__could_not_check_repository/es';
 import { LlamaCppBrowserRepositoryPicker__saved } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__saved/es';
 import { LlamaCppBrowserRepositoryPicker__specify_a_repository } from '@/strings/messages/LlamaCppBrowserRepositoryPicker__specify_a_repository/es';
@@ -4213,7 +4212,6 @@ export const catalog = {
   LlamaCppBrowserQuantizationPicker__fetching_options,
   LlamaCppBrowserRepositoryPicker__back_to_search,
   LlamaCppBrowserRepositoryPicker__check_repository,
-  LlamaCppBrowserRepositoryPicker__connect_to_hugging_face_to_check_quantizations_and_size,
   LlamaCppBrowserRepositoryPicker__could_not_check_repository,
   LlamaCppBrowserRepositoryPicker__saved,
   LlamaCppBrowserRepositoryPicker__specify_a_repository,

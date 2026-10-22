@@ -359,8 +359,8 @@ describe('local GGUF manager', () => {
     expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.attributes('title'))).toEqual(variants.map(({ path }) => path));
     for (const [index, { path }] of variants.entries()) {
       const details = wrapper.get(`[data-testid="llama-imported-model-details-${models[index]!.modelId}"]`);
-      expect((details.element as HTMLDetailsElement).open).toBe(false);
-      expect(details.get('summary').text()).not.toContain(path);
+      expect(details.attributes('aria-hidden')).toBe('true');
+      expect(wrapper.get(`[data-testid="llama-imported-model-details-toggle-${models[index]!.modelId}"]`).text()).not.toContain(path);
       expect(details.get('[data-testid="llama-imported-model-detail-file"]').text()).toBe(path);
     }
     await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('host/MyModels1/alice/Model-GGUF:Q8_0');
@@ -1118,25 +1118,32 @@ describe('local-model chat group action', () => {
     expect(createChatGroup).not.toHaveBeenCalled();
   });
 
-  it('keeps deletion in native details and opens them without extra fetching or selecting a model', async () => {
+  it('keeps deletion in collapsible details and opens them without extra fetching or selecting a model', async () => {
     vi.mocked(llamaCppBrowserService.listModelEntries).mockResolvedValue([storedModel]);
     const wrapper = render();
     await flushPromises();
     const details = wrapper.get(`[data-testid="llama-imported-model-details-${storedModel.modelId}"]`);
     const summary = wrapper.get(`[data-testid="llama-imported-model-details-toggle-${storedModel.modelId}"]`);
-    expect((details.element as HTMLDetailsElement).open).toBe(false);
+    expect(details.attributes('aria-hidden')).toBe('true');
+    expect(details.attributes('inert')).toBeDefined();
+    expect(summary.attributes('aria-expanded')).toBe('false');
+    expect(summary.attributes('aria-controls')).toBe(details.attributes('id'));
     expect(summary.text()).toContain('GGUF');
     expect(summary.text()).toContain('Details');
     expect(details.get('[data-testid="llama-imported-model-detail-name"]').text()).toBe(storedModel.modelId);
     expect(details.find('[data-testid="llama-imported-model-detail-folder"]').exists()).toBe(false);
-    expect(details.get(`[data-testid="llama-cpp-browser-delete-${storedModel.modelId}"]`).element.closest('details')).toBe(details.element);
+    expect(details.find(`[data-testid="llama-cpp-browser-delete-${storedModel.modelId}"]`).exists()).toBe(true);
     await summary.trigger('click');
-    expect((details.element as HTMLDetailsElement).open).toBe(true);
+    expect(details.attributes('aria-hidden')).toBe('false');
+    expect(details.attributes('inert')).toBeUndefined();
+    expect(summary.attributes('aria-expanded')).toBe('true');
     expect(llamaCppBrowserService.listModelEntries).toHaveBeenCalledOnce();
     expect(prepareModelRemoval).not.toHaveBeenCalled();
     expect(wrapper.emitted('modelSelected')).toBeUndefined();
     await summary.trigger('click');
-    expect((details.element as HTMLDetailsElement).open).toBe(false);
+    expect(details.attributes('aria-hidden')).toBe('true');
+    expect(details.attributes('inert')).toBeDefined();
+    expect(summary.attributes('aria-expanded')).toBe('false');
   });
 
   it('shows linked model information from the existing inventory when details are expanded', async () => {
@@ -1151,7 +1158,7 @@ describe('local-model chat group action', () => {
     await flushPromises();
     await wrapper.get(`[data-testid="llama-imported-model-details-toggle-${linked.modelId}"]`).trigger('click');
     const details = wrapper.get(`[data-testid="llama-imported-model-details-${linked.modelId}"]`);
-    expect((details.element as HTMLDetailsElement).open).toBe(true);
+    expect(details.attributes('aria-hidden')).toBe('false');
     expect(details.get('[data-testid="llama-imported-model-detail-name"]').text()).toBe(linked.modelId);
     expect(details.text()).toContain('Model ID');
     expect(details.text()).not.toContain('Model name');

@@ -154,7 +154,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <input :id="`${id}-repository`" v-model="input" data-testid="chat-model-repository" placeholder="owner/model" :disabled="disabled" tw-class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" @keydown.enter="submit({ event: $event })" />
         <button type="button" data-testid="chat-model-repository-check" :disabled="disabled || !input.trim() || active !== undefined" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-blue-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-blue-400 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="checkRepository({ value: input })"><Loader2Icon v-if="active" tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />{{ lazyStrings.LlamaCppBrowserRepositoryPicker__check_repository() }}</button>
       </div>
-      <p tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__connect_to_hugging_face_to_check_quantizations_and_size() }}</p>
     </div>
     <p v-if="error" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__could_not_check_repository() }}</p>
     <section v-if="catalog" data-testid="chat-model-configuration" tw-class="space-y-4">
