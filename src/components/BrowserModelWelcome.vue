@@ -42,7 +42,7 @@ const modelCards = computed(() => {
   });
 });
 const discoveryHint = ref<'hidden' | 'visible'>('hidden');
-const swipeStart = ref<{ pointerId: number, x: number, y: number }>();
+const swipeStart = ref<{ pointerId: number, x: number, y: number, phase: 'pending' | 'dragging' }>();
 const swipeOffset = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
@@ -84,10 +84,12 @@ function activateCard({ position }: { position: ModelCardPosition }): void {
 }
 
 function beginSwipe({ event }: { event: PointerEvent }): void {
-  if (disabled.value || event.button !== 0) {
+  if (disabled.value || event.button !== 0 || !event.isPrimary) {
     return;
   }
-  swipeStart.value = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+  cancelSwipe();
+  suppressStartUntil = 0;
+  swipeStart.value = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, phase: 'pending' };
 }
 
 function cancelSwipe(): void {
@@ -101,14 +103,30 @@ function moveSwipe({ event }: { event: PointerEvent }): void {
     return;
   }
   const distance = event.clientX - start.x;
-  if (Math.abs(event.clientY - start.y) > Math.abs(distance) && Math.abs(event.clientY - start.y) > 10) {
-    cancelSwipe();
-    return;
+  const vertical = event.clientY - start.y;
+  switch (start.phase) {
+  case 'pending':
+    if (Math.max(Math.abs(distance), Math.abs(vertical)) < 8) {
+      return;
+    }
+    if (Math.abs(vertical) >= Math.abs(distance)) {
+      cancelSwipe();
+      return;
+    }
+    start.phase = 'dragging';
+    // Capture only after horizontal intent is clear, so an ordinary tap still
+    // targets its button and vertical movement remains native page scrolling.
+    if (event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    break;
+  case 'dragging': break;
+  default: {
+    const exhaustive: never = start.phase;
+    throw new Error(String(exhaustive));
+  }
   }
   swipeOffset.value = distance / (1 + Math.abs(distance) / 240);
-  if (Math.abs(distance) > 6 && event.currentTarget instanceof HTMLElement) {
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
 }
 
 function finishSwipe({ event }: { event: PointerEvent }): void {
@@ -118,12 +136,32 @@ function finishSwipe({ event }: { event: PointerEvent }): void {
   }
   const distance = event.clientX - start.x;
   cancelSwipe();
-  // A browser click following a swipe must not start the newly centered model.
-  if (Math.abs(distance) > 8) {
-    suppressStartUntil = Date.now() + 400;
+  switch (start.phase) {
+  case 'pending': return;
+  case 'dragging': break;
+  default: {
+    const exhaustive: never = start.phase;
+    throw new Error(String(exhaustive));
   }
+  }
+  // A browser click following a swipe must not start the newly centered model.
+  suppressStartUntil = Date.now() + 400;
   if (Math.abs(distance) >= 40) {
     moveModel({ step: distance < 0 ? 1 : -1 });
+  }
+}
+
+function cancelPointerSwipe({ event }: { event: PointerEvent }): void {
+  if (swipeStart.value?.pointerId === event.pointerId) {
+    cancelSwipe();
+  }
+}
+
+function loseSwipeCapture({ event }: { event: PointerEvent }): void {
+  // Touch implicitly captures the pressed card first. Its lost-capture event
+  // bubbles here when capture moves to the deck; that handoff is not a cancel.
+  if (event.target === event.currentTarget) {
+    cancelPointerSwipe({ event });
   }
 }
 
@@ -176,7 +214,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           </div>
           <p v-if="selected" role="status" tw-class="sr-only">{{ selected.suggestion.name }} {{ modelSize({ bytes: selected.quantization.approximateModelBytes }) }}</p>
           <div class="model-stage" tw-class="relative isolate">
-            <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart !== undefined }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative touch-pan-y select-none" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelSwipe" @lostpointercapture="cancelSwipe" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
+            <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart?.phase === 'dragging' }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative select-none [touch-action:pan-y_pinch-zoom]" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelPointerSwipe({ event: $event })" @lostpointercapture="loseSwipeCapture({ event: $event })" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
               <button v-for="card in modelCards" :key="card.model.id" type="button" class="model-deck-card" :class="{ 'model-deck-card-selected': card.position === 'selected', 'model-deck-card-previous': card.position === 'previous', 'model-deck-card-next': card.position === 'next', 'model-deck-card-hidden': card.position === 'hidden' }" :style="{ '--model-offset': card.offset }" :data-testid="card.position === 'selected' ? 'start-model' : card.position === 'hidden' ? undefined : `peek-${card.position}`" :aria-label="card.position === 'selected' ? lazyStrings.BrowserModelWelcome__start_with_model({ name: card.model.name }) : lazyStrings.BrowserModelWelcome__select_model({ name: card.model.name })" :aria-hidden="card.position === 'hidden' ? true : undefined" :aria-busy="card.position === 'selected' && startStatus === 'starting'" :disabled="disabled || card.position === 'hidden'" :tabindex="card.position === 'hidden' ? -1 : 0" tw-class="group overflow-hidden rounded-2xl border border-gray-200/70 dark:border-gray-700/60 bg-white/50 dark:bg-gray-800/40 text-left hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-gray-800 focus-visible:bg-white dark:focus-visible:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default" @click="activateCard({ position: card.position })">
                 <div class="model-deck-preview model-deck-preview-content" aria-hidden="true" tw-class="absolute inset-x-0 top-4 bottom-10 flex flex-col justify-center gap-2"><p tw-class="whitespace-nowrap text-[10px] text-gray-400 dark:text-gray-500">{{ card.model.developer }}</p><p class="model-deck-preview-name" tw-class="whitespace-nowrap font-semibold leading-tight tracking-tight text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 group-focus-visible:text-gray-700 dark:group-focus-visible:text-gray-200 transition-colors duration-300 motion-reduce:transition-none">{{ card.model.name }}</p></div>
                 <span class="model-deck-preview model-deck-preview-action" aria-hidden="true" tw-class="absolute inset-x-0 bottom-4 flex items-center justify-center gap-1 text-[11px] text-gray-400 dark:text-gray-500"><ArrowRightIcon v-if="card.position === 'previous'" tw-class="h-3 w-3" />{{ lazyStrings.BrowserModelWelcome__select() }}<ArrowLeftIcon v-if="card.position === 'next'" tw-class="h-3 w-3" /></span>
