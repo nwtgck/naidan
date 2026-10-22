@@ -75,7 +75,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div v-if="state.visible.value" data-testid="model-launch-card" tw-class="w-full pointer-events-auto">
-    <BrowserModelPreparation :model="model" :entry="state.homeOriginId.value === undefined ? 'model-url' : 'home'" :stage="stage" interaction="ready"
+    <BrowserModelPreparation presentation="preparation" :model="model" :entry="state.homeOriginId.value === undefined ? 'model-url' : 'home'" :stage="stage" interaction="ready"
                              :variant="state.selectedPath.value" :quantization-options="quantizations" :start-status="state.busy.value || state.verification.value === 'checking' ? 'starting' : 'idle'"
                              :error="error" :selection-state="undefined" @start="start" @back="state.returnToHome()" @select-quantization="state.selectPath({ path: $event })">
       <template #quantization-actions>
@@ -91,11 +91,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <LlamaCppBrowserDownloadProgress :progress="observedProgress" appearance="welcome" activity="inactive" />
         </div>
         <LlamaCppBrowserModelLoadProgress v-else-if="state.warmup.value === 'loading'" :progress="state.warmupProgress.value" />
-        <p v-else role="status" data-testid="model-launch-checking" tw-class="min-h-14 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.BrowserModelPreparation__checking_model() }}</p>
+        <p v-else role="status" data-testid="model-launch-checking" tw-class="min-h-14 flex items-center text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.BrowserModelPreparation__checking_model() }}</p>
         <button v-if="state.warmup.value === 'deferred'" type="button" tw-class="min-h-11 w-full rounded-xl px-4 text-sm text-blue-600 dark:text-blue-400" @click="state.retryWarmup()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
       </template>
       <template #details>
-        <LlamaCppBrowserDownloadSources v-if="displayedJob" :job="displayedJob" />
+        <LlamaCppBrowserDownloadSources v-if="displayedJob" :job="displayedJob" appearance="quiet" />
         <button v-if="state.readiness.value === 'failed'" type="button" data-testid="model-launch-check-retry" tw-class="min-h-11 w-full rounded-xl px-4 text-sm text-blue-600 dark:text-blue-400" @click="state.refresh()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
         <p v-if="state.defaultWarning.value" role="status" tw-class="text-xs leading-relaxed text-amber-600 dark:text-amber-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__global_defaults_not_saved() }}</p>
 

@@ -98,6 +98,7 @@ export const updateChatContent = chatDataStore.updateChatContent;
 export const synchronizeModelBindingContent = chatDataStore.synchronizeModelBindingContent;
 export const updateChatMeta = chatDataStore.updateChatMeta;
 export const updateChatScopedSettings = chatDataStore.updateChatScopedSettings;
+export const updateEmptyChatScopedSettings = chatDataStore.updateEmptyChatScopedSettings;
 
 export function getChatTargetByOptionalId({
   chatId,

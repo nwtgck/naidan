@@ -112,7 +112,10 @@ export type ChatDataStore = {
   }: {
     chatId: ChatId,
     changes: readonly ScopedSettingChange[],
+    isCurrent?: () => boolean,
   }): Promise<void>,
+
+  updateEmptyChatScopedSettings({ chatId, changes, isCurrent }: { chatId: ChatId, changes: readonly ScopedSettingChange[], isCurrent(): boolean }): Promise<boolean>,
 
   TEST_ONLY: {
     resetLiveState(): void,
@@ -534,9 +537,11 @@ export function createChatDataStore({
   async function updateChatScopedSettings({
     chatId,
     changes,
+    isCurrent,
   }: {
     chatId: ChatId,
     changes: readonly ScopedSettingChange[],
+    isCurrent?: () => boolean,
   }): Promise<void> {
     if (changes.length === 0) {
       return;
@@ -547,10 +552,16 @@ export function createChatDataStore({
     const operation = previous
       .catch(() => undefined)
       .then(async () => {
+        if (isCurrent?.() === false) {
+          return;
+        }
         let persistedUpdatedAt: number | undefined;
         await storageService.updateChatMeta({
           id: chatId,
           updater: ({ current }) => {
+            if (isCurrent?.() === false) {
+              return undefined;
+            }
             if (current === null) {
               throw new Error('Chat not found');
             }
@@ -567,6 +578,9 @@ export function createChatDataStore({
           },
         });
 
+        if (isCurrent?.() === false || persistedUpdatedAt === undefined) {
+          return;
+        }
         const existing = liveChatRegistry.get(chatId);
         if (existing === undefined) {
           return;
@@ -575,10 +589,9 @@ export function createChatDataStore({
         const updated = applyScopedSettingChangesToChat({
           current,
           changes: queuedChanges,
-          // Keep live state monotonic even if a custom storage adapter
-          // short-circuits without invoking the updater.
+          // Preserve a newer live timestamp after the persisted partial update.
           updatedAt: Math.max(
-            persistedUpdatedAt ?? Date.now(),
+            persistedUpdatedAt,
             current.updatedAt + 1,
           ),
         });
@@ -598,6 +611,50 @@ export function createChatDataStore({
       await operation;
     } finally {
       if (scopedSettingUpdateQueues.get(chatId) === queueTail) {
+        scopedSettingUpdateQueues.delete(chatId);
+      }
+    }
+  }
+
+  async function updateEmptyChatScopedSettings({ chatId, changes, isCurrent }: { chatId: ChatId, changes: readonly ScopedSettingChange[], isCurrent(): boolean }): Promise<boolean> {
+    const queuedChanges = cloneScopedSettingChanges({ changes });
+    const previous = scopedSettingUpdateQueues.get(chatId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      let updatedAt: number | undefined;
+      await storageService.updateChatMeta({
+        id: chatId,
+        updater: async ({ current }) => {
+          if (current === null || !isCurrent()) {
+            return undefined;
+          }
+          // Content writers take this same metadata lock. An empty check here
+          // cannot be overtaken by another tab's message commit.
+          const content = await storageService.loadChatContentWithoutAttachments({ id: chatId });
+          if (content === null || content.root.items.length !== 0 || !isCurrent()) {
+            return undefined;
+          }
+          updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+          return applyScopedSettingChangesToChatMeta({ current, changes: queuedChanges, updatedAt });
+        },
+      });
+      if (updatedAt === undefined || !isCurrent()) {
+        return false;
+      }
+      const existing = liveChatRegistry.get(chatId);
+      if (existing !== undefined) {
+        Object.assign(existing, applyScopedSettingChangesToChat({ current: toRaw(existing), changes: queuedChanges, updatedAt: Math.max(updatedAt, existing.updatedAt + 1) }));
+        if (currentChatRef.value?.id === chatId) {
+          triggerRef(currentChatRef);
+        }
+      }
+      return true;
+    });
+    const tail = operation.then(() => undefined, () => undefined);
+    scopedSettingUpdateQueues.set(chatId, tail);
+    try {
+      return await operation;
+    } finally {
+      if (scopedSettingUpdateQueues.get(chatId) === tail) {
         scopedSettingUpdateQueues.delete(chatId);
       }
     }
@@ -826,6 +883,7 @@ export function createChatDataStore({
     synchronizeModelBindingContent,
     updateChatMeta,
     updateChatScopedSettings,
+    updateEmptyChatScopedSettings,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         resetLiveState() {

@@ -154,3 +154,20 @@ describe('ordinary Chat recovery slot', () => {
     wrapper.unmount();
   });
 });
+
+describe('ordinary Chat actions slot', () => {
+  it('retains storage guidance, portable download, and suggestions around local model actions', () => {
+    const wrapper = mount(WelcomeScreen, { slots: { actions: '<section data-testid="local-actions">Local model files</section>' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    expect(wrapper.find('[data-testid="local-actions"]').exists()).toBe(true);
+    expect(wrapper.get('h2').text()).toContain('All conversations are stored locally.');
+    expect(wrapper.text()).toContain('Your data stays on your device.');
+    expect(wrapper.find('a[download]').exists()).toBe(__BUILD_MODE_IS_HOSTED__);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('contained');
+  });
+});

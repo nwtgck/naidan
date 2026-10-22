@@ -8,6 +8,19 @@ beforeEach(async () => {
 });
 
 describe('browser model privacy disclosure', () => {
+  it('describes local preparation without claiming files come from Hugging Face', async () => {
+    const wrapper = mount(LlamaCppBrowserModelLaunchPrivacy, { props: { appearance: 'compact', fileSource: 'local' }, global: { stubs: { Teleport: true } } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="model-launch-privacy-trigger"]').trigger('click');
+    const explanation = wrapper.get('[data-testid="model-launch-privacy-explanation"]');
+    expect(explanation.text()).not.toContain('Hugging Face');
+    expect(explanation.findAll('li')).toHaveLength(2);
+  });
+
   it('opens its initially collapsed explanation on an explicit click', async () => {
     const wrapper = mount(LlamaCppBrowserModelLaunchPrivacy, { attachTo: document.body, global: { stubs: { Teleport: true } } });
     const trigger = wrapper.get('[data-testid="model-launch-privacy-trigger"]');

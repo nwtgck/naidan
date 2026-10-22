@@ -16,11 +16,28 @@ export type LocalModelLaunchSession = {
   controller: AbortController | undefined,
   isCurrent(): boolean,
   readBinding(): LocalModelLaunchBinding,
-  acceptedModelIds: ReadonlySet<string>,
   stop(): void,
 };
 
 const sessions = shallowRef(new Map<ChatId, LocalModelLaunchSession>());
+const observations = new WeakMap<LocalModelLaunchSession, { owners: Set<object> }>();
+
+/** Concurrent views share one session; a return after all views leave rechecks it. */
+export function attachLocalModelLaunchView({ session }: { session: LocalModelLaunchSession }): { recheck: 'required' | 'retained', release(): void } {
+  const observation = observations.get(session);
+  if (observation === undefined) {
+    throw new Error('Unknown local model session');
+  }
+  const owner = {};
+  const recheck = observation.owners.size === 0 ? 'required' : 'retained';
+  observation.owners.add(owner);
+  return {
+    recheck,
+    release() {
+      observation.owners.delete(owner);
+    },
+  };
+}
 
 export function localModelLaunchSession({ chatId }: { chatId: ChatId }): LocalModelLaunchSession | undefined {
   return sessions.value.get(chatId);
@@ -66,7 +83,7 @@ export function updateLocalModelLaunchSession({ session }: { session: LocalModel
 
 function bindingMatches({ session, binding }: { session: LocalModelLaunchSession, binding: LocalModelLaunchBinding }): boolean {
   return binding.chatGroupId === session.chatGroupId && binding.endpoint.type === 'llama_cpp_browser'
-    && binding.modelId !== undefined && session.acceptedModelIds.has(binding.modelId);
+    && binding.modelId !== undefined && binding.modelId === session.model.modelId;
 }
 
 export function retireLocalModelLaunchSession({ session }: { session: LocalModelLaunchSession }): void {
@@ -80,7 +97,7 @@ export function retireLocalModelLaunchSession({ session }: { session: LocalModel
   session.stop();
 }
 
-/** Only the empty chat created by this explicit local-model action owns a view. */
+/** Explicit local-model actions own a preparation view while the chat is empty. */
 export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isCurrent, readBinding }: {
   chat: Chat,
   model: LocalModel,
@@ -110,12 +127,12 @@ export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isC
     controller: undefined,
     isCurrent,
     readBinding,
-    acceptedModelIds: new Set([model.modelId]),
     stop: () => {},
   });
   if (!bindingMatches({ session, binding: readBinding() })) {
     return;
   }
+  observations.set(session, { owners: new Set() });
   sessions.value = new Map(sessions.value).set(chat.id, session);
   const validate = () => {
     if (live.root.items.length > 0 || !session.isCurrent() || !bindingMatches({ session, binding: readBinding() })) {
@@ -127,48 +144,6 @@ export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isC
   session.stop = () => {
     stopWatch();
     unsubscribe();
-  };
-}
-
-/** A narrow promotion window accepts only the captured source and saved IDs. */
-export function beginLocalModelLaunchPromotion({ chatId, sourceModelId, model, isCurrent }: {
-  chatId: ChatId,
-  sourceModelId: string,
-  model: LocalModel,
-  isCurrent(): boolean,
-}): { finish(): void } | undefined {
-  const session = sessions.value.get(chatId);
-  if (session === undefined || session.model.modelId !== sourceModelId || !session.isCurrent() || !isCurrent()) {
-    return undefined;
-  }
-  session.acceptedModelIds = new Set([sourceModelId, model.modelId]);
-  return {
-    finish() {
-      if (sessions.value.get(chatId) !== session) {
-        return;
-      }
-      const binding = session.readBinding();
-      if (!bindingMatches({ session, binding })) {
-        retireLocalModelLaunchSession({ session });
-      } else if (binding.modelId === model.modelId && !isCurrent()) {
-        retireLocalModelLaunchSession({ session });
-      } else if (binding.modelId === model.modelId) {
-        session.controller?.abort();
-        session.controller = undefined;
-        session.model = model;
-        session.isCurrent = isCurrent;
-        session.acceptedModelIds = new Set([model.modelId]);
-        session.status = 'loading';
-        session.progress = undefined;
-        session.error = undefined;
-        updateLocalModelLaunchSession({ session });
-      } else {
-        session.acceptedModelIds = new Set([sourceModelId]);
-        if (!session.isCurrent()) {
-          retireLocalModelLaunchSession({ session });
-        }
-      }
-    },
   };
 }
 

@@ -1,10 +1,26 @@
-import { computed, watch, type ComputedRef } from 'vue';
+import { computed, onScopeDispose, watch, type ComputedRef } from 'vue';
 import type { Chat, Endpoint } from '@/01-models/types';
 import { useAppEntry } from '@/composables/useAppEntry';
 import { errorCode, type ErrorCode, type Progress } from '@/features/llama-cpp-browser/types';
-import { localModelLaunchSession, retireLocalModelLaunchSession, updateLocalModelLaunchSession, type LocalModelLaunchSession } from './local-model-launch-session';
+import { attachLocalModelLaunchView, localModelLaunchSession, retireLocalModelLaunchSession, updateLocalModelLaunchSession, type LocalModelLaunchSession } from './local-model-launch-session';
+import { hasChatLocalModelPreparation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 
-async function prepareSession({ session }: { session: LocalModelLaunchSession }): Promise<void> {
+const preparations = new WeakMap<LocalModelLaunchSession, Promise<void>>();
+
+/** A replacement action waits for this chat's cancelled advisory warmup only. */
+export async function suspendLocalModelLaunchPreparation({ chatId }: { chatId: Chat['id'] }): Promise<void> {
+  const session = localModelLaunchSession({ chatId });
+  if (session === undefined) {
+    return;
+  }
+  // Retire first so returning views cannot restart this cancelled warmup.
+  retireLocalModelLaunchSession({ session });
+  session.controller?.abort();
+  session.controller = undefined;
+  await preparations.get(session);
+}
+
+async function runSessionPreparation({ session }: { session: LocalModelLaunchSession }): Promise<void> {
   if (session.controller !== undefined || !session.isCurrent()) {
     return;
   }
@@ -57,6 +73,17 @@ async function prepareSession({ session }: { session: LocalModelLaunchSession })
   }
 }
 
+function prepareSession({ session }: { session: LocalModelLaunchSession }): Promise<void> {
+  const pending = runSessionPreparation({ session });
+  preparations.set(session, pending);
+  void pending.finally(() => {
+    if (preparations.get(session) === pending) {
+      preparations.delete(session);
+    }
+  }).catch(() => {});
+  return pending;
+}
+
 export function useLocalModelLaunchChat({ chat, resolved }: {
   chat: ComputedRef<Chat | null>,
   resolved: ComputedRef<{ endpoint: Endpoint, modelId: string | undefined } | undefined>,
@@ -69,26 +96,42 @@ export function useLocalModelLaunchChat({ chat, resolved }: {
     const binding = resolved.value;
     return current !== null && current.root.items.length === 0 && selected !== undefined && selected.isCurrent()
       && current.groupId === selected.chatGroupId && binding?.endpoint.type === 'llama_cpp_browser'
-      && binding.modelId !== undefined && selected.acceptedModelIds.has(binding.modelId);
+      && binding.modelId !== undefined && binding.modelId === selected.model.modelId;
   });
   let observedSession: LocalModelLaunchSession | undefined;
-  let observedModelId: string | undefined;
-  watch([chat, resolved, session, () => session.value?.model.modelId, () => session.value?.status, () => session.value?.controller], () => {
+  let recheckPending = false;
+  let view: ReturnType<typeof attachLocalModelLaunchView> | undefined;
+  onScopeDispose(() => view?.release());
+  watch([chat, resolved, session, () => session.value?.model.modelId, () => session.value?.status, () => session.value?.controller, () => chat.value !== null && hasChatLocalModelPreparation({ chatId: chat.value.id })], () => {
     const selected = session.value;
     if (selected === undefined) {
+      view?.release();
+      view = undefined;
       observedSession = undefined;
-      observedModelId = undefined;
+      recheckPending = false;
       return;
     }
-    const entering = selected !== observedSession || selected.model.modelId !== observedModelId;
+    if (selected !== observedSession) {
+      view?.release();
+      view = attachLocalModelLaunchView({ session: selected });
+      recheckPending = view.recheck === 'required';
+    }
     observedSession = selected;
-    observedModelId = selected.model.modelId;
+    // An in-flight preparation completing after this view returned already
+    // supplies the required engine check; do not immediately warm it again.
+    if (selected.status === 'loading' && selected.controller !== undefined) {
+      recheckPending = false;
+    }
     if (!visible.value) {
       retireLocalModelLaunchSession({ session: selected });
-    } else if (entering && selected.status === 'ready') {
+    } else if (hasChatLocalModelPreparation({ chatId: selected.chatId })) {
+      return;
+    } else if (selected.status === 'ready' && recheckPending) {
+      recheckPending = false;
       selected.controller = undefined;
       void prepareSession({ session: selected });
     } else if (selected.status === 'loading' && selected.controller === undefined) {
+      recheckPending = false;
       void prepareSession({ session: selected });
     }
   }, { immediate: true, flush: 'post' });

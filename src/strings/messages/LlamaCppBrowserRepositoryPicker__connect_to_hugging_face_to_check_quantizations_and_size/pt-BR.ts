@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRepositoryPicker__connect_to_hugging_face_to_check_quantizations_and_size = (): string => "Connect to Hugging Face to check quantizations and size. You can also paste a model page URL.";

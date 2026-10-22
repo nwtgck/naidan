@@ -1,7 +1,25 @@
-import type { AssistantMessageNode, Attachment, ChatMessage, MessageNode } from './types';
+import type { AssistantMessageNode, Attachment, ChatMessage, MessageBranch, MessageNode } from './types';
 import type { ToolExecutionResult } from './tool';
 import { exactObject } from '@/utils/exact-object';
 import { cloneLmParameters } from '@/utils/lm-parameters';
+
+/** Preserve the message tree while redirecting one complete model reference. */
+export function replaceAssistantModelReferences({ branch, sourceModelId, modelId }: { branch: MessageBranch, sourceModelId: string, modelId: string }): MessageBranch {
+  return {
+    ...branch,
+    items: branch.items.map(node => {
+      const replies = replaceAssistantModelReferences({ branch: node.replies, sourceModelId, modelId });
+      switch (node.role) {
+      case 'assistant': return { ...node, replies, modelId: node.modelId === sourceModelId ? modelId : node.modelId };
+      case 'user': case 'system': case 'tool': return { ...node, replies };
+      default: {
+        const exhaustive: never = node;
+        throw new Error(String(exhaustive));
+      }
+      }
+    }),
+  };
+}
 
 /** A finite proof for one recorded answer; replies and binding IDs can change independently. */
 export function chatModelBindingAssistantFingerprint({ node }: { node: AssistantMessageNode }): string {

@@ -27,10 +27,12 @@ const props = defineProps<{
   surface?: 'default' | 'embedded',
   presentation?: 'default' | 'toolbar',
   size?: 'default' | 'compact',
+  menuWidthRem?: number,
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void,
 }>();
+defineSlots<{ option({ option }: { option: SettingsSelectOption }): unknown }>();
 
 const selected = computed(() => props.options.find(option => option.value === props.modelValue));
 const triggerRef = ref<HTMLButtonElement | null>(null);
@@ -42,6 +44,9 @@ const popup = useAnchoredPopup({
   preferredWidth: {
     unit: 'rem',
     get value() {
+      if (props.menuWidthRem !== undefined) {
+        return props.menuWidthRem;
+      }
       const size = props.size;
       switch (size) {
       case 'compact': return 10;
@@ -218,13 +223,15 @@ defineExpose({
           :tw-class="['disabled:opacity-45 disabled:cursor-not-allowed flex w-full items-center text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400/50', size === 'compact' ? 'min-h-8 gap-2 rounded-md px-2.5 py-1.5' : 'min-h-12 gap-3 rounded-xl px-3 py-2.5', option.value === modelValue ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800']"
           @click="choose({ value: option.value })"
         >
-          <span tw-class="block min-w-0 flex-1">
-            <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
-            <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
-              <SettingsSourceBadge :source="option.source" />
-              <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+          <slot name="option" :option="option">
+            <span tw-class="block min-w-0 flex-1">
+              <span :tw-class="['block truncate font-medium', size === 'compact' ? 'text-xs' : 'text-sm']">{{ option.label }}</span>
+              <span v-if="option.detail || option.source" tw-class="mt-1 flex min-w-0 items-center gap-1.5">
+                <SettingsSourceBadge :source="option.source" />
+                <span v-if="option.detail" tw-class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400">{{ option.detail }}</span>
+              </span>
             </span>
-          </span>
+          </slot>
           <CheckIcon v-if="option.value === modelValue" tw-class="h-4 w-4 shrink-0" />
         </button>
       </div>

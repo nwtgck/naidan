@@ -1,3 +1,4 @@
+import { openChatLocalModelInput } from './chat-local-model-input.test-support';
 import { createChatContentWrite, readChatContentWrite, chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive, shallowRef, type Ref } from 'vue';
@@ -42,7 +43,8 @@ vi.mock('@/composables/useSettings', () => ({
     },
   }),
 }));
-vi.mock('@/00-storage/service', () => ({
+vi.mock('@/00-storage/service', async () => ({
+  ChatContentBindingChangedError: (await import('@/00-storage/service/chat-content-binding')).ChatContentBindingChangedError,
   storageService: {
     captureSettingsStorage: () => () => true,
     createChatContentWrite: state.captureWrite,
@@ -53,7 +55,7 @@ vi.mock('@/00-storage/service', () => ({
   },
 }));
 
-import { acquireChatModelBindingOperation, captureChatContentWrite, beginChatModelBindingGeneration, captureChatModelBindingHistoryProof, getKnownChatModelBindingMessages, registerChatModelBindingOrigin, synchronizeChatModelBindingAdmission, TEST_ONLY, withChatModelBindingFinalization } from './chat-model-binding-operations';
+import { acquireChatModelBindingOperation, captureChatContentWrite, beginChatModelBindingGeneration, captureChatModelBindingHistoryProof, captureChatLocalModelAdmission, hasChatLocalModelPreparation, getKnownChatModelBindingMessages, registerChatModelBindingOrigin, synchronizeChatModelBindingAdmission, TEST_ONLY, withChatModelBindingFinalization } from './chat-model-binding-operations';
 
 const chatId = toChatId({ raw: 'owner-chat' });
 const messageId = toMessageId({ raw: 'answer' });
@@ -139,6 +141,28 @@ describe('chat model binding finalization', () => {
     next.release();
     next.release();
     await expect(withChatModelBindingFinalization({ chatId, operation: async () => 'saved' })).resolves.toBe('saved');
+  });
+});
+
+describe('local model input admission', () => {
+  it('blocks sends while an input exists and allows them after cancellation', () => {
+    const admission = captureChatLocalModelAdmission({ chatId });
+    using input = openChatLocalModelInput({ chatId });
+    expect(hasChatLocalModelPreparation({ chatId })).toBe(true);
+    expect(() => admission.assertCurrent()).toThrow();
+    input.release();
+    expect(hasChatLocalModelPreparation({ chatId })).toBe(false);
+    expect(() => admission.assertCurrent()).not.toThrow();
+  });
+
+  it('uses the input itself for errors and leaves independent chats available', () => {
+    using input = openChatLocalModelInput({ chatId });
+    input.input.state.phase = 'error';
+    expect(() => captureChatLocalModelAdmission({ chatId }).assertCurrent()).toThrow();
+    const otherId = toChatId({ raw: 'independent' });
+    expect(() => captureChatLocalModelAdmission({ chatId: otherId }).assertCurrent()).not.toThrow();
+    input.release();
+    expect(() => captureChatLocalModelAdmission({ chatId }).assertCurrent()).not.toThrow();
   });
 });
 

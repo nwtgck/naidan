@@ -196,7 +196,7 @@ async function prepareLocalChat({ model, source, attempt, signal, isCurrent, def
     throw new Error('Could not open the created chat');
   }
   if (opened && source !== undefined && attempt.isStorageCurrent() && source.isCurrent()) {
-    offerTemporaryModelSave({ chatId: chat.id, source });
+    offerTemporaryModelSave({ chatId: chat.id, source, chatGroupId: attempt.chatGroupId });
   }
   if (opened && defaultSaveFailed) {
     try {

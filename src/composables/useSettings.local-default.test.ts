@@ -363,3 +363,28 @@ describe('model binding admission settings synchronization', () => {
     expect(api.settings.value.endpoint).toEqual(endpoint);
   });
 });
+
+describe('saving a temporary model default', () => {
+  it.each(['matching', 'selector', 'endpoint', 'empty'] as const)('promotes only the complete matching default pair: %s', async match => {
+    const sourceModelId = 'temp/source:Q4_K_M';
+    const saved: Settings = { ...original, endpoint: match === 'endpoint' ? original.endpoint : { type: 'llama_cpp_browser' }, defaultModelId: match === 'empty' ? undefined : match === 'selector' ? 'temp/source:Q8_0' : sourceModelId, experimental: { locale: 'ja' } };
+    const api = useSettings();
+    api.TEST_ONLY.__testOnlySetSettings({ newSettings: saved });
+    mocks.stored = structuredClone(saved);
+    await api.promoteTemporaryModelDefault({ sourceModelId, modelId: 'user/source-2', isCurrent: () => true });
+    expect(mocks.stored).toEqual({ ...saved, defaultModelId: match === 'matching' ? 'user/source-2' : saved.defaultModelId });
+    expect(api.settings.value.defaultModelId).toBe(mocks.stored.defaultModelId);
+  });
+
+  it('does not transfer promotion to another provider or revert a newer global choice', async () => {
+    const api = useSettings();
+    const saved: Settings = { ...original, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'temp/source:Q4' };
+    mocks.stored = saved;
+    api.TEST_ONLY.__testOnlySetSettings({ newSettings: saved });
+    await api.promoteTemporaryModelDefault({ sourceModelId: 'temp/source:Q4', modelId: 'user/source', isCurrent: () => false });
+    expect(mocks.stored.defaultModelId).toBe('temp/source:Q4');
+    mocks.stored = { ...saved, defaultModelId: 'user/newer' };
+    await api.promoteTemporaryModelDefault({ sourceModelId: 'temp/source:Q4', modelId: 'user/source', isCurrent: () => true });
+    expect(mocks.stored.defaultModelId).toBe('user/newer');
+  });
+});

@@ -1,3 +1,4 @@
+import { openChatLocalModelInput } from '@/composables/chat/chat-scoped/chat-local-model-input.test-support';
 import { createChatContentWrite, readChatContentWrite, chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import type { StorageService } from '@/00-storage/service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -90,7 +91,7 @@ vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: v
 vi.mock('@/composables/useStoragePersistence', () => ({ useStoragePersistence: () => ({ requestPersistence: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatOrganization', () => ({ useChatOrganization: () => ({ reorderSidebarChatAfterSend: vi.fn() }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined), createChatContentWrite: state.captureWrite, captureSettingsStorage: () => () => true, loadChatContentWithoutAttachments: async () => null, notify: state.notify, getFile: vi.fn(), saveFile: state.saveAttachment, canPersistBinary: true } }));
+vi.mock('@/00-storage/service', async () => ({ ChatContentBindingChangedError: (await import('@/00-storage/service/chat-content-binding')).ChatContentBindingChangedError, storageService: { getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined), createChatContentWrite: state.captureWrite, captureSettingsStorage: () => () => true, loadChatContentWithoutAttachments: async () => null, notify: state.notify, getFile: vi.fn(), saveFile: state.saveAttachment, canPersistBinary: true } }));
 
 import { generateResponseForAssistant, regenerateMessageForChat, sendMessageToTargetChat } from './chat-generation-flow';
 import { withChatModelBindingFinalization } from './chat-model-binding-operations';
@@ -157,6 +158,33 @@ describe('chat generation flow with message parts', () => {
     expect(state.metadata).not.toHaveBeenCalled();
   });
 
+  it('rejects direct sends and assistant generation while another pane prepares a local model', async () => {
+    const { chat, assistant } = createChat();
+    const reservation = openChatLocalModelInput({ chatId: chat.id })!;
+    using cleanup = {
+      [Symbol.dispose]() {
+        reservation.release();
+      },
+    };
+    void cleanup;
+    expect(await sendMessageToTargetChat({ targetChat: chat, content: 'keep draft', parentId: undefined, attachments: undefined, lmParameters: undefined })).toBe(false);
+    await expect(run({ chat, assistant })).rejects.toThrow('The chat model binding changed before its content could be saved');
+    expect(state.fetchModels).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it('allows a send after an input is cancelled during attachment persistence', async () => {
+    const { chat } = createChat();
+    chat.root.items = [];
+    state.saveAttachment.mockImplementationOnce(async () => {
+      const reservation = openChatLocalModelInput({ chatId: chat.id })!;
+      reservation.release();
+    });
+    expect(await sendMessageToTargetChat({ targetChat: chat, content: 'keep draft', parentId: undefined, attachments: [{ id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'body' }), originalName: 'x.txt', mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) }], lmParameters: undefined })).toBe(true);
+    expect(chat.root.items.length).toBeGreaterThan(0);
+    expect(state.save).toHaveBeenCalled();
+  });
+
   it.each(['missing', 'unreadable'] as const)('rejects a receipt-free browser send with %s files before saving attachments or messages', async availability => {
     const { chat } = createChat();
     chat.root.items = [];
@@ -185,7 +213,7 @@ describe('chat generation flow with message parts', () => {
     expect(chat.root.items).toHaveLength(0);
   });
 
-  it('keeps the admitted write through streaming instead of adopting a newer live model binding', async () => {
+  it('keeps the admitted content baseline through streaming despite newer model settings', async () => {
     const fixture = createChat();
     const originalContent = chatContentFingerprint({ content: fixture.chat });
     const started = Promise.withResolvers<void>();
@@ -209,7 +237,7 @@ describe('chat generation flow with message parts', () => {
     await pending;
     expect(state.save).toHaveBeenCalled();
     const write = state.captureWrite.mock.results[0]!.value;
-    expect(readChatContentWrite({ write, id: fixture.chat.id })).toMatchObject({ baseline: originalContent, binding: { modelId: 'm' } });
+    expect(readChatContentWrite({ write, id: fixture.chat.id })).toMatchObject({ baseline: originalContent, binding: undefined });
     for (const [request] of state.save.mock.calls) {
       expect(request.write).toBe(write);
     }

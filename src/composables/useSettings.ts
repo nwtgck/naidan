@@ -107,6 +107,7 @@ interface UseSettingsApi {
   initializeModelLaunchDefaults({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'>,
   captureGlobalModelBinding({ sourceModelId }: { sourceModelId: string }): Promise<ModelLaunchDefaultSnapshot | undefined>,
   promoteGlobalModelBinding({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'>,
+  promoteTemporaryModelDefault({ sourceModelId, modelId, isCurrent }: { sourceModelId: string, modelId: string, isCurrent(): boolean }): Promise<void>,
   synchronizeModelBindingSettings({ isCurrent }: { isCurrent: () => boolean }): Promise<'synchronized' | 'changed'>,
   initialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: ComputedRef<boolean>,
@@ -825,6 +826,24 @@ export function useSettings(): UseSettingsApi {
     return 'applied';
   }
 
+  async function promoteTemporaryModelDefault({ sourceModelId, modelId, isCurrent }: { sourceModelId: string, modelId: string, isCurrent(): boolean }): Promise<void> {
+    let applied = false;
+    await storageService.updateSettingsForStorage({
+      isCurrent,
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        if (base.endpoint.type !== 'llama_cpp_browser' || base.defaultModelId !== sourceModelId) {
+          return base;
+        }
+        applied = true;
+        return { ...base, defaultModelId: modelId };
+      },
+    });
+    if (applied && isCurrent() && _settings.value.endpoint.type === 'llama_cpp_browser' && _settings.value.defaultModelId === sourceModelId) {
+      _settings.value = { ..._settings.value, defaultModelId: modelId };
+    }
+  }
+
   async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
     const revision = globalDefaultRevision;
@@ -1077,6 +1096,7 @@ export function useSettings(): UseSettingsApi {
     initializeModelLaunchDefaults,
     captureGlobalModelBinding,
     promoteGlobalModelBinding,
+    promoteTemporaryModelDefault,
     synchronizeModelBindingSettings,
     initialized: readonly(_initialized),
     isOnboardingDismissed,

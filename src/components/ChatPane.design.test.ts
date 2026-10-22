@@ -1,4 +1,5 @@
 import type { MessageId } from '@/01-models/ids';
+import type { Chat } from '@/01-models/types';
 import { toChatId } from '@/01-models/ids';
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
@@ -48,7 +49,7 @@ describe('ChatPane Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
     const mockActiveMessages = ref<any[]>([]);
-    const mockCurrentChat = ref({ id: toChatId({ raw: '1' }), title: 'Test Chat', modelId: 'gemma3n:e2b' });
+    const mockCurrentChat = ref<Chat>({ id: toChatId({ raw: '1' }), title: 'Test Chat', modelId: 'gemma3n:e2b', root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false });
     const mockResolvedSettings = ref({
       modelId: 'gemma3n:e2b',
       lmParameters: { reasoning: { effort: undefined } },

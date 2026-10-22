@@ -25,6 +25,21 @@ beforeEach(async () => {
 });
 
 describe('download source disclosure', () => {
+  it('keeps the full accessible purpose and real URLs behind the quiet Details label', async () => {
+    const wrapper = mount(LlamaCppBrowserDownloadSources, { props: { job: source, appearance: 'quiet' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const trigger = wrapper.get('[data-testid="model-download-sources-toggle"]');
+    expect(trigger.text()).toBe(lazyStrings.llamaCppBrowserDownloads__details());
+    expect(trigger.attributes('aria-label')).toBe(lazyStrings.LlamaCppBrowserDownloadSources__files_and_sources());
+    expect(wrapper.find('[data-testid="model-download-sources-panel"]').exists()).toBe(false);
+    await trigger.trigger('click');
+    expect(wrapper.findAll('[data-testid="model-download-url"]')).toHaveLength(2);
+  });
+
   it('mounts the URL list only after explicit expansion and shows the actual request index, not inferred bytes', async () => {
     const wrapper = mount(LlamaCppBrowserDownloadSources, { props: { job: source } });
     expect(wrapper.find('details').exists()).toBe(false);

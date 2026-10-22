@@ -1,3 +1,4 @@
+import { openChatLocalModelInput } from '@/composables/chat/chat-scoped/chat-local-model-input.test-support';
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper, type GlobalMountOptions } from '@vue/test-utils';
@@ -39,6 +40,9 @@ import { refreshPromptApiAvailability, TEST_ONLY as promptApiRuntimeTestOnly } f
 import { useApproval } from '@/features/tools/composables/useApproval';
 import { useChoices } from '@/features/tools/composables/useChoices';
 import { APPROVAL_ACTIONS } from '@/features/tools/approval';
+import type { ChatLocalModelOperation, ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
+import { hasChatLocalModelPreparation } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
+import { localModelLaunchSession, registerLocalModelLaunchSession, retireLocalModelLaunchSession } from '@/features/llama-cpp-browser/composables/local-model-launch-session';
 
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
@@ -62,6 +66,32 @@ const {
 const launchComposerOverride = ref<'visible' | 'hidden'>();
 const launchVisibilityOverride = ref<boolean>();
 const launchSendOverride = ref<boolean>();
+const launchHomeOriginOverride = ref<string>();
+const mockLaunchReturnHome = vi.fn().mockResolvedValue(undefined);
+const chatLocalOperationOverride = ref<ChatLocalModelOperation>();
+const mockChatLocalAccept = vi.fn<ChatLocalModelUi['accept']>().mockResolvedValue(undefined);
+const mockChatLocalChoose = vi.fn<ChatLocalModelUi['choose']>().mockResolvedValue(undefined);
+const mockChatLocalRetry = vi.fn<ChatLocalModelUi['retry']>().mockResolvedValue(undefined);
+const mockChatLocalCancel = vi.fn<ChatLocalModelUi['cancel']>().mockResolvedValue(undefined);
+// Keep the real shared maySend guard. Only operation presentation and the
+// file/runtime boundary are controlled; controller tests own those operations.
+vi.mock('@/composables/chat/chat-scoped/useChatLocalModel', async importOriginal => {
+  const original = await importOriginal<typeof import('@/composables/chat/chat-scoped/useChatLocalModel')>();
+  return {
+    ...original,
+    useChatLocalModel: (args: Parameters<typeof original.useChatLocalModel>[0]) => {
+      const state = original.useChatLocalModel(args);
+      return {
+        ...state,
+        operation: computed(() => chatLocalOperationOverride.value ?? state.operation.value),
+        accept: mockChatLocalAccept,
+        choose: mockChatLocalChoose,
+        retry: mockChatLocalRetry,
+        cancel: mockChatLocalCancel,
+      };
+    },
+  };
+});
 // Browser/profile lifecycle is tested in useFirefoxWebGpuWarning. This suite
 // verifies the real pane's eligibility gate and shared notice-slot wiring.
 const firefoxWebGpuWarningCandidate = ref(false);
@@ -81,6 +111,8 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async imp
         composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value),
         visible: computed(() => launchVisibilityOverride.value ?? state.visible.value),
         maySend: computed(() => launchSendOverride.value ?? state.maySend.value),
+        homeOriginId: computed(() => launchHomeOriginOverride.value ?? state.homeOriginId.value),
+        returnToHome: () => launchHomeOriginOverride.value === undefined ? state.returnToHome() : mockLaunchReturnHome(),
       };
     },
   };
@@ -831,12 +863,18 @@ function resetMocks() {
   launchComposerOverride.value = undefined;
   launchVisibilityOverride.value = undefined;
   launchSendOverride.value = undefined;
+  launchHomeOriginOverride.value = undefined;
+  chatLocalOperationOverride.value = undefined;
   firefoxWebGpuWarningCandidate.value = false;
   recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
   vi.useRealTimers();
   vi.clearAllMocks();
+  mockChatLocalAccept.mockResolvedValue(undefined);
+  mockChatLocalChoose.mockResolvedValue(undefined);
+  mockChatLocalRetry.mockResolvedValue(undefined);
+  mockChatLocalCancel.mockResolvedValue(undefined);
   mockRenameChat.mockImplementation(({ newTitle }) => {
     if (mockCurrentChat.value) {
       mockCurrentChat.value.title = newTitle;
@@ -4220,6 +4258,291 @@ describe('ChatPane Model Selection', () => {
   }, 20_000);
 });
 
+describe('chat-local model entry wiring', () => {
+  beforeEach(async () => {
+    resetMocks();
+    setupScrollToMock();
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
+  afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
+    const session = localModelLaunchSession({ chatId: toChatId({ raw: '1' }) });
+    if (session !== undefined) {
+      retireLocalModelLaunchSession({ session });
+    }
+    chatLocalOperationOverride.value = undefined;
+  });
+
+  function reservePreparation({ chatId }: { chatId: ChatId }) {
+    const reservation = openChatLocalModelInput({ chatId });
+    if (reservation === undefined) {
+      throw new Error('The test chat must accept a local preparation');
+    }
+    return {
+      reservation,
+      [Symbol.dispose]() {
+        reservation.release();
+      },
+    };
+  }
+
+  function fileTransfer({ file }: { file: File }): DataTransfer {
+    const item = { kind: 'file', type: file.type, getAsFile: () => file, webkitGetAsEntry: () => null } as unknown as DataTransferItem;
+    return { types: ['Files'], files: [file], items: [item], dropEffect: 'none' } as unknown as DataTransfer;
+  }
+
+  function attachmentDropApi({ input }: { input: { vm: { $: { exposed: object | null } } } }): Pick<InstanceType<typeof ChatInput>, 'processDropItems'> {
+    const exposed = input.vm.$.exposed;
+    if (exposed === null) {
+      throw new Error('ChatInput must expose its attachment drop boundary');
+    }
+    // The parent template ref reads defineExpose, while VTU's vm can read the
+    // setup binding instead. Observe exactly the API the real parent invokes.
+    return exposed as Pick<InstanceType<typeof ChatInput>, 'processDropItems'>;
+  }
+
+  it('adds an expandable entry to the existing welcome without changing its configured model or draft', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep the current provider until a model is prepared');
+    expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.');
+    const opener = wrapper.get('[data-testid="chat-open-local-model"]');
+    expect(opener.attributes('aria-expanded')).toBe('false');
+    await opener.trigger('click');
+    expect(opener.attributes('aria-expanded')).toBe('true');
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('chat-local-model-expanded');
+    expect(mockChatLocalAccept).not.toHaveBeenCalled();
+    expect(mockCurrentChat.value?.modelId).toBeUndefined();
+    expect(mockResolvedSettings.value.modelId).toBe('global-default-model');
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    expect(wrapper.getComponent(ChatInput).element).toBe(input.element);
+    expect(textarea.element.value).toBe('Keep the current provider until a model is prepared');
+  });
+
+  it('does not offer the entry over an empty selected branch in a chat that has other messages', async () => {
+    mockCurrentChat.value!.root.items = [createTextNode({ id: toMessageId({ raw: 'unselected-message' }), role: 'user', text: 'An existing branch', createdAt: 1 })];
+    mockActiveMessages.value = [];
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.findComponent(WelcomeScreen).exists()).toBe(true);
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(false);
+  });
+
+  it.each(['model.gguf', 'photo.png', 'folder'] as const)('routes an ordinary %s drop to attachments even while the model area is open', async name => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-open-local-model"]').trigger('click');
+    const input = wrapper.getComponent(ChatInput);
+    using attachmentDrop = vi.spyOn(attachmentDropApi({ input }), 'processDropItems').mockResolvedValue(undefined);
+    const transfer = fileTransfer({ file: new File(['data'], name, { type: 'application/octet-stream' }) });
+    if (name === 'folder') {
+      Object.defineProperty(transfer.items[0], 'webkitGetAsEntry', { value: () => ({ isDirectory: true, name: 'models' }) });
+    }
+    await wrapper.trigger('dragover', { dataTransfer: transfer });
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(true);
+    await wrapper.trigger('drop', { dataTransfer: transfer });
+    expect(attachmentDrop).toHaveBeenCalledExactlyOnceWith({ items: Array.from(transfer.items) });
+    expect(mockChatLocalAccept).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+  });
+
+  it('uses only the dedicated model drop area and clears the parent attachment overlay', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-open-local-model"]').trigger('click');
+    using attachmentDrop = vi.spyOn(attachmentDropApi({ input: wrapper.getComponent(ChatInput) }), 'processDropItems').mockResolvedValue(undefined);
+    const file = new File(['GGUF'], 'Model-Q4_K_M.gguf', { type: 'application/octet-stream' });
+    const transfer = fileTransfer({ file });
+    await wrapper.trigger('dragover', { dataTransfer: transfer });
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(true);
+    const dropArea = wrapper.get('[data-testid="chat-local-model-drop-zone"] [data-testid="llama-cpp-browser-drop-zone"]');
+    await dropArea.trigger('dragover', { dataTransfer: transfer });
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+    const dropping = dropArea.trigger('drop', { dataTransfer: transfer });
+    Object.defineProperty(transfer, 'files', { value: [] });
+    Object.defineProperty(transfer, 'items', { value: [] });
+    await dropping;
+    expect(mockChatLocalAccept).toHaveBeenCalledOnce();
+    const accepted = mockChatLocalAccept.mock.calls[0]![0];
+    const directories = await accepted.directories;
+    expect(directories[0]?.files[0]?.file).toBe(file);
+    expect(attachmentDrop).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+  });
+
+  it('keeps disabled model drops inside their dedicated area instead of turning them into attachments', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-open-local-model"]').trigger('click');
+    using _preparation = reservePreparation({ chatId: mockCurrentChat.value!.id });
+    chatLocalOperationOverride.value = { id: 1, phase: 'reading', candidates: [], model: undefined, downloadJobId: undefined, error: undefined };
+    await nextTick();
+    using attachmentDrop = vi.spyOn(attachmentDropApi({ input: wrapper.getComponent(ChatInput) }), 'processDropItems').mockResolvedValue(undefined);
+    const dropArea = wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]');
+    expect(dropArea.attributes('aria-disabled')).toBe('true');
+    await dropArea.trigger('drop', { dataTransfer: fileTransfer({ file: new File(['GGUF'], 'model.gguf') }) });
+    expect(mockChatLocalAccept).not.toHaveBeenCalled();
+    expect(attachmentDrop).not.toHaveBeenCalled();
+    expect(hasChatLocalModelPreparation({ chatId: mockCurrentChat.value!.id })).toBe(true);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+  });
+
+  it('keeps the same draft and attachments through preparation, ready, and file reselection', async () => {
+    using _warmup = vi.spyOn((await import('@/features/llama-cpp-browser')).llamaCppBrowserService, 'prepareModel').mockResolvedValue('ready');
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const inputElement = input.element;
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('A message written before local preparation');
+    const attachment = { id: 'local-ui-attachment', binaryObjectId: 'local-ui-binary', status: 'memory' as const, blob: new Blob(['image']), originalName: 'keep.png', mimeType: 'image/png', size: 5, uploadedAt: 1 };
+    input.vm.TEST_ONLY.attachments.value = [attachment];
+    const selected = { modelId: 'temp/LocalModel:Q4_K_M', size: 1024, importedAt: 1 };
+    using preparation = reservePreparation({ chatId: mockCurrentChat.value!.id });
+    chatLocalOperationOverride.value = { id: 2, phase: 'downloading', candidates: [selected], model: selected, downloadJobId: undefined, error: undefined };
+    await flushPromises();
+    expect(input.props('isSubmissionEnabled')).toBe(false);
+    expect(input.props('textSubmissionAction')).toBe('blocked');
+    expect(textarea.element.disabled).toBe(false);
+    expect(wrapper.get('[data-testid="model-preparation-input-hint"]').text()).toContain('first message');
+    expect(wrapper.get('[data-testid="back-to-model-selection"]').text()).toBe('Cancel');
+    expect(wrapper.get('[data-testid="model-preparation-navigation"]').element.closest('[data-testid="scroll-container"]')).toBeNull();
+    await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    mockCurrentChat.value!.endpoint = { type: 'llama_cpp_browser' };
+    mockCurrentChat.value!.modelId = selected.modelId;
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: selected.modelId, sources: { ...mockResolvedSettings.value.sources, endpoint: 'chat', modelId: 'chat' } };
+    registerLocalModelLaunchSession({ chat: mockCurrentChat.value!, model: selected, homeOriginId: undefined, isCurrent: () => true, readBinding: () => ({ chatGroupId: mockCurrentChat.value!.groupId, endpoint: mockResolvedSettings.value.endpoint, modelId: mockResolvedSettings.value.modelId }) });
+    chatLocalOperationOverride.value = undefined;
+    preparation.reservation.release();
+    await flushPromises();
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(textarea.element.value).toBe('A message written before local preparation');
+    expect(input.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    const chooseAgain = wrapper.get('[data-testid="back-to-model-selection"]');
+    expect(chooseAgain.text()).toBe('Choose model files again');
+    await chooseAgain.trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="chat-open-local-model"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="local-model-preparation"]').exists()).toBe(false);
+    expect(mockCurrentChat.value!.modelId).toBe(selected.modelId);
+    expect(mockResolvedSettings.value.endpoint.type).toBe('llama_cpp_browser');
+    expect(mockSettings.value.defaultModelId).toBe('global-default-model');
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(textarea.element.value).toBe('A message written before local preparation');
+    expect(input.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
+    expect(mockChatLocalCancel).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows cancellation above the conversation and keeps the real guard until cleanup finishes', async () => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep writing during cancellation');
+    using preparation = reservePreparation({ chatId: mockCurrentChat.value!.id });
+    const selected = { modelId: 'temp/FailedModel', size: 1024, importedAt: 1 };
+    chatLocalOperationOverride.value = { id: 3, phase: 'error', candidates: [selected], model: selected, downloadJobId: undefined, error: 'not-empty' };
+    await flushPromises();
+    expect(input.props('isSubmissionEnabled')).toBe(false);
+    await wrapper.get('[data-testid="back-to-model-selection"]').trigger('click');
+    expect(mockChatLocalCancel).toHaveBeenCalledOnce();
+    chatLocalOperationOverride.value.phase = 'cancelling';
+    await nextTick();
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="back-to-model-selection"]').element.disabled).toBe(true);
+    expect(wrapper.get('[data-testid="model-preparation-input-hint"]').text()).toContain('Cancelling');
+    expect(input.props('isSubmissionEnabled')).toBe(false);
+    expect(textarea.element.disabled).toBe(false);
+    chatLocalOperationOverride.value = undefined;
+    preparation.reservation.release();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-preparation-navigation"]').exists()).toBe(false);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(textarea.element.value).toBe('Keep writing during cancellation');
+  });
+
+  it.each(['reading', 'downloading'] as const)('keeps cancellation reachable after foreign messages arrive during %s', async phase => {
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const inputElement = input.element;
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep this draft after the other tab writes');
+    using preparation = reservePreparation({ chatId: mockCurrentChat.value!.id });
+    const selected = { modelId: 'temp/ForeignWriteModel', size: 1024, importedAt: 1 };
+    chatLocalOperationOverride.value = { id: 4, phase, candidates: [selected], model: phase === 'downloading' ? selected : undefined, downloadJobId: undefined, error: undefined };
+    await nextTick();
+    expect(input.props('isSubmissionEnabled')).toBe(false);
+
+    const foreignMessage = createTextNode({ id: toMessageId({ raw: 'other-tab-message' }), role: 'user', text: 'A message saved in the other tab', createdAt: 2 });
+    mockCurrentChat.value!.root.items = [foreignMessage];
+    mockCurrentChat.value!.currentLeafId = foreignMessage.id;
+    mockActiveMessages.value = [foreignMessage];
+    await flushPromises();
+    expect(wrapper.findComponent(WelcomeScreen).exists()).toBe(false);
+    expect(wrapper.get('[data-testid="back-to-model-selection"]').text()).toBe('Cancel');
+    expect(wrapper.find('[data-testid="chat-local-model-history-error"]').exists()).toBe(false);
+    expect(input.props('textSubmissionAction')).toBe('blocked');
+
+    chatLocalOperationOverride.value.phase = 'error';
+    chatLocalOperationOverride.value.error = 'not-empty';
+    await nextTick();
+    const alert = wrapper.get('[data-testid="chat-local-model-history-error"]');
+    expect(alert.attributes('role')).toBe('alert');
+    expect(alert.text()).toContain('already has messages');
+    expect(alert.text()).not.toContain('model link');
+    expect(hasChatLocalModelPreparation({ chatId: mockCurrentChat.value!.id })).toBe(true);
+    await textarea.trigger('keydown', { key: 'Enter', ctrlKey: true });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    mockChatLocalCancel.mockImplementation(async () => {
+      chatLocalOperationOverride.value = undefined;
+      preparation.reservation.release();
+    });
+    await wrapper.get('[data-testid="back-to-model-selection"]').trigger('click');
+    await flushPromises();
+    expect(mockChatLocalCancel).toHaveBeenCalledOnce();
+    expect(hasChatLocalModelPreparation({ chatId: mockCurrentChat.value!.id })).toBe(false);
+    expect(wrapper.find('[data-testid="model-preparation-navigation"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-local-model-history-error"]').exists()).toBe(false);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    expect(mockCurrentChat.value!.root.items).toEqual([foreignMessage]);
+    expect(mockCurrentChat.value!.modelId).toBeUndefined();
+    expect(mockResolvedSettings.value).toMatchObject({ endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'global-default-model' });
+    expect(wrapper.text()).toContain('A message saved in the other tab');
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(textarea.element.value).toBe('Keep this draft after the other tab writes');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('routes the upper home-origin action back to its model selection without remounting the draft', async () => {
+    launchVisibilityOverride.value = true;
+    launchHomeOriginOverride.value = 'home-origin';
+    launchSendOverride.value = false;
+    wrapper = mountChatPane({ global: { plugins: [router], stubs: { LlamaCppBrowserModelLaunchCard: { template: '<section data-testid="linked-model-progress">Progress</section>' } } } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep the home-origin draft');
+    const navigation = wrapper.get('[data-testid="model-preparation-navigation"]');
+    expect(navigation.element.closest('[data-testid="scroll-container"]')).toBeNull();
+    expect(navigation.findComponent({ name: 'LlamaCppBrowserModelLaunchPrivacy' }).props('fileSource')).toBe('hugging-face');
+    await navigation.get('[data-testid="back-to-model-selection"]').trigger('click');
+    expect(mockLaunchReturnHome).toHaveBeenCalledOnce();
+    expect(mockChatLocalCancel).not.toHaveBeenCalled();
+    expect(wrapper.getComponent(ChatInput).element).toBe(input.element);
+    expect(textarea.element.value).toBe('Keep the home-origin draft');
+  });
+});
+
 describe('model-link composer visibility wiring', () => {
   beforeEach(() => {
     resetMocks();
@@ -4498,8 +4821,8 @@ describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
     firefoxWebGpuWarningCandidate.value = false;
     await nextTick();
     expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
-    // No empty named slot should change the ordinary wallpaper layout.
-    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    // The ordinary file entry remains available after the advisory ends.
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(true);
     expect(wrapper.get('textarea').element).toBe(textarea.element);
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
@@ -4527,7 +4850,7 @@ describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'transformers_js' } };
     await flushPromises();
     expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
-    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(true);
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
     await flushPromises();
     expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);

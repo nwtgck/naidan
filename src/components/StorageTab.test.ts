@@ -590,6 +590,7 @@ describe('StorageTab.vue Tests', () => {
         updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
         captureModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['captureModelLaunchDefaults']>(),
         initializeModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['initializeModelLaunchDefaults']>(),
+        promoteTemporaryModelDefault: vi.fn(),
         captureGlobalModelBinding: vi.fn<ReturnType<typeof useSettings>['captureGlobalModelBinding']>(),
         promoteGlobalModelBinding: vi.fn<ReturnType<typeof useSettings>['promoteGlobalModelBinding']>(),
         synchronizeModelBindingSettings: vi.fn<ReturnType<typeof useSettings>['synchronizeModelBindingSettings']>(),

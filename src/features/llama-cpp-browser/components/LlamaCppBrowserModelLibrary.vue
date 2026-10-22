@@ -3,7 +3,7 @@ import { getHostModelInventoryIssues, type HostModelInventoryIssue } from '@/fea
 import LlamaCppBrowserDefaultModelDialog from './LlamaCppBrowserDefaultModelDialog.vue';
 import type { ApplyDefaultModel, DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
-import { useModelDeletionConfirm } from './useModelDeletionConfirm';
+import { useModelRemoval } from '@/features/llama-cpp-browser/composables/useModelRemoval';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { AlertCircleIcon, CheckIcon, HardDriveIcon, Loader2Icon, RefreshCcwIcon, SearchIcon, XIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -48,8 +48,6 @@ const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => 
   return props.applyDefaultModel({ model: available, previous });
 };
 
-const localError = ref<ErrorCode>();
-const removalChanged = ref(false);
 const ownedListError = ref<ErrorCode>();
 const listError = computed(() => props.inventory === undefined ? ownedListError.value : props.inventory.error);
 const ownedHostIssues = ref<readonly HostModelInventoryIssue[]>([]);
@@ -59,8 +57,6 @@ watch(() => props.inventory?.models, found => {
     emit('modelsChanged', found);
   }
 }, { immediate: true });
-const displayedError = computed(() => localError.value ?? listError.value);
-const active = ref<AbortController>();
 const creatingChatGroup = shallowRef<{ modelId: string, controller: AbortController }>();
 const chatGroupCreationFailed = ref(false);
 const ownedRefreshing = ref(false);
@@ -69,7 +65,12 @@ const downloading = computed(() => props.externalBusy === true);
 const importing = ref(false);
 const unavailable = computed(() => props.runtimeStatus === 'unavailable');
 const busy = computed(() => active.value !== undefined || creatingChatGroup.value !== undefined || importing.value || downloading.value || queuedDownloadBusy.value || props.runtimeStatus === 'working');
-const { request: deletionRequest, finish: finishDeletion, confirmRemoval } = useModelDeletionConfirm();
+const { active, error: localError, changed: removalChanged, request: deletionRequest, finish: finishDeletion, remove } = useModelRemoval({
+  suspended: computed(() => props.suspended === true || unavailable.value),
+  disabled: computed(() => creatingChatGroup.value !== undefined || importing.value || downloading.value || queuedDownloadBusy.value || refreshing.value),
+  refresh,
+});
+const displayedError = computed(() => localError.value ?? listError.value);
 let unsubscribeModels: (() => void) | undefined;
 let refreshController: AbortController | undefined;
 let refreshPromise: Promise<void> | undefined;
@@ -151,35 +152,6 @@ async function selectReadyModel({ model }: { model: LocalModel }): Promise<void>
   }
 }
 
-async function remove({ modelId }: { modelId: string }): Promise<void> {
-  if (disposed || props.suspended || unavailable.value || active.value || creatingChatGroup.value || importing.value || downloading.value || queuedDownloadBusy.value || refreshing.value) {
-    return;
-  }
-  const controller = new AbortController();
-  active.value = controller;
-  localError.value = undefined;
-  removalChanged.value = false;
-  try {
-    if (modelId.startsWith('temp/')) {
-      await llamaCppBrowserModelFiles.removeTemporaryModel({ modelId, signal: controller.signal });
-      await refresh();
-      return;
-    }
-    const plan = await confirmRemoval({ target: { kind: 'model', modelId } });
-    if (!plan || disposed || controller.signal.aborted) {
-      return;
-    }
-    removalChanged.value = await llamaCppBrowserModelFiles.removeModel({ plan, signal: controller.signal }) === 'changed';
-    await refresh();
-  } catch (error) {
-    if (!controller.signal.aborted) {
-      localError.value = errorCode({ error });
-    }
-  } finally {
-    active.value = undefined;
-  }
-}
-
 function invalidateModelSelection(): void {
   modelSelectionVersion++;
 }
@@ -192,8 +164,6 @@ watch(() => props.suspended, suspended => {
   if (suspended) {
     modelSelectionVersion++;
     defaultSelection.value = undefined;
-    active.value?.abort();
-    finishDeletion({ plan: undefined });
     creatingChatGroup.value?.controller.abort();
     refreshRequested = false;
     refreshController?.abort();
@@ -224,7 +194,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('focus', refreshOnFocus);
   disposed = true;
-  active.value?.abort();
   creatingChatGroup.value?.controller.abort();
   refreshController?.abort();
   unsubscribeModels?.();

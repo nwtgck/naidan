@@ -120,7 +120,7 @@ it('registers the actual temporary model before creating its chat, initializing 
   expect(mocks.navigate).toHaveBeenCalledWith(expect.objectContaining({ chatPath: `/chat/${idToRaw({ id: request.chatId })}` }));
   expect(mocks.registerLive.mock.invocationCallOrder[0]).toBeLessThan(mocks.registerOrigin.mock.invocationCallOrder[0]!);
   expect(mocks.registerOrigin.mock.invocationCallOrder[0]).toBeLessThan(mocks.navigate.mock.invocationCallOrder[0]!);
-  expect(mocks.offer).toHaveBeenCalledWith({ chatId: request.chatId, source: expect.objectContaining({ registrationRevision: 1 }) });
+  expect(mocks.offer).toHaveBeenCalledWith({ chatId: request.chatId, source: expect.objectContaining({ registrationRevision: 1 }), chatGroupId: request.chatGroupId });
 });
 
 it('requires a real configuration choice and preserves the first default snapshot while waiting', async () => {

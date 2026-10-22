@@ -56,7 +56,7 @@ describe('model import modes', () => {
     const folder = wrapper.get('[data-testid="llama-cpp-browser-choose-directory"]').element;
     const files = wrapper.get('[data-testid="llama-cpp-browser-choose-files"]').element;
     expect(folder.parentElement).toBe(files.parentElement);
-    expect(folder.parentElement?.classList).toContain('gap-3');
+    expect(folder.parentElement?.classList).toContain('gap-2');
     expect(folder.parentElement?.classList).toContain('flex-wrap');
   });
 

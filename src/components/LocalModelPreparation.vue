@@ -6,7 +6,7 @@ import LlamaCppBrowserModelLoadProgress from '@/features/llama-cpp-browser/compo
 import { localModelDisplayName } from './browser-model-presentation';
 import BrowserModelPreparation from './BrowserModelPreparation.vue';
 
-const props = defineProps<{ state: LocalModelLaunchChatUi }>();
+const props = defineProps<{ state: LocalModelLaunchChatUi, errorMessage?: string }>();
 const model = computed(() => {
   const current = props.state.model.value;
   if (current === undefined) {
@@ -31,6 +31,9 @@ const stage = computed(() => {
   }
 });
 const error = computed(() => {
+  if (props.errorMessage !== undefined) {
+    return props.errorMessage;
+  }
   const status = props.state.status.value;
   switch (status) {
   case 'loading': case 'ready': return undefined;
@@ -59,7 +62,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div v-if="state.visible.value && model" data-testid="local-model-preparation" tw-class="w-full pointer-events-auto">
-    <BrowserModelPreparation :model="model" :entry="state.homeOriginId.value === undefined ? 'local' : 'home'" :stage="stage" interaction="ready" variant="GGUF" :quantization-options="[]" start-status="idle" :error="error" :selection-state="undefined" failure-action="retry" file-source="local" @retry="state.retry()" @back="state.back()">
+    <BrowserModelPreparation presentation="preparation" :model="model" :entry="state.homeOriginId.value === undefined ? 'local' : 'home'" :stage="stage" interaction="ready" variant="GGUF" :quantization-options="[]" start-status="idle" :error="error" :selection-state="undefined" failure-action="retry" file-source="local" @retry="state.retry()" @back="state.back()">
       <template #progress><LlamaCppBrowserModelLoadProgress :progress="state.progress.value" /></template>
     </BrowserModelPreparation>
   </div>

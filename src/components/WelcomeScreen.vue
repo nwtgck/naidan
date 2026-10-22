@@ -70,26 +70,28 @@ defineExpose({
 </script>
 
 <template>
-  <WelcomeScreenFrame :placement="slots.primary || slots.notice ? 'contained' : 'floating'">
+  <WelcomeScreenFrame :placement="slots.primary || slots.notice || slots.actions ? 'contained' : 'floating'">
 
     <slot name="primary">
       <!-- Security Status Section -->
-      <div tw-class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
-        <div tw-class="relative group">
+      <div class="welcome-storage-notice" tw-class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
+        <div class="welcome-storage-accent" aria-hidden="true" tw-class="relative group">
           <!-- Subtle Glow Effect -->
           <div
             :tw-class="['absolute inset-0 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000', settings.storageType === 'memory' ? 'bg-indigo-500/20 dark:bg-indigo-500/10' : 'bg-emerald-500/20 dark:bg-emerald-500/10']"
           ></div>
 
-          <div
-            :tw-class="['relative p-4 sm:p-5 rounded-[2rem] border shadow-sm', settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20']"
-          >
-            <GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
-            <ShieldCheckIcon v-else tw-class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+          <div class="welcome-storage-accent-content">
+            <div
+              :tw-class="['relative p-4 sm:p-5 rounded-[2rem] border shadow-sm', settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20']"
+            >
+              <GhostIcon v-if="settings.storageType === 'memory'" tw-class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
+              <ShieldCheckIcon v-else tw-class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+            </div>
           </div>
         </div>
 
-        <div tw-class="space-y-3 sm:space-y-4">
+        <div class="welcome-storage-copy" tw-class="space-y-3 sm:space-y-4">
           <div tw-class="space-y-1 sm:space-y-2">
             <h2 tw-class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
               <template v-if="settings.storageType === 'memory'">
@@ -126,6 +128,8 @@ defineExpose({
       </div>
 
     </slot>
+
+    <slot name="actions" />
 
     <!-- Supplemental notices never own composer visibility or replace the
            primary content. Keep the slot absent when there is nothing to show. -->

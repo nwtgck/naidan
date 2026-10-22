@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatModelBindingAssistantFingerprint, createChatMessageSnapshot } from './chat-message';
+import { chatModelBindingAssistantFingerprint, createChatMessageSnapshot, replaceAssistantModelReferences } from './chat-message';
 import type { AssistantMessageNode, MessageNode, ToolMessageNode, UserMessageNode, Attachment } from './types';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from './ids';
 
@@ -155,5 +155,20 @@ describe('createChatMessageSnapshot', () => {
     expect(createChatMessageSnapshot({ node }).parts).toEqual([]);
     node.parts.push({ type: 'text', text: '', completeness: 'complete' });
     expect(createChatMessageSnapshot({ node }).parts).toEqual([{ type: 'text', text: '', completeness: 'complete' }]);
+  });
+});
+
+describe('saved model references', () => {
+  it('rewrites exact assistant references in every branch while preserving all other message fields', () => {
+    const first = { ...assistant(), modelId: 'temp/source:Q4' };
+    const nested = { ...assistant(), id: toMessageId({ raw: 'nested' }), modelId: 'temp/source:Q4' };
+    const otherVariant = { ...assistant(), id: toMessageId({ raw: 'variant' }), modelId: 'temp/source:Q8' };
+    const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [nested, otherVariant] } };
+    first.replies.items.push(user);
+    const original = structuredClone({ items: [first] });
+    const result = replaceAssistantModelReferences({ branch: original, sourceModelId: 'temp/source:Q4', modelId: 'user/source-2' });
+    expect(result.items[0]).toEqual({ ...original.items[0], modelId: 'user/source-2', replies: { items: [{ ...user, replies: { items: [{ ...nested, modelId: 'user/source-2' }, otherVariant] } }] } });
+    expect(original.items[0]!.modelId).toBe('temp/source:Q4');
+    expect(nested.modelId).toBe('temp/source:Q4');
   });
 });

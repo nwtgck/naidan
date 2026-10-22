@@ -753,16 +753,27 @@ export class StorageService {
     }
   }
 
-  async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
+  async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | undefined | Promise<ChatGroup | undefined> }): Promise<void> {
+    const provider = this.getProvider();
+    const isCurrent = this.captureSettingsStorage();
     try {
       await this.synchronizer.withLock({
         fn: async () => {
-          const current = await this.loadChatGroup({ id });
+          if (!isCurrent()) {
+            throw new ChatContentBindingChangedError();
+          }
+          const current = await provider.loadChatGroup({ id });
           const previousBinding = current === null ? undefined : { endpoint: structuredClone(current.endpoint), modelId: current.modelId };
           const updated = await updater({ current: current });
-          await this.getProvider().saveChatGroup({ chatGroup: updated });
+          if (!isCurrent()) {
+            throw new ChatContentBindingChangedError();
+          }
+          if (updated === undefined) {
+            return;
+          }
+          await provider.saveChatGroup({ chatGroup: updated });
           if (previousBinding === undefined || !sameModelBindingFields({ left: previousBinding, right: updated })) {
-            detachModelLaunchChatGroupOwners({ provider: this.getProvider(), chatGroupId: id });
+            detachModelLaunchChatGroupOwners({ provider, chatGroupId: id });
             this.chatGroupModelBindingRevisions.set(id, (this.chatGroupModelBindingRevisions.get(id) ?? 0) + 1);
           }
         },

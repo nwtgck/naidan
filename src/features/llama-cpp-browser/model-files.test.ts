@@ -115,6 +115,18 @@ describe('local model publication and saving', () => {
     expect(commit).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a copied receipt usable after its temporary source is removed', async () => {
+    const imported = await llamaCppBrowserModelFiles.importModel({ file: gguf({ name: 'model.gguf', marker: 1 }), storage: 'temp', signal: undefined });
+    const modelId = imported.models[0]!.modelId;
+    const source = await captureTemporaryModelSource({ modelId, signal: undefined });
+    const saved = await copyTemporaryModel({ source, signal: undefined, onProgress: () => {} });
+    await llamaCppBrowserModelFiles.removeTemporaryModel({ modelId, signal: undefined });
+    expect(source.isCurrent()).toBe(false);
+    const operation = vi.fn(async () => 'bound');
+    expect(await withSavedTemporaryModelFiles({ source, saved, signal: undefined, operation })).toEqual({ status: 'completed', value: 'bound' });
+    expect(operation).toHaveBeenCalledOnce();
+  });
+
   it('invalidates an OPFS receipt after inventory observes another tab replacing its root', async () => {
     const imported = await llamaCppBrowserModelFiles.importModel({ file: gguf({ name: 'model.gguf', marker: 1 }), storage: 'opfs', signal: undefined });
     const modelId = imported.models[0]!.modelId;
@@ -145,6 +157,6 @@ describe('local model publication and saving', () => {
     expect(source.isCurrent()).toBe(true);
     await llamaCppBrowserModelFiles.removeTemporaryModel({ modelId: source.model.modelId, signal: undefined });
     expect(source.isCurrent()).toBe(false);
-    expect(await withSavedTemporaryModelFiles({ source, saved: second, signal: undefined, operation: async () => 'must not bind' })).toEqual({ status: 'changed' });
+    expect(await withSavedTemporaryModelFiles({ source, saved: second, signal: undefined, operation: async () => 'bound' })).toEqual({ status: 'completed', value: 'bound' });
   });
 });

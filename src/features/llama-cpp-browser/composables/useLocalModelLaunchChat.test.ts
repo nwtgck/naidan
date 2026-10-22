@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, ref, type Ref } from 'vue';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import type { Chat, Endpoint } from '@/01-models/types';
 import type { LocalModel, Progress } from '@/features/llama-cpp-browser/types';
-import { assertLocalModelLaunchReady, beginLocalModelLaunchPromotion, localModelLaunchSession, registerLocalModelLaunchSession, retireLocalModelLaunchSession } from './local-model-launch-session';
-import { useLocalModelLaunchChat } from './useLocalModelLaunchChat';
+import { assertLocalModelLaunchReady, localModelLaunchSession, registerLocalModelLaunchSession, retireLocalModelLaunchSession } from './local-model-launch-session';
+import { suspendLocalModelLaunchPreparation, useLocalModelLaunchChat } from './useLocalModelLaunchChat';
 
-const mocks = vi.hoisted(() => ({ prepare: vi.fn(), back: vi.fn(), listeners: new Set<() => void>() }));
+const mocks = vi.hoisted(() => ({ prepare: vi.fn(), back: vi.fn(), listeners: new Set<() => void>(), pending: undefined as Ref<boolean> | undefined }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: { prepareModel: mocks.prepare } }));
+vi.mock('@/composables/chat/chat-scoped/chat-model-binding-operations', () => ({ hasChatLocalModelPreparation: () => mocks.pending?.value ?? false }));
 vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => ({ returnToHome: mocks.back }) }));
 vi.mock('../model-files', () => ({
   llamaCppBrowserModelFiles: {
@@ -71,6 +72,7 @@ function fixture({ register, homeOriginId }: { register: boolean, homeOriginId: 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.pending = ref(false);
   mocks.prepare.mockResolvedValue('ready');
 });
 
@@ -172,13 +174,57 @@ it('keeps the session and pending preparation when the view leaves, then recheck
   expect(mocks.prepare).toHaveBeenCalledTimes(2);
 });
 
+it('shares one normal preparation between two views and rechecks after both leave', async () => {
+  const { render } = fixture({ register: true, homeOriginId: undefined });
+  const first = render();
+  const second = render();
+  await flushPromises();
+  expect(first.state.maySend.value).toBe(true);
+  expect(second.state.status.value).toBe('ready');
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  first.wrapper.unmount();
+  expect(second.state.status.value).toBe('ready');
+  second.wrapper.unmount();
+  render();
+  await flushPromises();
+  expect(mocks.prepare).toHaveBeenCalledTimes(2);
+});
+
+it('defers a real re-entry warmup until the replacement preparation guard is released', async () => {
+  const { render } = fixture({ register: true, homeOriginId: undefined });
+  const first = render();
+  await flushPromises();
+  first.wrapper.unmount();
+  mocks.pending!.value = true;
+  render();
+  await flushPromises();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  mocks.pending!.value = false;
+  await flushPromises();
+  expect(mocks.prepare).toHaveBeenCalledTimes(2);
+});
+
+it('uses a preparation already pending on return without warming the model twice', async () => {
+  const prepared = Promise.withResolvers<'ready'>();
+  mocks.prepare.mockReturnValueOnce(prepared.promise);
+  const { render } = fixture({ register: true, homeOriginId: undefined });
+  const first = render();
+  await flushPromises();
+  first.wrapper.unmount();
+  const returned = render();
+  await flushPromises();
+  prepared.resolve('ready');
+  await flushPromises();
+  expect(returned.state.status.value).toBe('ready');
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+});
+
 it('follows a saved model promotion and does not report loss of the old temporary files', async () => {
-  const { binding, render, invalidate } = fixture({ register: true, homeOriginId: 'home' });
+  const { chat, binding, render, invalidate } = fixture({ register: true, homeOriginId: 'home' });
   const { state } = render();
   await flushPromises();
-  const promotion = beginLocalModelLaunchPromotion({ chatId, sourceModelId: model.modelId, model: saved, isCurrent: () => true });
   binding.value = { ...binding.value, modelId: saved.modelId };
-  promotion?.finish();
+  registerLocalModelLaunchSession({ chat: chat.value!, model: saved, homeOriginId: 'home', isCurrent: () => true, readBinding: () => ({ ...binding.value, chatGroupId }) });
   invalidate();
   await flushPromises();
   expect(state.visible.value).toBe(true);
@@ -207,4 +253,17 @@ it('checks preparation and source capability at public send admission without st
   retireLocalModelLaunchSession({ session });
   expect(() => admission?.assertCurrent()).toThrow('missing-model');
   expect(mocks.prepare).not.toHaveBeenCalled();
+});
+
+it.each(['ready', 'skipped-busy'] as const)('starts a fresh session when the same model is explicitly selected again after %s', async outcome => {
+  mocks.prepare.mockResolvedValueOnce(outcome);
+  const { chat, binding, render } = fixture({ register: true, homeOriginId: undefined });
+  const { state } = render();
+  await flushPromises();
+  await suspendLocalModelLaunchPreparation({ chatId });
+  expect(localModelLaunchSession({ chatId })).toBeUndefined();
+  registerLocalModelLaunchSession({ chat: chat.value!, model, homeOriginId: undefined, isCurrent: () => true, readBinding: () => ({ ...binding.value, chatGroupId }) });
+  await flushPromises();
+  expect(state.status.value).toBe('ready');
+  expect(mocks.prepare).toHaveBeenCalledTimes(2);
 });

@@ -383,7 +383,7 @@ export async function withSavedTemporaryModelFiles<T>({ source, saved, signal, o
       return { status: 'busy' as const };
     }
     const capture = savedCaptures.get(saved);
-    if (!capture || capture.source !== source || !source.isCurrent()
+    if (!capture || capture.source !== source
       || !saved.receipt.publication.isCurrent({ modelId: saved.model.modelId })) {
       return { status: 'changed' as const };
     }
@@ -397,9 +397,6 @@ export async function withSavedTemporaryModelFiles<T>({ source, saved, signal, o
         return { status: 'changed' as const };
       }
       throw error;
-    }
-    if (!source.isCurrent()) {
-      return { status: 'changed' as const };
     }
     return { status: 'completed' as const, value: await operation({ model: saved.model }) };
   });

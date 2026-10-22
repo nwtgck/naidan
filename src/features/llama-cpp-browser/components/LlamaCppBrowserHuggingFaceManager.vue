@@ -12,8 +12,9 @@ import { artifactRole } from '@/features/llama-cpp-browser/hugging-face/artifact
 import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
-import { AlertCircleIcon, CheckIcon, ChevronDownIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
-import { matchesQuantizationChoice, quantizationChoices, preferredProjector, projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { AlertCircleIcon, CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, FolderSearchIcon, HardDriveIcon, Loader2Icon, PauseIcon, PlayIcon, Trash2Icon } from 'lucide-vue-next';
+import LlamaCppBrowserModelConfiguration from './LlamaCppBrowserModelConfiguration.vue';
+import { matchesQuantizationChoice, quantizationChoices, preferredProjector } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import { lazyStrings } from '@/strings';
 import { parseRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
@@ -99,7 +100,6 @@ async function copyModelLaunchUrl(): Promise<void> {
   }
 }
 
-const projectorOptions = computed(() => projectorChoices({ files: catalog.value?.projectors ?? [] }));
 const selectedProjector = computed(() => {
   switch (multimodal.value) {
   case 'off': return undefined;
@@ -112,8 +112,6 @@ const selectedProjector = computed(() => {
   const files = catalog.value?.projectors ?? [];
   return files.find(file => file.path === projector.value) ?? preferredProjector({ files });
 });
-const selectedChoiceLabel = computed(() => selectedChoice.value?.displayLabel ?? lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_model_files());
-const selectedProjectorLabel = computed(() => projectorOptions.value.find(option => option.file.path === selectedProjector.value?.path)?.label ?? lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_companion_file());
 const needsVariant = computed(() => selectedChoice.value !== undefined && selected.value === undefined);
 const needsProjector = computed(() => multimodal.value === 'on' && selectedProjector.value === undefined);
 const selectedFiles = computed(() => [...(selected.value?.files ?? []), ...(selectedProjector.value ? [selectedProjector.value] : [])]);
@@ -294,7 +292,7 @@ async function remove({ repository, destination: requestedDestination }: { repos
       }
       }
     })();
-    const plan = await confirmRemoval({ target: { kind: 'repository', location } });
+    const plan = await confirmRemoval({ target: { kind: 'repository', location }, signal: undefined });
     if (!plan || disposed) {
       return;
     }
@@ -443,36 +441,8 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
     <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
     <fieldset v-if="catalog" :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
       <div tw-class="flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="llama-hf-options">
-        <div tw-class="flex flex-wrap items-center gap-2 max-w-full">
-          <label :for="`${id}-model`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__quantization() }}</label>
-          <div tw-class="relative w-40 max-w-full">
-            <select :id="`${id}-model`" v-model="quantization" :title="selectedChoiceLabel" data-testid="llama-hf-model" tw-class="appearance-none block w-full pl-3 pr-9 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all">
-              <option v-if="!selectedChoice" value="">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_model_files() }}</option>
-              <option v-for="choice in choices" :key="choice.primaryRelativePath" :value="choice.primaryRelativePath">{{ choice.displayLabel }} · {{ size({ bytes: choice.models[0]!.size }) }}</option>
-            </select>
-            <span aria-hidden="true" data-testid="llama-hf-selected-model" tw-class="absolute inset-px flex items-center rounded-xl bg-white dark:bg-gray-900 pl-3 pr-9 text-sm font-medium text-gray-800 dark:text-gray-100 pointer-events-none"><span tw-class="truncate">{{ selectedChoiceLabel }}</span></span>
-            <ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-          <p v-if="catalog.models.length === 0" tw-class="w-full text-xs text-gray-500">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
-        </div>
-        <!-- Repository support controls are hidden when no companion file exists. -->
-        <div v-if="catalog.projectors.length" tw-class="flex items-center gap-2">
-          <div>
-            <p :id="`${id}-multimodal-label`" tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_support() }}</p>
-          </div>
-          <button type="button" role="switch" data-testid="llama-hf-multimodal" :disabled="!catalog.projectors.length" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal-label`" :aria-describedby="`${id}-multimodal-help`" :tw-class="['relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60', multimodal === 'on' ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700']" @click="multimodal = multimodal === 'on' ? 'off' : 'on'"><span aria-hidden="true" :tw-class="['block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-[18px]' : 'translate-x-[3px]']" /></button>
-        </div>
-        <div v-if="catalog.projectors.length && multimodal === 'on'" tw-class="flex flex-wrap items-center gap-2 max-w-full">
-          <label :for="`${id}-projector`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_quantization() }}</label>
-          <div tw-class="relative w-32 max-w-full">
-            <select :id="`${id}-projector`" :value="selectedProjector?.path ?? ''" :title="selectedProjectorLabel" data-testid="llama-hf-projector" tw-class="appearance-none block w-full pl-3 pr-9 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100" @change="projector = ($event.target as HTMLSelectElement).value">
-              <option value="">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_companion_file() }}</option>
-              <option v-for="option in projectorOptions" :key="option.file.path" :value="option.file.path">{{ option.label }} · {{ size({ bytes: option.file.size }) }}</option>
-            </select>
-            <span aria-hidden="true" data-testid="llama-hf-selected-projector" tw-class="absolute inset-px flex items-center rounded-xl bg-white dark:bg-gray-900 pl-3 pr-9 text-sm font-medium text-gray-800 dark:text-gray-100 pointer-events-none"><span tw-class="truncate">{{ selectedProjectorLabel }}</span></span>
-            <ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
+        <LlamaCppBrowserModelConfiguration v-model:quantization="quantization" v-model:multimodal="multimodal" :projector="selectedProjector?.path ?? ''" :choices="choices" :projectors="catalog.projectors" :disabled="disabled || active !== undefined || deleting || searching" :multimodal-description-id="`${id}-multimodal-help`" @update:projector="projector = $event" />
+        <p v-if="catalog.models.length === 0" tw-class="w-full text-xs text-gray-500">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found() }}</p>
         <div tw-class="flex flex-wrap items-center gap-2 ml-auto">
           <div data-testid="llama-hf-total" :title="downloadSizeDescription" tw-class="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"><HardDriveIcon tw-class="w-3.5 h-3.5 shrink-0" aria-hidden="true" /><span tw-class="sr-only">{{ downloadSizeDescription }}</span><span tw-class="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{{ selected ? needsProjector ? lazyStrings.LlamaCppBrowserHuggingFaceManager__model_size({ size: size({ bytes: selected.size }) }) : size({ bytes: total }) : '—' }}</span></div>
           <button type="button" data-testid="llama-hf-download" :disabled="!selected || needsProjector || !catalogCurrent || localAvailability !== 'missing' || destinationUnavailable || authorizing" tw-class="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="start"><Loader2Icon v-if="localAvailability === 'checking'" tw-class="w-4 h-4 animate-spin" /><DownloadIcon v-else tw-class="w-4 h-4" />{{ downloadLabel }}</button>

@@ -1,4 +1,5 @@
 import { watch } from 'vue';
+import { chatLocalModelInputs } from './chat-local-model-input';
 import { idToRaw, type ChatId, type MessageId } from '@/01-models/ids';
 import type { AssistantMessageNode, Chat, Endpoint } from '@/01-models/types';
 import { chatModelBindingAssistantFingerprint } from '@/01-models/chat-message';
@@ -24,6 +25,21 @@ export type ChatModelBindingOperation = {
 };
 
 const lanes = new Map<ChatId, BindingLane>();
+
+/** The pending input is the only page-local guard before normal preparation. */
+export function hasChatLocalModelPreparation({ chatId }: { chatId: ChatId }): boolean {
+  return chatLocalModelInputs.value.has(chatId);
+}
+
+export function captureChatLocalModelAdmission({ chatId }: { chatId: ChatId }): { assertCurrent(): void } {
+  const assertCurrent = () => {
+    if (hasChatLocalModelPreparation({ chatId })) {
+      throw new ChatContentBindingChangedError();
+    }
+  };
+  assertCurrent();
+  return { assertCurrent };
+}
 
 function laneFor({ chatId }: { chatId: ChatId }): BindingLane {
   const existing = lanes.get(chatId);
@@ -221,7 +237,7 @@ function invalidateOrigin({ origin }: { origin: BindingOrigin }): void {
   }
 }
 
-/** Only an empty chat created by the local-model start operation can own history. */
+/** An explicit local-model action can own subsequent history in an empty chat. */
 export function registerChatModelBindingOrigin({ chatId, modelId, isCurrent }: { chatId: ChatId, modelId: string, isCurrent: () => boolean }): boolean {
   const chat = getLiveChatById({ chatId });
   if (!chat || chat.root.items.length !== 0 || !isCurrent()) {
@@ -476,6 +492,10 @@ export function beginChatModelBindingGeneration({ chatId, endpoint, modelId }: {
 
 export const TEST_ONLY = {
   reset() {
+    for (const input of chatLocalModelInputs.value.values()) {
+      input.controller.abort();
+    }
+    chatLocalModelInputs.value = new Map();
     for (const chatId of [...proofs.keys()]) {
       invalidateHistoryProofs({ chatId });
     }

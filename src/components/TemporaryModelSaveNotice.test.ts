@@ -24,3 +24,18 @@ it('keeps the source name after saving and shows useful units for a small model'
   expect(wrapper.text()).toContain('Gemma-Q4_K_M');
   expect(wrapper.text()).not.toContain('Models-copy');
 });
+
+it('keeps cancellation separate from dismissing a copy and stops offering it once finalization begins', async () => {
+  const model = { modelId: 'temp/Model:Q4', size: 1024, importedAt: 1 };
+  const wrapper = mount(TemporaryModelSaveNotice, { props: { state: { phase: 'saving', model, sourceModel: model, progress: undefined, error: undefined } } });
+  using _cleanup = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  await wrapper.get('[data-testid="temporary-model-cancel"]').trigger('click');
+  expect(wrapper.emitted('cancel')).toEqual([[]]);
+  expect(wrapper.emitted('dismiss')).toBeUndefined();
+  await wrapper.setProps({ state: { phase: 'finalizing', model, sourceModel: model, progress: undefined, error: undefined } });
+  expect(wrapper.find('[data-testid="temporary-model-cancel"]').exists()).toBe(false);
+});

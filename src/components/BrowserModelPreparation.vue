@@ -22,6 +22,7 @@ const props = defineProps<{
   selectionState: SelectionState | undefined,
   failureAction?: 'start' | 'retry',
   fileSource?: 'hugging-face' | 'local',
+  presentation?: 'preview' | 'preparation',
 }>();
 const emit = defineEmits<{
   start: [], back: [], retry: [],
@@ -76,18 +77,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <section :inert="interaction === 'blocked' || undefined" data-testid="browser-model-preparation" tw-class="w-full max-w-lg mx-auto space-y-3 pointer-events-auto [container-type:inline-size]">
-    <div :tw-class="['flex items-center gap-2', entry === 'home' ? 'justify-between' : 'justify-end']">
+  <section :inert="interaction === 'blocked' || undefined" data-testid="browser-model-preparation" :tw-class="['w-full mx-auto pointer-events-auto [container-type:inline-size]', presentation === 'preparation' ? 'max-w-xl space-y-6' : 'max-w-lg space-y-3']">
+    <div v-if="presentation !== 'preparation'" :tw-class="['flex items-center gap-2', entry === 'home' ? 'justify-between' : 'justify-end']">
       <button v-if="entry === 'home'" type="button" :disabled="interaction === 'blocked'" data-testid="back-to-model-selection" tw-class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="emit('back')"><ArrowLeftIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.BrowserModelPreparation__back_to_model_selection() }}</button>
       <LlamaCppBrowserModelLaunchPrivacy appearance="compact" :file-source="fileSource" />
     </div>
-    <header :tw-class="['space-y-2 text-center', entry === 'model-url' ? 'pt-6' : '']">
-      <div class="model-preparation-brand" tw-class="flex items-center justify-center gap-2.5 pb-1"><div tw-class="relative isolate"><span aria-hidden="true" tw-class="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-blue-400/20 blur-xl dark:bg-blue-400/15" /><Logo :size="32" /></div><span tw-class="text-[18px] font-semibold leading-none tracking-tight text-gray-600 dark:text-gray-300">Naidan</span></div>
-      <h2 data-testid="preparation-model-name" :tw-class="['font-bold tracking-tight leading-[1.15] text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]', entry === 'model-url' ? 'text-[clamp(28px,8cqw,42px)]' : 'text-2xl sm:text-[32px]']">{{ model.name }}</h2>
+    <header :tw-class="['space-y-2 text-center', presentation === 'preparation' ? 'pt-1' : '', presentation !== 'preparation' && entry === 'model-url' ? 'pt-6' : '']">
+      <div v-if="presentation !== 'preparation'" class="model-preparation-brand" data-testid="model-preparation-brand" tw-class="flex items-center justify-center gap-2.5 pb-1"><div tw-class="relative isolate"><span aria-hidden="true" tw-class="pointer-events-none absolute -inset-2 -z-10 rounded-full bg-blue-400/20 blur-xl dark:bg-blue-400/15" /><Logo :size="32" /></div><span tw-class="text-[18px] font-semibold leading-none tracking-tight text-gray-600 dark:text-gray-300">Naidan</span></div>
+      <h2 data-testid="preparation-model-name" :tw-class="['tracking-tight dark:text-gray-100 [overflow-wrap:anywhere]', presentation === 'preparation' ? 'text-[clamp(22px,5.5cqw,28px)] font-semibold leading-[1.2] text-gray-800' : 'font-bold leading-[1.15] text-gray-900', presentation === 'preparation' ? '' : entry === 'model-url' ? 'text-[clamp(28px,8cqw,42px)]' : 'text-2xl sm:text-[32px]']">{{ model.name }}</h2>
       <div tw-class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
         <span>{{ model.developer }}</span><span aria-hidden="true" tw-class="text-gray-300 dark:text-gray-600">·</span>
         <slot name="quantization" :disabled="quantizationDisabled">
-          <div v-if="entry === 'model-url'" tw-class="inline-flex max-w-full items-center gap-1">
+          <span v-if="presentation === 'preparation' && fileSource === 'local'">{{ variant || 'GGUF' }}</span>
+          <div v-else-if="presentation === 'preparation' || entry === 'model-url'" tw-class="inline-flex max-w-full items-center gap-1">
             <div v-if="quantizationOptions.length" tw-class="relative flex min-w-0 max-w-[12rem] items-center">
               <select :value="variant ?? ''" :aria-label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" :title="variant" :disabled="quantizationDisabled" data-testid="model-preview-quantization" tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 enabled:hover:bg-gray-100/70 dark:enabled:hover:bg-gray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" @change="selectQuantization({ event: $event })">
                 <option v-for="option in quantizationOptions" :key="option.value" :value="option.value" tw-class="bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ option.label }}{{ option.detail === undefined ? '' : ' · ' + option.detail }}</option>
@@ -100,11 +102,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div v-else-if="quantizationOptions.length" tw-class="inline-flex max-w-[12rem] items-center gap-1"><SettingsSelect :model-value="variant ?? ''" :options="quantizationOptions" :label="lazyStrings.LlamaCppBrowserModelLaunch__quantization()" surface="embedded" presentation="toolbar" size="compact" :disabled="quantizationDisabled" data-testid="model-preview-quantization" @update:model-value="emit('select-quantization', $event)" /><slot name="quantization-actions" /></div>
           <span v-else>{{ variant || 'GGUF' }}</span>
         </slot>
-        <template v-if="size !== undefined"><span aria-hidden="true" tw-class="text-gray-300 dark:text-gray-600">·</span><span tw-class="inline-flex items-center gap-1 tabular-nums"><HardDriveIcon aria-hidden="true" tw-class="h-3 w-3" />{{ size }}</span></template>
+        <template v-if="size !== undefined && (presentation !== 'preparation' || fileSource === 'local')"><span aria-hidden="true" tw-class="text-gray-300 dark:text-gray-600">·</span><span tw-class="inline-flex items-center gap-1 tabular-nums"><HardDriveIcon aria-hidden="true" tw-class="h-3 w-3" />{{ size }}</span></template>
       </div>
     </header>
-    <div :class="{ 'model-url-start-spacing': (stage === 'preview' || stage === 'checking' || stage === 'failed') && entry === 'model-url' }" :tw-class="['space-y-1 text-left', stage === 'preview' && entry === 'home' ? 'pt-[clamp(24px,6dvh,56px)]' : '']">
-      <div v-if="entry !== 'model-url' && !quantizationOptions.length && (stage === 'preview' || (stage === 'failed' && failureAction !== 'retry'))" tw-class="mx-auto max-w-sm space-y-1.5">
+    <div :class="{ 'model-url-start-spacing': presentation !== 'preparation' && (stage === 'preview' || stage === 'checking' || stage === 'failed') && entry === 'model-url' }" :tw-class="['text-left', presentation === 'preparation' ? 'space-y-3' : 'space-y-1', presentation !== 'preparation' && stage === 'preview' && entry === 'home' ? 'pt-[clamp(24px,6dvh,56px)]' : '']">
+      <div v-if="presentation !== 'preparation' && entry !== 'model-url' && !quantizationOptions.length && (stage === 'preview' || (stage === 'failed' && failureAction !== 'retry'))" tw-class="mx-auto max-w-sm space-y-1.5">
         <label tw-class="block text-xs text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.BrowserModelPreparation__specify_a_quantization() }}</span><input type="text" :value="variant ?? ''" :disabled="disabled" :placeholder="lazyStrings.BrowserModelPreparation__automatic()" data-testid="model-preview-variant-input" tw-class="mt-1.5 block w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-100 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @input="selectQuantization({ event: $event })" /></label>
       </div>
       <div tw-class="min-h-[6.5rem]">
@@ -119,11 +121,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button type="button" class="model-start-surface" data-testid="start-preview-model" :disabled="disabled" :aria-busy="startStatus === 'starting'" tw-class="group relative mx-auto flex min-h-[72px] w-full max-w-sm items-center justify-center rounded-2xl border border-blue-400/80 dark:border-blue-500/70 bg-white dark:bg-gray-800 px-12 py-4 text-center text-[clamp(16px,4.2cqw,18px)] font-bold text-gray-900 dark:text-gray-100 hover:border-blue-500 dark:hover:border-blue-400 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 transition-[border-color,box-shadow,transform] duration-300 motion-reduce:transition-none disabled:cursor-wait" @click="stage === 'failed' && failureAction === 'retry' ? emit('retry') : emit('start')"><span>{{ stage === 'failed' && failureAction === 'retry' ? lazyStrings.LlamaCppBrowserModelLaunch__retry() : lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}</span><span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white group-hover:bg-blue-700 transition-colors duration-300 motion-reduce:transition-none"><Loader2Icon v-if="startStatus === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></button>
             <p v-if="stage === 'checking'" role="status" tw-class="text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.BrowserModelPreparation__checking_model() }}</p>
           </div>
-          <div v-else-if="stage === 'ready'" role="status" data-testid="model-preparation-ready" tw-class="flex min-h-[6.5rem] items-center justify-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200"><MessageCircleIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-600 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLaunch__ready_when_you_are() }}</div>
+          <div v-else-if="stage === 'ready'" role="status" data-testid="model-preparation-ready" :tw-class="['flex min-h-[6.5rem] items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200', presentation === 'preparation' ? 'justify-start' : 'justify-center']"><MessageCircleIcon aria-hidden="true" tw-class="h-4 w-4 text-blue-600 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserModelLaunch__ready_when_you_are() }}</div>
           <div v-else :key="'progress-' + stage" :tw-class="['min-h-[6.5rem]', stage === 'loading' ? 'pt-2' : '']"><slot name="progress" /></div>
         </Transition>
       </div>
-      <p v-if="error" role="alert" tw-class="text-center text-xs leading-relaxed text-red-600 dark:text-red-400">{{ error }}</p>
+      <p v-if="error" role="alert" :tw-class="['text-xs leading-relaxed text-red-600 dark:text-red-400', presentation === 'preparation' ? 'text-left' : 'text-center']">{{ error }}</p>
       <div tw-class="min-h-11"><slot name="details" /></div>
     </div>
   </section>

@@ -81,7 +81,7 @@ import { idToRaw } from '@/01-models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
-import { captureChatContentWrite, acquireChatModelBindingOperation, beginChatModelBindingGeneration, synchronizeChatModelBindingAdmission, type ChatModelBindingOperation } from './chat-model-binding-operations';
+import { captureChatContentWrite, captureChatLocalModelAdmission, hasChatLocalModelPreparation, acquireChatModelBindingOperation, beginChatModelBindingGeneration, synchronizeChatModelBindingAdmission, type ChatModelBindingOperation } from './chat-model-binding-operations';
 
 type PersistedToolContent =
   | { type: 'text', text: string }
@@ -203,9 +203,13 @@ export async function sendMessageToTargetChat({
   if (targetChat === null) {
     return false;
   }
-
+  if (hasChatLocalModelPreparation({ chatId: targetChat.id })) {
+    return false;
+  }
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId: targetChat.id });
   const bindingOperation = await acquireChatModelBindingOperation({ chatId: targetChat.id });
   try {
+    preparationAdmission.assertCurrent();
     if (isProcessing({ chatId: targetChat.id })) {
       return false;
     }
@@ -219,15 +223,17 @@ export async function sendMessageToTargetChat({
       throw new Error(String(exhaustive));
     }
     }
-    return await sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation });
+    preparationAdmission.assertCurrent();
+    return await sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation, preparationAdmission });
   } finally {
     bindingOperation.release();
   }
 }
 
-async function sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation }: {
+async function sendMessageWithBindingOperation({ targetChat, content, parentId, attachments, lmParameters, bindingOperation, preparationAdmission }: {
   targetChat: Chat | Readonly<Chat>, content: string, parentId: MessageId | null | undefined, attachments: Attachment[] | undefined,
   lmParameters: LmParameters | undefined, bindingOperation: ChatModelBindingOperation,
+  preparationAdmission: { assertCurrent(): void },
 }): Promise<boolean> {
 
   if (isProcessing({ chatId: targetChat.id })) {
@@ -366,6 +372,7 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
     }
 
     localLaunchPreparation?.assertCurrent();
+    preparationAdmission.assertCurrent();
 
     const userMessage: UserMessageNode = {
       id: generateId<MessageId>(),
@@ -443,7 +450,8 @@ async function sendMessageWithBindingOperation({ targetChat, content, parentId, 
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters: effectiveLmParameters,
-      write,
+      target: { ...resolved, endpoint, modelId: resolvedModel, lmParameters: effectiveLmParameters || resolved.lmParameters },
+      write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }),
       onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
@@ -471,8 +479,10 @@ export async function generateResponseForAssistant({
   lmParameters: LmParameters | undefined,
   onReady: (() => void) | undefined,
 }): Promise<void> {
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId: chat.id });
   const bindingOperation = await acquireChatModelBindingOperation({ chatId: chat.id });
   try {
+    preparationAdmission.assertCurrent();
     if (chatRuntimeStore.getActiveGeneration({ chatId: chat.id }) !== undefined) {
       throw new Error('This chat already owns an active generation.');
     }
@@ -488,15 +498,17 @@ export async function generateResponseForAssistant({
     }
     }
     const mutableChat = getLiveChat({ chat });
-    await generateResponseWithContentWrite({ chat: mutableChat, assistantId, lmParameters, onReady, write: captureChatContentWrite({ chat: mutableChat, dependency: 'model' }) });
+    preparationAdmission.assertCurrent();
+    await generateResponseWithContentWrite({ chat: mutableChat, assistantId, lmParameters, onReady, target: undefined, write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }) });
   } finally {
     bindingOperation.release();
   }
 }
 
-async function generateResponseWithContentWrite({ chat, assistantId, lmParameters, onReady, write }: {
+async function generateResponseWithContentWrite({ chat, assistantId, lmParameters, onReady, write, target }: {
   chat: Chat | Readonly<Chat>, assistantId: MessageId, lmParameters: LmParameters | undefined,
   onReady: (() => void) | undefined, write: ChatContentWrite,
+  target: ReturnType<typeof resolveGenerationSettings> | undefined,
 }): Promise<void> {
   let didSignalReady = false;
   const signalReady = () => {
@@ -587,14 +599,16 @@ async function generateResponseWithContentWrite({ chat, assistantId, lmParameter
   }
 
   try {
-    const resolved = resolveGenerationSettings({ chat: mutableChat });
+    // A started turn retains its endpoint/model/parameters. A later settings
+    // change affects the next turn, not persistence of this answer.
+    const resolved = target ?? resolveGenerationSettings({ chat: mutableChat });
     const usesBrowserProvidedLm = isBrowserProvidedLmEndpoint({ endpoint: resolved.endpoint });
-    const availableGenerationModels = await fetchAvailableModelsForChat({
+    const availableGenerationModels = target === undefined ? await fetchAvailableModelsForChat({
       chatId: mutableChat.id,
       errorSource: 'chat-generation-flow:resolve-regeneration-model',
-    });
+    }) : [];
     const pinnedTarget = await assertModelLaunchReady({ chat: mutableChat, endpoint: resolved.endpoint, modelId: assistantNode.modelId || resolved.modelId });
-    const resolvedModel = pinnedTarget?.effectiveModelId ?? resolveGenerationModel({
+    const resolvedModel = target?.modelId ?? pinnedTarget?.effectiveModelId ?? resolveGenerationModel({
       endpointType: getSupportedEndpointType({ endpoint: resolved.endpoint }),
       assistantModelId: assistantNode.modelId,
       resolvedModelId: resolved.modelId,
@@ -919,6 +933,7 @@ async function regenerateMessageForTarget({
   failedMessageId: MessageId,
 }): Promise<void> {
   const chatId = targetChat.id;
+  const preparationAdmission = captureChatLocalModelAdmission({ chatId });
   if (isProcessing({ chatId })) {
     abortProcessingForChat({ chatId });
     while (isProcessing({ chatId })) {
@@ -928,6 +943,7 @@ async function regenerateMessageForTarget({
 
   const bindingOperation = await acquireChatModelBindingOperation({ chatId });
   try {
+    preparationAdmission.assertCurrent();
     const synchronized = await synchronizeChatModelBindingAdmission({ chatId });
     switch (synchronized) {
     case 'changed': await showChatModelBindingChanged();
@@ -938,6 +954,7 @@ async function regenerateMessageForTarget({
       throw new Error(String(exhaustive));
     }
     }
+    preparationAdmission.assertCurrent();
     await regenerateMessageWithBindingOperation({ targetChat, failedMessageId, bindingOperation });
   } finally {
     bindingOperation.release();
@@ -1032,7 +1049,8 @@ async function regenerateMessageWithBindingOperation({ targetChat, failedMessage
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
-      write,
+      target: undefined,
+      write: captureChatContentWrite({ chat: mutableChat, dependency: 'content' }),
       onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;

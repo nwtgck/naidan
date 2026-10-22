@@ -65,6 +65,61 @@ beforeEach(() => {
 afterEach(() => Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks }));
 
 describe('conditional owner model promotion', () => {
+  it('promotes a chat-owned pair without changing its existing chat group', async () => {
+    const service = await owner({ chatOverrides: { groupId: chatGroupId, endpoint: { type: 'llama_cpp_browser' }, modelId: sourceModelId }, chatGroupOverrides: undefined });
+    const expected = (await service.captureModelBinding({ chatId, sourceModelId }))!;
+    expect(expected.chatGroupTarget).toBe('not-targeted');
+    const result = await service.promoteModelBinding({ expected, modelId: savedModelId, knownMessageIds: [toMessageId({ raw: 'known' })], expectedContent: await contentWrite({ service }), globalOutcome: 'not-targeted' });
+    expect(result).toEqual({ chat: 'applied', chatGroup: 'not-targeted', content: 'applied' });
+    expect(await service.loadChatMeta({ id: chatId })).toMatchObject({ groupId: chatGroupId, endpoint: { type: 'llama_cpp_browser' }, modelId: savedModelId });
+    expect((await service.loadChatGroup({ id: chatGroupId }))?.modelId).toBe(sourceModelId);
+    expect((await service.loadSettings())?.defaultModelId).toBe(sourceModelId);
+    expect((await service.loadChatContent({ id: chatId }))?.root.items.map(node => node.modelId)).toEqual([savedModelId, sourceModelId, 'temp/source:Q8']);
+  });
+
+  it.each([
+    { endpoint: { type: 'llama_cpp_browser' as const }, modelId: undefined },
+    { endpoint: undefined, modelId: sourceModelId },
+    { endpoint: { type: 'llama_cpp_browser' as const }, modelId: 'temp/source:Q8' },
+  ])('uses the resolved pair when an explicit field is inherited: %j', async chatOverrides => {
+    const service = await owner({ chatOverrides: { groupId: chatGroupId, ...chatOverrides }, chatGroupOverrides: undefined });
+    const capture = await service.captureModelBinding({ chatId, sourceModelId });
+    expect(capture !== undefined).toBe(chatOverrides.modelId !== 'temp/source:Q8');
+    expect((await service.loadChatGroup({ id: chatGroupId }))?.modelId).toBe(sourceModelId);
+  });
+
+  it('does not apply an old snapshot after its explicit override is cleared', async () => {
+    const service = await owner({ chatOverrides: { groupId: chatGroupId, endpoint: { type: 'llama_cpp_browser' }, modelId: sourceModelId }, chatGroupOverrides: undefined });
+    const expected = (await service.captureModelBinding({ chatId, sourceModelId }))!;
+    await service.updateChatMeta({ id: chatId, updater: ({ current }) => ({ ...current!, modelId: undefined }) });
+    const result = await service.promoteModelBinding({ expected, modelId: savedModelId, knownMessageIds: [], expectedContent: await contentWrite({ service }), globalOutcome: 'not-targeted' });
+    expect(result).toEqual({ chat: 'changed', chatGroup: 'not-targeted', content: 'changed' });
+    expect((await service.loadChatMeta({ id: chatId }))?.modelId).toBeUndefined();
+    expect(await service.captureModelBinding({ chatId, sourceModelId })).toBeDefined();
+    expect((await service.loadChatGroup({ id: chatGroupId }))?.modelId).toBe(sourceModelId);
+  });
+
+  it('captures current resolved settings after a queued update changes and restores the pair', async () => {
+    const service = await owner({ chatOverrides: { groupId: chatGroupId, endpoint: { type: 'llama_cpp_browser' }, modelId: sourceModelId }, chatGroupOverrides: undefined });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const change = service.updateChatMeta({
+      id: chatId,
+      updater: async ({ current }) => {
+        entered.resolve();
+        await release.promise;
+        return { ...current!, modelId: 'manual-model' };
+      },
+    });
+    await entered.promise;
+    const revert = service.updateChatMeta({ id: chatId, updater: ({ current }) => ({ ...current!, modelId: sourceModelId }) });
+    const capture = service.captureModelBinding({ chatId, sourceModelId });
+    release.resolve();
+    await Promise.all([change, revert]);
+    expect(await capture).toBeDefined();
+    expect(await service.captureModelBinding({ chatId, sourceModelId })).toBeDefined();
+  });
+
   it('keeps launch receipts and write authority out of ordinary DTOs', () => {
     const parsed = ChatContentSchemaDto.parse({ root: { items: [] } });
     expect(parsed).not.toHaveProperty('modelBindingEpoch');

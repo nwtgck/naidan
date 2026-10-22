@@ -21,7 +21,7 @@ describe('download progress appearance', () => {
       expect(wrapper.get('[role="progressbar"] > div').classes()).toContain('motion-reduce:transition-none');
       expect(wrapper.get('[data-testid="llama-download-progress"] .font-semibold').classes()).toContain('text-blue-600');
     }
-    expect(welcome.get('[role="progressbar"]').classes()).toContain('h-2.5');
+    expect(welcome.get('[role="progressbar"]').classes()).toContain('h-2');
     expect(manager.get('[role="progressbar"]').classes()).toContain('h-1.5');
     welcome.unmount();
     manager.unmount();

@@ -788,6 +788,7 @@ describe('Settings Mapping', () => {
       lmParameters,
       experimental: {
         locale: 'ja',
+        chatBrowserModelPickerTab: undefined,
         markdownRendering: 'monolithic_html',
         toolConfigPersistence: 'enabled',
         toolConfigs,
@@ -837,5 +838,21 @@ describe('Legacy Migration (Flat to Tree)', () => {
     expect(domain.root.items[0]?.replies.items).toHaveLength(1);
     expect(domain.root.items[0]?.replies.items[0]?.id).toBe(legacyId2);
     expect(domain.root.items[0]?.replies.items[0]?.replies.items).toHaveLength(0);
+  });
+});
+
+describe('chat model source preference mapping', () => {
+  it.each(['files', 'hugging-face', 'saved'] as const)('round-trips only the source-tab key: %s', tab => {
+    const domain: Settings = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'user/model', storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja', chatBrowserModelPickerTab: tab } };
+    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    expect(dto.experimental?.chatBrowserModelPickerTab).toBe(tab);
+    expect(settingsToDomain({ dto }).experimental).toMatchObject({ locale: 'ja', chatBrowserModelPickerTab: tab });
+  });
+
+  it('keeps old settings without this preference readable without choosing or persisting a model', () => {
+    const domain: Settings = { endpoint: { type: 'openai', url: '' }, defaultModelId: undefined, storageType: 'memory', titleGeneration: 'disabled', mounts: [], providerProfiles: [], experimental: { locale: 'ja' } };
+    const dto = SettingsSchemaDto.parse(settingsToDto({ domain }));
+    expect(settingsToDomain({ dto }).experimental?.chatBrowserModelPickerTab).toBeUndefined();
+    expect(settingsToDomain({ dto }).defaultModelId).toBeUndefined();
   });
 });

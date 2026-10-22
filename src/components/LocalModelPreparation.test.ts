@@ -48,14 +48,16 @@ describe('local model preparation presentation', () => {
     };
     expect(wrapper.get('[data-testid="preparation-model-name"]').text()).toBe('Qwen-9B-Q4');
     expect(wrapper.text()).toContain('5.22 GiB');
-    await wrapper.get('[data-testid="model-launch-privacy-trigger"]').trigger('click');
-    expect(wrapper.get('[data-testid="model-launch-privacy-explanation"]').text()).not.toContain('Hugging Face');
+    // Navigation/privacy live above the welcome content in ChatPane.
+    expect(wrapper.find('[data-testid="model-launch-privacy-trigger"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-preparation-brand"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-preview-variant-input"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="model-load-percentage"]').text()).toBe('40%');
-    await wrapper.get('[data-testid="back-to-model-selection"]').trigger('click');
-    expect(state.back).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-testid="back-to-model-selection"]').exists()).toBe(false);
     status.value = 'ready';
     await wrapper.vm.$nextTick();
     expect(wrapper.get('[data-testid="preparation-model-name"]').text()).toBe('Qwen-9B-Q4');
+    expect(wrapper.text()).toContain('5.22 GiB');
     expect(wrapper.find('[data-testid="model-preparation-ready"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="model-launch-loading"]').exists()).toBe(false);
   });
