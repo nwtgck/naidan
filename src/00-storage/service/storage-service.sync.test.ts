@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { StorageService } from './index';
+import { ChatContentBindingChangedError, StorageService, type ChatContentWrite } from './index';
 import { MemoryStorageProvider } from './memory-storage';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
-import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type ChatMeta, type Hierarchy, type Settings, type StorageSnapshot } from '@/01-models/types';
+import { formatHuggingFaceModelId } from '@/01-models/llama-cpp-browser-model-id';
+import type { ChangeListener, StorageChangeEvent } from './synchronizer';
 
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
 vi.mock('@/strings', () => ({
@@ -13,10 +15,11 @@ vi.mock('@/strings', () => ({
 }));
 
 // We mock the synchronizer to track calls to withLock and notify
-const { mockWithLock, mockNotify, mockSubscribe } = vi.hoisted(() => ({
+const { mockWithLock, mockNotify, mockSubscribe, mockSynchronizers } = vi.hoisted(() => ({
   mockWithLock: vi.fn().mockImplementation(({ fn }) => fn()),
   mockNotify: vi.fn(),
-  mockSubscribe: vi.fn(),
+  mockSubscribe: vi.fn<({ listener }: { listener: ChangeListener }) => void>(),
+  mockSynchronizers: [] as { receive({ event }: { event: StorageChangeEvent }): void }[],
 }));
 
 const mockAddErrorEvent = vi.fn();
@@ -32,9 +35,20 @@ vi.mock('../../composables/useGlobalEvents', () => ({
 vi.mock('./synchronizer', () => {
   return {
     StorageSynchronizer: class {
+      private listeners = new Set<ChangeListener>();
+
+      constructor() {
+        mockSynchronizers.push({ receive: ({ event }) => this.listeners.forEach(listener => listener({ event })) });
+      }
+
       withLock = mockWithLock;
       notify = mockNotify;
-      subscribe = mockSubscribe;
+
+      subscribe({ listener }: { listener: ChangeListener }) {
+        mockSubscribe({ listener });
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      }
     },
   };
 });
@@ -88,16 +102,52 @@ vi.mock('./opfs-storage', () => ({
   },
 }));
 
+const operationChatId = toChatId({ raw: 'operation-owner' });
+
+function operationMeta({ title }: { title: string }): ChatMeta {
+  return { id: operationChatId, title, createdAt: 1, updatedAt: 1, debugEnabled: false };
+}
+
+function restoredOwner({ meta }: { meta: ChatMeta }): StorageSnapshot {
+  return { structure: { settings: { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } }, hierarchy: { items: [{ type: 'chat', id: meta.id }] }, chatMetas: [meta], chatGroups: [] }, contentStream: (async function* () {})() };
+}
+
+function serializeMockLocks() {
+  const tails = new Map<string, Promise<void>>();
+  mockWithLock.mockImplementation(async ({ lockKey, fn }: { lockKey: string, fn(): Promise<unknown> }) => {
+    const previous = tails.get(lockKey) ?? Promise.resolve();
+    const finished = Promise.withResolvers<void>();
+    tails.set(lockKey, finished.promise);
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      finished.resolve();
+    }
+  });
+}
+
+function receiveChange({ event }: { event: StorageChangeEvent }): void {
+  const synchronizer = mockSynchronizers[0];
+  if (synchronizer === undefined) {
+    throw new Error('The test service synchronizer is missing');
+  }
+  synchronizer.receive({ event });
+}
+
 describe('StorageService Synchronization Wrapper', () => {
   let service: StorageService;
 
   beforeEach(async () => {
     vi.resetAllMocks();
+    mockSynchronizers.length = 0;
 
     // Restore default mock implementations after reset
     mockWithLock.mockImplementation(({ fn }) => fn());
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
+    mockProvider.saveHierarchy.mockResolvedValue(undefined);
     mockProvider.loadChatMeta.mockResolvedValue(null);
+    mockProvider.loadHierarchy.mockResolvedValue({ items: [] });
     mockProvider.saveChatContent.mockResolvedValue(undefined);
     mockProvider.loadChatContent.mockResolvedValue(null);
     mockProvider.deleteChat.mockResolvedValue(undefined);
@@ -125,6 +175,359 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: LOCK_METADATA }));
     expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
     expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('invalidates content, defaults, and launch authority before UI listeners receive migration', async () => {
+    await service.init({ type: 'memory' });
+    const repository = 'owner/Model-GGUF';
+    const mainFilePath = 'Model-Q4_K_M.gguf';
+    const modelId = formatHuggingFaceModelId({ repository, mainFilePath });
+    await service.prepareModelLaunchChat({
+      request: {
+        chatId: operationChatId,
+        newChatGroupId: toChatGroupId({ raw: 'received-migration-launch' }),
+        chatGroupName: 'Model',
+        input: `hf.co/${repository}:Q4_K_M`,
+        requestedVariant: 'Q4_K_M',
+        target: { selection: { repository, revision: 'a'.repeat(40), files: [{ path: mainFilePath, size: 256 }] }, mainFilePath, modelId },
+        destination: { kind: 'opfs' },
+        effectiveModelId: modelId,
+        titleGeneration: 'disabled',
+        mode: 'create',
+        expectedTarget: undefined,
+      },
+      signal: new AbortController().signal,
+    });
+    expect(service.getModelLaunch({ chatId: operationChatId })?.phase).toBe('active');
+    const content = (await service.loadChatContent({ id: operationChatId }))!;
+    const write = service.createChatContentWrite({ id: operationChatId, content, binding: undefined });
+    const defaultsAreCurrent = service.captureSettingsStorage();
+    const launchIsCurrent = service.captureModelLaunchStorage();
+    expect(mockSubscribe).toHaveBeenCalledOnce();
+    const uiListener = vi.fn(() => {
+      expect(defaultsAreCurrent()).toBe(false);
+      expect(launchIsCurrent()).toBe(false);
+      expect(service.getModelLaunch({ chatId: operationChatId })).toBeUndefined();
+    });
+    service.subscribeToChanges({ listener: uiListener });
+
+    receiveChange({ event: { type: 'migration', timestamp: 7 } });
+
+    expect(uiListener).toHaveBeenCalledOnce();
+    const oldUpdater = vi.fn(() => content);
+    await expect(service.updateChatContent({ id: operationChatId, write, updater: oldUpdater })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    await expect(service.updateChatMeta({ id: operationChatId, write, updater: () => operationMeta({ title: 'Old completion' }) })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(oldUpdater).not.toHaveBeenCalled();
+    await expect(service.updateSettingsForStorage({ isCurrent: defaultsAreCurrent, updater: () => ({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } }) })).resolves.toBe('changed');
+
+    const nextWrite = service.createChatContentWrite({ id: operationChatId, content, binding: undefined });
+    expect(service.captureSettingsStorage()()).toBe(true);
+    expect(service.captureModelLaunchStorage()()).toBe(true);
+    await service.updateChatContent({ id: operationChatId, write: nextWrite, updater: () => content });
+    await service.updateChatMeta({ id: operationChatId, write: nextWrite, updater: ({ current }) => ({ ...current!, title: 'Current completion' }) });
+    expect((await service.loadChatMeta({ id: operationChatId }))?.title).toBe('Current completion');
+    expect(service.getModelLaunch({ chatId: operationChatId })).toBeUndefined();
+  });
+
+  it('does not invalidate current authority when an unrelated content hint arrives', async () => {
+    const defaultsAreCurrent = service.captureSettingsStorage();
+    const launchIsCurrent = service.captureModelLaunchStorage();
+    const write = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    receiveChange({ event: { type: 'chat_content', id: 'another-chat', timestamp: 7 } });
+    expect(defaultsAreCurrent()).toBe(true);
+    expect(launchIsCurrent()).toBe(true);
+    await service.updateChatContent({ id: operationChatId, write, updater: () => ({ root: { items: [] } }) });
+    expect(mockProvider.saveChatContent).toHaveBeenCalledOnce();
+    expect(mockSubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates authority again for distinct migration hints with the same timestamp', () => {
+    const first = service.captureSettingsStorage();
+    receiveChange({ event: { type: 'migration', timestamp: 7 } });
+    expect(first()).toBe(false);
+    const betweenHints = service.captureSettingsStorage();
+    expect(betweenHints()).toBe(true);
+    receiveChange({ event: { type: 'migration', timestamp: 7 } });
+    expect(betweenHints()).toBe(false);
+  });
+
+  it.each(['clear', 'restore'] as const)('rejects old post-content metadata after same-provider %s recreates its chat ID', async change => {
+    await service.init({ type: 'memory' });
+    await service.updateChatMeta({ id: operationChatId, updater: () => operationMeta({ title: 'Original owner' }) });
+    const write = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    await service.updateChatContent({ id: operationChatId, write, updater: () => ({ root: { items: [] } }) });
+    const restored = operationMeta({ title: 'New provider generation' });
+    switch (change) {
+    case 'clear':
+      await service.clearAll();
+      await service.updateChatMeta({ id: operationChatId, updater: () => restored });
+      break;
+    case 'restore':
+      await service.restore({ snapshot: restoredOwner({ meta: restored }) });
+      break;
+    default: {
+      const exhaustive: never = change;
+      throw new Error(String(exhaustive));
+    }
+    }
+    mockNotify.mockClear();
+    const updater = vi.fn((): ChatMeta => ({ ...restored, title: 'Old completion', systemPrompt: { behavior: 'override', content: 'Old prompt' } }));
+    await expect(service.updateChatMeta({ id: operationChatId, write, updater })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(updater).not.toHaveBeenCalled();
+    expect(await service.loadChatMeta({ id: operationChatId })).toMatchObject({ title: restored.title, systemPrompt: undefined });
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockAddErrorEvent).not.toHaveBeenCalled();
+  });
+
+  it.each(['metadata', 'hierarchy'] as const)('rejects another service capability before its %s read', async operation => {
+    const other = new StorageService();
+    // Both services deliberately receive the same mocked provider instance.
+    await other.init({ type: 'local' });
+    const write = other.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    const updater = vi.fn(() => operationMeta({ title: 'Foreign operation' }));
+    switch (operation) {
+    case 'metadata':
+      await expect(service.updateChatMeta({ id: operationChatId, write, updater })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+      break;
+    case 'hierarchy':
+      await expect(service.updateHierarchy({ contentWrite: { id: operationChatId, write }, updater: () => ({ items: [] }) })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+      break;
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
+    }
+    expect(mockProvider.loadChatMeta).not.toHaveBeenCalled();
+    expect(mockProvider.loadHierarchy).not.toHaveBeenCalled();
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockProvider.saveHierarchy).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+    expect(mockAddErrorEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects an old final hierarchy update after its content and metadata were saved before restore', async () => {
+    await service.init({ type: 'memory' });
+    const write = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    await service.updateChatContent({ id: operationChatId, write, updater: () => ({ root: { items: [] } }) });
+    await service.updateChatMeta({ id: operationChatId, write, updater: () => operationMeta({ title: 'Old creation' }) });
+    await service.restore({ snapshot: restoredOwner({ meta: operationMeta({ title: 'Restored owner' }) }) });
+    mockNotify.mockClear();
+    const updater = vi.fn((): Hierarchy => ({ items: [{ type: 'chat', id: toChatId({ raw: 'old-created-chat' }) }] }));
+    await expect(service.updateHierarchy({ contentWrite: { id: operationChatId, write }, updater })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(updater).not.toHaveBeenCalled();
+    expect(await service.loadHierarchy()).toEqual({ items: [{ type: 'chat', id: operationChatId }] });
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('rejects a metadata capability for a different chat ID before reading', async () => {
+    const write = service.createChatContentWrite({ id: toChatId({ raw: 'another-owner' }), content: undefined, binding: undefined });
+    const updater = vi.fn(() => operationMeta({ title: 'Wrong owner' }));
+    await expect(service.updateChatMeta({ id: operationChatId, write, updater })).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(updater).not.toHaveBeenCalled();
+    expect(mockProvider.loadChatMeta).not.toHaveBeenCalled();
+  });
+
+  it.each(['metadata', 'hierarchy'] as const)('checks operation ownership before the %s read after waiting for its lock', async operation => {
+    const write = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    const waiting = Promise.withResolvers<void>();
+    mockWithLock.mockImplementationOnce(async ({ fn }: { fn(): Promise<void> }) => {
+      await waiting.promise;
+      return fn();
+    });
+    let saving: Promise<void>;
+    switch (operation) {
+    case 'metadata': saving = service.updateChatMeta({ id: operationChatId, write, updater: () => operationMeta({ title: 'Old completion' }) });
+      break;
+    case 'hierarchy': saving = service.updateHierarchy({ contentWrite: { id: operationChatId, write }, updater: () => ({ items: [{ type: 'chat', id: operationChatId }] }) });
+      break;
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await service.init({ type: 'memory' });
+    waiting.resolve();
+    await expect(saving).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(mockProvider.loadChatMeta).not.toHaveBeenCalled();
+    expect(mockProvider.loadHierarchy).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('does not call the metadata updater when ownership changes during its read', async () => {
+    const reading = Promise.withResolvers<ChatMeta | null>();
+    const entered = Promise.withResolvers<void>();
+    mockProvider.loadChatMeta.mockImplementationOnce(() => {
+      entered.resolve();
+      return reading.promise;
+    });
+    const updater = vi.fn(() => operationMeta({ title: 'Old completion' }));
+    const saving = service.updateChatMeta({ id: operationChatId, updater });
+    await entered.promise;
+    await service.init({ type: 'memory' });
+    reading.resolve(operationMeta({ title: 'Old read' }));
+    await expect(saving).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(updater).not.toHaveBeenCalled();
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+  });
+
+  it('does not call the hierarchy updater when ownership changes during its read', async () => {
+    const reading = Promise.withResolvers<Hierarchy>();
+    const entered = Promise.withResolvers<void>();
+    mockProvider.loadHierarchy.mockImplementationOnce(() => {
+      entered.resolve();
+      return reading.promise;
+    });
+    const updater = vi.fn(({ current }: { current: Hierarchy }) => current);
+    const saving = service.updateHierarchy({ updater });
+    await entered.promise;
+    await service.init({ type: 'memory' });
+    reading.resolve({ items: [] });
+    await expect(saving).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(updater).not.toHaveBeenCalled();
+    expect(mockProvider.saveHierarchy).not.toHaveBeenCalled();
+  });
+
+  it.each(['metadata', 'hierarchy'] as const)('keeps ordinary %s updates on their captured generation across an async updater', async operation => {
+    using metaSave = vi.spyOn(MemoryStorageProvider.prototype, 'saveChatMeta');
+    using hierarchySave = vi.spyOn(MemoryStorageProvider.prototype, 'saveHierarchy');
+    let saving: Promise<void>;
+    switch (operation) {
+    case 'metadata': saving = service.updateChatMeta({
+      id: operationChatId,
+      updater: async () => {
+        await service.init({ type: 'memory' });
+        return operationMeta({ title: 'Stale metadata' });
+      },
+    });
+      break;
+    case 'hierarchy': saving = service.updateHierarchy({
+      updater: async () => {
+        await service.init({ type: 'memory' });
+        return { items: [{ type: 'chat', id: operationChatId }] };
+      },
+    });
+      break;
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await expect(saving).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockProvider.saveHierarchy).not.toHaveBeenCalled();
+    expect(metaSave).not.toHaveBeenCalled();
+    expect(hierarchySave).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it.each(['metadata', 'hierarchy'] as const)('rechecks generation after waiting for the %s commit lock', async operation => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let held = false;
+    mockWithLock.mockImplementation(async ({ lockKey, fn }: { lockKey: string, fn(): Promise<unknown> }) => {
+      if (lockKey === SYNC_LOCK_KEY && !held) {
+        held = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return fn();
+    });
+    let saving: Promise<void>;
+    switch (operation) {
+    case 'metadata': saving = service.updateChatMeta({ id: operationChatId, updater: () => operationMeta({ title: 'Old completion' }) });
+      break;
+    case 'hierarchy': saving = service.updateHierarchy({ updater: () => ({ items: [{ type: 'chat', id: operationChatId }] }) });
+      break;
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await entered.promise;
+    await service.clearAll();
+    mockNotify.mockClear();
+    release.resolve();
+    await expect(saving).rejects.toBeInstanceOf(ChatContentBindingChangedError);
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockProvider.saveHierarchy).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it.each(['metadata', 'hierarchy'] as const)('serializes an in-flight %s save before same-provider restore', async operation => {
+    await service.init({ type: 'memory' });
+    const write = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    await service.updateChatContent({ id: operationChatId, write, updater: () => ({ root: { items: [] } }) });
+    serializeMockLocks();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    using _releaseOnExit = {
+      [Symbol.dispose]() {
+        release.resolve();
+      },
+    };
+    const metaSave = MemoryStorageProvider.prototype.saveChatMeta;
+    const hierarchySave = MemoryStorageProvider.prototype.saveHierarchy;
+    using pausedMetaSave = vi.spyOn(MemoryStorageProvider.prototype, 'saveChatMeta');
+    using pausedHierarchySave = vi.spyOn(MemoryStorageProvider.prototype, 'saveHierarchy');
+    using restore = vi.spyOn(MemoryStorageProvider.prototype, 'restore');
+    let saving: Promise<void>;
+    switch (operation) {
+    case 'metadata': {
+      pausedMetaSave.mockImplementationOnce(async function (this: MemoryStorageProvider, args) {
+        entered.resolve();
+        await release.promise;
+        return metaSave.call(this, args);
+      });
+      saving = service.updateChatMeta({ id: operationChatId, write, updater: () => operationMeta({ title: 'Old completion' }) });
+      break;
+    }
+    case 'hierarchy': {
+      pausedHierarchySave.mockImplementationOnce(async function (this: MemoryStorageProvider, args) {
+        entered.resolve();
+        await release.promise;
+        return hierarchySave.call(this, args);
+      });
+      saving = service.updateHierarchy({ contentWrite: { id: operationChatId, write }, updater: () => ({ items: [{ type: 'chat', id: toChatId({ raw: 'old-created-chat' }) }] }) });
+      break;
+    }
+    default: {
+      const exhaustive: never = operation;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await entered.promise;
+    const restored = operationMeta({ title: 'Restored generation' });
+    const restoring = service.restore({ snapshot: restoredOwner({ meta: restored }) });
+    await Promise.resolve();
+    expect(restore).not.toHaveBeenCalled();
+    release.resolve();
+    await saving;
+    await restoring;
+    expect(await service.loadChatMeta({ id: operationChatId })).toMatchObject({ title: restored.title });
+    expect(await service.loadHierarchy()).toEqual({ items: [{ type: 'chat', id: operationChatId }] });
+  });
+
+  it('does not hold the commit lock while an ordinary metadata updater changes settings', async () => {
+    serializeMockLocks();
+    const meta = operationMeta({ title: 'Ordinary update' });
+    await service.updateChatMeta({
+      id: meta.id,
+      updater: async () => {
+        await service.updateSettings({ updater: () => ({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }) });
+        return meta;
+      },
+    });
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group' }) });
+  });
+
+  it('keeps a valid operation metadata no-op without advancing its content baseline', async () => {
+    const write: ChatContentWrite = service.createChatContentWrite({ id: operationChatId, content: undefined, binding: undefined });
+    await service.updateChatMeta({ id: operationChatId, write, updater: () => undefined });
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+    await service.updateChatContent({ id: operationChatId, write, updater: () => ({ root: { items: [] } }) });
+    expect(mockProvider.saveChatContent).toHaveBeenCalledOnce();
   });
 
   it('should wrap deleteChat with lock and notify after success', async () => {
@@ -480,7 +883,7 @@ describe('StorageService Synchronization Wrapper', () => {
   it('should wrap updateChatContent with specific chat lock and notify', async () => {
     const content = { root: { items: [] } } as any;
     const updater = vi.fn().mockResolvedValue(content);
-    await service.updateChatContent({ id: toChatId({ raw: 'c1' }), updater: updater });
+    await service.updateChatContent({ id: toChatId({ raw: 'c1' }), write: service.createChatContentWrite({ id: toChatId({ raw: 'c1' }), content: undefined, binding: undefined }), updater: updater });
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
       fn: expect.any(Function),

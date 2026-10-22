@@ -10,9 +10,17 @@ import ModelLaunchEntry from '@/features/llama-cpp-browser/components/LlamaCppBr
 const initialized = ref(true);
 const isOnboardingDismissed = ref(false);
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'openai', url: '' }, storageType: 'memory' });
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ initialized, isOnboardingDismissed, settings }) }));
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    initialized,
+    isOnboardingDismissed,
+    settings,
+    captureExperimentalStorage: () => () => true,
+    deferModelRefresh: vi.fn(),
+    resumeModelRefresh: vi.fn(),
+  }),
+}));
 vi.mock('@/features/file-protocol-standalone/composables/usePortableAppDownload', () => ({ usePortableAppDownload: () => ({}) }));
-vi.mock('@/components/OnboardingModal.vue', () => ({ default: { template: '<div data-testid="onboarding-modal" />' } }));
 vi.mock('@/components/GlobalDialogHost.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/ToastContainer.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/startup/StartupErrorView.vue', () => ({ default: { template: '<div />' } }));

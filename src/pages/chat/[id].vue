@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { watch, computed, shallowRef } from 'vue';
+import { watch, computed, shallowRef, onScopeDispose } from 'vue';
+import { storageService } from '@/00-storage/service';
+import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
@@ -29,37 +31,48 @@ const target = computed(() => ({ id: chatId.value, leafId: leafId.value, message
 const load = shallowRef<{
   target: typeof target.value,
   status: 'loading' | 'ready' | 'error',
+  route: typeof currentRoute.value,
 }>();
-const loadStatus = computed(() => load.value?.target === target.value ? load.value.status : 'loading');
+const loadStatus = computed(() => load.value?.target === target.value && load.value?.route === currentRoute.value ? load.value.status : 'loading');
+let active = true;
 
 async function syncChat() {
-  const request = { target: target.value, status: 'loading' as const };
+  const route = currentRoute.value;
+  if (!active || route === undefined || hasModelEntryQuery({ query: route.query })) {
+    return;
+  }
+  const request = { target: target.value, route, status: 'loading' as const };
   load.value = request;
   const { id, leafId, messageId } = request.target;
   if (!id) {
     return;
   }
-
+  let isStorageCurrent: (() => boolean) | undefined;
+  const isCurrent = () => active && load.value === request && currentRoute.value === route
+    && (isStorageCurrent === undefined || isStorageCurrent());
   try {
-    if (messageId) {
-      await chatNavigation.openChatAtMessage({
-        chatId: toChatId({ raw: id }),
-        messageId,
-      });
-    } else {
-      await chatNavigation.openChat({
-        chatId: toChatId({ raw: id }),
-        leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
-      });
+    isStorageCurrent = storageService.captureSettingsStorage();
+    const chat = messageId
+      ? await chatNavigation.openChatAtMessage({ chatId: toChatId({ raw: id }), messageId, isCurrent })
+      : await chatNavigation.openChat({ chatId: toChatId({ raw: id }), leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }), isCurrent });
+    if (!isCurrent()) {
+      return;
     }
-    if (load.value === request) {
-      load.value = { ...request, status: 'ready' };
+    if (chat === null) {
+      // Commands for a missing chat must not become root-level auto-send commands.
+      const failure = await router.replace({ path: '/', query: {}, hash: '' });
+      if (failure && isCurrent()) {
+        throw new Error('Could not leave a missing chat');
+      }
+      return;
     }
+    load.value = { ...request, status: 'ready' };
   } catch (error) {
-    console.error('Failed to load chat:', error);
-    if (load.value === request) {
-      load.value = { ...request, status: 'error' };
+    if (!isCurrent()) {
+      return;
     }
+    console.error('Failed to load chat:', error);
+    load.value = { ...request, status: 'error' };
   }
 }
 
@@ -80,7 +93,24 @@ function handleAutoSent() {
   router.replace({ query });
 }
 
-watch(target, syncChat, { immediate: true });
+watch(currentRoute, syncChat, { immediate: true });
+const unsubscribeStorage = storageService.subscribeToChanges({
+  listener: ({ event }) => {
+    switch (event.type) {
+    case 'migration': void syncChat();
+      break;
+    case 'chat_content': case 'chat_meta_and_chat_group': case 'chat_content_generation': case 'settings': case 'binary_objects': case 'naidan_rpc_registry': break;
+    default: {
+      const exhaustive: never = event;
+      throw new Error(String(exhaustive));
+    }
+    }
+  },
+});
+onScopeDispose(() => {
+  active = false;
+  unsubscribeStorage();
+});
 
 
 defineExpose({

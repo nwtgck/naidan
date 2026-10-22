@@ -12,6 +12,7 @@ import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeU
 // Mock useSettings
 vi.mock('./useSettings', () => ({
   useSettings: vi.fn().mockReturnValue({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: ref({
       endpoint: {
         type: 'openai',
@@ -120,10 +121,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await regenerateMessage({ failedMessageId: idToRaw({ id: first.id }) });
     await vi.waitUntil(() => !streaming.value);
     expect(firstGenAborted).toBe(true);
-    expect(user.replies.items).toHaveLength(2);
+    const regeneratedUser = chat.root.items[0]!;
+    expect(regeneratedUser.replies.items).toHaveLength(2);
     expect(first.parts).toMatchObject([{ type: 'text', text: 'First chunk', completeness: 'partial' }]);
     expect(first.role === 'assistant' && first.interruption).toEqual({ type: 'cancelled' });
-    const second = user.replies.items[1]!;
+    const second = regeneratedUser.replies.items[1]!;
     expect(second.id).not.toBe(first.id);
     expect(getMessageText({ message: second })).toBe('Second Response');
     expect(chat.currentLeafId).toBe(second.id);

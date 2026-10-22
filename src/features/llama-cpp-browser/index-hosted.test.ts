@@ -17,8 +17,13 @@ import type { ProfileCapabilities } from './runtime/profile-capabilities';
 import type { DeletionPlan } from './runtime/deletion-plan';
 const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModelEntries: vi.fn<LlamaCppWorkerClient['listModelEntries']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
+const mutationLock = vi.hoisted(() => vi.fn());
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
-vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
+vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn() }));
+vi.mock('./runtime/model-mutation-lock', async importOriginal => ({
+  ...await importOriginal<typeof import('./runtime/model-mutation-lock')>(),
+  withModelMutationLock: mutationLock,
+}));
 vi.mock('./runtime/model-resolution', () => ({ resolveModel: vi.fn() }));
 let service: LlamaCppBrowserService;
 let storage: typeof storageService;
@@ -26,6 +31,7 @@ let storage: typeof storageService;
 beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
+  mutationLock.mockImplementation(async ({ operation }: { operation: () => Promise<unknown> }) => operation());
   vi.mocked(resolveModel).mockImplementation(async ({ modelId }) => createResolvedModelForTest({ modelId, relativePath: 'model.gguf' }));
   storage = (await import('@/00-storage/service')).storageService;
   vi.spyOn(storage, 'loadSettings').mockResolvedValue(null);
@@ -209,8 +215,8 @@ describe('serialized hosted model service', () => {
   });
 
   it('does not clear an unrelated model-operation error when inspecting capabilities', async () => {
-    worker.importModel.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
-    await expect(service.importModel({ file: new File([], 'invalid.gguf'), signal: undefined })).rejects.toThrow('invalid-gguf');
+    worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('invalid-gguf');
     await service.probeProfiles({ signal: undefined });
     expect(service.getState()).toEqual({ status: 'error', code: 'invalid-gguf' });
   });
@@ -305,6 +311,7 @@ describe('serialized hosted model service', () => {
     expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
     const plan = deletionPlan();
     expect(await service.removeModel({ plan, signal: undefined })).toBe('deleted');
+    expect(mutationLock).toHaveBeenCalledOnce();
     expect(removeStoredModel).toHaveBeenCalledWith({ plan });
     expect(worker.removeModel).not.toHaveBeenCalled();
     expect(worker.dispose).not.toHaveBeenCalled();
@@ -1093,12 +1100,16 @@ it('registers and removes temporary files without acquiring a Worker or copying 
   expect(factory).not.toHaveBeenCalled();
   expect(worker.importModel).not.toHaveBeenCalled();
   expect(stream).not.toHaveBeenCalled();
-  expect(changed).toHaveBeenCalledTimes(1);
+  // Registration and confirmed publication may notify independently.
+  expect(changed).toHaveBeenCalled();
   vi.mocked(listStoredModels).mockRejectedValue(new Error('Browser storage unavailable'));
   const models = await service.listModelEntries({ signal: undefined });
   expect(models.map(model => model.modelId)).toEqual(['temp/direct-GGUF']);
+  changed.mockClear();
   await service.removeTemporaryModel({ modelId: models[0]!.modelId, signal: undefined });
-  expect(changed).toHaveBeenCalledTimes(2);
+  expect(changed).toHaveBeenCalledOnce();
+  vi.mocked(listStoredModels).mockResolvedValue([]);
+  expect(await service.listModelEntries({ signal: undefined })).toEqual([]);
   expect(removeStoredModel).not.toHaveBeenCalled();
   expect(factory).not.toHaveBeenCalled();
 });

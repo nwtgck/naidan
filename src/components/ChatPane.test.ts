@@ -14,6 +14,10 @@ import type { WeshMount } from '@/features/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 const mockStreamDownload = vi.hoisted(() => vi.fn());
+const mockOpenAppSettings = vi.hoisted(() => vi.fn());
+vi.mock('@/composables/useAppEntry', () => ({
+  useAppEntry: () => ({ openSettings: mockOpenAppSettings }),
+}));
 vi.mock('@/utils/stream-download', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/stream-download')>(),
   downloadStream: mockStreamDownload,
@@ -32,6 +36,9 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 import { refreshPromptApiAvailability, TEST_ONLY as promptApiRuntimeTestOnly } from '@/features/prompt-api/runtime';
+import { useApproval } from '@/features/tools/composables/useApproval';
+import { useChoices } from '@/features/tools/composables/useChoices';
+import { APPROVAL_ACTIONS } from '@/features/tools/approval';
 
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
@@ -54,6 +61,7 @@ const {
 // machine, which has deferred-file and download tests in useModelLaunchChat.
 const launchComposerOverride = ref<'visible' | 'hidden'>();
 const launchVisibilityOverride = ref<boolean>();
+const launchSendOverride = ref<boolean>();
 // Browser/profile lifecycle is tested in useFirefoxWebGpuWarning. This suite
 // verifies the real pane's eligibility gate and shared notice-slot wiring.
 const firefoxWebGpuWarningCandidate = ref(false);
@@ -72,6 +80,7 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async imp
         ...state,
         composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value),
         visible: computed(() => launchVisibilityOverride.value ?? state.visible.value),
+        maySend: computed(() => launchSendOverride.value ?? state.maySend.value),
       };
     },
   };
@@ -141,12 +150,13 @@ function createTextNode({ id, role, text, createdAt }: {
   text: string,
   createdAt: number,
 }) {
+  const replies: MessageNode['replies'] = { items: [] };
   const common = {
     id,
     createdAt,
     modelId: undefined,
     lmParameters: undefined,
-    replies: { items: [] },
+    replies,
     parts: [{ type: 'text' as const, text, completeness: 'complete' as const }],
   };
   switch (role) {
@@ -820,6 +830,7 @@ let wrapper: VueWrapper<any> | null = null;
 function resetMocks() {
   launchComposerOverride.value = undefined;
   launchVisibilityOverride.value = undefined;
+  launchSendOverride.value = undefined;
   firefoxWebGpuWarningCandidate.value = false;
   recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
@@ -2004,7 +2015,7 @@ describe.each([
       modelId: '',
     },
   ] satisfies { label: string, endpoint: Endpoint, modelId: string }[])(
-    'opens onboarding from the real send button when $label, preserving the draft',
+    'opens connection settings from the real send button when $label, preserving the draft',
     async ({ endpoint, modelId }) => {
       mockSettings.value = { ...mockSettings.value, endpoint, defaultModelId: modelId };
       mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint, modelId };
@@ -2018,13 +2029,14 @@ describe.each([
 
       await sendButton.trigger('click');
       await flushPromises();
-      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledExactlyOnceWith({ dismissed: false });
+      expect(mockOpenAppSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
+      expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
       expect(textarea.element.value).toBe('hello');
 
-      // Closing the modal without completing setup must permit reopening.
+      // Closing settings without completing setup must permit reopening.
       await sendButton.trigger('click');
-      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledTimes(2);
+      expect(mockOpenAppSettings).toHaveBeenCalledTimes(2);
       expect(mockSendMessage).not.toHaveBeenCalled();
 
       mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'model-1' };
@@ -4222,6 +4234,19 @@ describe('model-link composer visibility wiring', () => {
     document.body.innerHTML = '';
   });
 
+  it('keeps preparation compact and shows conversation suggestions only after sending is ready', async () => {
+    launchVisibilityOverride.value = true;
+    launchSendOverride.value = false;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('model-preparation-welcome');
+    expect(wrapper.getComponent(ChatInput).isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
+    launchSendOverride.value = true;
+    await nextTick();
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+  });
+
   it('keeps the same input instance and draft while setup hides the composer and suggestions', async () => {
     wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
     await flushPromises();
@@ -4256,8 +4281,25 @@ describe('ordinary Chat missing browser model notice', () => {
   });
 
   afterEach(() => {
+    wrapper?.unmount();
+    wrapper = null;
+    useApproval().TEST_ONLY.clearAll();
+    useChoices().TEST_ONLY.clearAll();
     recoveryAvailability.value = 'available';
   });
+
+  function setExistingRecoveryConversation(): MessageNode[] {
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'temp/LiquidAI_LFM2.5-VL-3B-GGUF' };
+    const messages = Array.from({ length: 7 }, (_, index) => createTextNode({ id: toMessageId({ raw: `recovery-message-${index}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Existing conversation ${index}`, createdAt: index + 1 }));
+    messages.forEach((message, index) => {
+      message.replies.items = messages[index + 1] ? [messages[index + 1]!] : [];
+    });
+    mockActiveMessages.value = messages;
+    mockCurrentChat.value!.root.items = [messages[0]!];
+    mockCurrentChat.value!.currentLeafId = messages.at(-1)!.id;
+    recoveryAvailability.value = 'missing';
+    return messages;
+  }
 
   it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
@@ -4285,18 +4327,119 @@ describe('ordinary Chat missing browser model notice', () => {
     wrapper.unmount();
   });
 
-  it('also offers recovery for a nonempty conversation without hiding messages or input', async () => {
-    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/original' };
-    const node = createTextNode({ id: toMessageId({ raw: 'existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
-    mockActiveMessages.value = [node];
-    mockCurrentChat.value!.root.items = [node];
-    recoveryAvailability.value = 'missing';
-    const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
+  it('docks recovery inside the measured composer over a long selected branch and releases its submission gate after recovery', async () => {
+    const messages = setExistingRecoveryConversation();
+    wrapper = mountChatPane({ global: { plugins: [router] } });
     await flushPromises();
-    expect(wrapper.text()).toContain('Existing conversation');
+    const textarea = wrapper.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('Keep this branch draft');
+    const inputElement = wrapper.getComponent(ChatInput).element;
+    const notice = wrapper.get('[data-testid="model-recovery"]');
+    expect(notice.element.closest('[data-testid="chat-input-above-slot"]')).not.toBeNull();
+    expect(notice.element.closest('[data-testid="scroll-container"]')).toBeNull();
+    expect(notice.get('[data-testid="model-recovery-name"]').text()).toBe('LiquidAI_LFM2.5-VL-3B-GGUF');
     expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
-    expect(wrapper.get('textarea').isVisible()).toBe(true);
-    wrapper.unmount();
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+    expect(wrapper.text()).toContain('Existing conversation 6');
+
+    const alternate = createTextNode({ id: toMessageId({ raw: 'recovery-alternate' }), role: 'assistant', text: 'Selected alternate reply', createdAt: 10 });
+    messages[0]!.replies.items.push(alternate);
+    mockCurrentChat.value!.currentLeafId = alternate.id;
+    mockActiveMessages.value = [messages[0]!, alternate];
+    await flushPromises();
+    expect(wrapper.text()).toContain('Selected alternate reply');
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.getComponent(ChatInput).element).toBe(inputElement);
+    expect(textarea.element.value).toBe('Keep this branch draft');
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+
+    recoveryAvailability.value = 'available';
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-input-above-slot"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(textarea.element.value).toBe('Keep this branch draft');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(['submerged', 'setup-hidden'] as const)('keeps recovery outside the transformed input when the composer is %s', async mode => {
+    setExistingRecoveryConversation();
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+    await flushPromises();
+    const input = wrapper.getComponent(ChatInput);
+    const original = input.element;
+    const textarea = input.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('Draft survives a hidden input');
+    switch (mode) {
+    case 'submerged': await input.get('[data-testid="submerge-button"]').trigger('click');
+      break;
+    case 'setup-hidden': launchComposerOverride.value = 'hidden';
+      break;
+    default: {
+      const exhaustive: never = mode;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await flushPromises();
+    const fallback = wrapper.get('[data-testid="model-recovery-outside-composer"]');
+    expect(fallback.get('[data-testid="model-recovery"]').isVisible()).toBe(true);
+    expect(fallback.element.closest('.chat-composer')).toBeNull();
+    expect(fallback.element.closest('[data-testid="scroll-container"]')).toBeNull();
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    if (mode === 'submerged') {
+      expect(fallback.classes()).toContain('mb-[calc(32px+env(safe-area-inset-bottom))]');
+      expect(fallback.classes()).toContain('sm:mb-[calc(40px+env(safe-area-inset-bottom))]');
+      await input.get('[data-testid="submerge-button"]').trigger('click');
+    } else {
+      expect(input.isVisible()).toBe(false);
+      launchComposerOverride.value = 'visible';
+    }
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery-outside-composer"]').exists()).toBe(false);
+    expect(input.isVisible()).toBe(true);
+    expect(wrapper.get('[data-testid="chat-input-above-slot"] [data-testid="model-recovery"]').isVisible()).toBe(true);
+    expect(wrapper.getComponent(ChatInput).element).toBe(original);
+    expect(textarea.element.value).toBe('Draft survives a hidden input');
+    expect(input.props('isSubmissionEnabled')).toBe(false);
+  });
+
+  it.each(['approval', 'choice'] as const)('keeps a pending %s ahead of recovery and restores recovery after the decision', async kind => {
+    setExistingRecoveryConversation();
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    using request = {
+      controller: new AbortController(),
+      [Symbol.dispose]() {
+        this.controller.abort();
+      },
+    };
+    const chatId = toChatId({ raw: '1' });
+    const completion = kind === 'approval'
+      ? useApproval().ensureApproval({ chatId, action: APPROVAL_ACTIONS.toolWikipediaSearch, preview: undefined, signal: request.controller.signal })
+      : useChoices().requestChoice({ chatId, prompt: 'Choose an option', choices: ['First', 'Second'], signal: request.controller.signal });
+    void completion.catch(() => {});
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    switch (kind) {
+    case 'approval':
+      expect(wrapper.get('[data-testid="chat-approval-panel"]').isVisible()).toBe(true);
+      wrapper.getComponent({ name: 'ChatApprovalPanel' }).vm.$emit('decide', 'deny');
+      break;
+    case 'choice':
+      expect(wrapper.get('[data-testid="chat-choices-panel"]').isVisible()).toBe(true);
+      wrapper.getComponent({ name: 'ChatChoicesPanel' }).vm.$emit('select', 0);
+      break;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await completion;
+    await flushPromises();
+    expect(wrapper.get('[data-testid="chat-input-above-slot"] [data-testid="model-recovery"]').isVisible()).toBe(true);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
   });
 });
 

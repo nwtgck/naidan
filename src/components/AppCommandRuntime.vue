@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue';
+import { onScopeDispose, ref, watch } from 'vue';
 import { useModelLaunchCoordinator } from '@/features/llama-cpp-browser/composables/useModelLaunchCoordinator';
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useRoute, useRouter } from 'vue-router';
@@ -16,6 +16,11 @@ import { useGlobalSearch } from '@/features/global-search/composables/useGlobalS
 import { useLayout } from '@/composables/useLayout';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { useSettings } from '@/composables/useSettings';
+import { useAppEntry, type ModelLaunchAppContext } from '@/composables/useAppEntry';
+import { useToast } from '@/composables/useToast';
+import { ensureStrings } from '@/strings';
+import { hasModelEntryQuery, hasSelectedGlobalChatModel } from '@/logic/startup/entry-intent';
+import type { Chat, SystemPrompt } from '@/01-models/types';
 import { idToRaw, toChatId, type ChatGroupId } from '@/01-models/ids';
 
 const currentChatState = useCurrentChatState();
@@ -28,12 +33,20 @@ const { addRecentChat, toggleRecent } = useRecentChats();
 const router = useRouter();
 const documentMetadata = useDocumentMetadata();
 const route = useRoute();
+const appEntry = useAppEntry();
+const { addToast } = useToast();
+const commandInFlight = ref(false);
+let automaticAttemptOwner: symbol | undefined;
+let commandsActive = true;
+onScopeDispose(() => {
+  commandsActive = false;
+});
 useModelLaunchCoordinator();
 
 watch(
-  () => route.path,
+  [() => route.path, () => appEntry.intent.value, () => appInteraction.value],
   () => {
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value }) || appEntry.intent.value.kind !== 'ordinary') {
       return;
     }
     if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
@@ -43,92 +56,143 @@ watch(
   { immediate: true },
 );
 
+type ChatCommand = {
+  context: ModelLaunchAppContext,
+  routePath: string,
+  fullPath: string,
+  source: 'automatic' | 'manual',
+  initialChatId: Chat['id'] | undefined,
+  chatGroup: { kind: 'unresolved', input: string | undefined } | { kind: 'resolved', id: ChatGroupId | undefined },
+  modelId: string | undefined,
+  systemPrompt: SystemPrompt | undefined,
+  q: string | undefined,
+  chat: Chat | undefined,
+};
+let latestCommand: ChatCommand | undefined;
+
+function isCommandCurrent({ command }: { command: ChatCommand }): boolean {
+  return commandsActive && appEntry.interaction.value === 'ready'
+    && isAppInteractionEnabled({ interaction: appInteraction.value })
+    && command.context.isCurrent()
+    && router.currentRoute.value.path === command.routePath
+    && router.currentRoute.value.fullPath === command.fullPath;
+}
+
+function ownsCurrentChat({ command }: { command: ChatCommand }): boolean {
+  return currentChatState.currentChat.value?.id === (command.chat?.id ?? command.initialChatId);
+}
+
+async function runChatCommand({ command }: { command: ChatCommand }): Promise<void> {
+  if (command !== latestCommand || commandInFlight.value || !isCommandCurrent({ command }) || !ownsCurrentChat({ command })) {
+    return;
+  }
+  commandInFlight.value = true;
+  try {
+    if (command.chat === undefined) {
+      const chatGroup = command.chatGroup;
+      switch (chatGroup.kind) {
+      case 'unresolved': {
+        const input = chatGroup.input;
+        const existing = input === undefined ? undefined : currentChatState.chatGroups.value.find(candidate =>
+          idToRaw({ id: candidate.id }) === input || candidate.name === input,
+        );
+        const chatGroupId = existing?.id ?? (input === undefined ? undefined : await chatOrganization.createChatGroup({ name: input, options: undefined }));
+        command.chatGroup = { kind: 'resolved', id: chatGroupId };
+        break;
+      }
+      case 'resolved':
+        command.chatGroup = chatGroup;
+        break;
+      default: {
+        const _ex: never = chatGroup;
+        throw new Error(`Unhandled chat group resolution: ${String(_ex)}`);
+      }
+      }
+      if (!isCommandCurrent({ command }) || !ownsCurrentChat({ command })) {
+        return;
+      }
+      useLayout().setActiveFocusArea({ area: 'chat' });
+      const chat = await chatLifecycle.createNewChat({
+        groupId: command.chatGroup.id,
+        modelId: command.modelId,
+        systemPrompt: command.systemPrompt,
+      });
+      if (chat === null) {
+        throw new Error('Chat creation did not return a chat.');
+      }
+      command.chat = chat;
+    }
+    if (!isCommandCurrent({ command }) || !ownsCurrentChat({ command })) {
+      return;
+    }
+    const path = `/chat/${idToRaw({ id: command.chat.id })}`;
+    if (command.source === 'automatic' && command.q === undefined) {
+      documentMetadata?.continueHomeIntroduction({ routePath: path });
+    }
+    const failure = await router.push(command.q === undefined ? path : { path, query: { q: command.q } });
+    if (failure) {
+      throw new Error('Chat navigation did not complete.');
+    }
+  } catch (error) {
+    console.error('[AppCommandRuntime] Could not create or open chat:', error);
+    if (!isCommandCurrent({ command }) || !ownsCurrentChat({ command })) {
+      return;
+    }
+    const message = await ensureStrings.AppCommandRuntime__could_not_create_chat();
+    const actionLabel = await ensureStrings.AppCommandRuntime__retry();
+    if (isCommandCurrent({ command }) && ownsCurrentChat({ command })) {
+      addToast({ message, actionLabel, onAction: () => runChatCommand({ command }) });
+    }
+  } finally {
+    commandInFlight.value = false;
+  }
+}
+
 watch(
   [
     () => chatListData.chats.value.length,
-    () => router.currentRoute.value?.path,
-    () => router.currentRoute.value?.query?.q,
-    () => router.currentRoute.value?.query?.['chat-group'],
-    () => router.currentRoute.value?.query?.model,
-    () => router.currentRoute.value?.query?.['system-prompt'] || router.currentRoute.value?.query?.sp,
+    () => router.currentRoute.value.fullPath,
     () => settingsStore.initialized.value,
-    () => settingsStore.isOnboardingDismissed.value,
+    () => hasSelectedGlobalChatModel({ settings: settingsStore.settings.value }),
+    () => appEntry.intent.value,
+    () => appEntry.interaction.value,
     () => appInteraction.value,
+    () => commandInFlight.value,
   ],
-  async ([len, path, q, chatGroupId, modelId, systemPromptStr, initialized, dismissed]) => {
-    if (
-      !isAppInteractionEnabled({ interaction: appInteraction.value })
-      || !initialized
-      || !dismissed
-      || path !== '/'
-      || router.currentRoute.value.query['llama-cpp-browser-model'] !== undefined
-    ) {
+  () => {
+    const currentRoute = router.currentRoute.value;
+    if (appEntry.intent.value.kind !== 'ordinary' || !settingsStore.initialized.value
+      || currentRoute.path !== '/' || hasModelEntryQuery({ query: currentRoute.query }) || commandInFlight.value) {
       return;
     }
-
-    if (len === 0 && !q) {
-      const { setActiveFocusArea } = useLayout();
-      setActiveFocusArea({ area: 'chat' });
-      await chatLifecycle.createNewChat({
-        groupId: undefined,
-        modelId: undefined,
-        systemPrompt: undefined,
-      });
-      if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
-        return;
-      }
-      if (currentChatState.currentChat.value) {
-        const path = `/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`;
-        documentMetadata?.continueHomeIntroduction({ routePath: path });
-        await router.push(path);
-      }
+    const q = currentRoute.query.q;
+    if (!q && (chatListData.chats.value.length !== 0 || !hasSelectedGlobalChatModel({ settings: settingsStore.settings.value }))) {
       return;
     }
-
-    if (!q) {
+    const context = appEntry.captureModelLaunchContext();
+    if (automaticAttemptOwner === context.owner) {
       return;
     }
-
-    let targetGroupId: ChatGroupId | undefined = undefined;
-    if (typeof chatGroupId === 'string') {
-      const group = currentChatState.chatGroups.value.find(candidate =>
-        idToRaw({ id: candidate.id }) === chatGroupId || candidate.name === chatGroupId,
-      );
-      if (group) {
-        targetGroupId = group.id;
-      } else {
-        targetGroupId = await chatOrganization.createChatGroup({
-          name: chatGroupId,
-          options: undefined,
-        });
-      }
-    }
-
-    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) {
+    const systemPromptStr = currentRoute.query['system-prompt'] || currentRoute.query.sp;
+    const command: ChatCommand = {
+      context,
+      routePath: currentRoute.path,
+      fullPath: currentRoute.fullPath,
+      source: 'automatic',
+      initialChatId: currentChatState.currentChat.value?.id,
+      chatGroup: { kind: 'unresolved', input: q && typeof currentRoute.query['chat-group'] === 'string' ? currentRoute.query['chat-group'] : undefined },
+      modelId: q && typeof currentRoute.query.model === 'string' ? currentRoute.query.model : undefined,
+      systemPrompt: q && typeof systemPromptStr === 'string' && systemPromptStr ? { behavior: 'override', content: systemPromptStr } : undefined,
+      q: q ? q.toString() : undefined,
+      chat: undefined,
+    };
+    if (!isCommandCurrent({ command })) {
       return;
     }
-    const targetModelId = typeof modelId === 'string' ? modelId : undefined;
-    const systemPrompt = typeof systemPromptStr === 'string' && systemPromptStr
-      ? {
-        behavior: 'override' as const,
-        content: systemPromptStr,
-      }
-      : undefined;
-
-    const { setActiveFocusArea } = useLayout();
-    setActiveFocusArea({ area: 'chat' });
-    await chatLifecycle.createNewChat({
-      groupId: targetGroupId,
-      modelId: targetModelId,
-      systemPrompt,
-    });
-
-    if (currentChatState.currentChat.value && isAppInteractionEnabled({ interaction: appInteraction.value })) {
-      await router.push({
-        path: `/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`,
-        query: { q: q.toString() },
-      });
-    }
+    // A visit gets one automatic attempt. Only its explicit retry may resume it.
+    automaticAttemptOwner = context.owner;
+    latestCommand = command;
+    void runChatCommand({ command });
   },
   { immediate: true },
 );
@@ -140,17 +204,26 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'o' || event.key === 'O')) {
     event.preventDefault();
+    if (commandInFlight.value || appEntry.interaction.value !== 'ready') {
+      return;
+    }
     documentMetadata?.finishHomeIntroduction();
-    const { setActiveFocusArea } = useLayout();
-    setActiveFocusArea({ area: 'chat' });
-    await chatLifecycle.createNewChat({
-      groupId: undefined,
+    const context = appEntry.captureModelLaunchContext();
+    automaticAttemptOwner = context.owner;
+    const command: ChatCommand = {
+      context,
+      routePath: router.currentRoute.value.path,
+      fullPath: router.currentRoute.value.fullPath,
+      source: 'manual',
+      initialChatId: currentChatState.currentChat.value?.id,
+      chatGroup: { kind: 'resolved', id: undefined },
       modelId: undefined,
       systemPrompt: undefined,
-    });
-    if (currentChatState.currentChat.value && isAppInteractionEnabled({ interaction: appInteraction.value })) {
-      await router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
-    }
+      q: undefined,
+      chat: undefined,
+    };
+    latestCommand = command;
+    await runChatCommand({ command });
     return;
   }
 

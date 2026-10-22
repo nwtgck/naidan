@@ -121,7 +121,7 @@ beforeEach(() => {
   truncateOnClose = false;
   failMarker = false;
   failClose = false;
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, operation: () => Promise<unknown>) => operation() } });
+  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, optionsOrOperation: LockOptions | (() => Promise<unknown>), operation?: () => Promise<unknown>) => typeof optionsOrOperation === 'function' ? optionsOrOperation() : operation?.() } });
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
 

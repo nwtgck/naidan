@@ -3,7 +3,7 @@ import { useTransformersJsDocumentTitle } from '@/features/transformers-js/compo
 import { downloadStream } from "@/utils/stream-download";
 import { createTextExportStream } from "@/utils/text-export-stream";
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatPaneAutoScroll, type ChatPaneInitialOpenTarget, type ChatPaneScrollTarget } from '@/composables/useChatPaneAutoScroll';
 import { useChatPaneSession } from '@/composables/chat/ui/useChatPaneSession';
@@ -29,6 +29,7 @@ import { useToolCallDrafts } from '@/composables/chat/ui/useToolCallDrafts';
 import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { prefetchImageGenerationRuntime, useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
+import { useAppEntry } from '@/composables/useAppEntry';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { createModuleLoader } from '@/utils/module-loader';
@@ -48,7 +49,12 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
+import { modelLaunchPreparationStage } from '@/features/llama-cpp-browser/model-launch/presentation';
 import { useModelLaunchChat } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
+import { useLocalModelLaunchChat } from '@/features/llama-cpp-browser/composables/useLocalModelLaunchChat';
+import LocalModelPreparation from './LocalModelPreparation.vue';
+import { useTemporaryModelSave } from '@/features/llama-cpp-browser/composables/useTemporaryModelSave';
+const TemporaryModelSaveNotice = defineAsyncComponent(() => import('./TemporaryModelSaveNotice.vue'));
 import { useMissingLlamaCppBrowserModel } from '@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel';
 import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
 import LlamaCppBrowserFirefoxWebGpuWarning from '@/features/llama-cpp-browser/components/LlamaCppBrowserFirefoxWebGpuWarning.vue';
@@ -88,7 +94,7 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => impo
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/wesh-terminal/components/ChatWeshTerminalModal.vue') });
 import {
-  FolderInputIcon,
+  FolderInputIcon, PencilLineIcon,
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
@@ -151,6 +157,7 @@ const emit = defineEmits<{
 }>();
 
 const chatId = computed(() => props.chatId);
+const temporaryModelSave = useTemporaryModelSave({ chatId });
 const chatModels = useChatModels({ scope: chatId });
 provideChatViewScope({ chatId });
 const chatPaneState = useChatPaneState({
@@ -168,10 +175,24 @@ useTransformersJsDocumentTitle({
 const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
 const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
+const localModelLaunch = useLocalModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
+const hasModelPreparation = computed(() => modelLaunch.visible.value || localModelLaunch.visible.value);
+const isModelPreparing = computed(() => {
+  if (localModelLaunch.visible.value && localModelLaunch.status.value === 'loading') {
+    return true;
+  }
+  if (!modelLaunch.visible.value) {
+    return false;
+  }
+  const stage = modelLaunchPreparationStage({ state: modelLaunch });
+  return stage === 'download' || stage === 'loading';
+});
+const welcomeSuggestionsVisibility = computed(() => hasModelPreparation.value && (!modelLaunch.maySend.value || !localModelLaunch.maySend.value)
+  ? 'hidden' : modelLaunch.composerVisibility.value);
 const modelRecovery = useMissingLlamaCppBrowserModel({
   chat,
   resolved: computed(() => resolvedSettings.value ?? undefined),
-  enabled: computed(() => !modelLaunch.visible.value || (chat.value?.root.items.length ?? 0) > 0),
+  enabled: computed(() => !hasModelPreparation.value || (chat.value?.root.items.length ?? 0) > 0),
 });
 const firefoxWebGpuWarning = useFirefoxWebGpuWarning({
   enabled: computed(() => chat.value !== null && activeMessages.value.length === 0
@@ -255,6 +276,9 @@ const { setActiveFocusArea } = useLayout();
 type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
 type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
+const historyModelRecoveryVisible = computed(() => activeMessages.value.length > 0 && modelRecovery.visible.value);
+const modelRecoveryOutsideComposer = computed(() => historyModelRecoveryVisible.value
+  && (inputVisibility.value === 'submerged' || modelLaunch.composerVisibility.value === 'hidden'));
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
 
@@ -293,10 +317,10 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
-  setIsOnboardingDismissed,
   setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
+const appEntry = useAppEntry();
 
 const isChatStreaming = computed(() => {
   return chat.value ? isProcessing.value : false;
@@ -876,7 +900,7 @@ const resolvedEndpointType = computed(() => {
 });
 
 const isChatSubmissionEnabled = computed(() => {
-  if (!modelLaunch.maySend.value || !modelRecovery.maySend.value) {
+  if (!modelLaunch.maySend.value || !localModelLaunch.maySend.value || !modelRecovery.maySend.value) {
     return false;
   }
   const endpoint = resolvedSettings.value?.endpoint;
@@ -918,7 +942,7 @@ const isChatSubmissionEnabled = computed(() => {
 const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
   const resolved = resolvedSettings.value;
   const type = resolvedEndpointType.value;
-  if (resolved === null || type === undefined || !modelLaunch.maySend.value || !modelRecovery.maySend.value) {
+  if (resolved === null || type === undefined || !modelLaunch.maySend.value || !localModelLaunch.maySend.value || !modelRecovery.maySend.value) {
     return 'blocked';
   }
   const buildAvailability = getEndpointBuildAvailability({ type });
@@ -949,9 +973,8 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
 });
 
 function requestOnboarding(): void {
-  // A dismissed but unfinished global setup can be reopened without consuming
-  // or scheduling the user's chat draft for automatic submission.
-  setIsOnboardingDismissed({ dismissed: false });
+  // Keep the current chat and its draft while completing global connection setup.
+  appEntry.openSettings({ tab: 'connection', opener: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
 }
 
 const enabledToolNames = computed(() => {
@@ -1866,12 +1889,14 @@ watch(
           </div>
           <WelcomeScreen
             v-else
+            :class="{ 'model-preparation-welcome': hasModelPreparation, 'model-url-preparation-welcome': modelLaunch.visible.value && modelLaunch.homeOriginId.value === undefined }"
             :has-input="(chatInputRef?.input || '').trim().length > 0"
-            :suggestions-visibility="modelLaunch.composerVisibility.value"
+            :suggestions-visibility="welcomeSuggestionsVisibility"
             @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
           >
-            <template v-if="modelLaunch.visible.value" #primary>
-              <LlamaCppBrowserModelLaunchCard :state="modelLaunch" :route-path="documentRoutePath" />
+            <template v-if="hasModelPreparation" #primary>
+              <LlamaCppBrowserModelLaunchCard v-if="modelLaunch.visible.value" :state="modelLaunch" :route-path="documentRoutePath" />
+              <LocalModelPreparation v-else :state="localModelLaunch" />
             </template>
             <template v-if="firefoxWebGpuWarning.visible.value || modelRecovery.visible.value" #notice>
               <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
@@ -1894,10 +1919,10 @@ watch(
       />
     </div>
 
-    <!-- An existing conversation gets the same recovery path without replacing
-         its messages or hiding input. Empty chats show it in WelcomeScreen. -->
-    <div v-if="activeMessages.length > 0 && modelRecovery.visible.value" tw-class="px-4 pb-2 max-h-64 overflow-y-auto shrink-0">
-      <LlamaCppBrowserModelRecovery :state="modelRecovery" />
+    <!-- A submerged composer translates its whole slot offscreen. Keep the
+         recovery above its visible handle, outside that transformed layer. -->
+    <div v-if="modelRecoveryOutsideComposer" data-testid="model-recovery-outside-composer" :tw-class="['max-h-[40dvh] overflow-y-auto shrink-0 px-2 sm:px-3', modelLaunch.composerVisibility.value === 'visible' ? 'mb-[calc(32px+env(safe-area-inset-bottom))] sm:mb-[calc(40px+env(safe-area-inset-bottom))]' : 'mb-2']">
+      <LlamaCppBrowserModelRecovery :state="modelRecovery" appearance="compact" />
     </div>
     <!-- Input Layer -->
     <ChatMediaShelf
@@ -1911,8 +1936,8 @@ watch(
       v-if="resolvedSettings?.endpoint.type === 'browser_provided_lm'"
       tw-class="mx-4 mb-2"
     />
-    <!-- Only llama-cpp-browser-model setup hides the composer. Keep it mounted
-         so entering/leaving setup never discards the draft or attachments. -->
+    <!-- Keep the same composer throughout model preparation and presentation
+         changes so the draft and attachments remain with this chat. -->
     <ChatInput
       v-if="chat"
       v-show="modelLaunch.composerVisibility.value === 'visible'"
@@ -1932,7 +1957,7 @@ watch(
       @layout-change="composerLayout.measure()"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
+      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined || (historyModelRecoveryVisible && !modelRecoveryOutsideComposer) || isModelPreparing || temporaryModelSave.notice.value !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
       :text-submission-action="chatTextSubmissionAction"
@@ -1956,6 +1981,11 @@ watch(
           :request="activeChoiceRequest"
           @select="index => handleChoiceSelection({ index })"
         />
+        <!-- The measured composer slot reserves history space for this notice;
+             a normal-flow sibling can be covered by the floating input. -->
+        <LlamaCppBrowserModelRecovery v-else-if="historyModelRecoveryVisible && !modelRecoveryOutsideComposer" :state="modelRecovery" appearance="compact" />
+        <p v-else-if="isModelPreparing" role="status" data-testid="model-preparation-input-hint" tw-class="flex items-center gap-2 px-4 py-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400"><PencilLineIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" /><span>{{ lazyStrings.ChatPane__write_your_first_message_while_the_model_prepares() }}</span></p>
+        <TemporaryModelSaveNotice v-else-if="temporaryModelSave.notice.value !== undefined" :state="temporaryModelSave.notice.value" @save="temporaryModelSave.save()" @retry="temporaryModelSave.retry()" @dismiss="temporaryModelSave.dismiss()" />
       </template>
     </ChatInput>
 
@@ -1972,6 +2002,23 @@ watch(
 </template>
 
 <style scoped>
+.model-preparation-welcome {
+  padding-block: clamp(12px, 2dvh, 24px);
+}
+.model-url-preparation-welcome {
+  justify-content: flex-start;
+  padding-top: clamp(16px, 5dvh, 40px);
+}
+.model-preparation-welcome > :deep(div) {
+  row-gap: 16px;
+}
+.model-preparation-welcome > :deep(div > *) {
+  margin-block: 0;
+}
+.model-preparation-welcome :deep([data-testid="suggestions-container"]) {
+  padding-top: 0;
+}
+
 /* Neural Sync Effect Animations */
 @keyframes neural-scan {
   0% {

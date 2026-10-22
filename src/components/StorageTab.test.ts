@@ -186,6 +186,7 @@ describe('StorageTab.vue Tests', () => {
     (useRouter as any).mockReturnValue({
       push: mockPush,
       replace: vi.fn(),
+      currentRoute: ref(currentRoute),
     });
     (useRoute as any).mockReturnValue(currentRoute);
 
@@ -589,6 +590,11 @@ describe('StorageTab.vue Tests', () => {
         updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
         captureModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['captureModelLaunchDefaults']>(),
         initializeModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['initializeModelLaunchDefaults']>(),
+        captureGlobalModelBinding: vi.fn<ReturnType<typeof useSettings>['captureGlobalModelBinding']>(),
+        promoteGlobalModelBinding: vi.fn<ReturnType<typeof useSettings>['promoteGlobalModelBinding']>(),
+        synchronizeModelBindingSettings: vi.fn<ReturnType<typeof useSettings>['synchronizeModelBindingSettings']>(),
+        deferModelRefresh: vi.fn(),
+        resumeModelRefresh: vi.fn(),
         updateSystemPrompt: vi.fn(),
         updateStorageType: vi.fn(),
         setIsOnboardingDismissed: vi.fn(),

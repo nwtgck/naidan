@@ -11,18 +11,7 @@ export function selectionKey({ selection }: { selection: DownloadSelection }): s
   return JSON.stringify([selection.repository, selection.revision, [...selection.files].sort((a, b) => a.path.localeCompare(b.path)).map(file => [file.path, file.size])]);
 }
 
-export function formatDownloadBytes({ bytes }: { bytes: number }): string {
-  if (bytes < 1024) {
-    return `${Math.max(0, Math.round(bytes))} B`;
-  }
-  if (bytes < 1024 ** 2) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  if (bytes < 1024 ** 3) {
-    return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
-  }
-  return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
-}
+export { formatDownloadBytes } from './presentation';
 
 export const TEST_ONLY = {
 };

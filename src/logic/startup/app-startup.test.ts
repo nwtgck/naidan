@@ -3,7 +3,7 @@ import { defineComponent, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { useSettings } from '@/composables/useSettings';
-import type { Settings } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { StartupState } from '@/logic/startup/types';
 import { createInitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { startApp } from './app-startup';
@@ -16,6 +16,10 @@ const activateChatBootstrap = vi.hoisted(() => vi.fn());
 const disposeRpcAutomaticConnections = vi.hoisted(() => vi.fn());
 const startRpcAutomaticConnections = vi.hoisted(() => vi.fn(() => disposeRpcAutomaticConnections));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ startRpcAutomaticConnections }));
+
+vi.mock('@/composables/useAppEntry', () => ({ getActiveAppEntry: () => undefined }));
+const EntrySurface = defineComponent({ template: '<div />' });
+vi.mock('@/components/AppEntrySurface.vue', () => ({ default: EntrySurface }));
 
 vi.mock('@/MainApp.vue', () => ({
   default: MainApp,
@@ -43,10 +47,14 @@ function createSettingsStore({ onboardingDismissed }: {
   onboardingDismissed: boolean,
 }) {
   const isOnboardingDismissed = ref(onboardingDismissed);
+  const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: onboardingDismissed ? { type: 'llama_cpp_browser' } : { type: 'openai', url: '' }, defaultModelId: onboardingDismissed ? 'selected-model' : undefined });
   const init = vi.fn(async () => {});
+  const deferModelRefresh = vi.fn();
+  const resumeModelRefresh = vi.fn();
   const save = vi.fn(async ({ patch }: {
     patch: Partial<Settings>,
   }) => {
+    settings.value = { ...settings.value, ...patch };
     if (patch.endpoint !== undefined && patch.defaultModelId !== undefined) {
       isOnboardingDismissed.value = true;
     }
@@ -58,6 +66,9 @@ function createSettingsStore({ onboardingDismissed }: {
     save,
     settingsStore: {
       init,
+      settings,
+      deferModelRefresh,
+      resumeModelRefresh,
       isOnboardingDismissed,
       save,
     } as unknown as SettingsStore,
@@ -199,7 +210,7 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('gives onboarding one paint and then renders the real app before dismissal', async () => {
+  it('paints the passive entry before loading the real main app', async () => {
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness();
 
@@ -214,6 +225,7 @@ describe('app startup', () => {
 
     expect(harness.startupState.value).toEqual({
       kind: 'starting-main',
+      entrySurface: EntrySurface,
     });
     expect(loadChatsForAppStartup).not.toHaveBeenCalled();
     expect(harness.animationFrameCallbacks).toHaveLength(1);
@@ -226,6 +238,7 @@ describe('app startup', () => {
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
       mainApp: MainApp,
+      entrySurface: EntrySurface,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
 
@@ -264,6 +277,7 @@ describe('app startup', () => {
     expect(settings.init).toHaveBeenCalledWith({
       storageTypeOverride: 'opfs',
       dataZipBase64: 'encoded-state',
+      modelRefresh: 'deferred',
     });
     expect(harness.router.currentRoute.value.query['data-zip']).toBeUndefined();
     expect(harness.router.currentRoute.value.query['storage-type']).toBe('opfs');
@@ -299,7 +313,7 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('applies initial URL settings before deciding whether onboarding needs paint priority', async () => {
+  it('applies initial URL settings before deciding whether the passive entry needs paint priority', async () => {
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness({
       path: '/?global-endpoint-type=ollama&global-endpoint-url=http%3A%2F%2Flocalhost%3A11434&global-model=llama3',
@@ -329,5 +343,39 @@ describe('app startup', () => {
     expect(harness.startupState.value.kind).toBe('ready');
 
     dispose();
+  });
+
+  it.each(['owner/repo', '', 'owner/a&llama-cpp-browser-model=owner/b'])('keeps a model preview URL unchanged and suppresses every other startup query: %s', async input => {
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness({ path: `/chat/existing?llama-cpp-browser-model=${input}&storage-type=memory&data-zip=ignored&global-model=ignored&settings=storage&q=ignored` });
+    const expectedPath = harness.router.resolve(harness.router.options.history.location).fullPath;
+    const replace = vi.spyOn(harness.router, 'replace');
+    const startup = startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window });
+    await flushPromises();
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    using _startup = { [Symbol.dispose]: dispose };
+    expect(settings.init).toHaveBeenCalledWith({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'deferred' });
+    expect(settings.save).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    expect(harness.router.currentRoute.value.fullPath).toBe(expectedPath);
+    expect(startRpcAutomaticConnections).not.toHaveBeenCalled();
+  });
+
+  it('never removes data belonging to a newer navigation from an older startup cleanup', async () => {
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness({ path: '/?data-zip=accepted' });
+    const startup = startApp({ startupState: harness.startupState, settingsStore: settings.settingsStore, router: harness.router, navigationGate: harness.navigationGate, window: harness.window });
+    const navigation = harness.router.push('/chat/other?data-zip=unprocessed');
+    await flushPromises();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    using _startup = { [Symbol.dispose]: dispose };
+    await navigation;
+    expect(harness.router.currentRoute.value.path).toBe('/chat/other');
+    expect(harness.router.currentRoute.value.query['data-zip']).toBe('unprocessed');
   });
 });

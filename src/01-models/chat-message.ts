@@ -1,6 +1,44 @@
-import type { Attachment, ChatMessage, MessageNode } from './types';
+import type { AssistantMessageNode, Attachment, ChatMessage, MessageNode } from './types';
 import type { ToolExecutionResult } from './tool';
 import { exactObject } from '@/utils/exact-object';
+import { cloneLmParameters } from '@/utils/lm-parameters';
+
+/** A finite proof for one recorded answer; replies and binding IDs can change independently. */
+export function chatModelBindingAssistantFingerprint({ node }: { node: AssistantMessageNode }): string {
+  const { id, role, createdAt, lmParameters, parts, interruption, modelId: _modelId, replies: _replies, ...unhandled } = node;
+  unhandled satisfies Record<PropertyKey, never>;
+  let recordedInterruption: AssistantMessageNode['interruption'];
+  switch (interruption?.type) {
+  case undefined: recordedInterruption = undefined;
+    break;
+  case 'cancelled': {
+    const { type, ...unhandledInterruption } = interruption;
+    unhandledInterruption satisfies Record<PropertyKey, never>;
+    recordedInterruption = { type };
+    break;
+  }
+  case 'error': {
+    const { type, message, ...unhandledInterruption } = interruption;
+    unhandledInterruption satisfies Record<PropertyKey, never>;
+    recordedInterruption = { type, message };
+    break;
+  }
+  default: {
+    const exhaustive: never = interruption;
+    throw new Error(String(exhaustive));
+  }
+  }
+  const message = copyChatMessage({ message: { id, role, parts } });
+  switch (message.role) {
+  case 'assistant':
+    return JSON.stringify(exactObject<Omit<AssistantMessageNode, 'modelId' | 'replies'>>()({ id, role, createdAt, lmParameters: cloneLmParameters({ lmParameters }), parts: [...message.parts], interruption: recordedInterruption }));
+  case 'user': case 'system': case 'tool': throw new Error('An assistant fingerprint requires an assistant message');
+  default: {
+    const exhaustive: never = message;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
 
 function copyAttachment({ attachment }: { attachment: Attachment }): Attachment {
   const { id, binaryObjectId, originalName, mimeType, size, uploadedAt, ...variant } = attachment;

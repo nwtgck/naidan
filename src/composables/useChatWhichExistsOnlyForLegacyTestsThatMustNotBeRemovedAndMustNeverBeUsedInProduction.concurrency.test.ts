@@ -117,6 +117,7 @@ const mockSettings: { value: Settings } = {
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: mockSettings,
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -181,6 +182,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       signal,
       run: async () => ({ type: 'finished', next: 'user' }),
     }));
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     __testOnlySetCurrentChat({ chat: null });
     rootItems.value = [];
     activeGenerations.clear();

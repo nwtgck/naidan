@@ -7,6 +7,7 @@ import ReasoningSettings from './ReasoningSettings.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
+import type { AppInteraction } from '@/composables/useAppPresentation';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -74,11 +75,7 @@ const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
-const mockAppInteraction = ref<
-  | 'blocked-by-startup'
-  | 'blocked-by-onboarding'
-  | 'enabled'
->('enabled');
+const mockAppInteraction = ref<AppInteraction>('enabled');
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
@@ -576,9 +573,9 @@ describe('ChatInput Integration', () => {
     expect(mockSendMessageForChat).toHaveBeenCalledOnce();
   });
 
-  it('waits to auto-send until onboarding no longer blocks interaction', async () => {
-    mockAppInteraction.value = 'blocked-by-onboarding';
-    getWrapper({ autoSendPrompt: 'Hello after onboarding' });
+  it('waits to auto-send until startup no longer blocks interaction', async () => {
+    mockAppInteraction.value = 'blocked-by-startup';
+    getWrapper({ autoSendPrompt: 'Hello after startup' });
     await flushPromises();
 
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
@@ -589,7 +586,7 @@ describe('ChatInput Integration', () => {
 
     expect(mockSendMessageForChat).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).toHaveBeenCalledWith(expect.objectContaining({
-      content: 'Hello after onboarding',
+      content: 'Hello after startup',
     }));
   });
 
@@ -628,7 +625,7 @@ describe('ChatInput Integration', () => {
     wrapper.unmount();
   });
 
-  it('does not focus or auto-send when onboarding reopens before scheduled interaction', async () => {
+  it('does not focus or auto-send when startup blocks scheduled interaction', async () => {
     let resolveModels!: (models: string[]) => void;
     const models = new Promise<string[]>((resolve) => {
       resolveModels = resolve;
@@ -638,7 +635,7 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper({ autoSendPrompt: 'Do not send while blocked' });
     const textarea = wrapper.find('[data-testid="chat-input"]').element;
 
-    mockAppInteraction.value = 'blocked-by-onboarding';
+    mockAppInteraction.value = 'blocked-by-startup';
     await nextTick();
     await flushPromises();
 

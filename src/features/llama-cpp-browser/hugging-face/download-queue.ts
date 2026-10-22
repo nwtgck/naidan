@@ -7,6 +7,7 @@ import type { ManagedDownloadStatus } from '@/01-models/download';
 import { downloadRepository } from './download';
 import { DownloadConflictError, selectionSchema, type DownloadConflict, type DownloadProgress, type DownloadSelection } from './types';
 import { SuggestionPlanError } from './suggestion-plan';
+import { selectionKey } from './download-plan';
 
 export type DownloadJobStatus = 'queued' | 'resolving' | 'downloading' | 'pausing' | 'paused' | 'complete' | 'failed' | 'cancelled';
 export type DownloadJobError = DownloadConflict | 'failed' | 'selection-unavailable';
@@ -88,7 +89,8 @@ export function createDownloadQueue({ download, manager: suppliedManager }: { do
   }): { id: number, done: Promise<DownloadJob> } {
     const target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
     key = downloadJobKey({ key, destination: target });
-    const existing = [...bindings.values()].find(binding => binding.job.key === key);
+    const existing = [...bindings.values()].find(binding => binding.job.key === key
+      || binding.job.selection !== undefined && downloadJobKey({ key: selectionKey({ selection: binding.job.selection }), destination: binding.job.destination }) === key);
     if (existing && jobIsBusy({ job: existing.job })) {
       return { id: existing.job.id, done: manager.wait({ id: existing.job.id })?.then(result => ({ ...existing.job, status: legacyStatus({ status: result.status, prepared: existing.job.selection !== undefined }) })) ?? existing.done };
     }

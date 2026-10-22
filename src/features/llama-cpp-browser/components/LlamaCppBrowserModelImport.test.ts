@@ -7,7 +7,8 @@ import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
 import type { HostModelDirectoriesView } from '@/composables/useHostModelDirectories';
 
 const mocks = vi.hoisted(() => ({ supported: false, add: vi.fn(async () => {}), drop: vi.fn(async () => {}), importModel: vi.fn(async () => {}), importDirectory: vi.fn(async () => {}) }));
-vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: { importModel: mocks.importModel, importDirectory: mocks.importDirectory } }));
+vi.mock('@/features/llama-cpp-browser/model-files', () => ({ llamaCppBrowserModelFiles: { importModel: mocks.importModel, importDirectory: mocks.importDirectory } }));
+vi.mock('@/logic/host-model-directories', async importOriginal => ({ ...await importOriginal<typeof import('@/logic/host-model-directories')>(), missingHostModelDirectoryApis: () => mocks.supported ? [] : ['showDirectoryPicker'] }));
 vi.mock('@/features/llama-cpp-browser/composables/useModelDownloadDestination', () => ({
   useModelDownloadDestination: () => ({ view: view(), failure: ref(false) }),
   hostModelDirectoryLabel: ({ name }: { name: string }) => name,
@@ -20,7 +21,7 @@ function view(): HostModelDirectoriesView {
 const wrappers: VueWrapper[] = [];
 
 function render(): VueWrapper {
-  const wrapper = mount(LlamaCppBrowserModelImport, { props: { disabled: false }, global: { stubs: { LlamaCppBrowserLoadingIndicator: true } } });
+  const wrapper = mount(LlamaCppBrowserModelImport, { props: { disabled: false } });
   wrappers.push(wrapper);
   return wrapper;
 }
@@ -69,6 +70,8 @@ describe('model import modes', () => {
     expect(linked.attributes('aria-disabled')).toBeUndefined();
     expect(linked.classes()).toContain('opacity-50');
     await linked.trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     expect(linked.attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('owner/');
     expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('subdir/');
@@ -90,6 +93,8 @@ describe('model import modes', () => {
     const linked = wrapper.get<HTMLButtonElement>('[data-testid="llama-import-mode-host"]');
     expect(linked.element.matches(':disabled')).toBe(false);
     await linked.trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     expect(wrapper.get('[data-testid="linked-host-folder-layout"]').text()).toContain('repository/');
     expect(wrapper.get<HTMLButtonElement>('[data-testid="linked-add-model-directory"]').element.matches(':disabled')).toBe(true);
     await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
@@ -106,11 +111,11 @@ describe('model import modes', () => {
     const transfer = { types: ['Files'], items: [], files: [file] };
     drop({ wrapper, transfer, target: 'llama-cpp-browser-drop-zone' });
     await flushPromises();
-    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal) });
+    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal), onProgress: expect.any(Function) });
     await wrapper.get('[data-testid="llama-import-mode-temp"]').trigger('click');
     drop({ wrapper, transfer, target: 'llama-cpp-browser-drop-zone' });
     await flushPromises();
-    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal), storage: 'temp' });
+    expect(mocks.importModel).toHaveBeenLastCalledWith({ file, signal: expect.any(AbortSignal), onProgress: expect.any(Function), storage: 'temp' });
     wrapper.unmount();
     const next = render();
     expect(next.get('[data-testid="llama-import-mode-opfs"]').attributes('aria-pressed')).toBe('true');

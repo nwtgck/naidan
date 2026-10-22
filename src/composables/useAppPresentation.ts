@@ -1,5 +1,3 @@
-import { useModelLaunchOnboardingBypass } from '@/features/llama-cpp-browser/composables/useModelLaunchOnboardingBypass';
-import { isOnboardingExcludedPath } from '@/logic/onboarding-route-policy';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import { routerKey, START_LOCATION, type Router } from 'vue-router';
 import {
@@ -10,24 +8,16 @@ import {
   watch,
   type ComputedRef,
   type InjectionKey,
-  type Ref,
   type ShallowRef,
 } from 'vue';
-import { useSettings } from '@/composables/useSettings';
 import type { StartupState } from '@/logic/startup/types';
 import { isHomepageIntroductionRoute, type HomeIntroduction } from '@/logic/document-metadata';
 
-export type OnboardingPresentation =
-  | 'hidden'
-  | 'visible';
-
 export type AppInteraction =
   | 'blocked-by-startup'
-  | 'blocked-by-onboarding'
   | 'enabled';
 
 type CoreAppPresentation = Readonly<{
-  onboardingPresentation: ComputedRef<OnboardingPresentation>,
   appInteraction: ComputedRef<AppInteraction>,
 }>;
 type AppPresentation = CoreAppPresentation & ReturnType<typeof createHomeIntroduction>;
@@ -39,7 +29,6 @@ export function isAppInteractionEnabled({ interaction }: {
 }): boolean {
   switch (interaction) {
   case 'blocked-by-startup':
-  case 'blocked-by-onboarding':
     return false;
   case 'enabled':
     return true;
@@ -50,29 +39,7 @@ export function isAppInteractionEnabled({ interaction }: {
   }
 }
 
-function createAppPresentation({
-  startupState,
-  settingsInitialized,
-  isOnboardingDismissed,
-  modelLaunchBypass,
-  onboardingRouteExcluded,
-}: {
-  startupState: ShallowRef<StartupState>,
-  settingsInitialized: Readonly<Ref<boolean>>,
-  isOnboardingDismissed: Readonly<Ref<boolean>>,
-  modelLaunchBypass: Readonly<Ref<boolean>>,
-  onboardingRouteExcluded: Readonly<Ref<boolean>>,
-}): CoreAppPresentation {
-  const onboardingPresentation = computed<OnboardingPresentation>(() => {
-    if (!settingsInitialized.value) {
-      return 'hidden';
-    }
-
-    return isOnboardingDismissed.value || modelLaunchBypass.value || onboardingRouteExcluded.value
-      ? 'hidden'
-      : 'visible';
-  });
-
+function createAppPresentation({ startupState }: { startupState: ShallowRef<StartupState> }): CoreAppPresentation {
   const appInteraction = computed<AppInteraction>(() => {
     const state = startupState.value;
     switch (state.kind) {
@@ -83,50 +50,20 @@ function createAppPresentation({
     case 'ready':
     case 'foundation-failed':
     case 'main-failed':
-      break;
+      return 'enabled';
     default: {
       const _ex: never = state;
       return _ex;
     }
     }
-
-    const presentation = onboardingPresentation.value;
-    switch (presentation) {
-    case 'hidden':
-      return 'enabled';
-    case 'visible':
-      return 'blocked-by-onboarding';
-    default: {
-      const _ex: never = presentation;
-      return _ex;
-    }
-    }
   });
-
-  return {
-    onboardingPresentation,
-    appInteraction,
-  };
-}
-
-function createOnboardingRouteExcluded({ router }: { router: Router | undefined }): ComputedRef<boolean> {
-  return computed(() => {
-    if (router === undefined) {
-      return false;
-    }
-    // Navigation is gated until the main app renders. START_LOCATION must not
-    // briefly expose onboarding when opening an excluded deep link directly.
-    const route = router.currentRoute.value === START_LOCATION
-      ? resolveInitialRoute({ router })
-      : router.currentRoute.value;
-    return isOnboardingExcludedPath({ path: route.path });
-  });
+  return { appInteraction };
 }
 
 function createHomeIntroduction({ router }: { router: Router | undefined }) {
   const initialRoute = router === undefined ? undefined : resolveInitialRoute({ router });
   const state = ref<HomeIntroduction>(initialRoute !== undefined && isHomepageIntroductionRoute({ route: initialRoute })
-    ? { kind: 'active', routePaths: ['/'] } : { kind: 'inactive' });
+    ? { kind: 'active', routePaths: [initialRoute.path] } : { kind: 'inactive' });
 
   function finishHomeIntroduction(): void {
     state.value = { kind: 'inactive' };
@@ -152,9 +89,19 @@ function createHomeIntroduction({ router }: { router: Router | undefined }) {
         return;
       }
       const current = state.value;
-      if (current.kind === 'active' && (!current.routePaths.includes(route.path)
-        || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined)) {
-        finishHomeIntroduction();
+      switch (current.kind) {
+      case 'inactive':
+        return;
+      case 'active':
+        if (!current.routePaths.includes(route.path)
+          || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined) {
+          finishHomeIntroduction();
+        }
+        return;
+      default: {
+        const _ex: never = current;
+        return _ex;
+      }
       }
     });
   }
@@ -165,16 +112,8 @@ function createHomeIntroduction({ router }: { router: Router | undefined }) {
 export function provideAppPresentation({ startupState }: {
   startupState: ShallowRef<StartupState>,
 }): AppPresentation {
-  const settingsStore = useSettings();
   const router = inject(routerKey, undefined);
-  const onboardingRouteExcluded = createOnboardingRouteExcluded({ router });
-  const core = createAppPresentation({
-    startupState,
-    settingsInitialized: settingsStore.initialized,
-    isOnboardingDismissed: settingsStore.isOnboardingDismissed,
-    modelLaunchBypass: useModelLaunchOnboardingBypass({ initialized: settingsStore.initialized, storageType: computed(() => settingsStore.settings.value.storageType) }),
-    onboardingRouteExcluded,
-  });
+  const core = createAppPresentation({ startupState });
   const presentation: AppPresentation = { ...core, ...createHomeIntroduction({ router }) };
   provide(appPresentationKey, presentation);
   return presentation;
@@ -190,6 +129,5 @@ export function useAppPresentation(): AppPresentation {
 
 export const TEST_ONLY = {
   createAppPresentation,
-  createOnboardingRouteExcluded,
   createHomeIntroduction,
 };

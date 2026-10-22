@@ -29,6 +29,27 @@ beforeEach(async () => {
 });
 
 describe('explicit Hugging Face model search', () => {
+  it('prepares a disabled search view without searching when mounted, revealed, or focused', async () => {
+    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: true, repositoryInput: '' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-hf-search-query"]').setValue('qwen');
+    await wrapper.get('[data-testid="llama-hf-search-query"]').trigger('keydown', { key: 'Enter' });
+    expect(searchModels).not.toHaveBeenCalled();
+    await wrapper.setProps({ disabled: false });
+    await wrapper.get('[data-testid="llama-hf-search-query"]').trigger('focus');
+    window.dispatchEvent(new Event('focus'));
+    await flushPromises();
+    expect(searchModels).not.toHaveBeenCalled();
+    await wrapper.get('[data-testid="llama-hf-search-submit"]').trigger('click');
+    await flushPromises();
+    expect(searchModels).toHaveBeenCalledOnce();
+  });
+
   it('does not search on mount, focus, typing, clearing, or remounting', async () => {
     {
       using view = render();

@@ -6,10 +6,12 @@ export type StartupState =
   }
   | {
     kind: 'starting-main',
+    entrySurface?: Component,
   }
   | {
     kind: 'rendering-main',
     mainApp: Component,
+    entrySurface?: Component,
   }
   | {
     kind: 'ready',

@@ -1,5 +1,27 @@
-/** Session-only download state. These are not persisted settings or history DTOs. */
+import { exactObject } from '@/utils/exact-object';
+
+/** Storage selected for a download or a page-local model launch operation. */
 export type DownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
+
+export function cloneDownloadDestination({ destination }: { destination: DownloadDestination }): DownloadDestination {
+  switch (destination.kind) {
+  case 'opfs': {
+    const { kind, ...unhandled } = destination;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<DownloadDestination, { kind: 'opfs' }>>()({ kind });
+  }
+  case 'host': {
+    const { kind, directoryId, ...unhandled } = destination;
+    unhandled satisfies Record<PropertyKey, never>;
+    return exactObject<Extract<DownloadDestination, { kind: 'host' }>>()({ kind, directoryId });
+  }
+  default: {
+    const exhaustive: never = destination;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
 export type DownloadFileState = 'queued' | 'checking' | 'transferring' | 'verifying' | 'complete';
 export type DownloadFile = {
   name: string,

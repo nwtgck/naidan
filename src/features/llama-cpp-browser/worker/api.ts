@@ -13,6 +13,7 @@ import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, progressSchema, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
 import { importStoredModel, listStoredModels, removeStoredModel, withModelStoreLock } from "@/features/llama-cpp-browser/runtime/model-store";
+import { withModelMutationLock } from '@/features/llama-cpp-browser/runtime/model-mutation-lock';
 import { invalidateStoredModel, releaseSession, prepareSession } from "./session";
 import { generate } from "./generation";
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi } from "./types";
@@ -230,20 +231,22 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
     removeModel: (request) => guarded({
-      operation: async () => {
-        const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
-        switch (plan.target.kind) {
-        case 'model': await invalidateStoredModel({ modelId: plan.target.modelId });
-          break;
-        case 'repository': await releaseSession({ releaseRuntime: false });
-          break;
-        default: {
-          const exhaustive: never = plan.target;
-          throw new Error(String(exhaustive));
-        }
-        }
-        return removeStoredModel({ plan });
-      },
+      operation: () => withModelMutationLock({
+        operation: async () => {
+          const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
+          switch (plan.target.kind) {
+          case 'model': await invalidateStoredModel({ modelId: plan.target.modelId });
+            break;
+          case 'repository': await releaseSession({ releaseRuntime: false });
+            break;
+          default: {
+            const exhaustive: never = plan.target;
+            throw new Error(String(exhaustive));
+          }
+          }
+          return removeStoredModel({ plan });
+        },
+      }),
     }),
     // Like cancellation, this control must bypass the lock held by synthesis.
     // Only its owning audio request is affected, never a chat or import.

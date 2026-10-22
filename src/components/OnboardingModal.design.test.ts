@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
-import OnboardingModal from './OnboardingModal.vue';
+import OnboardingModal from './OnboardingModalWhichMustBePreservedForFutureReferenceAndMustNeverBeUsedInProduction.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { useTheme } from '@/features/theme/composables/useTheme';

@@ -1,32 +1,30 @@
 <script setup lang="ts">
 import TemporaryModelFolders from '@/components/TemporaryModelFolders.vue';
-import { onUnmounted, ref, useId, watch } from 'vue';
-import { AlertCircleIcon, FileUpIcon, FolderOpenIcon } from 'lucide-vue-next';
+import { computed, defineAsyncComponent, onUnmounted, ref, useId, watch } from 'vue';
+import { AlertCircleIcon, FileUpIcon, FolderOpenIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
-import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
-import { errorCode, type ErrorCode, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
+import { errorCode, type ErrorCode, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 import { directoryFromFiles, droppedModels } from '@/features/llama-cpp-browser/runtime/directory-input';
-import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
-import LinkedModelDirectories from '@/components/LinkedModelDirectories.vue';
-import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';
+import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
+
+const LlamaCppBrowserModelImportLinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
 
 const props = defineProps<{ disabled: boolean }>();
 const emit = defineEmits<{ busy: [value: boolean], changed: [] }>();
 const id = useId();
 const active = ref<AbortController>();
+const importProgress = ref<Progress>();
+const percentage = computed(() => importProgress.value && importProgress.value.total > 0
+  ? Math.min(100, Math.max(0, Math.round(importProgress.value.completed / importProgress.value.total * 100))) : undefined);
 const localError = ref<ErrorCode>();
 const dragDepth = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
 let disposed = false;
 const mode = ref<'opfs' | 'host' | 'temp'>('opfs');
-const linked = useModelDownloadDestination({
-  blocked: () => disposed || props.disabled || active.value !== undefined,
-  changed: () => emit('changed'),
-});
-const { supported: linkSupported, busy: linkBusy } = linked.view;
-const linkFailure = linked.failure;
-watch(linkBusy, busy => emit('busy', busy));
+const linkSupported = missingHostModelDirectoryApis().length === 0;
+const linkBusy = ref(false);
 // Switching modes is a local presentation choice, not a persisted preference.
 // In particular an unsupported link option stays keyboard/click selectable:
 // only actual file operations honor the parent's disabled state, so explanations
@@ -60,6 +58,12 @@ async function importFiles({ collect }: { collect: () => ImportInput | Promise<I
   // drop, download, or deletion must not take over while an entry callback is pending.
   const controller = new AbortController();
   active.value = controller;
+  importProgress.value = undefined;
+  function onProgress({ progress }: { progress: Progress }): void {
+    if (!disposed && active.value === controller && !controller.signal.aborted) {
+      importProgress.value = progress;
+    }
+  }
   emit('busy', true);
   let needsRefresh = false;
   try {
@@ -78,14 +82,16 @@ async function importFiles({ collect }: { collect: () => ImportInput | Promise<I
         break;
       }
       needsRefresh = true;
-      await llamaCppBrowserService.importDirectory({ directory, signal: controller.signal, ...importOptions });
+      importProgress.value = undefined;
+      await llamaCppBrowserModelFiles.importDirectory({ directory, signal: controller.signal, onProgress, ...importOptions });
     }
     for (const file of files) {
       if (controller.signal.aborted) {
         break;
       }
       needsRefresh = true;
-      await llamaCppBrowserService.importModel({ file, signal: controller.signal, ...importOptions });
+      importProgress.value = undefined;
+      await llamaCppBrowserModelFiles.importModel({ file, signal: controller.signal, onProgress, ...importOptions });
     }
   } catch (error) {
     if (!disposed && !controller.signal.aborted) {
@@ -170,8 +176,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <button type="button" :aria-pressed="mode === 'host'" :aria-describedby="!linkSupported ? `${id}-link-unavailable` : undefined" data-testid="llama-import-mode-host" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'host' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300', !linkSupported ? 'opacity-50' : 'opacity-100']" @click="mode = 'host'">{{ lazyStrings.SHARED__model_import_link_folder() }}<span v-if="!linkSupported" :id="`${id}-link-unavailable`" tw-class="block text-[10px] font-normal">{{ lazyStrings.SHARED__model_import_unavailable() }}</span></button>
         <button type="button" :aria-pressed="mode === 'temp'" data-testid="llama-import-mode-temp" :tw-class="['rounded-lg px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', mode === 'temp' ? 'bg-white dark:bg-gray-700 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-gray-600 dark:text-gray-300']" @click="mode = 'temp'">{{ lazyStrings.SHARED__model_import_use_temporarily() }}</button>
       </div>
-      <LinkedModelDirectories v-if="mode === 'host'" :view="linked.view" :disabled="disabled || active !== undefined" />
-      <p v-if="mode === 'host' && linkFailure" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
+      <LlamaCppBrowserModelImportLinkedFolders v-if="mode === 'host'" :disabled="disabled || active !== undefined" @busy="linkBusy = $event; emit('busy', $event)" @changed="emit('changed')" />
       <p v-if="mode !== 'host'" data-testid="llama-import-mode-description" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ mode === 'temp' ? lazyStrings.SHARED__model_import_temporary_until_reload() : lazyStrings.SHARED__model_import_save_for_after_reload() }}</p>
       <div v-if="mode !== 'host'"
            data-testid="llama-cpp-browser-drop-zone"
@@ -196,7 +201,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </fieldset>
     <TemporaryModelFolders v-if="mode === 'temp'" :disabled="disabled || active !== undefined" />
     <div v-if="active" tw-class="rounded-2xl border border-blue-100 dark:border-blue-900/30 p-4 space-y-3">
-      <LlamaCppBrowserLoadingIndicator scope="import" />
+      <div tw-class="flex items-center justify-between gap-3">
+        <p role="status" data-testid="llama-cpp-browser-import-status" tw-class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><Loader2Icon aria-hidden="true" tw-class="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />{{ lazyStrings.llamaCppBrowser__importing() }}</p>
+        <span v-if="percentage !== undefined" tw-class="text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ percentage }}%</span>
+      </div>
+      <template v-if="percentage !== undefined">
+        <div role="progressbar" :aria-label="lazyStrings.llamaCppBrowser__importing()" :aria-valuenow="percentage" :aria-valuemin="0" :aria-valuemax="100" tw-class="h-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"><div tw-class="h-full rounded-full bg-blue-500/80 dark:bg-blue-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div></div>
+      </template>
       <div tw-class="flex justify-end"><button type="button" data-testid="llama-cpp-browser-cancel" tw-class="px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="cancel">{{ lazyStrings.SHARED__cancel() }}</button></div>
     </div>
     <div v-if="localError" role="alert" tw-class="flex items-start gap-3 rounded-2xl p-4 border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 text-red-700 dark:text-red-400">

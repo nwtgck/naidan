@@ -1,13 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppInteraction } from '@/composables/useAppPresentation';
 import MainApp from './MainApp.vue';
 
-const appInteraction = ref<
-  | 'blocked-by-startup'
-  | 'blocked-by-onboarding'
-  | 'enabled'
->('enabled');
+const appInteraction = ref<AppInteraction>('enabled');
 
 vi.mock('./composables/useAppPresentation', () => ({
   useAppPresentation: () => ({
@@ -59,8 +56,8 @@ describe('MainApp', () => {
     expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(true);
   });
 
-  it('keeps the main app surface rendered while onboarding blocks post-startup features', async () => {
-    appInteraction.value = 'blocked-by-onboarding';
+  it('keeps the main app surface rendered while startup blocks post-startup features', async () => {
+    appInteraction.value = 'blocked-by-startup';
     const wrapper = mountMainApp();
     await flushPromises();
 

@@ -110,12 +110,16 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       });
 
       registerLiveInstance({ chat });
+      const write = storageService.createChatContentWrite({ id: chatId, content: undefined, binding: undefined });
       await updateChatContent({
         id: chatId,
+        write,
         updater: () => ({ root: chat.root, currentLeafId: chat.currentLeafId }),
       });
       await updateChatMeta({
         id: chatId,
+        write,
+        creation: 'new-chat',
         updater: () => chat,
       });
 
@@ -131,6 +135,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       }
 
       await storageService.updateHierarchy({
+        contentWrite: { id: chatId, write },
         updater: ({ current }) => {
           if (groupId !== undefined) {
             const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;

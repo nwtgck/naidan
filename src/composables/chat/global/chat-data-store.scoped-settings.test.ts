@@ -295,4 +295,24 @@ describe('chat data store sidebar loading', () => {
     }
     expect(item.chat.title).toBe('New');
   });
+
+  it.each(['missing', 'found'])('does not let a superseded %s read replace the selected chat', async outcome => {
+    const store = createStore();
+    let finish: ((chat: Chat | null) => void) | undefined;
+    mockLoadChat.mockReset().mockImplementationOnce(() => new Promise<Chat | null>(resolve => {
+      finish = resolve;
+    }));
+    let current = true;
+    const staleId = toChatId({ raw: 'stale-chat' });
+    const pending = store.openChat({ id: staleId, leafId: undefined, isCurrent: () => current });
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    const selected = { ...createChat(), id: toChatId({ raw: 'selected-chat' }) };
+    store.registerLiveInstance({ chat: selected });
+    current = false;
+    await store.openChat({ id: selected.id, leafId: undefined });
+    finish?.(outcome === 'missing' ? null : { ...createChat(), id: staleId });
+    await rejected;
+    expect(store.currentChatRef.value?.id).toBe(selected.id);
+    expect(store.liveChatRegistry.has(staleId)).toBe(false);
+  });
 });

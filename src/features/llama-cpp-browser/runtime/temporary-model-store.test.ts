@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { directoryForModelFile, normalizeModelDirectoryInput } from './model-directory-input';
 import { TEST_ONLY } from './temporary-model-store';
 import { resolvedModelSchema } from './resolved-model-schema';
-import { isTemporaryModelReference, parseTemporaryModelReference, temporaryModelReference } from './temporary-model-reference';
+import { isTemporaryModelReference, parseTemporaryModelReference, temporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
 import { generateInputSchema, modelSchema, type ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
 
 function gguf({ name = 'model.gguf', lastModified = 123, marker = 0 }: { name?: string, lastModified?: number, marker?: number } = {}): File {

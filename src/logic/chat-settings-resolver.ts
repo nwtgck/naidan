@@ -1,3 +1,4 @@
+import { resolveChatModelBinding } from '@/01-models/chat-model-binding';
 import type {
   Chat,
   ChatGroup,
@@ -250,19 +251,17 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   };
   applyLmParameterOverrides({ target: chatLmParameters, source: chat.lmParameters });
 
+  const binding = resolveChatModelBinding({ chat, chatGroup: group, settings: globalSettings });
   const globalGeneration: ResolvedNormalGeneration = {
-    endpoint: globalSettings.endpoint,
-    modelId: globalSettings.defaultModelId || '',
+    ...binding.global,
     lmParameters: globalLmParameters,
   };
   const groupGeneration: ResolvedNormalGeneration = {
-    endpoint: group?.endpoint ?? globalGeneration.endpoint,
-    modelId: group?.modelId || globalGeneration.modelId,
+    ...binding.chatGroup,
     lmParameters: groupLmParameters,
   };
   const chatGeneration: ResolvedNormalGeneration = {
-    endpoint: chat.endpoint ?? groupGeneration.endpoint,
-    modelId: chat.modelId || groupGeneration.modelId,
+    ...binding.chat,
     lmParameters: chatLmParameters,
   };
 
@@ -336,8 +335,7 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
     systemPromptMessages: systemPrompts,
     lmParameters: chatLmParameters,
     sources: {
-      endpoint: chat.endpoint !== undefined ? 'chat' : (group?.endpoint !== undefined ? 'chat_group' : 'global'),
-      modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),
+      ...binding.sources,
       titleGeneration: titleSource({ chat, group }),
     } as const,
   };

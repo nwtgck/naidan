@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { modelLaunchTargetSchema } from '@/01-models/llama-cpp-browser-model-launch';
-import { modelLaunchChoices, resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
+import { confirmModelLaunchConfiguration, modelLaunchChoices, resolveModelLaunchConfiguration, resolveModelLaunchTarget, targetForChoice, readLaunchCatalog, rememberLaunchCatalog, TEST_ONLY } from './target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 
 function catalog({ paths }: { paths: string[] }): RepositoryCatalog {
@@ -8,6 +8,33 @@ function catalog({ paths }: { paths: string[] }): RepositoryCatalog {
 }
 
 describe('model launch resolution', () => {
+  it('asks for an actual main selection instead of choosing the first model for an unspecified variant', () => {
+    const input = catalog({ paths: ['Model-Q4_K_M.gguf', 'Model-Q8_0.gguf'] });
+    const result = resolveModelLaunchConfiguration({ input: input.repository, requestedVariant: undefined, catalog: input, multimodal: 'auto' });
+    expect(result).toMatchObject({ status: 'needs-selection', selectedMainPath: undefined, companionRequirement: 'none' });
+  });
+
+  it('resolves the exact file selected by the metadata picker', () => {
+    const input = catalog({ paths: ['Model-Q4_K_M.gguf', 'alternate/Model-UD-Q4_K_M.gguf'] });
+    const result = resolveModelLaunchConfiguration({ input: input.repository, requestedVariant: 'alternate/Model-UD-Q4_K_M.gguf', catalog: input, multimodal: 'auto' });
+    expect(result.status).toBe('resolved');
+    if (result.status !== 'resolved') {
+      throw new Error('Expected the exact selected model');
+    }
+    expect(result.target.mainFilePath).toBe('alternate/Model-UD-Q4_K_M.gguf');
+  });
+
+  it('resolves the selected split main and exact companion from one pinned catalog', () => {
+    const input = catalog({ paths: [] });
+    const files = ['Model-Q4_K_M-00001-of-00002.gguf', 'Model-Q4_K_M-00002-of-00002.gguf'].map(path => ({ path, size: 256 }));
+    input.models = [{ label: 'Q4_K_M', size: 512, files }];
+    input.projectors = ['first-mmproj.gguf', 'second-mmproj.gguf'].map(path => ({ path, size: 256 }));
+    expect(resolveModelLaunchConfiguration({ input: input.repository, requestedVariant: 'Q4_K_M', catalog: input, multimodal: 'auto' }).status).toBe('needs-selection');
+    const target = confirmModelLaunchConfiguration({ catalog: input, mainFilePath: files[0]!.path, companionFilePath: 'second-mmproj.gguf', multimodal: 'auto' });
+    expect(target.selection).toEqual({ repository: input.repository, revision: input.revision, files: [...files, input.projectors[1]] });
+    expect(() => confirmModelLaunchConfiguration({ catalog: input, mainFilePath: files[0]!.path, companionFilePath: 'outside.gguf', multimodal: 'auto' })).toThrow('companion-required');
+  });
+
   it('selects the ordinary Q4 model before Q8 and auxiliary weights', () => {
     const result = resolveModelLaunchTarget({ input: 'owner/Model-GGUF', catalog: catalog({ paths: ['Model-Q8_0.gguf', 'Model-Q4_K_M.gguf', 'mmproj-F16.gguf'] }) });
     expect(result.target.mainFilePath).toBe('Model-Q4_K_M.gguf');

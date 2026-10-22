@@ -4,7 +4,7 @@ import { TEST_ONLY as modelPresetTestOnly, type ModelPreset } from '@/features/l
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
-import OnboardingModal from './OnboardingModal.vue';
+import OnboardingModal from './OnboardingModalWhichMustBePreservedForFutureReferenceAndMustNeverBeUsedInProduction.vue';
 import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/features/theme/composables/useTheme';

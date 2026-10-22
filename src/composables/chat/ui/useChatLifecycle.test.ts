@@ -1,6 +1,8 @@
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { chatRuntimeStore } from '@/composables/chat/global/chat-core-singletons';
-import { storageService } from '@/00-storage/service';
+import { storageService, type StorageService } from '@/00-storage/service';
+import { createChatContentWrite, snapshotChatContent } from '@/00-storage/service/chat-content-binding';
+import type { ChatDataStore } from '@/composables/chat/global/chat-data-store';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
@@ -26,8 +28,8 @@ const {
   mockLoadData: vi.fn().mockResolvedValue(undefined),
   mockRegisterLiveInstance: vi.fn(),
   mockSetCurrentChatId: vi.fn(),
-  mockUpdateChatContent: vi.fn().mockResolvedValue(undefined),
-  mockUpdateChatMeta: vi.fn().mockResolvedValue(undefined),
+  mockUpdateChatContent: vi.fn<ChatDataStore['updateChatContent']>(),
+  mockUpdateChatMeta: vi.fn<ChatDataStore['updateChatMeta']>().mockResolvedValue(undefined),
   mockUpdateHierarchy: vi.fn(),
   mockCreatingChat: { value: false },
   mockCurrentChatGroupRef: { value: null as ChatGroup | null },
@@ -36,6 +38,7 @@ const {
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
+    createChatContentWrite: vi.fn<StorageService['createChatContentWrite']>().mockImplementation(({ id, content, binding }) => createChatContentWrite({ id, content, binding, isCurrent: () => true })),
     updateHierarchy: mockUpdateHierarchy,
     loadChat: vi.fn().mockResolvedValue(null),
     deleteChat: vi.fn().mockResolvedValue(undefined),
@@ -95,6 +98,7 @@ describe('useChatLifecycle', () => {
     chatRuntimeStore.clearActiveTaskCounts();
     chatRuntimeStore.activeTitleGenerations.clear();
     vi.mocked(storageService.loadChat).mockResolvedValue(null);
+    mockUpdateChatContent.mockImplementation(async ({ updater }) => snapshotChatContent({ content: await updater({ current: null }) }));
     mockCreatingChat.value = false;
     mockCurrentChatGroupRef.value = null;
     mockCurrentChatRef.value = null;

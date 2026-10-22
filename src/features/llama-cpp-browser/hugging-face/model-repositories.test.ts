@@ -23,6 +23,7 @@ describe('shared Hugging Face repositories', () => {
       'qwen-3-5-9b',
       'qwen-3-6-35b',
       'qwen-3-8-27b',
+      'qwen-3-8-flash-next',
       'lfm-2-5-230m',
       'lfm-2-5-2-6b',
       'muse-glimmer-30b',

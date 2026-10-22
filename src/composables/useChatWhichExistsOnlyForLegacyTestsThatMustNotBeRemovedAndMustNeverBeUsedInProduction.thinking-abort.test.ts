@@ -12,6 +12,7 @@ import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeU
 // Mock useSettings
 vi.mock('./useSettings', () => ({
   useSettings: vi.fn().mockReturnValue({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: ref({
       endpoint: {
         type: 'openai',

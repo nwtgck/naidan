@@ -2,10 +2,11 @@
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import type { ObjectDirective } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useSettings } from '@/composables/useSettings';
+import { useAppEntry } from '@/composables/useAppEntry';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Branding is part of the initial sidebar layout and must not flicker.
 import SidebarHeader from './SidebarHeader.vue';
@@ -22,7 +23,7 @@ import {
   PencilIcon, FolderIcon, FolderPlusIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
   SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
-  SearchIcon, GhostIcon, MessageSquarePlusIcon,
+  SearchIcon, GhostIcon, MessageSquarePlusIcon, LibraryBigIcon,
 } from 'lucide-vue-next';
 import { idToRaw } from '@/01-models/ids';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
@@ -44,6 +45,12 @@ import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 import { ensureStrings, lazyStrings } from '@/strings';
 
 const currentChatState = useCurrentChatState();
+const appEntry = useAppEntry();
+
+function openSettings({ event }: { event: MouseEvent }): void {
+  appEntry.openSettings({ tab: 'connection', opener: event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined });
+}
+
 const documentMetadata = useDocumentMetadata();
 const chatLifecycle = useChatLifecycle();
 const chatNavigation = useChatNavigation();
@@ -214,7 +221,6 @@ const activeFocusAreaVersion = 'activeFocusAreaVersion' in layout ? layout.activ
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
-const route = useRoute();
 
 defineEmits<{
   (e: 'open-settings'): void,
@@ -1382,15 +1388,28 @@ defineExpose({
         </ModelSelector>
       </div>
 
-      <div :tw-class="['flex items-center gap-2', { 'flex-col items-center': !isSidebarOpen }]">
+      <div :tw-class="['flex items-center gap-1', { 'flex-col items-center': !isSidebarOpen }]">
         <button
-          @click="router.push({ query: { ...route.query, settings: 'connection' } })"
-          :tw-class="['flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm', isSidebarOpen ? 'flex-1 py-2 px-2' : 'w-8 h-8']"
+          type="button"
+          @click="openSettings({ event: $event })"
+          :tw-class="['flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-transparent text-xs font-bold text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none', isSidebarOpen ? 'flex-1 px-2 py-2' : 'h-8 w-8']"
+          :aria-label="lazyStrings.Sidebar__settings()"
           :title="lazyStrings.Sidebar__settings()"
           data-testid="sidebar-settings-button"
         >
-          <SettingsIcon tw-class="w-4 h-4 shrink-0" />
-          <span v-if="isSidebarOpen">{{ lazyStrings.Sidebar__settings() }}</span>
+          <SettingsIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />
+          <span v-if="isSidebarOpen" tw-class="truncate">{{ lazyStrings.Sidebar__settings() }}</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="sidebar-model-catalog-button"
+          :aria-label="lazyStrings.Sidebar__find_models()"
+          :title="lazyStrings.Sidebar__find_models()"
+          tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-transparent text-gray-500 dark:text-gray-400 hover:border-gray-200 dark:hover:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 transition-colors motion-reduce:transition-none"
+          @click="appEntry.openDiscovery({ tab: 'candidates' })"
+        >
+          <LibraryBigIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />
         </button>
 
         <SidebarDebugControls :is-sidebar-open="isSidebarOpen" />

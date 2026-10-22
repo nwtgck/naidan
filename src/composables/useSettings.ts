@@ -48,6 +48,8 @@ watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
 }, { immediate: true, flush: 'sync' });
 
 let globalDefaultRevision = 0;
+let unsavedGlobalDefaultRevision: number | undefined;
+let settingsPublishedWithoutPrefetch: Settings | undefined;
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
   if (next.modelId !== previous.modelId || !areEndpointsEqual({ left: next.endpoint, right: previous.endpoint })) {
     globalDefaultRevision++;
@@ -59,9 +61,26 @@ const _isOnboardingDismissed = ref(false);
 const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
+// Entry views can read settings without authorizing their saved connection.
+// Explicit fetchModels requests remain scoped to the requested endpoint.
+const automaticModelRefresh = ref<'background' | 'deferred'>('background');
+let initialModelRefreshStarted = false;
+let pendingModelRefresh = false;
 let nextModelFetchRequestId = 0;
 let latestModelFetchRequestId = 0;
 let activeModelFetchCount = 0;
+
+function canRefreshModelsAutomatically(): boolean {
+  const status = automaticModelRefresh.value;
+  switch (status) {
+  case 'background': return true;
+  case 'deferred': return false;
+  default: {
+    const exhaustive: never = status;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
 
 type GlobalSearchSettings = NonNullable<NonNullable<Settings['experimental']>['globalSearch']>;
 export type SearchPreviewMode = NonNullable<GlobalSearchSettings['previewMode']>;
@@ -86,6 +105,9 @@ interface UseSettingsApi {
   settings: Readonly<Ref<Settings>>,
   captureModelLaunchDefaults(): Promise<ModelLaunchDefaultSnapshot>,
   initializeModelLaunchDefaults({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'>,
+  captureGlobalModelBinding({ sourceModelId }: { sourceModelId: string }): Promise<ModelLaunchDefaultSnapshot | undefined>,
+  promoteGlobalModelBinding({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'>,
+  synchronizeModelBindingSettings({ isCurrent }: { isCurrent: () => boolean }): Promise<'synchronized' | 'changed'>,
   initialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: ComputedRef<boolean>,
   onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
@@ -95,7 +117,9 @@ interface UseSettingsApi {
   globalSearchRoleFilter: ComputedRef<GlobalSearchRoleFilterSetting>,
   searchPreviewMode: ComputedRef<SearchPreviewMode>,
   searchContextSize: ComputedRef<SearchContextSize>,
-  init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
+  init: ({ storageTypeOverride, dataZipBase64, modelRefresh }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined, modelRefresh: 'background' | 'deferred' }) => Promise<void>,
+  deferModelRefresh(): void,
+  resumeModelRefresh(): void,
   save: ({ patch, modelRefresh }: {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
@@ -145,6 +169,9 @@ storageService.subscribeToChanges({
       try {
         const fresh = await storageService.loadSettings();
         if (fresh) {
+          if (!canRefreshModelsAutomatically() && !areEndpointsEqual({ left: _settings.value.endpoint, right: fresh.endpoint })) {
+            pendingModelRefresh = true;
+          }
           _settings.value = fresh;
           scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
           await setStringLocale({
@@ -179,15 +206,24 @@ storageService.subscribeToChanges({
 watch(
   () => ({
     initialized: _initialized.value,
+    settings: _settings.value,
     endpoint: _settings.value.endpoint,
+    modelRefresh: canRefreshModelsAutomatically(),
   }),
-  ({ initialized, endpoint }, _previous, onCleanup) => {
-    if (!initialized || !isSupportedEndpoint(endpoint)) {
+  ({ initialized, settings, endpoint, modelRefresh }, _previous, onCleanup) => {
+    if (settings === settingsPublishedWithoutPrefetch) {
+      settingsPublishedWithoutPrefetch = undefined;
+      return;
+    }
+    if (!initialized || !modelRefresh || !isSupportedEndpoint(endpoint)) {
       return;
     }
 
     const scheduled = scheduleIdleTask({
       task: async () => {
+        if (!canRefreshModelsAutomatically()) {
+          return;
+        }
         await prefetchLmProvider({ endpointType: endpoint.type });
       },
       timeoutMs: 2_000,
@@ -233,6 +269,10 @@ watch(
     })();
     const unsubscribe = modelService.subscribeModelList({
       listener: async () => {
+        if (!canRefreshModelsAutomatically()) {
+          pendingModelRefresh = true;
+          return;
+        }
         const { fetchModels } = useSettings();
         try {
           await fetchModels({});
@@ -254,11 +294,17 @@ function scheduleFakeLmRuntimePrefetch({ status }: {
 }): void {
   scheduledFakeLmRuntimePrefetch?.cancel();
   scheduledFakeLmRuntimePrefetch = undefined;
+  if (!canRefreshModelsAutomatically()) {
+    return;
+  }
 
   switch (status) {
   case 'enabled': {
     scheduledFakeLmRuntimePrefetch = scheduleIdleTask({
       task: async () => {
+        if (!canRefreshModelsAutomatically()) {
+          return;
+        }
         await prefetchFakeLmRuntime({ status });
       },
       timeoutMs: 2_000,
@@ -288,13 +334,14 @@ export function useSettings(): UseSettingsApi {
       || (hasEndpoint && hasModel);
   });
 
-  async function init({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) {
+  async function init({ storageTypeOverride, dataZipBase64, modelRefresh }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined, modelRefresh: 'background' | 'deferred' }) {
     if (_initialized.value) {
       return;
     }
     if (initPromise) {
       return initPromise;
     }
+    automaticModelRefresh.value = modelRefresh;
     console.log("storageTypeOverride", storageTypeOverride);
 
     initPromise = (async () => {
@@ -420,22 +467,12 @@ export function useSettings(): UseSettingsApi {
           await setStringLocale({
             locale: s.experimental?.locale ?? resolveBrowserLocale(),
           });
-          if (isConfiguredEndpoint({ endpoint: s.endpoint })) {
-            // Initial model refresh is non-blocking, but its rejection must be
-            // observed because initialization intentionally does not await it.
-            (async () => {
-              try {
-                await fetchModels({});
-              } catch {
-                // fetchModels records the relevant error details.
-              }
-            })();
-          }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
           _settings.value.endpoint = { type: 'openai', url: '' };
           await setStringLocale({ locale: resolveBrowserLocale() });
         }
+        flushAutomaticModelRefresh();
       } finally {
         loading.value = false;
         _initialized.value = true;
@@ -444,6 +481,34 @@ export function useSettings(): UseSettingsApi {
     })();
 
     return initPromise;
+  }
+
+  function deferModelRefresh(): void {
+    automaticModelRefresh.value = 'deferred';
+    scheduledFakeLmRuntimePrefetch?.cancel();
+    scheduledFakeLmRuntimePrefetch = undefined;
+  }
+
+  function flushAutomaticModelRefresh(): void {
+    if (!canRefreshModelsAutomatically() || (initialModelRefreshStarted && !pendingModelRefresh)) {
+      return;
+    }
+    initialModelRefreshStarted = true;
+    pendingModelRefresh = false;
+    if (isConfiguredEndpoint({ endpoint: _settings.value.endpoint })) {
+      void fetchModels({}).catch(() => {});
+    }
+  }
+
+  function resumeModelRefresh(): void {
+    const wasDeferred = !canRefreshModelsAutomatically();
+    automaticModelRefresh.value = 'background';
+    if (_initialized.value) {
+      flushAutomaticModelRefresh();
+      if (wasDeferred) {
+        scheduleFakeLmRuntimePrefetch({ status: _settings.value.experimental?.fakeLm ?? 'disabled' });
+      }
+    }
   }
 
   async function fetchModels({ overrides }: { overrides?: Endpoint }): Promise<string[]> {
@@ -504,6 +569,11 @@ export function useSettings(): UseSettingsApi {
 
     // Update local reactive state
     _settings.value = { ..._settings.value, ...normalizedPatch };
+    const writesDefault = normalizedPatch.endpoint !== undefined || Object.hasOwn(normalizedPatch, 'defaultModelId');
+    const defaultRevision = globalDefaultRevision;
+    if (writesDefault) {
+      unsavedGlobalDefaultRevision = defaultRevision;
+    }
 
     // If storage type is changed, handle provider switching/migration
     if (normalizedPatch.storageType && normalizedPatch.storageType !== storageService.getCurrentType()) {
@@ -517,11 +587,14 @@ export function useSettings(): UseSettingsApi {
         return { ...base, ...normalizedPatch } as Settings;
       },
     });
+    if (writesDefault && unsavedGlobalDefaultRevision === defaultRevision) {
+      unsavedGlobalDefaultRevision = undefined;
+    }
 
     // Re-fetch models if connection changed
     const endpointChanged = normalizedPatch.endpoint !== undefined
       && !areEndpointsEqual({ left: previousEndpoint, right: normalizedPatch.endpoint });
-    if (endpointChanged) {
+    if (endpointChanged && canRefreshModelsAutomatically()) {
       switch (modelRefresh) {
       case 'await':
         await fetchModels({});
@@ -543,6 +616,8 @@ export function useSettings(): UseSettingsApi {
         return _ex;
       }
       }
+    } else if (endpointChanged) {
+      pendingModelRefresh = true;
     }
   }
 
@@ -611,7 +686,7 @@ export function useSettings(): UseSettingsApi {
   }
 
   async function captureModelLaunchDefaults(): Promise<ModelLaunchDefaultSnapshot> {
-    const isStorageCurrent = storageService.captureModelLaunchStorage();
+    const isStorageCurrent = storageService.captureSettingsStorage();
     const snapshot = { endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId, revision: globalDefaultRevision, isStorageCurrent };
     const stored = await storageService.loadSettings();
     const matches = stored === null || (areEndpointsEqual({ left: stored.endpoint, right: snapshot.endpoint }) && stored.defaultModelId === snapshot.modelId);
@@ -629,7 +704,8 @@ export function useSettings(): UseSettingsApi {
       return 'changed';
     }
     let applied = false;
-    await storageService.updateSettings({
+    const outcome = await storageService.updateSettingsForStorage({
+      isCurrent: expected.isStorageCurrent,
       updater: ({ current }) => {
         const base = current ?? _settings.value;
         if (!stillExpected({ current: base })) {
@@ -639,21 +715,124 @@ export function useSettings(): UseSettingsApi {
         return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
       },
     });
-    if (!applied) {
+    switch (outcome) {
+    case 'changed': return 'changed';
+    case 'saved': break;
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
+    }
+    if (!applied || !expected.isStorageCurrent()) {
       return 'changed';
     }
     // A newer explicit in-memory selection must not be overwritten by the
     // completion of this write. It owns its own settings save.
     if (stillExpected({ current: _settings.value })) {
       _settings.value = { ..._settings.value, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
-      void fetchModels({}).catch(() => {});
+      if (!canRefreshModelsAutomatically()) {
+        pendingModelRefresh = true;
+      }
+    }
+    return 'applied';
+  }
+
+  async function captureGlobalModelBinding({ sourceModelId }: { sourceModelId: string }): Promise<ModelLaunchDefaultSnapshot | undefined> {
+    const snapshot = await captureModelLaunchDefaults();
+    if (!snapshot.storedMatches || !snapshot.isStorageCurrent() || snapshot.revision !== globalDefaultRevision
+      || snapshot.endpoint.type !== 'llama_cpp_browser' || snapshot.modelId !== sourceModelId) {
+      return undefined;
+    }
+    return snapshot;
+  }
+
+  async function synchronizeModelBindingSettings({ isCurrent }: { isCurrent: () => boolean }): Promise<'synchronized' | 'changed'> {
+    if (!isCurrent() || unsavedGlobalDefaultRevision === globalDefaultRevision) {
+      return 'changed';
+    }
+    const isStorageCurrent = storageService.captureSettingsStorage();
+    const revision = globalDefaultRevision;
+    const fresh = await storageService.loadSettings();
+    if (!fresh || !isCurrent() || !isStorageCurrent() || revision !== globalDefaultRevision
+      || unsavedGlobalDefaultRevision === globalDefaultRevision) {
+      return 'changed';
+    }
+    const endpointChanged = !areEndpointsEqual({ left: fresh.endpoint, right: _settings.value.endpoint });
+    if (endpointChanged || fresh.defaultModelId !== _settings.value.defaultModelId) {
+      // Admission refreshes the binding pair without authorizing connection work.
+      _settings.value = { ..._settings.value, endpoint: cloneEndpoint({ endpoint: fresh.endpoint }), defaultModelId: fresh.defaultModelId };
+      settingsPublishedWithoutPrefetch = _settings.value;
+      if (endpointChanged && !canRefreshModelsAutomatically()) {
+        pendingModelRefresh = true;
+      }
+    }
+    return 'synchronized';
+  }
+
+  async function promoteGlobalModelBinding({ modelId, expected }: { modelId: string, expected: ModelLaunchDefaultSnapshot }): Promise<'applied' | 'changed'> {
+    const hasPromotionLock = (): boolean => {
+      const storageType = storageService.getCurrentType();
+      switch (storageType) {
+      case 'memory': return true;
+      case 'local':
+      case 'opfs':
+        // Persistent promotion requires coordination with other tabs.
+        return typeof navigator !== 'undefined' && typeof navigator.locks?.request === 'function';
+      default: {
+        const exhaustive: never = storageType;
+        throw new Error(String(exhaustive));
+      }
+      }
+    };
+    const stillExpected = ({ current }: { current: Settings }): boolean => (
+      expected.storedMatches && expected.isStorageCurrent() && expected.revision === globalDefaultRevision
+      && hasPromotionLock()
+      && expected.endpoint.type === 'llama_cpp_browser' && expected.modelId !== undefined
+      && current.defaultModelId === expected.modelId
+      && areEndpointsEqual({ left: current.endpoint, right: expected.endpoint })
+    );
+    if (!stillExpected({ current: _settings.value })) {
+      return 'changed';
+    }
+    let applied = false;
+    const outcome = await storageService.updateSettingsForStorage({
+      isCurrent: expected.isStorageCurrent,
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        if (!stillExpected({ current: base })) {
+          return base;
+        }
+        applied = true;
+        return { ...base, defaultModelId: modelId };
+      },
+    });
+    switch (outcome) {
+    case 'changed': return 'changed';
+    case 'saved': break;
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
+    }
+    if (!applied || !expected.isStorageCurrent()) {
+      return 'changed';
+    }
+    if (stillExpected({ current: _settings.value })) {
+      _settings.value = { ..._settings.value, defaultModelId: modelId };
+    } else if (_settings.value.defaultModelId !== modelId || !areEndpointsEqual({ left: _settings.value.endpoint, right: expected.endpoint })) {
+      return 'changed';
     }
     return 'applied';
   }
 
   async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
+    const revision = globalDefaultRevision;
+    unsavedGlobalDefaultRevision = revision;
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
+    if (unsavedGlobalDefaultRevision === revision) {
+      unsavedGlobalDefaultRevision = undefined;
+    }
   }
 
   async function updateGlobalReasoningEffort({ effort }: { effort: Reasoning['effort'] }) {
@@ -705,7 +884,11 @@ export function useSettings(): UseSettingsApi {
     _settings.value = { ..._settings.value, endpoint: nextEndpoint, defaultModelId: modelId };
     // Selection is already committed. A model-list failure must not report it
     // as a failed settings write. The local-model caller only lists local files.
-    void fetchModels({}).catch(() => {});
+    if (canRefreshModelsAutomatically()) {
+      void fetchModels({}).catch(() => {});
+    } else {
+      pendingModelRefresh = true;
+    }
     return 'applied';
   }
 
@@ -714,6 +897,8 @@ export function useSettings(): UseSettingsApi {
     const nextEndpoint = cloneEndpoint({ endpoint });
 
     _settings.value.endpoint = nextEndpoint;
+    const revision = globalDefaultRevision;
+    unsavedGlobalDefaultRevision = revision;
 
     await storageService.updateSettings({
       updater: ({ current: curr }) => ({
@@ -721,6 +906,9 @@ export function useSettings(): UseSettingsApi {
         endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
       }),
     });
+    if (unsavedGlobalDefaultRevision === revision) {
+      unsavedGlobalDefaultRevision = undefined;
+    }
 
     if (!areEndpointsEqual({ left: previousEndpoint, right: nextEndpoint })) {
       await fetchModels({});
@@ -862,6 +1050,11 @@ export function useSettings(): UseSettingsApi {
     scheduledFakeLmRuntimePrefetch?.cancel();
     scheduledFakeLmRuntimePrefetch = undefined;
     _initialized.value = false;
+    automaticModelRefresh.value = 'background';
+    initialModelRefreshStarted = false;
+    pendingModelRefresh = false;
+    unsavedGlobalDefaultRevision = undefined;
+    settingsPublishedWithoutPrefetch = undefined;
     _isOnboardingDismissed.value = false;
     _onboardingDraft.value = null;
     _settings.value = {
@@ -882,6 +1075,9 @@ export function useSettings(): UseSettingsApi {
     settings: readonly(_settings) as Readonly<Ref<Settings>>,
     captureModelLaunchDefaults,
     initializeModelLaunchDefaults,
+    captureGlobalModelBinding,
+    promoteGlobalModelBinding,
+    synchronizeModelBindingSettings,
     initialized: readonly(_initialized),
     isOnboardingDismissed,
     onboardingDraft: readonly(_onboardingDraft) as Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
@@ -892,6 +1088,8 @@ export function useSettings(): UseSettingsApi {
     searchPreviewMode,
     searchContextSize,
     init,
+    deferModelRefresh,
+    resumeModelRefresh,
     save,
     updateExperimental,
     captureExperimentalStorage,

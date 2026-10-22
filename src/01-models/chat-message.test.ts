@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createChatMessageSnapshot } from './chat-message';
+import { chatModelBindingAssistantFingerprint, createChatMessageSnapshot } from './chat-message';
 import type { AssistantMessageNode, MessageNode, ToolMessageNode, UserMessageNode, Attachment } from './types';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from './ids';
 
@@ -28,6 +28,19 @@ function assistant(): AssistantMessageNode {
 }
 
 describe('createChatMessageSnapshot', () => {
+  it('fingerprints every recorded answer field while allowing binding and reply changes independently', () => {
+    const node = assistant();
+    const original = chatModelBindingAssistantFingerprint({ node });
+    node.modelId = 'user/saved';
+    node.replies.items.push({ ...assistant(), id: toMessageId({ raw: 'child' }) });
+    expect(chatModelBindingAssistantFingerprint({ node })).toBe(original);
+    const reordered: AssistantMessageNode = { interruption: node.interruption, parts: node.parts, lmParameters: node.lmParameters, modelId: node.modelId, replies: node.replies, createdAt: node.createdAt, role: node.role, id: node.id };
+    expect(chatModelBindingAssistantFingerprint({ node: reordered })).toBe(original);
+    const changed = { ...node, parts: [...node.parts, { type: 'text' as const, text: 'external edit', completeness: 'complete' as const }] };
+    expect(chatModelBindingAssistantFingerprint({ node: changed })).not.toBe(original);
+    expect(chatModelBindingAssistantFingerprint({ node: { ...node, createdAt: node.createdAt + 1 } })).not.toBe(original);
+  });
+
   it('retains ordered parts, empty text and original strings but not storage metadata', () => {
     const node = assistant();
     const snapshot = createChatMessageSnapshot({ node });

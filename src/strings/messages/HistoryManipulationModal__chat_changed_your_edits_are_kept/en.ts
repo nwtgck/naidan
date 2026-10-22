@@ -1,0 +1,1 @@
+export const HistoryManipulationModal__chat_changed_your_edits_are_kept = (): string => 'The chat changed or is still being updated, so these edits could not be saved. Your edits remain here. Copy anything you need before closing and reopening the history editor.';

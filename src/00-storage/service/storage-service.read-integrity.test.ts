@@ -19,6 +19,7 @@ vi.mock('./synchronizer', () => ({
     }
 
     notify = notify;
+    subscribe = vi.fn(() => () => undefined);
   },
 }));
 
@@ -28,9 +29,11 @@ const metaKey = `${STORAGE_KEY_PREFIX}lsp:chat_meta:read-before-write`;
 const replacementContent: ChatContent = { root: { items: [] } };
 const replacementMeta: ChatMeta = { id, title: 'New title', createdAt: 0, updatedAt: 1, debugEnabled: false };
 let service: StorageService;
+const locksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
 
 beforeEach(async () => {
   localStorage.clear();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: vi.fn() } });
   vi.clearAllMocks();
   service = new StorageService();
   await service.init({ type: 'local' });
@@ -39,6 +42,11 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  if (locksDescriptor === undefined) {
+    Reflect.deleteProperty(navigator, 'locks');
+  } else {
+    Object.defineProperty(navigator, 'locks', locksDescriptor);
+  }
 });
 
 const unreadableContents = [
@@ -53,13 +61,13 @@ describe('read-update-write chat content', () => {
       localStorage.setItem(contentKey, raw);
       const save = vi.spyOn(LocalStorageProvider.prototype, 'saveChatContent');
       const updater = vi.fn(({ current }: { current: ChatContent | null }) => current ?? replacementContent);
-      await expect(service.updateChatContent({ id, updater })).rejects.toThrow();
+      await expect(service.updateChatContent({ id, write: service.createChatContentWrite({ id, content: undefined, binding: undefined }), updater })).rejects.toThrow();
       expect(updater).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
       expect(localStorage.getItem(contentKey)).toBe(raw);
       expect(notify).not.toHaveBeenCalled();
       expect(report).toHaveBeenCalledOnce();
-      expect(locks).toHaveBeenCalledWith(`${LOCK_CHAT_CONTENT_PREFIX}read-before-write`);
+      expect(locks).not.toHaveBeenCalledWith(`${LOCK_CHAT_CONTENT_PREFIX}read-before-write`);
     });
   }
 
@@ -68,7 +76,7 @@ describe('read-update-write chat content', () => {
       expect(current).toBeNull();
       return replacementContent;
     });
-    await service.updateChatContent({ id, updater });
+    await service.updateChatContent({ id, write: service.createChatContentWrite({ id, content: undefined, binding: undefined }), updater });
     expect(updater).toHaveBeenCalledOnce();
     expect(await service.loadChatContent({ id })).toEqual(replacementContent);
     expect(notify).toHaveBeenCalledOnce();
@@ -77,7 +85,7 @@ describe('read-update-write chat content', () => {
 
   it('can retry after explicit repair without retaining the failed read as empty content', async () => {
     localStorage.setItem(contentKey, '{');
-    await expect(service.updateChatContent({ id, updater: () => replacementContent })).rejects.toThrow();
+    await expect(service.updateChatContent({ id, write: service.createChatContentWrite({ id, content: undefined, binding: undefined }), updater: () => replacementContent })).rejects.toThrow();
     localStorage.setItem(contentKey, JSON.stringify({
       root: {
         items: [{
@@ -94,6 +102,7 @@ describe('read-update-write chat content', () => {
     const before = await service.loadChatContent({ id });
     await service.updateChatContent({
       id,
+      write: service.createChatContentWrite({ id, content: before ?? undefined, binding: undefined }),
       updater: ({ current }) => {
         expect(current).toEqual(before);
         if (!current) {
@@ -126,6 +135,7 @@ describe('read-update-write chat content', () => {
     expect(localStorage.getItem(contentKey)).toBe(raw);
     await service.updateChatContent({
       id,
+      write: service.createChatContentWrite({ id, content: before ?? undefined, binding: undefined }),
       updater: ({ current }) => {
         if (!current) {
           throw new Error('Legacy content must exist.');
@@ -190,7 +200,7 @@ it('reports a read failure without notifying a successful write or running user 
     return getItem.call(this, key);
   });
   const updater = vi.fn(() => replacementContent);
-  await expect(service.updateChatContent({ id, updater })).rejects.toBe(failure);
+  await expect(service.updateChatContent({ id, write: service.createChatContentWrite({ id, content: undefined, binding: undefined }), updater })).rejects.toBe(failure);
   expect(updater).not.toHaveBeenCalled();
   expect(notify).not.toHaveBeenCalled();
   expect(report).toHaveBeenCalledOnce();

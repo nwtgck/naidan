@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
+import WelcomeScreenFrame from './layout/WelcomeScreenFrame.vue';
 import { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -65,6 +66,7 @@ describe('WelcomeScreen.vue', () => {
 
   it('behaves like a wallpaper (absolute positioning and centered)', () => {
     const wrapper = mount(WelcomeScreen);
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('floating');
     const container = wrapper.find('div'); // Root div
     expect(container.classes()).toContain('absolute');
     expect(container.classes()).toContain('inset-0');
@@ -122,6 +124,7 @@ describe('WelcomeScreen primary slot', () => {
     expect(wrapper.find('a[download]').exists()).toBe(false);
     expect(wrapper.classes()).toContain('relative');
     expect(wrapper.classes()).not.toContain('absolute');
+    expect(wrapper.getComponent(WelcomeScreenFrame).props('placement')).toBe('contained');
     wrapper.unmount();
   });
 });

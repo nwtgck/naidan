@@ -13,17 +13,21 @@ export type ChatNavigationAdapter = {
   openChat({
     chatId,
     leafId,
+    isCurrent,
   }: {
     chatId: ChatId,
     leafId?: MessageId,
+    isCurrent?: () => boolean,
   }): Promise<import('@/01-models/types').Chat | null>,
 
   openChatAtMessage({
     chatId,
     messageId,
+    isCurrent,
   }: {
     chatId: ChatId,
     messageId: MessageId,
+    isCurrent?: () => boolean,
   }): Promise<import('@/01-models/types').Chat | null>,
 
   openChatGroup({
@@ -47,11 +51,16 @@ export function useChatNavigation(): ChatNavigationAdapter {
   async function openChat({
     chatId,
     leafId,
+    isCurrent,
   }: {
     chatId: ChatId,
     leafId?: MessageId,
+    isCurrent?: () => boolean,
   }) {
-    const chat = await chatDataStore.openChat({ id: chatId, leafId });
+    const chat = await chatDataStore.openChat({ id: chatId, leafId, isCurrent });
+    if (isCurrent?.() === false) {
+      throw new DOMException('Chat navigation superseded', 'AbortError');
+    }
     if (chat === null) {
       setCurrentChatId({ chatId: null });
       return null;
@@ -67,11 +76,16 @@ export function useChatNavigation(): ChatNavigationAdapter {
   async function openChatAtMessage({
     chatId,
     messageId,
+    isCurrent,
   }: {
     chatId: ChatId,
     messageId: MessageId,
+    isCurrent?: () => boolean,
   }) {
-    const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
+    const chat = await chatDataStore.openChatAtMessage({ chatId, messageId, isCurrent });
+    if (isCurrent?.() === false) {
+      throw new DOMException('Chat navigation superseded', 'AbortError');
+    }
     if (chat === null) {
       setCurrentChatId({ chatId: null });
       return null;

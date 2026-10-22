@@ -1,3 +1,4 @@
+import { createChatContentWrite, readChatContentWrite, chatContentFingerprint, type ChatContentModelBinding } from '@/00-storage/service/chat-content-binding';
 import type { StorageService } from '@/00-storage/service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive, toRaw } from 'vue';
@@ -6,7 +7,7 @@ import type { LmProvider } from '@/01-models/lm';
 import type { AssistantMessageNode, Chat, MessageNode, ToolMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool, ToolExecutionOutcome, ToolExecutionResult } from '@/01-models/tool';
-import { toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
+import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
 import { getMessageText } from '@/01-models/message-text';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
@@ -18,6 +19,7 @@ const state = vi.hoisted(() => ({
   tools: [] as Tool[],
   changed: vi.fn(),
   save: vi.fn(),
+  captureWrite: vi.fn(),
   metadata: vi.fn(),
   notify: vi.fn(),
   title: vi.fn(),
@@ -25,6 +27,16 @@ const state = vi.hoisted(() => ({
   clearOutput: vi.fn(),
   drafts: vi.fn(),
   autoTitle: false,
+  configured: true,
+  resolvedModelId: 'm',
+  endpointType: 'openai' as 'openai' | 'llama_cpp_browser',
+  inspectModel: vi.fn(),
+  openSettings: vi.fn(),
+  fetchModels: vi.fn(async () => ['m']),
+  setOnboardingDraft: vi.fn(),
+  synchronizeBinding: vi.fn(),
+  localPreparation: vi.fn(),
+  saveAttachment: vi.fn(),
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   availableModels: { value: ['m'] },
@@ -35,6 +47,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   getLiveChatById: () => state.current.value,
   registerLiveInstance: vi.fn(),
   loadData: vi.fn(),
+  synchronizeModelBindingContent: state.synchronizeBinding,
   ensureChatTmpDirectory: vi.fn(),
   triggerCurrentChat: state.changed,
   updateChatContent: state.save,
@@ -57,26 +70,30 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
     deleteVolatileToolOutput: state.clearOutput,
   },
 }));
+vi.mock('@/features/llama-cpp-browser/model-recovery/availability', () => ({ inspectLocalModel: state.inspectModel }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => state.provider }));
-vi.mock('@/composables/chat/chat-scoped/chat-model-flow', () => ({ fetchAvailableModelsForChat: async () => ['m'] }));
+vi.mock('@/features/llama-cpp-browser/composables/local-model-launch-session', () => ({ assertLocalModelLaunchReady: state.localPreparation }));
+vi.mock('@/composables/chat/chat-scoped/chat-model-flow', () => ({ fetchAvailableModelsForChat: state.fetchModels }));
 vi.mock('@/composables/chat/chat-scoped/chat-title-flow', () => ({ generateChatTitleForChat: state.title }));
 vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({ abortProcessingForChat: vi.fn() }));
 vi.mock('@/composables/chat/chat-scoped/chat-image-flow', () => ({ handleImageGenerationForChat: vi.fn() }));
-vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ endpoint: { type: 'openai', url: 'https://example.invalid' }, modelId: 'm', lmParameters: undefined, systemPromptMessages: [], autoTitleEnabled: state.autoTitle }) }));
+vi.mock('@/logic/chat-settings-resolver', () => ({ resolveChatSettings: () => ({ endpoint: state.endpointType === 'llama_cpp_browser' ? { type: 'llama_cpp_browser' } : { type: 'openai', url: state.configured ? 'https://example.invalid' : '' }, modelId: state.resolvedModelId, lmParameters: undefined, systemPromptMessages: [], autoTitleEnabled: state.autoTitle, sources: { endpoint: 'global', modelId: 'global' } }) }));
 vi.mock('@/features/tools/factory', () => ({ getEnabledTools: async () => state.tools }));
 vi.mock('@/features/tools/composables/useChatTools', () => ({ getEffectiveToolConfigsForChat: () => [] }));
 vi.mock('@/features/tools/composables/useApproval', () => ({ useApproval: () => ({ ensureApproval: vi.fn() }) }));
 vi.mock('@/features/tools/composables/useChoices', () => ({ useChoices: () => ({ requestChoice: vi.fn() }) }));
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: { storageType: 'memory', experimental: { fakeLm: 'disabled' } } } }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: { value: { storageType: 'memory', experimental: { fakeLm: 'disabled' } } }, synchronizeModelBindingSettings: async () => 'synchronized', setOnboardingDraft: state.setOnboardingDraft }) }));
+vi.mock('@/composables/useAppEntry', () => ({ requestAppSettings: state.openSettings }));
 vi.mock('@/composables/useImageGeneration', () => ({ useImageGeneration: () => ({ isImageMode: () => false, getResolution: () => ({ width: 512, height: 512 }), getCount: () => 1, getSteps: () => undefined, getSeed: () => undefined, getPersistAs: () => 'original' }) }));
 vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn() }) }));
 vi.mock('@/composables/useStoragePersistence', () => ({ useStoragePersistence: () => ({ requestPersistence: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({ useChatNavigation: () => ({ openChat: vi.fn() }) }));
 vi.mock('@/composables/chat/ui/useChatOrganization', () => ({ useChatOrganization: () => ({ reorderSidebarChatAfterSend: vi.fn() }) }));
-vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined), notify: state.notify, getFile: vi.fn(), saveFile: vi.fn(), canPersistBinary: true } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { getModelLaunch: vi.fn<StorageService['getModelLaunch']>().mockReturnValue(undefined), createChatContentWrite: state.captureWrite, captureSettingsStorage: () => () => true, loadChatContentWithoutAttachments: async () => null, notify: state.notify, getFile: vi.fn(), saveFile: state.saveAttachment, canPersistBinary: true } }));
 
-import { generateResponseForAssistant, regenerateMessageForChat } from './chat-generation-flow';
+import { generateResponseForAssistant, regenerateMessageForChat, sendMessageToTargetChat } from './chat-generation-flow';
+import { withChatModelBindingFinalization } from './chat-model-binding-operations';
 
 function createChat(): { chat: Chat, assistant: AssistantMessageNode } {
   const assistant: AssistantMessageNode = { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 2, parts: [], interruption: undefined, modelId: 'm', lmParameters: undefined, replies: { items: [] } };
@@ -98,10 +115,168 @@ describe('chat generation flow with message parts', () => {
     vi.clearAllMocks();
     state.active.clear();
     state.autoTitle = false;
+    state.configured = true;
+    state.resolvedModelId = 'm';
+    state.fetchModels.mockResolvedValue(['m']);
+    state.endpointType = 'openai';
+    state.inspectModel.mockResolvedValue('available');
+    state.synchronizeBinding.mockResolvedValue('synchronized');
+    state.localPreparation.mockReturnValue(undefined);
+    state.saveAttachment.mockResolvedValue(undefined);
     state.tools = [];
     state.save.mockResolvedValue(undefined);
+    state.captureWrite.mockImplementation(({ id, content, binding }: { id: Chat['id'], content: import('@/01-models/types').ChatContent | undefined, binding: ChatContentModelBinding | undefined }) => createChatContentWrite({ id, content, binding, isCurrent: () => true }));
     state.metadata.mockResolvedValue(undefined);
     state.title.mockResolvedValue(undefined);
+  });
+
+  it('rechecks the pinned initial local preparation after an attachment wait before connecting messages', async () => {
+    const { chat } = createChat();
+    chat.root.items = [];
+    chat.currentLeafId = undefined;
+    let current = true;
+    const assertCurrent = vi.fn(() => {
+      if (!current) {
+        throw new Error('The initial local preparation changed');
+      }
+    });
+    state.localPreparation.mockReturnValue({ assertCurrent });
+    state.saveAttachment.mockImplementationOnce(async () => {
+      current = false;
+    });
+    await expect(sendMessageToTargetChat({
+      targetChat: chat,
+      content: 'pending question',
+      parentId: undefined,
+      attachments: [{ id: toAttachmentId({ raw: 'local-file' }), binaryObjectId: toBinaryObjectId({ raw: 'local-file-body' }), originalName: 'x.txt', mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) }],
+      lmParameters: undefined,
+    })).rejects.toThrow('The initial local preparation changed');
+    expect(assertCurrent).toHaveBeenCalledOnce();
+    expect(chat.root.items).toHaveLength(0);
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.metadata).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'unreadable'] as const)('rejects a receipt-free browser send with %s files before saving attachments or messages', async availability => {
+    const { chat } = createChat();
+    chat.root.items = [];
+    chat.currentLeafId = undefined;
+    state.endpointType = 'llama_cpp_browser';
+    state.inspectModel.mockResolvedValue(availability);
+    await expect(sendMessageToTargetChat({ targetChat: chat, content: 'keep this draft', parentId: undefined, attachments: [{ id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'body' }), originalName: 'x.txt', mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) }], lmParameters: undefined })).rejects.toThrow();
+    expect(state.inspectModel).toHaveBeenCalledExactlyOnceWith({ modelId: 'm' });
+    expect(state.saveAttachment).not.toHaveBeenCalled();
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.metadata).not.toHaveBeenCalled();
+    expect(chat.root.items).toHaveLength(0);
+  });
+
+  it('rechecks ordinary browser files after attachment storage and keeps the message unconnected if they disappeared', async () => {
+    const { chat } = createChat();
+    chat.root.items = [];
+    chat.currentLeafId = undefined;
+    state.endpointType = 'llama_cpp_browser';
+    state.inspectModel.mockResolvedValueOnce('available').mockResolvedValueOnce('missing');
+    await expect(sendMessageToTargetChat({ targetChat: chat, content: 'keep this draft', parentId: undefined, attachments: [{ id: toAttachmentId({ raw: 'file' }), binaryObjectId: toBinaryObjectId({ raw: 'body' }), originalName: 'x.txt', mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'memory', blob: new Blob(['x']) }], lmParameters: undefined })).rejects.toThrow();
+    expect(state.inspectModel).toHaveBeenCalledTimes(2);
+    expect(state.saveAttachment).toHaveBeenCalledOnce();
+    expect(state.save).not.toHaveBeenCalled();
+    expect(state.metadata).not.toHaveBeenCalled();
+    expect(chat.root.items).toHaveLength(0);
+  });
+
+  it('keeps the admitted write through streaming instead of adopting a newer live model binding', async () => {
+    const fixture = createChat();
+    const originalContent = chatContentFingerprint({ content: fixture.chat });
+    const started = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          started.resolve();
+          await finish.promise;
+          await writer.text({ type: 'text', text: 'accepted output' });
+          return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
+    const pending = run(fixture);
+    await started.promise;
+    fixture.chat.modelId = 'user/foreign-promotion';
+    finish.resolve();
+    await pending;
+    expect(state.save).toHaveBeenCalled();
+    const write = state.captureWrite.mock.results[0]!.value;
+    expect(readChatContentWrite({ write, id: fixture.chat.id })).toMatchObject({ baseline: originalContent, binding: { modelId: 'm' } });
+    for (const [request] of state.save.mock.calls) {
+      expect(request.write).toBe(write);
+    }
+  });
+
+  it('keeps the background generation inside the fence after send has returned', async () => {
+    const fixture = createChat();
+    const finish = Promise.withResolvers<void>();
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await finish.promise;
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
+    expect(await sendMessageToTargetChat({ targetChat: fixture.chat, content: 'next question', parentId: undefined, attachments: undefined, lmParameters: undefined })).toBe(true);
+    const committed = vi.fn();
+    const finalization = withChatModelBindingFinalization({
+      chatId: fixture.chat.id,
+      operation: async () => {
+        committed();
+      },
+    });
+    await Promise.resolve();
+    expect(committed).not.toHaveBeenCalled();
+    finish.resolve();
+    await finalization;
+    expect(committed).toHaveBeenCalledOnce();
+    expect(state.active.size).toBe(0);
+  });
+
+  it('opens connection settings when generation needs setup without sending the draft', async () => {
+    const fixture = createChat();
+    state.configured = false;
+    const originalRoot = fixture.chat.root.items.length;
+    expect(await sendMessageToTargetChat({ targetChat: fixture.chat, content: 'keep this draft', parentId: undefined, attachments: undefined, lmParameters: undefined })).toBe(false);
+    expect(state.openSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: undefined });
+    expect(state.fetchModels).not.toHaveBeenCalled();
+    expect(state.setOnboardingDraft).not.toHaveBeenCalled();
+    expect(fixture.chat.root.items).toHaveLength(originalRoot);
+    expect(state.save).not.toHaveBeenCalled();
+    state.configured = true;
+    state.endpointType = 'openai';
+    state.inspectModel.mockResolvedValue('available');
+    await Promise.resolve();
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
+  it('requests connection settings after one model lookup without creating a legacy draft when no model is selected', async () => {
+    const fixture = createChat();
+    state.resolvedModelId = '';
+    state.fetchModels.mockResolvedValue([]);
+    const originalRoot = fixture.chat.root.items.length;
+    expect(await sendMessageToTargetChat({ targetChat: fixture.chat, content: 'keep this draft', parentId: undefined, attachments: undefined, lmParameters: undefined })).toBe(false);
+    expect(state.fetchModels).toHaveBeenCalledExactlyOnceWith({ chatId: fixture.chat.id, errorSource: 'chat-generation-flow:resolve-models' });
+    expect(state.openSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: undefined });
+    expect(state.setOnboardingDraft).not.toHaveBeenCalled();
+    expect(fixture.chat.root.items).toHaveLength(originalRoot);
+    expect(state.save).not.toHaveBeenCalled();
+    state.resolvedModelId = 'm';
+    await Promise.resolve();
+    expect(state.fetchModels).toHaveBeenCalledOnce();
+    expect(state.save).not.toHaveBeenCalled();
   });
 
   it('shows draft updates without history persistence and clears them after cancellation', async () => {

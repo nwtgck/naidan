@@ -4,10 +4,10 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { storageService } from '@/00-storage/service';
-import { reactive, nextTick } from 'vue';
-import type { Chat, ChatGroup, SidebarItem } from '@/01-models/types';
+import { reactive } from 'vue';
+import type { Chat, ChatContent, ChatGroup, SidebarItem } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, type ChatGroupId, type ChatId } from '@/01-models/ids';
 
 afterEach(() => {
   for (const providerChat of [mockLmChat]) {
@@ -20,6 +20,28 @@ afterEach(() => {
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
+const mockSavedChats = new Map<ChatId, Chat>();
+const mockSavedChatGroups = new Map<ChatGroupId, ChatGroup>();
+const { mockGlobalSettings, mockSavedGlobalSettings } = vi.hoisted(() => {
+  const mockSavedGlobalSettings = {
+    endpoint: { type: 'openai' as const, url: 'http://global-url' },
+    defaultModelId: 'global-model',
+    systemPrompt: 'Global Prompt',
+    lmParameters: { temperature: 0.7, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+  };
+  return { mockGlobalSettings: structuredClone(mockSavedGlobalSettings), mockSavedGlobalSettings };
+});
+
+function persistChatHierarchy({ chat, chatGroup }: { chat: Chat, chatGroup: ChatGroup }): void {
+  mockSavedChats.set(chat.id, JSON.parse(JSON.stringify(chat)) as Chat);
+  const chatItem: SidebarItem = { id: `chat:${idToRaw({ id: chat.id })}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } };
+  const savedChatGroup = JSON.parse(JSON.stringify({ ...chatGroup, items: chat.groupId === chatGroup.id ? [chatItem] : [] })) as ChatGroup;
+  mockSavedChatGroups.set(chatGroup.id, savedChatGroup);
+  mockRootItems.splice(0, mockRootItems.length, { id: `chat_group:${idToRaw({ id: chatGroup.id })}`, type: 'chat_group', chatGroup: savedChatGroup });
+  if (chat.groupId !== chatGroup.id) {
+    mockRootItems.push(chatItem);
+  }
+}
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
@@ -27,17 +49,37 @@ vi.mock('../00-storage/service', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
-    loadChat: vi.fn(),
+    loadChat: vi.fn<StorageService['loadChat']>().mockImplementation(async ({ id }) => {
+      const saved = mockSavedChats.get(id);
+      return saved === undefined ? null : structuredClone(saved);
+    }),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(),
+    updateChatMeta: vi.fn<StorageService['updateChatMeta']>().mockImplementation(async ({ id, updater }) => {
+      const current = mockSavedChats.get(id) ?? null;
+      const updated = updater({ current });
+      if (updated !== undefined) {
+        mockSavedChats.set(id, { ...current, ...JSON.parse(JSON.stringify(updated)), root: current?.root ?? { items: [] } });
+      }
+    }),
     loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateChatContent: vi.fn<StorageService['updateChatContent']>().mockImplementation(async ({ id, updater }) => {
+      const current = mockSavedChats.get(id) ?? null;
+      const updated = JSON.parse(JSON.stringify(await updater({ current }))) as ChatContent;
+      if (current !== null) {
+        mockSavedChats.set(id, { ...current, ...updated });
+      }
+      return structuredClone(updated);
+    }),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
-    listChatGroups: vi.fn().mockResolvedValue([]),
-    loadChatGroup: vi.fn().mockResolvedValue(null),
-    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
+    listChatGroups: vi.fn().mockImplementation(async () => structuredClone([...mockSavedChatGroups.values()])),
+    loadChatGroup: vi.fn().mockImplementation(async ({ id }) => {
+      const saved = mockSavedChatGroups.get(id);
+      return saved === undefined ? null : structuredClone(saved);
+    }),
+    loadSettings: vi.fn().mockImplementation(async () => structuredClone(mockSavedGlobalSettings)),
+    getSidebarStructure: vi.fn().mockImplementation(async () => structuredClone(mockRootItems)),
     deleteChatGroup: vi.fn(),
     notify: vi.fn(),
   },
@@ -45,17 +87,15 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: {
-      value: {
-        endpoint: {
-          type: 'openai',
-          url: 'http://global-url',
-        },
-        defaultModelId: 'global-model',
-        systemPrompt: 'Global Prompt',
-        lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.7 },
-      },
+    synchronizeModelBindingSettings: async ({ isCurrent }: { isCurrent: () => boolean }) => {
+      const saved = await storageService.loadSettings();
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      Object.assign(mockGlobalSettings, saved);
+      return 'synchronized';
     },
+    settings: { value: mockGlobalSettings },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
@@ -85,6 +125,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(mockGlobalSettings, structuredClone(mockSavedGlobalSettings));
     mockLmChat.mockImplementation(({ signal }) => createChatGenerationStream({
       signal,
       run: async ({ writer }) => {
@@ -95,6 +136,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     chatStore.TEST_ONLY.clearLiveChatRegistry();
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
+    mockSavedChats.clear();
+    mockSavedChatGroups.clear();
   });
 
   it('resolves settings with Chat > Group > Global priority', async () => {
@@ -121,8 +164,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       systemPrompt: { content: 'Chat Prompt', behavior: 'append' },
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     // Testing sendMessage resolution
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
@@ -165,8 +207,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -208,8 +249,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -227,7 +267,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
     chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
 
-    vi.mocked(storageService.loadChat).mockResolvedValue({ id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false });
+    mockSavedChats.set(toChatId({ raw: 'c1' }), { id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false });
     await chatStore.openChat({ id: 'c1' });
     expect(chatStore.currentChatGroup.value).toBeNull();
 
@@ -261,8 +301,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -299,8 +338,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       lmParameters: { ...EMPTY_LM_PARAMETERS, maxCompletionTokens: 100, temperature: 0.1, reasoning: { effort: undefined } }, // Overrides Group temp
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -339,8 +377,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -371,11 +408,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [
-      { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C', updatedAt: 0 } },
-    ];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     // 1. Send message while Chat is NOT in group
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
@@ -390,8 +423,8 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     );
 
     // 2. Move chat to group
-    chat.groupId = toChatGroupId({ raw: 'g1' });
-    await nextTick();
+    await storageService.updateChatMeta({ id: chat.id, updater: ({ current }) => ({ ...current!, groupId: group.id }) });
+    persistChatHierarchy({ chat: mockSavedChats.get(chat.id)!, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));
@@ -431,8 +464,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       debugEnabled: false,
     });
 
-    chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    mockRootItems.push(...chatStore.rootItems.value);
+    persistChatHierarchy({ chat, chatGroup: group });
 
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: chat.id }));

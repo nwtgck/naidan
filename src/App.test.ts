@@ -1,19 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, onMounted, ref, shallowRef } from 'vue';
-import type {
-  AppInteraction,
-  OnboardingPresentation,
-} from '@/composables/useAppPresentation';
+import type { AppInteraction } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
 import App from './App.vue';
 
-const onboardingPresentation = ref<OnboardingPresentation>('visible');
-const appInteraction = ref<AppInteraction>('blocked-by-onboarding');
+const appInteraction = ref<AppInteraction>('blocked-by-startup');
 
 vi.mock('@/composables/useAppPresentation', () => ({
   provideAppPresentation: () => ({
-    onboardingPresentation,
     appInteraction,
     homeIntroduction: ref({ kind: 'inactive' }),
     continueHomeIntroduction: vi.fn(),
@@ -21,11 +16,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('@/components/OnboardingModal.vue', () => ({
-  default: {
-    template: '<div data-testid="onboarding-modal" />',
-  },
-}));
+vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: vi.fn() }));
 
 vi.mock('@/components/GlobalDialogHost.vue', () => ({
   default: {
@@ -48,8 +39,7 @@ vi.mock('@/components/startup/StartupErrorView.vue', () => ({
 
 describe('App', () => {
   beforeEach(() => {
-    onboardingPresentation.value = 'visible';
-    appInteraction.value = 'blocked-by-onboarding';
+    appInteraction.value = 'blocked-by-startup';
   });
 
   function mountApp({ state }: {
@@ -69,7 +59,7 @@ describe('App', () => {
     };
   }
 
-  it('shows onboarding over the startup background while the main app starts', () => {
+  it('keeps the startup background inert while the main app starts', () => {
     const { wrapper } = mountApp({
       state: {
         kind: 'starting-main',
@@ -77,11 +67,19 @@ describe('App', () => {
     });
 
     expect(wrapper.find('[data-testid="startup-background"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="app-content-host"]').attributes('inert')).toBeDefined();
   });
 
-  it('renders the real main app behind onboarding before dismissal', () => {
+  it('renders a prepared lightweight entry before the main application exists', () => {
+    const EntrySurface = defineComponent({ template: '<div data-testid="early-entry" />' });
+    const { wrapper } = mountApp({ state: { kind: 'starting-main', entrySurface: EntrySurface } });
+    expect(wrapper.find('[data-testid="early-entry"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="startup-background"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="app-content-host"]').attributes('inert')).toBeDefined();
+  });
+
+  it('renders the real main app before releasing startup interaction', () => {
     const MainApp = defineComponent({
       template: '<div data-testid="main-app" />',
     });
@@ -93,11 +91,11 @@ describe('App', () => {
     });
 
     expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="app-content-host"]').attributes('aria-hidden')).toBe('true');
   });
 
-  it('removes only the onboarding presentation and interaction barrier on dismissal', async () => {
+  it('releases the startup interaction barrier without remounting the main app', async () => {
     const mounted = vi.fn();
     const MainApp = defineComponent({
       setup() {
@@ -106,16 +104,16 @@ describe('App', () => {
       },
       template: '<div data-testid="main-app" />',
     });
-    const { wrapper } = mountApp({
+    const { wrapper, startupState } = mountApp({
       state: {
-        kind: 'ready',
+        kind: 'rendering-main',
         mainApp: MainApp,
       },
     });
 
     expect(mounted).toHaveBeenCalledOnce();
 
-    onboardingPresentation.value = 'hidden';
+    startupState.value = { kind: 'ready', mainApp: MainApp };
     appInteraction.value = 'enabled';
     await wrapper.vm.$nextTick();
 
@@ -125,7 +123,7 @@ describe('App', () => {
     expect(mounted).toHaveBeenCalledOnce();
   });
 
-  it('supports runtime onboarding without remounting the ready app', async () => {
+  it('keeps the ready app mounted when startup interaction changes', async () => {
     const mounted = vi.fn();
     const MainApp = defineComponent({
       setup() {
@@ -134,25 +132,24 @@ describe('App', () => {
       },
       template: '<div data-testid="main-app" />',
     });
-    onboardingPresentation.value = 'hidden';
     appInteraction.value = 'enabled';
-    const { wrapper } = mountApp({
+    const { wrapper, startupState } = mountApp({
       state: {
         kind: 'ready',
         mainApp: MainApp,
       },
     });
 
-    onboardingPresentation.value = 'visible';
-    appInteraction.value = 'blocked-by-onboarding';
+    startupState.value = { kind: 'rendering-main', mainApp: MainApp };
+    appInteraction.value = 'blocked-by-startup';
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
     expect(mounted).toHaveBeenCalledOnce();
   });
 
-  it('keeps onboarding usable over a main startup error', () => {
+  it('shows a startup error without a setup overlay', () => {
     const { wrapper } = mountApp({
       state: {
         kind: 'main-failed',
@@ -161,6 +158,6 @@ describe('App', () => {
     });
 
     expect(wrapper.find('[data-testid="startup-error"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
   });
 });

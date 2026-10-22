@@ -166,4 +166,41 @@ describe('global settings query sync', () => {
       modelRefresh: 'background',
     });
   });
+
+  it.each(['owner/repo', '', null, ['owner/a', 'owner/b']])('suppresses initial and synchronized global settings for a model key: %j', async input => {
+    const query = { 'llama-cpp-browser-model': input, 'global-endpoint-type': 'ollama', 'global-endpoint-url': 'https://ignored.invalid', 'global-model': 'ignored' };
+    await applyInitialGlobalSettingsQuery({ query, settingsStore });
+    await router.push({ path: '/', query });
+    await flushPromises();
+    expect(save).not.toHaveBeenCalled();
+    expect(settings.value.defaultModelId).toBe('');
+  });
+
+  it('applies a normal global query after leaving a suppressed model visit', async () => {
+    await router.push({ query: { 'llama-cpp-browser-model': 'owner/repo', 'global-model': 'ignored' } });
+    await flushPromises();
+    expect(save).not.toHaveBeenCalled();
+    await router.push({ query: { 'global-model': 'selected' } });
+    await flushPromises();
+    expect(save).toHaveBeenCalledOnce();
+    expect(settings.value.defaultModelId).toBe('selected');
+  });
+
+  it('does not apply a queued URL update after that visit has been replaced by a model preview', async () => {
+    const saving = Promise.withResolvers<void>();
+    using _saving = {
+      [Symbol.dispose]() {
+        saving.resolve();
+      },
+    };
+    save.mockImplementationOnce(() => saving.promise);
+    await router.push({ query: { 'global-model': 'already-started' } });
+    await flushPromises();
+    expect(save).toHaveBeenCalledOnce();
+    await router.push({ query: { 'global-model': 'queued' } });
+    await router.push({ query: { 'llama-cpp-browser-model': 'owner/repo', 'global-model': 'ignored' } });
+    saving.resolve();
+    await flushPromises();
+    expect(save).toHaveBeenCalledOnce();
+  });
 });

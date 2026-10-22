@@ -15,8 +15,9 @@ import { cloneLmParameters } from '@/utils/lm-parameters';
 import { useLayout } from '@/composables/useLayout';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Attachment, MessageNode, SystemPrompt } from '@/01-models/types';
-import { storageService } from '@/00-storage/service';
+import { ChatContentBindingChangedError, storageService, type ChatContentWrite } from '@/00-storage/service';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { captureChatContentWrite } from '@/composables/chat/chat-scoped/chat-model-binding-operations';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { idToRaw } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, EditableHistoryItemId, MessageId } from '@/01-models/ids';
@@ -42,7 +43,9 @@ const attachmentUrls = ref(new Map<string, string>());
 const fileInputs = ref<(HTMLInputElement | null)[]>([]);
 const isDragging = ref(false);
 const isSaving = ref(false);
+const saveError = ref<'chat_binding_changed' | undefined>(undefined);
 const editingChatId = ref<ChatId | undefined>(undefined);
+const editingContentWrite = ref<ChatContentWrite | undefined>(undefined);
 const localSystemPrompt = ref<SystemPrompt | undefined>(undefined);
 const inheritedSystemPromptMessages = ref<string[]>([]);
 let editSession = 0;
@@ -64,11 +67,13 @@ function clearAttachmentUrls() {
 watch(() => props.isOpen, (open, wasOpen) => {
   editSession++;
   isSaving.value = false;
+  saveError.value = undefined;
   clearAttachmentUrls();
   fileInputs.value = [];
   if (open && currentChat.value) {
     setActiveFocusArea({ area: 'dialog' });
     editingChatId.value = currentChat.value.id;
+    editingContentWrite.value = captureChatContentWrite({ chat: currentChat.value, dependency: 'model' });
     inheritedSystemPromptMessages.value = [...(inheritedSettings.value?.systemPromptMessages ?? [])];
     localSystemPrompt.value = currentChat.value.systemPrompt === undefined ? undefined : { ...currentChat.value.systemPrompt };
     // Tool results and reasoning are part of the selected history, not disposable
@@ -79,6 +84,7 @@ watch(() => props.isOpen, (open, wasOpen) => {
     }));
   } else {
     editingChatId.value = undefined;
+    editingContentWrite.value = undefined;
     inheritedSystemPromptMessages.value = [];
     editableMessages.value = [];
     // Lazy mounting a closed modal must not move focus away from the current area.
@@ -392,13 +398,22 @@ async function handleSave() {
     return;
   }
   const session = editSession;
+  const write = editingContentWrite.value;
   const messages = editableMessages.value.map(item => copyMessageWithoutReplies({ message: item.message }));
   const systemPrompt = localSystemPrompt.value === undefined ? undefined : { ...localSystemPrompt.value };
   isSaving.value = true;
+  saveError.value = undefined;
   try {
-    await commitFullHistoryManipulationForChat({ chatId, messages, systemPrompt });
+    await commitFullHistoryManipulationForChat({ chatId, messages, systemPrompt, write });
     if (!disposed && session === editSession && props.isOpen) {
       emit('close');
+    }
+  } catch (error) {
+    if (!(error instanceof ChatContentBindingChangedError)) {
+      throw error;
+    }
+    if (!disposed && session === editSession && props.isOpen) {
+      saveError.value = 'chat_binding_changed';
     }
   } finally {
     if (!disposed && session === editSession) {
@@ -446,7 +461,7 @@ defineExpose({
           </button>
         </div>
 
-        <div :inert="isSaving" tw-class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
+        <div :inert="isSaving ? true : undefined" tw-class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
 
           <!-- Banner -->
           <div tw-class="px-6 pt-6">
@@ -661,12 +676,16 @@ defineExpose({
         </div>
 
         <!-- Footer -->
+        <p v-if="saveError === 'chat_binding_changed'" data-testid="history-save-error" role="alert" tw-class="px-8 py-3 text-sm text-red-700 dark:text-red-300 bg-white dark:bg-gray-900 shrink-0">
+          {{ lazyStrings.HistoryManipulationModal__chat_changed_your_edits_are_kept() }}
+        </p>
         <div tw-class="px-8 py-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-5 bg-white dark:bg-gray-900 shrink-0">
           <button @click="handleCancel" tw-class="px-6 py-2.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors uppercase tracking-[0.15em]">
             {{ lazyStrings.HistoryManipulationModal__discard() }}
           </button>
           <button
             @click="handleSave"
+            data-testid="history-apply-changes"
             :disabled="editableMessages.length === 0 || isSaving"
             tw-class="flex items-center gap-2.5 px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/25 font-bold text-[11px] uppercase tracking-[0.15em] active:scale-95"
           >

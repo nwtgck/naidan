@@ -86,6 +86,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
+    synchronizeModelBindingSettings: async () => 'synchronized',
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: 'disabled', defaultModelId: 'gpt-4', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } }, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -136,12 +137,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     await chatStoreB.openChat({ id: 'c1' });
     const initialLoadCount = vi.mocked(storageService.loadChat).mock.calls.length;
+    const write = storageService.createChatContentWrite({ id: chat1.id, content: chat1, binding: undefined });
 
     for (let i = 0; i < 50; i++) {
       const now = i * 100;
       vi.setSystemTime(now);
       if (i % 5 === 0 || i === 49) {
-        await storageService.updateChatContent({ id: toChatId({ raw: 'c1' }), updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
+        await storageService.updateChatContent({ id: toChatId({ raw: 'c1' }), write, updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
       }
     }
 
@@ -169,12 +171,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     // 1. Setup a slow save operation
     let activeSaves = 0;
     let maxConcurrentSaves = 0;
-    vi.mocked(storageService.updateChatContent).mockImplementation(async () => {
+    vi.mocked(storageService.updateChatContent).mockImplementation(async ({ updater }) => {
       activeSaves++;
       maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaves);
       // Simulate a real delay
       await new Promise(resolve => setTimeout(resolve, 50));
+      const accepted = await updater({ current: null });
       activeSaves--;
+      return accepted;
     });
 
     const chat: Chat = { id: toChatId({ raw: 'c1' }), title: 'T', root: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', parts: [{ type: 'text', text: '', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, createdAt: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
@@ -182,6 +186,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     vi.useRealTimers();
 
     const simulateStreaming = async () => {
+      const write = storageService.createChatContentWrite({ id: chat.id, content: chat, binding: undefined });
       let lastSave = 0;
       let isSaving = false;
       const assistantNode = chat.root.items[0];
@@ -206,6 +211,7 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
           };
           await storageService.updateChatContent({
             id: chat.id,
+            write,
             updater: ({ current }) => ({
               ...current,
               root: chat.root,

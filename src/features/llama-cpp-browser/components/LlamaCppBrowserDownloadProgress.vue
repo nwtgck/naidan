@@ -4,7 +4,7 @@ import { lazyStrings } from '@/strings';
 import { advanceThroughputSample, remainingEstimate, startThroughputSample } from '@/features/llama-cpp-browser/hugging-face/download-estimate';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/download-plan';
 import type { DownloadProgress } from '@/features/llama-cpp-browser/hugging-face/types';
-const props = defineProps<{ progress: DownloadProgress | undefined, appearance: 'manager' | 'welcome' }>();
+const props = defineProps<{ progress: DownloadProgress | undefined, appearance: 'manager' | 'welcome', activity?: 'active' | 'inactive' }>();
 const sampledNow = ref(performance.now());
 // When remounted, baseline cumulative bytes already processed by the queue.
 // Resumed bytes and bytes transferred while hidden must not inflate the rate.
@@ -17,14 +17,14 @@ onUnmounted(() => clearInterval(timer));
 const percentage = computed(() => props.progress && props.progress.total > 0 ? Math.min(100, Math.max(0, Math.floor(props.progress.completed / props.progress.total * 100))) : undefined);
 const speed = computed(() => {
   const sample = throughput.value;
-  if (props.progress?.phase !== 'transferring' || sample.bytesPerSecond === undefined) {
+  if (props.activity === 'inactive' || props.progress?.phase !== 'transferring' || sample.bytesPerSecond === undefined) {
     return undefined;
   }
   const bytes = sample.lastAdvanceAt !== undefined && sampledNow.value - sample.lastAdvanceAt >= 10000 ? 0 : sample.bytesPerSecond;
   return `${formatDownloadBytes({ bytes })}/s`;
 });
 const estimateText = computed(() => {
-  if (!props.progress) {
+  if (props.activity === 'inactive' || !props.progress) {
     return undefined;
   }
   const estimate = remainingEstimate({ sample: throughput.value, now: sampledNow.value, remaining: props.progress.total - props.progress.completed, phase: props.progress.phase });

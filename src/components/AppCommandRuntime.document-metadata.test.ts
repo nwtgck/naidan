@@ -3,8 +3,7 @@ import { computed, defineComponent, h, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App.vue';
-import OnboardingModal from '@/components/OnboardingModal.vue';
-import { DEFAULT_SETTINGS, type Chat } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type Chat, type Settings } from '@/01-models/types';
 import { toChatId } from '@/01-models/ids';
 import type { useSettings } from '@/composables/useSettings';
 import { startApp } from '@/logic/startup/app-startup';
@@ -14,16 +13,17 @@ import { APPLICATION_METADATA, AUDIO_METADATA, HOME_METADATA, IMAGE_METADATA, ap
 
 const initialized = ref(false);
 const isOnboardingDismissed = ref(false);
-const settings = ref(DEFAULT_SETTINGS);
+const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } });
 const init = vi.fn();
 const loadChats = vi.fn();
 const chats = ref<Chat[]>([]);
 const currentChat = ref<Chat | null>(null);
 const automaticChat: Chat = { id: toChatId({ raw: 'automatic' }), groupId: undefined, title: null, root: { items: [] }, debugEnabled: false, createdAt: 1, updatedAt: 1 };
-const settingsStore = { initialized, isOnboardingDismissed, settings, init };
+const settingsStore = { initialized, isOnboardingDismissed, settings, init, captureExperimentalStorage: () => () => true, deferModelRefresh: vi.fn(), resumeModelRefresh: vi.fn() };
 const createNewChat = vi.fn(async () => {
   currentChat.value = automaticChat;
   chats.value = [automaticChat];
+  return automaticChat;
 });
 vi.mock('@/components/MainAppSurface.vue', () => ({ default: defineComponent({ setup: () => () => h(RouterView) }) }));
 vi.mock('@/components/AppAuxiliaryUi.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
@@ -40,7 +40,7 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchCoordinator', ()
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ startRpcAutomaticConnections: () => () => {} }));
 vi.mock('@/logic/settings/global-settings-query', () => ({ applyInitialGlobalSettingsQuery: async () => undefined, installGlobalSettingsQuerySync: () => () => {} }));
 vi.mock('@/logic/startup/presentation-frame', () => ({ waitForPresentationPaint: async () => {} }));
-vi.mock('@/components/OnboardingModal.vue', () => ({ default: { template: '<div data-testid="onboarding-modal" />' } }));
+vi.mock('@/components/AppEntrySurface.vue', () => ({ default: { template: '<div data-testid="entry-surface" />' } }));
 vi.mock('@/components/GlobalDialogHost.vue', () => ({ default: { template: '<div />' } }));
 vi.mock('@/components/ToastContainer.vue', () => ({ default: { template: '<div />' } }));
 
@@ -71,6 +71,7 @@ describe('unattended app startup metadata', () => {
     { path: '/chat/ordinary', dismissed: true, existing: false, metadata: APPLICATION_METADATA },
   ])('keeps the settled metadata for $path (dismissed=$dismissed, existing=$existing)', async ({ path, dismissed, existing, metadata }) => {
     isOnboardingDismissed.value = dismissed;
+    settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: dismissed ? { type: 'llama_cpp_browser' } : { type: 'openai', url: '' }, defaultModelId: dismissed ? 'selected-model' : undefined };
     if (existing) {
       chats.value = [automaticChat];
     }
@@ -104,17 +105,17 @@ describe('unattended app startup metadata', () => {
     using _startupCleanup = { [Symbol.dispose]: dispose };
     await flushPromises();
     expect(startupState.value.kind).toBe('ready');
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(!dismissed && path === '/');
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
     expect(router.currentRoute.value.path).toBe(path === '/' && dismissed && !existing ? '/chat/automatic' : path);
     expect(createNewChat).toHaveBeenCalledTimes(path === '/' && dismissed && !existing ? 1 : 0);
     // All startup work and automatic navigation has settled without input or clicks.
     await flushPromises();
     expectMetadata({ metadata });
     if (path === '/' && dismissed && !existing) {
-      const creating = Promise.withResolvers<void>();
+      const creating = Promise.withResolvers<Chat>();
       using _manualCreationCleanup = {
         [Symbol.dispose]() {
-          creating.resolve();
+          creating.resolve(automaticChat);
         },
       };
       createNewChat.mockReturnValueOnce(creating.promise);
@@ -124,13 +125,11 @@ describe('unattended app startup metadata', () => {
       expect(createNewChat).toHaveBeenCalledTimes(2);
       expect(router.currentRoute.value.path).toBe('/chat/automatic');
       expectMetadata({ metadata: APPLICATION_METADATA });
-      creating.resolve();
+      creating.resolve(automaticChat);
       await flushPromises();
     }
     if (path === '/' && !dismissed) {
-      const onboarding = wrapper.getComponent(OnboardingModal);
-      isOnboardingDismissed.value = true;
-      onboarding.vm.$emit('dismiss');
+      await router.push('/chat/ordinary');
       await flushPromises();
       expectMetadata({ metadata: APPLICATION_METADATA });
     }

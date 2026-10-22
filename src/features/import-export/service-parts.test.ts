@@ -4,7 +4,7 @@ import { ImportExportService, type IImportExportStorage } from './service';
 import type { ImportConfig } from './types';
 import { EMPTY_LM_PARAMETERS, type Settings, type StorageSnapshot } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Exercise the existing archive DTO boundary until it is moved behind the storage service.
-import { ChatSchemaDto, ChatContentSchemaDto, type ChatDto, type MigrationChunkDto } from '@/00-storage/00-dto/dto';
+import { ChatSchemaDto, ChatContentSchemaDto, ChatGroupSchemaDto, type ChatDto, type MigrationChunkDto } from '@/00-storage/00-dto/dto';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
@@ -128,6 +128,29 @@ function modernAssistant({ parts }: { parts: unknown[] }) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('parts archive boundaries', () => {
+  it.each(['replace', 'append'] as const)('imports ordinary model settings without page-local launch authority during %s import', async mode => {
+    const f = fixture();
+    const content = chat({ root: { items: [] } });
+    const modelId = 'hf.co/owner/Model-GGUF:Q4_K_M';
+    const zip = await archive({ content });
+    const chatGroup = ChatGroupSchemaDto.parse({ id: 'source-group', name: 'Source', updatedAt: 1, isCollapsed: false, endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'llama_cpp_browser' } } }, modelId, titleGeneration: 'inherit' });
+    zip.file('chat-groups/source-group.json', JSON.stringify(chatGroup));
+    zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: 'source-group', chat_ids: ['chat'] }] }));
+    await f.service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: config({ mode }) });
+    const imported = ChatSchemaDto.safeParse(f.received.find(chunk => chunk.type === 'chat')?.data);
+    expect(imported.success).toBe(true);
+    if (!imported.success) {
+      throw new Error('Missing imported chat');
+    }
+    const snapshot = f.storage.restore.mock.calls[0]![0].snapshot;
+    expect(snapshot.structure.chatGroups).toHaveLength(1);
+    expect(snapshot.structure.chatGroups[0]?.modelId).toBe(modelId);
+    expect(imported.data).not.toHaveProperty('modelLaunch');
+    expect(imported.data).not.toHaveProperty('modelBindingEpoch');
+    expect(snapshot.structure.chatMetas[0]).not.toHaveProperty('modelLaunch');
+    expect(imported.data.id === 'chat').toBe(mode === 'replace');
+  });
+
   it.each([
     { order: ['parent', 'fork'] },
     { order: ['fork', 'parent'] },

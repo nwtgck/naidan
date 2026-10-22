@@ -7,7 +7,7 @@ import { modelFileSchema, type ModelFile } from '@/logic/model-file-system';
 import { modelIdSchema } from '@/features/llama-cpp-browser/types';
 import { isProjector } from '@/features/llama-cpp-browser/hugging-face/model-variants';
 import { parsePublicHostModelReference } from './model-destination-types';
-import { parseTemporaryModelReference } from './temporary-model-reference';
+import { parseTemporaryModelReference } from '@/features/llama-cpp-browser/temporary-model-reference';
 import { resolveModelFiles } from './model-file-selection';
 import type { ModelDirectory, ModelRootLocation, ResolvedModel } from './model-directory';
 

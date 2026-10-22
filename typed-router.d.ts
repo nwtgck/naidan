@@ -73,6 +73,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/home': RouteRecordInfo<
+      '/home',
+      '/home',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/image-generation': RouteRecordInfo<
       '/image-generation',
       '/image-generation',
@@ -173,6 +180,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/debug/standalone.vue': {
       routes:
         | '/debug/standalone'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/home.vue': {
+      routes:
+        | '/home'
       views:
         | never
       pathParamNames:

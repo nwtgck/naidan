@@ -103,6 +103,7 @@ describe('SettingsModal feature flags', () => {
     route.params = {};
     (useRoute as unknown as ReturnType<typeof vi.fn>).mockReturnValue(route);
     (useRouter as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      currentRoute: ref(route),
       push: vi.fn(),
     });
   });
