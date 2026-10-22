@@ -20,6 +20,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
 const LlamaCppBrowserManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/llama-cpp-browser/components/LlamaCppBrowserManager.vue') });
+const LlamaCppBrowserPerformanceEntry = defineAsyncComponent(() => import('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceEntry.vue'));
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
@@ -384,13 +385,7 @@ defineExpose({
               </div>
               <div v-if="activeTab === 'llama_cpp_browser'" tw-class="max-w-4xl mx-auto">
                 <LlamaCppBrowserManager :suspended="props.suspended" :default-model="{ endpoint: settings.endpoint, modelId: settings.defaultModelId }" :apply-default-model="applyLocalDefaultModel" :create-chat-group="createLocalModelChatGroup" />
-                <section tw-class="mt-8 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
-                  <h3 tw-class="text-sm font-bold">{{ lazyStrings.llamaCppPerformance__speed_investigation() }}</h3>
-                  <p tw-class="text-xs text-gray-500">{{ lazyStrings.llamaCppPerformance__measure_saved_models() }}</p>
-                  <button type="button" data-testid="open-llama-cpp-performance"
-                          :disabled="props.performanceLoading" tw-class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)">{{ lazyStrings.llamaCppPerformance__open_speed_investigation() }}</button>
-                  <p v-if="props.performanceError" role="alert" tw-class="break-words text-xs text-red-700 dark:text-red-300">{{ props.performanceError }}</p>
-                </section>
+                <LlamaCppBrowserPerformanceEntry :loading="props.performanceLoading === true" :error="props.performanceError" tw-class="mt-5" @open="emit('openLlamaCppPerformance', settings.endpoint.type === 'llama_cpp_browser' ? settings.defaultModelId : undefined)" />
               </div>
 
               <!-- Recipes Tab -->

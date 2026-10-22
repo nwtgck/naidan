@@ -5,6 +5,7 @@ import { lazyStrings } from '@/strings';
 import { getDownloadQueue, type DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
 import LlamaCppBrowserDownloadSources from './LlamaCppBrowserDownloadSources.vue';
+import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 const props = defineProps<{ job: DownloadJob, disabled: boolean, appearance: 'manager' | 'welcome', sourcesVisibility?: 'visible' | 'hidden' }>();
 const emit = defineEmits<{ resume: [] }>();
 const queue = getDownloadQueue();
@@ -36,24 +37,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <LlamaCppBrowserDownloadProgress v-if="job.progress" :progress="job.progress" appearance="welcome" :activity="job.status === 'downloading' ? 'active' : 'inactive'" />
     <LlamaCppBrowserDownloadSources v-if="sourcesVisibility !== 'hidden'" :job="job" />
   </div>
-  <div v-else tw-class="space-y-2" data-testid="llama-download-job">
+  <div v-else tw-class="space-y-2 rounded-lg bg-gray-50/80 p-2.5 dark:bg-gray-950/20" data-testid="llama-download-job">
     <div v-if="job.status === 'queued'" tw-class="flex items-center justify-between gap-3 text-xs">
       <span role="status" tw-class="text-gray-500 dark:text-gray-400">{{ position === undefined ? lazyStrings.llamaCppBrowserDownloads__waiting() : lazyStrings.llamaCppBrowserDownloads__queue_position({ position }) }}</span>
-      <button type="button" data-testid="llama-download-cancel" :tw-class="['inline-flex items-center gap-1.5 py-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800', 'px-2']" @click="queue.cancel({ id: job.id })"><XIcon tw-class="w-3 h-3" />{{ lazyStrings.SHARED__cancel() }}</button>
+      <LlamaCppBrowserModelActionButton :disabled="false" data-testid="llama-download-cancel" @click="queue.cancel({ id: job.id })"><XIcon aria-hidden="true" tw-class="h-3 w-3" />{{ lazyStrings.SHARED__cancel() }}</LlamaCppBrowserModelActionButton>
     </div>
     <div v-else-if="job.status === 'resolving' || job.status === 'pausing'" :tw-class="['flex gap-3 text-xs text-gray-500 dark:text-gray-400', 'items-center justify-between']">
       <span role="status" tw-class="inline-flex items-center gap-2"><Loader2Icon tw-class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />{{ job.status === 'pausing' ? lazyStrings.llamaCppBrowserDownloads__pausing() : lazyStrings.llamaCppBrowserDownloads__checking_hugging_face() }}</span>
-      <button v-if="job.status === 'resolving'" type="button" data-testid="llama-download-cancel" :tw-class="['py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800', 'px-2']" @click="queue.cancel({ id: job.id })">{{ lazyStrings.SHARED__cancel() }}</button>
+      <LlamaCppBrowserModelActionButton v-if="job.status === 'resolving'" :disabled="false" data-testid="llama-download-cancel" @click="queue.cancel({ id: job.id })"><XIcon aria-hidden="true" tw-class="h-3 w-3" />{{ lazyStrings.SHARED__cancel() }}</LlamaCppBrowserModelActionButton>
     </div>
     <template v-else-if="job.status === 'downloading'">
       <LlamaCppBrowserDownloadProgress :progress="job.progress" :appearance="appearance" />
-      <div tw-class="flex justify-end"><button type="button" data-testid="llama-download-pause" :tw-class="['inline-flex items-center gap-1.5 py-1 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800', 'px-2']" @click="queue.cancel({ id: job.id })"><PauseIcon tw-class="w-3 h-3" />{{ lazyStrings.llamaCppBrowserDownloads__pause() }}</button></div>
+      <div tw-class="flex justify-end"><LlamaCppBrowserModelActionButton :disabled="false" data-testid="llama-download-pause" @click="queue.cancel({ id: job.id })"><PauseIcon aria-hidden="true" tw-class="h-3 w-3" />{{ lazyStrings.llamaCppBrowserDownloads__pause() }}</LlamaCppBrowserModelActionButton></div>
     </template>
     <template v-else-if="job.status === 'paused' || job.status === 'failed'">
       <p v-if="errorText" role="alert" tw-class="flex items-start gap-2 text-xs text-red-600 dark:text-red-400"><AlertCircleIcon tw-class="w-3.5 h-3.5 shrink-0 mt-0.5" />{{ errorText }}</p>
       <div :tw-class="['flex gap-3 text-xs text-gray-500 dark:text-gray-400', 'items-center justify-between']">
         <span v-if="job.status === 'paused'" role="status">{{ lazyStrings.llamaCppBrowserDownloads__paused() }}</span>
-        <button type="button" :disabled="disabled" data-testid="llama-download-resume" :tw-class="'inline-flex items-center gap-1.5 ml-auto px-2 py-1 rounded-lg font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed'" @click="emit('resume')"><PlayIcon tw-class="w-3 h-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
+        <LlamaCppBrowserModelActionButton :disabled="disabled" data-testid="llama-download-resume" tw-class="ml-auto" @click="emit('resume')"><PlayIcon aria-hidden="true" tw-class="h-3 w-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</LlamaCppBrowserModelActionButton>
       </div>
     </template>
 

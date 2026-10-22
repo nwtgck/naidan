@@ -11,6 +11,7 @@ import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import LlamaCppBrowserManager from './LlamaCppBrowserManager.vue';
 import { LlamaCppBrowserError, type EngineState, type LocalModel, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { runtimeProfileControl } from './model-configuration.test-support';
 import { searchModels } from '@/features/llama-cpp-browser/hugging-face/catalog';
 
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
@@ -423,10 +424,10 @@ describe('local GGUF manager', () => {
     });
     const wrapper = render();
     await flushPromises();
-    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]');
-    expect(select.get('option[value="auto"]').text()).toBe('Automatic (WebGPU / wasm32 / JSPI)');
-    expect(select.get('option[value="webgpu-wasm64-jspi"]').attributes('disabled')).toBeDefined();
-    expect(select.get('option[value="webgpu-wasm32-jspi"]').attributes('disabled')).toBeUndefined();
+    const select = runtimeProfileControl({ view: wrapper });
+    expect(select.props('options')).toContainEqual(expect.objectContaining({ value: 'auto', label: 'Automatic (WebGPU / wasm32 / JSPI)' }));
+    expect(select.props('options')).toContainEqual(expect.objectContaining({ value: 'webgpu-wasm64-jspi', disabled: true }));
+    expect(select.props('options')).toContainEqual(expect.objectContaining({ value: 'webgpu-wasm32-jspi', disabled: false }));
     expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
     expect(wrapper.emitted('runtimeReady')?.at(-1)).toEqual([true]);
     for (const listener of notifications.capabilities) {
@@ -469,10 +470,10 @@ describe('local GGUF manager', () => {
     vi.mocked(llamaCppBrowserService.getOptions).mockReturnValue({ profile: 'webgpu-wasm64-jspi' });
     const wrapper = render();
     await flushPromises();
-    const select = wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]');
-    expect(select.element.value).toBe('webgpu-wasm64-jspi');
-    expect(select.element.disabled).toBe(false);
-    expect(select.findAll('option').map(option => option.element.value)).toEqual(['auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']);
+    const select = runtimeProfileControl({ view: wrapper });
+    expect(select.props('modelValue')).toBe('webgpu-wasm64-jspi');
+    expect(select.get('button').element.matches(':disabled')).toBe(false);
+    expect(select.props('options')).toEqual(['auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'].map(value => expect.objectContaining({ value })));
     await select.setValue('webgpu-wasm32-jspi');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-jspi' } });
     expect(wrapper.get('fieldset').attributes('disabled')).toBeUndefined();
@@ -540,7 +541,7 @@ describe('local GGUF manager', () => {
     expect(wrapper.get('[data-testid="llama-cpp-browser-file"]').attributes('accept')).toBe('.gguf');
     expect(wrapper.get('[data-testid="llama-cpp-browser-file"]').attributes('multiple')).toBeDefined();
     expect(wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').text()).toContain('GGUF');
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="llama-cpp-browser-profile"]').element.value).toBe('auto');
+    expect(runtimeProfileControl({ view: wrapper }).props('modelValue')).toBe('auto');
     expect(wrapper.find('[data-testid="llama-cpp-browser-status"]').exists()).toBe(false);
     expect(wrapper.find('progress').exists()).toBe(false);
   });
@@ -982,11 +983,11 @@ describe('local GGUF manager', () => {
   it('allows an explicit profile override without changing the default on its own', async () => {
     const wrapper = render();
     await flushPromises();
-    await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('cpu-wasm32');
+    await runtimeProfileControl({ view: wrapper }).setValue('cpu-wasm32');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
-    await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('webgpu-wasm32-jspi');
+    await runtimeProfileControl({ view: wrapper }).setValue('webgpu-wasm32-jspi');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-jspi' } });
-    await wrapper.get('[data-testid="llama-cpp-browser-profile"]').setValue('webgpu-wasm32-asyncify');
+    await runtimeProfileControl({ view: wrapper }).setValue('webgpu-wasm32-asyncify');
     expect(llamaCppBrowserService.setOptions).toHaveBeenLastCalledWith({ options: { profile: 'webgpu-wasm32-asyncify' } });
     expect(wrapper.find('[data-testid="llama-cpp-browser-context"]').exists()).toBe(false);
   });

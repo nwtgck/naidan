@@ -181,7 +181,6 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
 export type MultimodalDownload = 'off' | 'on';
 export type SuggestedMemoryFilter = 'all' | 8 | 16 | 32;
 export const suggestedMemoryFilters: readonly SuggestedMemoryFilter[] = ['all', 8, 16, 32];
-export const moreGgufModelsUrl = 'https://huggingface.co/models?library=gguf';
 
 export function preferredQuantizationHint({ suggestion }: { suggestion: ModelSuggestion }): SuggestedQuantization {
   // Static policy only. Missing upstream artifacts never authorize a fallback to

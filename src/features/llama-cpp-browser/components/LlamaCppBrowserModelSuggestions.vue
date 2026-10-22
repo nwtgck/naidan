@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue';
-import { ChevronDownIcon, LibraryBigIcon, ExternalLinkIcon } from 'lucide-vue-next';
+import { ChevronDownIcon, LibraryBigIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
 import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
-import { preferredQuantizationHint, matchesMemoryHint, modelSuggestions, moreGgufModelsUrl, suggestedMemoryFilters, type ModelSuggestion, type SuggestedMemoryFilter } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
+import { preferredQuantizationHint, matchesMemoryHint, modelSuggestions, suggestedMemoryFilters, type ModelSuggestion, type SuggestedMemoryFilter } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
@@ -40,10 +40,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <!-- Privacy contract: the bundled list, filters, details and option changes
        never fetch external data. Only explicit preview/download/link actions do. -->
-  <section tw-class="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 overflow-hidden" data-testid="llama-model-suggestions">
+  <section tw-class="overflow-hidden rounded-xl border border-gray-200/70 bg-gray-50/40 dark:border-gray-800/80 dark:bg-gray-900/20" data-testid="llama-model-suggestions">
     <h3>
-      <button type="button" :aria-expanded="open" :aria-controls="`${id}-content`" data-testid="llama-suggestions-toggle" tw-class="flex w-full items-center gap-2 px-4 py-3.5 text-sm font-bold text-gray-800 dark:text-white text-left hover:bg-gray-100/50 dark:hover:bg-gray-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 transition-colors" @click="toggle">
-        <LibraryBigIcon tw-class="w-4 h-4 text-blue-500 shrink-0" />{{ lazyStrings.llamaCppBrowserDownloads__model_catalog() }}
+      <button type="button" :aria-expanded="open" :aria-controls="`${id}-content`" data-testid="llama-suggestions-toggle" tw-class="group flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-gray-700 transition-colors duration-200 hover:bg-gray-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 dark:text-gray-200 dark:hover:bg-gray-800/40 motion-reduce:transition-none" @click="toggle">
+        <span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50/80 text-blue-500 dark:bg-blue-500/10 dark:text-blue-400"><LibraryBigIcon aria-hidden="true" tw-class="h-4 w-4" /></span>{{ lazyStrings.llamaCppBrowserDownloads__model_catalog() }}
         <span v-if="activeCount" tw-class="ml-auto text-[10px] font-medium text-blue-600 dark:text-blue-400">{{ lazyStrings.llamaCppBrowserDownloads__active_downloads({ count: activeCount }) }}</span>
         <ChevronDownIcon :tw-class="['w-4 h-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none', { 'rotate-180': open, 'ml-auto': !activeCount }]" />
       </button>
@@ -56,16 +56,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div tw-class="flex flex-wrap items-center justify-between gap-2">
             <div v-if="memoryFilter !== 'hide'" role="group" :aria-label="lazyStrings.llamaCppBrowserDownloads__memory()" tw-class="flex items-center flex-wrap gap-1.5" data-testid="llama-suggestions-memory">
               <span tw-class="mr-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__memory() }}</span>
-              <button v-for="choice in suggestedMemoryFilters" :key="choice" type="button" :data-testid="`llama-suggestions-memory-${choice}`" :aria-pressed="memory === choice" :tw-class="['px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', memory === choice ? 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800']" @click="memory = choice">{{ choice === 'all' ? lazyStrings.llamaCppBrowserDownloads__all() : `${choice} GiB` }}</button>
+              <button v-for="choice in suggestedMemoryFilters" :key="choice" type="button" :data-testid="`llama-suggestions-memory-${choice}`" :aria-pressed="memory === choice" :tw-class="['rounded-md border px-2 py-1 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 motion-reduce:transition-none', memory === choice ? 'border-blue-200/80 bg-blue-50/70 text-blue-600 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400' : 'border-gray-200/80 bg-white/70 text-gray-500 hover:bg-gray-100 dark:border-gray-700/70 dark:bg-gray-800/50 dark:text-gray-400 dark:hover:bg-gray-800']" @click="memory = choice">{{ choice === 'all' ? lazyStrings.llamaCppBrowserDownloads__all() : `${choice} GiB` }}</button>
             </div>
             <LlamaCppBrowserDownloadDestination :view="downloadDestination.view" :disabled="disabled" />
           </div>
-          <ul tw-class="max-h-[28rem] overflow-y-auto overscroll-contain divide-y divide-gray-100 dark:divide-gray-800 pr-1" data-testid="llama-suggestions-list">
+          <ul tw-class="max-h-[28rem] space-y-2 overflow-y-auto overscroll-contain pr-1" data-testid="llama-suggestions-list">
             <li v-for="suggestion in entries" v-show="visible({ suggestion })" :key="suggestion.id">
               <LlamaCppBrowserModelSuggestion :suggestion="suggestion" :models="models" :destination="destination" :destination-unavailable="destinationUnavailable" :destination-revision="destinationRevision" :authorize-destination="downloadDestination.authorize" :destination-label="downloadDestination.label" :disabled="disabled" :default-model="defaultModel" :default-action-disabled="defaultActionDisabled" :selection-action="selectionAction" :create-chat-group="createChatGroup" :creating-chat-group-model-id="creatingChatGroupModelId" @select-default="emit('selectDefault', $event)" @select="emit('select', $event)" />
             </li>
           </ul>
-          <div tw-class="flex justify-end"><a :href="moreGgufModelsUrl" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestions-find-more" tw-class="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline underline-offset-2">{{ lazyStrings.llamaCppBrowserDownloads__find_more() }}<ExternalLinkIcon tw-class="w-3 h-3" /></a></div>
         </div>
       </div>
     </div>

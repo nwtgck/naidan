@@ -2577,7 +2577,6 @@ import { llamaCppBrowserDownloads__details } from '@/strings/messages/llamaCppBr
 import { llamaCppBrowserDownloads__download } from '@/strings/messages/llamaCppBrowserDownloads__download/en';
 import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/en';
 import { llamaCppBrowserDownloads__endpoint_type } from '@/strings/messages/llamaCppBrowserDownloads__endpoint_type/en';
-import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/en';
 import { llamaCppBrowserDownloads__global_settings_scope } from '@/strings/messages/llamaCppBrowserDownloads__global_settings_scope/en';
 import { llamaCppBrowserDownloads__in_use } from '@/strings/messages/llamaCppBrowserDownloads__in_use/en';
 import { llamaCppBrowserDownloads__memory } from '@/strings/messages/llamaCppBrowserDownloads__memory/en';
@@ -5621,7 +5620,6 @@ export const catalog = {
   llamaCppBrowserDownloads__download,
   llamaCppBrowserDownloads__download_contents,
   llamaCppBrowserDownloads__endpoint_type,
-  llamaCppBrowserDownloads__find_more,
   llamaCppBrowserDownloads__global_settings_scope,
   llamaCppBrowserDownloads__in_use,
   llamaCppBrowserDownloads__memory,

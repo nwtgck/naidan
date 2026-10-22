@@ -12,6 +12,8 @@ import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserModelSuggestions from './LlamaCppBrowserModelSuggestions.vue';
+import LlamaCppBrowserModelSuggestion from './LlamaCppBrowserModelSuggestion.vue';
+import { modelSuggestionQuantizationControl } from './model-configuration.test-support';
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedSelection: vi.fn(), repositoryDirectories: vi.fn(async () => []) }));
@@ -68,7 +70,7 @@ describe('offline-first suggested model UI', () => {
     await wrapper.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
     expect(discoverRepository).not.toHaveBeenCalled();
     expect(downloadRepository).not.toHaveBeenCalled();
-    expect(wrapper.get('[data-testid="llama-suggestions-find-more"]').attributes('href')).toBe('https://huggingface.co/models?library=gguf');
+    expect(wrapper.find('[data-testid="llama-suggestions-find-more"]').exists()).toBe(false);
   });
 
   it('starts open for new and returning users without letting local updates override manual folding', async () => {
@@ -125,22 +127,18 @@ describe('offline-first suggested model UI', () => {
   });
 
   it.each([
-    { locale: 'en', title: 'Model catalog', more: 'Browse more models', contents: 'Download contents', check: 'Check contents' },
-    { locale: 'ja', title: 'モデルカタログ', more: 'ほかのモデルを探す', contents: 'ダウンロード内容', check: '内容を確認' },
-    { locale: 'de', title: 'Modellkatalog', more: 'Weitere Modelle entdecken', contents: 'Download-Inhalt', check: 'Inhalt prüfen' },
-    { locale: 'es', title: 'Catálogo de modelos', more: 'Explorar más modelos', contents: 'Archivos de descarga', check: 'Ver archivos' },
-    { locale: 'ko', title: '모델 카탈로그', more: '다른 모델 찾아보기', contents: '다운로드 내용', check: '내용 확인' },
-    { locale: 'pt-BR', title: 'Catálogo de modelos', more: 'Explorar mais modelos', contents: 'Conteúdo do download', check: 'Conferir arquivos' },
-    { locale: 'zh-Hans', title: '模型目录', more: '浏览更多模型', contents: '下载内容', check: '查看内容' },
-  ] as const)('localizes the catalog and discovery actions in $locale', async ({ locale, title, more, contents, check }) => {
+    { locale: 'en', title: 'Model catalog', contents: 'Download contents', check: 'Check contents' },
+    { locale: 'ja', title: 'モデルカタログ', contents: 'ダウンロード内容', check: '内容を確認' },
+    { locale: 'de', title: 'Modellkatalog', contents: 'Download-Inhalt', check: 'Inhalt prüfen' },
+    { locale: 'es', title: 'Catálogo de modelos', contents: 'Archivos de descarga', check: 'Ver archivos' },
+    { locale: 'ko', title: '모델 카탈로그', contents: '다운로드 내용', check: '내용 확인' },
+    { locale: 'pt-BR', title: 'Catálogo de modelos', contents: 'Conteúdo do download', check: 'Conferir arquivos' },
+    { locale: 'zh-Hans', title: '模型目录', contents: '下载内容', check: '查看内容' },
+  ] as const)('localizes the catalog and contents actions in $locale', async ({ locale, title, contents, check }) => {
     await ensureAllStringsForTest({ locale });
     const wrapper = render({ models: [] });
     await flushPromises();
     expect(wrapper.get('[data-testid="llama-suggestions-toggle"]').text()).toBe(title);
-    const link = wrapper.get('[data-testid="llama-suggestions-find-more"]');
-    expect(link.text()).toBe(more);
-    expect(link.attributes('href')).toBe('https://huggingface.co/models?library=gguf');
-    expect(link.attributes('rel')).toBe('noopener noreferrer');
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
     await row.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
     const toolbar = row.get('[data-testid="llama-suggestion-plan-toolbar"]');
@@ -316,8 +314,8 @@ describe('the original catalog reused for audio', () => {
     for (const toggle of view.findAll('[data-testid="llama-suggestion-details-toggle"]')) {
       await toggle.trigger('click');
     }
-    for (const select of view.findAll('[data-testid="llama-suggestion-quantization"]')) {
-      await select.setValue('q8_0');
+    for (const row of view.findAllComponents(LlamaCppBrowserModelSuggestion)) {
+      await modelSuggestionQuantizationControl({ view: row }).setValue('q8_0');
     }
     await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
     await view.get('[data-testid="llama-suggestions-toggle"]').trigger('click');
