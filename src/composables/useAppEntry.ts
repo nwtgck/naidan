@@ -1,11 +1,16 @@
 import { computed, hasInjectionContext, inject, nextTick, onScopeDispose, provide, ref, shallowRef, watch, type InjectionKey, type Ref, type ShallowRef } from 'vue';
 import { routerKey, START_LOCATION, type LocationQuery, type Router } from 'vue-router';
+import { createModuleLoader } from '@/utils/module-loader';
+import { ensureStrings } from '@/strings';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import type { Settings } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
+import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
+import type { ModelDirectoryInput, LocalModel } from '@/features/llama-cpp-browser/types';
 import type { SettingsNavigationTab } from '@/components/settings-navigation';
 import { useSettings } from '@/composables/useSettings';
-import { MODEL_ENTRY_QUERY, resolveAppEntryKind } from '@/logic/startup/entry-intent';
+import { hasSelectedGlobalChatModel, MODEL_ENTRY_QUERY, resolveAppEntryKind } from '@/logic/startup/entry-intent';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import type { StartupState } from '@/logic/startup/types';
 import type { ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
@@ -27,8 +32,20 @@ export type ModelLaunchAppContext = Readonly<{
   routePath: string,
   isCurrent(): boolean,
 }>;
-export type ModelLaunchStartContext = ModelLaunchAppContext & Readonly<{ defaults: Promise<ModelLaunchDefaultSnapshot | undefined> }>;
+export type ModelLaunchStartContext = ModelLaunchAppContext & Readonly<{ defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ({ target }: { target: ModelLaunchTarget }) => void }>;
 export type AppEntrySettingsOverlay = { owner: symbol, tab: SettingsNavigationTab, opener: HTMLElement | undefined };
+export type ModelSelectionTarget =
+  | { kind: 'home' }
+  | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): void, useRepositoryModel({ target }: { target: ModelLaunchTarget }): void, useModel({ model }: { model: LocalModel }): void };
+export type ModelSelectionPresentation = { phase: 'open' | 'closing', owner: symbol, target: ModelSelectionTarget, selection: AppEntrySelection, opener: HTMLElement | undefined };
+
+// Share the same fulfilled UI import with its async renderer. Requesting the
+// panel must not suspend the current dialog before the new UI can be rendered.
+const discoveryLoader = createModuleLoader({ importModule: () => import('@/components/ModelDiscoveryPanel.vue'), onPrefetchError: () => {} });
+
+export function loadModelDiscoveryPanel() {
+  return discoveryLoader.load();
+}
 
 const originHistoryKey = '_internalNaidanHomeOrigin';
 const homeOriginSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
@@ -66,6 +83,7 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
   const previewVariantSelection = ref<AppEntryPreviewVariant>({ kind: 'initial' });
   const settingsOverlay = shallowRef<AppEntrySettingsOverlay>();
   const discovery = shallowRef<{ owner: symbol, tab: AppEntryDiscoveryTab }>();
+  const modelSelection = shallowRef<ModelSelectionPresentation>();
   const automaticActivity = ref<'deferred' | 'ordinary'>('deferred');
   let storageCurrent = () => router !== undefined;
   let storageInitialized = false;
@@ -154,6 +172,7 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     if (route === undefined) {
       return;
     }
+    const initiallyPending = intentState.value.kind === 'pending';
     const prior = activeEntryIntent({ intent: intentState.value });
     const storageChanged = storageInitialized && !storageCurrent();
     const revision = route.fullPath;
@@ -166,12 +185,10 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
       return;
     }
     const savedOrigin = homeOriginSchema.safeParse(router?.options.history.state[originHistoryKey]);
-    const restoresRootHome = !storageChanged && route.path === '/' && route.query[MODEL_ENTRY_QUERY] === undefined
-      && route.query.q === undefined && route.query.settings === undefined
-      && savedOrigin.success && selectionsByOrigin.has(savedOrigin.data);
-    const kind = restoresRootHome ? 'home' : resolveAppEntryKind({ route, initialized: settingsInitialized.value && foundationResolved.value, settings: settings.value });
+    const kind = resolveAppEntryKind({ route, initialized: settingsInitialized.value && foundationResolved.value });
     switch (kind) {
     case 'pending':
+      closeModelSelection();
       settingsOverlay.value = undefined;
       discovery.value = undefined;
       ownHandoff = undefined;
@@ -194,6 +211,7 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
       ownHandoff = undefined;
       settingsOverlay.value = undefined;
       discovery.value = undefined;
+      closeModelSelection();
       return;
     }
     ownHandoff = undefined;
@@ -229,12 +247,30 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     previewVariantSelection.value = { kind: 'initial' };
     intentState.value = { kind, owner: Symbol('app-entry-owner'), homeOriginId, routePath: route.path, fullPath: route.fullPath, input: route.query[MODEL_ENTRY_QUERY] };
     switch (kind) {
-    case 'home':
+    case 'home': {
+      const configured = hasSelectedGlobalChatModel({ settings: settings.value });
+      // This is the initial presentation lifecycle, not a persisted first-visit
+      // test. Returning from settings must not reopen a dismissed introduction.
+      if (initiallyPending && startupState.value.kind === 'starting-main' && !configured) {
+        openModelSelection({ target: { kind: 'home' }, selection: homeSelection.value, opener: undefined });
+      } else {
+        closeModelSelection();
+      }
+      automaticActivity.value = configured ? 'ordinary' : 'deferred';
+      if (configured) {
+        resumeModelRefresh();
+      } else {
+        deferModelRefresh();
+      }
+      break;
+    }
     case 'model-preview':
+      closeModelSelection();
       automaticActivity.value = 'deferred';
       deferModelRefresh();
       break;
     case 'ordinary':
+      closeModelSelection();
       if (settingsInitialized.value) {
         automaticActivity.value = 'ordinary';
         resumeModelRefresh();
@@ -267,13 +303,91 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     const context = captureModelLaunchContext();
     const phase = interaction.value;
     switch (phase) {
-    case 'ready':
+    case 'ready': {
+      const selection = modelSelection.value;
+      if (selection?.phase === 'open' && selection.target.kind === 'chat') {
+        const target = selection.target;
+        return {
+          ...context,
+          isCurrent: () => context.isCurrent() && modelSelection.value?.phase === 'open' && modelSelection.value.target === target,
+          defaults: Promise.resolve(undefined),
+          applyTarget: ({ target: model }) => {
+            target.useRepositoryModel({ target: model });
+            closeDiscovery();
+            closeModelSelection();
+          },
+        };
+      }
       return { ...context, defaults: context.isCurrent() ? captureModelLaunchDefaults().catch(() => undefined) : Promise.resolve(undefined) };
+    }
     case 'blocked':
       return { ...context, isCurrent: () => false, defaults: Promise.resolve(undefined) };
     default: {
       const _ex: never = phase;
       throw new Error(`Unhandled model launch capture interaction: ${String(_ex)}`);
+    }
+    }
+  }
+
+  function openModelSelection({ target, selection, opener }: { target: ModelSelectionTarget, selection: AppEntrySelection, opener: HTMLElement | undefined }): void {
+    const current = activeEntryIntent({ intent: intentState.value });
+    if (current !== undefined) {
+      modelSelection.value = { phase: 'open', owner: current.owner, target, selection: { ...selection }, opener };
+    }
+  }
+
+  function selectModel({ selection }: { selection: AppEntrySelection }): void {
+    const current = modelSelection.value;
+    if (current?.phase !== 'open' || interaction.value !== 'ready') {
+      return;
+    }
+    modelSelection.value = { ...current, selection };
+    const target = current.target;
+    switch (target.kind) {
+    case 'home': homeSelection.value = selection;
+      return;
+    case 'chat': return;
+    default: {
+      const exhaustive: never = target;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+
+  function closeModelSelection(): void {
+    const current = modelSelection.value;
+    if (current === undefined) {
+      return;
+    }
+    switch (current.phase) {
+    case 'open': modelSelection.value = { ...current, phase: 'closing' };
+      return;
+    case 'closing': return;
+    default: {
+      const exhaustive: never = current.phase;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+
+  function finishModelSelectionClose(): void {
+    const current = modelSelection.value;
+    if (current === undefined) {
+      return;
+    }
+    switch (current.phase) {
+    case 'open': return;
+    case 'closing':
+      modelSelection.value = undefined;
+      void nextTick(() => {
+        if (modelSelection.value === undefined && current.opener?.isConnected && current.owner === activeEntryIntent({ intent: intentState.value })?.owner) {
+          current.opener.focus({ preventScroll: true });
+        }
+      });
+      return;
+    default: {
+      const exhaustive: never = current.phase;
+      throw new Error(String(exhaustive));
     }
     }
   }
@@ -322,10 +436,48 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     }
   }
 
-  function openDiscovery({ tab }: { tab: AppEntryDiscoveryTab }): void {
+  async function openDiscovery({ tab }: { tab: AppEntryDiscoveryTab }): Promise<void> {
     const current = activeEntryIntent({ intent: intentState.value });
-    if (current !== undefined && interaction.value === 'ready') {
-      discovery.value = { owner: current.owner, tab };
+    if (current === undefined || interaction.value !== 'ready') {
+      return;
+    }
+    const context = captureModelLaunchContext();
+    const selection = modelSelection.value;
+    const isCurrent = () => {
+      if (!context.isCurrent() || interaction.value !== 'ready' || effectiveRoute.value?.fullPath !== context.fullPath) {
+        return false;
+      }
+      if (selection === undefined) {
+        return modelSelection.value === undefined;
+      }
+      const latest = modelSelection.value;
+      if (latest === undefined || latest.target !== selection.target) {
+        return false;
+      }
+      switch (latest.phase) {
+      case 'open': return true;
+      case 'closing': return false;
+      default: {
+        const exhaustive: never = latest.phase;
+        throw new Error(String(exhaustive));
+      }
+      }
+    };
+    try {
+      await loadModelDiscoveryPanel();
+      if (isCurrent()) {
+        discovery.value = { owner: current.owner, tab };
+      }
+    } catch {
+      if (!isCurrent()) {
+        return;
+      }
+      const { useToast } = await import('@/composables/useToast');
+      const message = await ensureStrings.useAppEntry__could_not_open_model_browser();
+      const actionLabel = await ensureStrings.LlamaCppBrowserModelLaunch__retry();
+      if (isCurrent()) {
+        useToast().addToast({ message, actionLabel, onAction: () => isCurrent() ? openDiscovery({ tab }) : undefined });
+      }
     }
   }
 
@@ -339,8 +491,9 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     }
     forcedHomeOrigin = nanoid();
     routeRevision = '';
-    await router.push({ path: '/home', query: {}, state: { [originHistoryKey]: forcedHomeOrigin } });
+    await router.push({ path: '/', query: {}, state: { [originHistoryKey]: forcedHomeOrigin } });
     syncIntent();
+    openModelSelection({ target: { kind: 'home' }, selection: homeSelection.value, opener: undefined });
   }
 
   async function returnToHome({ homeOriginId }: { homeOriginId: string }): Promise<void> {
@@ -349,8 +502,9 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     }
     forcedHomeOrigin = homeOriginId;
     routeRevision = '';
-    await router.push({ path: '/home', query: {}, state: { [originHistoryKey]: homeOriginId } });
+    await router.push({ path: '/', query: {}, state: { [originHistoryKey]: homeOriginId } });
     syncIntent();
+    openModelSelection({ target: { kind: 'home' }, selection: homeSelection.value, opener: undefined });
   }
 
   async function handoffToChat({ context, chatPath }: { context: ModelLaunchAppContext, chatPath: string }): Promise<boolean> {
@@ -385,6 +539,11 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     previewVariantSelection,
     settingsOverlay,
     discovery,
+    modelSelection: computed(() => modelSelection.value),
+    openModelSelection,
+    closeModelSelection,
+    finishModelSelectionClose,
+    selectModel,
     captureModelLaunchContext,
     captureModelLaunchStartContext,
     prepareModelLaunchHandoff,

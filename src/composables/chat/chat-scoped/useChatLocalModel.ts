@@ -4,7 +4,7 @@ import type { SettingsTitleGeneration } from '@/01-models/types';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import { retargetTitleGenerationToSameScope } from '@/01-models/title-generation';
 import { storageService } from '@/00-storage/service';
-import { getLiveChatById, rootItems, updateEmptyChatScopedSettings } from '@/composables/chat/global/chat-core-singletons';
+import { getLiveChatById, rootItems, updateChatScopedSettings, updateEmptyChatScopedSettings } from '@/composables/chat/global/chat-core-singletons';
 import { useSettings } from '@/composables/useSettings';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { awaitInspection } from '@/logic/model-file-inspection/abort';
@@ -107,22 +107,37 @@ async function applyModel({ input, model }: { input: ChatLocalModelInput, model:
       input.state.phase = 'committing';
       input.state.model = model;
       await suspendLocalModelLaunchPreparation({ chatId: input.chatId });
-      const applied = await updateEmptyChatScopedSettings({
-        chatId: input.chatId,
-        changes: [
-          { field: 'endpoint', behavior: 'override', value: { type: 'llama_cpp_browser' } },
-          { field: 'model_id', behavior: 'override', value: model.modelId },
-          { field: 'title_generation', behavior: 'override', value: titleFor({ chatId: input.chatId }) },
-        ],
-        isCurrent: () => input.isStorageCurrent() && (source?.isCurrent() ?? true),
-      });
-      if (!applied) {
-        assertCurrent({ input });
-        if (source?.isCurrent() === false) {
-          throw new LlamaCppBrowserError({ code: 'missing-model' });
+      const changes = [
+        { field: 'endpoint', behavior: 'override', value: { type: 'llama_cpp_browser' } },
+        { field: 'model_id', behavior: 'override', value: model.modelId },
+      ] as const;
+      const isCurrent = () => input.isStorageCurrent() && (source?.isCurrent() ?? true);
+      switch (input.binding) {
+      case 'chat':
+        // An explicit selection replaces only this chat's endpoint and model.
+        // History, title settings, the chat group and global defaults stay intact.
+        await updateChatScopedSettings({ chatId: input.chatId, changes, isCurrent });
+        break;
+      case 'empty-chat': {
+        const applied = await updateEmptyChatScopedSettings({
+          chatId: input.chatId,
+          changes: [...changes, { field: 'title_generation', behavior: 'override', value: titleFor({ chatId: input.chatId }) }],
+          isCurrent,
+        });
+        if (!applied) {
+          assertCurrent({ input });
+          if (source?.isCurrent() === false) {
+            throw new LlamaCppBrowserError({ code: 'missing-model' });
+          }
+          input.state.error = 'not-empty';
+          throw new Error('The chat is missing or contains messages');
         }
-        input.state.error = 'not-empty';
-        throw new Error('The chat is missing or contains messages');
+        break;
+      }
+      default: {
+        const exhaustive: never = input.binding;
+        throw new Error(String(exhaustive));
+      }
       }
       const context = contextFor({ chatId: input.chatId });
       if (context !== undefined && input.isStorageCurrent()) {
@@ -162,17 +177,18 @@ async function run({ input }: { input: ChatLocalModelInput }): Promise<void> {
   await pending;
 }
 
-export function useChatLocalModel({ chatId }: { chatId: Readonly<Ref<ChatId>> }) {
+export function useChatLocalModel({ chatId, binding }: { chatId: Readonly<Ref<ChatId>>, binding: 'empty-chat' | 'chat' }) {
   const owner = {};
   function begin({ controller }: { controller: AbortController }): ChatLocalModelInput | undefined {
     const context = contextFor({ chatId: chatId.value });
-    if (context === undefined || context.chat.root.items.length !== 0 || controller.signal.aborted || chatLocalModelInputs.value.has(chatId.value)) {
+    if (context === undefined || (binding === 'empty-chat' && context.chat.root.items.length !== 0) || controller.signal.aborted || chatLocalModelInputs.value.has(chatId.value)) {
       controller.abort();
       return undefined;
     }
     const input: ChatLocalModelInput = {
       chatId: chatId.value,
       owner,
+      binding,
       controller,
       isStorageCurrent: storageService.captureSettingsStorage(),
       pending: undefined,

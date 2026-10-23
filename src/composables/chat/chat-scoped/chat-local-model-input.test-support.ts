@@ -6,6 +6,7 @@ export function openChatLocalModelInput({ chatId }: { chatId: ChatId }) {
   const input: ChatLocalModelInput = {
     chatId,
     owner: {},
+    binding: 'empty-chat',
     controller: new AbortController(),
     isStorageCurrent: () => true,
     state: { id: 1, phase: 'reading', candidates: [], model: undefined, error: undefined, downloadJobId: undefined },

@@ -16,7 +16,7 @@ import BrowserModelPreparation from './BrowserModelPreparation.vue';
 import SettingsSelect from './SettingsSelect.vue';
 
 type ModelPreview = { suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
-const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab, interaction?: 'blocked' | 'ready', currentModelId?: string }>();
+const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
 const emit = defineEmits<{ close: [] }>();
 const inventory = shallowRef<LocalModel[]>([]);
 const inventoryIssues = shallowRef<readonly HostModelInventoryIssue[]>([]);
@@ -476,10 +476,13 @@ function restoreBackground(): void {
   }
   background = undefined;
   document.body.style.overflow = previousBodyOverflow;
-  if (previousFocus?.isConnected) {
-    previousFocus.focus({ preventScroll: true });
-  }
+  const opener = previousFocus;
   previousFocus = undefined;
+  void nextTick(() => {
+    if (!open.value && opener?.isConnected && !opener.closest('[inert]')) {
+      opener.focus({ preventScroll: true });
+    }
+  });
 }
 
 function keydown({ event }: { event: KeyboardEvent }): void {
@@ -691,7 +694,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <button type="button" data-testid="discovery-start" :disabled="starting === 'starting' || globalStarting === 'creating'" :aria-busy="starting === 'starting'" class="discovery-start" tw-class="group relative flex min-h-16 w-full items-center justify-center rounded-2xl border border-blue-400/80 bg-white px-14 py-4 text-center text-base font-bold text-gray-900 transition-[border-color,box-shadow,transform] duration-300 hover:border-blue-500 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait dark:border-blue-500/70 dark:bg-gray-800 dark:text-gray-100 motion-reduce:transition-none" @click="startPreview">
                   {{ lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}<span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white dark:bg-blue-500"><Loader2Icon v-if="starting === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span>
                 </button>
-                <p tw-class="text-center text-[11px] text-gray-400 dark:text-gray-500">{{ previewSaved ? lazyStrings.ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model() : lazyStrings.ModelDiscoveryPanel__prepare_this_model_in_a_new_chat() }}</p>
+                <p tw-class="text-center text-[11px] text-gray-400 dark:text-gray-500">{{ selectionTarget === 'chat' ? lazyStrings.ChatLocalModelInput__use_in_this_chat() : previewSaved ? lazyStrings.ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model() : lazyStrings.ModelDiscoveryPanel__prepare_this_model_in_a_new_chat() }}</p>
               </footer>
             </section>
           </Transition>

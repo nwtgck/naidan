@@ -2,7 +2,6 @@ import { onScopeDispose, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useAppEntry, type ModelLaunchAppContext } from '@/composables/useAppEntry';
-import { useAppPresentation, isAppInteractionEnabled } from '@/composables/useAppPresentation';
 import { storageService } from '@/00-storage/service';
 import { loadData, registerLiveInstance } from '@/composables/chat/global/chat-core-singletons';
 import type { Chat } from '@/01-models/types';
@@ -19,7 +18,7 @@ import { modelLaunchChatGroupName, modelLaunchChoices, ModelLaunchTargetError, r
 import { readModelLaunchHistoryReservation, reserveModelLaunchHistory, modelLaunchHistoryKey } from '@/features/llama-cpp-browser/model-launch/history';
 import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { consumeModelLaunchSession, findModelLaunchSession, rememberModelLaunchSession, type ModelLaunchSession } from '@/features/llama-cpp-browser/model-launch/session';
-import { modelLaunchCommand, modelLaunchEntryState, setModelLaunchEntryState, type ModelLaunchCommand, type ModelLaunchStartRequest, type ModelLaunchDestinationAuthorization } from '@/features/llama-cpp-browser/model-launch/entry-state';
+import { modelLaunchCommand, modelLaunchEntryState, setModelLaunchEntryState, type ModelLaunchCommand, type ModelLaunchStartRequest, type ModelLaunchDestinationAuthorization, type ModelLaunchCommandContext } from '@/features/llama-cpp-browser/model-launch/entry-state';
 
 type LaunchOperation = {
   id: symbol, request: ModelLaunchStartRequest, requestKey: string, context: ModelLaunchAppContext,
@@ -27,12 +26,12 @@ type LaunchOperation = {
   catalog: RepositoryCatalog | undefined, target: ModelLaunchTarget | undefined,
   reservation: ReturnType<typeof reserveModelLaunchHistory> | undefined,
   expectedRoot: FileSystemDirectoryHandle | undefined, authorization: Promise<ModelLaunchDestinationAuthorization> | undefined,
+  applyTarget: ModelLaunchCommandContext['applyTarget'],
 };
 
 /** Route observation only retires operations; explicit bridge actions start IO. */
 export function useModelLaunchCoordinator(): void {
   const router = useRouter(), settingsApi = useSettings(), entry = useAppEntry();
-  const { appInteraction } = useAppPresentation();
   const queue = getDownloadQueue();
   let active: LaunchOperation | undefined, disposed = false;
   const isCurrent = ({ operation }: { operation: LaunchOperation }) => !disposed && active === operation
@@ -137,6 +136,13 @@ export function useModelLaunchCoordinator(): void {
     if (target === undefined || !isCurrent({ operation })) {
       return;
     }
+    if (operation.applyTarget !== undefined) {
+      // Existing-chat selection consumes the resolved files without reserving
+      // a new chat/group, navigating, or initializing global defaults.
+      setModelLaunchEntryState({ state: { status: 'idle' } });
+      operation.applyTarget({ target });
+      return;
+    }
     setModelLaunchEntryState({ state: { status: 'checking', operation: operation.id, input: operation.request.input, phase: 'opening-chat' } });
     const location = JSON.stringify([operation.context.homeOriginId, operation.requestKey]);
     if (operation.reservation === undefined) {
@@ -234,35 +240,39 @@ export function useModelLaunchCoordinator(): void {
         await saveAndOpen({ operation });
         return;
       }
-      const origin = operation.context.homeOriginId;
-      const pinned = origin === undefined ? undefined : findModelLaunchSession({ homeOriginId: origin, requestKey: operation.requestKey });
-      if (pinned !== undefined) {
-        const chat = await reusableChat({ session: pinned });
-        if (!isCurrent({ operation })) {
-          return;
-        }
-        if (chat !== undefined) {
-          if (pinned.expectedRoot !== undefined && (operation.expectedRoot === undefined || !await operation.expectedRoot.isSameEntry(pinned.expectedRoot))) {
-            throw new Error('The model destination changed');
+      // Session and reservation reuse navigates to a launch-owned chat. A chat
+      // selection must instead resolve files and invoke its explicit callback.
+      if (operation.applyTarget === undefined) {
+        const origin = operation.context.homeOriginId;
+        const pinned = origin === undefined ? undefined : findModelLaunchSession({ homeOriginId: origin, requestKey: operation.requestKey });
+        if (pinned !== undefined) {
+          const chat = await reusableChat({ session: pinned });
+          if (!isCurrent({ operation })) {
+            return;
           }
-          await openChat({ operation, chat, session: pinned });
-          return;
+          if (chat !== undefined) {
+            if (pinned.expectedRoot !== undefined && (operation.expectedRoot === undefined || !await operation.expectedRoot.isSameEntry(pinned.expectedRoot))) {
+              throw new Error('The model destination changed');
+            }
+            await openChat({ operation, chat, session: pinned });
+            return;
+          }
         }
-      }
-      const location = JSON.stringify([operation.context.homeOriginId, operation.requestKey]);
-      const prior = readModelLaunchHistoryReservation({ history: router.options.history, location });
-      if (prior !== undefined) {
-        const saved = storageService.getModelLaunch({ chatId: prior.chatId });
-        if (!isCurrent({ operation })) {
-          return;
-        }
-        if (saved !== undefined && (saved.phase === 'reserved' || saved.phase === 'active' && origin === undefined)
+        const location = JSON.stringify([operation.context.homeOriginId, operation.requestKey]);
+        const prior = readModelLaunchHistoryReservation({ history: router.options.history, location });
+        if (prior !== undefined) {
+          const saved = storageService.getModelLaunch({ chatId: prior.chatId });
+          if (!isCurrent({ operation })) {
+            return;
+          }
+          if (saved !== undefined && (saved.phase === 'reserved' || saved.phase === 'active' && origin === undefined)
           && destinationKey({ destination: saved.destination }) === destinationKey({ destination: operation.request.destination })) {
-          operation.reservation = prior;
-          operation.target = saved.target;
-          operation.defaults = Promise.resolve(undefined);
-          await saveAndOpen({ operation });
-          return;
+            operation.reservation = prior;
+            operation.target = saved.target;
+            operation.defaults = Promise.resolve(undefined);
+            await saveAndOpen({ operation });
+            return;
+          }
         }
       }
       const catalog = operation.catalog ?? structuredClone(await getMetadataSession().inspect({ input: parseRepository({ input: operation.request.input }).repository, signal: operation.controller.signal, freshness: 'reuse' }));
@@ -310,7 +320,9 @@ export function useModelLaunchCoordinator(): void {
     switch (command.kind) {
     case 'start': {
       active?.controller.abort();
-      if (!settingsApi.initialized.value || entry.interaction.value !== 'ready' || !isAppInteractionEnabled({ interaction: appInteraction.value })) {
+      // Explicit dialog actions need startup readiness even while the dialog
+      // intentionally blocks interaction with the application behind it.
+      if (!settingsApi.initialized.value || entry.interaction.value !== 'ready') {
         setModelLaunchEntryState({ state: { status: 'idle' } });
         return;
       }
@@ -324,7 +336,7 @@ export function useModelLaunchCoordinator(): void {
         id: command.operation,
         request,
         requestKey: '',
-        context,
+        context: { ...context, isCurrent: () => context.isCurrent() && (command.context?.isCurrent() ?? true) },
         controller: new AbortController(),
         isStorageCurrent: storageService.captureModelLaunchStorage(),
         defaults: command.context?.defaults ?? Promise.resolve(undefined),
@@ -333,6 +345,7 @@ export function useModelLaunchCoordinator(): void {
         reservation: undefined,
         expectedRoot: undefined,
         authorization: command.authorization,
+        applyTarget: command.context?.applyTarget,
       };
       active = operation;
       try {
@@ -359,6 +372,7 @@ export function useModelLaunchCoordinator(): void {
         return;
       }
       try {
+        operation.request = { ...operation.request, multimodal: command.multimodal ?? operation.request.multimodal };
         operation.target = confirmModelLaunchConfiguration({ catalog: operation.catalog, mainFilePath: command.mainFilePath, companionFilePath: command.companionFilePath, multimodal: operation.request.multimodal });
         setModelLaunchEntryState({ state: { status: 'checking', operation: operation.id, input: operation.request.input, phase: 'opening-chat' } });
         void authorize({ operation, authorization: command.authorization }).then(() => saveAndOpen({ operation })).catch(error => fail({ operation, error }));

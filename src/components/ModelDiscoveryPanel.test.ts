@@ -263,6 +263,7 @@ describe('browser model discovery', () => {
     expect(wrapper.emitted('close')).toHaveLength(1);
     await wrapper.setProps({ visibility: 'closed' });
     expect(app.inert).toBe(false);
+    await flushPromises();
     expect(document.activeElement).toBe(opener);
   });
 

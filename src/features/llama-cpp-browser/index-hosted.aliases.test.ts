@@ -22,7 +22,7 @@ const worker = vi.hoisted(() => ({
 }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
-vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), loadSettings: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), loadSettings: vi.fn(), subscribeToChanges: () => () => {} } }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 vi.mock('./runtime/detect-profile', () => ({ resolveRuntimeProfile: vi.fn(async () => 'cpu-wasm32') }));
 

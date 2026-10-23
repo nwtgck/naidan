@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, markRaw, onScopeDispose, ref, shallowRef, watch, type Component } from 'vue';
+import { createModuleLoader } from '@/utils/module-loader';
 import { ArrowLeftIcon, ArrowRightIcon, ChevronDownIcon, HardDriveIcon, Loader2Icon, MessageCircleIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
@@ -8,6 +9,14 @@ import LlamaCppBrowserModelLaunchPrivacy from '@/features/llama-cpp-browser/comp
 import type { BrowserModelPresentation } from './browser-model-presentation';
 import Logo from './Logo.vue';
 import SettingsSelect from './SettingsSelect.vue';
+
+const fileSelectionLoader = createModuleLoader({ importModule: () => import('./BrowserModelFileSelection.vue'), onPrefetchError: () => {} });
+const FileSelection = shallowRef<Component>();
+const fileSelectionStatus = ref<'loading' | 'failed' | 'ready'>('loading');
+let disposed = false;
+onScopeDispose(() => {
+  disposed = true;
+});
 
 type SelectionState = Extract<ModelLaunchEntryState, { status: 'needs-selection' }>;
 const props = defineProps<{
@@ -27,7 +36,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   start: [], back: [], retry: [],
   'select-quantization': [value: string],
-  'confirm-selection': [selection: { operation: symbol, mainFilePath: string, companionFilePath: string | undefined }],
+  'confirm-selection': [selection: { operation: symbol, mainFilePath: string, companionFilePath: string | undefined, multimodal: 'on' | 'off' }],
 }>();
 defineSlots<{ progress(): unknown, details(): unknown, quantization({ disabled }: { disabled: boolean }): unknown, 'quantization-actions'(): unknown }>();
 const disabled = computed(() => props.interaction !== 'ready' || props.startStatus === 'starting');
@@ -45,19 +54,35 @@ const quantizationDisabled = computed(() => {
   }
   }
 });
-const mainPath = ref('');
-const companionPath = ref('');
-watch(() => props.selectionState, state => {
-  mainPath.value = state?.selectedMainPath ?? (state?.mainChoices.length === 1 ? state.mainChoices[0]!.path : '');
-  companionPath.value = state?.selectedCompanionPath ?? (state?.companionRequirement === 'required' && state.companionChoices.length === 1 ? state.companionChoices[0]!.path : '');
-}, { immediate: true });
-const selectionValid = computed(() => {
-  const state = props.selectionState;
-  return state !== undefined && state.mainChoices.some(choice => choice.path === mainPath.value)
-    && (state.companionRequirement !== 'required' || state.companionChoices.some(choice => choice.path === companionPath.value));
-});
 const size = computed(() => props.model.bytes === undefined
   ? undefined : formatDownloadBytes({ bytes: props.model.bytes }));
+
+async function loadFileSelection(): Promise<void> {
+  fileSelectionStatus.value = 'loading';
+  try {
+    const module = await fileSelectionLoader.load();
+    if (!disposed) {
+      FileSelection.value = markRaw(module.default);
+      fileSelectionStatus.value = 'ready';
+    }
+  } catch {
+    if (!disposed) {
+      fileSelectionStatus.value = 'failed';
+    }
+  }
+}
+
+watch(() => props.stage, stage => {
+  switch (stage) {
+  case 'needs-selection': void loadFileSelection();
+    return;
+  case 'preview': case 'checking': case 'download': case 'loading': case 'ready': case 'failed': return;
+  default: {
+    const exhaustive: never = stage;
+    throw new Error(String(exhaustive));
+  }
+  }
+}, { immediate: true });
 
 function selectQuantization({ event }: { event: Event }): void {
   if (!quantizationDisabled.value && (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement)) {
@@ -65,12 +90,11 @@ function selectQuantization({ event }: { event: Event }): void {
   }
 }
 
-function confirmSelection(): void {
+function confirmSelection({ mainFilePath, companionFilePath, multimodal }: { mainFilePath: string, companionFilePath: string | undefined, multimodal: 'on' | 'off' }): void {
   const state = props.selectionState;
-  if (disabled.value || !state || !selectionValid.value) {
-    return;
+  if (!disabled.value && state !== undefined) {
+    emit('confirm-selection', { operation: state.operation, mainFilePath, companionFilePath, multimodal });
   }
-  emit('confirm-selection', { operation: state.operation, mainFilePath: mainPath.value, companionFilePath: companionPath.value || undefined });
 }
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -111,11 +135,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </div>
       <div tw-class="min-h-[6.5rem]">
         <Transition mode="out-in" tw-enter-active-class="transition-[opacity,transform] duration-300 motion-reduce:transition-none" tw-leave-active-class="transition-opacity duration-150 motion-reduce:transition-none" tw-enter-from-class="opacity-0 translate-y-1" tw-leave-to-class="opacity-0">
-          <div v-if="stage === 'needs-selection' && selectionState" data-testid="model-launch-selection" tw-class="space-y-4">
-            <p tw-class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ lazyStrings.BrowserModelPreparation__choose_model_files() }}</p>
-            <label tw-class="block space-y-1.5 text-xs text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.BrowserModelPreparation__main_model() }}</span><select v-model="mainPath" :disabled="disabled" data-testid="model-launch-main-file" tw-class="block min-h-11 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-800 dark:text-gray-100"><option value="" disabled>{{ lazyStrings.BrowserModelPreparation__choose_a_file() }}</option><option v-for="choice in selectionState.mainChoices" :key="choice.path" :value="choice.path">{{ choice.label }}</option></select></label>
-            <label v-if="selectionState.companionRequirement !== 'none'" tw-class="block space-y-1.5 text-xs text-gray-600 dark:text-gray-300"><span>{{ lazyStrings.BrowserModelPreparation__companion_file() }}</span><select v-model="companionPath" :disabled="disabled" data-testid="model-launch-companion-file" tw-class="block min-h-11 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-sm text-gray-800 dark:text-gray-100"><option value="" :disabled="selectionState.companionRequirement === 'required'">{{ selectionState.companionRequirement === 'required' ? lazyStrings.BrowserModelPreparation__choose_a_file() : lazyStrings.BrowserModelPreparation__no_companion_file() }}</option><option v-for="choice in selectionState.companionChoices" :key="choice.path" :value="choice.path">{{ choice.label }}</option></select></label>
-            <button type="button" :disabled="disabled || !selectionValid" data-testid="model-launch-confirm-selection" tw-class="min-h-12 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="confirmSelection">{{ lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}</button>
+          <div v-if="stage === 'needs-selection' && selectionState" key="files">
+            <FileSelection v-if="FileSelection" :model="model" :selection="selectionState" :busy="disabled" :error="undefined" presentation="embedded" @confirm="confirmSelection" />
+            <div v-else data-testid="model-files-ui-loading" tw-class="flex min-h-28 flex-col items-center justify-center gap-3 text-center text-xs text-gray-500 dark:text-gray-400">
+              <template v-if="fileSelectionStatus === 'failed'"><p role="alert">{{ lazyStrings.BrowserModelPreparation__could_not_load_model_settings() }}</p><button type="button" data-testid="model-files-ui-retry" tw-class="min-h-9 rounded-lg border border-gray-200 px-3 text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" @click="loadFileSelection">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button></template>
+              <p v-else role="status" tw-class="flex items-center gap-2"><Loader2Icon aria-hidden="true" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />{{ lazyStrings.BrowserModelPreparation__loading_model_settings() }}</p>
+            </div>
           </div>
           <div v-else-if="stage === 'preview' || stage === 'checking' || stage === 'failed'" :key="'action-' + stage" tw-class="flex min-h-[6.5rem] flex-col justify-center gap-3">
             <button type="button" class="model-start-surface" data-testid="start-preview-model" :disabled="disabled" :aria-busy="startStatus === 'starting'" tw-class="group relative mx-auto flex min-h-[72px] w-full max-w-sm items-center justify-center rounded-2xl border border-blue-400/80 dark:border-blue-500/70 bg-white dark:bg-gray-800 px-12 py-4 text-center text-[clamp(16px,4.2cqw,18px)] font-bold text-gray-900 dark:text-gray-100 hover:border-blue-500 dark:hover:border-blue-400 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 transition-[border-color,box-shadow,transform] duration-300 motion-reduce:transition-none disabled:cursor-wait" @click="stage === 'failed' && failureAction === 'retry' ? emit('retry') : emit('start')"><span>{{ stage === 'failed' && failureAction === 'retry' ? lazyStrings.LlamaCppBrowserModelLaunch__retry() : lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}</span><span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white group-hover:bg-blue-700 transition-colors duration-300 motion-reduce:transition-none"><Loader2Icon v-if="startStatus === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transition-none" /></span></button>

@@ -23,6 +23,7 @@ vi.mock('lucide-vue-next', () => {
     ChevronUpIcon: mockIcon,
     ChevronRightIcon: mockIcon,
     FolderIcon: mockIcon,
+    LibraryBigIcon: mockIcon,
     PencilIcon: mockIcon,
     Trash2Icon: mockIcon,
     SquarePenIcon: mockIcon,

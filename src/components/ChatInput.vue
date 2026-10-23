@@ -87,7 +87,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void,
-  (e: 'request-onboarding'): void,
+  (e: 'request-model-selection'): void,
   (e: 'sent'): void,
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void,
   (e: 'update:isAnimatingHeight', value: boolean): void,
@@ -1068,8 +1068,8 @@ async function handleSend() {
   switch (textSubmissionAction.value) {
   case 'blocked':
     return;
-  case 'open-onboarding':
-    emit('request-onboarding');
+  case 'select-model':
+    emit('request-model-selection');
     return;
   case 'send':
     break;

@@ -1,5 +1,6 @@
 import { shallowReadonly, shallowRef } from 'vue';
 import type { DownloadDestination } from '@/01-models/download';
+import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import type { ModelLaunchProblem } from './target';
 import type { ModelLaunchDefaultSnapshot } from './defaults';
 
@@ -13,7 +14,7 @@ export type ModelLaunchStartRequest = {
 export type ModelLaunchFileChoice = { path: string, label: string, size: number };
 export type ModelLaunchDestinationAuthorization = { destination: DownloadDestination, expectedRoot: FileSystemDirectoryHandle | undefined };
 export type AuthorizeModelLaunchDestination = ({ destination }: { destination: DownloadDestination }) => Promise<ModelLaunchDestinationAuthorization>;
-export type ModelLaunchCommandContext = { owner: symbol, isCurrent(): boolean, defaults: Promise<ModelLaunchDefaultSnapshot | undefined> };
+export type ModelLaunchCommandContext = { owner: symbol, isCurrent(): boolean, defaults: Promise<ModelLaunchDefaultSnapshot | undefined>, applyTarget?: ({ target }: { target: ModelLaunchTarget }) => void };
 export type ModelLaunchEntryState =
   | { status: 'idle' }
   | { status: 'checking', operation: symbol, input: string, phase: 'metadata' | 'opening-chat' }
@@ -22,7 +23,7 @@ export type ModelLaunchEntryState =
 
 export type ModelLaunchCommand =
   | { kind: 'start', operation: symbol, request: ModelLaunchStartRequest, authorization: Promise<ModelLaunchDestinationAuthorization> | undefined, context: ModelLaunchCommandContext | undefined }
-  | { kind: 'confirm', operation: symbol, mainFilePath: string, companionFilePath: string | undefined, authorization: Promise<ModelLaunchDestinationAuthorization> | undefined }
+  | { kind: 'confirm', operation: symbol, mainFilePath: string, companionFilePath: string | undefined, multimodal?: 'on' | 'off', authorization: Promise<ModelLaunchDestinationAuthorization> | undefined }
   | { kind: 'retry', operation: symbol }
   | { kind: 'retire', operation: symbol };
 const entryState = shallowRef<ModelLaunchEntryState>({ status: 'idle' });
@@ -60,14 +61,14 @@ export function startModelLaunch({ request, authorizeDestination }: { request: M
   return operation;
 }
 
-export function confirmModelLaunchSelection({ operation, mainFilePath, companionFilePath, authorizeDestination }: { operation: symbol, mainFilePath: string, companionFilePath: string | undefined, authorizeDestination?: AuthorizeModelLaunchDestination }): void {
+export function confirmModelLaunchSelection({ operation, mainFilePath, companionFilePath, multimodal, authorizeDestination }: { operation: symbol, mainFilePath: string, companionFilePath: string | undefined, multimodal?: 'on' | 'off', authorizeDestination?: AuthorizeModelLaunchDestination }): void {
   if (entryState.value.status !== 'needs-selection' || entryState.value.operation !== operation) {
     return;
   }
   const destination = currentRequest?.operation === operation ? currentRequest.request.destination : undefined;
   const authorization = destination === undefined ? undefined : authorizeDestination?.({ destination });
   void authorization?.catch(() => {});
-  command.value = { kind: 'confirm', operation, mainFilePath, companionFilePath, authorization };
+  command.value = { kind: 'confirm', operation, mainFilePath, companionFilePath, multimodal, authorization };
 }
 
 export function retireModelLaunch({ operation }: { operation: symbol }): void {

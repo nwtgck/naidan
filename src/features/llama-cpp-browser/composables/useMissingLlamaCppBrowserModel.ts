@@ -21,7 +21,7 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
 }) {
   const { settings } = useSettings();
   const queue = getDownloadQueue();
-  const modelId = computed(() => enabled.value && chat.value !== null && resolved.value?.endpoint.type === 'llama_cpp_browser' ? resolved.value.modelId : undefined);
+  const modelId = computed(() => enabled.value && chat.value !== null && resolved.value?.endpoint.type === 'llama_cpp_browser' ? resolved.value.modelId || undefined : undefined);
   const context = computed(() => modelId.value === undefined ? undefined : JSON.stringify([chat.value?.id, modelId.value, settings.value.storageType]));
   const availability = ref<ModelAvailability | 'checking' | 'inactive'>('inactive');
   const verification = ref<'idle' | 'checking'>('idle');

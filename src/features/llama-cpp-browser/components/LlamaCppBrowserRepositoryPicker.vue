@@ -25,7 +25,7 @@ const companionPath = ref('');
 const multimodal = ref<'on' | 'off'>('off');
 const choices = computed(() => {
   const options = catalog.value === undefined ? [] : modelLaunchChoices({ catalog: catalog.value });
-  return options.map(option => ({ ...option, displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.primaryRelativePath})` : option.label }));
+  return options.map(option => ({ ...option, size: option.models.reduce((sum, model) => sum + model.size, 0), displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.primaryRelativePath})` : option.label }));
 });
 const target = computed(() => {
   if (catalog.value === undefined || !mainPath.value) {

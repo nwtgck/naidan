@@ -64,12 +64,16 @@ import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/Ass
 import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/es';
 import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/es';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/es';
+import { BrowserModelDialog__close } from '@/strings/messages/BrowserModelDialog__close/es';
+import { BrowserModelFileSelection__model_settings } from '@/strings/messages/BrowserModelFileSelection__model_settings/es';
 import { BrowserModelPreparation__automatic } from '@/strings/messages/BrowserModelPreparation__automatic/es';
 import { BrowserModelPreparation__back_to_model_selection } from '@/strings/messages/BrowserModelPreparation__back_to_model_selection/es';
 import { BrowserModelPreparation__checking_model } from '@/strings/messages/BrowserModelPreparation__checking_model/es';
 import { BrowserModelPreparation__choose_a_file } from '@/strings/messages/BrowserModelPreparation__choose_a_file/es';
 import { BrowserModelPreparation__choose_model_files } from '@/strings/messages/BrowserModelPreparation__choose_model_files/es';
 import { BrowserModelPreparation__companion_file } from '@/strings/messages/BrowserModelPreparation__companion_file/es';
+import { BrowserModelPreparation__could_not_load_model_settings } from '@/strings/messages/BrowserModelPreparation__could_not_load_model_settings/es';
+import { BrowserModelPreparation__loading_model_settings } from '@/strings/messages/BrowserModelPreparation__loading_model_settings/es';
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/es';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/es';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/es';
@@ -2934,6 +2938,7 @@ import { toolCall__raw_json } from '@/strings/messages/toolCall__raw_json/es';
 import { toolCall__result } from '@/strings/messages/toolCall__result/es';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/es';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/es';
+import { useAppEntry__could_not_open_model_browser } from '@/strings/messages/useAppEntry__could_not_open_model_browser/es';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/es';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/es';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/es';
@@ -3105,12 +3110,16 @@ export const catalog = {
   AssistantProcessSequence__tool_executions,
   AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
+  BrowserModelDialog__close,
+  BrowserModelFileSelection__model_settings,
   BrowserModelPreparation__automatic,
   BrowserModelPreparation__back_to_model_selection,
   BrowserModelPreparation__checking_model,
   BrowserModelPreparation__choose_a_file,
   BrowserModelPreparation__choose_model_files,
   BrowserModelPreparation__companion_file,
+  BrowserModelPreparation__could_not_load_model_settings,
+  BrowserModelPreparation__loading_model_settings,
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
@@ -5975,6 +5984,7 @@ export const catalog = {
   toolCall__result,
   toolCall__show_tools_count,
   toolCall__tool_executions,
+  useAppEntry__could_not_open_model_browser,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,

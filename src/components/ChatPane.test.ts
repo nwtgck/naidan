@@ -15,9 +15,10 @@ import type { WeshMount } from '@/features/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 const mockStreamDownload = vi.hoisted(() => vi.fn());
+const mockOpenModelSelection = vi.hoisted(() => vi.fn());
 const mockOpenAppSettings = vi.hoisted(() => vi.fn());
 vi.mock('@/composables/useAppEntry', () => ({
-  useAppEntry: () => ({ openSettings: mockOpenAppSettings }),
+  useAppEntry: () => ({ openSettings: mockOpenAppSettings, openModelSelection: mockOpenModelSelection, homeSelection: ref({ suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }) }),
 }));
 vi.mock('@/utils/stream-download', async importOriginal => ({
   ...await importOriginal<typeof import('@/utils/stream-download')>(),
@@ -2015,7 +2016,8 @@ describe.each([
       const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
       await textarea.setValue('hello');
       const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
-      expect(sendButton.element.disabled).toBe(!enabled);
+      const needsSelection = wrapper.getComponent(ChatInput).props('textSubmissionAction') === 'select-model';
+      expect(sendButton.element.disabled).toBe(!enabled && !needsSelection);
       await sendButton.trigger('click');
       await flushPromises();
       if (enabled) {
@@ -2053,7 +2055,7 @@ describe.each([
       modelId: '',
     },
   ] satisfies { label: string, endpoint: Endpoint, modelId: string }[])(
-    'opens connection settings from the real send button when $label, preserving the draft',
+    'opens model selection from the real send button when $label, preserving the draft',
     async ({ endpoint, modelId }) => {
       mockSettings.value = { ...mockSettings.value, endpoint, defaultModelId: modelId };
       mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint, modelId };
@@ -2063,18 +2065,18 @@ describe.each([
       await textarea.setValue('hello');
       const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
       expect(sendButton.element.disabled).toBe(false);
-      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('open-onboarding');
+      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('select-model');
 
       await sendButton.trigger('click');
       await flushPromises();
-      expect(mockOpenAppSettings).toHaveBeenCalledExactlyOnceWith({ tab: 'connection', opener: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
+      expect(mockOpenModelSelection).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat', chatId: toChatId({ raw: '1' }) }) }));
       expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
       expect(mockSendMessage).not.toHaveBeenCalled();
       expect(textarea.element.value).toBe('hello');
 
       // Closing settings without completing setup must permit reopening.
       await sendButton.trigger('click');
-      expect(mockOpenAppSettings).toHaveBeenCalledTimes(2);
+      expect(mockOpenModelSelection).toHaveBeenCalledTimes(2);
       expect(mockSendMessage).not.toHaveBeenCalled();
 
       mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'model-1' };
@@ -2088,7 +2090,7 @@ describe.each([
     },
   );
 
-  it('does not open global onboarding for a broken chat-scoped endpoint override', async () => {
+  it('offers chat-scoped model selection for a broken chat-scoped endpoint override', async () => {
     mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: '' }, defaultModelId: '' };
     mockResolvedSettings.value = {
       ...mockResolvedSettings.value,
@@ -2099,8 +2101,8 @@ describe.each([
     wrapper = mountChatPane({ global: { plugins: [router] } });
     await flushPromises();
     await wrapper.get('[data-testid="chat-input"]').setValue('hello');
-    expect(wrapper.get<HTMLButtonElement>('[data-testid="send-button"]').element.disabled).toBe(true);
-    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('blocked');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="send-button"]').element.disabled).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('select-model');
     expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
   });
 
@@ -4620,11 +4622,11 @@ describe('ordinary Chat missing browser model notice', () => {
     mockActiveMessages.value = messages;
     mockCurrentChat.value!.root.items = [messages[0]!];
     mockCurrentChat.value!.currentLeafId = messages.at(-1)!.id;
-    recoveryAvailability.value = 'missing';
+    recoveryAvailability.value = 'unreadable';
     return messages;
   }
 
-  it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
+  it('opens model selection on Send for missing files while preserving the input and draft', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
     recoveryAvailability.value = 'checking';
     const wrapper = mount(ChatPane, { props: { chatId: toChatId({ raw: '1' }) }, global: { plugins: [router] } });
@@ -4635,7 +4637,10 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     recoveryAvailability.value = 'missing';
     await flushPromises();
-    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('select-model');
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    expect(mockOpenModelSelection).toHaveBeenCalledWith(expect.objectContaining({ target: expect.objectContaining({ kind: 'chat' }) }));
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     expect(wrapper.get('textarea').element).toBe(original);
     expect(textarea.element.value).toBe('keep writing while the model is prepared');
@@ -4650,7 +4655,7 @@ describe('ordinary Chat missing browser model notice', () => {
     wrapper.unmount();
   });
 
-  it('docks recovery inside the measured composer over a long selected branch and releases its submission gate after recovery', async () => {
+  it('docks unreadable-storage recovery inside the measured composer over a long selected branch and releases its submission gate after recovery', async () => {
     const messages = setExistingRecoveryConversation();
     wrapper = mountChatPane({ global: { plugins: [router] } });
     await flushPromises();
@@ -4827,12 +4832,13 @@ describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
 
-  it('coexists with missing-model recovery and leaves recovery as the submission gate', async () => {
+  it('keeps the advisory while offering model selection for missing files', async () => {
     recoveryAvailability.value = 'missing';
     wrapper = mountChatPane({ global: { plugins: [router] } });
     await flushPromises();
     expect(wrapper.findAll('[data-testid="firefox-webgpu-warning"]')).toHaveLength(1);
-    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(0);
+    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('select-model');
     expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
     recoveryAvailability.value = 'available';
     await nextTick();

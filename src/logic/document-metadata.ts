@@ -4,7 +4,7 @@ export type PageMetadata = Readonly<{
 }>;
 
 export type HomeIntroduction =
-  | Readonly<{ kind: 'active', routePaths: readonly string[] }>
+  | Readonly<{ kind: 'active' }>
   | Readonly<{ kind: 'inactive' }>;
 
 export type DocumentMetadataRoute = Readonly<{
@@ -42,7 +42,7 @@ export const IMAGE_METADATA: PageMetadata = {
 };
 
 export function isHomepageIntroductionRoute({ route }: { route: DocumentMetadataRoute }): boolean {
-  return (route.path === '/' || route.path === '/home') && route.query['llama-cpp-browser-model'] === undefined && route.query.q === undefined && route.query.settings === undefined;
+  return route.path === '/' && route.query['llama-cpp-browser-model'] === undefined && route.query.q === undefined && route.query.settings === undefined;
 }
 
 export function isHomeIntroductionActive({ introduction, route }: {
@@ -51,8 +51,7 @@ export function isHomeIntroductionActive({ introduction, route }: {
 }): boolean {
   switch (introduction.kind) {
   case 'inactive': return false;
-  case 'active': return route !== undefined && introduction.routePaths.includes(route.path)
-    && route.query['llama-cpp-browser-model'] === undefined && route.query.q === undefined && route.query.settings === undefined;
+  case 'active': return route !== undefined && isHomepageIntroductionRoute({ route });
   default: {
     const _ex: never = introduction;
     return _ex;
@@ -65,9 +64,6 @@ export function routeDocumentMetadata({ route }: { route: DocumentMetadataRoute 
     return APPLICATION_METADATA;
   }
   const path = route.path.replace(/\/+$/, '');
-  if (path === '/home') {
-    return HOME_METADATA;
-  }
   if (path === '/audio-generation' && route.matched.some(record => record.path === '/audio-generation')) {
     return AUDIO_METADATA;
   }

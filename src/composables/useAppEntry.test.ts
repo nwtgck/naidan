@@ -64,6 +64,49 @@ async function createEntryHarness({ path, startupKind }: { path: string, startup
 }
 
 describe('application entry ownership', () => {
+  it('opens the initial unconfigured root dialog before MainApp, and does not reopen it after settings', async () => {
+    using harness = await createEntryHarness({ path: '/', startupKind: 'initializing-foundation' });
+    expect(harness.entry.modelSelection.value).toBeUndefined();
+    harness.startupState.value = { kind: 'starting-main' };
+    expect(harness.entry.modelSelection.value?.phase).toBe('open');
+    const presentation = harness.entry.modelSelection.value;
+    const page = defineComponent({ template: '<div />' });
+    harness.startupState.value = { kind: 'rendering-main', mainApp: page };
+    harness.startupState.value = { kind: 'ready', mainApp: page };
+    expect(harness.entry.modelSelection.value).toBe(presentation);
+    harness.entry.closeModelSelection();
+    expect(harness.entry.modelSelection.value?.phase).toBe('closing');
+    harness.entry.finishModelSelectionClose();
+    await harness.router.push('/?settings=connection');
+    await harness.router.push('/');
+    expect(harness.entry.modelSelection.value).toBeUndefined();
+    await harness.entry.openHome();
+    expect(harness.entry.modelSelection.value?.phase).toBe('open');
+    expect(harness.router.currentRoute.value.path).toBe('/');
+  });
+
+  it('restores the modal opener only after the background DOM can leave its inert state', async () => {
+    using harness = await createEntryHarness({ path: '/', startupKind: 'ready' });
+    const background = document.createElement('div');
+    background.setAttribute('inert', '');
+    const opener = document.createElement('button');
+    background.append(opener);
+    document.body.append(background);
+    using _background = {
+      [Symbol.dispose]() {
+        background.remove();
+      },
+    };
+    const focus = vi.spyOn(opener, 'focus');
+    harness.entry.openModelSelection({ target: { kind: 'home' }, selection: harness.entry.homeSelection.value, opener });
+    harness.entry.closeModelSelection();
+    harness.entry.finishModelSelectionClose();
+    expect(focus).not.toHaveBeenCalled();
+    background.removeAttribute('inert');
+    await flushPromises();
+    expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+  });
+
   it('retires the model-link owner when leaving for an unconfigured ordinary root', async () => {
     using harness = await createEntryHarness({ path: '/?llama-cpp-browser-model=owner/model', startupKind: 'ready' });
     const context = harness.entry.captureModelLaunchContext();
@@ -125,7 +168,7 @@ describe('application entry ownership', () => {
   });
 
   it('captures default initialization authority at the explicit Start action before a lazy runtime arrives', async () => {
-    using harness = await createEntryHarness({ path: '/home', startupKind: 'ready' });
+    using harness = await createEntryHarness({ path: '/', startupKind: 'ready' });
     harness.settings.value = { endpoint: { type: 'openai', url: 'https://original.example' }, defaultModelId: 'original-model' };
     harness.entry.captureModelLaunchContext();
     expect(harness.captureDefaults).not.toHaveBeenCalled();
@@ -142,14 +185,14 @@ describe('application entry ownership', () => {
   });
 
   it('does not acquire default initialization authority before ready', async () => {
-    using harness = await createEntryHarness({ path: '/home', startupKind: 'initializing-foundation' });
+    using harness = await createEntryHarness({ path: '/', startupKind: 'initializing-foundation' });
     const context = harness.entry.captureModelLaunchStartContext();
     expect(await context.defaults).toBeUndefined();
     expect(context.isCurrent()).toBe(false);
     expect(harness.captureDefaults).not.toHaveBeenCalled();
   });
 
-  it('latches ordinary root routing only after the initial global query has been applied', async () => {
+  it('keeps the root home routing only after the initial global query has been applied', async () => {
     using harness = await createEntryHarness({ path: '/?global-endpoint-type=ollama&global-endpoint-url=http%3A%2F%2Flocalhost%3A11434&global-model=chosen', startupKind: 'initializing-foundation' });
     expect(harness.entry.intent.value.kind).toBe('pending');
     expect(harness.resume).not.toHaveBeenCalled();
@@ -157,7 +200,8 @@ describe('application entry ownership', () => {
     expect(harness.entry.intent.value.kind).toBe('pending');
     expect(harness.resume).not.toHaveBeenCalled();
     harness.startupState.value = { kind: 'starting-main' };
-    expect(harness.entry.intent.value.kind).toBe('ordinary');
+    expect(harness.entry.intent.value.kind).toBe('home');
+    expect(harness.entry.modelSelection.value).toBeUndefined();
     expect(harness.entry.automaticActivity.value).toBe('ordinary');
     expect(harness.resume).toHaveBeenCalledOnce();
   });
@@ -184,7 +228,7 @@ describe('application entry ownership', () => {
   });
 
   it('continues an owned chat handoff without enabling unrelated automatic connections', async () => {
-    using harness = await createEntryHarness({ path: '/home', startupKind: 'ready' });
+    using harness = await createEntryHarness({ path: '/', startupKind: 'ready' });
     const context = harness.entry.captureModelLaunchContext();
     expect(harness.entry.prepareModelLaunchHandoff({ owner: context.owner, chatPath: '/chat/created' })).toBe(true);
     await harness.router.push('/chat/created');
@@ -197,7 +241,7 @@ describe('application entry ownership', () => {
   });
 
   it('restores an origin on Back and gives an explicit home visit a new origin', async () => {
-    using harness = await createEntryHarness({ path: '/home', startupKind: 'ready' });
+    using harness = await createEntryHarness({ path: '/', startupKind: 'ready' });
     const context = harness.entry.captureModelLaunchContext();
     harness.entry.homeSelection.value = { suggestionId: 'gpt-oss-20b', quantizationId: 'mxfp4' };
     harness.entry.prepareModelLaunchHandoff({ owner: context.owner, chatPath: '/chat/created' });
@@ -223,8 +267,8 @@ describe('application entry ownership', () => {
     expect(harness.entry.intent.value.kind).toBe('home');
     expect(harness.entry.captureModelLaunchContext().homeOriginId).toBe(context.homeOriginId);
     expect(harness.entry.homeSelection.value.suggestionId).toBe('gpt-oss-20b');
-    expect(harness.entry.automaticActivity.value).toBe('deferred');
-    expect(harness.resume).not.toHaveBeenCalled();
+    expect(harness.entry.automaticActivity.value).toBe('ordinary');
+    expect(harness.resume).toHaveBeenCalledOnce();
   });
 
   it('opens explicit model settings without consuming query or changing the URL', async () => {
@@ -268,7 +312,7 @@ describe('application entry ownership', () => {
   });
 
   it('blocks early controls until the existing ready state and has a passive fallback', async () => {
-    using harness = await createEntryHarness({ path: '/home', startupKind: 'ready' });
+    using harness = await createEntryHarness({ path: '/', startupKind: 'ready' });
     harness.startupState.value = { kind: 'starting-main' };
     await harness.entry.openHome();
     harness.entry.openSettings({ tab: 'connection', opener: undefined });

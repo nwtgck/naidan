@@ -23,6 +23,7 @@ const settingsStore = {
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => settingsStore }));
 vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isSidebarOpen: ref(true), isDebugOpen: ref(false) }) }));
 vi.mock('@/features/image-generation/session/navigation', () => ({ useImageGenerationWorkspaceNavigation: () => ({ active: imageNavigation }) }));
+vi.mock('@/components/HomeWelcome.vue', () => ({ default: { template: '<div data-testid="home-welcome" />' } }));
 vi.mock('@/components/Sidebar.vue', () => ({ default: { template: '<div data-testid="sidebar" />' } }));
 vi.mock('@/features/image-generation/components/ImageGenerationSidebar.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div data-testid="image-sidebar" />' } }));
 vi.mock('@/components/AppEntrySurface.vue', () => ({
@@ -114,9 +115,9 @@ describe('MainAppSurface entry routing', () => {
     expect(pageSetup).toHaveBeenCalledOnce();
   });
 
-  it('shows an explicit home without setting up the underlying route', async () => {
-    const { wrapper } = await mountSurface({ path: '/home', query: {} });
-    expect(wrapper.find('[data-testid="entry-surface"]').exists()).toBe(true);
+  it('shows the root home without setting up the underlying route or a previously selected chat', async () => {
+    const { wrapper } = await mountSurface({ path: '/', query: {} });
+    expect(wrapper.find('[data-testid="home-welcome"]').exists()).toBe(true);
     expect(pageSetup).not.toHaveBeenCalled();
   });
 });

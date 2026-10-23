@@ -598,6 +598,11 @@ export function useModelLaunchChat({ chat, resolved }: {
   async function returnToHome(): Promise<void> {
     const origin = homeOriginId.value;
     if (origin !== undefined) {
+      const download = job.value;
+      if (download !== undefined) {
+        // Explicit Back pauses this transfer; unmounting alone keeps it running.
+        queue.cancel({ id: download.id });
+      }
       await appEntry.returnToHome({ homeOriginId: origin });
     }
   }

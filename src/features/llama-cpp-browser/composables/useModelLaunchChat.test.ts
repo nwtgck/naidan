@@ -21,7 +21,7 @@ import { provideDocumentMetadata } from '@/composables/useDocumentMetadata';
 import LlamaCppBrowserModelLaunchEntry from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchEntry.vue';
 import { useModelLaunchCoordinator } from './useModelLaunchCoordinator';
 import { TEST_ONLY as entryTestOnly } from '@/features/llama-cpp-browser/model-launch/entry-state';
-import { rememberModelLaunchSession, TEST_ONLY as sessionTestOnly } from '@/features/llama-cpp-browser/model-launch/session';
+import { readModelLaunchSession, rememberModelLaunchSession, TEST_ONLY as sessionTestOnly } from '@/features/llama-cpp-browser/model-launch/session';
 import { isModelLaunchPrepared, TEST_ONLY as preparationTestOnly } from '@/features/llama-cpp-browser/model-launch/preparation';
 import type { ObservedLegacyModelDownload } from '@/features/llama-cpp-browser/model-launch/restore';
 import type { HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
@@ -36,6 +36,7 @@ const observe = vi.fn();
 const captureBinding = vi.fn();
 const prepare = vi.fn();
 const prepareModel = vi.fn();
+const returnHome = vi.fn(async () => {});
 let activeLaunch: ChatModelLaunch;
 let launchEnabled = true;
 let storageVersion = 0;
@@ -50,7 +51,7 @@ vi.mock('@/composables/useAppEntry', () => ({
     let handoff: string | undefined;
     return {
       interaction: ref('ready'),
-      returnToHome: vi.fn(async () => {}),
+      returnToHome: returnHome,
       captureModelLaunchContext: () => {
         const path = router?.currentRoute.value.fullPath;
         return {
@@ -189,7 +190,7 @@ afterEach(() => scopes.splice(0).forEach(scope => scope.stop()));
 function metadataOwner({ router, content }: { router: Router, content: ReturnType<typeof defineComponent> }) {
   return mount(defineComponent({
     setup() {
-      provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+      provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), finishHomeIntroduction: () => {} });
       return () => h(content);
     },
   }), { global: { plugins: [router] } });
@@ -384,6 +385,59 @@ describe('model launch chat workflow', () => {
     await flushPromises();
     expect(queue.jobs.value[0]?.status).toBe('complete');
     expect(initialize).not.toHaveBeenCalled();
+  });
+
+  it('pauses only the selected model before returning to model selection and can resume it', async () => {
+    readModelLaunchSession({ chatId: currentChat.value!.id })!.homeOriginId = 'home-origin';
+    const gate = Promise.withResolvers<void>();
+    download.mockImplementationOnce(async ({ signal }: { signal: AbortSignal }) => {
+      signal.addEventListener('abort', () => gate.reject(new DOMException('Paused', 'AbortError')), { once: true });
+      await gate.promise;
+    });
+    const { state } = mountState();
+    await flushPromises();
+    await state.adoptAndDownload();
+    await flushPromises();
+    expect(state.job.value?.status).toBe('downloading');
+    const other = targetForChoice({ catalog, path: 'Model-Q8_0.gguf' });
+    const otherDownload = queue.enqueue({ key: 'other-model', repository: catalog.repository, source: 'repository', prepare: async () => other.selection });
+    returnHome.mockImplementationOnce(async () => {
+      expect(state.job.value?.status).toBe('pausing');
+    });
+
+    await state.returnToHome();
+    await flushPromises();
+
+    expect(returnHome).toHaveBeenCalledExactlyOnceWith({ homeOriginId: 'home-origin' });
+    expect(state.job.value?.status).toBe('paused');
+    expect((await otherDownload.done).status).toBe('complete');
+    expect(installed.has(base.target.modelId)).toBe(false);
+
+    await state.adoptAndDownload();
+    await flushPromises();
+
+    expect(state.job.value?.status).toBe('complete');
+    expect(installed.has(base.target.modelId)).toBe(true);
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it('does not pause a download when there is no model selection page to return to', async () => {
+    const gate = Promise.withResolvers<void>();
+    download.mockImplementationOnce(async ({ signal }: { signal: AbortSignal }) => {
+      signal.addEventListener('abort', () => gate.reject(new DOMException('Paused', 'AbortError')), { once: true });
+      await gate.promise;
+    });
+    const { state } = mountState();
+    await flushPromises();
+    await state.adoptAndDownload();
+    await flushPromises();
+
+    await state.returnToHome();
+
+    expect(returnHome).not.toHaveBeenCalled();
+    expect(state.job.value?.status).toBe('downloading');
+    queue.cancel({ id: state.job.value!.id });
+    await flushPromises();
   });
 
   it('allows chat after file verification even if writing global defaults fails', async () => {

@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { defineComponent, onMounted, ref, shallowRef } from 'vue';
 import type { AppInteraction } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
 import App from './App.vue';
+
+enableAutoUnmount(afterEach);
 
 const appInteraction = ref<AppInteraction>('blocked-by-startup');
 
@@ -11,12 +13,21 @@ vi.mock('@/composables/useAppPresentation', () => ({
   provideAppPresentation: () => ({
     appInteraction,
     homeIntroduction: ref({ kind: 'inactive' }),
-    continueHomeIntroduction: vi.fn(),
     finishHomeIntroduction: vi.fn(),
   }),
 }));
 
-vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: vi.fn() }));
+const modelSelection = ref<unknown>();
+vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: () => ({ modelSelection }) }));
+const dialogMounted = vi.fn();
+vi.mock('@/components/BrowserModelWelcomeDialog.vue', () => ({
+  default: {
+    setup() {
+      onMounted(dialogMounted);
+    },
+    template: '<div data-testid="browser-model-dialog" />',
+  },
+}));
 
 vi.mock('@/components/GlobalDialogHost.vue', () => ({
   default: {
@@ -40,6 +51,8 @@ vi.mock('@/components/startup/StartupErrorView.vue', () => ({
 describe('App', () => {
   beforeEach(() => {
     appInteraction.value = 'blocked-by-startup';
+    modelSelection.value = undefined;
+    dialogMounted.mockClear();
   });
 
   function mountApp({ state }: {
@@ -147,6 +160,23 @@ describe('App', () => {
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
     expect(mounted).toHaveBeenCalledOnce();
+  });
+
+  it('paints one synchronous dialog before MainApp and retains it across its mounting', async () => {
+    modelSelection.value = { phase: 'open' };
+    const MainApp = defineComponent({ template: '<div data-testid="main-app" />' });
+    const { wrapper, startupState } = mountApp({ state: { kind: 'starting-main' } });
+    expect(wrapper.find('[data-testid="browser-model-dialog"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(false);
+    expect(dialogMounted).toHaveBeenCalledOnce();
+    startupState.value = { kind: 'rendering-main', mainApp: MainApp };
+    await wrapper.vm.$nextTick();
+    startupState.value = { kind: 'ready', mainApp: MainApp };
+    appInteraction.value = 'blocked-by-model-selection';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="app-content-host"]').attributes('inert')).toBeDefined();
+    expect(dialogMounted).toHaveBeenCalledOnce();
   });
 
   it('shows a startup error without a setup overlay', () => {

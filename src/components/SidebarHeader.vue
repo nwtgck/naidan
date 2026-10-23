@@ -21,7 +21,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <div :tw-class="['pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center overflow-hidden', expanded ? 'justify-between px-4' : 'justify-center px-1 flex-col gap-1']" data-testid="sidebar-brand">
-    <RouterLink v-if="expanded" to="/home" custom v-slot="{ href }">
+    <RouterLink v-if="expanded" to="/" custom v-slot="{ href }">
       <a :href="href" @click="openHome({ event: $event })" tw-class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
         <div tw-class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0"><Logo :size="20" /></div>
         <div class="animate-in fade-in" tw-class="flex items-baseline gap-1.5 duration-300">

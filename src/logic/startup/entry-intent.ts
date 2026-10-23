@@ -13,16 +13,12 @@ export function hasSelectedGlobalChatModel({ settings }: { settings: Pick<Settin
     || (isConfiguredEndpoint({ endpoint: settings.endpoint }) && !!settings.defaultModelId);
 }
 
-export function resolveAppEntryKind({ route, initialized, settings }: {
+export function resolveAppEntryKind({ route, initialized }: {
   route: { path: string, query: LocationQuery },
   initialized: boolean,
-  settings: Pick<Settings, 'endpoint' | 'defaultModelId'>,
 }): 'pending' | 'home' | 'model-preview' | 'ordinary' {
   if (hasModelEntryQuery({ query: route.query })) {
     return 'model-preview';
-  }
-  if (route.path === '/home') {
-    return 'home';
   }
   if (route.path !== '/' || route.query.q !== undefined || route.query.settings !== undefined) {
     return 'ordinary';
@@ -30,11 +26,11 @@ export function resolveAppEntryKind({ route, initialized, settings }: {
   if (!initialized) {
     return 'pending';
   }
-  return hasSelectedGlobalChatModel({ settings }) ? 'ordinary' : 'home';
+  return 'home';
 }
 
 export function shouldDeferInitialModelRefresh({ route }: { route: { path: string, query: LocationQuery } }): boolean {
-  return hasModelEntryQuery({ query: route.query }) || route.path === '/' || route.path === '/home';
+  return hasModelEntryQuery({ query: route.query }) || route.path === '/';
 }
 
 export const TEST_ONLY = {

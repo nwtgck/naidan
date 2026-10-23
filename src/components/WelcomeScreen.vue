@@ -11,6 +11,7 @@ defineProps<{
   hasInput?: boolean,
   // Only the model-link setup opts out; ordinary welcome screens keep discovery.
   suggestionsVisibility?: 'visible' | 'hidden',
+  layout?: 'chat' | 'standalone',
 }>();
 
 defineEmits<{
@@ -70,7 +71,7 @@ defineExpose({
 </script>
 
 <template>
-  <WelcomeScreenFrame :placement="slots.primary || slots.notice || slots.actions ? 'contained' : 'floating'">
+  <WelcomeScreenFrame :placement="layout === 'standalone' ? 'standalone' : slots.primary || slots.notice || slots.actions ? 'contained' : 'floating'">
 
     <slot name="primary">
       <!-- Security Status Section -->
@@ -110,6 +111,8 @@ defineExpose({
               </template>
             </p>
           </div>
+
+          <div v-if="slots['model-selection']" tw-class="flex justify-center pt-3"><slot name="model-selection" /></div>
 
           <!-- Standalone Build Link (Only in Hosted Mode) -->
           <div v-if="isHosted" tw-class="flex justify-center pt-1">

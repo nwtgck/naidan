@@ -2,18 +2,18 @@
 import { computed, useId } from 'vue';
 import SettingsSelect from '@/components/SettingsSelect.vue';
 import { lazyStrings } from '@/strings';
-import { projectorChoices, type QuantizationChoice } from '@/features/llama-cpp-browser/hugging-face/presentation';
+import { projectorChoices } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import type { RepositoryFile } from '@/features/llama-cpp-browser/hugging-face/types';
 
 // Selection presentation only. Owners retain metadata, defaults and actions.
-const props = defineProps<{ choices: readonly (QuantizationChoice & { displayLabel: string })[], projectors: RepositoryFile[], disabled: boolean, multimodalDescriptionId: string | undefined }>();
+const props = defineProps<{ choices: readonly { primaryRelativePath: string, displayLabel: string, size: number }[], projectors: RepositoryFile[], disabled: boolean, multimodalDescriptionId: string | undefined }>();
 const quantization = defineModel<string>('quantization', { required: true });
 const multimodal = defineModel<'on' | 'off'>('multimodal', { required: true });
 const projector = defineModel<string>('projector', { required: true });
 const id = useId();
 const quantizationOptions = computed(() => [
   ...(!props.choices.some(choice => choice.primaryRelativePath === quantization.value) ? [{ value: '', label: lazyStrings.LlamaCppBrowserHuggingFaceManager__choose_model_files(), disabled: true }] : []),
-  ...props.choices.map(choice => ({ value: choice.primaryRelativePath, label: choice.displayLabel, detail: size({ bytes: choice.models.reduce((sum, model) => sum + model.size, 0) }) })),
+  ...props.choices.map(choice => ({ value: choice.primaryRelativePath, label: choice.displayLabel, detail: size({ bytes: choice.size }) })),
 ]);
 const projectorOptions = computed(() => projectorChoices({ files: props.projectors }));
 const companionOptions = computed(() => [

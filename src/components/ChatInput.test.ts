@@ -949,7 +949,7 @@ describe('ChatInput Integration', () => {
     { label: 'Ctrl+Enter', shortcut: { ctrlKey: true } },
     { label: 'Cmd+Enter', shortcut: { metaKey: true } },
   ])('requests onboarding with %s rather than submitting an incomplete chat', async ({ shortcut }) => {
-    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'select-model' });
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Unsent draft');
     // This data is held in the composer until a *successful* submission.
@@ -966,7 +966,7 @@ describe('ChatInput Integration', () => {
     }
     await flushPromises();
 
-    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(textarea.element.value).toBe('Unsent draft');
     expect(wrapper.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
@@ -975,13 +975,13 @@ describe('ChatInput Integration', () => {
 
   it('keeps image generation independent of missing chat text-model setup', async () => {
     mockIsImageMode.value = true;
-    const wrapper = getWrapper({ isSubmissionEnabled: true, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: true, textSubmissionAction: 'select-model' });
     await wrapper.get('[data-testid="chat-input"]').setValue('draw a landscape');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
     await flushPromises();
     expect(mockSendImageRequest).toHaveBeenCalledOnce();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
     wrapper.unmount();
   });
 
@@ -989,10 +989,10 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper({
       autoSendPrompt: 'Unsent prompt from URL',
       isSubmissionEnabled: false,
-      textSubmissionAction: 'open-onboarding',
+      textSubmissionAction: 'select-model',
     });
     await flushPromises();
-    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    expect(wrapper.emitted('request-model-selection')).toBeUndefined();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
     expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]').element.value).toBe('Unsent prompt from URL');
     expect(wrapper.emitted('auto-sent')).toHaveLength(1);
@@ -1000,11 +1000,11 @@ describe('ChatInput Integration', () => {
   });
 
   it('does not retry an intercepted message automatically after setup finishes', async () => {
-    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'select-model' });
     const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
     await textarea.setValue('Send after setup');
     await wrapper.get('[data-testid="send-button"]').trigger('click');
-    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    expect(wrapper.emitted('request-model-selection')).toHaveLength(1);
     await wrapper.setProps({ isSubmissionEnabled: true, textSubmissionAction: 'send' });
     await flushPromises();
     expect(mockSendMessageForChat).not.toHaveBeenCalled();

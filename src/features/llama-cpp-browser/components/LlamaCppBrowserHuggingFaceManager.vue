@@ -61,7 +61,7 @@ const visiblePending = computed(() => pending.value.filter(pendingJob => !queue.
 const catalogCurrent = computed(() => input.value.trim() === checkedInput.value);
 const choices = computed(() => {
   const options = quantizationChoices({ repository: catalog.value?.repository ?? '', models: catalog.value?.models ?? [] });
-  return options.map(option => ({ ...option, displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.primaryRelativePath})` : option.label }));
+  return options.map(option => ({ ...option, size: option.models.reduce((sum, model) => sum + model.size, 0), displayLabel: options.filter(other => other.label === option.label).length > 1 ? `${option.label} (${option.primaryRelativePath})` : option.label }));
 });
 const selectedChoice = computed(() => choices.value.find(choice => choice.primaryRelativePath === quantization.value));
 const selected = computed(() => {

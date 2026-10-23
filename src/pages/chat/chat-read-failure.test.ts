@@ -20,6 +20,7 @@ const { mockLoadChat, mockSetCurrentChatId, mockUpdateContent, mockUpdateMeta, m
 vi.mock('@/00-storage/service', () => ({
   storageService: {
     loadChat: mockLoadChat,
+    captureSettingsStorage: () => () => true,
     updateChatContent: mockUpdateContent,
     updateChatMeta: mockUpdateMeta,
     subscribeToChanges: vi.fn(() => () => undefined),
@@ -74,11 +75,11 @@ let store: ReturnType<typeof createChatDataStore>;
 let scope: ReturnType<typeof effectScope>;
 let wrapper: VueWrapper | undefined;
 let provider: LocalStorageProvider;
-const route = ref<{ params: { id: string }, query: Record<string, string> }>({ params: { id: 'a' }, query: {} });
+const route = ref<{ path?: string, params: { id: string }, query: Record<string, string> }>({ params: { id: 'a' }, query: {} });
 const router = {
   currentRoute: route,
-  replace: vi.fn(({ query }: { query: Record<string, string> }) => {
-    route.value = { ...route.value, query };
+  replace: vi.fn(({ path, query }: { path?: string, query: Record<string, string> }) => {
+    route.value = { path: path ?? route.value.path, params: path === '/' ? { id: '' } : route.value.params, query };
   }),
 };
 
@@ -198,7 +199,9 @@ describe('chat route read failures', () => {
     route.value = { params: { id: 'missing' }, query: { q: 'Do not send anywhere else' } };
     await flushPromises();
     expect(store.currentChatRef.value).toBeNull();
-    expect(wrapper!.find('[data-testid="unselected-chat"]').exists()).toBe(true);
+    expect(router.replace).toHaveBeenLastCalledWith({ path: '/', query: {}, hash: '' });
+    expect(route.value.path).toBe('/');
+    expect(route.value.query).toEqual({});
     expect(wrapper!.find('[data-testid="chat-load-error"]').exists()).toBe(false);
     expect(mockSetCurrentChatId).toHaveBeenLastCalledWith({ chatId: null });
     expect(mockSend).not.toHaveBeenCalled();

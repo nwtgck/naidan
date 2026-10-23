@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent } from 'vue';
+import HomeWelcome from '@/components/HomeWelcome.vue';
 import Sidebar from '@/components/Sidebar.vue';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
@@ -70,7 +71,8 @@ defineExpose({
 
     <template #main>
       <div tw-class="flex-1 relative min-h-0">
-        <AppEntrySurface v-if="renderEntry" />
+        <HomeWelcome v-if="entry.intent.value.kind === 'home'" />
+        <AppEntrySurface v-else-if="renderEntry" />
         <router-view v-else v-slot="{ Component }">
           <component :is="Component" />
         </router-view>

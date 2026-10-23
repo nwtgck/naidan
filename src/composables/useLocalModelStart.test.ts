@@ -65,12 +65,12 @@ function savedChat({ request }: { request: { chatId: Chat['id'], chatGroupId: Ch
 }
 
 function context({ isCurrent }: { isCurrent(): boolean }): ModelLaunchStartContext {
-  return { owner: Symbol('entry'), homeOriginId: 'home', mode: 'home', fullPath: '/home', routePath: '/home', isCurrent, defaults: mocks.captureDefaults() };
+  return { owner: Symbol('entry'), homeOriginId: 'home', mode: 'home', fullPath: '/', routePath: '/', isCurrent, defaults: mocks.captureDefaults() };
 }
 
 async function render() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] });
-  await router.push('/home');
+  await router.push('/');
   let command: ReturnType<typeof useLocalModelStart> | undefined;
   const wrapper = mount(defineComponent({
     setup() {
@@ -198,7 +198,7 @@ it.each(['route', 'route roundtrip', 'storage', 'source', 'abort', 'unmount'])('
     await router.push('/elsewhere');
   }
   if (reason === 'route roundtrip') {
-    await router.push('/home');
+    await router.push('/');
   }
   if (reason === 'storage') {
     mocks.storageCurrent = false;
@@ -335,7 +335,7 @@ it.each(['storage', 'sidebar'])('waits for selected-model revalidation and still
     sidebar.resolve();
   }
   await flushPromises();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
   revalidated.resolve(first);
   await pending;
   expect(mocks.prepare).toHaveBeenCalledOnce();
@@ -387,7 +387,7 @@ it.each(['removed', 'replaced'])('rejects visibly when the selected stored model
   await flushPromises();
   saved.resolve(savedChat({ request: mocks.prepare.mock.calls[0]![0].request }));
   await expect(pending).rejects.toThrow(change === 'removed' ? 'unavailable' : 'files changed');
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
   expect(mocks.offer).not.toHaveBeenCalled();
 });
 
@@ -409,7 +409,7 @@ it('rejects the original temporary registration in flight and lets a new explici
   saved.resolve(savedChat({ request: mocks.prepare.mock.calls[0]![0].request }));
   await expect(pending).rejects.toThrow('files changed');
   expect(mocks.captureSource).toHaveBeenCalledOnce();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
   await startLocalModel({ model: first, signal: new AbortController().signal });
   expect(mocks.captureSource).toHaveBeenCalledTimes(2);
   expect(mocks.prepare).toHaveBeenCalledTimes(2);
@@ -433,7 +433,7 @@ it('does not let an older successful read authorize a newer selected-model remov
   await flushPromises();
   saved.resolve(savedChat({ request: mocks.prepare.mock.calls[0]![0].request }));
   await expect(pending).rejects.toThrow('unavailable');
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
 });
 
 it('revalidates the selected model immediately before handoff even without a list notification', async () => {
@@ -445,7 +445,7 @@ it('revalidates the selected model immediately before handoff even without a lis
   const { router, startLocalModel } = await render();
   await expect(startLocalModel({ model: stored, signal: new AbortController().signal })).rejects.toThrow('unavailable');
   expect(mocks.prepare).toHaveBeenCalledOnce();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
   expect(mocks.offer).not.toHaveBeenCalled();
 });
 
@@ -486,7 +486,7 @@ it('does not adopt a replacement stored model when its original selection read w
   read.resolve(stored);
   await expect(pending).rejects.toThrow('files changed');
   expect(mocks.prepare).not.toHaveBeenCalled();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
 });
 
 it('does not retry an actual storage I/O failure just because an unrelated notification happened first', async () => {
@@ -499,7 +499,7 @@ it('does not retry an actual storage I/O failure just because an unrelated notif
   const { router, startLocalModel } = await render();
   await expect(startLocalModel({ model: first, signal: new AbortController().signal })).rejects.toThrow('Storage quota exceeded');
   expect(mocks.prepare).toHaveBeenCalledOnce();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
 });
 
 it('keeps a changed input File registration visible as a failure after waiting for the click default snapshot', async () => {
@@ -524,5 +524,5 @@ it('does not erase an observed selected-model read failure when another generic 
   read.reject(new Error('Selected local model unavailable'));
   await expect(pending).rejects.toThrow('unavailable');
   expect(mocks.prepare).not.toHaveBeenCalled();
-  expect(router.currentRoute.value.path).toBe('/home');
+  expect(router.currentRoute.value.path).toBe('/');
 });

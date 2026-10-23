@@ -1,6 +1,7 @@
-import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import LlamaCppBrowserModelConfiguration from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelConfiguration.vue';
 import BrowserModelPreparation from './BrowserModelPreparation.vue';
 
 beforeEach(async () => {
@@ -91,12 +92,14 @@ describe('browser model file selection', () => {
         wrapper.unmount();
       },
     };
-    expect(wrapper.get('[data-testid="model-launch-confirm-selection"]').attributes('disabled')).toBeDefined();
-    await wrapper.get('[data-testid="model-launch-main-file"]').setValue('other/Q4_K_M.gguf');
-    expect(wrapper.get('[data-testid="model-launch-confirm-selection"]').attributes('disabled')).toBeDefined();
-    await wrapper.get('[data-testid="model-launch-companion-file"]').setValue('vision-b.gguf');
-    await wrapper.get('[data-testid="model-launch-confirm-selection"]').trigger('click');
-    expect(wrapper.emitted('confirm-selection')).toEqual([[{ operation, mainFilePath: 'other/Q4_K_M.gguf', companionFilePath: 'vision-b.gguf' }]]);
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="browser-model-files"]').exists()).toBe(true));
+    expect(wrapper.get('[data-testid="browser-model-files-confirm"]').attributes('disabled')).toBeDefined();
+    const configuration = wrapper.getComponent(LlamaCppBrowserModelConfiguration);
+    configuration.vm.$emit('update:quantization', 'other/Q4_K_M.gguf');
+    configuration.vm.$emit('update:projector', 'vision-b.gguf');
+    await flushPromises();
+    await wrapper.get('[data-testid="browser-model-files-confirm"]').trigger('click');
+    expect(wrapper.emitted('confirm-selection')).toEqual([[{ operation, mainFilePath: 'other/Q4_K_M.gguf', companionFilePath: 'vision-b.gguf', multimodal: 'on' }]]);
   });
 
   it('allows another quantization after preparation and locks it during transfer', async () => {

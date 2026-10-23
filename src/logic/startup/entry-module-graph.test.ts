@@ -190,6 +190,17 @@ describe('production entry module boundaries', () => {
     expect(preservedOnboardingReferences({ graph })).toEqual([]);
   }, 30000);
 
+  it('synchronously owns the model dialog, its shell and its model cards before MainApp is imported', () => {
+    for (const [from, target] of [
+      ['src/App.vue', 'src/components/BrowserModelWelcomeDialog.vue'],
+      ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelDialog.vue'],
+      ['src/components/BrowserModelWelcomeDialog.vue', 'src/components/BrowserModelWelcome.vue'],
+    ]) {
+      expect(graph.referencesFrom({ from: from! })).toContainEqual({ from, target, kind: 'static' });
+    }
+    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserModelFileSelection.vue', kind: 'dynamic' });
+  });
+
   it('keeps App synchronous dependencies lightweight across the existing settings boundary', () => {
     // App's entry controller and the reused language menu share the inherited
     // settings owner and its synchronous service facades. Exempt these exact

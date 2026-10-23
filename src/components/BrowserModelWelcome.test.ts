@@ -43,7 +43,7 @@ describe('browser model welcome', () => {
         fetch.mockRestore();
       },
     };
-    expect(wrapper.get('[data-testid="browser-model-heading"]').text()).toBe('Run AI in your web browser');
+    expect(wrapper.get('[data-testid="browser-model-heading"]').text()).toBe('Run AI directly in your web browser');
     const welcome = wrapper.getComponent(WelcomeScreenFrame);
     expect(welcome.props('placement')).toBe('contained');
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);

@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 async function mountCoordinator({ path, beforeMount }: { path: string, beforeMount?: () => void | Promise<void> }) {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/home', component: { template: '<div />' } }, { path: '/settings/connection', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }, { path: '/elsewhere', component: { template: '<div />' } }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/settings/connection', component: { template: '<div />' } }, { path: '/chat/:id', component: { template: '<div />' } }, { path: '/elsewhere', component: { template: '<div />' } }] });
   entryRouter = router;
   await router.push(path);
   await router.isReady();
@@ -285,14 +285,14 @@ describe('direct-chat model link coordinator', () => {
     homeOriginId = 'first-home-origin';
     const pending = Promise.withResolvers<RepositoryCatalog>();
     inspect.mockReturnValueOnce(pending.promise);
-    const router = await mountCoordinator({ path: '/home' });
+    const router = await mountCoordinator({ path: '/' });
     const request = { input: catalog.repository, requestedVariant: 'Q4_K_M', multimodal: 'auto' as const, destination: { kind: 'opfs' as const }, source: 'home' as const };
     startModelLaunch({ request });
     await vi.waitFor(() => expect(inspect).toHaveBeenCalledOnce());
     homeOriginId = 'second-home-origin';
     contextOwner.value = Symbol('new-home-entry');
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe('/home');
+    expect(router.currentRoute.value.path).toBe('/');
     expect(modelLaunchEntryState.value.status).toBe('idle');
     pending.resolve(catalog);
     await flushPromises();
@@ -400,23 +400,63 @@ describe('direct-chat model link coordinator', () => {
     expect(router.currentRoute.value.path).toBe('/');
   });
 
+  it('applies a dialog selection to the current chat without creating or navigating to a new one', async () => {
+    const applyTarget = vi.fn();
+    const router = await mountCoordinator({ path: '/chat/existing' });
+    const unregister = registerModelLaunchEntryContext({ capture: () => ({ owner: contextOwner.value, isCurrent: () => true, defaults: Promise.resolve(undefined), applyTarget }) });
+    using _capture = {
+      [Symbol.dispose]() {
+        unregister();
+      },
+    };
+    startModelLaunch({ request: { input: catalog.repository, requestedVariant: 'Q4_K_M', multimodal: 'auto', destination: { kind: 'opfs' }, source: 'home' } });
+    await vi.waitFor(() => expect(applyTarget).toHaveBeenCalledOnce());
+    expect(applyTarget.mock.calls[0]![0].target.modelId).toContain('owner/Model-GGUF');
+    expect(prepare).not.toHaveBeenCalled();
+    expect(captureDefaults).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/chat/existing');
+    expect((await provider.loadHierarchy())?.items ?? []).toHaveLength(0);
+  });
+
+  it('applies a chat selection even when its entry still carries a reusable home session', async () => {
+    homeOriginId = 'retained-home-origin';
+    const router = await mountCoordinator({ path: '/' });
+    const request = { input: catalog.repository, requestedVariant: 'Q4_K_M', multimodal: 'auto' as const, destination: { kind: 'opfs' as const }, source: 'home' as const };
+    startModelLaunch({ request });
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
+    const path = router.currentRoute.value.path;
+    const applyTarget = vi.fn();
+    const unregister = registerModelLaunchEntryContext({ capture: () => ({ owner: contextOwner.value, isCurrent: () => true, defaults: Promise.resolve(undefined), applyTarget }) });
+    using _capture = {
+      [Symbol.dispose]() {
+        unregister();
+      },
+    };
+    startModelLaunch({ request });
+    await vi.waitFor(() => expect(applyTarget).toHaveBeenCalledOnce());
+    expect(router.currentRoute.value.path).toBe(path);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(modelLaunchEntryState.value.status).toBe('idle');
+  });
+
   it('returns to an eligible home chat before resolving newer remote metadata', async () => {
     homeOriginId = 'home-origin';
-    const router = await mountCoordinator({ path: '/home' });
+    const router = await mountCoordinator({ path: '/' });
     const request = { input: catalog.repository, requestedVariant: 'Q4_K_M', multimodal: 'auto' as const, destination: { kind: 'opfs' as const }, source: 'home' as const };
     startModelLaunch({ request });
     await vi.waitFor(() => expect(router.currentRoute.value.path).toMatch(/^\/chat\//));
     const firstPath = router.currentRoute.value.path;
-    await router.push('/home');
+    await router.push('/');
     inspect.mockResolvedValue({ ...catalog, revision: 'b'.repeat(40) });
     startModelLaunch({ request });
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(firstPath));
     expect(inspect).toHaveBeenCalledOnce();
     expect(prepare).toHaveBeenCalledOnce();
     consumeModelLaunchSession({ chatId: prepare.mock.calls[0]![0].request.chatId });
-    await router.push('/home');
+    await router.push('/');
     startModelLaunch({ request });
-    await vi.waitFor(() => expect(router.currentRoute.value.path).not.toBe('/home'));
+    await vi.waitFor(() => expect(router.currentRoute.value.path).not.toBe('/'));
     expect(router.currentRoute.value.path).not.toBe(firstPath);
     expect(prepare).toHaveBeenCalledTimes(2);
   });

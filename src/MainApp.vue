@@ -4,6 +4,7 @@ import { routerKey } from 'vue-router';
 import MainAppSurface from '@/components/MainAppSurface.vue';
 import { useAppPresentation } from '@/composables/useAppPresentation';
 import { provideDocumentMetadata } from '@/composables/useDocumentMetadata';
+import { useAppEntry } from '@/composables/useAppEntry';
 
 const AppCommandRuntime = defineAsyncComponent(
   () => import('@/components/AppCommandRuntime.vue'),
@@ -12,15 +13,16 @@ const AppAuxiliaryUi = defineAsyncComponent(
   () => import('@/components/AppAuxiliaryUi.vue'),
 );
 
-const { appInteraction, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction } = useAppPresentation();
+const { homeIntroduction, finishHomeIntroduction } = useAppPresentation();
+const entry = useAppEntry();
 // Head management belongs to the lazy main app; startup uses the generated HTML.
-provideDocumentMetadata({ router: inject(routerKey, undefined), document, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction });
+provideDocumentMetadata({ router: inject(routerKey, undefined), document, homeIntroduction, finishHomeIntroduction });
 const postStartupFeatures = computed(() => {
-  const interaction = appInteraction.value;
+  const interaction = entry.interaction.value;
   switch (interaction) {
-  case 'blocked-by-startup':
+  case 'blocked':
     return 'inactive' as const;
-  case 'enabled':
+  case 'ready':
     return 'active' as const;
   default: {
     const _ex: never = interaction;
@@ -42,5 +44,5 @@ defineExpose({
 <template>
   <MainAppSurface :post-startup-features="postStartupFeatures" />
   <AppCommandRuntime v-if="postStartupFeatures === 'active'" />
-  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" />
+  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" :pwa-activation="entry.modelSelection.value === undefined ? 'active' : 'deferred'" />
 </template>

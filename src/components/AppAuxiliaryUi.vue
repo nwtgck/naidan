@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { type Component, computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useAppEntry } from '@/composables/useAppEntry';
+import { loadModelDiscoveryPanel, useAppEntry } from '@/composables/useAppEntry';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
@@ -13,10 +13,11 @@ import { transformersJsService } from '@/features/transformers-js';
 import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
+defineProps<{ pwaActivation: 'active' | 'deferred' }>();
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
 const LlamaCppBrowserPerformanceModal = shallowRef<Component>();
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
-const ModelDiscoveryPanel = defineAsyncComponent(() => import('@/components/ModelDiscoveryPanel.vue'));
+const ModelDiscoveryPanel = defineAsyncComponent(loadModelDiscoveryPanel);
 const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue'));
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
@@ -206,6 +207,7 @@ defineExpose({
     :tab="discoveryTab"
     :interaction="appEntry.interaction.value"
     :current-model-id="discoveryCurrentModelId"
+    :selection-target="appEntry.modelSelection.value?.target.kind === 'chat' ? 'chat' : undefined"
     @close="appEntry.closeDiscovery()"
   />
 
@@ -231,7 +233,7 @@ defineExpose({
 
   <GlobalSearchModal v-if="isSearchOpen" />
   <RecentChatsModal v-if="isRecentOpen" />
-  <PWAManager v-if="PWAManager" />
+  <PWAManager v-if="PWAManager && pwaActivation === 'active'" />
   <FileExplorerModal v-if="isFileExplorerOpen" />
 
   <PrintView v-if="activePrintMode !== undefined">

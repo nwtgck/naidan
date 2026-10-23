@@ -217,7 +217,7 @@ describe('AppCommandRuntime', () => {
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('automatically creates a new chat if none exist and on root path', async () => {
+  it('keeps an empty configured root on the welcome screen without creating a chat', async () => {
     mockChats.value = [];
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'auto-chat-id' } as unknown as Chat;
@@ -230,11 +230,11 @@ describe('AppCommandRuntime', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
-    expect(mockRouterPush).toHaveBeenCalledWith('/chat/auto-chat-id');
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('automatically creates a new chat if history is cleared (chats length becomes 0)', async () => {
+  it('does not create a chat when history is cleared', async () => {
     mockChats.value = [{ id: 'existing-chat' } as unknown as Chat];
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'post-clear-chat-id' } as unknown as Chat;
@@ -253,11 +253,11 @@ describe('AppCommandRuntime', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
-    expect(mockRouterPush).toHaveBeenCalledWith('/chat/post-clear-chat-id');
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
+  it('does not create a chat when returning to an empty root', async () => {
     mockChats.value = [];
     const currentRoute = reactive<{ path: string; query: Record<string, string> }>({
       path: '/settings',
@@ -282,7 +282,7 @@ describe('AppCommandRuntime', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
   });
 
   it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
@@ -473,7 +473,7 @@ describe('AppCommandRuntime', () => {
     expect(mockCreateNewChat).not.toHaveBeenCalled();
   });
 
-  it('creates a plain chat when list is empty even if system-prompt is in URL but q is missing', async () => {
+  it('keeps the root without a chat when system-prompt is specified without q', async () => {
     mockChats.value = [];
     const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
     (useRouter as unknown as Mock).mockReturnValue({
@@ -485,11 +485,7 @@ describe('AppCommandRuntime', () => {
     mountRuntime();
     await flushPromises();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith({
-      groupId: undefined,
-      modelId: undefined,
-      systemPrompt: undefined,
-    });
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
   });
 
   it('automatically creates a new chat with system prompt override when sp query is present', async () => {
@@ -620,13 +616,13 @@ describe('AppCommandRuntime', () => {
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('creates an ordinary initial chat with configured settings regardless of the legacy dismissed flag', async () => {
+  it('does not create a root chat from configured settings or the legacy dismissed flag', async () => {
     mockChats.value = [];
     (useSettings as unknown as Mock).mockReturnValue({ initialized: ref(true), settings: mockSettings, isOnboardingDismissed: ref(false) });
     mountRuntime();
     await flushPromises();
-    expect(mockCreateNewChat).toHaveBeenCalledTimes(1);
-    expect(mockRouterPush).toHaveBeenCalledWith('/chat/default-chat-id');
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
   it('preserves existing history on an ordinary root visit', async () => {
@@ -636,7 +632,7 @@ describe('AppCommandRuntime', () => {
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('does not create an ordinary initial chat until a global chat model is selected', async () => {
+  it('does not create a chat as a side effect of configuring a global model', async () => {
     mockChats.value = [];
     mockSettings.value = { endpoint: { type: 'openai', url: '' }, defaultModelId: undefined };
     mountRuntime();
@@ -644,7 +640,7 @@ describe('AppCommandRuntime', () => {
     expect(mockCreateNewChat).not.toHaveBeenCalled();
     mockSettings.value = { endpoint: { type: 'openai', url: 'http://localhost:11434/v1' }, defaultModelId: 'selected' };
     await flushPromises();
-    expect(mockCreateNewChat).toHaveBeenCalledTimes(1);
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
   });
 
   it('keeps a q-only visit on the ordinary draft and auto-send route without requiring global selection', async () => {
@@ -657,6 +653,7 @@ describe('AppCommandRuntime', () => {
   });
 
   it('waits for entry readiness before starting the ordinary command', async () => {
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockEntryInteraction.value = 'blocked';
     mountRuntime();
@@ -675,6 +672,7 @@ describe('AppCommandRuntime', () => {
         creating.resolve(chat);
       },
     };
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockCreateNewChat.mockReturnValueOnce(creating.promise);
     mountRuntime();
@@ -690,7 +688,7 @@ describe('AppCommandRuntime', () => {
     creating.resolve(chat);
     await flushPromises();
     expect(mockCreateNewChat).toHaveBeenCalledTimes(1);
-    expect(mockRouterPush).toHaveBeenCalledWith('/chat/single-flight');
+    expect(mockRouterPush).toHaveBeenCalledWith({ path: '/chat/single-flight', query: { q: 'draft' } });
   });
 
   it('does not continue a delayed group command after leaving its route', async () => {
@@ -719,11 +717,12 @@ describe('AppCommandRuntime', () => {
         creating.resolve(chat);
       },
     };
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockCreateNewChat.mockReturnValueOnce(creating.promise);
     mountRuntime();
     await flushPromises();
-    currentRoute.path = '/home';
+    currentRoute.path = '/settings';
     mockCurrentChat.value = chat;
     creating.resolve(chat);
     await flushPromises();
@@ -732,6 +731,7 @@ describe('AppCommandRuntime', () => {
 
   it('retries navigation with the created chat without creating it again after navigation fails', async () => {
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockRouterPush.mockImplementationOnce(() => Promise.resolve({ type: 4 }));
     mountRuntime();
@@ -748,11 +748,12 @@ describe('AppCommandRuntime', () => {
     await flushPromises();
     expect(mockCreateNewChat).toHaveBeenCalledTimes(1);
     expect(mockRouterPush).toHaveBeenCalledTimes(2);
-    expect(mockRouterPush).toHaveBeenLastCalledWith('/chat/default-chat-id');
+    expect(mockRouterPush).toHaveBeenLastCalledWith({ path: '/chat/default-chat-id', query: { q: 'draft' } });
   });
 
   it('does not loop after creation fails and allows an explicit retry of the same operation', async () => {
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockCreateNewChat.mockRejectedValueOnce(new Error('Storage unavailable'));
     mountRuntime();
@@ -764,11 +765,12 @@ describe('AppCommandRuntime', () => {
     await mockAddToast.mock.calls[0]?.[0].onAction();
     await flushPromises();
     expect(mockCreateNewChat).toHaveBeenCalledTimes(2);
-    expect(mockRouterPush).toHaveBeenCalledWith('/chat/default-chat-id');
+    expect(mockRouterPush).toHaveBeenCalledWith({ path: '/chat/default-chat-id', query: { q: 'draft' } });
   });
 
   it.each(['owner', 'route', 'storage'] as const)('does not renew an old retry after its %s changes', async (changed) => {
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockCreateNewChat.mockRejectedValueOnce(new Error('Storage unavailable'));
     mountRuntime();
@@ -778,7 +780,7 @@ describe('AppCommandRuntime', () => {
     switch (changed) {
     case 'owner': mockEntryOwner.value = Symbol('new-owner');
       break;
-    case 'route': currentRoute.path = '/home';
+    case 'route': currentRoute.path = '/settings';
       break;
     case 'storage': mockStorageCurrent.value = false;
       break;
@@ -795,6 +797,7 @@ describe('AppCommandRuntime', () => {
 
   it('does not resume a failed command after a newer explicit command has replaced it', async () => {
     using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    currentRoute.query = { q: 'draft' };
     mockChats.value = [];
     mockCreateNewChat.mockRejectedValueOnce(new Error('First failure')).mockRejectedValueOnce(new Error('Second failure'));
     mountRuntime();
@@ -837,7 +840,7 @@ describe('AppCommandRuntime', () => {
     switch (changed) {
     case 'owner': mockEntryOwner.value = Symbol('new-owner');
       break;
-    case 'route': currentRoute.path = '/home';
+    case 'route': currentRoute.path = '/settings';
       break;
     case 'storage': mockStorageCurrent.value = false;
       break;

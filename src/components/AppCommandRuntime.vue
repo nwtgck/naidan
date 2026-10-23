@@ -6,7 +6,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
-import { useChatListData } from '@/composables/chat/ui/useChatListData';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import {
   isAppInteractionEnabled,
@@ -19,13 +18,12 @@ import { useSettings } from '@/composables/useSettings';
 import { useAppEntry, type ModelLaunchAppContext } from '@/composables/useAppEntry';
 import { useToast } from '@/composables/useToast';
 import { ensureStrings } from '@/strings';
-import { hasModelEntryQuery, hasSelectedGlobalChatModel } from '@/logic/startup/entry-intent';
+import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
 import type { Chat, SystemPrompt } from '@/01-models/types';
 import { idToRaw, toChatId, type ChatGroupId } from '@/01-models/ids';
 
 const currentChatState = useCurrentChatState();
 const chatLifecycle = useChatLifecycle();
-const chatListData = useChatListData();
 const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
 const { appInteraction } = useAppPresentation();
@@ -60,7 +58,6 @@ type ChatCommand = {
   context: ModelLaunchAppContext,
   routePath: string,
   fullPath: string,
-  source: 'automatic' | 'manual',
   initialChatId: Chat['id'] | undefined,
   chatGroup: { kind: 'unresolved', input: string | undefined } | { kind: 'resolved', id: ChatGroupId | undefined },
   modelId: string | undefined,
@@ -126,9 +123,6 @@ async function runChatCommand({ command }: { command: ChatCommand }): Promise<vo
       return;
     }
     const path = `/chat/${idToRaw({ id: command.chat.id })}`;
-    if (command.source === 'automatic' && command.q === undefined) {
-      documentMetadata?.continueHomeIntroduction({ routePath: path });
-    }
     const failure = await router.push(command.q === undefined ? path : { path, query: { q: command.q } });
     if (failure) {
       throw new Error('Chat navigation did not complete.');
@@ -150,10 +144,8 @@ async function runChatCommand({ command }: { command: ChatCommand }): Promise<vo
 
 watch(
   [
-    () => chatListData.chats.value.length,
     () => router.currentRoute.value.fullPath,
     () => settingsStore.initialized.value,
-    () => hasSelectedGlobalChatModel({ settings: settingsStore.settings.value }),
     () => appEntry.intent.value,
     () => appEntry.interaction.value,
     () => appInteraction.value,
@@ -166,7 +158,7 @@ watch(
       return;
     }
     const q = currentRoute.query.q;
-    if (!q && (chatListData.chats.value.length !== 0 || !hasSelectedGlobalChatModel({ settings: settingsStore.settings.value }))) {
+    if (!q) {
       return;
     }
     const context = appEntry.captureModelLaunchContext();
@@ -178,7 +170,6 @@ watch(
       context,
       routePath: currentRoute.path,
       fullPath: currentRoute.fullPath,
-      source: 'automatic',
       initialChatId: currentChatState.currentChat.value?.id,
       chatGroup: { kind: 'unresolved', input: q && typeof currentRoute.query['chat-group'] === 'string' ? currentRoute.query['chat-group'] : undefined },
       modelId: q && typeof currentRoute.query.model === 'string' ? currentRoute.query.model : undefined,
@@ -214,7 +205,6 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
       context,
       routePath: router.currentRoute.value.path,
       fullPath: router.currentRoute.value.fullPath,
-      source: 'manual',
       initialChatId: currentChatState.currentChat.value?.id,
       chatGroup: { kind: 'resolved', id: undefined },
       modelId: undefined,

@@ -210,7 +210,7 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('paints the passive entry before loading the real main app', async () => {
+  it('gives the synchronous model dialog a paint opportunity before chat bootstrap and MainApp load', async () => {
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness();
 
@@ -225,7 +225,6 @@ describe('app startup', () => {
 
     expect(harness.startupState.value).toEqual({
       kind: 'starting-main',
-      entrySurface: EntrySurface,
     });
     expect(loadChatsForAppStartup).not.toHaveBeenCalled();
     expect(harness.animationFrameCallbacks).toHaveLength(1);
@@ -238,7 +237,6 @@ describe('app startup', () => {
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
       mainApp: MainApp,
-      entrySurface: EntrySurface,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
 

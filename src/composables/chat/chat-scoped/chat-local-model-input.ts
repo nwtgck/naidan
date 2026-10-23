@@ -13,6 +13,7 @@ export type ChatLocalModelOperation = {
 export type ChatLocalModelInput = {
   chatId: ChatId,
   owner: object,
+  binding: 'empty-chat' | 'chat',
   state: ChatLocalModelOperation,
   controller: AbortController,
   isStorageCurrent(): boolean,

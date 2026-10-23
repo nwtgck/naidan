@@ -39,6 +39,7 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4', titleGeneration: 'disabled' } },
     isOnboardingDismissed: { value: true },
+    synchronizeModelBindingSettings: async () => 'synchronized',
     onboardingDraft: { value: null },
   }),
 }));

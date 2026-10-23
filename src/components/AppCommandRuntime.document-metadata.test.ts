@@ -106,8 +106,8 @@ describe('unattended app startup metadata', () => {
     await flushPromises();
     expect(startupState.value.kind).toBe('ready');
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
-    expect(router.currentRoute.value.path).toBe(path === '/' && dismissed && !existing ? '/chat/automatic' : path);
-    expect(createNewChat).toHaveBeenCalledTimes(path === '/' && dismissed && !existing ? 1 : 0);
+    expect(router.currentRoute.value.path).toBe(path);
+    expect(createNewChat).not.toHaveBeenCalled();
     // All startup work and automatic navigation has settled without input or clicks.
     await flushPromises();
     expectMetadata({ metadata });
@@ -122,8 +122,8 @@ describe('unattended app startup metadata', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
       await flushPromises();
       // A deliberate new-chat action ends the introduction before storage completes.
-      expect(createNewChat).toHaveBeenCalledTimes(2);
-      expect(router.currentRoute.value.path).toBe('/chat/automatic');
+      expect(createNewChat).toHaveBeenCalledTimes(1);
+      expect(router.currentRoute.value.path).toBe('/');
       expectMetadata({ metadata: APPLICATION_METADATA });
       creating.resolve(automaticChat);
       await flushPromises();

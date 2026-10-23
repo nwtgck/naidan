@@ -9,12 +9,14 @@ import {
   type ComputedRef,
   type InjectionKey,
   type ShallowRef,
+  type Ref,
 } from 'vue';
 import type { StartupState } from '@/logic/startup/types';
 import { isHomepageIntroductionRoute, type HomeIntroduction } from '@/logic/document-metadata';
 
 export type AppInteraction =
   | 'blocked-by-startup'
+  | 'blocked-by-model-selection'
   | 'enabled';
 
 type CoreAppPresentation = Readonly<{
@@ -29,6 +31,7 @@ export function isAppInteractionEnabled({ interaction }: {
 }): boolean {
   switch (interaction) {
   case 'blocked-by-startup':
+  case 'blocked-by-model-selection':
     return false;
   case 'enabled':
     return true;
@@ -39,7 +42,7 @@ export function isAppInteractionEnabled({ interaction }: {
   }
 }
 
-function createAppPresentation({ startupState }: { startupState: ShallowRef<StartupState> }): CoreAppPresentation {
+function createAppPresentation({ startupState, modelSelectionVisible }: { startupState: ShallowRef<StartupState>, modelSelectionVisible: Readonly<Ref<boolean>> }): CoreAppPresentation {
   const appInteraction = computed<AppInteraction>(() => {
     const state = startupState.value;
     switch (state.kind) {
@@ -50,7 +53,7 @@ function createAppPresentation({ startupState }: { startupState: ShallowRef<Star
     case 'ready':
     case 'foundation-failed':
     case 'main-failed':
-      return 'enabled';
+      return modelSelectionVisible.value ? 'blocked-by-model-selection' : 'enabled';
     default: {
       const _ex: never = state;
       return _ex;
@@ -63,24 +66,10 @@ function createAppPresentation({ startupState }: { startupState: ShallowRef<Star
 function createHomeIntroduction({ router }: { router: Router | undefined }) {
   const initialRoute = router === undefined ? undefined : resolveInitialRoute({ router });
   const state = ref<HomeIntroduction>(initialRoute !== undefined && isHomepageIntroductionRoute({ route: initialRoute })
-    ? { kind: 'active', routePaths: [initialRoute.path] } : { kind: 'inactive' });
+    ? { kind: 'active' } : { kind: 'inactive' });
 
   function finishHomeIntroduction(): void {
     state.value = { kind: 'inactive' };
-  }
-
-  function continueHomeIntroduction({ routePath }: { routePath: string }): void {
-    const current = state.value;
-    switch (current.kind) {
-    case 'inactive': return;
-    case 'active':
-      state.value = { kind: 'active', routePaths: [...new Set([...current.routePaths, routePath])] };
-      return;
-    default: {
-      const _ex: never = current;
-      return _ex;
-    }
-    }
   }
 
   if (router !== undefined) {
@@ -93,8 +82,7 @@ function createHomeIntroduction({ router }: { router: Router | undefined }) {
       case 'inactive':
         return;
       case 'active':
-        if (!current.routePaths.includes(route.path)
-          || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined) {
+        if (!isHomepageIntroductionRoute({ route })) {
           finishHomeIntroduction();
         }
         return;
@@ -106,14 +94,15 @@ function createHomeIntroduction({ router }: { router: Router | undefined }) {
     });
   }
 
-  return { homeIntroduction: computed(() => state.value), continueHomeIntroduction, finishHomeIntroduction };
+  return { homeIntroduction: computed(() => state.value), finishHomeIntroduction };
 }
 
-export function provideAppPresentation({ startupState }: {
+export function provideAppPresentation({ startupState, modelSelectionVisible }: {
   startupState: ShallowRef<StartupState>,
+  modelSelectionVisible: Readonly<Ref<boolean>>,
 }): AppPresentation {
   const router = inject(routerKey, undefined);
-  const core = createAppPresentation({ startupState });
+  const core = createAppPresentation({ startupState, modelSelectionVisible });
   const presentation: AppPresentation = { ...core, ...createHomeIntroduction({ router }) };
   provide(appPresentationKey, presentation);
   return presentation;

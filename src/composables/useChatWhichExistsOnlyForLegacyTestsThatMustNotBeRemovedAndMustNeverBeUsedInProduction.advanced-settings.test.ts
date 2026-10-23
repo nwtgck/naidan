@@ -335,7 +335,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(capturedStorageUpdater).toBeDefined();
 
     // Simulate storage calling the updater with the existing ChatMeta row.
-    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false, endpoint: currentChat.value!.endpoint };
     const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     // Endpoint must be saved as a nested object — not as flat fields.
@@ -390,7 +390,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
 
     expect(capturedStorageUpdater).toBeDefined();
 
-    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false, endpoint: currentChat.value!.endpoint };
     const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     // Endpoint must survive the title-update path as a nested object.
@@ -416,7 +416,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // No endpoint change means the chat continues to inherit its endpoint.
     await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { modelId: 'custom-model' } });
 
-    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false, endpoint: currentChat.value!.endpoint };
     const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     expect(saved['endpoint']).toBeUndefined();

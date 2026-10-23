@@ -64,12 +64,16 @@ import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/Ass
 import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/pt-BR';
 import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/pt-BR';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/pt-BR';
+import { BrowserModelDialog__close } from '@/strings/messages/BrowserModelDialog__close/pt-BR';
+import { BrowserModelFileSelection__model_settings } from '@/strings/messages/BrowserModelFileSelection__model_settings/pt-BR';
 import { BrowserModelPreparation__automatic } from '@/strings/messages/BrowserModelPreparation__automatic/pt-BR';
 import { BrowserModelPreparation__back_to_model_selection } from '@/strings/messages/BrowserModelPreparation__back_to_model_selection/pt-BR';
 import { BrowserModelPreparation__checking_model } from '@/strings/messages/BrowserModelPreparation__checking_model/pt-BR';
 import { BrowserModelPreparation__choose_a_file } from '@/strings/messages/BrowserModelPreparation__choose_a_file/pt-BR';
 import { BrowserModelPreparation__choose_model_files } from '@/strings/messages/BrowserModelPreparation__choose_model_files/pt-BR';
 import { BrowserModelPreparation__companion_file } from '@/strings/messages/BrowserModelPreparation__companion_file/pt-BR';
+import { BrowserModelPreparation__could_not_load_model_settings } from '@/strings/messages/BrowserModelPreparation__could_not_load_model_settings/pt-BR';
+import { BrowserModelPreparation__loading_model_settings } from '@/strings/messages/BrowserModelPreparation__loading_model_settings/pt-BR';
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/pt-BR';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/pt-BR';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/pt-BR';
@@ -2934,6 +2938,7 @@ import { toolCall__raw_json } from '@/strings/messages/toolCall__raw_json/pt-BR'
 import { toolCall__result } from '@/strings/messages/toolCall__result/pt-BR';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/pt-BR';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/pt-BR';
+import { useAppEntry__could_not_open_model_browser } from '@/strings/messages/useAppEntry__could_not_open_model_browser/pt-BR';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/pt-BR';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/pt-BR';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/pt-BR';
@@ -3105,12 +3110,16 @@ export const catalog = {
   AssistantProcessSequence__tool_executions,
   AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
+  BrowserModelDialog__close,
+  BrowserModelFileSelection__model_settings,
   BrowserModelPreparation__automatic,
   BrowserModelPreparation__back_to_model_selection,
   BrowserModelPreparation__checking_model,
   BrowserModelPreparation__choose_a_file,
   BrowserModelPreparation__choose_model_files,
   BrowserModelPreparation__companion_file,
+  BrowserModelPreparation__could_not_load_model_settings,
+  BrowserModelPreparation__loading_model_settings,
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
@@ -5975,6 +5984,7 @@ export const catalog = {
   toolCall__result,
   toolCall__show_tools_count,
   toolCall__tool_executions,
+  useAppEntry__could_not_open_model_browser,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,

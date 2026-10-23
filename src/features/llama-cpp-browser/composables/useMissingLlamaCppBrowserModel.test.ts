@@ -339,7 +339,8 @@ describe('ordinary recovery notice with real controls', () => {
     const { state, wrapper } = await render();
     expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
     await checkNow();
-    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe(target.modelId);
+    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe('owner/Model:Q4_K_M');
+    expect(wrapper.get('[data-testid="model-recovery-name"]').attributes('title')).toBe(target.modelId);
     await wrapper.get('[data-testid="model-recovery-review"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-testid="model-recovery-size"]').text()).toContain('256');
@@ -356,7 +357,8 @@ describe('ordinary recovery notice with real controls', () => {
     resolved.value = { endpoint: { type: 'llama_cpp_browser' }, modelId };
     const { wrapper } = await render();
     await checkNow();
-    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe(modelId);
+    expect(wrapper.get('[data-testid="model-recovery-name"]').text()).toBe(`owner/Model:${variant}`);
+    expect(wrapper.get('[data-testid="model-recovery-name"]').attributes('title')).toBe(modelId);
   });
 
   it('provides model management without changing Chat or navigating to a new Chat', async () => {

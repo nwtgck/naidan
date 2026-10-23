@@ -31,24 +31,24 @@ const target = computed(() => ({ id: chatId.value, leafId: leafId.value, message
 const load = shallowRef<{
   target: typeof target.value,
   status: 'loading' | 'ready' | 'error',
-  route: typeof currentRoute.value,
 }>();
-const loadStatus = computed(() => load.value?.target === target.value && load.value?.route === currentRoute.value ? load.value.status : 'loading');
+const modelEntry = computed(() => hasModelEntryQuery({ query: currentRoute.value?.query ?? {} }));
+const loadStatus = computed(() => load.value?.target === target.value && !modelEntry.value ? load.value.status : 'loading');
 let active = true;
 
 async function syncChat() {
   const route = currentRoute.value;
-  if (!active || route === undefined || hasModelEntryQuery({ query: route.query })) {
+  if (!active || route === undefined || modelEntry.value) {
     return;
   }
-  const request = { target: target.value, route, status: 'loading' as const };
+  const request = { target: target.value, status: 'loading' as const };
   load.value = request;
   const { id, leafId, messageId } = request.target;
   if (!id) {
     return;
   }
   let isStorageCurrent: (() => boolean) | undefined;
-  const isCurrent = () => active && load.value === request && currentRoute.value === route
+  const isCurrent = () => active && load.value === request && target.value === request.target && !modelEntry.value
     && (isStorageCurrent === undefined || isStorageCurrent());
   try {
     isStorageCurrent = storageService.captureSettingsStorage();
@@ -93,7 +93,9 @@ function handleAutoSent() {
   router.replace({ query });
 }
 
-watch(currentRoute, syncChat, { immediate: true });
+// Clearing q after submission must not hide the pane and reopen the same chat.
+// Only a new target or entering/leaving the explicit model URL changes its owner.
+watch([target, modelEntry], syncChat, { immediate: true });
 const unsubscribeStorage = storageService.subscribeToChanges({
   listener: ({ event }) => {
     switch (event.type) {

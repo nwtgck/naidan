@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 it('shares the logo, Naidan name, build version and collapse action between sidebars', async () => {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }, { path: '/home', component: { template: '<div />' } }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
   await router.push('/');
   await router.isReady();
   wrapper = mount(SidebarHeader, { props: { expanded: true }, global: { plugins: [router] }, slots: { status: '<span data-testid="status-slot">memory</span>' } });
@@ -26,7 +26,7 @@ it('shares the logo, Naidan name, build version and collapse action between side
   expect(wrapper.text()).toContain(`v${__APP_VERSION__}`);
   expect(wrapper.find('[data-testid="status-slot"]').exists()).toBe(true);
   expect(wrapper.find('[data-testid="model-downloads-trigger"]').exists()).toBe(false);
-  expect(wrapper.get('a').attributes('href')).toBe('/home');
+  expect(wrapper.get('a').attributes('href')).toBe('/');
   await wrapper.get('a').trigger('click', { ctrlKey: true });
   expect(openHome).not.toHaveBeenCalled();
   await wrapper.get('a').trigger('click');

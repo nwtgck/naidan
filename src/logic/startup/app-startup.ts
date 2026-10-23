@@ -9,7 +9,7 @@ import {
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
-import { hasModelEntryQuery, resolveAppEntryKind, shouldDeferInitialModelRefresh } from '@/logic/startup/entry-intent';
+import { hasModelEntryQuery, hasSelectedGlobalChatModel, resolveAppEntryKind, shouldDeferInitialModelRefresh } from '@/logic/startup/entry-intent';
 import { currentLocale, prepareLocale } from '@/strings';
 import { getActiveAppEntry } from '@/composables/useAppEntry';
 import { startRpcAutomaticConnections } from '@/features/naidan-rpc-integration/runtime/feature';
@@ -61,10 +61,23 @@ export async function startApp({ startupState, settingsStore, router, navigation
     kind: 'starting-main',
   };
 
-  const entryKind = resolveAppEntryKind({ route: resolveInitialRoute({ router }), initialized: true, settings: settingsStore.settings.value });
+  const entryKind = resolveAppEntryKind({ route: resolveInitialRoute({ router }), initialized: true });
   let entrySurface: Component | undefined;
   switch (entryKind) {
-  case 'home':
+  case 'home': {
+    if (hasSelectedGlobalChatModel({ settings: settingsStore.settings.value })) {
+      settingsStore.resumeModelRefresh();
+      break;
+    }
+    settingsStore.deferModelRefresh();
+    // App synchronously owns the initial dialog and cards. Give their strings,
+    // DOM and paint priority before importing chat bootstrap or MainApp.
+    await prepareLocale({ locale: currentLocale.value });
+    debugRecordFileProtocolStandaloneStartupCheckpoint({ checkpoint: 'painting-onboarding', details: undefined });
+    await nextTick();
+    await waitForPresentationPaint({ window });
+    break;
+  }
   case 'model-preview': {
     settingsStore.deferModelRefresh();
     const module = await import('@/components/AppEntrySurface.vue');
@@ -157,7 +170,7 @@ export async function startApp({ startupState, settingsStore, router, navigation
   const appEntry = getActiveAppEntry();
   const disposeAutomaticActivity = watch(
     () => appEntry?.automaticActivity.value ?? (hasModelEntryQuery({ query: router.currentRoute.value.query })
-      || router.currentRoute.value.path === '/home' || (router.currentRoute.value.path === '/' && entryKind === 'home') ? 'deferred' : 'ordinary'),
+      || (router.currentRoute.value.path === '/' && entryKind === 'home' && !hasSelectedGlobalChatModel({ settings: settingsStore.settings.value })) ? 'deferred' : 'ordinary'),
     activity => {
       switch (activity) {
       case 'deferred':

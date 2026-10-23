@@ -4,7 +4,7 @@ import { toHostModelDirectoryId } from '@/01-models/ids';
 import { listStoredModels } from './runtime/model-store';
 import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { llamaCppBrowserService } from './index-hosted';
-vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), subscribeToChanges: () => () => {} } }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: vi.fn() }));
 vi.mock('./runtime/host-model-store', () => ({ listHostStoredModels: vi.fn(), recordOpfsInventoryIssue: vi.fn() }));
 const opfs = { modelId: 'hf.co/owner/repo:model', size: 128, importedAt: 1 };

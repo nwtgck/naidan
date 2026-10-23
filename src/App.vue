@@ -8,21 +8,23 @@ import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
 import { provideAppEntry } from '@/composables/useAppEntry';
+import BrowserModelWelcomeDialog from '@/components/BrowserModelWelcomeDialog.vue';
 
 const props = defineProps<{
   startupState: ShallowRef<StartupState>,
 }>();
 
 const startup = computed(() => props.startupState.value);
+const entry = provideAppEntry({ startupState: props.startupState });
 const {
   appInteraction,
-} = provideAppPresentation({ startupState: props.startupState });
-provideAppEntry({ startupState: props.startupState });
+} = provideAppPresentation({ startupState: props.startupState, modelSelectionVisible: computed(() => entry.modelSelection.value !== undefined) });
 
 const appContentInert = computed(() => {
   const interaction = appInteraction.value;
   switch (interaction) {
   case 'blocked-by-startup':
+  case 'blocked-by-model-selection':
     return true;
   case 'enabled':
     return undefined;
@@ -93,6 +95,8 @@ defineExpose({
     />
   </div>
 
+  <!-- Keep one synchronous dialog outside MainApp across the startup handoff. -->
+  <BrowserModelWelcomeDialog v-if="entry.modelSelection.value !== undefined" />
   <GlobalDialogHost />
   <ToastContainer />
 </template>

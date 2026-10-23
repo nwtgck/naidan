@@ -1,3 +1,4 @@
+import { h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
@@ -59,6 +60,31 @@ afterEach(async () => {
 });
 
 describe('shared file model library', () => {
+  it('keeps shared details and deletion when the caller supplies a chat-selection action', async () => {
+    const selected = vi.fn();
+    const createChatGroup = vi.fn();
+    const applyDefaultModel = vi.fn();
+    const wrapper = mount(LlamaCppBrowserModelLibrary, {
+      props: { createChatGroup, applyDefaultModel, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined } },
+      slots: { 'model-actions': ({ model: choice, disabled }: { model: LocalModel, disabled: boolean }) => h('button', { 'data-testid': 'select-for-chat', disabled, onClick: () => selected({ model: choice }) }, 'Use in this chat') },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    publish({ generation: 1, current: () => true });
+    await flushPromises();
+    for (const selector of ['[data-testid="llama-recent-imports"]', '[data-testid="llama-cpp-browser-model-list"]']) {
+      const row = wrapper.get(selector);
+      expect(row.find(`[data-testid="llama-imported-model-details-${model.modelId}"]`).exists()).toBe(true);
+      expect(row.find(`[data-testid="llama-cpp-browser-delete-${model.modelId}"]`).exists()).toBe(true);
+      expect(row.find('[data-testid="llama-model-action-main"]').exists()).toBe(false);
+      await row.get('[data-testid="select-for-chat"]').trigger('click');
+    }
+    expect(selected).toHaveBeenCalledTimes(2);
+    expect(selected).toHaveBeenLastCalledWith({ model });
+    expect(createChatGroup).not.toHaveBeenCalled();
+    expect(applyDefaultModel).not.toHaveBeenCalled();
+  });
+
   it('does not apply a default after its revalidation crosses a hide and reveal cycle', async () => {
     const pending = Promise.withResolvers<void>();
     const refresh = vi.fn(() => pending.promise);
