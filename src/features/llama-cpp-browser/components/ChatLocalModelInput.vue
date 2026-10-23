@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, ref, shallowRef, useId, watch } from 'vue';
-import { ArrowRightIcon, ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
+import { ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
 import { localModelDisplayName } from '@/components/browser-model-presentation';
@@ -8,7 +8,6 @@ import { captureDroppedLocalModels, localModelDirectoriesFromFiles } from '@/fea
 import { formatDownloadBytes } from '@/features/llama-cpp-browser/hugging-face/presentation';
 import LlamaCppBrowserModelFileInput from './LlamaCppBrowserModelFileInput.vue';
 import LlamaCppBrowserDownloadProgress from './LlamaCppBrowserDownloadProgress.vue';
-import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import LlamaCppBrowserModelImportModes from './LlamaCppBrowserModelImportModes.vue';
 import { missingHostModelDirectoryApis } from '@/logic/host-model-directories';
 import { useChatBrowserModelPickerTab, type ChatBrowserModelPickerTab } from '@/features/llama-cpp-browser/composables/useChatBrowserModelPickerTab';
@@ -296,9 +295,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                       <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" layout="expanded" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
                     </div>
                     <div data-testid="chat-linked-folders-panel" :inert="fileTab !== 'linked-folders' || undefined" :aria-hidden="fileTab !== 'linked-folders'" :tw-class="['absolute inset-0 space-y-3 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'linked-folders' ? 'opacity-100' : 'pointer-events-none opacity-0']">
-                      <div tw-class="mx-auto w-full max-w-xl space-y-3">
+                      <div tw-class="mx-auto w-full max-w-xl">
                         <LinkedFolders v-if="visited.has('linked-folders')" :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" />
-                        <div tw-class="flex justify-end"><LlamaCppBrowserModelActionButton :disabled="disabled || expansion === 'closed' || activeTab !== 'linked-folders'" data-testid="chat-linked-models-open-saved" @click="selectTab({ tab: 'saved', focus: true })">{{ lazyStrings.ChatLocalModelInput__use_a_saved_model() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /></LlamaCppBrowserModelActionButton></div>
                       </div>
                     </div>
                   </div>

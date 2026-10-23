@@ -241,7 +241,7 @@ it('keeps all sources inside the same viewport and moves focus with the selected
   expect(state.useModel).not.toHaveBeenCalled();
 });
 
-it('restores the folder-link entry without loading it until opened, then leads to saved models explicitly', async () => {
+it('restores the folder-link entry without loading it until opened, then reaches saved models through its tab', async () => {
   preference.tab = 'linked-folders';
   const { state } = inputState();
   const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' }, attachTo: document.body });
@@ -263,7 +263,7 @@ it('restores the folder-link entry without loading it until opened, then leads t
   expect(state.accept).not.toHaveBeenCalled();
   expect(state.useModel).not.toHaveBeenCalled();
   expect(state.useRepositoryModel).not.toHaveBeenCalled();
-  await wrapper.get('[data-testid="chat-linked-models-open-saved"]').trigger('click');
+  await wrapper.get('[data-testid="chat-model-tab-files"]').trigger('keydown', { key: 'End' });
   await flushPromises();
   expect(wrapper.get('[data-testid="chat-model-tab-saved"]').attributes('aria-selected')).toBe('true');
   expect(document.activeElement).toBe(wrapper.get('[data-testid="chat-model-tab-saved"]').element);
