@@ -65,7 +65,8 @@ describe('model import modes', () => {
     const saved = wrapper.get('[data-testid="llama-import-mode-opfs"]');
     const linked = wrapper.get('[data-testid="llama-import-mode-host"]');
     expect(saved.attributes('aria-pressed')).toBe('true');
-    expect(linked.text()).toContain('Unavailable');
+    expect(linked.text()).toBe('Link folder');
+    expect(linked.attributes('aria-describedby')).toBeUndefined();
     expect(linked.attributes('disabled')).toBeUndefined();
     expect(linked.attributes('aria-disabled')).toBeUndefined();
     expect(linked.classes()).toContain('opacity-50');

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileIcon, FolderOpenIcon, HardDriveIcon, ListIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
+import { computed, ref, useId, watch } from 'vue';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileIcon, FolderOpenIcon, HardDriveIcon, InfoIcon, ListIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
 import { browserModelShowcaseIds, browserModelSuggestionSelection, type ModelDiscoveryTab, type BrowserModelLocalInput, type BrowserModelSelection } from './browser-model-presentation';
@@ -46,7 +47,59 @@ const swipeStart = ref<{ pointerId: number, x: number, y: number, phase: 'pendin
 const swipeOffset = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
+const compatibilityHelp = ref<HTMLElement>();
+const compatibilityTrigger = ref<HTMLButtonElement>();
+const compatibilityId = useId();
+const compatibilityVisibility = ref<'closed' | 'transient' | 'pinned'>('closed');
 let suppressStartUntil = 0;
+
+function showCompatibility(): void {
+  if (!disabled.value && compatibilityVisibility.value === 'closed') {
+    compatibilityVisibility.value = 'transient';
+  }
+}
+
+function leaveCompatibility(): void {
+  if (compatibilityVisibility.value === 'transient' && document.activeElement !== compatibilityTrigger.value) {
+    compatibilityVisibility.value = 'closed';
+  }
+}
+
+function toggleCompatibility(): void {
+  if (disabled.value) {
+    return;
+  }
+  const visibility = compatibilityVisibility.value;
+  switch (visibility) {
+  case 'closed': case 'transient': compatibilityVisibility.value = 'pinned';
+    break;
+  case 'pinned': compatibilityVisibility.value = 'closed';
+    break;
+  default: {
+    const exhaustive: never = visibility;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+function compatibilityKeydown({ event }: { event: KeyboardEvent }): void {
+  if (event.key === 'Escape' && compatibilityVisibility.value !== 'closed') {
+    event.preventDefault();
+    event.stopPropagation();
+    compatibilityVisibility.value = 'closed';
+  }
+}
+
+useEventTargetListener(document, 'pointerdown', event => {
+  if (event.target instanceof Node && !compatibilityHelp.value?.contains(event.target)) {
+    compatibilityVisibility.value = 'closed';
+  }
+});
+watch(disabled, blocked => {
+  if (blocked) {
+    compatibilityVisibility.value = 'closed';
+  }
+});
 
 function selectModel({ index }: { index: number }): void {
   if (disabled.value || !models.length) {
@@ -187,7 +240,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <WelcomeScreenFrame class="browser-model-welcome" placement="contained" :inert="interaction === 'blocked' || undefined" data-testid="browser-model-welcome">
+  <WelcomeScreenFrame class="browser-model-welcome" placement="contained" :inert="interaction === 'blocked' || undefined" data-testid="browser-model-welcome" @keydown.capture="compatibilityKeydown({ event: $event })">
     <template #default>
       <section class="onboarding-content" tw-class="pointer-events-auto mx-auto flex w-full max-w-3xl flex-col">
         <div class="onboarding-language" tw-class="absolute right-4 top-4 z-20 pointer-events-auto sm:right-6 sm:top-6"><LanguageSelector /></div>
@@ -231,9 +284,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <button v-if="discoveryHint === 'visible'" type="button" :disabled="disabled" data-testid="onboarding-hugging-face-hint" aria-haspopup="dialog" tw-class="group inline-flex min-h-9 items-center gap-2 rounded-lg px-3 text-[12px] font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 motion-reduce:transition-none disabled:opacity-50" @click="emit('open-discovery', { tab: 'hugging-face' })"><SearchIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.BrowserModelWelcome__more_models_on_hugging_face() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
             </Transition>
           </div>
-          <div class="onboarding-local-files" tw-class="mx-auto w-full max-w-md space-y-1.5 border-t border-gray-100 dark:border-gray-800 px-1 pt-3 text-[12px] text-gray-500 dark:text-gray-400">
-            <div tw-class="flex items-center gap-2 leading-relaxed"><FolderOpenIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" /><p>{{ lazyStrings.BrowserModelWelcome__drop_gguf_files_or_a_folder_or_choose() }} <span tw-class="inline-flex items-center whitespace-nowrap"><button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__choose_gguf_files()" tw-class="min-h-8 rounded text-gray-600 dark:text-gray-300 underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 transition-colors motion-reduce:transition-none hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="fileInput?.click()">{{ lazyStrings.BrowserModelWelcome__files() }}</button><span aria-hidden="true" tw-class="mx-1">／</span><button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__choose_a_model_folder()" tw-class="min-h-8 rounded text-gray-600 dark:text-gray-300 underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 transition-colors motion-reduce:transition-none hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="directoryInput?.click()">{{ lazyStrings.BrowserModelWelcome__folder() }}</button></span></p></div>
-            <p tw-class="leading-relaxed">{{ lazyStrings.llamaCppBrowser__runs_llama_cpp_in_the_browser_and_supports_many_gguf_models() }}</p>
+          <div class="onboarding-local-files" data-testid="onboarding-local-files" tw-class="relative z-10 mx-auto w-full max-w-md border-t border-gray-100 dark:border-gray-800 px-1 pt-3 text-[12px] text-gray-500 dark:text-gray-400">
+            <div tw-class="flex items-center gap-2 leading-relaxed"><FolderOpenIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" /><p>{{ lazyStrings.BrowserModelWelcome__drop_gguf_files_or_a_folder_or_choose() }} <span tw-class="inline-flex items-center whitespace-nowrap"><button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__choose_gguf_files()" tw-class="min-h-8 rounded text-gray-600 dark:text-gray-300 underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 transition-colors motion-reduce:transition-none hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="fileInput?.click()">{{ lazyStrings.BrowserModelWelcome__files() }}</button><span aria-hidden="true" tw-class="mx-1">／</span><button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__choose_a_model_folder()" tw-class="min-h-8 rounded text-gray-600 dark:text-gray-300 underline decoration-gray-300 dark:decoration-gray-600 underline-offset-4 transition-colors motion-reduce:transition-none hover:text-blue-600 dark:hover:text-blue-400 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="directoryInput?.click()">{{ lazyStrings.BrowserModelWelcome__folder() }}</button>
+              <span ref="compatibilityHelp" data-testid="gguf-compatibility-info" tw-class="ml-1 inline-flex items-center" @mouseenter="showCompatibility" @mouseleave="leaveCompatibility" @focusout="compatibilityVisibility = 'closed'">
+                <button ref="compatibilityTrigger" type="button" :disabled="disabled" data-testid="gguf-compatibility-info-trigger" :aria-label="lazyStrings.BrowserModelWelcome__gguf_support()" :aria-expanded="compatibilityVisibility !== 'closed'" :aria-controls="compatibilityId" :aria-describedby="compatibilityVisibility !== 'closed' ? compatibilityId : undefined" tw-class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-blue-500 focus-visible:text-blue-500 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-blue-400 dark:focus-visible:text-blue-400 motion-reduce:transition-none" @focus="showCompatibility" @click="toggleCompatibility"><InfoIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /></button>
+                <Transition tw-enter-active-class="transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none" tw-leave-active-class="transition-opacity duration-120 motion-reduce:transition-none" tw-enter-from-class="opacity-0 translate-y-1" tw-leave-to-class="opacity-0">
+                  <!-- Anchor to the full file row, keeping the explanation inside
+                       narrow dialogs. Padding bridges the pointer path upward. -->
+                  <span v-if="compatibilityVisibility !== 'closed'" :id="compatibilityId" role="tooltip" data-testid="gguf-compatibility-tooltip" tw-class="absolute right-0 bottom-full z-30 w-full max-w-sm whitespace-normal pb-2 text-left"><span tw-class="flex items-start gap-2.5 rounded-xl border border-gray-200/70 bg-white/95 p-3 text-xs leading-5 text-gray-600 shadow-lg shadow-gray-950/5 backdrop-blur-sm dark:border-gray-700/70 dark:bg-gray-800/95 dark:text-gray-300 dark:shadow-black/20"><InfoIcon aria-hidden="true" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" /><span tw-class="min-w-0">{{ lazyStrings.llamaCppBrowser__runs_llama_cpp_in_the_browser_and_supports_many_gguf_models() }}</span></span></span>
+                </Transition>
+              </span>
+            </span></p></div>
           </div>
           <p v-if="startError" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
           <input ref="fileInput" type="file" :disabled="disabled" accept=".gguf" multiple tabindex="-1" tw-class="sr-only" :aria-label="lazyStrings.BrowserModelWelcome__choose_gguf_files()" @change="pickFiles({ event: $event, selection: 'files' })" />

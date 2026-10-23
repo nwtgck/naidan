@@ -1,9 +1,11 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { h, nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { modelSuggestions } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { browserModelShowcaseIds } from './browser-model-presentation';
 import BrowserModelWelcome from './BrowserModelWelcome.vue';
+import BrowserModelDialog from './BrowserModelDialog.vue';
 import WelcomeScreenFrame from './layout/WelcomeScreenFrame.vue';
 
 beforeEach(async () => {
@@ -67,12 +69,77 @@ describe('browser model welcome', () => {
     };
     expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="open-model-list"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="gguf-compatibility-info-trigger"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="browser-model-welcome"]').attributes('inert')).toBeDefined();
     await wrapper.get('[data-testid="next-model"]').trigger('click');
     expect(wrapper.emitted('select')).toBeUndefined();
     await wrapper.setProps({ interaction: 'ready' });
     expect(wrapper.get('[data-testid="browser-model-welcome"]').attributes('inert')).toBeUndefined();
     expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('shows GGUF compatibility beside file selection on hover, focus, and pinned clicks without fetching', async () => {
+    using fetch = vi.spyOn(globalThis, 'fetch');
+    const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }, attachTo: document.body });
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const help = wrapper.get('[data-testid="gguf-compatibility-info"]');
+    const trigger = wrapper.get<HTMLButtonElement>('[data-testid="gguf-compatibility-info-trigger"]');
+    const explanation = 'Runs llama.cpp in your browser to support a wide range of GGUF models.';
+    expect(wrapper.get('[data-testid="onboarding-local-files"]').element.contains(trigger.element)).toBe(true);
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain(explanation);
+    await help.trigger('mouseenter');
+    const tooltip = wrapper.get('[role="tooltip"]');
+    expect(tooltip.text()).toBe(explanation);
+    expect(trigger.attributes('aria-expanded')).toBe('true');
+    expect(trigger.attributes('aria-describedby')).toBe(tooltip.attributes('id'));
+    // The explanation remains a descendant, including the pointer bridge above
+    // the file row, so entering its text does not leave the help boundary.
+    expect(help.element.contains(tooltip.element)).toBe(true);
+    await help.trigger('mouseleave');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+
+    trigger.element.focus();
+    await nextTick();
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(true);
+    await trigger.trigger('click');
+    await help.trigger('mouseleave');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="next-model"]').trigger('pointerdown');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    await trigger.trigger('click');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(true);
+    await trigger.trigger('click');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+    trigger.element.blur();
+    trigger.element.focus();
+    await nextTick();
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(true);
+    await wrapper.setProps({ startStatus: 'starting' });
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(wrapper.emitted('start')).toBeUndefined();
+    expect(wrapper.emitted('select')).toBeUndefined();
+  });
+
+  it('dismisses compatibility help before its containing model dialog on Escape', async () => {
+    const wrapper = mount(BrowserModelDialog, {
+      props: { open: true, dismissible: true, suspended: false },
+      slots: { default: () => h(BrowserModelWelcome, { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined }) },
+      global: { stubs: { teleport: true } },
+      attachTo: document.body,
+    });
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    await nextTick();
+    const trigger = wrapper.get('[data-testid="gguf-compatibility-info-trigger"]');
+    await trigger.trigger('click');
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(true);
+    await trigger.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+    expect(wrapper.emitted('close')).toBeUndefined();
+    await trigger.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.emitted('close')).toHaveLength(1);
   });
 
   it('keeps a touch swipe alive through the child capture handoff and suppresses its click', async () => {
