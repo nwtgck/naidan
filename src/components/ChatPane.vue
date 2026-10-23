@@ -2118,9 +2118,9 @@ watch(
 .chat-local-model-welcome {
   padding-block: clamp(12px, 2dvh, 20px);
 }
-/* Keep one layout throughout disclosure. Flexible air above/below the content
-   absorbs its growing height without swapping positioning or replaying entry
-   transforms; tall content stays reachable in the normal scroll flow. */
+/* Keep one layout throughout disclosure. Flexible air absorbs its growing
+   height, while opening lifts the content so model controls take priority.
+   The subdued introduction may leave the top edge as the panel rises. */
 .chat-local-model-welcome::before,
 .chat-local-model-welcome::after {
   content: '';
@@ -2135,7 +2135,8 @@ watch(
 .chat-local-model-welcome > :deep(div) {
   flex-shrink: 0;
   row-gap: 20px;
-  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(0);
+  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1), transform 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .chat-local-model-welcome > :deep(div > *) {
   margin-block: 0;
@@ -2164,6 +2165,29 @@ watch(
   row-gap: 16px;
   transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+.chat-local-model-welcome :deep(.welcome-storage-title),
+.chat-local-model-welcome :deep(.welcome-storage-description),
+.chat-local-model-welcome :deep(.welcome-portable-download) {
+  opacity: 1;
+  transition: opacity 350ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-local-model-welcome :deep(.welcome-portable-download) {
+  transition-property: opacity, background-color, border-color, color, box-shadow;
+}
+.chat-local-model-expanded :deep(.welcome-storage-title) {
+  opacity: 0.45;
+}
+.chat-local-model-expanded :deep(.welcome-storage-description),
+.chat-local-model-expanded :deep(.welcome-portable-download) {
+  opacity: 0.35;
+}
+.chat-local-model-expanded :deep(.welcome-portable-download:hover),
+.chat-local-model-expanded :deep(.welcome-portable-download:focus-visible) {
+  opacity: 1;
+}
+.chat-local-model-expanded :deep(.welcome-portable-download-status) {
+  animation-play-state: paused;
+}
 .chat-local-model-welcome :deep(.welcome-storage-accent) {
   display: grid;
   grid-template-rows: 1fr;
@@ -2178,6 +2202,9 @@ watch(
 .chat-local-model-expanded :deep(.welcome-storage-copy) {
   row-gap: 8px;
 }
+.chat-local-model-expanded > :deep(div) {
+  transform: translateY(calc(-1 * clamp(48px, 10dvh, 104px)));
+}
 .chat-local-model-expanded :deep(.welcome-storage-notice) {
   row-gap: 0;
 }
@@ -2189,6 +2216,9 @@ watch(
   .chat-local-model-welcome > :deep(div),
   .chat-local-model-welcome :deep(.welcome-storage-notice),
   .chat-local-model-welcome :deep(.welcome-storage-copy),
+  .chat-local-model-welcome :deep(.welcome-storage-title),
+  .chat-local-model-welcome :deep(.welcome-storage-description),
+  .chat-local-model-welcome :deep(.welcome-portable-download),
   .chat-local-model-welcome :deep(.welcome-storage-accent) {
     transition: none;
   }

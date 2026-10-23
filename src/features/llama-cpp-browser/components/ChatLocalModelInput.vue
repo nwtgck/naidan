@@ -226,7 +226,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <template>
   <div data-testid="chat-local-model-input" tw-class="w-full max-w-4xl pointer-events-auto text-center">
-    <button type="button" :disabled="state.operation.value !== undefined" :aria-expanded="expansion === 'open'" :aria-controls="panelId" data-testid="chat-open-local-model" tw-class="group inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-3 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" @click="toggleExpansion"><component :is="currentTab.icon" aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" /><span data-testid="chat-model-picker-label" tw-class="min-w-0 truncate whitespace-nowrap">{{ currentTab.action }}</span><ChevronDownIcon aria-hidden="true" :tw-class="['h-3 w-3 text-gray-400 transition-transform duration-300 motion-reduce:transition-none', expansion === 'open' ? 'rotate-180' : '']" /></button>
+    <button
+      type="button"
+      :disabled="state.operation.value !== undefined"
+      :aria-expanded="expansion === 'open'"
+      :aria-controls="panelId"
+      data-testid="chat-open-local-model"
+      :tw-class="['group inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors duration-300 motion-reduce:transition-none hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500', expansion === 'open' ? 'text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400']"
+      @click="toggleExpansion"
+    >
+      <component :is="currentTab.icon" aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0 transition-colors duration-300 motion-reduce:transition-none', expansion === 'open' ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500']" />
+      <span data-testid="chat-model-picker-label" tw-class="min-w-0 truncate whitespace-nowrap">{{ currentTab.action }}</span>
+      <ChevronDownIcon aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0 transition-[transform,color] duration-300 motion-reduce:transition-none', expansion === 'open' ? 'rotate-180 text-blue-500 dark:text-blue-400' : 'text-gray-400']" />
+    </button>
     <div :id="panelId" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
       <div tw-class="min-h-0 overflow-hidden">
         <section tw-class="mt-4 space-y-3 text-left">

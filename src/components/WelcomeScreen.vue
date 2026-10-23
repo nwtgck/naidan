@@ -94,7 +94,7 @@ defineExpose({
 
         <div class="welcome-storage-copy" tw-class="space-y-3 sm:space-y-4">
           <div tw-class="space-y-1 sm:space-y-2">
-            <h2 tw-class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
+            <h2 class="welcome-storage-title" tw-class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
               <template v-if="settings.storageType === 'memory'">
                 {{ lazyStrings.WelcomeScreen__conversations_are_stored_in_memory() }}
               </template>
@@ -102,7 +102,7 @@ defineExpose({
                 {{ lazyStrings.WelcomeScreen__all_conversations_are_stored_locally() }}
               </template>
             </h2>
-            <p tw-class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
+            <p class="welcome-storage-description" tw-class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
               <template v-if="settings.storageType === 'memory'">
                 {{ lazyStrings.WelcomeScreen__data_is_cleared_on_reload() }}
               </template>
@@ -117,12 +117,13 @@ defineExpose({
           <!-- Standalone Build Link (Only in Hosted Mode) -->
           <div v-if="isHosted" tw-class="flex justify-center pt-1">
             <a
+              class="welcome-portable-download"
               :href="portableAppDownload.href"
               :download="portableAppDownload.fileName"
               tw-class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
               :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
             >
-              <div tw-class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              <div class="welcome-portable-download-status" tw-class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none"></div>
               <span tw-class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.WelcomeScreen__download_portable_app() }}</span>
               <DownloadIcon tw-class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
             </a>
