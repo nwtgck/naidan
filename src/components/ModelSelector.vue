@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, useSlots, inject, type Ref } from 'vue';
+import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, useSlots, useId, inject, type Ref } from 'vue';
 import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -24,6 +24,7 @@ const props = defineProps<{
   invalid?: boolean,
   surface?: 'default' | 'composer' | 'sidebar' | 'settings',
   frame?: 'standalone' | 'embedded',
+  chevronVisibility?: 'visible' | 'hidden',
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
 }>();
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 
 const attrs = useAttrs();
 const slots = useSlots();
+const triggerDetailId = useId();
 const modelSelectionUnavailable = computed(() => props.disabled || props.modelSelection === 'unavailable');
 const instance = getCurrentInstance();
 const { availableModels: settingsModels, isFetchingModels: isInternalFetching, fetchModels: internalFetch } = useSettings();
@@ -358,6 +360,7 @@ defineExpose({
       :aria-invalid="invalid || undefined"
       :aria-label="surface === 'settings' || inheritedModel ? [displayModelName, modelValue ? undefined : inheritedModel?.source?.description].filter(Boolean).join(' · ') : undefined"
       :aria-expanded="isOpen"
+      :aria-describedby="$slots['trigger-detail'] ? triggerDetailId : undefined"
       :aria-busy="isFetchingModels || undefined"
       @click="toggleDropdown"
       :disabled="disabled || (modelSelectionUnavailable && !$slots.settings)"
@@ -380,9 +383,9 @@ defineExpose({
         <span v-if="$slots['trigger-summary']" class="model-selector-trigger-summary" tw-class="min-w-0 shrink-0 text-right font-normal text-gray-400 dark:text-gray-500"><slot name="trigger-summary"></slot></span>
       </div>
       <div tw-class="flex w-full min-w-0 items-center justify-between gap-2">
-        <span v-if="surface === 'settings' || inheritedModel" tw-class="block min-w-0 flex-1 text-left">
+        <span v-if="surface === 'settings' || inheritedModel || $slots['trigger-detail']" tw-class="block min-w-0 flex-1 text-left">
           <span :tw-class="['block truncate', surface === 'settings' ? 'text-sm leading-5' : 'text-xs leading-4']">{{ modelNameParts.suffix }}</span>
-          <span v-if="modelHasMetadata" data-testid="model-selector-trigger-metadata" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="modelValue ? undefined : inheritedModel?.source" /><span :tw-class="['min-w-0 flex-1 truncate font-normal leading-4 text-gray-500 dark:text-gray-400', surface === 'settings' ? 'text-xs' : 'text-[11px]']">{{ modelNameParts.prefix.replace(/\/$/, '') }}</span></span>
+          <span v-if="modelHasMetadata || $slots['trigger-detail']" data-testid="model-selector-trigger-metadata" tw-class="mt-0.5 flex h-4 min-w-0 items-center gap-1.5"><SettingsSourceBadge :source="modelValue ? undefined : inheritedModel?.source" /><span :tw-class="['min-w-0 flex-1 truncate font-normal leading-4 text-gray-500 dark:text-gray-400', surface === 'settings' ? 'text-xs' : 'text-[11px]']">{{ modelNameParts.prefix.replace(/\/$/, '') }}</span><span v-if="$slots['trigger-detail']" :id="triggerDetailId" tw-class="shrink-0"><slot name="trigger-detail" /></span></span>
         </span>
         <div v-else tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
           <span
@@ -396,16 +399,16 @@ defineExpose({
             {{ modelNameParts.suffix }}
           </span>
         </div>
-        <div :tw-class="['flex items-center justify-end shrink-0', surface === 'sidebar' ? 'w-9 gap-1' : 'gap-1.5 ml-1']">
+        <div v-if="isFetchingModels || chevronVisibility !== 'hidden'" :tw-class="['flex items-center justify-end shrink-0', surface === 'sidebar' ? 'w-9 gap-1' : 'gap-1.5 ml-1']">
           <Loader2Icon v-if="isFetchingModels" tw-class="w-3 h-3 animate-spin text-gray-400" />
-          <span v-if="surface === 'sidebar'" tw-class="flex h-5 w-5 shrink-0 items-center justify-center">
+          <span v-if="surface === 'sidebar' && chevronVisibility !== 'hidden'" tw-class="flex h-5 w-5 shrink-0 items-center justify-center">
             <ChevronDownIcon
               :stroke-width="1.75"
               :tw-class="['h-3.5 w-3.5 transition-all duration-200', isOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500', { 'rotate-180': isOpen }]"
             />
           </span>
           <ChevronDownIcon
-            v-else
+            v-else-if="chevronVisibility !== 'hidden'"
             :tw-class="['w-3.5 h-3.5 text-gray-400 transition-transform duration-200', { 'rotate-180': isOpen }]"
           />
         </div>

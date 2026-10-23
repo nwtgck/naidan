@@ -193,6 +193,21 @@ const selectedReasoningEffort = chatMetadata.reasoningEffort({
   chatId,
 });
 
+const resolvedReasoningLabel = computed(() => {
+  const effort = props.resolvedLmParameters?.reasoning.effort;
+  switch (effort) {
+  case undefined: return undefined;
+  case 'none': return lazyStrings.ReasoningSettings__off();
+  case 'low': return lazyStrings.ReasoningSettings__low();
+  case 'medium': return lazyStrings.ReasoningSettings__med();
+  case 'high': return lazyStrings.ReasoningSettings__high();
+  default: {
+    const exhaustive: never = effort;
+    throw new Error(`Unhandled reasoning effort: ${exhaustive}`);
+  }
+  }
+});
+
 const pendingReasoningChats = ref<Set<ChatId>>(new Set());
 let disposed = false;
 
@@ -1532,40 +1547,9 @@ defineExpose({
         </div>
       </div>
 
-      <div :tw-class="['flex items-center justify-between gap-1 px-2 pt-0.5 pb-1.5 rounded-b-2xl bg-gray-50/70 dark:bg-gray-900/20', { 'pointer-events-none invisible': visibility === 'submerged' }]">
-        <div tw-class="min-w-0 flex-1 max-w-xs">
-          <ModelSelector
-            :key="idToRaw({ id: chatId })"
-            surface="composer"
-            :disabled="visibility === 'submerged' || presentation === 'hidden'"
-            :model-value="chat.modelId"
-            @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
-            :models="sortedAvailableModels"
-            :inherited-model="inheritedModelPresentation"
-            :placeholder="lazyStrings.formatSettingsSourceLabel__none()"
-            :clear-label="lazyStrings.formatSettingsSourceLabel__none()"
-            :loading="fetchingModels"
-            allow-clear
-            @refresh="fetchModels"
-            @update:open="updatePopupState({ popup: 'model', open: $event })"
-            data-testid="model-override-select"
-          >
-            <template #settings>
-              <ReasoningSettings
-                :selected-effort="selectedReasoningEffort"
-                :default-label="inheritedReasoningLabel"
-                :default-source="inheritedReasoningSource"
-                :disabled="pendingReasoningChats.has(chatId)"
-                surface="plain"
-                notice="inline-help"
-                @update:effort="updateReasoningEffort({ effort: $event })"
-              />
-            </template>
-          </ModelSelector>
-        </div>
-
-        <div tw-class="shrink-0 flex items-center gap-1.5">
-          <div tw-class="flex items-center gap-0.5">
+      <div :tw-class="['flex items-center justify-end gap-1 px-2 py-1 rounded-b-2xl', { 'pointer-events-none invisible': visibility === 'submerged' }]">
+        <div tw-class="min-w-0 flex items-center gap-1.5">
+          <div tw-class="shrink-0 flex items-center gap-0.5">
             <ChatAttachMenu
               :key="idToRaw({ id: chatId })"
               surface="composer"
@@ -1609,6 +1593,40 @@ defineExpose({
             >
               <FileEditIcon tw-class="w-4 h-4" />
             </button>
+          </div>
+          <div tw-class="w-max min-w-0 max-w-xs">
+            <ModelSelector
+              :key="idToRaw({ id: chatId })"
+              surface="composer"
+              chevron-visibility="hidden"
+              :disabled="visibility === 'submerged' || presentation === 'hidden'"
+              :model-value="chat.modelId"
+              @update:model-value="modelId => updateModel({ modelId: modelId ?? undefined })"
+              :models="sortedAvailableModels"
+              :inherited-model="inheritedModelPresentation"
+              :placeholder="lazyStrings.formatSettingsSourceLabel__none()"
+              :clear-label="lazyStrings.formatSettingsSourceLabel__none()"
+              :loading="fetchingModels"
+              allow-clear
+              @refresh="fetchModels"
+              @update:open="updatePopupState({ popup: 'model', open: $event })"
+              data-testid="model-override-select"
+            >
+              <template v-if="resolvedReasoningLabel !== undefined" #trigger-detail>
+                <span :title="lazyStrings.ReasoningSettings__think()" tw-class="whitespace-nowrap text-[10px] font-medium leading-4 text-gray-500 dark:text-gray-400"><span tw-class="sr-only">{{ lazyStrings.ReasoningSettings__think() }}{{ ' ' }}</span><span data-testid="chat-input-reasoning-summary">{{ resolvedReasoningLabel }}</span></span>
+              </template>
+              <template #settings>
+                <ReasoningSettings
+                  :selected-effort="selectedReasoningEffort"
+                  :default-label="inheritedReasoningLabel"
+                  :default-source="inheritedReasoningSource"
+                  :disabled="pendingReasoningChats.has(chatId)"
+                  surface="plain"
+                  notice="inline-help"
+                  @update:effort="updateReasoningEffort({ effort: $event })"
+                />
+              </template>
+            </ModelSelector>
           </div>
           <button
             @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"

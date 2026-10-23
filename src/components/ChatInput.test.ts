@@ -6,6 +6,7 @@ import ChatInput from './ChatInput.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import type { AppInteraction } from '@/composables/useAppPresentation';
 
@@ -65,7 +66,7 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 // Mock child components
-vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="settings" /></div>' } }));
+vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div><slot name="trigger-detail" /><slot name="settings" /></div>' } }));
 vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
@@ -1048,6 +1049,68 @@ describe('ChatInput Integration', () => {
     }
 
     expect(mockSetPreferredEditorMode).toHaveBeenCalledWith({ mode: 'textarea' });
+  });
+
+  it.each([
+    { effort: 'low' as const, label: 'Low' },
+    { effort: 'medium' as const, label: 'Med' },
+    { effort: 'high' as const, label: 'High' },
+    { effort: 'none' as const, label: 'Off' },
+    { effort: undefined, label: undefined },
+  ])('supplies resolved reasoning $effort to the model selector without adding an unset value', async ({ effort, label }) => {
+    const wrapper = getWrapper();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } });
+    const summary = wrapper.find('[data-testid="chat-input-reasoning-summary"]');
+    if (label === undefined) {
+      expect(summary.exists()).toBe(false);
+    } else {
+      expect(summary.text()).toBe(label);
+      expect(summary.element.parentElement?.textContent).toContain(`Think ${label}`);
+    }
+  });
+
+  it('follows resolved reasoning through inherited values, local overrides, clearing, and chat switches', async () => {
+    const wrapper = getWrapper();
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.setProps({
+      inheritedReasoningEffort: 'high',
+      resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
+    });
+    const reasoning = wrapper.getComponent(ReasoningSettings);
+    expect(reasoning.props('selectedEffort')).toBeUndefined();
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('High');
+
+    await reasoning.vm.$emit('update:effort', 'none');
+    await flushPromises();
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } } });
+    expect(reasoning.props('selectedEffort')).toBe('none');
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('Off');
+
+    await reasoning.vm.$emit('update:effort', undefined);
+    await flushPromises();
+    await wrapper.setProps({ resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } } });
+    expect(reasoning.props('selectedEffort')).toBeUndefined();
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('High');
+
+    mockCurrentChat.value = { id: 'chat-2', modelId: 'model-2' };
+    await wrapper.setProps({
+      chatId: toChatId({ raw: 'chat-2' }),
+      chat: mockCurrentChat.value,
+      inheritedReasoningEffort: 'low',
+      resolvedLmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' } },
+    });
+    expect(wrapper.get('[data-testid="chat-input-reasoning-summary"]').text()).toBe('Low');
+    await wrapper.setProps({ resolvedLmParameters: undefined });
+    expect(wrapper.find('[data-testid="chat-input-reasoning-summary"]').exists()).toBe(false);
   });
 
   it('should persist reasoning effort when updated via the model selector', async () => {

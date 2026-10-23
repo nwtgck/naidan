@@ -74,6 +74,21 @@ describe('ModelSelector.vue', () => {
     });
 
     expect(wrapper.text()).toContain('model-a');
+    expect(wrapper.get('[data-testid="model-selector-trigger"]').attributes('aria-describedby')).toBeUndefined();
+    expect(wrapper.find('[data-testid="model-selector-trigger-metadata"]').exists()).toBe(false);
+  });
+
+  it('describes the closed trigger with optional detail even when the model has no namespace or inheritance metadata', () => {
+    const wrapper = mount(ModelSelector, {
+      props: { modelValue: 'model-a', surface: 'composer', chevronVisibility: 'hidden' },
+      slots: { 'trigger-detail': '<span>Think High</span>' },
+    });
+    const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+    const metadata = trigger.get('[data-testid="model-selector-trigger-metadata"]');
+    expect(metadata.text()).toBe('Think High');
+    expect(metadata.get('[id]').attributes('id')).toBe(trigger.attributes('aria-describedby'));
+    expect(trigger.text()).toContain('model-a');
+    expect(wrapper.find('[data-testid="model-selector-dropdown"]').exists()).toBe(false);
   });
 
   it('toggles dropdown when clicked', async () => {
