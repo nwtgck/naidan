@@ -165,14 +165,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <p data-testid="chat-model-repository-name" tw-class="break-words text-sm font-semibold tracking-tight text-gray-800 dark:text-gray-100">{{ catalog.repository }}</p>
       </div>
       <LlamaCppBrowserModelConfiguration v-model:quantization="mainPath" v-model:multimodal="multimodal" v-model:projector="companionPath" :choices="choices" :projectors="catalog.projectors" :disabled="disabled" :multimodal-description-id="undefined" />
-      <div tw-class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-800">
-        <div tw-class="flex flex-wrap items-center gap-2.5">
+      <div tw-class="space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <div tw-class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
           <span v-if="bytes !== undefined" data-testid="chat-model-download-size" tw-class="inline-flex items-center gap-1.5 text-xs font-medium tabular-nums text-gray-600 dark:text-gray-300"><HardDriveIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />{{ formatDownloadBytes({ bytes }) }}</span>
           <span v-if="saved === 'saved'" tw-class="inline-flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400"><CheckIcon aria-hidden="true" tw-class="h-3 w-3 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserRepositoryPicker__saved() }}</span>
         </div>
-        <LlamaCppBrowserModelActionButton data-testid="chat-use-repository-model" :disabled="disabled || target === undefined || saved === 'checking'" tw-class="ml-auto" @click="target && emit('select', target)">{{ lazyStrings.SHARED__use_model_in_this_chat() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400 motion-reduce:transform-none" /></LlamaCppBrowserModelActionButton>
+        <LlamaCppBrowserModelActionButton data-testid="chat-use-repository-model" appearance="primary" size="large" :disabled="disabled || target === undefined || saved === 'checking'" tw-class="w-full" @click="target && emit('select', target)"><span tw-class="grid w-full grid-cols-[1.5rem_minmax(0,1fr)_1.5rem] items-center gap-3"><span tw-class="col-start-2 min-w-0 text-center">{{ lazyStrings.SHARED__use_model_in_this_chat() }}</span><span aria-hidden="true" tw-class="flex h-6 w-6 items-center justify-center rounded-lg bg-gray-100/80 text-blue-500 transition-[background-color,color] duration-200 group-hover:bg-blue-100/80 group-hover:text-blue-600 dark:bg-gray-700/60 dark:text-blue-400 dark:group-hover:bg-blue-500/15 dark:group-hover:text-blue-300 motion-reduce:transition-none"><ArrowRightIcon tw-class="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none" /></span></span></LlamaCppBrowserModelActionButton>
+        <p v-if="saved === 'missing'" tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser() }}</p>
       </div>
-      <p v-if="saved === 'missing'" tw-class="text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRepositoryPicker__this_model_will_be_saved_in_your_browser() }}</p>
     </section>
     <LlamaCppBrowserHuggingFaceSearch v-show="catalog === undefined" :disabled="disabled || active !== undefined || catalog !== undefined" :repository-input="input" scroll-owner="parent" @select="checkRepository({ value: $event })" />
   </div>
