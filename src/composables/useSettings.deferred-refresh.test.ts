@@ -24,6 +24,17 @@ vi.mock('@/00-storage/service', () => ({
     updateSettings: async ({ updater }: Parameters<typeof storageService.updateSettings>[0]) => {
       mocks.stored = await updater({ current: mocks.stored ?? null });
     },
+    updateSettingsForStorage: async ({ isCurrent, updater }: Parameters<typeof storageService.updateSettingsForStorage>[0]) => {
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      const updated = await updater({ current: mocks.stored ?? null });
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      mocks.stored = updated;
+      return 'saved';
+    },
     getCurrentType: () => 'local',
     subscribeToChanges: ({ listener }: { listener: ChangeListener }) => {
       mocks.settingsListener = listener;
@@ -150,6 +161,21 @@ describe('deferred automatic model refresh', () => {
     await flushPromises();
     expect(mocks.listModels).toHaveBeenCalledTimes(2);
     expect(mocks.loadProvider).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: { type: 'openai', url: 'https://changed.example/v1' } }));
+  });
+
+  it('defers the newly confirmed model connection until ordinary model refresh resumes', async () => {
+    const api = useSettings();
+    await api.init({ storageTypeOverride: undefined, dataZipBase64: undefined, modelRefresh: 'background' });
+    await flushPromises();
+    expect(mocks.listModels).toHaveBeenCalledOnce();
+    api.deferModelRefresh();
+    expect(await api.commitGlobalModelConnection({ endpoint: { type: 'openai', url: 'https://confirmed.example/v1' }, modelId: 'confirmed-model', isCurrent: () => true })).toBe('applied');
+    expect(mocks.listModels).toHaveBeenCalledOnce();
+    api.resumeModelRefresh();
+    api.resumeModelRefresh();
+    await flushPromises();
+    expect(mocks.listModels).toHaveBeenCalledTimes(2);
+    expect(mocks.loadProvider).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: { type: 'openai', url: 'https://confirmed.example/v1' } }));
   });
 
   it('does not repeat the initial refresh when an unchanged entry view is closed', async () => {

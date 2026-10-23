@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileIcon, FolderOpenIcon, HardDriveIcon, InfoIcon, ListIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CpuIcon, FileIcon, FolderOpenIcon, HardDriveIcon, InfoIcon, ListIcon, MonitorIcon, PlugZapIcon, SearchIcon, ServerOffIcon, ShieldCheckIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { modelSuggestions, preferredQuantizationHint } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
 import { localModelDirectoriesFromFiles } from '@/features/llama-cpp-browser/logic/local-model-input';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api/constants';
 import { browserModelShowcaseIds, browserModelSuggestionSelection, type ModelDiscoveryTab, type BrowserModelLocalInput, type BrowserModelSelection } from './browser-model-presentation';
 import LanguageSelector from './LanguageSelector.vue';
 import Logo from './Logo.vue';
@@ -15,10 +16,13 @@ const props = defineProps<{
   selection: BrowserModelSelection,
   startStatus: 'idle' | 'starting',
   startError: string | undefined,
+  browserProvidedModel?: { availability: 'available' | 'downloadable' | 'downloading', selection: 'selected' | 'unselected' },
 }>();
 const emit = defineEmits<{
   select: [selection: BrowserModelSelection],
   start: [],
+  'select-browser-model': [selection: 'selected' | 'unselected'],
+  'open-connections': [endpoint: 'openai' | 'browser_provided_lm'],
   'open-discovery': [request: { tab: ModelDiscoveryTab }],
   'local-input': [input: BrowserModelLocalInput],
 }>();
@@ -28,22 +32,49 @@ const models = browserModelShowcaseIds.flatMap(id => {
   return suggestion ? [suggestion] : [];
 });
 const selected = computed(() => browserModelSuggestionSelection({ selection: props.selection }));
-const selectedIndex = computed(() => models.findIndex(model => model.id === selected.value?.suggestion.id));
+const browserCardSelected = computed(() => {
+  const selection = props.browserProvidedModel?.selection;
+  switch (selection) {
+  case 'selected': return true;
+  case 'unselected': case undefined: return false;
+  default: {
+    const exhaustive: never = selection;
+    throw new Error(String(exhaustive));
+  }
+  }
+});
+const selectedIndex = computed(() => browserCardSelected.value ? models.length : models.findIndex(model => model.id === selected.value?.suggestion.id));
+const showcaseCount = computed(() => models.length + (props.browserProvidedModel === undefined ? 0 : 1));
 type ModelCardPosition = 'selected' | 'previous' | 'next' | 'hidden';
 const modelCards = computed(() => {
   const current = selected.value;
-  const candidates = current && selectedIndex.value < 0 ? [...models, current.suggestion] : models;
-  const currentIndex = candidates.findIndex(model => model.id === selected.value?.suggestion.id);
+  const ggufModels = current && selectedIndex.value < 0 ? [...models, current.suggestion] : models;
+  const ggufCards = ggufModels.map(model => ({
+    kind: 'gguf' as const,
+    model,
+    hint: current && model.id === current.suggestion.id ? current.quantization : preferredQuantizationHint({ suggestion: model }),
+  }));
+  // Only this showcase omits unsupported browser-provided models. The regular
+  // connection chooser still shows the option and explains its availability.
+  const candidates = [
+    ...ggufCards,
+    ...(props.browserProvidedModel === undefined ? [] : [{
+      kind: 'browser-provided' as const,
+      model: { id: BROWSER_PROVIDED_LM_MODEL_ID, name: lazyStrings.BrowserModelWelcome__browser_provided_model(), developer: lazyStrings.BrowserModelWelcome__this_browser() },
+      availability: props.browserProvidedModel.availability,
+    }]),
+  ];
+  const currentId = browserCardSelected.value ? BROWSER_PROVIDED_LM_MODEL_ID : selected.value?.suggestion.id;
+  const currentIndex = candidates.findIndex(card => card.model.id === currentId);
   const half = Math.floor(candidates.length / 2);
-  return candidates.map((model, index) => {
+  return candidates.map((card, index) => {
     const distance = (index - currentIndex + candidates.length + half) % candidates.length - half;
     const position: ModelCardPosition = distance === 0 ? 'selected' : distance === -1 ? 'previous' : distance === 1 ? 'next' : 'hidden';
-    const hint = current && model.id === current.suggestion.id ? current.quantization : preferredQuantizationHint({ suggestion: model });
-    return { model, hint, position, offset: Math.max(-2, Math.min(2, distance)) };
+    return { ...card, position, offset: Math.max(-2, Math.min(2, distance)) };
   });
 });
 const discoveryHint = ref<'hidden' | 'visible'>('hidden');
-const swipeStart = ref<{ pointerId: number, x: number, y: number, phase: 'pending' | 'dragging' }>();
+const swipeStart = ref<{ source: 'pointer' | 'touch', inputId: number, x: number, y: number, phase: 'pending' | 'dragging' }>();
 const swipeOffset = ref(0);
 const fileInput = ref<HTMLInputElement>();
 const directoryInput = ref<HTMLInputElement>();
@@ -98,14 +129,21 @@ useEventTargetListener(document, 'pointerdown', event => {
 watch(disabled, blocked => {
   if (blocked) {
     compatibilityVisibility.value = 'closed';
+    cancelSwipe();
   }
 });
+useEventTargetListener(window, 'blur', cancelSwipe);
 
 function selectModel({ index }: { index: number }): void {
   if (disabled.value || !models.length) {
     return;
   }
-  const model = models[(index + models.length) % models.length];
+  const next = (index + showcaseCount.value) % showcaseCount.value;
+  emit('select-browser-model', next === models.length ? 'selected' : 'unselected');
+  if (next === models.length) {
+    return;
+  }
+  const model = models[next];
   if (!model) {
     return;
   }
@@ -122,7 +160,12 @@ function activateCard({ position }: { position: ModelCardPosition }): void {
     return;
   }
   switch (position) {
-  case 'selected': emit('start');
+  case 'selected':
+    if (browserCardSelected.value) {
+      emit('open-connections', 'browser_provided_lm');
+    } else {
+      emit('start');
+    }
     return;
   case 'previous': moveModel({ step: -1 });
     return;
@@ -137,12 +180,12 @@ function activateCard({ position }: { position: ModelCardPosition }): void {
 }
 
 function beginSwipe({ event }: { event: PointerEvent }): void {
-  if (disabled.value || event.button !== 0 || !event.isPrimary) {
+  if (disabled.value || event.button !== 0 || !event.isPrimary || swipeStart.value?.source === 'touch') {
     return;
   }
   cancelSwipe();
   suppressStartUntil = 0;
-  swipeStart.value = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, phase: 'pending' };
+  swipeStart.value = { source: 'pointer', inputId: event.pointerId, x: event.clientX, y: event.clientY, phase: 'pending' };
 }
 
 function cancelSwipe(): void {
@@ -150,13 +193,13 @@ function cancelSwipe(): void {
   swipeOffset.value = 0;
 }
 
-function moveSwipe({ event }: { event: PointerEvent }): void {
+function moveSwipeTo({ x, y }: { x: number, y: number }): void {
   const start = swipeStart.value;
-  if (!start || event.pointerId !== start.pointerId) {
+  if (!start) {
     return;
   }
-  const distance = event.clientX - start.x;
-  const vertical = event.clientY - start.y;
+  const distance = x - start.x;
+  const vertical = y - start.y;
   switch (start.phase) {
   case 'pending':
     if (Math.max(Math.abs(distance), Math.abs(vertical)) < 8) {
@@ -167,11 +210,6 @@ function moveSwipe({ event }: { event: PointerEvent }): void {
       return;
     }
     start.phase = 'dragging';
-    // Capture only after horizontal intent is clear, so an ordinary tap still
-    // targets its button and vertical movement remains native page scrolling.
-    if (event.currentTarget instanceof HTMLElement) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
     break;
   case 'dragging': break;
   default: {
@@ -182,12 +220,26 @@ function moveSwipe({ event }: { event: PointerEvent }): void {
   swipeOffset.value = distance / (1 + Math.abs(distance) / 240);
 }
 
-function finishSwipe({ event }: { event: PointerEvent }): void {
+function moveSwipe({ event }: { event: PointerEvent }): void {
   const start = swipeStart.value;
-  if (!start || event.pointerId !== start.pointerId) {
+  if (start?.source !== 'pointer' || event.pointerId !== start.inputId) {
     return;
   }
-  const distance = event.clientX - start.x;
+  const wasPending = start.phase === 'pending';
+  moveSwipeTo({ x: event.clientX, y: event.clientY });
+  // Capture only after horizontal intent is clear. Finger gestures instead
+  // use touch events below, without transferring capture off the moving card.
+  if (wasPending && swipeStart.value?.phase === 'dragging' && event.currentTarget instanceof HTMLElement) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+}
+
+function finishSwipeAt({ x }: { x: number }): void {
+  const start = swipeStart.value;
+  if (!start) {
+    return;
+  }
+  const distance = x - start.x;
   cancelSwipe();
   switch (start.phase) {
   case 'pending': return;
@@ -204,8 +256,14 @@ function finishSwipe({ event }: { event: PointerEvent }): void {
   }
 }
 
+function finishSwipe({ event }: { event: PointerEvent }): void {
+  if (swipeStart.value?.source === 'pointer' && event.pointerId === swipeStart.value.inputId) {
+    finishSwipeAt({ x: event.clientX });
+  }
+}
+
 function cancelPointerSwipe({ event }: { event: PointerEvent }): void {
-  if (swipeStart.value?.pointerId === event.pointerId) {
+  if (swipeStart.value?.source === 'pointer' && event.pointerId === swipeStart.value.inputId) {
     cancelSwipe();
   }
 }
@@ -215,6 +273,74 @@ function loseSwipeCapture({ event }: { event: PointerEvent }): void {
   // bubbles here when capture moves to the deck; that handoff is not a cancel.
   if (event.target === event.currentTarget) {
     cancelPointerSwipe({ event });
+  }
+}
+
+function beginTouchSwipe({ event }: { event: TouchEvent }): void {
+  if (disabled.value || event.touches.length !== 1) {
+    cancelSwipe();
+    return;
+  }
+  const touch = event.touches[0];
+  if (!touch) {
+    return;
+  }
+  // Finger tracking stays attached to its initial touch target on iOS Safari,
+  // even while the card moves. Ignore the parallel pointer stream from here.
+  cancelSwipe();
+  suppressStartUntil = 0;
+  swipeStart.value = { source: 'touch', inputId: touch.identifier, x: touch.clientX, y: touch.clientY, phase: 'pending' };
+}
+
+function activeTouchSwipe() {
+  const start = swipeStart.value;
+  const source = start?.source;
+  switch (source) {
+  case 'touch': return start;
+  case 'pointer': case undefined: return undefined;
+  default: {
+    const exhaustive: never = source;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+function moveTouchSwipe({ event }: { event: TouchEvent }): void {
+  const start = activeTouchSwipe();
+  if (!start) {
+    return;
+  }
+  if (event.touches.length !== 1) {
+    cancelSwipe();
+    return;
+  }
+  const touch = event.touches[0];
+  if (!touch || touch.identifier !== start.inputId) {
+    return;
+  }
+  moveSwipeTo({ x: touch.clientX, y: touch.clientY });
+  // This element's touchmove listener is non-passive. Only horizontal dragging
+  // cancels native scrolling; vertical gestures and pinch zoom stay native.
+  if (swipeStart.value?.phase === 'dragging' && event.cancelable) {
+    event.preventDefault();
+  }
+}
+
+function finishTouchSwipe({ event }: { event: TouchEvent }): void {
+  const start = activeTouchSwipe();
+  if (!start) {
+    return;
+  }
+  const touch = Array.from(event.changedTouches).find(touch => touch.identifier === start.inputId);
+  if (touch) {
+    finishSwipeAt({ x: touch.clientX });
+  }
+}
+
+function cancelTouchSwipe({ event }: { event: TouchEvent }): void {
+  const start = activeTouchSwipe();
+  if (start && Array.from(event.changedTouches).some(touch => touch.identifier === start.inputId)) {
+    cancelSwipe();
   }
 }
 
@@ -260,20 +386,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="model-toolbar" tw-class="mx-auto flex w-full max-w-md items-center justify-between gap-3">
             <div class="model-pagination" role="group" :aria-label="lazyStrings.BrowserModelWelcome__browse_models()" tw-class="flex shrink-0 items-center gap-1">
               <button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__previous_model()" data-testid="previous-model" tw-class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="moveModel({ step: -1 })"><ChevronLeftIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
-              <span tw-class="min-w-9 text-center text-[12px] tabular-nums text-gray-400 dark:text-gray-500">{{ selectedIndex < 0 ? lazyStrings.BrowserModelWelcome__selected_model() : `${selectedIndex + 1} / ${models.length}` }}</span>
+              <span tw-class="min-w-9 text-center text-[12px] tabular-nums text-gray-400 dark:text-gray-500">{{ selectedIndex < 0 ? lazyStrings.BrowserModelWelcome__selected_model() : `${selectedIndex + 1} / ${showcaseCount}` }}</span>
               <button type="button" :disabled="disabled" :aria-label="lazyStrings.BrowserModelWelcome__next_model()" data-testid="next-model" tw-class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-white dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="moveModel({ step: 1 })"><ChevronRightIcon aria-hidden="true" tw-class="h-4 w-4" /></button>
             </div>
             <button type="button" class="model-list-button" :disabled="disabled" data-testid="open-model-list" aria-haspopup="dialog" tw-class="group inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100/80 dark:hover:bg-gray-800/70 hover:text-gray-900 dark:hover:text-gray-100 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 motion-reduce:transition-none disabled:opacity-50" @click="emit('open-discovery', { tab: 'candidates' })"><ListIcon aria-hidden="true" tw-class="h-4 w-4 text-gray-500 dark:text-gray-400" />{{ lazyStrings.BrowserModelWelcome__choose_a_model() }}<ChevronRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
           </div>
-          <p v-if="selected" role="status" tw-class="sr-only">{{ selected.suggestion.name }} {{ modelSize({ bytes: selected.quantization.approximateModelBytes }) }}</p>
+          <p v-if="browserProvidedModel?.selection === 'selected'" role="status" tw-class="sr-only">{{ lazyStrings.BrowserModelWelcome__browser_provided_model() }}</p>
+          <p v-else-if="selected" role="status" tw-class="sr-only">{{ selected.suggestion.name }} {{ modelSize({ bytes: selected.quantization.approximateModelBytes }) }}</p>
           <div class="model-stage" tw-class="relative isolate">
-            <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart?.phase === 'dragging' }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative select-none [touch-action:pan-y_pinch-zoom]" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelPointerSwipe({ event: $event })" @lostpointercapture="loseSwipeCapture({ event: $event })" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
-              <button v-for="card in modelCards" :key="card.model.id" type="button" class="model-deck-card" :class="{ 'model-deck-card-selected': card.position === 'selected', 'model-deck-card-previous': card.position === 'previous', 'model-deck-card-next': card.position === 'next', 'model-deck-card-hidden': card.position === 'hidden' }" :style="{ '--model-offset': card.offset }" :data-testid="card.position === 'selected' ? 'start-model' : card.position === 'hidden' ? undefined : `peek-${card.position}`" :aria-label="card.position === 'selected' ? lazyStrings.BrowserModelWelcome__start_with_model({ name: card.model.name }) : lazyStrings.BrowserModelWelcome__select_model({ name: card.model.name })" :aria-hidden="card.position === 'hidden' ? true : undefined" :aria-busy="card.position === 'selected' && startStatus === 'starting'" :disabled="disabled || card.position === 'hidden'" :tabindex="card.position === 'hidden' ? -1 : 0" tw-class="group overflow-hidden rounded-2xl border border-gray-200/70 dark:border-gray-700/60 bg-white/50 dark:bg-gray-800/40 text-left hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-gray-800 focus-visible:bg-white dark:focus-visible:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default" @click="activateCard({ position: card.position })">
+            <div class="model-deck" :class="{ 'model-deck-dragging': swipeStart?.phase === 'dragging' }" :style="{ '--model-drag': `${swipeOffset}px` }" data-testid="model-swipe" tw-class="relative select-none [touch-action:pan-y_pinch-zoom]" @pointerdown="beginSwipe({ event: $event })" @pointermove="moveSwipe({ event: $event })" @pointerup="finishSwipe({ event: $event })" @pointercancel="cancelPointerSwipe({ event: $event })" @lostpointercapture="loseSwipeCapture({ event: $event })" @touchstart.passive="beginTouchSwipe({ event: $event })" @touchmove="moveTouchSwipe({ event: $event })" @touchend="finishTouchSwipe({ event: $event })" @touchcancel="cancelTouchSwipe({ event: $event })" @keydown.left.prevent="moveModel({ step: -1 })" @keydown.right.prevent="moveModel({ step: 1 })">
+              <button v-for="card in modelCards" :key="card.model.id" type="button" class="model-deck-card" :class="{ 'model-deck-card-selected': card.position === 'selected', 'model-deck-card-previous': card.position === 'previous', 'model-deck-card-next': card.position === 'next', 'model-deck-card-hidden': card.position === 'hidden' }" :style="{ '--model-offset': card.offset }" :data-testid="card.position === 'selected' ? 'start-model' : card.position === 'hidden' ? undefined : `peek-${card.position}`" :aria-label="card.model.name === undefined ? undefined : card.position === 'selected' ? lazyStrings.BrowserModelWelcome__start_with_model({ name: card.model.name }) : lazyStrings.BrowserModelWelcome__select_model({ name: card.model.name })" :aria-hidden="card.position === 'hidden' ? true : undefined" :aria-busy="card.position === 'selected' && startStatus === 'starting'" :disabled="disabled || card.position === 'hidden'" :tabindex="card.position === 'hidden' ? -1 : 0" tw-class="group overflow-hidden rounded-2xl border border-gray-200/70 dark:border-gray-700/60 bg-white/50 dark:bg-gray-800/40 text-left hover:border-blue-400 dark:hover:border-blue-500 hover:bg-white dark:hover:bg-gray-800 focus-visible:bg-white dark:focus-visible:bg-gray-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default" @click="activateCard({ position: card.position })">
                 <span class="model-deck-preview model-deck-preview-action" aria-hidden="true" tw-class="absolute inset-x-0 bottom-4 flex items-center justify-center gap-1 text-[11px] text-gray-400 dark:text-gray-500"><ArrowRightIcon v-if="card.position === 'previous'" tw-class="h-3 w-3" />{{ lazyStrings.BrowserModelWelcome__select() }}<ArrowLeftIcon v-if="card.position === 'next'" tw-class="h-3 w-3" /></span>
                 <div class="model-deck-content" aria-hidden="true" tw-class="flex min-h-0 flex-col justify-center gap-3 px-3 py-3">
                   <!-- One identity travels with its card; do not crossfade duplicate model names. -->
-                  <div class="model-deck-identity" tw-class="flex items-center"><div class="model-deck-cpu"><div class="model-cpu-accent" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-gray-400 dark:text-gray-500 group-hover:border-sky-200/80 dark:group-hover:border-sky-400/25 group-hover:bg-sky-50 dark:group-hover:bg-sky-400/10 group-hover:text-sky-600 dark:group-hover:text-sky-300 group-focus-visible:border-sky-200/80 dark:group-focus-visible:border-sky-400/25 group-focus-visible:bg-sky-50 dark:group-focus-visible:bg-sky-400/10 group-focus-visible:text-sky-600 dark:group-focus-visible:text-sky-300"><CpuIcon tw-class="w-5 h-5" /></div></div><div tw-class="min-w-0"><p tw-class="whitespace-nowrap text-[12px] text-gray-500 dark:text-gray-400">{{ card.model.developer }}</p><h3 class="model-deck-name" tw-class="font-semibold text-gray-600 dark:text-gray-400 tracking-tight leading-snug [overflow-wrap:anywhere] group-hover:text-gray-800 dark:group-hover:text-gray-100 group-focus-visible:text-gray-800 dark:group-focus-visible:text-gray-100 transition-colors duration-300 motion-reduce:transition-none">{{ card.model.name }}</h3></div></div>
-                  <div class="model-deck-main model-deck-metadata" tw-class="flex flex-col gap-y-1 text-[11px] text-gray-500 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-400 group-focus-visible:text-gray-600 dark:group-focus-visible:text-gray-400 transition-colors duration-300 motion-reduce:transition-none"><span tw-class="inline-flex items-center gap-1 whitespace-nowrap"><HardDriveIcon tw-class="h-3.5 w-3.5 shrink-0" />{{ modelSize({ bytes: card.hint.approximateModelBytes }) }}</span><span tw-class="whitespace-nowrap">{{ lazyStrings.llamaCppBrowser__memory_estimate_gib({ memory: String(card.hint.suggestedMemoryGiB) }) }}</span></div>
+                  <div class="model-deck-identity" tw-class="flex items-center"><div class="model-deck-cpu"><div class="model-cpu-accent" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-gray-400 dark:text-gray-500 group-hover:border-sky-200/80 dark:group-hover:border-sky-400/25 group-hover:bg-sky-50 dark:group-hover:bg-sky-400/10 group-hover:text-sky-600 dark:group-hover:text-sky-300 group-focus-visible:border-sky-200/80 dark:group-focus-visible:border-sky-400/25 group-focus-visible:bg-sky-50 dark:group-focus-visible:bg-sky-400/10 group-focus-visible:text-sky-600 dark:group-focus-visible:text-sky-300"><MonitorIcon v-if="card.kind === 'browser-provided'" tw-class="w-5 h-5" /><CpuIcon v-else tw-class="w-5 h-5" /></div></div><div tw-class="min-w-0"><p tw-class="whitespace-nowrap text-[12px] text-gray-500 dark:text-gray-400">{{ card.model.developer }}</p><h3 class="model-deck-name" tw-class="font-semibold text-gray-600 dark:text-gray-400 tracking-tight leading-snug [overflow-wrap:anywhere] group-hover:text-gray-800 dark:group-hover:text-gray-100 group-focus-visible:text-gray-800 dark:group-focus-visible:text-gray-100 transition-colors duration-300 motion-reduce:transition-none">{{ card.model.name }}</h3></div></div>
+                  <div v-if="card.kind === 'gguf'" class="model-deck-main model-deck-metadata" tw-class="flex flex-col gap-y-1 text-[11px] text-gray-500 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-400 group-focus-visible:text-gray-600 dark:group-focus-visible:text-gray-400 transition-colors duration-300 motion-reduce:transition-none"><span tw-class="inline-flex items-center gap-1 whitespace-nowrap"><HardDriveIcon tw-class="h-3.5 w-3.5 shrink-0" />{{ modelSize({ bytes: card.hint.approximateModelBytes }) }}</span><span tw-class="whitespace-nowrap">{{ lazyStrings.llamaCppBrowser__memory_estimate_gib({ memory: String(card.hint.suggestedMemoryGiB) }) }}</span></div>
+                  <div v-else class="model-deck-main model-deck-metadata" tw-class="space-y-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400"><span tw-class="flex items-center gap-1.5"><ShieldCheckIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ lazyStrings.BrowserModelWelcome__processed_on_this_device() }}</span><span v-if="card.availability !== 'available'">{{ card.availability === 'downloading' ? lazyStrings.BrowserModelWelcome__the_browser_is_preparing_the_model() : lazyStrings.BrowserModelWelcome__the_browser_handles_initial_preparation() }}</span></div>
                 </div>
                 <span class="model-deck-main model-deck-start" aria-hidden="true" tw-class="flex items-center justify-between gap-2 border-t border-gray-200/60 dark:border-gray-700/50 bg-gray-50/60 dark:bg-gray-900/15 px-3 py-3 text-[13px] font-bold leading-snug text-gray-600 dark:text-gray-400 group-hover:border-blue-100/60 dark:group-hover:border-blue-500/10 group-hover:bg-blue-50/70 dark:group-hover:bg-blue-500/10 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-focus-visible:border-blue-100/60 dark:group-focus-visible:border-blue-500/10 group-focus-visible:bg-blue-50/70 dark:group-focus-visible:bg-blue-500/10 group-focus-visible:text-blue-600 dark:group-focus-visible:text-blue-400 transition-colors duration-300 motion-reduce:transition-none"><span tw-class="min-w-0 text-balance">{{ lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}</span><ArrowRightIcon tw-class="h-4 w-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 motion-reduce:transition-none" /></span>
               </button>
@@ -296,6 +424,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               </span>
             </span></p></div>
           </div>
+          <!-- The subtitle distinguishes API/server connections from the GGUF cards.
+               Browser-provided deliberately remains available in the destination,
+               even though this wording can suggest it also runs outside the browser. -->
+          <button type="button" :disabled="disabled" data-testid="open-connections" tw-class="group mx-auto flex min-h-12 w-full max-w-md items-center gap-3 rounded-xl px-3 py-2 text-left text-gray-500 transition-colors hover:bg-gray-100/70 hover:text-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-100 disabled:opacity-50" @click="emit('open-connections', 'openai')"><span tw-class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white/50 dark:border-gray-700/70 dark:bg-gray-800/40"><PlugZapIcon aria-hidden="true" tw-class="h-3.5 w-3.5" /></span><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">{{ lazyStrings.BrowserModelWelcome__use_openai_ollama_and_more() }}</span><span tw-class="mt-0.5 block text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">{{ lazyStrings.BrowserModelWelcome__connect_to_ai_running_outside_the_web_browser() }}</span></span><ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></button>
           <p v-if="startError" role="alert" tw-class="text-xs text-red-600 dark:text-red-400">{{ startError }}</p>
           <input ref="fileInput" type="file" :disabled="disabled" accept=".gguf" multiple tabindex="-1" tw-class="sr-only" :aria-label="lazyStrings.BrowserModelWelcome__choose_gguf_files()" @change="pickFiles({ event: $event, selection: 'files' })" />
           <input ref="directoryInput" type="file" :disabled="disabled" webkitdirectory multiple tabindex="-1" tw-class="sr-only" :aria-label="lazyStrings.BrowserModelWelcome__choose_a_model_folder()" @change="pickFiles({ event: $event, selection: 'directory' })" />
@@ -365,6 +497,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   /* Every card keeps its full width; neighboring cards continue beyond the fog. */
   left: 50%;
   width: var(--model-card-width);
+  touch-action: pan-y pinch-zoom;
   transform: translateX(calc(-50% + var(--model-offset) * (var(--model-card-width) + 0.5rem) + var(--model-drag, 0px)));
   opacity: 0.9;
   z-index: 1;

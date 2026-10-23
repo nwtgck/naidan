@@ -64,6 +64,46 @@ import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/Ass
 import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/pt-BR';
 import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/pt-BR';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/pt-BR';
+import { BrowserConnectionSelection__api_key } from '@/strings/messages/BrowserConnectionSelection__api_key/pt-BR';
+import { BrowserConnectionSelection__api_url } from '@/strings/messages/BrowserConnectionSelection__api_url/pt-BR';
+import { BrowserConnectionSelection__available_in_this_browser } from '@/strings/messages/BrowserConnectionSelection__available_in_this_browser/pt-BR';
+import { BrowserConnectionSelection__browser_managed_models } from '@/strings/messages/BrowserConnectionSelection__browser_managed_models/pt-BR';
+import { BrowserConnectionSelection__browser_provided_model } from '@/strings/messages/BrowserConnectionSelection__browser_provided_model/pt-BR';
+import { BrowserConnectionSelection__checking_browser_model } from '@/strings/messages/BrowserConnectionSelection__checking_browser_model/pt-BR';
+import { BrowserConnectionSelection__choose_model } from '@/strings/messages/BrowserConnectionSelection__choose_model/pt-BR';
+import { BrowserConnectionSelection__configure_api_key } from '@/strings/messages/BrowserConnectionSelection__configure_api_key/pt-BR';
+import { BrowserConnectionSelection__configured } from '@/strings/messages/BrowserConnectionSelection__configured/pt-BR';
+import { BrowserConnectionSelection__connect_to_ai_outside_the_browser_or_browser_provided_models } from '@/strings/messages/BrowserConnectionSelection__connect_to_ai_outside_the_browser_or_browser_provided_models/pt-BR';
+import { BrowserConnectionSelection__connection } from '@/strings/messages/BrowserConnectionSelection__connection/pt-BR';
+import { BrowserConnectionSelection__could_not_check_browser_model } from '@/strings/messages/BrowserConnectionSelection__could_not_check_browser_model/pt-BR';
+import { BrowserConnectionSelection__could_not_fetch_models } from '@/strings/messages/BrowserConnectionSelection__could_not_fetch_models/pt-BR';
+import { BrowserConnectionSelection__could_not_prepare_browser_model } from '@/strings/messages/BrowserConnectionSelection__could_not_prepare_browser_model/pt-BR';
+import { BrowserConnectionSelection__could_not_save_connection } from '@/strings/messages/BrowserConnectionSelection__could_not_save_connection/pt-BR';
+import { BrowserConnectionSelection__enter_api_key } from '@/strings/messages/BrowserConnectionSelection__enter_api_key/pt-BR';
+import { BrowserConnectionSelection__fetch_models } from '@/strings/messages/BrowserConnectionSelection__fetch_models/pt-BR';
+import { BrowserConnectionSelection__first_preparation_required } from '@/strings/messages/BrowserConnectionSelection__first_preparation_required/pt-BR';
+import { BrowserConnectionSelection__header_name_example } from '@/strings/messages/BrowserConnectionSelection__header_name_example/pt-BR';
+import { BrowserConnectionSelection__hide_api_key } from '@/strings/messages/BrowserConnectionSelection__hide_api_key/pt-BR';
+import { BrowserConnectionSelection__http_headers_optional } from '@/strings/messages/BrowserConnectionSelection__http_headers_optional/pt-BR';
+import { BrowserConnectionSelection__invalid_api_url } from '@/strings/messages/BrowserConnectionSelection__invalid_api_url/pt-BR';
+import { BrowserConnectionSelection__localhost_models_are_fetched_automatically } from '@/strings/messages/BrowserConnectionSelection__localhost_models_are_fetched_automatically/pt-BR';
+import { BrowserConnectionSelection__model } from '@/strings/messages/BrowserConnectionSelection__model/pt-BR';
+import { BrowserConnectionSelection__model_selection } from '@/strings/messages/BrowserConnectionSelection__model_selection/pt-BR';
+import { BrowserConnectionSelection__model_type_depends_on_browser } from '@/strings/messages/BrowserConnectionSelection__model_type_depends_on_browser/pt-BR';
+import { BrowserConnectionSelection__models_on_your_device_or_server } from '@/strings/messages/BrowserConnectionSelection__models_on_your_device_or_server/pt-BR';
+import { BrowserConnectionSelection__no_models_returned } from '@/strings/messages/BrowserConnectionSelection__no_models_returned/pt-BR';
+import { BrowserConnectionSelection__ollama_url } from '@/strings/messages/BrowserConnectionSelection__ollama_url/pt-BR';
+import { BrowserConnectionSelection__openai_and_other_api_services } from '@/strings/messages/BrowserConnectionSelection__openai_and_other_api_services/pt-BR';
+import { BrowserConnectionSelection__openai_compatible_api } from '@/strings/messages/BrowserConnectionSelection__openai_compatible_api/pt-BR';
+import { BrowserConnectionSelection__optional } from '@/strings/messages/BrowserConnectionSelection__optional/pt-BR';
+import { BrowserConnectionSelection__retry_check } from '@/strings/messages/BrowserConnectionSelection__retry_check/pt-BR';
+import { BrowserConnectionSelection__run_on_your_device } from '@/strings/messages/BrowserConnectionSelection__run_on_your_device/pt-BR';
+import { BrowserConnectionSelection__show_api_key } from '@/strings/messages/BrowserConnectionSelection__show_api_key/pt-BR';
+import { BrowserConnectionSelection__start_with_this_model } from '@/strings/messages/BrowserConnectionSelection__start_with_this_model/pt-BR';
+import { BrowserConnectionSelection__unavailable_in_this_environment } from '@/strings/messages/BrowserConnectionSelection__unavailable_in_this_environment/pt-BR';
+import { BrowserConnectionSelection__use_browser_managed_model } from '@/strings/messages/BrowserConnectionSelection__use_browser_managed_model/pt-BR';
+import { BrowserConnectionSelection__use_openai_ollama_and_more } from '@/strings/messages/BrowserConnectionSelection__use_openai_ollama_and_more/pt-BR';
+import { BrowserConnectionSelection__use_this_connection } from '@/strings/messages/BrowserConnectionSelection__use_this_connection/pt-BR';
 import { BrowserModelDialog__close } from '@/strings/messages/BrowserModelDialog__close/pt-BR';
 import { BrowserModelFileSelection__model_settings } from '@/strings/messages/BrowserModelFileSelection__model_settings/pt-BR';
 import { BrowserModelPreparation__automatic } from '@/strings/messages/BrowserModelPreparation__automatic/pt-BR';
@@ -77,11 +117,14 @@ import { BrowserModelPreparation__loading_model_settings } from '@/strings/messa
 import { BrowserModelPreparation__main_model } from '@/strings/messages/BrowserModelPreparation__main_model/pt-BR';
 import { BrowserModelPreparation__no_companion_file } from '@/strings/messages/BrowserModelPreparation__no_companion_file/pt-BR';
 import { BrowserModelPreparation__specify_a_quantization } from '@/strings/messages/BrowserModelPreparation__specify_a_quantization/pt-BR';
+import { BrowserModelWelcomeDialog__could_not_open_connection_settings } from '@/strings/messages/BrowserModelWelcomeDialog__could_not_open_connection_settings/pt-BR';
 import { BrowserModelWelcome__browse_models } from '@/strings/messages/BrowserModelWelcome__browse_models/pt-BR';
+import { BrowserModelWelcome__browser_provided_model } from '@/strings/messages/BrowserModelWelcome__browser_provided_model/pt-BR';
 import { BrowserModelWelcome__choose_a_model } from '@/strings/messages/BrowserModelWelcome__choose_a_model/pt-BR';
 import { BrowserModelWelcome__choose_a_model_folder } from '@/strings/messages/BrowserModelWelcome__choose_a_model_folder/pt-BR';
 import { BrowserModelWelcome__choose_gguf_files } from '@/strings/messages/BrowserModelWelcome__choose_gguf_files/pt-BR';
 import { BrowserModelWelcome__choose_the_model_to_use } from '@/strings/messages/BrowserModelWelcome__choose_the_model_to_use/pt-BR';
+import { BrowserModelWelcome__connect_to_ai_running_outside_the_web_browser } from '@/strings/messages/BrowserModelWelcome__connect_to_ai_running_outside_the_web_browser/pt-BR';
 import { BrowserModelWelcome__drop_gguf_files_or_a_folder_or_choose } from '@/strings/messages/BrowserModelWelcome__drop_gguf_files_or_a_folder_or_choose/pt-BR';
 import { BrowserModelWelcome__files } from '@/strings/messages/BrowserModelWelcome__files/pt-BR';
 import { BrowserModelWelcome__folder } from '@/strings/messages/BrowserModelWelcome__folder/pt-BR';
@@ -91,12 +134,17 @@ import { BrowserModelWelcome__next_model } from '@/strings/messages/BrowserModel
 import { BrowserModelWelcome__no_inference_server_required } from '@/strings/messages/BrowserModelWelcome__no_inference_server_required/pt-BR';
 import { BrowserModelWelcome__no_installation_required } from '@/strings/messages/BrowserModelWelcome__no_installation_required/pt-BR';
 import { BrowserModelWelcome__previous_model } from '@/strings/messages/BrowserModelWelcome__previous_model/pt-BR';
+import { BrowserModelWelcome__processed_on_this_device } from '@/strings/messages/BrowserModelWelcome__processed_on_this_device/pt-BR';
 import { BrowserModelWelcome__prompts_stay_on_your_device } from '@/strings/messages/BrowserModelWelcome__prompts_stay_on_your_device/pt-BR';
 import { BrowserModelWelcome__run_ai_in_your_web_browser } from '@/strings/messages/BrowserModelWelcome__run_ai_in_your_web_browser/pt-BR';
 import { BrowserModelWelcome__select } from '@/strings/messages/BrowserModelWelcome__select/pt-BR';
 import { BrowserModelWelcome__select_model } from '@/strings/messages/BrowserModelWelcome__select_model/pt-BR';
 import { BrowserModelWelcome__selected_model } from '@/strings/messages/BrowserModelWelcome__selected_model/pt-BR';
 import { BrowserModelWelcome__start_with_model } from '@/strings/messages/BrowserModelWelcome__start_with_model/pt-BR';
+import { BrowserModelWelcome__the_browser_handles_initial_preparation } from '@/strings/messages/BrowserModelWelcome__the_browser_handles_initial_preparation/pt-BR';
+import { BrowserModelWelcome__the_browser_is_preparing_the_model } from '@/strings/messages/BrowserModelWelcome__the_browser_is_preparing_the_model/pt-BR';
+import { BrowserModelWelcome__this_browser } from '@/strings/messages/BrowserModelWelcome__this_browser/pt-BR';
+import { BrowserModelWelcome__use_openai_ollama_and_more } from '@/strings/messages/BrowserModelWelcome__use_openai_ollama_and_more/pt-BR';
 import { ChatAttachMenu__a_private_copy_is_saved_in_your_browser } from '@/strings/messages/ChatAttachMenu__a_private_copy_is_saved_in_your_browser/pt-BR';
 import { ChatAttachMenu__attach_files_or_folder } from '@/strings/messages/ChatAttachMenu__attach_files_or_folder/pt-BR';
 import { ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying } from '@/strings/messages/ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying/pt-BR';
@@ -1563,6 +1611,9 @@ import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUp
 import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/pt-BR';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/pt-BR';
 import { PWAUpdateNotification__temporary_online_update } from '@/strings/messages/PWAUpdateNotification__temporary_online_update/pt-BR';
+import { PromptApiPreparationProgress__downloading_browser_provided_model } from '@/strings/messages/PromptApiPreparationProgress__downloading_browser_provided_model/pt-BR';
+import { PromptApiPreparationProgress__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiPreparationProgress__downloading_browser_provided_model_progress/pt-BR';
+import { PromptApiPreparationProgress__preparing_browser_provided_model } from '@/strings/messages/PromptApiPreparationProgress__preparing_browser_provided_model/pt-BR';
 import { PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser/pt-BR';
 import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/pt-BR';
 import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/pt-BR';
@@ -1574,8 +1625,6 @@ import { PromptApiStatus__chrome_148_or_later_desktop } from '@/strings/messages
 import { PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less } from '@/strings/messages/PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less/pt-BR';
 import { PromptApiStatus__common_reasons_include } from '@/strings/messages/PromptApiStatus__common_reasons_include/pt-BR';
 import { PromptApiStatus__could_not_check_browser_provided_model_availability } from '@/strings/messages/PromptApiStatus__could_not_check_browser_provided_model_availability/pt-BR';
-import { PromptApiStatus__downloading_browser_provided_model } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model/pt-BR';
-import { PromptApiStatus__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model_progress/pt-BR';
 import { PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag } from '@/strings/messages/PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag/pt-BR';
 import { PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini } from '@/strings/messages/PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini/pt-BR';
 import { PromptApiStatus__if_unavailable_in_a_supported_browser } from '@/strings/messages/PromptApiStatus__if_unavailable_in_a_supported_browser/pt-BR';
@@ -1588,7 +1637,6 @@ import { PromptApiStatus__model_download_may_require_more_free_space } from '@/s
 import { PromptApiStatus__model_preparation_failed } from '@/strings/messages/PromptApiStatus__model_preparation_failed/pt-BR';
 import { PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met } from '@/strings/messages/PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met/pt-BR';
 import { PromptApiStatus__prepare_browser_provided_model } from '@/strings/messages/PromptApiStatus__prepare_browser_provided_model/pt-BR';
-import { PromptApiStatus__preparing_browser_provided_model } from '@/strings/messages/PromptApiStatus__preparing_browser_provided_model/pt-BR';
 import { PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy } from '@/strings/messages/PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy/pt-BR';
 import { PromptApiStatus__required_edge_experimental_flags_are_not_enabled } from '@/strings/messages/PromptApiStatus__required_edge_experimental_flags_are_not_enabled/pt-BR';
 import { PromptApiStatus__supported_browsers } from '@/strings/messages/PromptApiStatus__supported_browsers/pt-BR';
@@ -3115,6 +3163,46 @@ export const catalog = {
   AssistantProcessSequence__tool_executions,
   AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
+  BrowserConnectionSelection__api_key,
+  BrowserConnectionSelection__api_url,
+  BrowserConnectionSelection__available_in_this_browser,
+  BrowserConnectionSelection__browser_managed_models,
+  BrowserConnectionSelection__browser_provided_model,
+  BrowserConnectionSelection__checking_browser_model,
+  BrowserConnectionSelection__choose_model,
+  BrowserConnectionSelection__configure_api_key,
+  BrowserConnectionSelection__configured,
+  BrowserConnectionSelection__connect_to_ai_outside_the_browser_or_browser_provided_models,
+  BrowserConnectionSelection__connection,
+  BrowserConnectionSelection__could_not_check_browser_model,
+  BrowserConnectionSelection__could_not_fetch_models,
+  BrowserConnectionSelection__could_not_prepare_browser_model,
+  BrowserConnectionSelection__could_not_save_connection,
+  BrowserConnectionSelection__enter_api_key,
+  BrowserConnectionSelection__fetch_models,
+  BrowserConnectionSelection__first_preparation_required,
+  BrowserConnectionSelection__header_name_example,
+  BrowserConnectionSelection__hide_api_key,
+  BrowserConnectionSelection__http_headers_optional,
+  BrowserConnectionSelection__invalid_api_url,
+  BrowserConnectionSelection__localhost_models_are_fetched_automatically,
+  BrowserConnectionSelection__model,
+  BrowserConnectionSelection__model_selection,
+  BrowserConnectionSelection__model_type_depends_on_browser,
+  BrowserConnectionSelection__models_on_your_device_or_server,
+  BrowserConnectionSelection__no_models_returned,
+  BrowserConnectionSelection__ollama_url,
+  BrowserConnectionSelection__openai_and_other_api_services,
+  BrowserConnectionSelection__openai_compatible_api,
+  BrowserConnectionSelection__optional,
+  BrowserConnectionSelection__retry_check,
+  BrowserConnectionSelection__run_on_your_device,
+  BrowserConnectionSelection__show_api_key,
+  BrowserConnectionSelection__start_with_this_model,
+  BrowserConnectionSelection__unavailable_in_this_environment,
+  BrowserConnectionSelection__use_browser_managed_model,
+  BrowserConnectionSelection__use_openai_ollama_and_more,
+  BrowserConnectionSelection__use_this_connection,
   BrowserModelDialog__close,
   BrowserModelFileSelection__model_settings,
   BrowserModelPreparation__automatic,
@@ -3128,11 +3216,14 @@ export const catalog = {
   BrowserModelPreparation__main_model,
   BrowserModelPreparation__no_companion_file,
   BrowserModelPreparation__specify_a_quantization,
+  BrowserModelWelcomeDialog__could_not_open_connection_settings,
   BrowserModelWelcome__browse_models,
+  BrowserModelWelcome__browser_provided_model,
   BrowserModelWelcome__choose_a_model,
   BrowserModelWelcome__choose_a_model_folder,
   BrowserModelWelcome__choose_gguf_files,
   BrowserModelWelcome__choose_the_model_to_use,
+  BrowserModelWelcome__connect_to_ai_running_outside_the_web_browser,
   BrowserModelWelcome__drop_gguf_files_or_a_folder_or_choose,
   BrowserModelWelcome__files,
   BrowserModelWelcome__folder,
@@ -3142,12 +3233,17 @@ export const catalog = {
   BrowserModelWelcome__no_inference_server_required,
   BrowserModelWelcome__no_installation_required,
   BrowserModelWelcome__previous_model,
+  BrowserModelWelcome__processed_on_this_device,
   BrowserModelWelcome__prompts_stay_on_your_device,
   BrowserModelWelcome__run_ai_in_your_web_browser,
   BrowserModelWelcome__select,
   BrowserModelWelcome__select_model,
   BrowserModelWelcome__selected_model,
   BrowserModelWelcome__start_with_model,
+  BrowserModelWelcome__the_browser_handles_initial_preparation,
+  BrowserModelWelcome__the_browser_is_preparing_the_model,
+  BrowserModelWelcome__this_browser,
+  BrowserModelWelcome__use_openai_ollama_and_more,
   ChatAttachMenu__a_private_copy_is_saved_in_your_browser,
   ChatAttachMenu__attach_files_or_folder,
   ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying,
@@ -4614,6 +4710,9 @@ export const catalog = {
   PWAUpdateNotification__preparing_update,
   PWAUpdateNotification__reload_to_update,
   PWAUpdateNotification__temporary_online_update,
+  PromptApiPreparationProgress__downloading_browser_provided_model,
+  PromptApiPreparationProgress__downloading_browser_provided_model_progress,
+  PromptApiPreparationProgress__preparing_browser_provided_model,
   PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser,
   PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
   PromptApiStatus__browser_provided_model_is_ready,
@@ -4625,8 +4724,6 @@ export const catalog = {
   PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less,
   PromptApiStatus__common_reasons_include,
   PromptApiStatus__could_not_check_browser_provided_model_availability,
-  PromptApiStatus__downloading_browser_provided_model,
-  PromptApiStatus__downloading_browser_provided_model_progress,
   PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag,
   PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini,
   PromptApiStatus__if_unavailable_in_a_supported_browser,
@@ -4639,7 +4736,6 @@ export const catalog = {
   PromptApiStatus__model_preparation_failed,
   PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met,
   PromptApiStatus__prepare_browser_provided_model,
-  PromptApiStatus__preparing_browser_provided_model,
   PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy,
   PromptApiStatus__required_edge_experimental_flags_are_not_enabled,
   PromptApiStatus__supported_browsers,

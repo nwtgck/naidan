@@ -22,6 +22,17 @@ function touchPointer({ type, x, y, pointerId, isPrimary }: { type: string, x: n
   return event;
 }
 
+type Finger = { identifier: number, clientX: number, clientY: number };
+
+function touchGesture({ type, touches, changedTouches }: { type: string, touches: Finger[], changedTouches: Finger[] }): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    touches: { value: touches },
+    changedTouches: { value: changedTouches },
+  });
+  return event;
+}
+
 function renderTouchWelcome() {
   const wrapper = mount(BrowserModelWelcome, { props: { interaction: 'ready', selection: { suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }, startStatus: 'idle', startError: undefined } });
   const deck = wrapper.get<HTMLElement>('[data-testid="model-swipe"]').element;
@@ -69,6 +80,7 @@ describe('browser model welcome', () => {
     };
     expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="open-model-list"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="open-connections"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="gguf-compatibility-info-trigger"]').attributes('disabled')).toBeDefined();
     expect(wrapper.get('[data-testid="browser-model-welcome"]').attributes('inert')).toBeDefined();
     await wrapper.get('[data-testid="next-model"]').trigger('click');
@@ -76,6 +88,42 @@ describe('browser model welcome', () => {
     await wrapper.setProps({ interaction: 'ready' });
     expect(wrapper.get('[data-testid="browser-model-welcome"]').attributes('inert')).toBeUndefined();
     expect(wrapper.get('[data-testid="start-model"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('adds a supported browser model without replacing GGUF cards or changing the selected model', async () => {
+    using fetch = vi.spyOn(globalThis, 'fetch');
+    const { wrapper } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const originalCards = wrapper.findAll('.model-deck-card').map(card => card.element);
+    expect(originalCards).toHaveLength(6);
+    await wrapper.setProps({ browserProvidedModel: { availability: 'available', selection: 'unselected' } });
+    const expandedCards = wrapper.findAll('.model-deck-card');
+    expect(expandedCards).toHaveLength(7);
+    originalCards.forEach((card, index) => expect(expandedCards[index]?.element).toBe(card));
+    expect(wrapper.get('[data-testid="start-model"]').text()).toContain('Gemma');
+    expect(wrapper.text()).toContain('1 / 7');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('starts the browser card through connection selection and returns to the real GGUF catalog', async () => {
+    const { wrapper } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    await wrapper.setProps({ browserProvidedModel: { availability: 'downloadable', selection: 'unselected' } });
+    await wrapper.get('[data-testid="previous-model"]').trigger('click');
+    expect(wrapper.emitted('select-browser-model')).toEqual([['selected']]);
+    expect(wrapper.emitted('select')).toBeUndefined();
+    await wrapper.setProps({ browserProvidedModel: { availability: 'downloadable', selection: 'selected' } });
+    const browserCard = wrapper.get('[data-testid="start-model"]');
+    expect(browserCard.text()).toContain('Browser-provided model');
+    expect(browserCard.text()).not.toContain('GB');
+    expect(wrapper.text()).toContain('7 / 7');
+    await browserCard.trigger('click');
+    expect(wrapper.emitted('open-connections')).toEqual([['browser_provided_lm']]);
+    expect(wrapper.emitted('start')).toBeUndefined();
+    await wrapper.get('[data-testid="next-model"]').trigger('click');
+    expect(wrapper.emitted('select-browser-model')?.at(-1)).toEqual(['unselected']);
+    expect(wrapper.emitted('select')?.at(-1)).toEqual([{ suggestionId: 'gemma-4-e2b', quantizationId: 'qat-q4_0' }]);
   });
 
   it('shows GGUF compatibility beside file selection on hover, focus, and pinned clicks without fetching', async () => {
@@ -142,6 +190,33 @@ describe('browser model welcome', () => {
     expect(wrapper.emitted('close')).toHaveLength(1);
   });
 
+  it('restores dialog focus after a view changes without taking focus from an input already inside', async () => {
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    const wrapper = mount(BrowserModelDialog, {
+      props: { open: true, dismissible: true, suspended: false },
+      slots: { default: '<input data-testid="step-input" />' },
+      global: { stubs: { teleport: true } },
+      attachTo: document.body,
+    });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+        outside.remove();
+      },
+    };
+    await nextTick();
+    const panel = wrapper.get('[role="dialog"]').element;
+    expect(document.activeElement).toBe(panel);
+    outside.focus();
+    wrapper.vm.focusPanel();
+    expect(document.activeElement).toBe(panel);
+    const input = wrapper.get<HTMLInputElement>('[data-testid="step-input"]').element;
+    input.focus();
+    wrapper.vm.focusPanel();
+    expect(document.activeElement).toBe(input);
+  });
+
   it('keeps a touch swipe alive through the child capture handoff and suppresses its click', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
     const { wrapper, deck, card, capture } = renderTouchWelcome();
@@ -187,6 +262,134 @@ describe('browser model welcome', () => {
     expect(capture).toHaveBeenCalledExactlyOnceWith(1);
     expect(wrapper.emitted('select')?.[0]).toEqual([{ suggestionId: 'qwen-3-8-flash-next', quantizationId: 'q4_k_m' }]);
     expect(wrapper.emitted('start')).toBeUndefined();
+  });
+
+  it('tracks a native finger swipe independently of parallel pointer cancellation and preserves the card nodes', async () => {
+    using now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const { wrapper, deck, card, capture } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const cards = wrapper.findAll('.model-deck-card').map(card => card.element);
+    const pointer = { pointerId: 1, isPrimary: true, x: 100, y: 20 };
+    const finger = { identifier: 42, clientX: 100, clientY: 20 };
+    card.dispatchEvent(touchPointer({ ...pointer, type: 'pointerdown' }));
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchPointer({ ...pointer, type: 'pointermove', x: 40 }));
+    deck.dispatchEvent(touchPointer({ ...pointer, type: 'pointercancel', x: 40 }));
+    deck.dispatchEvent(touchPointer({ ...pointer, type: 'lostpointercapture', x: 40 }));
+    const moved = { ...finger, clientX: 40 };
+    const horizontalMove = touchGesture({ type: 'touchmove', touches: [moved], changedTouches: [moved] });
+    card.dispatchEvent(horizontalMove);
+    expect(horizontalMove.defaultPrevented).toBe(true);
+    await nextTick();
+    expect(deck.classList.contains('model-deck-dragging')).toBe(true);
+    expect(deck.style.getPropertyValue('--model-drag')).not.toBe('0px');
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [moved] }));
+    deck.dispatchEvent(touchPointer({ ...pointer, type: 'pointerup', x: 40 }));
+    expect(wrapper.emitted('select')).toEqual([[{ suggestionId: 'gpt-oss-20b', quantizationId: 'mxfp4' }]]);
+    expect(capture).not.toHaveBeenCalled();
+    await wrapper.setProps({ selection: { suggestionId: 'gpt-oss-20b', quantizationId: 'mxfp4' } });
+    const movedCards = wrapper.findAll('.model-deck-card');
+    expect(movedCards).toHaveLength(cards.length);
+    cards.forEach((card, index) => expect(movedCards[index]?.element).toBe(card));
+    expect(deck.classList.contains('model-deck-dragging')).toBe(false);
+    expect(deck.style.getPropertyValue('--model-drag')).toBe('0px');
+    card.click();
+    expect(wrapper.emitted('select')).toHaveLength(1);
+    expect(wrapper.emitted('start')).toBeUndefined();
+    now.mockReturnValue(1500);
+    await wrapper.get('[data-testid="start-model"]').trigger('click');
+    expect(wrapper.emitted('start')).toHaveLength(1);
+  });
+
+  it('moves right with native touch input and keeps an ordinary tap available after a short drag', () => {
+    const { wrapper, card } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const finger = { identifier: 42, clientX: 100, clientY: 20 };
+    const short = { ...finger, clientX: 120 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchmove', touches: [short], changedTouches: [short] }));
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [short] }));
+    card.click();
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(wrapper.emitted('start')).toBeUndefined();
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [finger] }));
+    card.click();
+    expect(wrapper.emitted('start')).toHaveLength(1);
+    const right = { ...finger, clientX: 160 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchmove', touches: [right], changedTouches: [right] }));
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [right] }));
+    expect(wrapper.emitted('select')).toEqual([[{ suggestionId: 'qwen-3-8-flash-next', quantizationId: 'q4_k_m' }]]);
+  });
+
+  it('keeps native vertical scrolling and pinch zoom free of model changes', () => {
+    const { wrapper, card } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const finger = { identifier: 42, clientX: 100, clientY: 20 };
+    const vertical = { ...finger, clientX: 104, clientY: 70 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    const verticalMove = touchGesture({ type: 'touchmove', touches: [vertical], changedTouches: [vertical] });
+    card.dispatchEvent(verticalMove);
+    expect(verticalMove.defaultPrevented).toBe(false);
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [vertical] }));
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    const second = { identifier: 43, clientX: 160, clientY: 20 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger, second], changedTouches: [second] }));
+    const pinchMove = touchGesture({ type: 'touchmove', touches: [{ ...finger, clientX: 40 }, second], changedTouches: [finger] });
+    card.dispatchEvent(pinchMove);
+    expect(pinchMove.defaultPrevented).toBe(false);
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [finger, second] }));
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(wrapper.emitted('start')).toBeUndefined();
+  });
+
+  it('clears a native touch cancellation and accepts the next finger gesture', async () => {
+    const { wrapper, deck, card } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const finger = { identifier: 42, clientX: 100, clientY: 20 };
+    const left = { ...finger, clientX: 40 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchmove', touches: [left], changedTouches: [left] }));
+    card.dispatchEvent(touchGesture({ type: 'touchcancel', touches: [], changedTouches: [left] }));
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [left] }));
+    await nextTick();
+    expect(deck.style.getPropertyValue('--model-drag')).toBe('0px');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchmove', touches: [left], changedTouches: [left] }));
+    card.dispatchEvent(touchGesture({ type: 'touchend', touches: [], changedTouches: [left] }));
+    expect(wrapper.emitted('select')).toHaveLength(1);
+  });
+
+  it.each(['blur', 'blocked'] as const)('clears an unfinished finger drag after %s and accepts pointer input', async interruption => {
+    const { wrapper, deck, card, capture } = renderTouchWelcome();
+    using _cleanup = { [Symbol.dispose]: () => wrapper.unmount() };
+    const finger = { identifier: 42, clientX: 100, clientY: 20 };
+    const left = { ...finger, clientX: 40 };
+    card.dispatchEvent(touchGesture({ type: 'touchstart', touches: [finger], changedTouches: [finger] }));
+    card.dispatchEvent(touchGesture({ type: 'touchmove', touches: [left], changedTouches: [left] }));
+    switch (interruption) {
+    case 'blur': window.dispatchEvent(new Event('blur'));
+      break;
+    case 'blocked':
+      await wrapper.setProps({ interaction: 'blocked' });
+      await wrapper.setProps({ interaction: 'ready' });
+      break;
+    default: {
+      const exhaustive: never = interruption;
+      throw new Error(String(exhaustive));
+    }
+    }
+    await nextTick();
+    expect(deck.style.getPropertyValue('--model-drag')).toBe('0px');
+    expect(wrapper.emitted('select')).toBeUndefined();
+    const pointer = { pointerId: 3, isPrimary: true, x: 100, y: 20 };
+    card.dispatchEvent(touchPointer({ ...pointer, type: 'pointerdown' }));
+    card.dispatchEvent(touchPointer({ ...pointer, type: 'pointermove', x: 160 }));
+    deck.dispatchEvent(touchPointer({ ...pointer, type: 'pointerup', x: 160 }));
+    expect(capture).toHaveBeenCalledExactlyOnceWith(3);
+    expect(wrapper.emitted('select')).toHaveLength(1);
   });
 
   it('snaps a short drag back and permits a deliberate tap immediately afterwards', () => {

@@ -13,15 +13,42 @@ import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
 import { createModuleLoader } from '@/utils/module-loader';
 import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import { ensureStrings, lazyStrings } from '@/strings';
+import type { BrowserProvidedLmEndpoint, HttpEndpoint } from '@/01-models/types';
 
 // The initial dialog and its cards are synchronous. Only action-owned views
 // are deferred, with optional UI prefetch after the initial paint opportunity.
 const fileSelectionLoader = createModuleLoader({ importModule: () => import('./BrowserModelFileSelection.vue'), onPrefetchError: () => {} });
 const FileSelection = shallowRef<Component>();
+const connectionLoader = createModuleLoader({ importModule: () => import('./BrowserConnectionSelection.vue'), onPrefetchError: () => {} });
+const ConnectionSelection = shallowRef<Component>();
+type ConnectionPresentation = {
+  initialEndpoint: 'openai' | 'browser_provided_lm',
+  isCurrent(): boolean,
+  applySelection: ({ endpoint, modelId }: { endpoint: HttpEndpoint | BrowserProvidedLmEndpoint, modelId: string }) => Promise<void>,
+};
+const connection = shallowRef<ConnectionPresentation>();
+const connectionActive = computed(() => connection.value?.isCurrent() === true && entry.interaction.value === 'ready');
+const openingConnection = ref<symbol>();
+const savingConnection = ref<symbol>();
+const connectionLoadFailed = ref(false);
+const browserAvailability = ref<'unchecked' | 'available' | 'downloadable' | 'downloading' | 'unavailable'>('unchecked');
+const browserSelection = ref<'selected' | 'unselected'>('unselected');
+const browserProvidedModel = computed(() => {
+  const availability = browserAvailability.value;
+  switch (availability) {
+  case 'available': case 'downloadable': case 'downloading': return { availability, selection: browserSelection.value };
+  case 'unchecked': case 'unavailable': return undefined;
+  default: {
+    const exhaustive: never = availability;
+    return exhaustive;
+  }
+  }
+});
 // This dialog imports the local-input workflow, so load it only on a file action.
 const localSelectionLoader = createModuleLoader({ importModule: () => import('./LocalModelSelectionDialog.vue'), onPrefetchError: () => {} });
 const LocalModelSelectionDialog = shallowRef<Component>();
 const entry = useAppEntry();
+const dialog = ref<InstanceType<typeof BrowserModelDialog>>();
 const { addToast } = useToast();
 const operation = ref<symbol>();
 const files = shallowRef<Extract<ModelLaunchEntryState, { status: 'needs-selection' }>>();
@@ -37,12 +64,12 @@ const state = computed(() => {
   const current = modelLaunchEntryState.value;
   return current.status !== 'idle' && current.operation === operation.value ? current : undefined;
 });
-const busy = computed(() => state.value?.status === 'checking' || (operation.value !== undefined && loadingFiles.value === operation.value));
-const error = computed(() => state.value?.status === 'failed' || loadError.value ? lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() : undefined);
+const busy = computed(() => openingConnection.value !== undefined || state.value?.status === 'checking' || (operation.value !== undefined && loadingFiles.value === operation.value));
+const error = computed(() => connectionLoadFailed.value ? lazyStrings.BrowserModelWelcomeDialog__could_not_open_connection_settings() : state.value?.status === 'failed' || loadError.value ? lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() : undefined);
 const fileModel = computed(() => browserModelRepositoryPresentation({ repository: files.value?.input ?? '', bytes: undefined }));
 const open = computed(() => entry.modelSelection.value?.phase === 'open');
-const dismissible = computed(() => !(state.value?.status === 'checking' && state.value.phase === 'opening-chat'));
-const canDrop = computed(() => open.value && entry.interaction.value === 'ready' && !busy.value && files.value === undefined);
+const dismissible = computed(() => savingConnection.value === undefined && !(state.value?.status === 'checking' && state.value.phase === 'opening-chat'));
+const canDrop = computed(() => open.value && entry.interaction.value === 'ready' && !busy.value && files.value === undefined && connection.value === undefined);
 
 watch(modelLaunchEntryState, async current => {
   if (current.status === 'needs-selection' && current.operation === operation.value) {
@@ -68,10 +95,22 @@ watch(() => entry.modelSelection.value?.target, (target, previous) => {
   if (target !== undefined && target !== previous) {
     retire();
     files.value = undefined;
+    connection.value = undefined;
+    connectionLoadFailed.value = false;
+    openingConnection.value = undefined;
+    savingConnection.value = undefined;
+    browserAvailability.value = 'unchecked';
+    browserSelection.value = 'unselected';
   }
 });
 
-watch(entry.interaction, async interaction => {
+watch([entry.interaction, open, () => entry.modelSelection.value?.target], async ([interaction, visible, target], _previous, onCleanup) => {
+  prefetch?.cancel();
+  let current = true;
+  onCleanup(() => {
+    current = false;
+    prefetch?.cancel();
+  });
   switch (interaction) {
   case 'blocked': prefetch?.cancel();
     return;
@@ -81,10 +120,20 @@ watch(entry.interaction, async interaction => {
     throw new Error(String(exhaustive));
   }
   }
+  if (!visible || target === undefined) {
+    return;
+  }
   await nextTick();
   await waitForPresentationPaint({ window });
-  if (!disposed && open.value && entry.interaction.value === 'ready') {
-    prefetch = scheduleIdleTask({ task: () => fileSelectionLoader.prefetch(), timeoutMs: 1500, fallbackDelayMs: 200 });
+  if (current && !disposed && open.value && entry.interaction.value === 'ready') {
+    void detectBrowserModel({ isCurrent: () => current && !disposed && open.value && entry.modelSelection.value?.target === target });
+    prefetch = scheduleIdleTask({
+      task: async () => {
+        await Promise.all([fileSelectionLoader.prefetch(), connectionLoader.prefetch()]);
+      },
+      timeoutMs: 1500,
+      fallbackDelayMs: 200,
+    });
   }
 }, { immediate: true });
 onScopeDispose(() => {
@@ -125,6 +174,90 @@ function back(): void {
   files.value = undefined;
 }
 
+async function detectBrowserModel({ isCurrent }: { isCurrent(): boolean }): Promise<void> {
+  // Check capability after the initial paint, without mounting status UI or
+  // importing runtime code. Availability must never authorize create().
+  if (!('LanguageModel' in globalThis)) {
+    if (isCurrent()) {
+      browserAvailability.value = 'unavailable';
+    }
+    return;
+  }
+  try {
+    const api = await import('@/features/prompt-api/api');
+    if (!isCurrent()) {
+      return;
+    }
+    const availability = api.getPromptApiLanguageModel() === undefined ? 'unavailable' : await api.getPromptApiAvailability({ inputMode: 'text' });
+    if (isCurrent()) {
+      browserAvailability.value = availability;
+    }
+  } catch {
+    if (isCurrent()) {
+      browserAvailability.value = 'unavailable';
+    }
+  }
+}
+
+async function openConnections({ endpoint }: { endpoint: 'openai' | 'browser_provided_lm' }): Promise<void> {
+  const selection = entry.modelSelection.value;
+  if (selection?.phase !== 'open' || entry.interaction.value !== 'ready' || busy.value) {
+    return;
+  }
+  const context = entry.captureModelLaunchContext();
+  const target = selection.target;
+  const current = () => !disposed && context.isCurrent() && entry.modelSelection.value?.phase === 'open' && entry.modelSelection.value.target === target;
+  const opening = Symbol('connection-form-import');
+  openingConnection.value = opening;
+  connectionLoadFailed.value = false;
+  retire();
+  try {
+    const module = await connectionLoader.load();
+    if (!current()) {
+      return;
+    }
+    ConnectionSelection.value = markRaw(module.default);
+    const presentation: ConnectionPresentation = {
+      initialEndpoint: endpoint,
+      isCurrent: () => current() && connection.value === presentation,
+      applySelection: async ({ endpoint: selectedEndpoint, modelId }) => {
+        if (!presentation.isCurrent() || savingConnection.value !== undefined || entry.interaction.value !== 'ready') {
+          throw new Error('Model selection is no longer active');
+        }
+        const saving = Symbol('connection-commit');
+        savingConnection.value = saving;
+        try {
+          const { applyModelConnectionSelection } = await import('@/logic/apply-model-connection');
+          await applyModelConnectionSelection({ target, endpoint: selectedEndpoint, modelId, isCurrent: presentation.isCurrent });
+          if (!presentation.isCurrent()) {
+            throw new Error('Model selection is no longer active');
+          }
+          entry.closeModelSelection();
+        } finally {
+          if (savingConnection.value === saving) {
+            savingConnection.value = undefined;
+          }
+        }
+      },
+    };
+    connection.value = presentation;
+  } catch {
+    if (current()) {
+      connectionLoadFailed.value = true;
+    }
+  } finally {
+    if (openingConnection.value === opening) {
+      openingConnection.value = undefined;
+    }
+  }
+}
+
+function backFromConnections(): void {
+  if (savingConnection.value === undefined) {
+    connection.value = undefined;
+  }
+}
+
 function start(): void {
   if (!open.value || entry.interaction.value !== 'ready' || busy.value) {
     return;
@@ -132,6 +265,7 @@ function start(): void {
   const selected = browserModelSuggestionSelection({ selection: selection.value });
   if (selected !== undefined) {
     loadError.value = false;
+    connectionLoadFailed.value = false;
     files.value = undefined;
     operation.value = startModelLaunch({ request: { input: selected.quantization.hfRepository, requestedVariant: selected.quantization.preferredQuantization, multimodal: 'auto', destination: { kind: 'opfs' }, source: 'home' } });
   }
@@ -242,10 +376,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <BrowserModelDialog :open="open" :dismissible="dismissible" :suspended="entry.discovery.value !== undefined" @close="close" @closed="entry.finishModelSelectionClose">
-    <Transition name="browser-model-step" mode="out-in">
+  <BrowserModelDialog ref="dialog" :open="open" :dismissible="dismissible" :suspended="entry.discovery.value !== undefined" @close="close" @closed="entry.finishModelSelectionClose">
+    <Transition name="browser-model-step" mode="out-in" @enter="dialog?.focusPanel()">
       <FileSelection v-if="files" key="files" :model="fileModel" :selection="files" :busy="entry.interaction.value !== 'ready' || busy" :error="error" :action="state?.status === 'failed' ? 'retry' : 'confirm'" @back="back" @confirm="confirm" @retry="retryModelLaunch" />
-      <BrowserModelWelcome v-else key="models" :selection="selection" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'" />
+      <ConnectionSelection v-else-if="connection && ConnectionSelection" key="connections" :initial-endpoint="connection.initialEndpoint" :active="connectionActive" :apply-selection="connection.applySelection" @back="backFromConnections" />
+      <BrowserModelWelcome v-else key="models" :selection="selection" :browser-provided-model="browserProvidedModel" :interaction="entry.interaction.value" :start-status="busy ? 'starting' : 'idle'" :start-error="error" @select="entry.selectModel({ selection: $event })" @select-browser-model="browserSelection = $event" @open-connections="openConnections({ endpoint: $event })" @start="start" @open-discovery="entry.openDiscovery" @local-input="localInput" @dragover="dragOver({ event: $event })" @dragleave="dragLeave({ event: $event })" @drop="drop({ event: $event })" @dragend="dragVisibility = 'hidden'" />
     </Transition>
     <template #overlay>
       <div v-if="dragVisibility === 'visible'" data-testid="model-drop-overlay" tw-class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center border-2 border-dashed border-blue-500 bg-blue-500/10"><div tw-class="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-xl dark:bg-gray-800"><FolderInputIcon aria-hidden="true" tw-class="h-6 w-6 text-blue-500" /><span tw-class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.AppEntrySurface__drop_gguf_files_or_model_folders() }}</span></div></div>

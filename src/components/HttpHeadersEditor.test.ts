@@ -34,6 +34,14 @@ describe('HttpHeadersEditor', () => {
     expect(wrapper.get('[data-testid="headers-name-input"]').attributes('placeholder')).toBe('e.g. X-API-Key');
   });
 
+  it('lets an optional connection form name the editor while keeping the default elsewhere', async () => {
+    const wrapper = mount(HttpHeadersEditor, { props: { modelValue: [], testIdPrefix: 'headers' } });
+    expect(wrapper.get('button[aria-expanded]').text()).toContain('HTTP headers');
+    await wrapper.setProps({ title: 'HTTP headers (optional)' });
+    expect(wrapper.get('button[aria-expanded]').text()).toContain('HTTP headers (optional)');
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+  });
+
   it('keeps row inputs while collapsing and does not materialize settings on disclosure', async () => {
     const wrapper = mount(HttpHeadersEditor, { props: { modelValue: [['X-Key', 'draft']], testIdPrefix: 'headers' } });
     const input = wrapper.get('[data-testid="headers-value-input"]').element;

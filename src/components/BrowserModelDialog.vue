@@ -17,13 +17,19 @@ watch(() => props.open, async open => {
   if (open) {
     await nextTick();
     if (props.open) {
-      panel.value?.focus({ preventScroll: true });
+      focusPanel();
     }
   }
 }, { immediate: true });
 
 function afterLeave(): void {
   emit('closed');
+}
+
+function focusPanel(): void {
+  if (props.open && !props.suspended && !panel.value?.contains(document.activeElement)) {
+    panel.value?.focus({ preventScroll: true });
+  }
 }
 
 function close(): void {
@@ -60,7 +66,7 @@ function keydown({ event }: { event: KeyboardEvent }): void {
   }
 }
 
-defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
+defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>

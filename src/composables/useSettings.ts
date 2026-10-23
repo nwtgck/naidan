@@ -137,6 +137,7 @@ interface UseSettingsApi {
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
   updateGlobalReasoningEffort: ({ effort }: { effort: Reasoning['effort'] }) => Promise<void>,
+  commitGlobalModelConnection: ({ endpoint, modelId, isCurrent }: { endpoint: Endpoint, modelId: string, isCurrent(): boolean }) => Promise<'applied' | 'changed'>,
   updateGlobalModelAndEndpoint: ({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
   }) => Promise<'applied' | 'changed'>,
@@ -868,6 +869,34 @@ export function useSettings(): UseSettingsApi {
     _settings.value = { ..._settings.value, lmParameters: { ...parameters, reasoning: { ...parameters.reasoning, effort } } };
   }
 
+  /** Apply an explicit connection choice without replacing unrelated settings. */
+  async function commitGlobalModelConnection({ endpoint, modelId, isCurrent }: { endpoint: Endpoint, modelId: string, isCurrent(): boolean }): Promise<'applied' | 'changed'> {
+    if (!isCurrent()) {
+      return 'changed';
+    }
+    const nextEndpoint = cloneEndpoint({ endpoint });
+    const outcome = await storageService.updateSettingsForStorage({
+      isCurrent,
+      updater: ({ current }) => ({ ...(current ?? _settings.value), endpoint: nextEndpoint, defaultModelId: modelId }),
+    });
+    switch (outcome) {
+    case 'changed': return 'changed';
+    case 'saved':
+      if (!isCurrent()) {
+        return 'changed';
+      }
+      if (!areEndpointsEqual({ left: _settings.value.endpoint, right: nextEndpoint })) {
+        pendingModelRefresh = true;
+      }
+      _settings.value = { ..._settings.value, endpoint: nextEndpoint, defaultModelId: modelId };
+      return 'applied';
+    default: {
+      const exhaustive: never = outcome;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+
   /** Commit both default fields together, without optimistic half-updates. */
   async function updateGlobalModelAndEndpoint({ endpoint, modelId, expected }: {
     endpoint: Endpoint, modelId: string, expected: { endpoint: Endpoint, modelId: string | undefined },
@@ -1118,6 +1147,7 @@ export function useSettings(): UseSettingsApi {
     updateProviderProfiles,
     updateGlobalModel,
     updateGlobalReasoningEffort,
+    commitGlobalModelConnection,
     updateGlobalEndpoint,
     updateGlobalModelAndEndpoint,
     updateSystemPrompt,

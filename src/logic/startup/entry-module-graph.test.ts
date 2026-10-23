@@ -199,6 +199,8 @@ describe('production entry module boundaries', () => {
       expect(graph.referencesFrom({ from: from! })).toContainEqual({ from, target, kind: 'static' });
     }
     expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserModelFileSelection.vue', kind: 'dynamic' });
+    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'dynamic' });
+    expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).not.toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'static' });
   });
 
   it('keeps App synchronous dependencies lightweight across the existing settings boundary', () => {

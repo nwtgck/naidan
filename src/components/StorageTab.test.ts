@@ -586,6 +586,7 @@ describe('StorageTab.vue Tests', () => {
         fetchModels: vi.fn().mockResolvedValue([]),
         updateGlobalModel: vi.fn(),
         updateGlobalReasoningEffort: vi.fn<ReturnType<typeof useSettings>['updateGlobalReasoningEffort']>(),
+        commitGlobalModelConnection: vi.fn<ReturnType<typeof useSettings>['commitGlobalModelConnection']>().mockResolvedValue('applied'),
         updateGlobalEndpoint: vi.fn(),
         updateGlobalModelAndEndpoint: vi.fn().mockResolvedValue('applied'),
         captureModelLaunchDefaults: vi.fn<ReturnType<typeof useSettings>['captureModelLaunchDefaults']>(),

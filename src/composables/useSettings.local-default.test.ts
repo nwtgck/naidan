@@ -97,6 +97,82 @@ describe('atomic default model and endpoint selection', () => {
   });
 });
 
+describe('explicit model connection selection', () => {
+  it('publishes the selected pair only after saving and preserves other current settings in both stores', async () => {
+    const gate = Promise.withResolvers<void>();
+    mocks.update.mockImplementation(async ({ updater }: Parameters<typeof storageService.updateSettings>[0]) => {
+      await gate.promise;
+      mocks.stored = await updater({ current: mocks.stored ?? null });
+    });
+    const api = useSettings();
+    const pending = api.commitGlobalModelConnection({ endpoint: { type: 'openai', url: 'https://chosen.example/v1' }, modelId: 'chosen-model', isCurrent: () => true });
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+    expect(api.settings.value.defaultModelId).toBe(original.defaultModelId);
+    mocks.stored = { ...mocks.stored!, systemPrompt: 'latest persisted prompt', defaultModelId: 'changed-before-confirmation' };
+    api.TEST_ONLY.__testOnlySetSettings({ newSettings: { ...original, systemPrompt: 'latest live prompt' } });
+    gate.resolve();
+    expect(await pending).toBe('applied');
+    expect(mocks.stored).toMatchObject({ endpoint: { type: 'openai', url: 'https://chosen.example/v1' }, defaultModelId: 'chosen-model', systemPrompt: 'latest persisted prompt' });
+    expect(api.settings.value).toMatchObject({ endpoint: { type: 'openai', url: 'https://chosen.example/v1' }, defaultModelId: 'chosen-model', systemPrompt: 'latest live prompt' });
+    expect(api.settings.value.lmParameters).toEqual(original.lmParameters);
+    expect(api.settings.value.titleGeneration).toEqual(original.titleGeneration);
+    expect(mocks.updateForStorage).toHaveBeenCalledOnce();
+    expect(mocks.loadProvider).not.toHaveBeenCalled();
+  });
+
+  it('does not expose an unsaved connection when persistence fails', async () => {
+    const api = useSettings();
+    mocks.updateForStorage.mockRejectedValueOnce(new Error('Storage unavailable'));
+    await expect(api.commitGlobalModelConnection({ endpoint: { type: 'browser_provided_lm' }, modelId: 'browser-provided-language-model', isCurrent: () => true })).rejects.toThrow('Storage unavailable');
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+    expect(api.settings.value.defaultModelId).toBe(original.defaultModelId);
+    expect(mocks.loadProvider).not.toHaveBeenCalled();
+  });
+
+  it('rejects a selection whose dialog or captured storage has expired before writing', async () => {
+    const api = useSettings();
+    expect(await api.commitGlobalModelConnection({ endpoint: { type: 'browser_provided_lm' }, modelId: 'browser-provided-language-model', isCurrent: () => false })).toBe('changed');
+    expect(mocks.updateForStorage).not.toHaveBeenCalled();
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+  });
+
+  it('does not publish a pair when the storage write was declined', async () => {
+    const api = useSettings();
+    mocks.updateForStorage.mockResolvedValueOnce('changed');
+    expect(await api.commitGlobalModelConnection({ endpoint: { type: 'browser_provided_lm' }, modelId: 'browser-provided-language-model', isCurrent: () => true })).toBe('changed');
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+    expect(api.settings.value.defaultModelId).toBe(original.defaultModelId);
+  });
+
+  it('keeps a completed old-storage write out of the current reactive settings', async () => {
+    const api = useSettings();
+    let current = true;
+    mocks.updateForStorage.mockImplementationOnce(async () => {
+      current = false;
+      return 'saved';
+    });
+    expect(await api.commitGlobalModelConnection({ endpoint: { type: 'browser_provided_lm' }, modelId: 'browser-provided-language-model', isCurrent: () => current })).toBe('changed');
+    expect(api.settings.value.endpoint).toEqual(original.endpoint);
+    expect(api.settings.value.defaultModelId).toBe(original.defaultModelId);
+  });
+
+  it('captures the header values of the accepted selection before waiting for storage', async () => {
+    const api = useSettings();
+    const gate = Promise.withResolvers<void>();
+    mocks.update.mockImplementationOnce(async ({ updater }: Parameters<typeof storageService.updateSettings>[0]) => {
+      await gate.promise;
+      mocks.stored = await updater({ current: mocks.stored ?? null });
+    });
+    const headers: [string, string][] = [['Authorization', 'Bearer selected-token']];
+    const pending = api.commitGlobalModelConnection({ endpoint: { type: 'openai', url: 'https://chosen.example/v1', httpHeaders: headers }, modelId: 'chosen-model', isCurrent: () => true });
+    headers[0]![1] = 'Bearer edited-after-confirmation';
+    gate.resolve();
+    expect(await pending).toBe('applied');
+    expect(api.settings.value.endpoint).toEqual({ type: 'openai', url: 'https://chosen.example/v1', httpHeaders: [['Authorization', 'Bearer selected-token']] });
+    expect(mocks.stored?.endpoint).toEqual(api.settings.value.endpoint);
+  });
+});
+
 describe('model launch global initialization', () => {
   function useBlankSettings() {
     const blank: Settings = { ...original, endpoint: { type: 'openai', url: '' }, defaultModelId: undefined };

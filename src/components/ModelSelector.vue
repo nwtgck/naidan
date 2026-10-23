@@ -24,6 +24,7 @@ const props = defineProps<{
   invalid?: boolean,
   surface?: 'default' | 'composer' | 'sidebar' | 'settings',
   frame?: 'standalone' | 'embedded',
+  popupPresentation?: 'floating' | 'inline',
   chevronVisibility?: 'visible' | 'hidden',
   inheritedModel?: { id: string | undefined, source: SettingsSourcePresentation | undefined },
   modelSelection?: 'available' | 'unavailable',
@@ -229,6 +230,7 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
     break;
   case 'Escape':
     event.preventDefault();
+    event.stopPropagation();
     closeDropdown({ restoreFocus: true });
     break;
   case 'Tab':
@@ -237,6 +239,24 @@ function handleKeydown({ event }: { event: KeyboardEvent }) {
     }
     break;
   }
+}
+
+function handleDropdownKeydown({ event }: { event: KeyboardEvent }): void {
+  const presentation = props.popupPresentation;
+  switch (presentation) {
+  case 'inline':
+    // Inline menus live under the trigger's root key handler. Handle each key
+    // once, and let a popup Escape close the menu before its containing dialog.
+    event.stopPropagation();
+    break;
+  case 'floating':
+  case undefined: break;
+  default: {
+    const exhaustive: never = presentation;
+    throw new Error(`Unhandled popup presentation: ${exhaustive}`);
+  }
+  }
+  handleKeydown({ event });
 }
 
 async function handleRefresh({ event }: { event: Event }) {
@@ -415,19 +435,20 @@ defineExpose({
       </div>
     </button>
 
-    <!-- Dropdown Teleported -->
-    <Teleport to="body">
+    <!-- Inline mode keeps this menu inside an aria-modal and its scroll region. -->
+    <Teleport to="body" :disabled="popupPresentation === 'inline'">
       <div
         v-if="isOpen"
         ref="dropdownRef"
-        :style="floatingStyle"
+        :style="popupPresentation === 'inline' ? undefined : floatingStyle"
         data-testid="model-selector-dropdown"
         class="animate-in fade-in" :tw-class="[
           'bg-white border border-gray-200 rounded-xl shadow-xl overflow-y-auto overscroll-contain duration-200',
+          popupPresentation === 'inline' ? 'mt-1.5 w-full' : '',
           surface === 'sidebar' ? 'flex flex-col dark:bg-gray-900 dark:border-gray-700/80' : 'dark:bg-gray-800 dark:border-gray-700'
         ]"
-        :class="dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
-        @keydown="handleKeydown({ event: $event })"
+        :class="popupPresentation === 'inline' || dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
+        @keydown="handleDropdownKeydown({ event: $event })"
         @focusin="handleSidebarFocus({ event: $event })"
       >
         <!-- Search and Actions -->
