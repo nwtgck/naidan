@@ -416,8 +416,8 @@ describe('profiling modes and safe result actions', () => {
     const replace = wrapper!.get('[data-testid="llama-performance-start"]');
     const save = wrapper!.get('[data-testid="llama-performance-download"]');
     expect(replace.element.compareDocumentPosition(save.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(save.classes()).toContain('bg-blue-600');
-    expect(replace.classes()).not.toContain('bg-blue-600');
+    expect(save.classes()).toContain('border-blue-300/80');
+    expect(replace.classes()).not.toContain('border-blue-300/80');
     expect(replace.classes()).toContain('border');
   });
 

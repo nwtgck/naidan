@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsChoiceControl from '@/components/SettingsChoiceControl.vue';
 import { lazyStrings } from '@/strings';
 import type { ImageLibraryView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
@@ -18,8 +19,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <ImageSettingsSection embedded :title="lazyStrings.llamaCppBrowserDownloads__details()" :summary="undefined">
       <label tw-class="min-h-10 cursor-pointer flex items-center gap-2 py-2 text-xs font-medium text-gray-700 dark:text-gray-300">
         <span tw-class="relative inline-flex shrink-0 items-center">
-          <input v-model="showAll" :disabled="view.downloadsDisabled.value" type="checkbox" role="switch" data-testid="image-show-all" tw-class="sr-only peer" />
-          <span aria-hidden="true" tw-class="w-10 h-6 bg-gray-200 rounded-full dark:bg-gray-700 peer-checked:bg-blue-600 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2 peer-disabled:opacity-40 peer-disabled:cursor-not-allowed after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white dark:border-gray-600"></span>
+          <SettingsChoiceControl presentation="switch"><input v-model="showAll" :disabled="view.downloadsDisabled.value" type="checkbox" role="switch" data-testid="image-show-all" /></SettingsChoiceControl>
         </span>
         <span tw-class="min-w-0 [overflow-wrap:anywhere]">{{ lazyStrings.stableDiffusionCppBrowser__show_all_weights() }}</span>
       </label>

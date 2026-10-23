@@ -73,7 +73,7 @@ function close({ restoreFocus }: { restoreFocus: boolean }) {
 }
 
 async function toggle() {
-  if (props.disabled) {
+  if (props.disabled || disclosureOpen?.value === false) {
     return;
   }
   if (open.value) {
@@ -89,7 +89,7 @@ async function toggle() {
 }
 
 function choose({ value }: { value: string }) {
-  if (props.disabled || !open.value || !props.options.some(option => option.value === value && !option.disabled)) {
+  if (props.disabled || disclosureOpen?.value === false || !open.value || !props.options.some(option => option.value === value && !option.disabled)) {
     return;
   }
   // Reselecting a native select did not request another owner mutation.

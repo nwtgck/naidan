@@ -8,6 +8,9 @@ import ImageModelCatalog from './ImageModelCatalog.vue';
 import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import { useImageLibrary } from '@/features/stable-diffusion-cpp-browser/use-image-library';
 import { downloadImageRecipe, type ImageRecipeDownloadRequest } from '@/features/stable-diffusion-cpp-browser/logic/catalog-download';
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {

@@ -6,6 +6,9 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', () => import('@/features/image-generation/use-image-generation-standalone'));

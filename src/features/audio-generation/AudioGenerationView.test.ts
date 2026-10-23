@@ -1,3 +1,6 @@
+vi.mock('@/components/SettingsSelect.vue', async () => ({
+  default: (await import('@/components/settings-select.test-support')).SettingsSelectStub,
+}));
 import LlamaCppBrowserModelSuggestions from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelSuggestions.vue';
 import { downloadDestinationControl } from '@/features/llama-cpp-browser/components/model-configuration.test-support';
 import { audioModelCatalog } from './model-catalog';
@@ -144,7 +147,8 @@ describe('independent audio generation screen', () => {
     const select = view.get<HTMLSelectElement>('[data-testid="audio-language"]');
     // Emulate a stale/different caller that can supply a no-longer-offered value.
     select.element.add(new Option('Retired automatic language', 'auto'));
-    await select.setValue('auto');
+    view.findAllComponents({ name: 'SettingsFormSelect' }).find(choice => choice.attributes('data-testid') === 'audio-language')!.vm.$emit('update:modelValue', 'auto');
+    await nextTick();
     await submit({ view });
     expect(service.generateAudio).not.toHaveBeenCalled();
     expect(view.get('[data-testid="audio-error"]').text()).toContain('Language');

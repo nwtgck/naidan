@@ -73,6 +73,26 @@ describe('shared model file input', () => {
     await zone.trigger('dragleave');
     expect(wrapper.emitted('drag-active')?.at(-1)).toEqual(['idle']);
   });
+
+  it('forwards fill-layout drops synchronously through the shared surface without attaching them to the chat', async () => {
+    const wrapper = mount(LlamaCppBrowserModelFileInput, { props: { disabled: false, mode: 'temp', layout: 'fill' } });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    const bubbled = vi.fn();
+    wrapper.element.addEventListener('drop', bubbled);
+    const transfer = { types: ['Files'], files: [new File(['model'], 'model.gguf')] };
+    // Inspect before awaiting trigger: drag entries must still be readable in
+    // the original dispatch, even when the visual surface is a child component.
+    const dispatch = wrapper.get('[data-testid="llama-cpp-browser-drop-zone"]').trigger('drop', { dataTransfer: transfer });
+    const [event] = wrapper.emitted<[DragEvent]>('drop-files')?.[0] ?? [];
+    expect(event?.dataTransfer).toBe(transfer);
+    expect(event?.defaultPrevented).toBe(true);
+    expect(bubbled).not.toHaveBeenCalled();
+    await dispatch;
+  });
 });
 
 it('places a custom explanation below the drop instruction without repeating the mode description', () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SettingsSelectScope from '@/components/SettingsSelectScope.vue';
 import { computed, defineAsyncComponent, ref, useId, watch } from 'vue';
 import { ImageIcon, FolderOpenIcon, HistoryIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
@@ -101,7 +102,7 @@ const { library, busy, supported, formDisabled, debug, unavailable, files, loras
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTab, files, loras, imageInputs, parameters, preview: view.preview, livePreview: view.livePreview, previewSnapshots: view.previewSnapshots, retainModel, modelResident, maxResults, maxPreviews: view.maxPreviews, weightResidency, gpuBudgetMiB, results, recommendation, applyRecommendedSettings, stopping, cancelled, cancel, forceCancel, generate } }) || {}) });
 </script>
 <template>
-  <main :tw-class="['h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100', props.workspace && activeTab === 'generate' ? 'overflow-hidden' : 'overflow-y-auto']" data-testid="image-generation-lab">
+  <main :tw-class="['h-full bg-[#fcfcfd] dark:bg-gray-900 text-gray-900 dark:text-gray-100', props.workspace && activeTab === 'generate' ? 'overflow-hidden' : 'overflow-y-auto']" data-testid="image-generation-lab">
     <div :tw-class="props.workspace && activeTab === 'generate' ? 'h-full min-h-0 flex flex-col' : 'max-w-[100rem] mx-auto p-4 sm:px-6 sm:py-5 space-y-5'">
       <div v-if="!props.workspace" tw-class="sticky top-0 z-30 -mx-4 -mt-4 space-y-2 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 px-4 pt-3 pb-2 shadow-sm backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-4" data-testid="image-lab-sticky-header">
         <header tw-class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -137,7 +138,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
         <ul tw-class="text-xs space-y-1 break-all">
           <li v-for="file in view.historyActions.missingFiles.value" :key="file">{{ file }}</li>
         </ul>
-        <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
+        <button type="button" @click="view.clearHistoryMissingFiles()" :disabled="view.historyActions.busy.value" tw-class="rounded-lg px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">{{ lazyStrings.ImageGenerationLab__continue_without_missing_files() }}</button>
       </div>
       <div :tw-class="props.workspace && activeTab === 'generate' ? 'flex-1 min-h-0' : 'space-y-6'">
         <div :tw-class="['min-w-0 w-full', props.workspace && activeTab === 'generate' ? 'h-full' : 'flex-1']">
@@ -150,31 +151,33 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { benchmark, activeTa
             </div>
           </div>
           <div v-show="activeTab === 'models'" :role="props.workspace ? 'region' : 'tabpanel'" :id="id + '-panel-models'" :aria-label="props.workspace ? lazyStrings.ImageGenerationLab__models() : undefined" :aria-labelledby="props.workspace ? undefined : id + '-tab-models'" tw-class="space-y-4">
-            <div tw-class="flex flex-wrap items-center justify-between gap-3">
-              <div tw-class="space-y-1">
-                <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
-                <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationLab__prepare_models_help() }}</p>
+            <SettingsSelectScope :active="activeTab === 'models'" :return-focus="undefined">
+              <div tw-class="flex flex-wrap items-center justify-between gap-3">
+                <div tw-class="space-y-1">
+                  <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.ImageGenerationLab__models() }}</h2>
+                  <p tw-class="text-sm text-gray-500 dark:text-gray-400">{{ lazyStrings.ImageGenerationLab__prepare_models_help() }}</p>
+                </div>
+                <button type="button" @click="openTab({ tab: 'generate' })" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" data-testid="image-return-to-generation">{{ lazyStrings.ImageGenerationLab__back_to_generation() }}</button>
               </div>
-              <button type="button" @click="openTab({ tab: 'generate' })" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" data-testid="image-return-to-generation">{{ lazyStrings.ImageGenerationLab__back_to_generation() }}</button>
-            </div>
-            <p v-if="library.failure.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ library.failure.value }}</p>
-            <div v-if="library.scanState.value === 'scanning'" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-models-scan-status">
-              <div tw-class="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <p role="status">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="library.scanProgress.value?.total">{{ library.scanProgress.value.completed }} / {{ library.scanProgress.value.total }}</span></p>
-                <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="rounded-lg px-2 py-1 text-xs font-bold text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.SHARED__cancel() }}</button>
+              <p v-if="library.failure.value" role="alert" tw-class="text-sm text-red-600 dark:text-red-400 break-words">{{ library.failure.value }}</p>
+              <div v-if="library.scanState.value === 'scanning'" tw-class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2" data-testid="image-models-scan-status">
+                <div tw-class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <p role="status">{{ lazyStrings.stableDiffusionCppBrowser__scanning_repositories() }} <span v-if="library.scanProgress.value?.total">{{ library.scanProgress.value.completed }} / {{ library.scanProgress.value.total }}</span></p>
+                  <button type="button" @click="library.cancelScan()" data-testid="image-models-cancel-scan" tw-class="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ lazyStrings.SHARED__cancel() }}</button>
+                </div>
+                <p v-if="library.scanProgress.value?.entryPath" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.entryPath }}</p>
               </div>
-              <p v-if="library.scanProgress.value?.entryPath" tw-class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ library.scanProgress.value.entryPath }}</p>
-            </div>
-            <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
-              <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.selectedCandidateKey.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ candidateKey: $event })" data-testid="image-saved-main-model" />
-            </ImageSettingsSection>
-            <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
-              <div tw-class="min-w-0 space-y-4">
-                <ImageModelCatalog :download-disabled="library.downloadsDisabled.value" :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
-                <KeepAlive><ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" /></KeepAlive>
+              <ImageSettingsSection :title="lazyStrings.ImageGenerationLab__saved_models()" :summary="library.models.value.length.toString()" :open="true">
+                <ImageModelPicker :empty-label="lazyStrings.ImageModelPicker__choose_a_model()" :active="activeTab === 'models'" :model-value="library.selectedCandidateKey.value" :choices="library.models.value" :disabled="formDisabled || library.importing.value || library.scanState.value === 'scanning'" :required="true" :label="lazyStrings.stableDiffusionCppBrowser__main_image_model()" @update:model-value="library.chooseMain({ candidateKey: $event })" data-testid="image-saved-main-model" />
+              </ImageSettingsSection>
+              <div tw-class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(16rem,1fr)]">
+                <div tw-class="min-w-0 space-y-4">
+                  <ImageModelCatalog :download-disabled="library.downloadsDisabled.value" :disabled="formDisabled" :view="library" @selected="openTab({ tab: 'generate' })" />
+                  <KeepAlive><ImageGenerationTranslationDefaults v-if="props.workspace && activeTab === 'models'" /></KeepAlive>
+                </div>
+                <ImageRepositoryImport :disabled="formDisabled" :view="library" />
               </div>
-              <ImageRepositoryImport :disabled="formDisabled" :view="library" />
-            </div>
+            </SettingsSelectScope>
           </div>
           <div v-if="!props.workspace" v-show="activeTab === 'history'" role="tabpanel" :id="id + '-panel-history'" :aria-labelledby="id + '-tab-history'" data-testid="image-history-workspace">
             <!-- Import publication locks editor changes; downloads do not lock history reuse or browsing. -->
