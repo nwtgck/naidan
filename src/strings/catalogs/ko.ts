@@ -271,7 +271,6 @@ import { ChatLocalModelInput__saved_models } from '@/strings/messages/ChatLocalM
 import { ChatLocalModelInput__start_without_copying_and_save_later } from '@/strings/messages/ChatLocalModelInput__start_without_copying_and_save_later/ko';
 import { ChatLocalModelInput__this_chat_already_has_messages } from '@/strings/messages/ChatLocalModelInput__this_chat_already_has_messages/ko';
 import { ChatLocalModelInput__use_a_saved_model } from '@/strings/messages/ChatLocalModelInput__use_a_saved_model/ko';
-import { ChatLocalModelInput__use_in_this_chat } from '@/strings/messages/ChatLocalModelInput__use_in_this_chat/ko';
 import { ChatLocalModelInput__use_local_model_files } from '@/strings/messages/ChatLocalModelInput__use_local_model_files/ko';
 import { ChatLocalModelInput__write_your_first_message_while_the_model_downloads } from '@/strings/messages/ChatLocalModelInput__write_your_first_message_while_the_model_downloads/ko';
 import { ChatMediaShelf__click_to_copy_prompt } from '@/strings/messages/ChatMediaShelf__click_to_copy_prompt/ko';
@@ -3317,7 +3316,6 @@ export const catalog = {
   ChatLocalModelInput__start_without_copying_and_save_later,
   ChatLocalModelInput__this_chat_already_has_messages,
   ChatLocalModelInput__use_a_saved_model,
-  ChatLocalModelInput__use_in_this_chat,
   ChatLocalModelInput__use_local_model_files,
   ChatLocalModelInput__write_your_first_message_while_the_model_downloads,
   ChatMediaShelf__click_to_copy_prompt,

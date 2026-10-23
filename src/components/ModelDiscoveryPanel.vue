@@ -14,6 +14,7 @@ import { confirmModelLaunchSelection, modelLaunchEntryState, retireModelLaunch, 
 import type { ModelDiscoveryTab } from './browser-model-presentation';
 import BrowserModelPreparation from './BrowserModelPreparation.vue';
 import SettingsSelect from './SettingsSelect.vue';
+import LlamaCppBrowserModelActionButton from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelActionButton.vue';
 
 type ModelPreview = { suggestionId: string | undefined, repository: string, variant: string, name: string, developer: string };
 const props = defineProps<{ visibility: 'open' | 'closed', tab: ModelDiscoveryTab, interaction?: 'blocked' | 'ready', currentModelId?: string, selectionTarget?: 'chat' }>();
@@ -647,13 +648,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     <label for="hugging-face-repository" tw-class="block text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.ModelDiscoveryPanel__specify_a_repository() }}</label>
                     <div tw-class="flex flex-col gap-2 sm:flex-row">
                       <input id="hugging-face-repository" v-model="repositoryInput" type="text" :aria-invalid="repositoryError" :aria-describedby="repositoryError ? 'repository-error' : 'repository-help'" placeholder="owner/model" data-testid="hugging-face-repository" tw-class="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition-all placeholder:text-gray-400 focus:ring-4 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100" @keydown.enter="submitRepositoryFromKeyboard({ event: $event })" />
-                      <button type="button" :disabled="!repositoryInput.trim()" data-testid="hugging-face-repository-select" tw-class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-blue-600 transition-all hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-blue-400 dark:hover:bg-gray-700" @click="chooseRepository({ input: repositoryInput })"><ArrowRightIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" />{{ lazyStrings.ModelDiscoveryPanel__choose() }}</button>
+                      <LlamaCppBrowserModelActionButton :disabled="!repositoryInput.trim()" data-testid="hugging-face-repository-select" size="regular" tw-class="shrink-0" @click="chooseRepository({ input: repositoryInput })"><ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.ModelDiscoveryPanel__choose() }}</LlamaCppBrowserModelActionButton>
                     </div>
                     <p v-if="repositoryError" id="repository-error" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ lazyStrings.ModelDiscoveryPanel__enter_a_repository_or_model_page_url() }}</p>
                     <p v-else id="repository-help" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelDiscoveryPanel__paste_the_model_page_url() }}</p>
                   </section>
                   <div tw-class="border-t border-gray-100 pt-5 dark:border-gray-800">
-                    <component :is="HuggingFaceSearch" v-if="HuggingFaceSearch" :disabled="!open || activeTab !== 'hugging-face' || preview !== undefined" :repository-input="repositoryInput" @select="chooseRepository({ input: $event })" />
+                    <component :is="HuggingFaceSearch" v-if="HuggingFaceSearch" :disabled="!open || activeTab !== 'hugging-face' || preview !== undefined" :repository-input="repositoryInput" scroll-owner="parent" @select="chooseRepository({ input: $event })" />
                   </div>
                 </div>
                 <div v-show="activeTab === 'local-files'" id="local-files-panel" :inert="activeTab !== 'local-files' || undefined" role="tabpanel" aria-labelledby="local-files-tab">
@@ -694,7 +695,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <button type="button" data-testid="discovery-start" :disabled="starting === 'starting' || globalStarting === 'creating'" :aria-busy="starting === 'starting'" class="discovery-start" tw-class="group relative flex min-h-16 w-full items-center justify-center rounded-2xl border border-blue-400/80 bg-white px-14 py-4 text-center text-base font-bold text-gray-900 transition-[border-color,box-shadow,transform] duration-300 hover:border-blue-500 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-wait dark:border-blue-500/70 dark:bg-gray-800 dark:text-gray-100 motion-reduce:transition-none" @click="startPreview">
                   {{ lazyStrings.LlamaCppBrowserModelLaunch__start_with_this_model() }}<span aria-hidden="true" tw-class="absolute right-3 grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white dark:bg-blue-500"><Loader2Icon v-if="starting === 'starting'" tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" /><ArrowRightIcon v-else tw-class="h-4 w-4 transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" /></span>
                 </button>
-                <p tw-class="text-center text-[11px] text-gray-400 dark:text-gray-500">{{ selectionTarget === 'chat' ? lazyStrings.ChatLocalModelInput__use_in_this_chat() : previewSaved ? lazyStrings.ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model() : lazyStrings.ModelDiscoveryPanel__prepare_this_model_in_a_new_chat() }}</p>
+                <p v-if="selectionTarget !== 'chat'" tw-class="text-center text-[11px] text-gray-400 dark:text-gray-500">{{ previewSaved ? lazyStrings.ModelDiscoveryPanel__start_a_new_chat_with_the_saved_model() : lazyStrings.ModelDiscoveryPanel__prepare_this_model_in_a_new_chat() }}</p>
               </footer>
             </section>
           </Transition>

@@ -28,7 +28,7 @@ const mounts = vi.hoisted(() => ({ search: 0, files: 0 }));
 vi.mock('@/features/llama-cpp-browser/components/LlamaCppBrowserHuggingFaceSearch.vue', () => ({
   default: {
     name: 'LlamaCppBrowserHuggingFaceSearch',
-    props: ['disabled', 'repositoryInput'],
+    props: ['disabled', 'repositoryInput', 'scrollOwner'],
     setup() {
       mounts.search++;
     },
@@ -74,6 +74,7 @@ describe('browser model discovery', () => {
     await preparation.tasks[0]!.task();
     await flushPromises();
     expect(mounts).toEqual({ search: 1, files: 0 });
+    expect(owner.getComponent({ name: 'LlamaCppBrowserHuggingFaceSearch' }).props('scrollOwner')).toBe('parent');
     expect(wrapper.get('[data-testid="search-tools"]').attributes('data-disabled')).toBe('true');
     await preparation.tasks[1]!.task();
     await flushPromises();

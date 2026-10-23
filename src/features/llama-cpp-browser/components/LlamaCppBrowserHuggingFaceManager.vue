@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LlamaCppBrowserDownloadDestination from './LlamaCppBrowserDownloadDestination.vue';
 import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
+import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 import { useModelDownloadDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { destinationKey, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
@@ -436,11 +437,11 @@ defineExpose({ inspectRepository, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {}
         <label :for="`${id}-repository`" tw-class="block text-xs font-semibold text-gray-600 dark:text-gray-300">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__repository_url_or_id() }}</label>
         <div tw-class="flex flex-col sm:flex-row gap-2">
           <input :id="`${id}-repository`" v-model="input" data-testid="llama-hf-repository" placeholder="owner/repository" tw-class="min-w-0 flex-1 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" @keydown.enter.prevent="inspect" />
-          <button type="button" data-testid="llama-hf-inspect" :disabled="!input.trim()" tw-class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 border border-gray-200 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all" @click="inspect"><FolderSearchIcon aria-hidden="true" tw-class="w-4 h-4 shrink-0" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
+          <LlamaCppBrowserModelActionButton data-testid="llama-hf-inspect" size="regular" :disabled="!input.trim()" tw-class="shrink-0" @click="inspect"><FolderSearchIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</LlamaCppBrowserModelActionButton>
         </div>
       </div>
     </fieldset>
-    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
+    <LlamaCppBrowserHuggingFaceSearch ref="repositorySearch" :disabled="disabled || active !== undefined || deleting" :repository-input="input" scroll-owner="results" @busy="searching = $event" @select="inspectRepository({ input: $event })" />
     <fieldset v-if="catalog" :disabled="disabled || active !== undefined || deleting || searching" tw-class="space-y-3 disabled:opacity-50">
       <div tw-class="flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="llama-hf-options">
         <LlamaCppBrowserModelConfiguration v-model:quantization="quantization" v-model:multimodal="multimodal" :projector="selectedProjector?.path ?? ''" :choices="choices" :projectors="catalog.projectors" :disabled="disabled || active !== undefined || deleting || searching" :multimodal-description-id="`${id}-multimodal-help`" @update:projector="projector = $event" />

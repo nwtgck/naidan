@@ -7,7 +7,7 @@ import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), searchModels: vi.fn() }));
 
 function render() {
-  const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: false, repositoryInput: '' } });
+  const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: false, repositoryInput: '', scrollOwner: 'results' } });
   return {
     wrapper,
     [Symbol.dispose]() {
@@ -30,7 +30,7 @@ beforeEach(async () => {
 
 describe('explicit Hugging Face model search', () => {
   it('prepares a disabled search view without searching when mounted, revealed, or focused', async () => {
-    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: true, repositoryInput: '' } });
+    const wrapper = mount(LlamaCppBrowserHuggingFaceSearch, { props: { disabled: true, repositoryInput: '', scrollOwner: 'results' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -81,6 +81,16 @@ describe('explicit Hugging Face model search', () => {
     expect(view.wrapper.find('img').exists()).toBe(false);
     expect(view.wrapper.emitted('select')).toBeUndefined();
     expect(view.wrapper.emitted('busy')).toEqual([[false], [true], [false]]);
+  });
+
+  it('keeps a bounded list when its caller assigns scrolling to search results', async () => {
+    vi.mocked(searchModels).mockResolvedValue({ results: [{ id: 'owner/model' }], nextCursor: undefined });
+    using view = render();
+    await submit({ wrapper: view.wrapper, query: 'qwen' });
+    const list = view.wrapper.get('[data-testid="llama-hf-search-results"]');
+    expect(list.classes()).toContain('overflow-y-auto');
+    expect(list.classes()).toContain('max-h-64');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-controls"]').classes()).not.toContain('sticky');
   });
 
   it('searches with Enter and ignores composition confirmation', async () => {
@@ -318,6 +328,8 @@ describe('explicit Hugging Face model search', () => {
     await flushPromises();
     expect(view.wrapper.get('[data-testid="llama-hf-search-result"]').text()).toBe('owner/first');
     expect(view.wrapper.get('[data-testid="llama-hf-search-more-error"]').text()).not.toContain('private URL');
+    expect(view.wrapper.get('[data-testid="llama-hf-search-more"]').text()).toBe('Retry');
+    expect(view.wrapper.get<HTMLButtonElement>('[data-testid="llama-hf-search-more"]').element.disabled).toBe(false);
     expect(searchModels).toHaveBeenCalledTimes(2);
     await view.wrapper.get('[data-testid="llama-hf-search-more"]').trigger('click');
     await flushPromises();

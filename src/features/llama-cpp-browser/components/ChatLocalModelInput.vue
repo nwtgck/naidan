@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, shallowRef, useId, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, ref, shallowRef, useId, watch } from 'vue';
 import { ArrowRightIcon, ChevronDownIcon, CpuIcon, FolderPlusIcon, HardDriveIcon, SearchIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { ChatLocalModelUi } from '@/composables/chat/chat-scoped/useChatLocalModel';
@@ -19,6 +19,40 @@ const LinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelI
 const props = defineProps<{ state: ChatLocalModelUi, expansion: 'closed' | 'open', availability: 'available' | 'unavailable' }>();
 const emit = defineEmits<{ 'update:expansion': [value: 'closed' | 'open'], 'model-drop-area-active': [] }>();
 const panelId = useId();
+const repositoryViewport = ref<HTMLElement>();
+let repositoryView: 'search' | 'configuration' = 'search';
+let repositorySearchScrollTop = 0;
+
+async function changeRepositoryView({ view }: { view: 'search' | 'configuration' }): Promise<void> {
+  const viewport = repositoryViewport.value;
+  if (viewport === undefined) {
+    return;
+  }
+  switch (view) {
+  case 'configuration': repositorySearchScrollTop = viewport.scrollTop;
+    break;
+  case 'search': break;
+  default: {
+    const exhaustive: never = view;
+    throw new Error(String(exhaustive));
+  }
+  }
+  repositoryView = view;
+  await nextTick();
+  if (repositoryViewport.value === viewport && repositoryView === view) {
+    switch (view) {
+    case 'search': viewport.scrollTop = repositorySearchScrollTop;
+      break;
+    case 'configuration': viewport.scrollTop = 0;
+      break;
+    default: {
+      const exhaustive: never = view;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+}
+
 const reading = computed(() => props.state.operation.value?.phase === 'reading');
 const failure = computed(() => {
   const error = props.state.operation.value?.error;
@@ -225,23 +259,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div data-testid="chat-local-model-input" tw-class="w-full max-w-4xl pointer-events-auto text-center">
+  <div data-testid="chat-local-model-input" tw-class="flex max-h-full min-h-0 w-full max-w-4xl flex-col items-center pointer-events-auto text-center">
     <button
       type="button"
       :disabled="state.operation.value !== undefined"
       :aria-expanded="expansion === 'open'"
       :aria-controls="panelId"
       data-testid="chat-open-local-model"
-      :tw-class="['group inline-flex min-h-9 max-w-full items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors duration-300 motion-reduce:transition-none hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500', expansion === 'open' ? 'text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400']"
+      :tw-class="['group inline-flex min-h-9 max-w-full shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-medium transition-colors duration-300 motion-reduce:transition-none hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500', expansion === 'open' ? 'text-gray-800 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400']"
       @click="toggleExpansion"
     >
       <component :is="currentTab.icon" aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0 transition-colors duration-300 motion-reduce:transition-none', expansion === 'open' ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500']" />
       <span data-testid="chat-model-picker-label" tw-class="min-w-0 truncate whitespace-nowrap">{{ currentTab.action }}</span>
       <ChevronDownIcon aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0 transition-[transform,color] duration-300 motion-reduce:transition-none', expansion === 'open' ? 'rotate-180 text-blue-500 dark:text-blue-400' : 'text-gray-400']" />
     </button>
-    <div :id="panelId" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
+    <div :id="panelId" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid min-h-0 w-full transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
       <div tw-class="min-h-0 overflow-hidden">
-        <section tw-class="mt-4 space-y-3 text-left">
+        <section tw-class="flex h-full min-h-0 flex-col gap-3 pt-4 text-left">
           <div v-if="state.operation.value?.downloadJobId !== undefined" data-testid="chat-model-download" tw-class="space-y-4 rounded-xl border border-gray-100 px-4 py-5 dark:border-gray-800">
             <p tw-class="break-words text-sm font-semibold text-gray-800 dark:text-gray-100">{{ state.downloadJob.value?.repository }}</p>
             <LlamaCppBrowserDownloadProgress :progress="state.downloadJob.value?.progress" appearance="welcome" :activity="state.operation.value.phase === 'downloading' ? 'active' : 'inactive'" />
@@ -249,11 +283,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <button v-if="state.operation.value.phase === 'downloading'" type="button" data-testid="chat-model-download-pause" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.pauseDownload()">{{ lazyStrings.ChatLocalModelInput__pause_download() }}</button>
           </div>
           <template v-else>
-            <div role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
+            <div role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm shrink-0 grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
               <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeSource === tab.key" :tabindex="activeSource === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeSource === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
               <span aria-hidden="true" :tw-class="['pointer-events-none absolute bottom-0 left-0 h-0.5 w-1/3 rounded-full bg-blue-500 transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', activeSource === 'files' ? 'translate-x-0' : activeSource === 'hugging-face' ? 'translate-x-full' : 'translate-x-[200%]']" />
             </div>
-            <div data-testid="chat-model-source-viewport" tw-class="relative h-[min(24rem,42dvh)] min-h-0 overflow-hidden">
+            <div data-testid="chat-model-source-viewport" tw-class="relative h-[min(34rem,60dvh)] min-h-0 overflow-hidden">
               <div data-testid="chat-model-source-panels" tw-class="relative h-full">
                 <div :id="`${panelId}-files-panel`" role="tabpanel" :aria-labelledby="`${panelId}-files-tab`" :inert="activeSource !== 'files' || undefined" :aria-hidden="activeSource !== 'files'" :tw-class="['absolute inset-0 flex flex-col gap-3 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeSource === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']" data-testid="chat-local-model-drop-zone">
                   <LlamaCppBrowserModelImportModes :model-value="fileMode" :modes="fileModes" :disabled="disabled || expansion === 'closed' || activeSource !== 'files'" tw-class="mx-auto w-full max-w-sm shrink-0" @update:model-value="selectFileMode({ mode: $event })" />
@@ -269,12 +303,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                     </div>
                   </div>
                 </div>
-                <div :id="`${panelId}-hugging-face-panel`" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="visited.has('hugging-face')" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @select="state.useRepositoryModel({ target: $event })" /></div>
+                <div :id="`${panelId}-hugging-face-panel`" ref="repositoryViewport" role="tabpanel" :aria-labelledby="`${panelId}-hugging-face-tab`" :inert="activeTab !== 'hugging-face' || undefined" :aria-hidden="activeTab !== 'hugging-face'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'hugging-face' ? 'opacity-100' : 'pointer-events-none opacity-0']"><RepositoryPicker v-if="visited.has('hugging-face')" :disabled="disabled || expansion === 'closed' || activeTab !== 'hugging-face'" @view-change="changeRepositoryView({ view: $event })" @select="state.useRepositoryModel({ target: $event })" /></div>
                 <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="visited.has('saved')" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>
               </div>
             </div>
           </template>
-          <p tw-class="text-center text-[11px] text-gray-400 dark:text-gray-500">{{ lazyStrings.ChatLocalModelInput__use_in_this_chat() }}</p>
           <p v-if="availability === 'unavailable'" role="status" tw-class="text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__unavailable_here() }}</p>
           <p v-if="reading" role="status" tw-class="flex items-center justify-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.ChatLocalModelInput__checking_files() }}</p>
           <div v-if="state.operation.value?.phase === 'choosing'" data-testid="chat-local-model-candidates" tw-class="max-h-48 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">

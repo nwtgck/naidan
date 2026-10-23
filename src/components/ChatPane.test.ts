@@ -4325,6 +4325,76 @@ describe('chat-local model entry wiring', () => {
     expect(textarea.element.value).toBe('Keep the current provider until a model is prepared');
   });
 
+  it.each([600, 240])('keeps the model picker outside history scrolling through composer transitions in a %ipx viewport', async height => {
+    wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
+    await flushPromises();
+    const history = wrapper.get<HTMLElement>('[data-testid="scroll-container"]');
+    const emptyViewport = wrapper.get<HTMLElement>('[data-testid="chat-empty-viewport"]');
+    const input = wrapper.getComponent(ChatInput);
+    const textarea = input.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep this draft while choosing a model');
+    await wrapper.get('[data-testid="chat-open-local-model"]').trigger('click');
+    const picker = wrapper.get('[data-testid="chat-local-model-input"]');
+    const opener = wrapper.get('[data-testid="chat-open-local-model"]');
+    expect(emptyViewport.element.contains(picker.element)).toBe(true);
+    expect(history.element.contains(picker.element)).toBe(false);
+    expect(history.classes()).toContain('overflow-clip');
+    expect(history.classes()).not.toContain('overflow-y-auto');
+    expect(emptyViewport.classes()).toContain('overflow-clip');
+    expect(wrapper.classes()).toContain('overflow-clip');
+    expect(picker.classes()).toEqual(expect.arrayContaining(['max-h-full', 'min-h-0', 'flex-col']));
+    const sourceViewport = picker.get('[data-testid="chat-model-source-viewport"]');
+    expect(sourceViewport.classes()).toContain('min-h-0');
+    expect(picker.get('[role="tablist"]').classes()).toContain('shrink-0');
+    history.element.getBoundingClientRect = () => new DOMRect(0, 0, 800, height);
+    let inputTop = height - 128;
+    input.element.getBoundingClientRect = () => new DOMRect(0, inputTop, 800, 128);
+    await input.trigger('transitionend', { propertyName: 'transform' });
+    expect(emptyViewport.element.style.paddingBottom).toBe('136px');
+
+    await input.get('[data-testid="submerge-button"]').trigger('click');
+    await input.trigger('transitionrun', { propertyName: 'transform' });
+    inputTop = height - 32;
+    await input.trigger('transitionend', { propertyName: 'transform' });
+    expect(input.props('visibility')).toBe('submerged');
+    expect(emptyViewport.element.style.paddingBottom).toBe('40px');
+
+    await input.get('[data-testid="chat-input-card"]').trigger('mouseenter');
+    inputTop = height - 128;
+    await input.trigger('transitionend', { propertyName: 'transform' });
+    expect(input.props('visibility')).toBe('peeking');
+    expect(emptyViewport.element.style.paddingBottom).toBe('136px');
+    await input.get('[data-testid="chat-input-card"]').trigger('mouseleave');
+    inputTop = height - 32;
+    await input.trigger('transitionend', { propertyName: 'transform' });
+    expect(input.props('visibility')).toBe('submerged');
+    expect(emptyViewport.element.style.paddingBottom).toBe('40px');
+
+    await input.get('[data-testid="submerge-button"]').trigger('click');
+    inputTop = height - 128;
+    await input.trigger('transitionend', { propertyName: 'transform' });
+    expect(input.props('visibility')).toBe('active');
+    expect(emptyViewport.element.style.paddingBottom).toBe('136px');
+    expect(wrapper.get('[data-testid="chat-local-model-input"]').element).toBe(picker.element);
+    expect(wrapper.get('[data-testid="chat-open-local-model"]').element).toBe(opener.element);
+    expect(opener.attributes('aria-expanded')).toBe('true');
+    expect(history.element.contains(opener.element)).toBe(false);
+    expect(wrapper.get('[data-testid="chat-empty-viewport"]').element).toBe(emptyViewport.element);
+    expect(textarea.element.value).toBe('Keep this draft while choosing a model');
+
+    const message = createTextNode({ id: toMessageId({ raw: 'first-message' }), role: 'user', text: 'The conversation starts', createdAt: 1 });
+    mockCurrentChat.value!.root.items = [message];
+    mockActiveMessages.value = [message];
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-empty-viewport"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-open-local-model"]').exists()).toBe(false);
+    expect(history.classes()).toContain('overflow-y-auto');
+    expect(history.classes()).not.toContain('overflow-clip');
+    expect(history.element.querySelector('[id="message-first-message"]')).toBeTruthy();
+    expect(wrapper.getComponent(ChatInput).element).toBe(input.element);
+    expect(textarea.element.value).toBe('Keep this draft while choosing a model');
+  });
+
   it('does not offer the entry over an empty selected branch in a chat that has other messages', async () => {
     mockCurrentChat.value!.root.items = [createTextNode({ id: toMessageId({ raw: 'unselected-message' }), role: 'user', text: 'An existing branch', createdAt: 1 })];
     mockActiveMessages.value = [];

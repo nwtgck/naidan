@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LibraryBigIcon, SearchIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import LlamaCppBrowserModelActionButton from './LlamaCppBrowserModelActionButton.vue';
 const props = defineProps<{ entries: readonly { name: string, input: string, url: string }[], disabled: boolean }>();
 const emit = defineEmits<{ inspect: [input: string] }>();
 
@@ -21,7 +22,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <p tw-class="text-sm font-semibold">{{ entry.name }}</p>
           <a :href="entry.url" target="_blank" rel="noopener noreferrer" tw-class="text-xs text-blue-600 dark:text-blue-400 break-all hover:underline">{{ entry.input }} <ExternalLinkIcon aria-hidden="true" tw-class="inline h-3 w-3" /></a>
         </div>
-        <button type="button" :disabled="disabled" data-testid="llama-repository-catalog-inspect" @click="inspect({ input: entry.input })" tw-class="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"><SearchIcon tw-class="h-4 w-4" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</button>
+        <LlamaCppBrowserModelActionButton :disabled="disabled" data-testid="llama-repository-catalog-inspect" tw-class="shrink-0" @click="inspect({ input: entry.input })"><SearchIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__check_model() }}</LlamaCppBrowserModelActionButton>
       </li>
     </ul>
   </section>

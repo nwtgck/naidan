@@ -16,6 +16,7 @@ import { defineComponent, ref } from 'vue';
 import { provideHuggingFaceSession } from '@/features/llama-cpp-browser/hugging-face/session';
 import { installedSelection, listPendingDownloads } from '@/features/llama-cpp-browser/hugging-face/storage';
 import LlamaCppBrowserHuggingFaceManager from './LlamaCppBrowserHuggingFaceManager.vue';
+import LlamaCppBrowserHuggingFaceSearch from './LlamaCppBrowserHuggingFaceSearch.vue';
 vi.mock('@/features/llama-cpp-browser/hugging-face/catalog', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/catalog')>(), discoverRepository: vi.fn(), searchModels: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/download', () => ({ downloadRepository: vi.fn(), cancelDownload: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ listPendingDownloads: vi.fn(), installedSelection: vi.fn() }));
@@ -32,6 +33,7 @@ const wrappers: VueWrapper[] = [];
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } });
   wrappers.push(wrapper);
+  expect(wrapper.getComponent(LlamaCppBrowserHuggingFaceSearch).props('scrollOwner')).toBe('results');
   return wrapper;
 }
 

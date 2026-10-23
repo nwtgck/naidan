@@ -1724,7 +1724,7 @@ watch(
 
 <template>
   <div
-    class="chat-pane" tw-class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
+    class="chat-pane" tw-class="flex min-h-0 flex-col h-full overflow-clip bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
     @dragover="handleDragOver({ event: $event })"
     @dragleave="handleDragLeave({ event: $event })"
     @drop="handleDrop({ event: $event })"
@@ -1834,7 +1834,7 @@ watch(
     />
 
     <!-- Messages Layer -->
-    <div tw-class="flex-1 relative overflow-hidden">
+    <div tw-class="min-h-0 flex-1 relative overflow-hidden">
       <div
         tw-class="absolute inset-x-0 top-0 z-40 pointer-events-none"
         data-testid="context-compact-progress-overlay"
@@ -1869,7 +1869,7 @@ watch(
       <div
         ref="container"
         data-testid="scroll-container"
-        tw-class="absolute inset-0 overflow-y-auto overscroll-contain"
+        :tw-class="['absolute inset-0 overscroll-contain', activeMessages.length > 0 ? 'overflow-y-auto' : 'overflow-clip']"
         style="overflow-anchor: none;"
         :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }"
       >
@@ -1994,28 +1994,31 @@ watch(
               data-testid="response-viewport-reserve"
             ></div>
           </div>
-          <WelcomeScreen
-            v-else
-            :class="{ 'model-preparation-welcome': hasModelPreparation, 'chat-local-model-welcome': showLocalModelInput, 'chat-local-model-expanded': showLocalModelInput && localModelInputExpansion === 'open' }"
-            :has-input="(chatInputRef?.input || '').trim().length > 0"
-            :suggestions-visibility="welcomeSuggestionsVisibility"
-            @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
-          >
-            <template v-if="hasModelPreparation" #primary>
-              <LlamaCppBrowserModelLaunchCard v-if="modelLaunch.visible.value" :state="modelLaunch" :route-path="documentRoutePath" />
-              <LocalModelPreparation v-else-if="chatLocalModelPreparing" :state="localModelPreparation" :error-message="chatLocalModel.operation.value?.error === 'not-empty' ? lazyStrings.ChatLocalModelInput__this_chat_already_has_messages() : undefined" />
-              <LocalModelPreparation v-else :state="localModelLaunch" />
-            </template>
-            <template v-if="showLocalModelInput" #actions>
-              <ChatLocalModelInput v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" @model-drop-area-active="isDragging = false" />
-            </template>
-            <template v-if="firefoxWebGpuWarning.visible.value || showModelRecoveryNotice" #notice>
-              <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
-              <LlamaCppBrowserModelRecovery v-if="showModelRecoveryNotice" :state="modelRecovery" />
-            </template>
-          </WelcomeScreen>
         </template>
+      </div>
 
+      <!-- Welcome controls must not move with history scrolling, including the
+           scroll following a composer resize or its submerged transition. -->
+      <div v-if="chat && activeMessages.length === 0" data-testid="chat-empty-viewport" :tw-class="['absolute inset-0', showLocalModelInput ? 'overflow-clip' : 'overflow-y-auto overscroll-contain']" :style="{ paddingBottom: `${composerLayout.bottomPaddingPx.value}px` }">
+        <WelcomeScreen
+          :class="{ 'model-preparation-welcome': hasModelPreparation, 'chat-local-model-welcome': showLocalModelInput, 'chat-local-model-expanded': showLocalModelInput && localModelInputExpansion === 'open' }"
+          :has-input="(chatInputRef?.input || '').trim().length > 0"
+          :suggestions-visibility="welcomeSuggestionsVisibility"
+          @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
+        >
+          <template v-if="hasModelPreparation" #primary>
+            <LlamaCppBrowserModelLaunchCard v-if="modelLaunch.visible.value" :state="modelLaunch" :route-path="documentRoutePath" />
+            <LocalModelPreparation v-else-if="chatLocalModelPreparing" :state="localModelPreparation" :error-message="chatLocalModel.operation.value?.error === 'not-empty' ? lazyStrings.ChatLocalModelInput__this_chat_already_has_messages() : undefined" />
+            <LocalModelPreparation v-else :state="localModelLaunch" />
+          </template>
+          <template v-if="showLocalModelInput" #actions>
+            <ChatLocalModelInput v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" @model-drop-area-active="isDragging = false" />
+          </template>
+          <template v-if="firefoxWebGpuWarning.visible.value || showModelRecoveryNotice" #notice>
+            <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
+            <LlamaCppBrowserModelRecovery v-if="showModelRecoveryNotice" :state="modelRecovery" />
+          </template>
+        </WelcomeScreen>
       </div>
 
       <!-- Chat State Inspector -->
@@ -2116,11 +2119,17 @@ watch(
 
 <style scoped>
 .chat-local-model-welcome {
+  height: 100%;
+  min-height: 0;
   padding-block: clamp(12px, 2dvh, 20px);
+  transition: padding-top 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-/* Keep one layout throughout disclosure. Flexible air absorbs its growing
-   height, while opening lifts the content so model controls take priority.
-   The subdued introduction may leave the top edge as the panel rises. */
+.chat-local-model-expanded {
+  padding-top: 4px;
+}
+/* Collapse the introduction's space to place open model controls just below
+   the chat header. Only the subdued introduction moves beyond the top edge;
+   controls stay in normal flow rather than using a viewport-sized transform. */
 .chat-local-model-welcome::before,
 .chat-local-model-welcome::after {
   content: '';
@@ -2128,15 +2137,17 @@ watch(
 }
 .chat-local-model-welcome::before {
   flex: 1 1 0;
+  transition: flex-grow 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .chat-local-model-welcome::after {
   flex: 3 1 0;
 }
 .chat-local-model-welcome > :deep(div) {
-  flex-shrink: 0;
+  min-height: 0;
+  max-height: 100%;
+  flex-shrink: 1;
   row-gap: 20px;
-  transform: translateY(0);
-  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1), transform 350ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .chat-local-model-welcome > :deep(div > *) {
   margin-block: 0;
@@ -2150,9 +2161,18 @@ watch(
   visibility: hidden;
   pointer-events: none;
 }
+.chat-local-model-welcome :deep(.welcome-storage-region) {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 350ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-local-model-welcome :deep(.welcome-storage-region-content) {
+  min-height: 0;
+}
 .chat-local-model-welcome :deep(.welcome-storage-notice) {
   row-gap: 20px;
-  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(0);
+  transition: row-gap 350ms cubic-bezier(0.22, 1, 0.36, 1), transform 350ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .chat-local-model-welcome :deep(.welcome-storage-notice > *),
 .chat-local-model-welcome :deep(.welcome-storage-copy > *) {
@@ -2202,18 +2222,25 @@ watch(
 .chat-local-model-expanded :deep(.welcome-storage-copy) {
   row-gap: 8px;
 }
-.chat-local-model-expanded > :deep(div) {
-  transform: translateY(calc(-1 * clamp(48px, 10dvh, 104px)));
+.chat-local-model-expanded::before {
+  flex-grow: 0;
+}
+.chat-local-model-expanded :deep(.welcome-storage-region) {
+  grid-template-rows: 0fr;
 }
 .chat-local-model-expanded :deep(.welcome-storage-notice) {
   row-gap: 0;
+  transform: translateY(-100%);
 }
 .chat-local-model-expanded :deep(.welcome-storage-accent) {
   grid-template-rows: 0fr;
   opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
+  .chat-local-model-welcome,
+  .chat-local-model-welcome::before,
   .chat-local-model-welcome > :deep(div),
+  .chat-local-model-welcome :deep(.welcome-storage-region),
   .chat-local-model-welcome :deep(.welcome-storage-notice),
   .chat-local-model-welcome :deep(.welcome-storage-copy),
   .chat-local-model-welcome :deep(.welcome-storage-title),

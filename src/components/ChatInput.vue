@@ -1391,6 +1391,7 @@ defineExpose({
     </div>
 
     <div
+      data-testid="chat-input-card"
       :tw-class="['max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:border-blue-400/80 dark:focus-within:border-blue-500/70 transition-colors duration-300 flex flex-col',
                   isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
                   visibility === 'submerged' ? 'cursor-pointer' : ''

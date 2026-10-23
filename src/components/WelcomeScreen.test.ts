@@ -164,6 +164,9 @@ describe('ordinary Chat actions slot', () => {
       },
     };
     expect(wrapper.find('[data-testid="local-actions"]').exists()).toBe(true);
+    const introduction = wrapper.get('[data-testid="welcome-storage-introduction"]').element;
+    expect(introduction.contains(wrapper.get('h2').element)).toBe(true);
+    expect(introduction.contains(wrapper.get('[data-testid="local-actions"]').element)).toBe(false);
     expect(wrapper.get('h2').text()).toContain('All conversations are stored locally.');
     expect(wrapper.text()).toContain('Your data stays on your device.');
     expect(wrapper.find('a[download]').exists()).toBe(__BUILD_MODE_IS_HOSTED__);
