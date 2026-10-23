@@ -135,7 +135,7 @@ it.each(['busy', 'runtime'])('keeps failed preparation blocked until an explicit
   expect(mocks.prepare).toHaveBeenCalledTimes(2);
 });
 
-it.each(['model', 'endpoint', 'membership', 'source', 'message'])('retires the view when its owner changes (%s)', async change => {
+it.each(['model', 'endpoint', 'membership', 'source'])('retires the view when its owner changes (%s)', async change => {
   const { chat, binding, render, invalidate } = fixture({ register: true, homeOriginId: undefined });
   const { state } = render();
   await flushPromises();
@@ -149,10 +149,6 @@ it.each(['model', 'endpoint', 'membership', 'source', 'message'])('retires the v
   }
     break;
   case 'source': invalidate();
-    break;
-  case 'message': if (chat.value) {
-    chat.value.root.items.push({ id: toMessageId({ raw: 'message' }), role: 'user', modelId: undefined, lmParameters: undefined, parts: [], createdAt: 1, replies: { items: [] } });
-  }
     break;
   default: throw new Error(change);
   }
@@ -266,4 +262,42 @@ it.each(['ready', 'skipped-busy'] as const)('starts a fresh session when the sam
   await flushPromises();
   expect(state.status.value).toBe('ready');
   expect(mocks.prepare).toHaveBeenCalledTimes(2);
+});
+
+it('prepares an explicitly selected model for a chat with history and retains the session after another message', async () => {
+  const pending = Promise.withResolvers<'ready'>();
+  mocks.prepare.mockReturnValueOnce(pending.promise);
+  const { chat, binding, render } = fixture({ register: false, homeOriginId: undefined });
+  const message = { id: toMessageId({ raw: 'kept-history' }), role: 'user' as const, modelId: undefined, lmParameters: undefined, parts: [], createdAt: 1, replies: { items: [] } };
+  chat.value!.root.items.push(message);
+  registerLocalModelLaunchSession({ chat: chat.value!, model, homeOriginId: undefined, isCurrent: () => true, readBinding: () => ({ ...binding.value, chatGroupId }) });
+  const { state } = render();
+  await flushPromises();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  expect(state.visible.value).toBe(true);
+  expect(state.maySend.value).toBe(false);
+  expect(() => assertLocalModelLaunchReady({ chat: chat.value!, ...binding.value })).toThrow();
+  expect(chat.value!.root.items).toEqual([message]);
+  pending.resolve('ready');
+  await flushPromises();
+  expect(state.maySend.value).toBe(true);
+  expect(assertLocalModelLaunchReady({ chat: chat.value!, ...binding.value })).toBeDefined();
+  chat.value!.root.items.push({ ...message, id: toMessageId({ raw: 'next-message' }) });
+  await flushPromises();
+  expect(localModelLaunchSession({ chatId })).toBeDefined();
+  expect(mocks.prepare).toHaveBeenCalledOnce();
+  await suspendLocalModelLaunchPreparation({ chatId });
+  await flushPromises();
+  expect(state.visible.value).toBe(false);
+  expect(localModelLaunchSession({ chatId })).toBeUndefined();
+});
+
+it('never warms up a history model without an explicit session', async () => {
+  const { chat, render } = fixture({ register: false, homeOriginId: undefined });
+  chat.value!.root.items.push({ id: toMessageId({ raw: 'ordinary-history' }), role: 'user', modelId: undefined, lmParameters: undefined, parts: [], createdAt: 1, replies: { items: [] } });
+  const { state } = render();
+  await flushPromises();
+  expect(state.visible.value).toBe(false);
+  expect(state.maySend.value).toBe(true);
+  expect(mocks.prepare).not.toHaveBeenCalled();
 });

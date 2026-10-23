@@ -54,12 +54,14 @@ import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/compone
 import LlamaCppBrowserModelLaunchPrivacy from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchPrivacy.vue';
 import { modelLaunchPreparationStage } from '@/features/llama-cpp-browser/model-launch/presentation';
 import { useModelLaunchChat } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
-import { useLocalModelLaunchChat, type LocalModelLaunchChatUi } from '@/features/llama-cpp-browser/composables/useLocalModelLaunchChat';
+import { suspendLocalModelLaunchPreparation, useLocalModelLaunchChat, type LocalModelLaunchChatUi } from '@/features/llama-cpp-browser/composables/useLocalModelLaunchChat';
 import LocalModelPreparation from './LocalModelPreparation.vue';
 import { useTemporaryModelSave } from '@/features/llama-cpp-browser/composables/useTemporaryModelSave';
 const TemporaryModelSaveNotice = defineAsyncComponent(() => import('./TemporaryModelSaveNotice.vue'));
 import { useMissingLlamaCppBrowserModel } from '@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel';
-import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
+import ChatModelRecovery from './ChatModelRecovery.vue';
+const ChatModelPreparation = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatModelPreparation.vue') });
+import type { ChatModelRecoveryNotice } from './ChatModelRecoverySummary.vue';
 import LlamaCppBrowserFirefoxWebGpuWarning from '@/features/llama-cpp-browser/components/LlamaCppBrowserFirefoxWebGpuWarning.vue';
 import { useFirefoxWebGpuWarning } from '@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning';
 import ChatInput from './ChatInput.vue';
@@ -195,7 +197,7 @@ const chatModelSelection = useChatLocalModel({ chatId: computed(() => props.chat
 const localModelInputExpansion = ref<'closed' | 'open'>('closed');
 const localModelReselection = ref(false);
 const chatLocalModelPreparing = computed(() => chatLocalModel.operation.value?.model !== undefined);
-const showLocalModelPreparation = computed(() => localModelLaunch.visible.value && !localModelReselection.value && chatLocalModel.operation.value === undefined);
+const showLocalModelPreparation = computed(() => chat.value?.root.items.length === 0 && localModelLaunch.visible.value && !localModelReselection.value && chatLocalModel.operation.value === undefined);
 const hasModelPreparation = computed(() => modelLaunch.visible.value || showLocalModelPreparation.value || chatLocalModelPreparing.value);
 const showLocalModelInput = computed(() => chat.value !== null && chat.value.root.items.length === 0 && !hasModelPreparation.value);
 const localModelPreparation: LocalModelLaunchChatUi = {
@@ -352,10 +354,68 @@ const { setActiveFocusArea } = useLayout();
 type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
 type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
-const showModelRecoveryNotice = computed(() => modelRecovery.visible.value && modelRecovery.availability.value !== 'missing');
-const historyModelRecoveryVisible = computed(() => activeMessages.value.length > 0 && showModelRecoveryNotice.value);
-const modelRecoveryOutsideComposer = computed(() => historyModelRecoveryVisible.value
-  && (inputVisibility.value === 'submerged' || modelLaunch.composerVisibility.value === 'hidden'));
+const hasChatHistory = computed(() => (chat.value?.root.items.length ?? 0) > 0);
+const recoveryExpansion = ref<'closed' | 'open'>('closed');
+const recoveryVisited = ref(false);
+const modelSelectionOrigin = ref<'inline' | 'modal'>('modal');
+
+function setRecoveryExpansion({ expansion }: { expansion: 'closed' | 'open' }): void {
+  recoveryExpansion.value = expansion;
+  switch (expansion) {
+  case 'open':
+    recoveryVisited.value = true;
+    modelSelectionOrigin.value = 'inline';
+    break;
+  case 'closed': break;
+  default: {
+    const exhaustive: never = expansion;
+    throw new Error(String(exhaustive));
+  }
+  }
+}
+
+const chatModelNotice = computed<ChatModelRecoveryNotice | undefined>(() => {
+  const resolved = resolvedSettings.value;
+  if (!hasChatHistory.value || resolved === null || resolved === undefined) {
+    return undefined;
+  }
+  const connection = (() => {
+    const type = resolved.endpoint.type;
+    switch (type) {
+    case 'llama_cpp_browser': case 'transformers_js': case 'browser_provided_lm': return 'browser' as const;
+    case 'openai': case 'ollama': case 'naidan_rpc': case 'unsupported_experimental_endpoint': return 'server' as const;
+    default: {
+      const exhaustive: never = type;
+      return exhaustive;
+    }
+    }
+  })();
+  if (!isConfiguredEndpoint({ endpoint: resolved.endpoint }) || !resolved.modelId) {
+    return { reason: 'unconfigured', connection, modelId: resolved.modelId };
+  }
+  if (connection === 'browser' && modelRecovery.visible.value) {
+    switch (modelRecovery.availability.value) {
+    case 'missing': return { reason: 'missing-files', connection, modelId: resolved.modelId };
+    case 'unreadable': return { reason: 'unreadable', connection, modelId: resolved.modelId };
+    case 'inactive': case 'checking': case 'available': return undefined;
+    default: {
+      const exhaustive: never = modelRecovery.availability.value;
+      return exhaustive;
+    }
+    }
+  }
+  // Remote model lists are neither an availability probe nor a prerequisite
+  // for sending. Ordinary chat rendering must not initiate external requests.
+  return undefined;
+});
+const historyModelPreparation = computed(() => chatLocalModelPreparing.value ? localModelPreparation : localModelLaunch.visible.value && localModelLaunch.status.value !== 'ready' ? localModelLaunch : undefined);
+const historyModelPreparationVisible = computed(() => hasChatHistory.value
+  && (historyModelPreparation.value !== undefined || chatModelSelection.operation.value?.downloadJobId !== undefined)
+  && appEntry.modelSelection.value === undefined && activeApprovalRequest.value === undefined && activeChoiceRequest.value === undefined);
+const historyModelRecoveryVisible = computed(() => hasChatHistory.value && (chatModelNotice.value !== undefined || chatModelSelection.operation.value !== undefined || recoveryExpansion.value === 'open'));
+const recoveryPresentation = computed(() => historyModelPreparationVisible.value || appEntry.modelSelection.value !== undefined || activeApprovalRequest.value !== undefined || activeChoiceRequest.value !== undefined ? 'suppressed' as const : 'visible' as const);
+const modelControlsOutsideComposer = computed(() => inputVisibility.value === 'submerged' || modelLaunch.composerVisibility.value === 'hidden');
+const modelRecoveryOutsideComposer = computed(() => historyModelRecoveryVisible.value && modelControlsOutsideComposer.value);
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
 
@@ -396,6 +456,11 @@ const {
   save: saveSettings,
   setFakeLmDebugModeStatus,
 } = useSettings();
+watch([() => props.chatId, () => settings.value.storageType], () => {
+  recoveryExpansion.value = 'closed';
+  recoveryVisited.value = false;
+  modelSelectionOrigin.value = 'modal';
+});
 const router = useRouter();
 const appEntry = useAppEntry();
 
@@ -413,6 +478,16 @@ const generatingIndicatorIndex = computed(() => {
 });
 
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+const recoveryComposerHost = ref<HTMLElement>();
+const recoveryFallbackHost = ref<HTMLElement>();
+const recoveryOverlayRoot = ref<HTMLElement>();
+const recoveryPlacement = computed(() => ({
+  overlayRoot: recoveryOverlayRoot.value ?? undefined,
+  anchorHost: (modelRecoveryOutsideComposer.value ? recoveryFallbackHost.value : recoveryComposerHost.value) ?? undefined,
+  anchorViewport: (modelRecoveryOutsideComposer.value ? recoveryFallbackHost.value : chatInputRef.value?.aboveInputElement) ?? undefined,
+  anchorClip: (modelRecoveryOutsideComposer.value ? recoveryFallbackHost.value : chatInputRef.value?.rootElement) ?? undefined,
+  messageViewport: container.value ?? undefined,
+}));
 const composerLayout = useChatComposerLayout({
   composer: computed(() => chatInputRef.value?.rootElement),
   editor: computed(() => chatInputRef.value?.textareaElement),
@@ -1031,8 +1106,14 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
   if (!isConfiguredEndpoint({ endpoint: resolved.endpoint }) || !resolved.modelId) {
     return 'select-model';
   }
-  if (modelRecovery.availability.value === 'missing' && !modelRecovery.busy.value) {
-    return 'select-model';
+  const availability = modelRecovery.availability.value;
+  switch (availability) {
+  case 'missing': return 'select-model';
+  case 'inactive': case 'checking': case 'unreadable': case 'available': break;
+  default: {
+    const exhaustive: never = availability;
+    return exhaustive;
+  }
   }
   if (type === undefined || !modelLaunch.maySend.value || !localModelLaunch.maySend.value || !modelRecovery.maySend.value) {
     return 'blocked';
@@ -1055,7 +1136,37 @@ const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
   return resolveChatTextSubmissionAction({ endpoint: resolved.endpoint, modelId: resolved.modelId, canSubmit: isChatSubmissionEnabled.value });
 });
 
+async function cancelChatModelPreparation(): Promise<void> {
+  const targetChatId = props.chatId;
+  const isStorageCurrent = storageService.captureModelLaunchStorage();
+  chatModelSelection.pauseDownload();
+  await chatModelSelection.cancel();
+  if (isStorageCurrent()) {
+    await suspendLocalModelLaunchPreparation({ chatId: targetChatId });
+  }
+}
+
+async function chooseAnotherChatModel(): Promise<void> {
+  const targetChatId = props.chatId;
+  const isStorageCurrent = storageService.captureModelLaunchStorage();
+  const origin = modelSelectionOrigin.value;
+  await cancelChatModelPreparation();
+  if (props.chatId === targetChatId && isStorageCurrent()) {
+    switch (origin) {
+    case 'inline': setRecoveryExpansion({ expansion: 'open' });
+      break;
+    case 'modal': requestModelSelection();
+      break;
+    default: {
+      const exhaustive: never = origin;
+      throw new Error(String(exhaustive));
+    }
+    }
+  }
+}
+
 function requestModelSelection(): void {
+  modelSelectionOrigin.value = 'modal';
   appEntry.openModelSelection({
     target: {
       kind: 'chat',
@@ -1776,11 +1887,10 @@ watch(
       @delete-chat="handleDeleteChat()"
     />
 
-    <!-- A different tab can add messages while this operation settles. Keep its
-         cancellation reachable even after the empty-chat welcome disappears. -->
-    <div v-if="chatLocalModel.operation.value !== undefined || hasModelPreparation && activeMessages.length === 0" data-testid="model-preparation-navigation" tw-class="mt-3 flex shrink-0 items-center justify-between gap-3 px-4 py-1 sm:px-6">
+    <!-- Empty chats use the full preparation presentation; history keeps its
+         preparation controls beside the existing composer. -->
+    <div v-if="!hasChatHistory && (chatLocalModel.operation.value !== undefined || hasModelPreparation)" data-testid="model-preparation-navigation" tw-class="mt-3 flex shrink-0 items-center justify-between gap-3 px-4 py-1 sm:px-6">
       <button v-if="chatLocalModel.operation.value !== undefined || modelLaunch.homeOriginId.value !== undefined || showLocalModelPreparation" type="button" :disabled="chatLocalModel.operation.value?.phase === 'cancelling' || chatLocalModel.operation.value?.phase === 'committing'" data-testid="back-to-model-selection" tw-class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200 transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="chatLocalModel.operation.value !== undefined ? chatLocalModel.cancel() : modelLaunch.visible.value ? modelLaunch.returnToHome() : localModelLaunch.homeOriginId.value !== undefined ? localModelLaunch.back() : chooseModelFilesAgain()"><ArrowLeftIcon aria-hidden="true" tw-class="h-3.5 w-3.5" />{{ chatLocalModel.operation.value !== undefined ? lazyStrings.SHARED__cancel() : showLocalModelPreparation && localModelLaunch.homeOriginId.value === undefined ? lazyStrings.ChatPane__choose_model_files_again() : lazyStrings.BrowserModelPreparation__back_to_model_selection() }}</button>
-      <p v-if="activeMessages.length > 0 && chatLocalModel.operation.value?.phase === 'error'" role="alert" data-testid="chat-local-model-history-error" tw-class="min-w-0 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ chatLocalModel.operation.value.error === 'not-empty' ? lazyStrings.ChatLocalModelInput__this_chat_already_has_messages() : lazyStrings.LlamaCppBrowserModelLaunch__could_not_prepare_model() }}</p>
       <LlamaCppBrowserModelLaunchPrivacy appearance="compact" :file-source="modelLaunch.visible.value ? 'hugging-face' : 'local'" tw-class="ml-auto" />
     </div>
 
@@ -2012,11 +2122,10 @@ watch(
             <LocalModelPreparation v-else :state="localModelLaunch" />
           </template>
           <template v-if="showLocalModelInput" #actions>
-            <ChatLocalModelInput v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" @model-drop-area-active="isDragging = false" />
+            <ChatLocalModelInput v-model:expansion="localModelInputExpansion" :state="chatLocalModel" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" layout="welcome" scroll-mode="source" :source-tabs-host="undefined" @model-drop-area-active="isDragging = false" />
           </template>
-          <template v-if="firefoxWebGpuWarning.visible.value || showModelRecoveryNotice" #notice>
+          <template v-if="firefoxWebGpuWarning.visible.value" #notice>
             <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
-            <LlamaCppBrowserModelRecovery v-if="showModelRecoveryNotice" :state="modelRecovery" />
           </template>
         </WelcomeScreen>
       </div>
@@ -2035,9 +2144,8 @@ watch(
 
     <!-- A submerged composer translates its whole slot offscreen. Keep the
          recovery above its visible handle, outside that transformed layer. -->
-    <div v-if="modelRecoveryOutsideComposer" data-testid="model-recovery-outside-composer" :tw-class="['max-h-[40dvh] overflow-y-auto shrink-0 px-2 sm:px-3', modelLaunch.composerVisibility.value === 'visible' ? 'mb-[calc(32px+env(safe-area-inset-bottom))] sm:mb-[calc(40px+env(safe-area-inset-bottom))]' : 'mb-2']">
-      <LlamaCppBrowserModelRecovery :state="modelRecovery" appearance="compact" />
-    </div>
+    <div v-if="historyModelPreparationVisible && modelControlsOutsideComposer" data-testid="model-preparation-outside-composer" :tw-class="['max-h-[40dvh] overflow-y-auto overscroll-contain shrink-0 px-2 sm:px-3', modelLaunch.composerVisibility.value === 'visible' ? 'mb-[calc(32px+env(safe-area-inset-bottom))] sm:mb-[calc(40px+env(safe-area-inset-bottom))]' : 'mb-2']"><ChatModelPreparation data-testid="chat-history-model-preparation" :selection="chatModelSelection" :local-state="historyModelPreparation" @cancel="cancelChatModelPreparation()" @choose-again="chooseAnotherChatModel()" /></div>
+    <div v-else-if="modelRecoveryOutsideComposer && recoveryPresentation === 'visible'" data-testid="model-recovery-outside-composer" :tw-class="['shrink-0 px-2 sm:px-3', modelLaunch.composerVisibility.value === 'visible' ? 'mb-[calc(32px+env(safe-area-inset-bottom))] sm:mb-[calc(40px+env(safe-area-inset-bottom))]' : 'mb-2']"><div ref="recoveryFallbackHost" tw-class="max-h-[40dvh] overflow-y-auto" /></div>
     <!-- Input Layer -->
     <ChatMediaShelf
       v-if="chat && mediaShelfVisibility === 'visible'"
@@ -2071,7 +2179,7 @@ watch(
       @layout-change="composerLayout.measure()"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined || (historyModelRecoveryVisible && !modelRecoveryOutsideComposer) || chatLocalModel.operation.value !== undefined || isModelPreparing || temporaryModelSave.notice.value !== undefined ? 'visible' : 'hidden'"
+      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined || (!modelControlsOutsideComposer && (historyModelPreparationVisible || historyModelRecoveryVisible || isModelPreparing)) || chatLocalModel.operation.value !== undefined || temporaryModelSave.notice.value !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
       :text-submission-action="chatTextSubmissionAction"
@@ -2095,15 +2203,20 @@ watch(
           :request="activeChoiceRequest"
           @select="index => handleChoiceSelection({ index })"
         />
-        <!-- The measured composer slot reserves history space for this notice;
+        <template v-else>
+          <!-- The measured composer slot reserves history space for this notice;
              a normal-flow sibling can be covered by the floating input. -->
-        <LlamaCppBrowserModelRecovery v-else-if="historyModelRecoveryVisible && !modelRecoveryOutsideComposer" :state="modelRecovery" appearance="compact" />
-        <div v-else-if="activeMessages.length > 0 && chatLocalModel.operation.value !== undefined" data-testid="chat-history-model-preparation" tw-class="max-h-[40dvh] overflow-y-auto overscroll-contain px-3 pb-2"><ChatLocalModelInput :state="chatModelSelection" expansion="open" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" /></div>
-        <p v-else-if="isModelPreparing && !temporaryModelSaveInProgress" role="status" data-testid="model-preparation-input-hint" tw-class="flex items-center gap-2 px-4 py-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400"><PencilLineIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" /><span>{{ chatLocalModel.operation.value?.phase === 'cancelling' ? lazyStrings.ChatPane__cancelling_model_preparation() : lazyStrings.ChatPane__write_your_first_message_while_the_model_prepares() }}</span></p>
-        <button v-else-if="temporaryModelSave.hiddenNotice.value" type="button" data-testid="temporary-model-show-progress" tw-class="mb-2 rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="temporaryModelSave.show()">{{ lazyStrings.TemporaryModelSaveNotice__saving_in_your_browser() }}</button>
-        <TemporaryModelSaveNotice v-else-if="temporaryModelSave.notice.value !== undefined" :state="temporaryModelSave.notice.value" @save="temporaryModelSave.save()" @retry="temporaryModelSave.retry()" @dismiss="temporaryModelSave.dismiss()" @cancel="temporaryModelSave.cancel()" />
+          <ChatModelPreparation v-if="historyModelPreparationVisible && !modelControlsOutsideComposer" data-testid="chat-history-model-preparation" :selection="chatModelSelection" :local-state="historyModelPreparation" @cancel="cancelChatModelPreparation()" @choose-again="chooseAnotherChatModel()" />
+          <div v-else-if="historyModelRecoveryVisible && recoveryPresentation === 'visible' && !modelRecoveryOutsideComposer" ref="recoveryComposerHost" />
+          <p v-if="isModelPreparing && (!hasChatHistory || historyModelPreparationVisible) && !modelControlsOutsideComposer && !temporaryModelSaveInProgress" role="status" data-testid="model-preparation-input-hint" tw-class="flex items-center gap-2 rounded-lg bg-[#fcfcfd] px-4 py-1 text-xs leading-relaxed text-gray-500 dark:bg-gray-900 dark:text-gray-400"><PencilLineIcon aria-hidden="true" tw-class="h-4 w-4 shrink-0" /><span>{{ chatLocalModel.operation.value?.phase === 'cancelling' ? lazyStrings.ChatPane__cancelling_model_preparation() : lazyStrings.ChatPane__write_a_message_while_the_model_prepares() }}</span></p>
+          <button v-else-if="!historyModelPreparationVisible && !historyModelRecoveryVisible && temporaryModelSave.hiddenNotice.value" type="button" data-testid="temporary-model-show-progress" tw-class="mb-2 rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="temporaryModelSave.show()">{{ lazyStrings.TemporaryModelSaveNotice__saving_in_your_browser() }}</button>
+          <TemporaryModelSaveNotice v-else-if="!historyModelPreparationVisible && !historyModelRecoveryVisible && temporaryModelSave.notice.value !== undefined" :state="temporaryModelSave.notice.value" @save="temporaryModelSave.save()" @retry="temporaryModelSave.retry()" @dismiss="temporaryModelSave.dismiss()" @cancel="temporaryModelSave.cancel()" />
+        </template>
       </template>
     </ChatInput>
+
+    <div ref="recoveryOverlayRoot" data-testid="model-recovery-overlay" tw-class="pointer-events-none absolute inset-0 z-40" />
+    <ChatModelRecovery v-if="hasChatHistory && (historyModelRecoveryVisible || recoveryVisited)" :key="`${chatId}:${settings.storageType}`" :notice="chatModelNotice" :state="chatModelSelection" :expansion="recoveryExpansion" @update:expansion="setRecoveryExpansion({ expansion: $event })" :availability="modelLaunch.runtimeUnavailable.value ? 'unavailable' : 'available'" :presentation="recoveryPresentation" :placement="recoveryPlacement" @recheck="modelRecovery.retry()" @model-drop-area-active="isDragging = false" />
 
     <!-- Preview Modal -->
     <BinaryObjectPreviewModal

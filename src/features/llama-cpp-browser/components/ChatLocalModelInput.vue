@@ -15,7 +15,10 @@ const RepositoryPicker = defineAsyncComponent(() => import('./LlamaCppBrowserRep
 const SavedModelPicker = defineAsyncComponent(() => import('./LlamaCppBrowserSavedModelPicker.vue'));
 const LinkedFolders = defineAsyncComponent(() => import('./LlamaCppBrowserModelImportLinkedFolders.vue'));
 
-const props = defineProps<{ state: ChatLocalModelUi, expansion: 'closed' | 'open', availability: 'available' | 'unavailable' }>();
+const props = defineProps<{
+  state: ChatLocalModelUi, expansion: 'closed' | 'open', availability: 'available' | 'unavailable',
+  layout: 'welcome' | 'embedded', scrollMode: 'source' | 'frame', sourceTabsHost: HTMLElement | undefined,
+}>();
 const emit = defineEmits<{ 'update:expansion': [value: 'closed' | 'open'], 'model-drop-area-active': [] }>();
 const panelId = useId();
 const repositoryViewport = ref<HTMLElement>();
@@ -258,8 +261,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div data-testid="chat-local-model-input" tw-class="flex max-h-full min-h-0 w-full max-w-4xl flex-col items-center pointer-events-auto text-center">
+  <div data-testid="chat-local-model-input" :class="{ 'chat-model-input-embedded': layout === 'embedded', 'chat-model-input-frame-scroll': scrollMode === 'frame' }" :style="{ '--chat-model-source-overflow': scrollMode === 'frame' ? 'visible' : 'auto' }" tw-class="flex max-h-full min-h-0 w-full max-w-4xl flex-col items-center pointer-events-auto text-center">
     <button
+      v-if="layout === 'welcome'"
       type="button"
       :disabled="state.operation.value !== undefined"
       :aria-expanded="expansion === 'open'"
@@ -272,27 +276,23 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <span data-testid="chat-model-picker-label" tw-class="min-w-0 truncate whitespace-nowrap">{{ currentTab.action }}</span>
       <ChevronDownIcon aria-hidden="true" :tw-class="['h-3.5 w-3.5 shrink-0 transition-[transform,color] duration-300 motion-reduce:transition-none', expansion === 'open' ? 'rotate-180 text-blue-500 dark:text-blue-400' : 'text-gray-400']" />
     </button>
-    <div :id="panelId" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid min-h-0 w-full transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
-      <div tw-class="min-h-0 overflow-hidden">
-        <section tw-class="flex h-full min-h-0 flex-col gap-3 pt-4 text-left">
-          <div v-if="state.operation.value?.downloadJobId !== undefined" data-testid="chat-model-download" tw-class="space-y-4 rounded-xl border border-gray-100 px-4 py-5 dark:border-gray-800">
-            <p tw-class="break-words text-sm font-semibold text-gray-800 dark:text-gray-100">{{ state.downloadJob.value?.repository }}</p>
-            <LlamaCppBrowserDownloadProgress :progress="state.downloadJob.value?.progress" appearance="welcome" :activity="state.operation.value.phase === 'downloading' ? 'active' : 'inactive'" />
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ChatLocalModelInput__write_your_first_message_while_the_model_downloads() }}</p>
-            <button v-if="state.operation.value.phase === 'downloading'" type="button" data-testid="chat-model-download-pause" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.pauseDownload()">{{ lazyStrings.ChatLocalModelInput__pause_download() }}</button>
-          </div>
-          <template v-else>
-            <div role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm shrink-0 grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
-              <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeSource === tab.key" :tabindex="activeSource === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeSource === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
-              <span aria-hidden="true" :tw-class="['pointer-events-none absolute bottom-0 left-0 h-0.5 w-1/3 rounded-full bg-blue-500 transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', activeSource === 'files' ? 'translate-x-0' : activeSource === 'hugging-face' ? 'translate-x-full' : 'translate-x-[200%]']" />
-            </div>
-            <div data-testid="chat-model-source-viewport" tw-class="relative h-[min(34rem,60dvh)] min-h-0 overflow-hidden">
-              <div data-testid="chat-model-source-panels" tw-class="relative h-full">
+    <div :id="panelId" class="chat-model-expander" :inert="expansion === 'closed' || undefined" :aria-hidden="expansion === 'closed'" :tw-class="['grid min-h-0 w-full transition-[grid-template-rows,opacity] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', expansion === 'open' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0']">
+      <div class="chat-model-expander-content" tw-class="min-h-0 overflow-hidden">
+        <section class="chat-model-content" tw-class="flex h-full min-h-0 flex-col gap-3 pt-4 text-left">
+          <div v-show="state.operation.value === undefined || (layout === 'welcome' && state.operation.value.downloadJobId === undefined)" class="chat-model-sources">
+            <Teleport :to="sourceTabsHost ?? 'body'" :disabled="layout === 'welcome' || sourceTabsHost === undefined">
+              <div v-show="layout === 'welcome' || sourceTabsHost !== undefined" role="tablist" :aria-label="lazyStrings.ChatLocalModelInput__model_source()" tw-class="relative mx-auto grid w-full max-w-sm shrink-0 grid-cols-3 border-b border-gray-100 dark:border-gray-800" @keydown="tabKeydown({ event: $event })">
+                <button v-for="tab in tabs" :id="`${panelId}-${tab.key}-tab`" :key="tab.key" type="button" role="tab" :aria-controls="`${panelId}-${tab.key}-panel`" :aria-selected="activeSource === tab.key" :tabindex="activeSource === tab.key ? 0 : -1" :disabled="disabled" :data-testid="`chat-model-tab-${tab.key}`" :tw-class="['inline-flex min-h-10 items-center justify-center gap-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500', activeSource === tab.key ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']" @click="selectTab({ tab: tab.key, focus: false })">{{ tab.label }}</button>
+                <span aria-hidden="true" :tw-class="['pointer-events-none absolute bottom-0 left-0 h-0.5 w-1/3 rounded-full bg-blue-500 transition-transform duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', activeSource === 'files' ? 'translate-x-0' : activeSource === 'hugging-face' ? 'translate-x-full' : 'translate-x-[200%]']" />
+              </div>
+            </Teleport>
+            <div data-testid="chat-model-source-viewport" class="chat-model-source-viewport" tw-class="relative h-[min(34rem,60dvh)] min-h-0 overflow-hidden">
+              <div data-testid="chat-model-source-panels" class="chat-model-source-panels" tw-class="relative h-full">
                 <div :id="`${panelId}-files-panel`" role="tabpanel" :aria-labelledby="`${panelId}-files-tab`" :inert="activeSource !== 'files' || undefined" :aria-hidden="activeSource !== 'files'" :tw-class="['absolute inset-0 flex flex-col gap-3 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeSource === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']" data-testid="chat-local-model-drop-zone">
                   <LlamaCppBrowserModelImportModes :model-value="fileMode" :modes="fileModes" :disabled="disabled || expansion === 'closed' || activeSource !== 'files'" tw-class="mx-auto w-full max-w-sm shrink-0" @update:model-value="selectFileMode({ mode: $event })" />
-                  <div tw-class="relative min-h-0 flex-1">
+                  <div class="chat-model-file-views" tw-class="relative min-h-0 flex-1">
                     <div :inert="fileTab !== 'files' || undefined" :aria-hidden="fileTab !== 'files'" :tw-class="['absolute inset-0 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'files' ? 'opacity-100' : 'pointer-events-none opacity-0']">
-                      <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" layout="expanded" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
+                      <LlamaCppBrowserModelFileInput :disabled="disabled || expansion === 'closed' || activeTab !== 'files'" mode="temp" :layout="layout === 'embedded' ? 'fill' : 'expanded'" :description="lazyStrings.ChatLocalModelInput__start_without_copying_and_save_later()" @files="chooseLocal({ event: $event, selection: 'files' })" @directory="chooseLocal({ event: $event, selection: 'directory' })" @drop-files="dropLocal({ event: $event })" @drag-active="emit('model-drop-area-active')" />
                     </div>
                     <div data-testid="chat-linked-folders-panel" :inert="fileTab !== 'linked-folders' || undefined" :aria-hidden="fileTab !== 'linked-folders'" :tw-class="['absolute inset-0 space-y-3 overflow-y-auto overscroll-contain transition-opacity duration-180 ease-out motion-reduce:transition-none', fileTab === 'linked-folders' ? 'opacity-100' : 'pointer-events-none opacity-0']">
                       <div tw-class="mx-auto w-full max-w-xl">
@@ -305,18 +305,94 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <div :id="`${panelId}-saved-panel`" role="tabpanel" :aria-labelledby="`${panelId}-saved-tab`" :inert="activeTab !== 'saved' || undefined" :aria-hidden="activeTab !== 'saved'" :tw-class="['absolute inset-0 overflow-hidden px-1 transition-opacity duration-180 ease-out motion-reduce:transition-none', activeTab === 'saved' ? 'opacity-100' : 'pointer-events-none opacity-0']"><SavedModelPicker v-if="visited.has('saved')" :disabled="disabled || expansion === 'closed' || activeTab !== 'saved'" @select="state.useModel({ model: $event })" @source="selectTab({ tab: $event, focus: true })" /></div>
               </div>
             </div>
-          </template>
-          <p v-if="availability === 'unavailable'" role="status" tw-class="text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__unavailable_here() }}</p>
-          <p v-if="reading" role="status" tw-class="flex items-center justify-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.ChatLocalModelInput__checking_files() }}</p>
-          <div v-if="state.operation.value?.phase === 'choosing'" data-testid="chat-local-model-candidates" tw-class="max-h-48 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">
-            <p tw-class="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.LocalModelSelectionDialog__choose_a_model_configuration() }}</p>
-            <button v-for="candidate in state.operation.value.candidates" :key="candidate.modelId" type="button" tw-class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.choose({ modelId: candidate.modelId })"><span tw-class="min-w-0 truncate">{{ localModelDisplayName({ model: candidate }) }}</span><span tw-class="shrink-0 tabular-nums text-gray-400">{{ formatDownloadBytes({ bytes: candidate.size }) }}</span></button>
           </div>
-          <p v-if="failure" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ failure }}</p>
-          <button v-if="state.operation.value?.phase === 'error'" type="button" data-testid="chat-local-model-retry" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.retry()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
-          <button v-if="state.operation.value" type="button" :disabled="state.operation.value.phase === 'cancelling' || state.operation.value.phase === 'committing'" data-testid="chat-local-model-cancel" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="state.cancel()">{{ lazyStrings.SHARED__cancel() }}</button>
+          <p v-if="availability === 'unavailable'" role="status" tw-class="text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserModelLaunch__unavailable_here() }}</p>
+          <div v-if="state.operation.value !== undefined" class="chat-model-operation">
+            <div v-if="state.operation.value?.downloadJobId !== undefined" data-testid="chat-model-download" tw-class="space-y-4 rounded-xl border border-gray-100 px-4 py-5 dark:border-gray-800">
+              <p tw-class="break-words text-sm font-semibold text-gray-800 dark:text-gray-100">{{ state.downloadJob.value?.repository }}</p>
+              <LlamaCppBrowserDownloadProgress :progress="state.downloadJob.value?.progress" appearance="welcome" :activity="state.operation.value.phase === 'downloading' ? 'active' : 'inactive'" />
+              <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ChatLocalModelInput__write_your_first_message_while_the_model_downloads() }}</p>
+              <button v-if="state.operation.value.phase === 'downloading'" type="button" data-testid="chat-model-download-pause" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.pauseDownload()">{{ lazyStrings.ChatLocalModelInput__pause_download() }}</button>
+            </div>
+            <p v-if="reading" role="status" tw-class="flex items-center justify-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400"><Loader2Icon aria-hidden="true" tw-class="h-3 w-3 animate-spin motion-reduce:animate-none" />{{ lazyStrings.ChatLocalModelInput__checking_files() }}</p>
+            <div v-if="state.operation.value?.phase === 'choosing'" data-testid="chat-local-model-candidates" class="chat-model-candidates" tw-class="max-h-48 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700">
+              <p tw-class="px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300">{{ lazyStrings.LocalModelSelectionDialog__choose_a_model_configuration() }}</p>
+              <button v-for="candidate in state.operation.value.candidates" :key="candidate.modelId" type="button" tw-class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.choose({ modelId: candidate.modelId })"><span tw-class="min-w-0 truncate">{{ localModelDisplayName({ model: candidate }) }}</span><span tw-class="shrink-0 tabular-nums text-gray-400">{{ formatDownloadBytes({ bytes: candidate.size }) }}</span></button>
+            </div>
+            <p v-if="failure" role="alert" tw-class="text-xs leading-relaxed text-red-600 dark:text-red-400">{{ failure }}</p>
+            <button v-if="state.operation.value?.phase === 'error'" type="button" data-testid="chat-local-model-retry" tw-class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 focus-visible:outline-2 focus-visible:outline-blue-500" @click="state.retry()">{{ lazyStrings.LlamaCppBrowserModelLaunch__retry() }}</button>
+            <button v-if="state.operation.value" type="button" :disabled="state.operation.value.phase === 'cancelling' || state.operation.value.phase === 'committing'" data-testid="chat-local-model-cancel" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:opacity-50" @click="state.cancel()">{{ lazyStrings.SHARED__cancel() }}</button>
+          </div>
         </section>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.chat-model-sources, .chat-model-operation {
+  display: contents;
+}
+.chat-model-input-embedded .chat-model-operation {
+  display: block;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.chat-model-input-embedded .chat-model-operation > * + * {
+  margin-top: 12px;
+}
+.chat-model-input-embedded .chat-model-candidates {
+  max-height: none;
+  overflow: visible;
+}
+.chat-model-input-embedded {
+  height: 100%;
+}
+.chat-model-input-embedded .chat-model-expander,
+.chat-model-input-embedded .chat-model-expander-content {
+  flex: 1;
+  height: 100%;
+}
+.chat-model-input-embedded .chat-model-content {
+  gap: 10px;
+  padding-top: 4px;
+}
+.chat-model-input-embedded .chat-model-source-viewport {
+  flex: 1;
+  height: auto;
+}
+.chat-model-source-panels > [role="tabpanel"],
+.chat-model-file-views > div {
+  overflow-y: var(--chat-model-source-overflow, auto);
+}
+/* The saved list owns scrolling inside its fixed panel. */
+.chat-model-source-panels > [role="tabpanel"]:first-child,
+.chat-model-source-panels > [role="tabpanel"]:last-child {
+  overflow: hidden;
+}
+.chat-model-input-frame-scroll,
+.chat-model-input-frame-scroll .chat-model-expander,
+.chat-model-input-frame-scroll .chat-model-expander-content,
+.chat-model-input-frame-scroll .chat-model-content,
+.chat-model-input-frame-scroll .chat-model-source-viewport,
+.chat-model-input-frame-scroll .chat-model-source-panels,
+.chat-model-input-frame-scroll .chat-model-file-views {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.chat-model-input-frame-scroll .chat-model-source-panels > [role="tabpanel"],
+.chat-model-input-frame-scroll .chat-model-file-views > div {
+  position: relative;
+  inset: auto;
+  overflow: visible;
+}
+.chat-model-input-frame-scroll .chat-model-operation {
+  overflow: visible;
+}
+.chat-model-input-frame-scroll [aria-hidden="true"] {
+  display: none;
+}
+</style>

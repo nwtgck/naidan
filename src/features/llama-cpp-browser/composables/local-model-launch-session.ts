@@ -1,4 +1,4 @@
-import { reactive, shallowReactive, shallowRef, watch } from 'vue';
+import { shallowReactive, shallowRef, watch } from 'vue';
 import type { ChatId } from '@/01-models/ids';
 import type { Chat, Endpoint } from '@/01-models/types';
 import { llamaCppBrowserModelFiles } from '@/features/llama-cpp-browser/model-files';
@@ -50,7 +50,7 @@ export function assertLocalModelLaunchReady({ chat, endpoint, modelId }: {
   modelId: string | undefined,
 }): { assertCurrent(): void } | undefined {
   const session = sessions.value.get(chat.id);
-  if (session === undefined || chat.root.items.length > 0) {
+  if (session === undefined) {
     return;
   }
   const selectedModelId = session.model.modelId;
@@ -97,7 +97,8 @@ export function retireLocalModelLaunchSession({ session }: { session: LocalModel
   session.stop();
 }
 
-/** Explicit local-model actions own a preparation view while the chat is empty. */
+/** Only explicit local-model actions register a preparation session. Ordinary
+ * chat navigation, including chats with history, never creates one. */
 export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isCurrent, readBinding }: {
   chat: Chat,
   model: LocalModel,
@@ -112,10 +113,9 @@ export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isC
   if (prior !== undefined) {
     retireLocalModelLaunchSession({ session: prior });
   }
-  if (chat.root.items.length > 0 || !isCurrent()) {
+  if (!isCurrent()) {
     return;
   }
-  const live = reactive(chat);
   const session = shallowReactive<LocalModelLaunchSession>({
     chatId: chat.id,
     chatGroupId: chat.groupId,
@@ -135,11 +135,11 @@ export function registerLocalModelLaunchSession({ chat, model, homeOriginId, isC
   observations.set(session, { owners: new Set() });
   sessions.value = new Map(sessions.value).set(chat.id, session);
   const validate = () => {
-    if (live.root.items.length > 0 || !session.isCurrent() || !bindingMatches({ session, binding: readBinding() })) {
+    if (!session.isCurrent() || !bindingMatches({ session, binding: readBinding() })) {
       retireLocalModelLaunchSession({ session });
     }
   };
-  const stopWatch = watch(() => ({ binding: readBinding(), messages: live.root.items.length }), validate, { flush: 'sync' });
+  const stopWatch = watch(readBinding, validate, { flush: 'sync' });
   const unsubscribe = llamaCppBrowserModelFiles.subscribeModelList({ listener: validate });
   session.stop = () => {
     stopWatch();

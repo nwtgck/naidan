@@ -94,7 +94,7 @@ export function useLocalModelLaunchChat({ chat, resolved }: {
     const current = chat.value;
     const selected = session.value;
     const binding = resolved.value;
-    return current !== null && current.root.items.length === 0 && selected !== undefined && selected.isCurrent()
+    return current !== null && selected !== undefined && selected.isCurrent()
       && current.groupId === selected.chatGroupId && binding?.endpoint.type === 'llama_cpp_browser'
       && binding.modelId !== undefined && binding.modelId === selected.model.modelId;
   });

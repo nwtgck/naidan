@@ -296,6 +296,15 @@ import { ChatMediaShelf__reverse } from '@/strings/messages/ChatMediaShelf__reve
 import { ChatMediaShelf__seed } from '@/strings/messages/ChatMediaShelf__seed/es';
 import { ChatMediaShelf__steps } from '@/strings/messages/ChatMediaShelf__steps/es';
 import { ChatMediaShelf__view_details_and_copy_parameters } from '@/strings/messages/ChatMediaShelf__view_details_and_copy_parameters/es';
+import { ChatModelRecovery__check_again } from '@/strings/messages/ChatModelRecovery__check_again/es';
+import { ChatModelRecovery__check_storage_or_choose_another_model } from '@/strings/messages/ChatModelRecovery__check_storage_or_choose_another_model/es';
+import { ChatModelRecovery__choose_model } from '@/strings/messages/ChatModelRecovery__choose_model/es';
+import { ChatModelRecovery__close } from '@/strings/messages/ChatModelRecovery__close/es';
+import { ChatModelRecovery__could_not_check_model } from '@/strings/messages/ChatModelRecovery__could_not_check_model/es';
+import { ChatModelRecovery__model_for_this_chat } from '@/strings/messages/ChatModelRecovery__model_for_this_chat/es';
+import { ChatModelRecovery__model_not_found } from '@/strings/messages/ChatModelRecovery__model_not_found/es';
+import { ChatModelRecovery__open_original_files_or_choose_another_model } from '@/strings/messages/ChatModelRecovery__open_original_files_or_choose_another_model/es';
+import { ChatModelRecovery__preparing_the_model } from '@/strings/messages/ChatModelRecovery__preparing_the_model/es';
 import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/es';
 import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/es';
 import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/es';
@@ -345,7 +354,7 @@ import { ChatPane__tool } from '@/strings/messages/ChatPane__tool/es';
 import { ChatPane__tool_executions } from '@/strings/messages/ChatPane__tool_executions/es';
 import { ChatPane__tool_still_executing } from '@/strings/messages/ChatPane__tool_still_executing/es';
 import { ChatPane__user } from '@/strings/messages/ChatPane__user/es';
-import { ChatPane__write_your_first_message_while_the_model_prepares } from '@/strings/messages/ChatPane__write_your_first_message_while_the_model_prepares/es';
+import { ChatPane__write_a_message_while_the_model_prepares } from '@/strings/messages/ChatPane__write_a_message_while_the_model_prepares/es';
 import { ChatPrintContent__chat_history } from '@/strings/messages/ChatPrintContent__chat_history/es';
 import { ChatPrintContent__chat_id } from '@/strings/messages/ChatPrintContent__chat_id/es';
 import { ChatSettingsPanel__active_overrides } from '@/strings/messages/ChatSettingsPanel__active_overrides/es';
@@ -1164,15 +1173,6 @@ import { LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group } from
 import { LlamaCppBrowserModelLibrary__dismiss_just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__dismiss_just_added_models/es';
 import { LlamaCppBrowserModelLibrary__just_added_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__just_added_models/es';
 import { LlamaCppBrowserModelLibrary__search_models } from '@/strings/messages/LlamaCppBrowserModelLibrary__search_models/es';
-import { LlamaCppBrowserModelRecovery__add_original_model_files } from '@/strings/messages/LlamaCppBrowserModelRecovery__add_original_model_files/es';
-import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/es';
-import { LlamaCppBrowserModelRecovery__could_not_check_model_storage } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_check_model_storage/es';
-import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/es';
-import { LlamaCppBrowserModelRecovery__download } from '@/strings/messages/LlamaCppBrowserModelRecovery__download/es';
-import { LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing } from '@/strings/messages/LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing/es';
-import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/es';
-import { LlamaCppBrowserModelRecovery__model_not_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelRecovery__model_not_in_this_browser/es';
-import { LlamaCppBrowserModelRecovery__review_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__review_download/es';
 import { LlamaCppBrowserQuantizationPicker__could_not_fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__could_not_fetch_options/es';
 import { LlamaCppBrowserQuantizationPicker__fetch_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetch_options/es';
 import { LlamaCppBrowserQuantizationPicker__fetching_options } from '@/strings/messages/LlamaCppBrowserQuantizationPicker__fetching_options/es';
@@ -3347,6 +3347,15 @@ export const catalog = {
   ChatMediaShelf__seed,
   ChatMediaShelf__steps,
   ChatMediaShelf__view_details_and_copy_parameters,
+  ChatModelRecovery__check_again,
+  ChatModelRecovery__check_storage_or_choose_another_model,
+  ChatModelRecovery__choose_model,
+  ChatModelRecovery__close,
+  ChatModelRecovery__could_not_check_model,
+  ChatModelRecovery__model_for_this_chat,
+  ChatModelRecovery__model_not_found,
+  ChatModelRecovery__open_original_files_or_choose_another_model,
+  ChatModelRecovery__preparing_the_model,
   ChatPage__failed_to_load_chat,
   ChatPage__loading_chat,
   ChatPage__retry,
@@ -3396,7 +3405,7 @@ export const catalog = {
   ChatPane__tool_executions,
   ChatPane__tool_still_executing,
   ChatPane__user,
-  ChatPane__write_your_first_message_while_the_model_prepares,
+  ChatPane__write_a_message_while_the_model_prepares,
   ChatPrintContent__chat_history,
   ChatPrintContent__chat_id,
   ChatSettingsPanel__active_overrides,
@@ -4215,15 +4224,6 @@ export const catalog = {
   LlamaCppBrowserModelLibrary__dismiss_just_added_models,
   LlamaCppBrowserModelLibrary__just_added_models,
   LlamaCppBrowserModelLibrary__search_models,
-  LlamaCppBrowserModelRecovery__add_original_model_files,
-  LlamaCppBrowserModelRecovery__check_again,
-  LlamaCppBrowserModelRecovery__could_not_check_model_storage,
-  LlamaCppBrowserModelRecovery__could_not_prepare_download,
-  LlamaCppBrowserModelRecovery__download,
-  LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing,
-  LlamaCppBrowserModelRecovery__manage_models,
-  LlamaCppBrowserModelRecovery__model_not_in_this_browser,
-  LlamaCppBrowserModelRecovery__review_download,
   LlamaCppBrowserQuantizationPicker__could_not_fetch_options,
   LlamaCppBrowserQuantizationPicker__fetch_options,
   LlamaCppBrowserQuantizationPicker__fetching_options,

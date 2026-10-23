@@ -80,6 +80,10 @@ function remove({ input }: { input: ChatLocalModelInput }): void {
 }
 
 async function applyModel({ input, model }: { input: ChatLocalModelInput, model: LocalModel }): Promise<void> {
+  assertCurrent({ input });
+  // A candidate is now explicitly chosen. Presentation can leave the picker
+  // while inspection and the existing binding/session handoff finish.
+  input.state.model = model;
   const { captureTemporaryModelSource } = await import('@/features/llama-cpp-browser/model-files');
   const { inspectLocalModel } = await import('@/features/llama-cpp-browser/model-recovery/availability');
   assertCurrent({ input });

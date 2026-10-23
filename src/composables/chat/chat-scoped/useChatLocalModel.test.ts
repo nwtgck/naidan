@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { effectScope, ref, type Ref } from 'vue';
+import { effectScope, ref, toRaw, type Ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
-import { toChatId, toMessageId } from '@/01-models/ids';
-import { DEFAULT_SETTINGS, type Chat, type Settings } from '@/01-models/types';
+import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+import { DEFAULT_SETTINGS, type Chat, type Settings, type SidebarItem } from '@/01-models/types';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 import type { LocalModel, ModelDirectoryInput } from '@/features/llama-cpp-browser/types';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 
 const mocks = vi.hoisted(() => ({
   chat: undefined as Ref<Chat | null> | undefined,
   settings: undefined as Ref<Settings> | undefined,
+  items: undefined as Ref<SidebarItem[]> | undefined,
   apply: vi.fn(),
   applyChat: vi.fn(),
   importFiles: vi.fn(),
@@ -27,7 +29,16 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { captureSettingsStorage: () => () => mocks.storageCurrent } }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings: mocks.settings }) }));
-vi.mock('@/composables/chat/global/chat-core-singletons', () => ({ getLiveChatById: () => mocks.chat?.value ?? null, rootItems: { value: [] }, updateEmptyChatScopedSettings: mocks.apply, updateChatScopedSettings: mocks.applyChat }));
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  getLiveChatById: () => mocks.chat?.value ?? null,
+  rootItems: {
+    get value() {
+      return mocks.items?.value ?? [];
+    },
+  },
+  updateEmptyChatScopedSettings: mocks.apply,
+  updateChatScopedSettings: mocks.applyChat,
+}));
 vi.mock('./chat-model-binding-operations', () => ({ withChatModelBindingFinalization: async ({ operation }: { operation(): Promise<unknown> }) => operation() }));
 vi.mock('@/features/llama-cpp-browser/logic/local-model-input', () => ({ importLocalModelDirectories: mocks.importFiles }));
 vi.mock('@/features/llama-cpp-browser/model-files', () => ({ captureTemporaryModelSource: mocks.source }));
@@ -64,6 +75,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.storageCurrent = true;
   mocks.sourceCurrent = true;
+  mocks.items = ref([]);
   mocks.chat = ref({ id: chatId, title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false });
   mocks.settings = ref({ ...structuredClone(DEFAULT_SETTINGS), storageType: 'memory', endpoint: { type: 'openai', url: 'https://example.invalid' }, defaultModelId: 'remote' });
   mocks.importFiles.mockResolvedValue([model]);
@@ -247,6 +259,7 @@ it('rejects invalid source handles at commit without replacing existing settings
   await accept({ command });
   expect(mocks.chat!.value?.modelId).toBeUndefined();
   mocks.sourceCurrent = true;
+  mocks.items = ref([]);
   await command.retry();
   expect(mocks.chat!.value?.modelId).toBe(model.modelId);
 });
@@ -336,4 +349,34 @@ it('leaving the picker cancels its wait without cancelling the shared download',
   await pending;
   expect(mocks.pause).not.toHaveBeenCalled();
   expect(mocks.apply).not.toHaveBeenCalled();
+});
+
+it.each(['chat', 'chat_group'] as const)('replaces only the selected chat binding inherited from %s when choosing GGUF', async scope => {
+  const chat = mocks.chat!.value!;
+  const chatGroup = { id: toChatGroupId({ raw: 'remote-chat-group' }), name: 'Keep this chat group', isCollapsed: false, items: [], updatedAt: 1, endpoint: { type: 'ollama' as const, url: 'https://group.invalid' }, modelId: 'group-model' };
+  mocks.items!.value = [{ id: 'remote-chat-group', type: 'chat_group', chatGroup }];
+  chat.groupId = chatGroup.id;
+  chat.titleGeneration = 'disabled';
+  chat.root.items.push({ id: toMessageId({ raw: 'history' }), role: 'user', modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'Keep history', completeness: 'complete' }], createdAt: 1, replies: { items: [] } });
+  if (scope === 'chat') {
+    chat.endpoint = { type: 'openai', url: 'https://chat.invalid' };
+    chat.modelId = 'chat-model';
+  }
+  const before = structuredClone(chatGroup);
+  const defaults = structuredClone(toRaw(mocks.settings!.value));
+  const resolved = resolveChatSettings({ chat, groups: [chatGroup], globalSettings: mocks.settings!.value });
+  expect(resolved.sources.modelId).toBe(scope);
+  mocks.applyChat.mockImplementation(async ({ changes }: { changes: readonly ScopedSettingChange[] }) => {
+    Object.assign(chat, applyScopedSettingChangesToChat({ current: chat, changes, updatedAt: 2 }));
+  });
+  const { command } = render({ binding: 'chat' });
+  await command.useModel({ model: { ...model, modelId: 'user/chosen' } });
+  expect(chat.endpoint).toEqual({ type: 'llama_cpp_browser' });
+  expect(chat.modelId).toBe('user/chosen');
+  expect(chat.titleGeneration).toBe('disabled');
+  expect(chat.groupId).toBe(chatGroup.id);
+  expect(chat.root.items[0]?.parts[0]).toMatchObject({ text: 'Keep history' });
+  expect(chatGroup).toEqual(before);
+  expect(mocks.settings!.value).toEqual(defaults);
+  expect(mocks.applyChat.mock.calls[0]?.[0].changes).toHaveLength(2);
 });

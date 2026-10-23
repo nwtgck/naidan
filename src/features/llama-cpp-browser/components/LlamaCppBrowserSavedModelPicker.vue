@@ -78,7 +78,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div v-if="!loading && models.length === 0" tw-class="flex justify-center gap-3"><button type="button" tw-class="rounded-lg px-3 py-2 text-xs text-blue-600 hover:bg-gray-50 dark:text-blue-400 dark:hover:bg-gray-800" @click="emit('source', 'hugging-face')">{{ lazyStrings.LlamaCppBrowserSavedModelPicker__find_on_hugging_face() }}</button><button type="button" tw-class="rounded-lg px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800" @click="emit('source', 'files')">{{ lazyStrings.LlamaCppBrowserSavedModelPicker__use_files() }}</button></div>
     <p v-if="loading && models.length === 0" role="status" tw-class="py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__loading_model_list() }}</p>
     <p v-else-if="models.length && filtered.length === 0" role="status" tw-class="py-6 text-center text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__no_matching_models() }}</p>
-    <ul :aria-label="lazyStrings.LlamaCppBrowserSavedModelPicker__available_models()" data-testid="chat-saved-model-list" tw-class="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-1">
+    <ul :aria-label="lazyStrings.LlamaCppBrowserSavedModelPicker__available_models()" data-testid="chat-saved-model-list" class="chat-saved-model-list" tw-class="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-1">
       <LlamaCppBrowserModelRow v-for="model in filtered" :key="model.modelId" :model="model" :removal-disabled="busy" :data-testid="`chat-saved-model-${model.modelId}`" @remove="removal.remove({ modelId: model.modelId })">
         <template #actions>
           <LlamaCppBrowserModelActionButton :data-testid="`chat-use-saved-model-${model.modelId}`" :disabled="busy" @click="emit('select', model)">{{ lazyStrings.SHARED__use_model_in_this_chat() }}<ArrowRightIcon aria-hidden="true" tw-class="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400 motion-reduce:transform-none" /></LlamaCppBrowserModelActionButton>
@@ -88,3 +88,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   </div>
   <LlamaCppBrowserDeletionDialog :request="removal.request.value" @confirm="removal.finish({ plan: $event })" @cancel="removal.finish({ plan: undefined })" />
 </template>
+
+<style scoped>
+.chat-saved-model-list {
+  overflow-y: var(--chat-model-source-overflow, auto);
+}
+</style>

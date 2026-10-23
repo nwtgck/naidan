@@ -3,8 +3,9 @@ import { computed, defineComponent, h, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App.vue';
-import { DEFAULT_SETTINGS, type Chat, type Settings } from '@/01-models/types';
-import { toChatId } from '@/01-models/ids';
+import BrowserModelWelcomeDialog from './BrowserModelWelcomeDialog.vue';
+import { DEFAULT_SETTINGS, type Chat, type Settings, type SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatId } from '@/01-models/ids';
 import type { useSettings } from '@/composables/useSettings';
 import { startApp } from '@/logic/startup/app-startup';
 import { createInitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
@@ -19,6 +20,7 @@ const loadChats = vi.fn();
 const chats = ref<Chat[]>([]);
 const currentChat = ref<Chat | null>(null);
 const automaticChat: Chat = { id: toChatId({ raw: 'automatic' }), groupId: undefined, title: null, root: { items: [] }, debugEnabled: false, createdAt: 1, updatedAt: 1 };
+const sidebarItems = computed<SidebarItem[]>(() => chats.value.map(chat => ({ type: 'chat', id: `chat:${idToRaw({ id: chat.id })}`, chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } })));
 const settingsStore = { initialized, isOnboardingDismissed, settings, init, captureExperimentalStorage: () => () => true, deferModelRefresh: vi.fn(), resumeModelRefresh: vi.fn() };
 const createNewChat = vi.fn(async () => {
   currentChat.value = automaticChat;
@@ -28,8 +30,14 @@ const createNewChat = vi.fn(async () => {
 vi.mock('@/components/MainAppSurface.vue', () => ({ default: defineComponent({ setup: () => () => h(RouterView) }) }));
 vi.mock('@/components/AppAuxiliaryUi.vue', () => ({ __esModule: true, __isTeleport: false, default: { template: '<div />' } }));
 vi.mock('@/composables/useSettings', () => ({ useSettings: () => settingsStore }));
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    getSidebarStructure: async () => sidebarItems.value,
+    subscribeToChanges: () => () => {},
+  },
+}));
 vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({ loadChatsForAppStartup: () => loadChats(), useChatBootstrap: () => ({}) }));
-vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatState: () => ({ currentChat: computed(() => currentChat.value), chatGroups: ref([]) }) }));
+vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({ useCurrentChatState: () => ({ currentChat: computed(() => currentChat.value), chatGroups: ref([]), sidebarItems }) }));
 vi.mock('@/composables/chat/ui/useChatListData', () => ({ useChatListData: () => ({ chats }) }));
 vi.mock('@/composables/chat/ui/useChatLifecycle', () => ({ useChatLifecycle: () => ({ createNewChat }) }));
 vi.mock('@/composables/chat/ui/useChatOrganization', () => ({ useChatOrganization: () => ({}) }));
@@ -97,6 +105,7 @@ describe('unattended app startup metadata', () => {
     expectMetadata({ metadata: HOME_METADATA });
     const startup = startApp({ startupState, settingsStore: settingsStore as unknown as ReturnType<typeof useSettings>, router, navigationGate, window });
     initializing.resolve();
+    await vi.dynamicImportSettled();
     await flushPromises();
     expect(startupState.value.kind).toBe('starting-main');
     expectMetadata({ metadata: HOME_METADATA });
@@ -105,13 +114,13 @@ describe('unattended app startup metadata', () => {
     using _startupCleanup = { [Symbol.dispose]: dispose };
     await flushPromises();
     expect(startupState.value.kind).toBe('ready');
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
+    expect(wrapper.findComponent(BrowserModelWelcomeDialog).exists()).toBe(path === '/' && !existing);
     expect(router.currentRoute.value.path).toBe(path);
     expect(createNewChat).not.toHaveBeenCalled();
     // All startup work and automatic navigation has settled without input or clicks.
     await flushPromises();
     expectMetadata({ metadata });
-    if (path === '/' && dismissed && !existing) {
+    if (path === '/' && dismissed && existing) {
       const creating = Promise.withResolvers<Chat>();
       using _manualCreationCleanup = {
         [Symbol.dispose]() {

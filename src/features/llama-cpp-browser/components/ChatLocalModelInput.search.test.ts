@@ -44,7 +44,7 @@ function renderPicker() {
     cancel: vi.fn(async () => {}),
     TEST_ONLY: {},
   } satisfies ChatLocalModelUi;
-  const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' } });
+  const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' } });
   return {
     wrapper,
     state,

@@ -56,7 +56,7 @@ describe('chat local file entry', () => {
   it('offers explicit retry even when file checking failed before candidates were available', async () => {
     const { state, operation } = inputState();
     operation.value = { id: 1, phase: 'error', model: undefined, error: 'not-empty', downloadJobId: undefined, candidates: [] };
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'available' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -71,7 +71,7 @@ describe('chat local file entry', () => {
 
   it('keeps the entry and its explanation visible when this environment cannot run models', async () => {
     const { state } = inputState();
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'unavailable' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'unavailable' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -87,7 +87,7 @@ describe('chat local file entry', () => {
 
   it('opens without importing and keeps closed controls outside keyboard navigation', async () => {
     const { state } = inputState();
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -109,7 +109,7 @@ describe('chat local file entry', () => {
 
   it('reserves the chat synchronously with a snapshot of selected files and permits choosing the same file again', async () => {
     const { state } = inputState();
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'available' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -134,7 +134,7 @@ describe('chat local file entry', () => {
 
   it('captures native entries during drop dispatch and prevents attachment bubbling', async () => {
     const { state } = inputState();
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'available' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -172,7 +172,7 @@ describe('chat local file entry', () => {
       downloadJobId: undefined,
       candidates: [{ modelId: 'temp/local/first.gguf', size: 10, importedAt: 1 }, { modelId: 'temp/local/second.gguf', size: 20, importedAt: 1 }],
     };
-    const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'available' } });
+    const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' } });
     using _cleanup = {
       [Symbol.dispose]() {
         wrapper.unmount();
@@ -191,7 +191,7 @@ describe('chat local file entry', () => {
 
 it('keeps all sources inside the same viewport and moves focus with the selected tab', async () => {
   const { state } = inputState();
-  const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'open', availability: 'available' }, attachTo: document.body });
+  const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'open', availability: 'available' }, attachTo: document.body });
   using _cleanup = {
     [Symbol.dispose]() {
       wrapper.unmount();
@@ -244,7 +244,7 @@ it('keeps all sources inside the same viewport and moves focus with the selected
 it('restores the folder-link entry without loading it until opened, then reaches saved models through its tab', async () => {
   preference.tab = 'linked-folders';
   const { state } = inputState();
-  const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' }, attachTo: document.body });
+  const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' }, attachTo: document.body });
   using _cleanup = {
     [Symbol.dispose]() {
       wrapper.unmount();
@@ -275,7 +275,7 @@ it('restores the folder-link entry without loading it until opened, then reaches
 it('restores the last source label before opening without selecting a model', async () => {
   preference.tab = 'saved';
   const { state } = inputState();
-  const wrapper = mount(ChatLocalModelInput, { props: { state, expansion: 'closed', availability: 'available' } });
+  const wrapper = mount(ChatLocalModelInput, { props: { layout: 'welcome', scrollMode: 'source', sourceTabsHost: undefined, state, expansion: 'closed', availability: 'available' } });
   using _cleanup = {
     [Symbol.dispose]() {
       wrapper.unmount();

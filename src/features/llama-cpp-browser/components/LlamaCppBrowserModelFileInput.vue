@@ -6,7 +6,7 @@ import { lazyStrings } from '@/strings';
 // Presentation only: the owner decides whether a selection is imported, saved,
 // or previewed. Drop events are forwarded synchronously so owners can capture
 // file-system entries while the browser still exposes the drag data store.
-const props = defineProps<{ disabled: boolean, mode: 'opfs' | 'temp', layout: 'compact' | 'expanded', description?: string }>();
+const props = defineProps<{ disabled: boolean, mode: 'opfs' | 'temp', layout: 'compact' | 'expanded' | 'fill', description?: string }>();
 const emit = defineEmits<{
   files: [event: Event],
   directory: [event: Event],
@@ -62,11 +62,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div tw-class="space-y-3 text-left">
+  <div :class="{ 'model-file-input-fill': layout === 'fill' }" tw-class="space-y-3 text-left">
     <p v-if="description === undefined" data-testid="llama-import-mode-description" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ mode === 'temp' ? lazyStrings.SHARED__model_import_temporary_until_reload() : lazyStrings.SHARED__model_import_save_for_after_reload() }}</p>
-    <div data-testid="llama-cpp-browser-drop-zone" :aria-disabled="disabled" :tw-class="['flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed text-center transition-colors duration-200 motion-reduce:transition-none', layout === 'expanded' ? 'min-h-[clamp(240px,34dvh,360px)] px-5 py-8 sm:px-10' : 'min-h-44 px-4 py-5', dragDepth > 0 ? 'border-blue-400 bg-blue-50/70 dark:border-blue-500 dark:bg-blue-500/10' : 'border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/30']" @dragenter.prevent.stop="dragEnter({ event: $event })" @dragover.prevent.stop="dragOver({ event: $event })" @dragleave.prevent.stop="dragLeave" @drop.prevent.stop="dropFiles({ event: $event })">
+    <div data-testid="llama-cpp-browser-drop-zone" :aria-disabled="disabled" :tw-class="['flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed text-center transition-colors duration-200 motion-reduce:transition-none', layout === 'expanded' ? 'min-h-[clamp(240px,34dvh,360px)] px-5 py-8 sm:px-10' : layout === 'fill' ? 'min-h-56 h-full px-5 py-8 sm:px-10' : 'min-h-44 px-4 py-5', dragDepth > 0 ? 'border-blue-400 bg-blue-50/70 dark:border-blue-500 dark:bg-blue-500/10' : 'border-gray-200 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-800/30']" @dragenter.prevent.stop="dragEnter({ event: $event })" @dragover.prevent.stop="dragOver({ event: $event })" @dragleave.prevent.stop="dragLeave" @drop.prevent.stop="dropFiles({ event: $event })">
       <div class="model-file-input-accent" tw-class="mb-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"><FileUpIcon aria-hidden="true" tw-class="h-4 w-4" /></div>
-      <p :tw-class="['max-w-lg font-medium leading-relaxed tracking-tight text-gray-700 dark:text-gray-200', layout === 'expanded' ? 'text-sm sm:text-base' : 'text-sm']">{{ lazyStrings.llamaCppBrowser__drop_model_folders_or_gguf_files_here() }}</p>
+      <p :tw-class="['max-w-lg font-medium leading-relaxed tracking-tight text-gray-700 dark:text-gray-200', layout !== 'compact' ? 'text-sm sm:text-base' : 'text-sm']">{{ lazyStrings.llamaCppBrowser__drop_model_folders_or_gguf_files_here() }}</p>
       <p :id="`${id}-file-help`" tw-class="mb-4 mt-1 max-w-md text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ description ?? lazyStrings.llamaCppBrowser__or_choose_files_from_your_device() }}</p>
       <input ref="fileInput" :disabled="disabled" type="file" accept=".gguf" multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_gguf_files()" :aria-describedby="`${id}-file-help`" data-testid="llama-cpp-browser-file" tw-class="sr-only" @change="emit('files', $event)" />
       <input ref="directoryInput" :disabled="disabled" type="file" webkitdirectory multiple tabindex="-1" :aria-label="lazyStrings.llamaCppBrowser__choose_model_folder()" data-testid="llama-cpp-browser-directory" tw-class="sr-only" @change="emit('directory', $event)" />
@@ -79,6 +79,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
+.model-file-input-fill {
+  height: 100%;
+}
 .model-file-input-accent {
   box-shadow: 0 0 20px rgb(59 130 246 / 0.14);
 }

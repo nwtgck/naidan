@@ -278,6 +278,7 @@ const chatMountList = chatMounts.getMounts({
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const rootElement = ref<HTMLElement | null>(null);
+const aboveInputElement = ref<HTMLElement>();
 const openPopup = ref<'model' | 'attach' | 'tools'>();
 
 function updatePopupState({ popup, open }: { popup: 'model' | 'attach' | 'tools', open: boolean }) {
@@ -1356,6 +1357,7 @@ function focusInput({
 
 defineExpose({
   rootElement,
+  aboveInputElement,
   textareaElement: textareaRef,
   focus: focusInput,
   input,
@@ -1398,6 +1400,7 @@ defineExpose({
 
     <div
       v-if="props.aboveInputVisibility === 'visible'"
+      ref="aboveInputElement"
       tw-class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto shrink-0 overflow-y-auto"
       :style="{ maxHeight: availableSpace && availableSpace.height > 0 ? `${availableSpace.height * 0.5}px` : undefined }"
       data-testid="chat-input-above-slot"
