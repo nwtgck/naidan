@@ -18,7 +18,7 @@ const startup = computed(() => props.startupState.value);
 const entry = provideAppEntry({ startupState: props.startupState });
 const {
   appInteraction,
-} = provideAppPresentation({ startupState: props.startupState, modelSelectionVisible: computed(() => entry.modelSelection.value !== undefined) });
+} = provideAppPresentation({ startupState: props.startupState, modelSelectionVisible: computed(() => entry.modelSelection.value !== undefined || entry.notFoundRecovery.value !== undefined) });
 
 const appContentInert = computed(() => {
   const interaction = appInteraction.value;

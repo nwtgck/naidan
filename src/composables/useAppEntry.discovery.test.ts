@@ -28,6 +28,7 @@ async function harness() {
     settings: ref({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' as const }, defaultModelId: 'selected-model' }),
     captureStorage: () => () => storageCurrent,
     captureModelLaunchDefaults: async () => undefined,
+    readHistoryEmpty: async () => true,
     deferModelRefresh: () => {},
     resumeModelRefresh: () => {},
   }))!;

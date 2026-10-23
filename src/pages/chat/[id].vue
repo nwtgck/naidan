@@ -7,10 +7,12 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
+import { useAppEntry } from '@/composables/useAppEntry';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
 const chatNavigation = useChatNavigation();
+const entry = useAppEntry();
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -59,11 +61,7 @@ async function syncChat() {
       return;
     }
     if (chat === null) {
-      // Commands for a missing chat must not become root-level auto-send commands.
-      const failure = await router.replace({ path: '/', query: {}, hash: '' });
-      if (failure && isCurrent()) {
-        throw new Error('Could not leave a missing chat');
-      }
+      await entry.recoverNotFound({ isCurrent });
       return;
     }
     load.value = { ...request, status: 'ready' };
@@ -129,7 +127,7 @@ defineExpose({
     <!-- Keep the previous pane mounted to retain its draft and attachment URLs while a read fails. -->
     <div
       v-show="loadStatus === 'ready'"
-      :inert="loadStatus !== 'ready'"
+      :inert="loadStatus !== 'ready' || undefined"
       data-testid="chat-page-content"
       tw-class="h-full w-full"
     >

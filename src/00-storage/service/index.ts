@@ -821,6 +821,28 @@ export class StorageService {
     return this.getProvider().getSidebarStructure();
   }
 
+  /** Serialize automatic creation separately from the metadata locks acquired
+   * by normal chat creation. The callback publishes the saved chat and hierarchy
+   * before another tab can decide whether its history is still empty. */
+  async createChatIfHistoryEmpty({ create, isCurrent }: { create(): Promise<Chat | undefined>, isCurrent(): boolean }): Promise<Chat | undefined> {
+    const provider = this.getProvider();
+    const isStorageCurrent = this.captureSettingsStorage();
+    return this.synchronizer.withLock({
+      lockKey: `${SYNC_LOCK_KEY}:automatic-chat`,
+      fn: async () => {
+        if (!isStorageCurrent() || !isCurrent()) {
+          return undefined;
+        }
+        const sidebar = await provider.getSidebarStructure();
+        if (!isStorageCurrent() || !isCurrent() || sidebar.length !== 0) {
+          return undefined;
+        }
+        return create();
+      },
+      ...this.getLockOptions({ source: 'createChatIfHistoryEmpty' }),
+    });
+  }
+
   // --- Settings & Bulk ---
 
   private rpcRegistryPersistence(): NaidanRpcRegistryAccess['persistence'] {

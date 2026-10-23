@@ -18,7 +18,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
 }));
 
 const modelSelection = ref<unknown>();
-vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: () => ({ modelSelection }) }));
+vi.mock('@/composables/useAppEntry', () => ({ provideAppEntry: () => ({ modelSelection, notFoundRecovery: ref(undefined) }) }));
 const dialogMounted = vi.fn();
 vi.mock('@/components/BrowserModelWelcomeDialog.vue', () => ({
   default: {

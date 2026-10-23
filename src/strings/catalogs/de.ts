@@ -144,6 +144,9 @@ import { ChatGroupNameDialog__group_name } from '@/strings/messages/ChatGroupNam
 import { ChatGroupNameDialog__rename_chat_group } from '@/strings/messages/ChatGroupNameDialog__rename_chat_group/de';
 import { ChatGroupNameDialog__save } from '@/strings/messages/ChatGroupNameDialog__save/de';
 import { ChatGroupNameDialog__saving } from '@/strings/messages/ChatGroupNameDialog__saving/de';
+import { ChatGroupPage__failed_to_load_chat_group } from '@/strings/messages/ChatGroupPage__failed_to_load_chat_group/de';
+import { ChatGroupPage__loading_chat_group } from '@/strings/messages/ChatGroupPage__loading_chat_group/de';
+import { ChatGroupPage__retry } from '@/strings/messages/ChatGroupPage__retry/de';
 import { ChatGroupSearchPreview__chat_count } from '@/strings/messages/ChatGroupSearchPreview__chat_count/de';
 import { ChatGroupSearchPreview__empty_group } from '@/strings/messages/ChatGroupSearchPreview__empty_group/de';
 import { ChatGroupSearchPreview__group_preview } from '@/strings/messages/ChatGroupSearchPreview__group_preview/de';
@@ -1479,6 +1482,9 @@ import { NaidanRpcTab__method_details } from '@/strings/messages/NaidanRpcTab__m
 import { NaidanRpcTab__partially_enabled } from '@/strings/messages/NaidanRpcTab__partially_enabled/de';
 import { NaidanRpcTab__save_name } from '@/strings/messages/NaidanRpcTab__save_name/de';
 import { NaidanRpcTab__save_with_persistent_storage_first } from '@/strings/messages/NaidanRpcTab__save_with_persistent_storage_first/de';
+import { NotFoundPage__could_not_open_page } from '@/strings/messages/NotFoundPage__could_not_open_page/de';
+import { NotFoundPage__retry } from '@/strings/messages/NotFoundPage__retry/de';
+import { NotFoundPage__returning_to_home } from '@/strings/messages/NotFoundPage__returning_to_home/de';
 import { OllamaManagementView__ollama_runtime } from '@/strings/messages/OllamaManagementView__ollama_runtime/de';
 import { OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server } from '@/strings/messages/OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server/de';
 import { OllamaPsView__checking } from '@/strings/messages/OllamaPsView__checking/de';
@@ -3189,6 +3195,9 @@ export const catalog = {
   ChatGroupNameDialog__rename_chat_group,
   ChatGroupNameDialog__save,
   ChatGroupNameDialog__saving,
+  ChatGroupPage__failed_to_load_chat_group,
+  ChatGroupPage__loading_chat_group,
+  ChatGroupPage__retry,
   ChatGroupSearchPreview__chat_count,
   ChatGroupSearchPreview__empty_group,
   ChatGroupSearchPreview__group_preview,
@@ -4524,6 +4533,9 @@ export const catalog = {
   NaidanRpcTab__partially_enabled,
   NaidanRpcTab__save_name,
   NaidanRpcTab__save_with_persistent_storage_first,
+  NotFoundPage__could_not_open_page,
+  NotFoundPage__retry,
+  NotFoundPage__returning_to_home,
   OllamaManagementView__ollama_runtime,
   OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server,
   OllamaPsView__checking,

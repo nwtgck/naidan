@@ -105,6 +105,7 @@ describe('RecentChatsModal Component', () => {
       }),
       openChatAtMessage: vi.fn(),
       openChatGroup: vi.fn(),
+      loadAndOpenChatGroup: vi.fn(),
       TEST_ONLY: {},
     });
     vi.mocked(useCurrentChatState).mockReturnValue({

@@ -18,6 +18,7 @@ const {
   mockUpdateChatContent,
   mockUpdateChatMeta,
   mockUpdateHierarchy,
+  mockCreateChatIfHistoryEmpty,
   mockCreatingChat,
   mockCurrentChatGroupRef,
   mockCurrentChatRef,
@@ -31,6 +32,7 @@ const {
   mockUpdateChatContent: vi.fn<ChatDataStore['updateChatContent']>(),
   mockUpdateChatMeta: vi.fn<ChatDataStore['updateChatMeta']>().mockResolvedValue(undefined),
   mockUpdateHierarchy: vi.fn(),
+  mockCreateChatIfHistoryEmpty: vi.fn<StorageService['createChatIfHistoryEmpty']>(),
   mockCreatingChat: { value: false },
   mockCurrentChatGroupRef: { value: null as ChatGroup | null },
   mockCurrentChatRef: { value: null as Chat | null },
@@ -40,6 +42,7 @@ vi.mock('@/00-storage/service', () => ({
   storageService: {
     createChatContentWrite: vi.fn<StorageService['createChatContentWrite']>().mockImplementation(({ id, content, binding }) => createChatContentWrite({ id, content, binding, isCurrent: () => true })),
     updateHierarchy: mockUpdateHierarchy,
+    createChatIfHistoryEmpty: mockCreateChatIfHistoryEmpty,
     loadChat: vi.fn().mockResolvedValue(null),
     deleteChat: vi.fn().mockResolvedValue(undefined),
     listChats: vi.fn().mockResolvedValue([]),
@@ -99,6 +102,7 @@ describe('useChatLifecycle', () => {
     chatRuntimeStore.activeTitleGenerations.clear();
     vi.mocked(storageService.loadChat).mockResolvedValue(null);
     mockUpdateChatContent.mockImplementation(async ({ updater }) => snapshotChatContent({ content: await updater({ current: null }) }));
+    mockCreateChatIfHistoryEmpty.mockReset().mockImplementation(async ({ create, isCurrent }) => isCurrent() ? create() : undefined);
     mockCreatingChat.value = false;
     mockCurrentChatGroupRef.value = null;
     mockCurrentChatRef.value = null;
@@ -212,6 +216,62 @@ describe('useChatLifecycle', () => {
   it('releases the creation gate on failure while preserving main-chat navigation', async () => {
     mockUpdateChatContent.mockRejectedValueOnce(new Error('save failure'));
     await expect(useChatLifecycle().createChatWithoutSelecting({ groupId, modelId: undefined, systemPrompt: undefined })).rejects.toThrow('save failure');
+    expect(mockCreatingChat.value).toBe(false);
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+  });
+
+  it('uses normal persisted creation for empty history without changing the selected chat or chat group', async () => {
+    const existing: Chat = { id: existingChatId, title: 'Selected chat', createdAt: 1, updatedAt: 1, root: { items: [] }, debugEnabled: false };
+    const chatGroup: ChatGroup = { id: groupId, name: 'Selected chat group', isCollapsed: false, updatedAt: 1, items: [] };
+    mockCurrentChatRef.value = existing;
+    mockCurrentChatGroupRef.value = chatGroup;
+    const isCurrent = () => true;
+    const created = await useChatLifecycle().createChatForEmptyHistory({ isCurrent });
+    expect(mockCreateChatIfHistoryEmpty).toHaveBeenCalledExactlyOnceWith({ isCurrent, create: expect.any(Function) });
+    expect(created).toMatchObject({ root: { items: [] }, modelId: undefined, systemPrompt: undefined });
+    expect(mockUpdateChatContent).toHaveBeenCalledOnce();
+    expect(mockUpdateChatMeta).toHaveBeenCalledOnce();
+    expect(mockUpdateHierarchy).toHaveBeenCalledOnce();
+    expect(mockLoadData).toHaveBeenCalledOnce();
+    expect(mockCurrentChatRef.value).toBe(existing);
+    expect(mockCurrentChatGroupRef.value).toBe(chatGroup);
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+    expect(mockCreatingChat.value).toBe(false);
+  });
+
+  it.each(['nonempty', 'cancelled', 'busy'] as const)('refreshes the saved sidebar after %s creation is skipped', async reason => {
+    switch (reason) {
+    case 'nonempty': mockCreateChatIfHistoryEmpty.mockResolvedValueOnce(undefined);
+      break;
+    case 'cancelled': break;
+    case 'busy': mockCreatingChat.value = true;
+      break;
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(String(exhaustive));
+    }
+    }
+    const refreshed = Promise.withResolvers<void>();
+    mockLoadData.mockReturnValueOnce(refreshed.promise);
+    let completed = false;
+    const operation = useChatLifecycle().createChatForEmptyHistory({ isCurrent: () => reason !== 'cancelled' }).then(chat => {
+      completed = true;
+      return chat;
+    });
+    await vi.waitFor(() => expect(mockLoadData).toHaveBeenCalledOnce());
+    expect(completed).toBe(false);
+    expect(mockUpdateChatContent).not.toHaveBeenCalled();
+    expect(mockUpdateChatMeta).not.toHaveBeenCalled();
+    expect(mockUpdateHierarchy).not.toHaveBeenCalled();
+    refreshed.resolve();
+    expect(await operation).toBeUndefined();
+    expect(mockSetCurrentChatId).not.toHaveBeenCalled();
+  });
+
+  it('propagates an empty-history save failure without refreshing it into another automatic attempt', async () => {
+    mockUpdateChatContent.mockRejectedValueOnce(new Error('Save failed'));
+    await expect(useChatLifecycle().createChatForEmptyHistory({ isCurrent: () => true })).rejects.toThrow('Save failed');
+    expect(mockLoadData).not.toHaveBeenCalled();
     expect(mockCreatingChat.value).toBe(false);
     expect(mockSetCurrentChatId).not.toHaveBeenCalled();
   });

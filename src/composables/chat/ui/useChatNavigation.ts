@@ -1,13 +1,15 @@
-import type { Settings } from '@/01-models/types';
+import type { ChatGroup, Settings } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { useChatTools } from '@/features/tools/composables/useChatTools';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {
   chatDataStore,
+  currentChatGroupRef,
   currentChatRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
 import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
 
 export type ChatNavigationAdapter = {
   openChat({
@@ -35,6 +37,8 @@ export type ChatNavigationAdapter = {
   }: {
     groupId: ChatGroupId | null,
   }): void,
+
+  loadAndOpenChatGroup({ groupId, isCurrent }: { groupId: ChatGroupId, isCurrent(): boolean }): Promise<ChatGroup | null>,
 
   TEST_ONLY: Record<never, never>,
 };
@@ -106,10 +110,30 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatDataStore.openChatGroup({ id: groupId });
   }
 
+  async function loadAndOpenChatGroup({ groupId, isCurrent }: { groupId: ChatGroupId, isCurrent(): boolean }): Promise<ChatGroup | null> {
+    const isStorageCurrent = storageService.captureSettingsStorage();
+    const assertCurrent = () => {
+      if (!isCurrent() || !isStorageCurrent()) {
+        throw new DOMException('Chat group navigation superseded', 'AbortError');
+      }
+    };
+    assertCurrent();
+    const chatGroup = await storageService.loadChatGroup({ id: groupId });
+    assertCurrent();
+    if (chatGroup !== null) {
+      // A direct URL may name a persisted chat group not yet present in the sidebar.
+      // Select the loaded value instead of falling back to the cached selector.
+      currentChatRef.value = null;
+      currentChatGroupRef.value = chatGroup;
+    }
+    return chatGroup;
+  }
+
   return {
     openChat,
     openChatAtMessage,
     openChatGroup,
+    loadAndOpenChatGroup,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {},
     }) || {}),

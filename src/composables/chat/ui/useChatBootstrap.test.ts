@@ -1,4 +1,5 @@
 import { toChatId } from '@/01-models/ids';
+import type { SidebarItem } from '@/01-models/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -6,11 +7,13 @@ const {
   mockLoadData,
   mockOpenChat,
   mockFetchForChat,
+  mockReplaceSidebarItems,
 } = vi.hoisted(() => ({
   mockInstallChatBootstrap: vi.fn(),
   mockLoadData: vi.fn().mockResolvedValue(undefined),
   mockOpenChat: vi.fn().mockResolvedValue(undefined),
   mockFetchForChat: vi.fn(),
+  mockReplaceSidebarItems: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/chat-bootstrap', () => ({
@@ -25,6 +28,7 @@ vi.mock('@/composables/chat/chat-derived-state', () => ({
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   loadData: mockLoadData,
+  replaceSidebarItems: mockReplaceSidebarItems,
   chatRuntimeStore: {
     activeGenerations: new Map(),
   },
@@ -69,7 +73,7 @@ describe('useChatBootstrap', () => {
   });
 
   it('hydrates chat data without activating runtime listeners', async () => {
-    await loadChatsForAppStartup();
+    await loadChatsForAppStartup({ initialSidebar: undefined });
 
     expect(mockLoadData).toHaveBeenCalledWith();
     expect(mockInstallChatBootstrap).not.toHaveBeenCalled();
@@ -89,5 +93,13 @@ describe('useChatBootstrap', () => {
     expect(mockOpenChat).toHaveBeenCalledWith({
       chatId: toChatId({ raw: 'chat-1' }),
     });
+  });
+
+  it('reuses the initial sidebar snapshot without evaluating runtime listeners or reading it twice', async () => {
+    const initialSidebar: SidebarItem[] = [];
+    await loadChatsForAppStartup({ initialSidebar });
+    expect(mockReplaceSidebarItems).toHaveBeenCalledExactlyOnceWith({ items: initialSidebar });
+    expect(mockLoadData).not.toHaveBeenCalled();
+    expect(mockInstallChatBootstrap).not.toHaveBeenCalled();
   });
 });

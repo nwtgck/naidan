@@ -17,6 +17,15 @@ vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
+vi.mock('@/composables/useAppEntry', () => ({
+  useAppEntry: () => ({
+    recoverNotFound: async ({ isCurrent }: { isCurrent(): boolean }) => {
+      if (isCurrent()) {
+        await useRouter().replace({ path: '/', query: {}, hash: '' });
+      }
+    },
+  }),
+}));
 
 vi.mock('../../components/CurrentChatPane.vue', () => ({
   default: {

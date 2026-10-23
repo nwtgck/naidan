@@ -94,6 +94,7 @@ export const getLiveChat = chatDataStore.getLiveChat;
 export const getLiveChatById = chatDataStore.getLiveChatById;
 export const getReadonlyChat = chatDataStore.getReadonlyChat;
 export const loadData = chatDataStore.loadData;
+export const replaceSidebarItems = chatDataStore.replaceSidebarItems;
 export const updateChatContent = chatDataStore.updateChatContent;
 export const synchronizeModelBindingContent = chatDataStore.synchronizeModelBindingContent;
 export const updateChatMeta = chatDataStore.updateChatMeta;

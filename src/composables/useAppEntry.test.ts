@@ -31,6 +31,7 @@ async function createEntryHarness({ path, startupKind }: { path: string, startup
   });
   const defer = vi.fn();
   const resume = vi.fn();
+  const readHistoryEmpty = vi.fn(async () => true);
   const scope = effectScope();
   const entry = scope.run(() => TEST_ONLY.createAppEntry({
     router,
@@ -42,6 +43,7 @@ async function createEntryHarness({ path, startupKind }: { path: string, startup
       return () => captured === generation;
     },
     captureModelLaunchDefaults: captureDefaults,
+    readHistoryEmpty,
     deferModelRefresh: defer,
     resumeModelRefresh: resume,
   }))!;
@@ -53,6 +55,7 @@ async function createEntryHarness({ path, startupKind }: { path: string, startup
     defer,
     resume,
     captureDefaults,
+    readHistoryEmpty,
     retireStorage: () => {
       generation++;
       settings.value = { ...settings.value };
@@ -66,6 +69,7 @@ async function createEntryHarness({ path, startupKind }: { path: string, startup
 describe('application entry ownership', () => {
   it('opens the initial unconfigured root dialog before MainApp, and does not reopen it after settings', async () => {
     using harness = await createEntryHarness({ path: '/', startupKind: 'initializing-foundation' });
+    harness.entry.initializeHomePresentation({ empty: true });
     expect(harness.entry.modelSelection.value).toBeUndefined();
     harness.startupState.value = { kind: 'starting-main' };
     expect(harness.entry.modelSelection.value?.phase).toBe('open');
@@ -83,6 +87,112 @@ describe('application entry ownership', () => {
     await harness.entry.openHome();
     expect(harness.entry.modelSelection.value?.phase).toBe('open');
     expect(harness.router.currentRoute.value.path).toBe('/');
+  });
+
+  it.each([true, false])('uses saved history rather than global model setup for the initial dialog (empty=%s)', async empty => {
+    using owner = await createEntryHarness({ path: '/', startupKind: 'initializing-foundation' });
+    owner.settings.value = { endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'configured' };
+    owner.entry.initializeHomePresentation({ empty });
+    owner.startupState.value = { kind: 'starting-main' };
+    expect(owner.entry.modelSelection.value?.phase).toBe(empty ? 'open' : undefined);
+    expect(owner.entry.automaticActivity.value).toBe(empty ? 'deferred' : 'ordinary');
+    expect(owner.resume).toHaveBeenCalledTimes(empty ? 0 : 1);
+    if (empty) {
+      owner.entry.closeModelSelection();
+      owner.entry.finishModelSelectionClose();
+      expect(owner.resume).not.toHaveBeenCalled();
+      await owner.router.push('/chat/created');
+      expect(owner.resume).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each(['/chat/missing', '/chat-group/missing', '/myunknown'])('owns a missing-target recovery across source unmount: %s', async path => {
+    using owner = await createEntryHarness({ path: `${path}?q=must-not-send`, startupKind: 'ready' });
+    let sourceMounted = true;
+    const remove = owner.router.afterEach(route => {
+      if (route.path === '/') {
+        sourceMounted = false;
+      }
+    });
+    using _guard = { [Symbol.dispose]: remove };
+    await owner.entry.recoverNotFound({ isCurrent: () => sourceMounted });
+    expect(sourceMounted).toBe(false);
+    expect(owner.router.currentRoute.value.fullPath).toBe('/');
+    expect(owner.entry.modelSelection.value?.phase).toBe('open');
+    expect(owner.entry.notFoundRecovery.value).toBeUndefined();
+    owner.entry.closeModelSelection();
+    owner.entry.finishModelSelectionClose();
+    owner.settings.value = { ...owner.settings.value };
+    expect(owner.entry.modelSelection.value).toBeUndefined();
+  });
+
+  it('recovers a missing target without a dialog when saved history remains', async () => {
+    using owner = await createEntryHarness({ path: '/chat/missing', startupKind: 'ready' });
+    owner.readHistoryEmpty.mockResolvedValue(false);
+    await owner.entry.recoverNotFound({ isCurrent: () => true });
+    expect(owner.router.currentRoute.value.fullPath).toBe('/');
+    expect(owner.entry.modelSelection.value).toBeUndefined();
+  });
+
+  it('retains the source route and releases recovery after a failed history read', async () => {
+    using owner = await createEntryHarness({ path: '/chat/missing', startupKind: 'ready' });
+    owner.readHistoryEmpty.mockRejectedValue(new Error('Permission lost'));
+    await expect(owner.entry.recoverNotFound({ isCurrent: () => true })).rejects.toThrow('Permission lost');
+    expect(owner.router.currentRoute.value.path).toBe('/chat/missing');
+    expect(owner.entry.notFoundRecovery.value).toBeUndefined();
+    expect(owner.entry.modelSelection.value).toBeUndefined();
+  });
+
+  it.each(['route', 'storage'] as const)('does not recover a delayed missing target after its %s changes', async changed => {
+    using owner = await createEntryHarness({ path: '/chat/missing', startupKind: 'ready' });
+    const pending = Promise.withResolvers<boolean>();
+    owner.readHistoryEmpty.mockReturnValue(pending.promise);
+    const recovering = owner.entry.recoverNotFound({ isCurrent: () => true });
+    expect(owner.entry.notFoundRecovery.value).toBeDefined();
+    switch (changed) {
+    case 'route': await owner.router.push('/chat/newer');
+      break;
+    case 'storage': owner.retireStorage();
+      break;
+    default: {
+      const exhaustive: never = changed;
+      throw new Error(String(exhaustive));
+    }
+    }
+    pending.resolve(true);
+    await recovering;
+    expect(owner.router.currentRoute.value.path).toBe(changed === 'route' ? '/chat/newer' : '/chat/missing');
+    expect(owner.entry.modelSelection.value).toBeUndefined();
+    expect(owner.entry.notFoundRecovery.value).toBeUndefined();
+  });
+
+  it('leaves a blocked recovery retryable and never reinterprets explicit model input as Not Found', async () => {
+    using owner = await createEntryHarness({ path: '/myunknown', startupKind: 'ready' });
+    const remove = owner.router.beforeEach(route => route.path === '/' ? false : true);
+    using _guard = { [Symbol.dispose]: remove };
+    await expect(owner.entry.recoverNotFound({ isCurrent: () => true })).rejects.toThrow('Could not recover');
+    expect(owner.router.currentRoute.value.path).toBe('/myunknown');
+    expect(owner.entry.notFoundRecovery.value).toBeUndefined();
+    owner.readHistoryEmpty.mockClear();
+    await owner.router.push('/myunknown?llama-cpp-browser-model=');
+    await owner.entry.recoverNotFound({ isCurrent: () => true });
+    expect(owner.readHistoryEmpty).not.toHaveBeenCalled();
+    expect(owner.router.currentRoute.value.fullPath).toBe('/myunknown?llama-cpp-browser-model=');
+  });
+
+  it('does not reopen a stale recovery dialog after a newer navigation leaves and returns to the root', async () => {
+    using owner = await createEntryHarness({ path: '/myunknown', startupKind: 'ready' });
+    const replace = owner.router.replace.bind(owner.router);
+    using _replace = vi.spyOn(owner.router, 'replace').mockImplementationOnce(async location => {
+      const result = await replace(location);
+      await owner.router.push('/chat/newer');
+      await owner.router.push('/');
+      return result;
+    });
+    await owner.entry.recoverNotFound({ isCurrent: () => true });
+    expect(owner.router.currentRoute.value.fullPath).toBe('/');
+    expect(owner.entry.modelSelection.value).toBeUndefined();
+    expect(owner.entry.notFoundRecovery.value).toBeUndefined();
   });
 
   it('restores the modal opener only after the background DOM can leave its inert state', async () => {
@@ -153,6 +263,7 @@ describe('application entry ownership', () => {
       settings: ref<Pick<Settings, 'endpoint' | 'defaultModelId'>>({ endpoint: { type: 'openai', url: '' }, defaultModelId: undefined }),
       captureStorage: () => () => true,
       captureModelLaunchDefaults: captureDefaults,
+      readHistoryEmpty: async () => true,
       deferModelRefresh: vi.fn(),
       resumeModelRefresh: vi.fn(),
     }))!;

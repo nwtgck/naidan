@@ -13,6 +13,7 @@ import { hasModelEntryQuery, hasSelectedGlobalChatModel, resolveAppEntryKind, sh
 import { currentLocale, prepareLocale } from '@/strings';
 import { getActiveAppEntry } from '@/composables/useAppEntry';
 import { startRpcAutomaticConnections } from '@/features/naidan-rpc-integration/runtime/feature';
+import { storageService } from '@/00-storage/service';
 import {
   readFirstQueryValue,
   resolveInitialRoute,
@@ -57,62 +58,92 @@ export async function startApp({ startupState, settingsStore, router, navigation
     settingsStore,
   });
 
-  startupState.value = {
-    kind: 'starting-main',
-  };
-
   const entryKind = resolveAppEntryKind({ route: resolveInitialRoute({ router }), initialized: true });
+  const initialHome = (() => {
+    switch (entryKind) {
+    case 'home': return true;
+    case 'model-preview':
+    case 'pending':
+    case 'ordinary': return false;
+    default: {
+      const exhaustive: never = entryKind;
+      throw new Error(`Unhandled initial history entry: ${String(exhaustive)}`);
+    }
+    }
+  })();
+  let initialSidebarCurrent = true;
+  const stopInitialSidebarWatch = initialHome ? storageService.subscribeToChanges({
+    listener: ({ event }) => {
+      if (event.type === 'chat_meta_and_chat_group' || event.type === 'migration') {
+        initialSidebarCurrent = false;
+      }
+    },
+  }) : () => {};
   let entrySurface: Component | undefined;
-  switch (entryKind) {
-  case 'home': {
-    if (hasSelectedGlobalChatModel({ settings: settingsStore.settings.value })) {
-      settingsStore.resumeModelRefresh();
+  let chatStartupModule: typeof import('@/composables/chat/ui/useChatBootstrap');
+  try {
+    // Read metadata only; do not evaluate the chat runtime before the initial
+    // dialog's paint. Reuse this sidebar snapshot during the later bootstrap.
+    const initialSidebar = initialHome ? await storageService.getSidebarStructure() : undefined;
+    getActiveAppEntry()?.initializeHomePresentation({ empty: initialSidebar?.length === 0 });
+
+    startupState.value = {
+      kind: 'starting-main',
+    };
+
+    switch (entryKind) {
+    case 'home': {
+      if (initialSidebar?.length !== 0) {
+        settingsStore.resumeModelRefresh();
+        break;
+      }
+      settingsStore.deferModelRefresh();
+      // App synchronously owns the initial dialog and cards. Give their strings,
+      // DOM and paint priority before importing chat bootstrap or MainApp.
+      await prepareLocale({ locale: currentLocale.value });
+      debugRecordFileProtocolStandaloneStartupCheckpoint({ checkpoint: 'painting-onboarding', details: undefined });
+      await nextTick();
+      await waitForPresentationPaint({ window });
       break;
     }
-    settingsStore.deferModelRefresh();
-    // App synchronously owns the initial dialog and cards. Give their strings,
-    // DOM and paint priority before importing chat bootstrap or MainApp.
-    await prepareLocale({ locale: currentLocale.value });
-    debugRecordFileProtocolStandaloneStartupCheckpoint({ checkpoint: 'painting-onboarding', details: undefined });
-    await nextTick();
-    await waitForPresentationPaint({ window });
-    break;
-  }
-  case 'model-preview': {
-    settingsStore.deferModelRefresh();
-    const module = await import('@/components/AppEntrySurface.vue');
-    await prepareLocale({ locale: currentLocale.value });
-    entrySurface = markRaw(module.default);
-    startupState.value = { kind: 'starting-main', entrySurface };
+    case 'model-preview': {
+      settingsStore.deferModelRefresh();
+      const module = await import('@/components/AppEntrySurface.vue');
+      await prepareLocale({ locale: currentLocale.value });
+      entrySurface = markRaw(module.default);
+      startupState.value = { kind: 'starting-main', entrySurface };
+      debugRecordFileProtocolStandaloneStartupCheckpoint({
+        checkpoint: 'painting-onboarding',
+        details: undefined,
+      });
+
+      /**
+       * Paint the passive entry before evaluating the main chat graph. Interaction
+       * still follows the normal startup gate; no early action is queued.
+       */
+      await nextTick();
+      await waitForPresentationPaint({ window });
+      break;
+    }
+    case 'pending':
+    case 'ordinary':
+      settingsStore.resumeModelRefresh();
+      break;
+    default: {
+      const _ex: never = entryKind;
+      throw new Error(`Unhandled startup entry: ${String(_ex)}`);
+    }
+    }
+
     debugRecordFileProtocolStandaloneStartupCheckpoint({
-      checkpoint: 'painting-onboarding',
+      checkpoint: 'loading-chats',
       details: undefined,
     });
-
-    /**
-     * Paint the passive entry before evaluating the main chat graph. Interaction
-     * still follows the normal startup gate; no early action is queued.
-     */
-    await nextTick();
-    await waitForPresentationPaint({ window });
-    break;
+    chatStartupModule = await import('@/composables/chat/ui/useChatBootstrap');
+    await chatStartupModule.loadChatsForAppStartup({ initialSidebar: initialSidebarCurrent ? initialSidebar : undefined });
+  } finally {
+    stopInitialSidebarWatch();
   }
-  case 'pending':
-  case 'ordinary':
-    settingsStore.resumeModelRefresh();
-    break;
-  default: {
-    const _ex: never = entryKind;
-    throw new Error(`Unhandled startup entry: ${String(_ex)}`);
-  }
-  }
-
-  debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'loading-chats',
-    details: undefined,
-  });
-  const chatStartupModule = await import('@/composables/chat/ui/useChatBootstrap');
-  await chatStartupModule.loadChatsForAppStartup();
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
     checkpoint: 'loading-main-app',

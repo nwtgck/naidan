@@ -38,6 +38,7 @@ export type ModelSelectionTarget =
   | { kind: 'home' }
   | { kind: 'chat', chatId: ChatId, acceptFiles({ directories, controller }: { directories: Promise<ModelDirectoryInput[]>, controller: AbortController }): void, useRepositoryModel({ target }: { target: ModelLaunchTarget }): void, useModel({ model }: { model: LocalModel }): void };
 export type ModelSelectionPresentation = { phase: 'open' | 'closing', owner: symbol, target: ModelSelectionTarget, selection: AppEntrySelection, opener: HTMLElement | undefined };
+type NotFoundRecovery = { sourcePath: string, location: 'source' | 'root' };
 
 // Share the same fulfilled UI import with its async renderer. Requesting the
 // panel must not suspend the current dialog before the new UI can be rendered.
@@ -66,13 +67,14 @@ function activeEntryIntent({ intent }: { intent: AppEntryIntent }): Exclude<AppE
   }
 }
 
-function createAppEntry({ router, startupState, settingsInitialized, settings, captureStorage, captureModelLaunchDefaults, deferModelRefresh, resumeModelRefresh }: {
+function createAppEntry({ router, startupState, settingsInitialized, settings, captureStorage, captureModelLaunchDefaults, readHistoryEmpty, deferModelRefresh, resumeModelRefresh }: {
   router: Router | undefined,
   startupState: ShallowRef<StartupState>,
   settingsInitialized: Readonly<Ref<boolean>>,
   settings: Readonly<Ref<Pick<Settings, 'endpoint' | 'defaultModelId'>>>,
   captureStorage: () => () => boolean,
   captureModelLaunchDefaults: () => Promise<ModelLaunchDefaultSnapshot | undefined>,
+  readHistoryEmpty(): Promise<boolean>,
   deferModelRefresh: () => void,
   resumeModelRefresh: () => void,
 }) {
@@ -84,6 +86,8 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
   const settingsOverlay = shallowRef<AppEntrySettingsOverlay>();
   const discovery = shallowRef<{ owner: symbol, tab: AppEntryDiscoveryTab }>();
   const modelSelection = shallowRef<ModelSelectionPresentation>();
+  const notFoundRecovery = shallowRef<NotFoundRecovery>();
+  let initialHomePresentation: 'pending' | 'show' | 'skip' = 'pending';
   const automaticActivity = ref<'deferred' | 'ordinary'>('deferred');
   let storageCurrent = () => router !== undefined;
   let storageInitialized = false;
@@ -172,10 +176,17 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     if (route === undefined) {
       return;
     }
-    const initiallyPending = intentState.value.kind === 'pending';
     const prior = activeEntryIntent({ intent: intentState.value });
     const storageChanged = storageInitialized && !storageCurrent();
     const revision = route.fullPath;
+    const recovery = notFoundRecovery.value;
+    if (recovery !== undefined) {
+      if (storageChanged || route.fullPath !== '/' && (recovery.location === 'root' || route.fullPath !== recovery.sourcePath)) {
+        notFoundRecovery.value = undefined;
+      } else if (route.fullPath === '/') {
+        recovery.location = 'root';
+      }
+    }
     if (!storageChanged && revision === routeRevision && prior !== undefined
       && (!settingsInitialized.value || storageInitialized)) {
       if (prior.kind === 'home' && prior.homeOriginId !== undefined
@@ -248,16 +259,20 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     intentState.value = { kind, owner: Symbol('app-entry-owner'), homeOriginId, routePath: route.path, fullPath: route.fullPath, input: route.query[MODEL_ENTRY_QUERY] };
     switch (kind) {
     case 'home': {
-      const configured = hasSelectedGlobalChatModel({ settings: settings.value });
-      // This is the initial presentation lifecycle, not a persisted first-visit
-      // test. Returning from settings must not reopen a dismissed introduction.
-      if (initiallyPending && startupState.value.kind === 'starting-main' && !configured) {
+      // Startup arms this once from the saved sidebar, before chat bootstrap.
+      // Ordinary returns to the root must not replay a dismissed introduction.
+      if (initialHomePresentation === 'show' && startupState.value.kind === 'starting-main') {
+        initialHomePresentation = 'skip';
         openModelSelection({ target: { kind: 'home' }, selection: homeSelection.value, opener: undefined });
       } else {
         closeModelSelection();
       }
-      automaticActivity.value = configured ? 'ordinary' : 'deferred';
-      if (configured) {
+      // Even configured users can have empty history. Do not start provider
+      // work ahead of the initial dialog's paint or a pending recovery.
+      const resumeActivity = modelSelection.value === undefined && notFoundRecovery.value === undefined
+        && hasSelectedGlobalChatModel({ settings: settings.value });
+      automaticActivity.value = resumeActivity ? 'ordinary' : 'deferred';
+      if (resumeActivity) {
         resumeModelRefresh();
       } else {
         deferModelRefresh();
@@ -284,6 +299,56 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
   }
 
   watch([effectiveRoute, settingsInitialized, settings, startupState], syncIntent, { immediate: true, flush: 'sync' });
+
+  function initializeHomePresentation({ empty }: { empty: boolean }): void {
+    switch (initialHomePresentation) {
+    case 'pending':
+      initialHomePresentation = empty ? 'show' : 'skip';
+      return;
+    case 'show':
+    case 'skip': return;
+    default: {
+      const exhaustive: never = initialHomePresentation;
+      throw new Error(`Unhandled initial home presentation: ${String(exhaustive)}`);
+    }
+    }
+  }
+
+  async function recoverNotFound({ isCurrent }: { isCurrent(): boolean }): Promise<void> {
+    const route = effectiveRoute.value;
+    if (router === undefined || route === undefined || !isCurrent()
+      || route.query[MODEL_ENTRY_QUERY] !== undefined) {
+      return;
+    }
+    const recovery: NotFoundRecovery = { sourcePath: route.fullPath, location: 'source' };
+    const isStorageCurrent = captureStorage();
+    notFoundRecovery.value = recovery;
+    const ownsRecovery = () => notFoundRecovery.value === recovery && isStorageCurrent();
+    try {
+      // Decide this presentation from one confirmed snapshot. Actual chat
+      // creation independently rechecks the latest sidebar under its own lock.
+      const empty = await readHistoryEmpty();
+      if (!ownsRecovery() || !isCurrent()) {
+        return;
+      }
+      const failure = await router.replace({ path: '/', query: {}, hash: '' });
+      // A successful replacement unmounts the reporting page. From here the
+      // shared recovery owns the transition, rather than that page's request.
+      if (!ownsRecovery()) {
+        return;
+      }
+      if (failure || router.currentRoute.value.fullPath !== '/') {
+        throw new Error('Could not recover a missing page');
+      }
+      if (empty) {
+        openModelSelection({ target: { kind: 'home' }, selection: homeSelection.value, opener: undefined });
+      }
+    } finally {
+      if (notFoundRecovery.value === recovery) {
+        notFoundRecovery.value = undefined;
+      }
+    }
+  }
 
   function captureModelLaunchContext(): ModelLaunchAppContext {
     const current = activeEntryIntent({ intent: intentState.value });
@@ -540,6 +605,9 @@ function createAppEntry({ router, startupState, settingsInitialized, settings, c
     settingsOverlay,
     discovery,
     modelSelection: computed(() => modelSelection.value),
+    notFoundRecovery: computed(() => notFoundRecovery.value),
+    initializeHomePresentation,
+    recoverNotFound,
     openModelSelection,
     closeModelSelection,
     finishModelSelectionClose,
@@ -570,6 +638,10 @@ export function provideAppEntry({ startupState }: { startupState: ShallowRef<Sta
     settings: settingsStore.settings,
     captureStorage: () => settingsStore.captureExperimentalStorage(),
     captureModelLaunchDefaults: () => settingsStore.captureModelLaunchDefaults(),
+    readHistoryEmpty: async () => {
+      const { storageService } = await import('@/00-storage/service');
+      return (await storageService.getSidebarStructure()).length === 0;
+    },
     deferModelRefresh: () => settingsStore.deferModelRefresh(),
     resumeModelRefresh: () => settingsStore.resumeModelRefresh(),
   });
@@ -594,6 +666,7 @@ export function useAppEntry(): AppEntry {
     settings: ref<Pick<Settings, 'endpoint' | 'defaultModelId'>>({ endpoint: { type: 'openai', url: '' }, defaultModelId: undefined }),
     captureStorage: () => () => false,
     captureModelLaunchDefaults: () => Promise.resolve(undefined),
+    readHistoryEmpty: async () => false,
     deferModelRefresh: () => {},
     resumeModelRefresh: () => {},
   });

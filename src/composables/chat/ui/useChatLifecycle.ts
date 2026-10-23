@@ -47,6 +47,8 @@ export type ChatLifecycleAdapter = {
     systemPrompt: SystemPrompt | undefined,
   }): Promise<Chat | null>,
 
+  createChatForEmptyHistory({ isCurrent }: { isCurrent(): boolean }): Promise<Chat | undefined>,
+
   deleteChat({
     id,
     injectAddToast,
@@ -168,6 +170,19 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   }
   function createChatWithoutSelecting({ groupId, modelId, systemPrompt }: { groupId: ChatGroupId | undefined, modelId: string | undefined, systemPrompt: SystemPrompt | undefined }): Promise<Chat | null> {
     return createChat({ groupId, modelId, systemPrompt, activation: 'preserve' });
+  }
+
+  async function createChatForEmptyHistory({ isCurrent }: { isCurrent(): boolean }): Promise<Chat | undefined> {
+    const chat = await storageService.createChatIfHistoryEmpty({
+      isCurrent,
+      create: async () => (await createChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined, activation: 'preserve' })) ?? undefined,
+    });
+    if (chat === undefined) {
+      // Another tab may have published a chat or chat group while this page
+      // waited for the shared creation lock. Reconcile before retrying locally.
+      await loadData();
+    }
+    return chat;
   }
 
   async function deleteChat({
@@ -315,6 +330,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
   return {
     createNewChat,
     createChatWithoutSelecting,
+    createChatForEmptyHistory,
     deleteChat,
     deleteAllChats,
     ...((__BUILD_MODE_IS_TEST__ && {

@@ -10,6 +10,7 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import AppCommandRuntime from './AppCommandRuntime.vue';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
+import { creatingChat as mockCreatingChat } from '@/composables/chat/global/chat-core-singletons';
 
 enableAutoUnmount(afterEach);
 
@@ -26,6 +27,11 @@ const mockEntryMode = ref<AppEntryMode>('ordinary');
 const mockEntryOwner = ref(Symbol('test-entry'));
 const mockEntryInteraction = ref<'ready' | 'blocked'>('ready');
 const mockStorageCurrent = ref(true);
+const mockDiscovery = ref<unknown>();
+vi.mock('@/composables/chat/global/chat-core-singletons', async () => {
+  const { ref } = await import('vue');
+  return { creatingChat: ref(false) };
+});
 const mockSettings = ref<Pick<Settings, 'endpoint' | 'defaultModelId'>>({ endpoint: { type: 'openai', url: 'http://localhost:11434/v1' }, defaultModelId: 'configured-model' });
 
 vi.mock('@/composables/useAppEntry', () => ({
@@ -37,6 +43,7 @@ vi.mock('@/composables/useAppEntry', () => ({
     return {
       intent,
       interaction: mockEntryInteraction,
+      discovery: mockDiscovery,
       captureModelLaunchContext: () => {
         const current = intent.value;
         return {
@@ -57,6 +64,7 @@ vi.mock('@/composables/useToast', () => ({ useToast: () => ({ addToast: mockAddT
 vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchCoordinator', () => ({ useModelLaunchCoordinator: vi.fn() }));
 
 const mockCreateNewChat = vi.fn();
+const mockCreateChatForEmptyHistory = vi.fn();
 const mockCreateChatGroup = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
 const mockChats = ref<Chat[]>([]);
@@ -72,7 +80,10 @@ vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => null),
     inheritedSettings: computed(() => null),
     chatGroups: computed(() => mockChatGroups.value),
-    sidebarItems: computed(() => []),
+    sidebarItems: computed(() => [
+      ...mockChats.value.map(chat => ({ type: 'chat', chat })),
+      ...mockChatGroups.value.map(chatGroup => ({ type: 'chat_group', chatGroup })),
+    ]),
     TEST_ONLY: {},
   }),
 }));
@@ -86,6 +97,7 @@ vi.mock('@/composables/chat/ui/useChatListData', () => ({
 vi.mock('@/composables/chat/ui/useChatLifecycle', () => ({
   useChatLifecycle: () => ({
     createNewChat: mockCreateNewChat,
+    createChatForEmptyHistory: mockCreateChatForEmptyHistory,
     deleteChat: vi.fn(),
     deleteAllChats: vi.fn(),
     TEST_ONLY: {},
@@ -173,6 +185,13 @@ describe('AppCommandRuntime', () => {
       return chat;
     });
     mockCreateChatGroup.mockReset();
+    mockCreateChatForEmptyHistory.mockReset().mockImplementation(async () => {
+      const chat = createChat({ rawId: 'automatic-chat-id' });
+      mockChats.value = [chat];
+      return chat;
+    });
+    mockCreatingChat.value = false;
+    mockDiscovery.value = undefined;
     mockAddRecentChat.mockReset();
     mockToggleRecent.mockReset();
     mockCurrentChat.value = null;
@@ -217,12 +236,9 @@ describe('AppCommandRuntime', () => {
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('keeps an empty configured root on the welcome screen without creating a chat', async () => {
+  it('creates one real chat from an empty home without selecting it before navigation', async () => {
+    mockEntryMode.value = 'home';
     mockChats.value = [];
-    mockCreateNewChat.mockImplementation(async () => {
-      mockCurrentChat.value = { id: 'auto-chat-id' } as unknown as Chat;
-      return mockCurrentChat.value;
-    });
 
     mountRuntime();
 
@@ -231,15 +247,14 @@ describe('AppCommandRuntime', () => {
     await nextTick();
 
     expect(mockCreateNewChat).not.toHaveBeenCalled();
-    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockCurrentChat.value).toBeNull();
+    expect(mockRouterPush).toHaveBeenCalledExactlyOnceWith('/chat/automatic-chat-id');
   });
 
-  it('does not create a chat when history is cleared', async () => {
+  it('creates one real chat when all chat and chat-group history is cleared', async () => {
+    mockEntryMode.value = 'home';
     mockChats.value = [{ id: 'existing-chat' } as unknown as Chat];
-    mockCreateNewChat.mockImplementation(async () => {
-      mockCurrentChat.value = { id: 'post-clear-chat-id' } as unknown as Chat;
-      return mockCurrentChat.value;
-    });
 
     mountRuntime();
 
@@ -254,10 +269,12 @@ describe('AppCommandRuntime', () => {
     await nextTick();
 
     expect(mockCreateNewChat).not.toHaveBeenCalled();
-    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/automatic-chat-id');
   });
 
-  it('does not create a chat when returning to an empty root', async () => {
+  it('creates one real chat when returning to an empty root', async () => {
+    mockEntryMode.value = 'home';
     mockChats.value = [];
     const currentRoute = reactive<{ path: string; query: Record<string, string> }>({
       path: '/settings',
@@ -283,6 +300,72 @@ describe('AppCommandRuntime', () => {
     await nextTick();
 
     expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/automatic-chat-id');
+  });
+
+  it('does not seed an empty chat group or seed while the dialog is open or closing', async () => {
+    mockEntryMode.value = 'home';
+    mockChats.value = [];
+    mockChatGroups.value = [{ id: 'empty-chat-group', name: 'Empty' }];
+    mountRuntime();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).not.toHaveBeenCalled();
+    mockAppInteraction.value = 'blocked-by-model-selection';
+    mockChatGroups.value = [];
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).not.toHaveBeenCalled();
+    mockAppInteraction.value = 'enabled';
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+  });
+
+  it('waits for another creator and for the model browser before seeding', async () => {
+    mockEntryMode.value = 'home';
+    mockChats.value = [];
+    mockCreatingChat.value = true;
+    mountRuntime();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).not.toHaveBeenCalled();
+    mockDiscovery.value = { tab: 'candidates' };
+    mockCreatingChat.value = false;
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).not.toHaveBeenCalled();
+    mockDiscovery.value = undefined;
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a saved automatic chat when its originating page is left during creation', async () => {
+    mockEntryMode.value = 'home';
+    mockChats.value = [];
+    const pending = Promise.withResolvers<Chat>();
+    mockCreateChatForEmptyHistory.mockReturnValue(pending.promise);
+    mountRuntime();
+    await nextTick();
+    currentRoute.path = '/chat/newer';
+    mockEntryMode.value = 'ordinary';
+    const newer = createChat({ rawId: 'newer' });
+    mockCurrentChat.value = newer;
+    pending.resolve(createChat({ rawId: 'saved-automatic' }));
+    await flushPromises();
+    expect(mockCurrentChat.value?.id).toBe(newer.id);
+    expect(mockRouterPush).not.toHaveBeenCalled();
+  });
+
+  it('does not loop after automatic creation fails and retries through the existing action', async () => {
+    mockEntryMode.value = 'home';
+    mockChats.value = [];
+    mockCreateChatForEmptyHistory.mockRejectedValueOnce(new Error('Storage unavailable'));
+    using _console = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mountRuntime();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockAddToast).toHaveBeenCalledOnce();
+    await mockAddToast.mock.calls[0]![0].onAction();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledTimes(2);
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/automatic-chat-id');
   });
 
   it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
@@ -749,6 +832,27 @@ describe('AppCommandRuntime', () => {
     expect(mockCreateNewChat).toHaveBeenCalledTimes(1);
     expect(mockRouterPush).toHaveBeenCalledTimes(2);
     expect(mockRouterPush).toHaveBeenLastCalledWith({ path: '/chat/default-chat-id', query: { q: 'draft' } });
+  });
+
+  it('retries an automatic saved chat navigation without rechecking empty history or creating another chat', async () => {
+    using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockEntryMode.value = 'home';
+    mockChats.value = [];
+    mockRouterPush.mockImplementationOnce(() => Promise.resolve({ type: 4 }));
+    mountRuntime();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockChats.value).toHaveLength(1);
+    expect(mockCurrentChat.value).toBeNull();
+    expect(currentRoute.path).toBe('/');
+    expect(mockAddToast).toHaveBeenCalledOnce();
+    await mockAddToast.mock.calls[0]?.[0].onAction();
+    await flushPromises();
+    expect(mockCreateChatForEmptyHistory).toHaveBeenCalledOnce();
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledTimes(2);
+    expect(mockRouterPush).toHaveBeenLastCalledWith('/chat/automatic-chat-id');
+    expect(mockChats.value).toHaveLength(1);
   });
 
   it('does not loop after creation fails and allows an explicit retry of the same operation', async () => {

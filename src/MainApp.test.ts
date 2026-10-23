@@ -6,7 +6,8 @@ import MainApp from './MainApp.vue';
 
 const entryInteraction = ref<'blocked' | 'ready'>('ready');
 const modelSelection = ref<unknown>();
-vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => ({ interaction: entryInteraction, modelSelection }) }));
+const notFoundRecovery = ref<unknown>();
+vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => ({ interaction: entryInteraction, modelSelection, notFoundRecovery }) }));
 const appInteraction = ref<AppInteraction>('enabled');
 
 vi.mock('./composables/useAppPresentation', () => ({
@@ -46,6 +47,7 @@ describe('MainApp', () => {
     appInteraction.value = 'enabled';
     entryInteraction.value = 'ready';
     modelSelection.value = undefined;
+    notFoundRecovery.value = undefined;
   });
 
   function mountMainApp() {
@@ -85,5 +87,15 @@ describe('MainApp', () => {
     expect(wrapper.get('[data-testid="main-app-surface"]').attributes('data-post-startup-features')).toBe('inactive');
     expect(wrapper.find('[data-testid="app-command-runtime"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(false);
+  });
+
+  it('defers PWA activation while a missing target is being recovered', async () => {
+    notFoundRecovery.value = { sourcePath: '/chat/missing' };
+    const wrapper = mountMainApp();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="app-auxiliary-ui"]').attributes('data-pwa-activation')).toBe('deferred');
+    notFoundRecovery.value = undefined;
+    await flushPromises();
+    expect(wrapper.get('[data-testid="app-auxiliary-ui"]').attributes('data-pwa-activation')).toBe('active');
   });
 });

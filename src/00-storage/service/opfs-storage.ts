@@ -480,73 +480,72 @@ export class OPFSStorageProvider extends IStorageProvider {
   // --- Internal Data Access ---
 
   protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
-    try {
-      const dir = await this.getDir({ name: 'chat-metas' });
-      const dtos: ChatMetaDto[] = [];
-      for await (const entry of dir.values()) {
-        const kind = entry.kind;
-        switch (kind) {
-        case 'file': {
-          if (entry.name.endsWith('.json')) {
-            const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(ChatMetaSchemaDto.parse(JSON.parse(await file.text())));
-          }
-          break;
+    await this.ensureRoot();
+    const dir = await this.getDir({ name: 'chat-metas' });
+    const dtos: ChatMetaDto[] = [];
+    for await (const entry of dir.values()) {
+      const kind = entry.kind;
+      switch (kind) {
+      case 'file': {
+        if (entry.name.endsWith('.json')) {
+          const file = await (entry as FileSystemFileHandle).getFile();
+          dtos.push(ChatMetaSchemaDto.parse(JSON.parse(await file.text())));
         }
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
+        break;
       }
-      return dtos;
-    } catch {
-      return [];
+      case 'directory':
+        break;
+      default: {
+        const _ex: never = kind;
+        throw new Error(`Unhandled entry kind: ${_ex}`);
+      }
+      }
     }
+    return dtos;
   }
 
   protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
-    try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      const dtos: ChatGroupDto[] = [];
-      for await (const entry of dir.values()) {
-        const kind = entry.kind;
-        switch (kind) {
-        case 'file': {
-          if (entry.name.endsWith('.json')) {
-            const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
-          }
-          break;
+    await this.ensureRoot();
+    const dir = await this.getDir({ name: 'chat-groups' });
+    const dtos: ChatGroupDto[] = [];
+    for await (const entry of dir.values()) {
+      const kind = entry.kind;
+      switch (kind) {
+      case 'file': {
+        if (entry.name.endsWith('.json')) {
+          const file = await (entry as FileSystemFileHandle).getFile();
+          dtos.push(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
         }
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
+        break;
       }
-      return dtos;
-    } catch {
-      return [];
+      case 'directory':
+        break;
+      default: {
+        const _ex: never = kind;
+        throw new Error(`Unhandled entry kind: ${_ex}`);
+      }
+      }
     }
+    return dtos;
   }
 
   // --- Hierarchy Management ---
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
     await this.ensureRoot();
+    let fileHandle: FileSystemFileHandle;
     try {
-      const fileHandle = await this.root!.getFileHandle('hierarchy.json');
-      const file = await fileHandle.getFile();
-      return HierarchySchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      // If file doesn't exist or is invalid, return empty hierarchy
-      return { items: [] };
+      fileHandle = await this.root!.getFileHandle('hierarchy.json');
+    } catch (error) {
+      // Only a missing lookup proves empty history; unreadable history must not
+      // permit automatic creation to replace an existing hierarchy.
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return { items: [] };
+      }
+      throw error;
     }
+    const file = await fileHandle.getFile();
+    return HierarchySchemaDto.parse(JSON.parse(await file.text()));
   }
 
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
@@ -658,22 +657,26 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
+    await this.ensureRoot();
+    const dir = await this.getDir({ name: 'chat-groups' });
+    let handle: FileSystemFileHandle;
     try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      const file = await (await dir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
-
-      const { hierarchy, allMetas } = await promiseAllKeyed({
-        hierarchy: this.loadHierarchy(),
-        allMetas: this.listChatMetasRaw(),
-      });
-
-      const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
-      const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-      return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
-    } catch {
-      return null;
+      handle = await dir.getFileHandle(`${idToRaw({ id })}.json`);
+    } catch (error) {
+      // An acquired file that later fails to read is not a missing group.
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') {
+        return null;
+      }
+      throw error;
     }
+    const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+    const { hierarchy, allMetas } = await promiseAllKeyed({
+      hierarchy: this.loadHierarchy(),
+      allMetas: this.listChatMetasRaw(),
+    });
+    const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
+    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
+    return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {

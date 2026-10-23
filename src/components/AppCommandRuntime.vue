@@ -19,6 +19,7 @@ import { useAppEntry, type ModelLaunchAppContext } from '@/composables/useAppEnt
 import { useToast } from '@/composables/useToast';
 import { ensureStrings } from '@/strings';
 import { hasModelEntryQuery } from '@/logic/startup/entry-intent';
+import { creatingChat } from '@/composables/chat/global/chat-core-singletons';
 import type { Chat, SystemPrompt } from '@/01-models/types';
 import { idToRaw, toChatId, type ChatGroupId } from '@/01-models/ids';
 
@@ -55,6 +56,7 @@ watch(
 );
 
 type ChatCommand = {
+  creation: 'always' | 'when-empty',
   context: ModelLaunchAppContext,
   routePath: string,
   fullPath: string,
@@ -72,11 +74,22 @@ function isCommandCurrent({ command }: { command: ChatCommand }): boolean {
     && isAppInteractionEnabled({ interaction: appInteraction.value })
     && command.context.isCurrent()
     && router.currentRoute.value.path === command.routePath
-    && router.currentRoute.value.fullPath === command.fullPath;
+    && router.currentRoute.value.fullPath === command.fullPath
+    && (command.creation !== 'when-empty' || appEntry.discovery.value === undefined);
 }
 
 function ownsCurrentChat({ command }: { command: ChatCommand }): boolean {
-  return currentChatState.currentChat.value?.id === (command.chat?.id ?? command.initialChatId);
+  // An automatic chat is saved without selecting it. The route owns selection
+  // after navigation; a slow save must not replace a newer user selection.
+  const creation = command.creation;
+  switch (creation) {
+  case 'when-empty': return currentChatState.currentChat.value?.id === command.initialChatId;
+  case 'always': return currentChatState.currentChat.value?.id === (command.chat?.id ?? command.initialChatId);
+  default: {
+    const exhaustive: never = creation;
+    throw new Error(`Unhandled chat creation selection: ${String(exhaustive)}`);
+  }
+  }
 }
 
 async function runChatCommand({ command }: { command: ChatCommand }): Promise<void> {
@@ -109,11 +122,28 @@ async function runChatCommand({ command }: { command: ChatCommand }): Promise<vo
         return;
       }
       useLayout().setActiveFocusArea({ area: 'chat' });
-      const chat = await chatLifecycle.createNewChat({
-        groupId: command.chatGroup.id,
-        modelId: command.modelId,
-        systemPrompt: command.systemPrompt,
-      });
+      let chat: Chat | null | undefined;
+      const creation = command.creation;
+      switch (creation) {
+      case 'when-empty':
+        chat = await chatLifecycle.createChatForEmptyHistory({ isCurrent: () => isCommandCurrent({ command }) && ownsCurrentChat({ command }) });
+        break;
+      case 'always':
+        chat = await chatLifecycle.createNewChat({ groupId: command.chatGroup.id, modelId: command.modelId, systemPrompt: command.systemPrompt });
+        break;
+      default: {
+        const exhaustive: never = creation;
+        throw new Error(`Unhandled chat creation command: ${String(exhaustive)}`);
+      }
+      }
+      if (chat === undefined) {
+        // A busy creator or a fresh sidebar can invalidate an empty snapshot.
+        // Genuine failures keep the attempt consumed and use explicit retry.
+        if (automaticAttemptOwner === command.context.owner) {
+          automaticAttemptOwner = undefined;
+        }
+        return;
+      }
       if (chat === null) {
         throw new Error('Chat creation did not return a chat.');
       }
@@ -150,15 +180,24 @@ watch(
     () => appEntry.interaction.value,
     () => appInteraction.value,
     () => commandInFlight.value,
+    () => currentChatState.sidebarItems.value.length,
+    () => creatingChat.value,
+    () => appEntry.discovery.value,
   ],
   () => {
     const currentRoute = router.currentRoute.value;
-    if (appEntry.intent.value.kind !== 'ordinary' || !settingsStore.initialized.value
+    const mode = appEntry.intent.value.kind;
+    if ((mode !== 'ordinary' && mode !== 'home') || !settingsStore.initialized.value
       || currentRoute.path !== '/' || hasModelEntryQuery({ query: currentRoute.query }) || commandInFlight.value) {
       return;
     }
     const q = currentRoute.query.q;
-    if (!q) {
+    if (q && mode !== 'ordinary') {
+      return;
+    }
+    const automatic = !q && mode === 'home';
+    if (!q && (!automatic || currentChatState.sidebarItems.value.length !== 0
+      || creatingChat.value || appEntry.discovery.value !== undefined)) {
       return;
     }
     const context = appEntry.captureModelLaunchContext();
@@ -167,6 +206,7 @@ watch(
     }
     const systemPromptStr = currentRoute.query['system-prompt'] || currentRoute.query.sp;
     const command: ChatCommand = {
+      creation: automatic ? 'when-empty' : 'always',
       context,
       routePath: currentRoute.path,
       fullPath: currentRoute.fullPath,
@@ -202,6 +242,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
     const context = appEntry.captureModelLaunchContext();
     automaticAttemptOwner = context.owner;
     const command: ChatCommand = {
+      creation: 'always',
       context,
       routePath: router.currentRoute.value.path,
       fullPath: router.currentRoute.value.fullPath,

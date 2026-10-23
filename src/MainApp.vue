@@ -44,5 +44,5 @@ defineExpose({
 <template>
   <MainAppSurface :post-startup-features="postStartupFeatures" />
   <AppCommandRuntime v-if="postStartupFeatures === 'active'" />
-  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" :pwa-activation="entry.modelSelection.value === undefined ? 'active' : 'deferred'" />
+  <AppAuxiliaryUi v-if="postStartupFeatures === 'active'" :pwa-activation="entry.modelSelection.value === undefined && entry.notFoundRecovery.value === undefined ? 'active' : 'deferred'" />
 </template>

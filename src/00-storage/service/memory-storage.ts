@@ -218,12 +218,8 @@ export class MemoryStorageProvider extends IStorageProvider {
     if (!raw) {
       return null;
     }
-    try {
-      const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
-    } catch {
-      return null;
-    }
+    const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
+    return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {

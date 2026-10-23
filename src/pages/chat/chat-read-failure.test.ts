@@ -48,6 +48,15 @@ vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({ currentChatId: computed(() => store.currentChatRef.value?.id) }),
 }));
 vi.mock('vue-router', () => ({ useRouter: () => router }));
+vi.mock('@/composables/useAppEntry', () => ({
+  useAppEntry: () => ({
+    recoverNotFound: async ({ isCurrent }: { isCurrent(): boolean }) => {
+      if (isCurrent()) {
+        await router.replace({ path: '/', query: {}, hash: '' });
+      }
+    },
+  }),
+}));
 vi.mock('@/components/UnselectedChatPane.vue', () => ({
   default: { template: '<div data-testid="unselected-chat"></div>' },
 }));
@@ -78,7 +87,7 @@ let provider: LocalStorageProvider;
 const route = ref<{ path?: string, params: { id: string }, query: Record<string, string> }>({ params: { id: 'a' }, query: {} });
 const router = {
   currentRoute: route,
-  replace: vi.fn(({ path, query }: { path?: string, query: Record<string, string> }) => {
+  replace: vi.fn(({ path, query }: { path?: string, query: Record<string, string>, hash?: string }) => {
     route.value = { path: path ?? route.value.path, params: path === '/' ? { id: '' } : route.value.params, query };
   }),
 };
