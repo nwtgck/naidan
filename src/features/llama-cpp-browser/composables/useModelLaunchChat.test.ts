@@ -691,7 +691,7 @@ describe('stable file verification and focused setup', () => {
   it('keeps the same Start button during a recheck of missing files without permitting a transfer', async () => {
     const { wrapper, state } = await renderCard();
     const button = wrapper.get('[data-testid="start-preview-model"]');
-    expect(button.text()).toBe('Start with this model');
+    expect(button.text()).toBe('Run in your browser');
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValueOnce(gate.promise);
     const check = state.refresh();

@@ -141,13 +141,12 @@ defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || 
 .browser-model-dialog-active :deep(.onboarding-benefits > .onboarding-benefit:nth-child(2)) {
   animation-delay: 300ms;
 }
-.browser-model-dialog-active :deep(.onboarding-benefits > span:last-child > .onboarding-benefit:first-child) {
+.browser-model-dialog-active :deep(.onboarding-benefits > .onboarding-benefit:nth-child(3)) {
   animation-delay: 440ms;
 }
-.browser-model-dialog-active :deep(.onboarding-benefits > span:last-child > .onboarding-benefit:last-child) {
-  animation-delay: 580ms;
-}
 .browser-model-dialog-active :deep(.onboarding-local-files) {
+  margin-block-start: clamp(2.5rem, calc(7dvh + 0.5rem), 4.5rem);
+  padding-top: 1rem;
   animation: browser-model-files-hint-appear 1000ms cubic-bezier(0.22, 1, 0.36, 1) 420ms both;
 }
 .browser-model-dialog-active :deep(.browser-model-step-enter-active) {
@@ -233,6 +232,10 @@ defineExpose({ focusPanel, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || 
   }
   .browser-model-dialog-active :deep(.browser-model-welcome) {
     padding-top: 3.5rem;
+  }
+  .browser-model-dialog-active :deep(.onboarding-local-files) {
+    margin-block-start: 1.25rem;
+    padding-top: 1rem;
   }
 }
 @media (max-width: 639px) and (max-height: 700px) {

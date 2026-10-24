@@ -86,14 +86,16 @@ defineExpose({
           v-if="!isStandalone"
           :href="portableAppDownload.href"
           :download="portableAppDownload.fileName"
+          :aria-label="lazyStrings.SHARED__download_portable_html_edition()"
+          data-testid="portable-html-download"
           tw-class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
           <div tw-class="shrink-0 p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
             <DownloadIcon tw-class="w-6 h-6" />
           </div>
           <div tw-class="flex-1 min-w-0">
-            <div tw-class="text-sm font-bold text-green-800 dark:text-green-300">{{ lazyStrings.AboutTab__standalone_app() }}</div>
-            <div tw-class="text-xs text-green-600/70 dark:text-green-400/60 font-medium">{{ lazyStrings.AboutTab__runs_locally_via_file_protocol() }}</div>
+            <div tw-class="flex flex-wrap items-center gap-2 text-sm font-bold text-green-800 dark:text-green-300"><span>{{ lazyStrings.SHARED__portable_html_edition() }}</span><span tw-class="rounded border border-green-300/50 px-1 py-0.5 text-[9px] font-medium leading-none text-green-600/80 dark:border-green-600/40 dark:text-green-400/80">ZIP</span></div>
+            <div tw-class="mt-1 text-xs font-medium leading-relaxed text-green-700/75 dark:text-green-300/70">{{ lazyStrings.SHARED__extract_the_zip_and_open_index_html_no_http_server_required() }}</div>
           </div>
         </a>
       </div>

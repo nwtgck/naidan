@@ -11,7 +11,6 @@ defineProps<{
   hasInput?: boolean,
   // Only the model-link setup opts out; ordinary welcome screens keep discovery.
   suggestionsVisibility?: 'visible' | 'hidden',
-  layout?: 'chat' | 'standalone',
 }>();
 
 defineEmits<{
@@ -71,7 +70,7 @@ defineExpose({
 </script>
 
 <template>
-  <WelcomeScreenFrame :placement="layout === 'standalone' ? 'standalone' : slots.primary || slots.notice || slots.actions ? 'contained' : 'floating'">
+  <WelcomeScreenFrame :placement="slots.primary || slots.notice || slots.actions ? 'contained' : 'floating'">
 
     <slot name="primary">
       <div class="welcome-storage-region" data-testid="welcome-storage-introduction" tw-class="w-full">
@@ -114,8 +113,6 @@ defineExpose({
                 </p>
               </div>
 
-              <div v-if="slots['model-selection']" tw-class="flex justify-center pt-3"><slot name="model-selection" /></div>
-
               <!-- Standalone Build Link (Only in Hosted Mode) -->
               <div v-if="isHosted" tw-class="flex justify-center pt-1">
                 <a
@@ -123,10 +120,12 @@ defineExpose({
                   :href="portableAppDownload.href"
                   :download="portableAppDownload.fileName"
                   tw-class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
-                  :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
+                  :title="lazyStrings.SHARED__extract_the_zip_and_open_index_html_no_http_server_required()"
+                  data-testid="portable-html-download"
                 >
                   <div class="welcome-portable-download-status" tw-class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none"></div>
-                  <span tw-class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.WelcomeScreen__download_portable_app() }}</span>
+                  <span tw-class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.SHARED__download_portable_html_edition() }}</span>
+                  <span tw-class="shrink-0 rounded border border-gray-200/70 px-1 py-0.5 text-[8px] font-medium leading-none text-gray-400 dark:border-gray-700 dark:text-gray-500">ZIP</span>
                   <DownloadIcon tw-class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
                 </a>
               </div>

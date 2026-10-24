@@ -57,6 +57,8 @@ describe('browser model welcome', () => {
       },
     };
     expect(wrapper.get('[data-testid="browser-model-heading"]').text()).toBe('Run AI directly in your web browser');
+    expect(wrapper.get('[data-testid="start-model"]').text()).toContain('Run in your browser');
+    expect(wrapper.get('[data-testid="start-model"]').attributes('aria-label')).toContain('Run in your browser');
     const welcome = wrapper.getComponent(WelcomeScreenFrame);
     expect(welcome.props('placement')).toBe('contained');
     expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(false);
@@ -116,6 +118,7 @@ describe('browser model welcome', () => {
     await wrapper.setProps({ browserProvidedModel: { availability: 'downloadable', selection: 'selected' } });
     const browserCard = wrapper.get('[data-testid="start-model"]');
     expect(browserCard.text()).toContain('Browser-provided model');
+    expect(browserCard.text()).toContain('Run in your browser');
     expect(browserCard.text()).not.toContain('GB');
     expect(wrapper.text()).toContain('7 / 7');
     await browserCard.trigger('click');

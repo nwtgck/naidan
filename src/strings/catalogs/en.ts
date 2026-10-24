@@ -13,7 +13,9 @@ import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/en';
 import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/en';
 import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/en';
 import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/en';
+import { SHARED__download_portable_html_edition } from '@/strings/messages/SHARED__download_portable_html_edition/en';
 import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/en';
+import { SHARED__extract_the_zip_and_open_index_html_no_http_server_required } from '@/strings/messages/SHARED__extract_the_zip_and_open_index_html_no_http_server_required/en';
 import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/en';
 import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/en';
 import { SHARED__model_folders_choose_folder_above_owner } from '@/strings/messages/SHARED__model_folders_choose_folder_above_owner/en';
@@ -35,6 +37,8 @@ import { SHARED__model_import_use_temporarily } from '@/strings/messages/SHARED_
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/en';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/en';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/en';
+import { SHARED__portable_html_edition } from '@/strings/messages/SHARED__portable_html_edition/en';
+import { SHARED__run_in_your_browser } from '@/strings/messages/SHARED__run_in_your_browser/en';
 import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/en';
 import { SHARED__use_model_in_this_chat } from '@/strings/messages/SHARED__use_model_in_this_chat/en';
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/en';
@@ -46,8 +50,6 @@ import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github
 import { AboutTab__loading_licenses } from '@/strings/messages/AboutTab__loading_licenses/en';
 import { AboutTab__open_source_licenses } from '@/strings/messages/AboutTab__open_source_licenses/en';
 import { AboutTab__privacy_focused_local_lm_interface } from '@/strings/messages/AboutTab__privacy_focused_local_lm_interface/en';
-import { AboutTab__runs_locally_via_file_protocol } from '@/strings/messages/AboutTab__runs_locally_via_file_protocol/en';
-import { AboutTab__standalone_app } from '@/strings/messages/AboutTab__standalone_app/en';
 import { AboutTab__unknown_package } from '@/strings/messages/AboutTab__unknown_package/en';
 import { AboutTab__version } from '@/strings/messages/AboutTab__version/en';
 import { AboutTab__view_license_text } from '@/strings/messages/AboutTab__view_license_text/en';
@@ -99,7 +101,6 @@ import { BrowserConnectionSelection__optional } from '@/strings/messages/Browser
 import { BrowserConnectionSelection__retry_check } from '@/strings/messages/BrowserConnectionSelection__retry_check/en';
 import { BrowserConnectionSelection__run_on_your_device } from '@/strings/messages/BrowserConnectionSelection__run_on_your_device/en';
 import { BrowserConnectionSelection__show_api_key } from '@/strings/messages/BrowserConnectionSelection__show_api_key/en';
-import { BrowserConnectionSelection__start_with_this_model } from '@/strings/messages/BrowserConnectionSelection__start_with_this_model/en';
 import { BrowserConnectionSelection__unavailable_in_this_environment } from '@/strings/messages/BrowserConnectionSelection__unavailable_in_this_environment/en';
 import { BrowserConnectionSelection__use_browser_managed_model } from '@/strings/messages/BrowserConnectionSelection__use_browser_managed_model/en';
 import { BrowserConnectionSelection__use_openai_ollama_and_more } from '@/strings/messages/BrowserConnectionSelection__use_openai_ollama_and_more/en';
@@ -132,15 +133,14 @@ import { BrowserModelWelcome__gguf_support } from '@/strings/messages/BrowserMod
 import { BrowserModelWelcome__more_models_on_hugging_face } from '@/strings/messages/BrowserModelWelcome__more_models_on_hugging_face/en';
 import { BrowserModelWelcome__next_model } from '@/strings/messages/BrowserModelWelcome__next_model/en';
 import { BrowserModelWelcome__no_inference_server_required } from '@/strings/messages/BrowserModelWelcome__no_inference_server_required/en';
-import { BrowserModelWelcome__no_installation_required } from '@/strings/messages/BrowserModelWelcome__no_installation_required/en';
 import { BrowserModelWelcome__previous_model } from '@/strings/messages/BrowserModelWelcome__previous_model/en';
 import { BrowserModelWelcome__processed_on_this_device } from '@/strings/messages/BrowserModelWelcome__processed_on_this_device/en';
 import { BrowserModelWelcome__prompts_stay_on_your_device } from '@/strings/messages/BrowserModelWelcome__prompts_stay_on_your_device/en';
 import { BrowserModelWelcome__run_ai_in_your_web_browser } from '@/strings/messages/BrowserModelWelcome__run_ai_in_your_web_browser/en';
+import { BrowserModelWelcome__run_model_in_your_browser } from '@/strings/messages/BrowserModelWelcome__run_model_in_your_browser/en';
 import { BrowserModelWelcome__select } from '@/strings/messages/BrowserModelWelcome__select/en';
 import { BrowserModelWelcome__select_model } from '@/strings/messages/BrowserModelWelcome__select_model/en';
 import { BrowserModelWelcome__selected_model } from '@/strings/messages/BrowserModelWelcome__selected_model/en';
-import { BrowserModelWelcome__start_with_model } from '@/strings/messages/BrowserModelWelcome__start_with_model/en';
 import { BrowserModelWelcome__the_browser_handles_initial_preparation } from '@/strings/messages/BrowserModelWelcome__the_browser_handles_initial_preparation/en';
 import { BrowserModelWelcome__the_browser_is_preparing_the_model } from '@/strings/messages/BrowserModelWelcome__the_browser_is_preparing_the_model/en';
 import { BrowserModelWelcome__this_browser } from '@/strings/messages/BrowserModelWelcome__this_browser/en';
@@ -732,6 +732,17 @@ import { HistoryManipulationModal__system_prompt_resolution } from '@/strings/me
 import { HistoryManipulationModal__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/HistoryManipulationModal__this_chat_will_not_use_any_system_instructions/en';
 import { HistoryManipulationModal__thoughts } from '@/strings/messages/HistoryManipulationModal__thoughts/en';
 import { HistoryManipulationModal__type_message_content } from '@/strings/messages/HistoryManipulationModal__type_message_content/en';
+import { HomeWelcome__chat_groups } from '@/strings/messages/HomeWelcome__chat_groups/en';
+import { HomeWelcome__conversations_are_stored_on_this_device } from '@/strings/messages/HomeWelcome__conversations_are_stored_on_this_device/en';
+import { HomeWelcome__conversations_in_memory_are_cleared_on_reload } from '@/strings/messages/HomeWelcome__conversations_in_memory_are_cleared_on_reload/en';
+import { HomeWelcome__could_not_create_chat_try_again } from '@/strings/messages/HomeWelcome__could_not_create_chat_try_again/en';
+import { HomeWelcome__could_not_open_chat_try_again } from '@/strings/messages/HomeWelcome__could_not_open_chat_try_again/en';
+import { HomeWelcome__extract_zip_and_open_index_html_in_your_browser } from '@/strings/messages/HomeWelcome__extract_zip_and_open_index_html_in_your_browser/en';
+import { HomeWelcome__how_to_open_the_portable_html_edition } from '@/strings/messages/HomeWelcome__how_to_open_the_portable_html_edition/en';
+import { HomeWelcome__most_recently_updated } from '@/strings/messages/HomeWelcome__most_recently_updated/en';
+import { HomeWelcome__no_http_server_setup_required } from '@/strings/messages/HomeWelcome__no_http_server_setup_required/en';
+import { HomeWelcome__recent_chats } from '@/strings/messages/HomeWelcome__recent_chats/en';
+import { HomeWelcome__start_a_new_chat } from '@/strings/messages/HomeWelcome__start_a_new_chat/en';
 import { HttpHeadersEditor__add_header } from '@/strings/messages/HttpHeadersEditor__add_header/en';
 import { HttpHeadersEditor__http_headers } from '@/strings/messages/HttpHeadersEditor__http_headers/en';
 import { HttpHeadersEditor__name } from '@/strings/messages/HttpHeadersEditor__name/en';
@@ -1214,7 +1225,6 @@ import { LlamaCppBrowserModelLaunch__ready_when_you_are } from '@/strings/messag
 import { LlamaCppBrowserModelLaunch__refresh_choices } from '@/strings/messages/LlamaCppBrowserModelLaunch__refresh_choices/en';
 import { LlamaCppBrowserModelLaunch__retry } from '@/strings/messages/LlamaCppBrowserModelLaunch__retry/en';
 import { LlamaCppBrowserModelLaunch__runs_privately_in_your_browser } from '@/strings/messages/LlamaCppBrowserModelLaunch__runs_privately_in_your_browser/en';
-import { LlamaCppBrowserModelLaunch__start_with_this_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__start_with_this_model/en';
 import { LlamaCppBrowserModelLaunch__unavailable_here } from '@/strings/messages/LlamaCppBrowserModelLaunch__unavailable_here/en';
 import { LlamaCppBrowserModelLaunch__variant_not_found } from '@/strings/messages/LlamaCppBrowserModelLaunch__variant_not_found/en';
 import { LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group } from '@/strings/messages/LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group/en';
@@ -1765,7 +1775,6 @@ import { SettingsModal__llama_cpp_browser } from '@/strings/messages/SettingsMod
 import { SettingsModal__provider_profiles } from '@/strings/messages/SettingsModal__provider_profiles/en';
 import { SettingsModal__recipes } from '@/strings/messages/SettingsModal__recipes/en';
 import { SettingsModal__settings } from '@/strings/messages/SettingsModal__settings/en';
-import { SettingsModal__standalone } from '@/strings/messages/SettingsModal__standalone/en';
 import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storage/en';
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/en';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/en';
@@ -2029,8 +2038,6 @@ import { WelcomeScreen__brainstorm } from '@/strings/messages/WelcomeScreen__bra
 import { WelcomeScreen__code_help } from '@/strings/messages/WelcomeScreen__code_help/en';
 import { WelcomeScreen__conversations_are_stored_in_memory } from '@/strings/messages/WelcomeScreen__conversations_are_stored_in_memory/en';
 import { WelcomeScreen__data_is_cleared_on_reload } from '@/strings/messages/WelcomeScreen__data_is_cleared_on_reload/en';
-import { WelcomeScreen__download_portable_app } from '@/strings/messages/WelcomeScreen__download_portable_app/en';
-import { WelcomeScreen__download_standalone_portable_version } from '@/strings/messages/WelcomeScreen__download_standalone_portable_version/en';
 import { WelcomeScreen__explain_vue_composition_api } from '@/strings/messages/WelcomeScreen__explain_vue_composition_api/en';
 import { WelcomeScreen__home_automation_project_ideas } from '@/strings/messages/WelcomeScreen__home_automation_project_ideas/en';
 import { WelcomeScreen__summarize } from '@/strings/messages/WelcomeScreen__summarize/en';
@@ -3115,7 +3122,9 @@ export const catalog = {
   SHARED__connection_failed_check_url_or_provider,
   SHARED__current_chat,
   SHARED__current_chat_plus_chat_group,
+  SHARED__download_portable_html_edition,
   SHARED__expose_chat_discovery_paths,
+  SHARED__extract_the_zip_and_open_index_html_no_http_server_required,
   SHARED__generated_image,
   SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
   SHARED__model_folders_choose_folder_above_owner,
@@ -3137,6 +3146,8 @@ export const catalog = {
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
+  SHARED__portable_html_edition,
+  SHARED__run_in_your_browser,
   SHARED__unsupported_experimental_endpoint,
   SHARED__use_model_in_this_chat,
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
@@ -3148,8 +3159,6 @@ export const catalog = {
   AboutTab__loading_licenses,
   AboutTab__open_source_licenses,
   AboutTab__privacy_focused_local_lm_interface,
-  AboutTab__runs_locally_via_file_protocol,
-  AboutTab__standalone_app,
   AboutTab__unknown_package,
   AboutTab__version,
   AboutTab__view_license_text,
@@ -3201,7 +3210,6 @@ export const catalog = {
   BrowserConnectionSelection__retry_check,
   BrowserConnectionSelection__run_on_your_device,
   BrowserConnectionSelection__show_api_key,
-  BrowserConnectionSelection__start_with_this_model,
   BrowserConnectionSelection__unavailable_in_this_environment,
   BrowserConnectionSelection__use_browser_managed_model,
   BrowserConnectionSelection__use_openai_ollama_and_more,
@@ -3234,15 +3242,14 @@ export const catalog = {
   BrowserModelWelcome__more_models_on_hugging_face,
   BrowserModelWelcome__next_model,
   BrowserModelWelcome__no_inference_server_required,
-  BrowserModelWelcome__no_installation_required,
   BrowserModelWelcome__previous_model,
   BrowserModelWelcome__processed_on_this_device,
   BrowserModelWelcome__prompts_stay_on_your_device,
   BrowserModelWelcome__run_ai_in_your_web_browser,
+  BrowserModelWelcome__run_model_in_your_browser,
   BrowserModelWelcome__select,
   BrowserModelWelcome__select_model,
   BrowserModelWelcome__selected_model,
-  BrowserModelWelcome__start_with_model,
   BrowserModelWelcome__the_browser_handles_initial_preparation,
   BrowserModelWelcome__the_browser_is_preparing_the_model,
   BrowserModelWelcome__this_browser,
@@ -3834,6 +3841,17 @@ export const catalog = {
   HistoryManipulationModal__this_chat_will_not_use_any_system_instructions,
   HistoryManipulationModal__thoughts,
   HistoryManipulationModal__type_message_content,
+  HomeWelcome__chat_groups,
+  HomeWelcome__conversations_are_stored_on_this_device,
+  HomeWelcome__conversations_in_memory_are_cleared_on_reload,
+  HomeWelcome__could_not_create_chat_try_again,
+  HomeWelcome__could_not_open_chat_try_again,
+  HomeWelcome__extract_zip_and_open_index_html_in_your_browser,
+  HomeWelcome__how_to_open_the_portable_html_edition,
+  HomeWelcome__most_recently_updated,
+  HomeWelcome__no_http_server_setup_required,
+  HomeWelcome__recent_chats,
+  HomeWelcome__start_a_new_chat,
   HttpHeadersEditor__add_header,
   HttpHeadersEditor__http_headers,
   HttpHeadersEditor__name,
@@ -4316,7 +4334,6 @@ export const catalog = {
   LlamaCppBrowserModelLaunch__refresh_choices,
   LlamaCppBrowserModelLaunch__retry,
   LlamaCppBrowserModelLaunch__runs_privately_in_your_browser,
-  LlamaCppBrowserModelLaunch__start_with_this_model,
   LlamaCppBrowserModelLaunch__unavailable_here,
   LlamaCppBrowserModelLaunch__variant_not_found,
   LlamaCppBrowserModelLibrary__could_not_create_or_open_chat_group,
@@ -4867,7 +4884,6 @@ export const catalog = {
   SettingsModal__provider_profiles,
   SettingsModal__recipes,
   SettingsModal__settings,
-  SettingsModal__standalone,
   SettingsModal__storage,
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
@@ -5131,8 +5147,6 @@ export const catalog = {
   WelcomeScreen__code_help,
   WelcomeScreen__conversations_are_stored_in_memory,
   WelcomeScreen__data_is_cleared_on_reload,
-  WelcomeScreen__download_portable_app,
-  WelcomeScreen__download_standalone_portable_version,
   WelcomeScreen__explain_vue_composition_api,
   WelcomeScreen__home_automation_project_ideas,
   WelcomeScreen__summarize,

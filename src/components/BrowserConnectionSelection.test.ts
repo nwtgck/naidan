@@ -62,6 +62,7 @@ describe('browser model connection selection', () => {
     expect(wrapper.getComponent(ModelSelector).props('models')).toEqual([]);
     expect(wrapper.getComponent(ModelSelector).props('popupPresentation')).toBe('inline');
     expect(wrapper.get('[data-testid="connection-submit"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="connection-submit"]').text()).toBe('Use this connection');
     await wrapper.get('#model-connection-url').setValue('https://example.invalid/v1');
     await flushPromises();
     expect(mocks.loadLmProvider).not.toHaveBeenCalled();
@@ -171,6 +172,7 @@ describe('browser model connection selection', () => {
     expect(wrapper.find('#model-connection-url').exists()).toBe(false);
     expect(mocks.availability).toHaveBeenCalledExactlyOnceWith({ inputMode: 'text' });
     expect(mocks.prepare).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="connection-submit"]').text()).toBe('Run in your browser');
     expect(wrapper.get('[data-testid="connection-submit"]').attributes('disabled')).toBeUndefined();
     const clicked = wrapper.get('[data-testid="connection-submit"]').trigger('click');
     expect(order).toEqual(['prepare', 'save']);

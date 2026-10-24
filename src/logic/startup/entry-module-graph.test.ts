@@ -203,6 +203,28 @@ describe('production entry module boundaries', () => {
     expect(graph.referencesFrom({ from: 'src/components/BrowserModelWelcomeDialog.vue' })).not.toContainEqual({ from: 'src/components/BrowserModelWelcomeDialog.vue', target: 'src/components/BrowserConnectionSelection.vue', kind: 'static' });
   });
 
+  it('keeps the root home behind MainApp and loads its creation action only on demand', () => {
+    const pending = ['src/App.vue'];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const from = pending.pop();
+      if (from === undefined || visited.has(from)) {
+        continue;
+      }
+      visited.add(from);
+      for (const reference of graph.referencesFrom({ from })) {
+        if (reference.kind === 'static' && graph.sources.has(reference.target)) {
+          pending.push(reference.target);
+        }
+      }
+    }
+    expect(visited.has('src/components/HomeWelcome.vue')).toBe(false);
+    expect(graph.referencesFrom({ from: 'src/components/MainAppSurface.vue' })).toContainEqual({ from: 'src/components/MainAppSurface.vue', target: 'src/components/HomeWelcome.vue', kind: 'static' });
+    const homeReferences = graph.referencesFrom({ from: 'src/components/HomeWelcome.vue' });
+    expect(homeReferences).toContainEqual({ from: 'src/components/HomeWelcome.vue', target: 'src/composables/chat/ui/useChatLifecycle.ts', kind: 'dynamic' });
+    expect(homeReferences).not.toContainEqual({ from: 'src/components/HomeWelcome.vue', target: 'src/composables/chat/ui/useChatLifecycle.ts', kind: 'static' });
+  });
+
   it('keeps App synchronous dependencies lightweight across the existing settings boundary', () => {
     // App's entry controller and the reused language menu share the inherited
     // settings owner and its synchronous service facades. Exempt these exact

@@ -1,0 +1,1 @@
+export const SHARED__extract_the_zip_and_open_index_html_no_http_server_required = (): string => "Extrae el ZIP y abre index.html directamente en tu navegador (file://). No necesitas un servidor HTTP.";
