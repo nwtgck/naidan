@@ -143,6 +143,12 @@ int unrelated;`;
       },
     };
     const outputDirectory = path.join(root, 'dist');
+    // The license collector reads package metadata from the Vite root.
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'naidan-llama-package-test',
+      version: '1.0.0',
+      private: true,
+    }));
     writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="UTF-8"></head><body><script type="module" src="./main.ts"></script></body></html>');
     // A seven-message synthetic boundary exercises the real locale packager,
     // without building the application's complete message catalog.
