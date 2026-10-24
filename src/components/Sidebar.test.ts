@@ -8,7 +8,7 @@ import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType, LmParameters, Endpoint } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 const entryCommands = vi.hoisted(() => ({ openSettings: vi.fn(), openDiscovery: vi.fn(), openHome: vi.fn() }));
-vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => entryCommands }));
+vi.mock('@/composables/useAppEntry', () => ({ useAppEntry: () => ({ ...entryCommands, effectiveRoute: ref(undefined) }) }));
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });

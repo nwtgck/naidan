@@ -7,10 +7,6 @@ import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/01-
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
-const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
-  mockScrollIntoViewSafe: vi.fn(),
-}));
-
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChat = ref<any>(null);
@@ -146,10 +142,6 @@ vi.mock('../features/theme/composables/useTheme', () => ({
   }),
 }));
 
-vi.mock('@/utils/dom', () => ({
-  scrollIntoViewSafe: mockScrollIntoViewSafe,
-}));
-
 // Better mock for draggable to test v-model / @update:model-value
 vi.mock('vuedraggable', () => ({
   default: {
@@ -183,7 +175,6 @@ describe('Sidebar Compact View & DND Integrity', () => {
     mockChats.value = [];
     mockCurrentChat.value = null;
     vi.clearAllMocks();
-    mockScrollIntoViewSafe.mockClear();
 
     // Individually defined mocks for scrolling as requested
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -192,6 +183,8 @@ describe('Sidebar Compact View & DND Integrity', () => {
         this.scrollTop = options.top;
       }
     });
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function(this: HTMLElement) {
       if (this.dataset.testid === 'sidebar-nav') {
         return {
@@ -207,6 +200,9 @@ describe('Sidebar Compact View & DND Integrity', () => {
         };
       }
 
+      if (this.hasAttribute('data-sidebar-chat-list') || this.hasAttribute('data-sidebar-chat-group-content')) {
+        return new DOMRect(0, 0, 100, 1000);
+      }
       if (this.dataset.sidebarChatId === 'c6') {
         return {
           top: 180,
@@ -236,6 +232,8 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
     delete (HTMLElement.prototype as any).scrollIntoView;
     delete (HTMLElement.prototype as any).scrollTo;
     delete (HTMLElement.prototype as any).getBoundingClientRect;
@@ -338,7 +336,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     await nextTick();
 
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(7);
-    expect(mockScrollIntoViewSafe).toHaveBeenCalled();
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalled();
   });
 
   it('maintains full list integrity when reordering items in compact view', async () => {
@@ -511,5 +509,28 @@ describe('Sidebar Compact View & DND Integrity', () => {
     await nextTick();
 
     expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+  });
+
+  it('measures the full expanded list instead of imposing a 2000px limit', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(5200);
+    const children: ChatSidebarItem[] = Array.from({ length: 100 }, (_, i) => ({
+      id: `long-${i}`,
+      type: 'chat',
+      chat: { id: toChatId({ raw: `long-${i}` }), title: `Chat ${i}`, updatedAt: 0 },
+    }));
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'long' }), name: 'Long chat group', isCollapsed: false, updatedAt: 0, items: children }];
+    using test = {
+      wrapper: mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } }),
+      [Symbol.dispose]() {
+        this.wrapper.unmount();
+      },
+    };
+    await nextTick();
+    await test.wrapper.get('[data-testid=show-more-button]').trigger('click');
+    await nextTick();
+    const list = test.wrapper.get<HTMLElement>('[data-sidebar-chat-list]').element;
+    expect(list.style.getPropertyValue('--sidebar-chat-list-height')).toBe('5200px');
+    expect(list.style.maxHeight).toBe('var(--sidebar-chat-list-height)');
+    expect(test.wrapper.findAll('.sidebar-chat-item')).toHaveLength(100);
   });
 });

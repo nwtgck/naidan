@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
-import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
+import { ref, watch, nextTick, computed, toRaw } from 'vue';
 import type { ObjectDirective } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
@@ -25,7 +25,7 @@ import {
   SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon, LibraryBigIcon,
 } from 'lucide-vue-next';
-import { idToRaw } from '@/01-models/ids';
+import { idToRaw, toChatId, toChatGroupId } from '@/01-models/ids';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
@@ -34,7 +34,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
-import { scrollIntoViewSafe } from '@/utils/dom';
+import { useSidebarItemReveal, type SidebarRevealTarget } from '@/composables/useSidebarItemReveal';
 import { isChatProcessing } from '@/composables/chat/chat-activity-queries';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -226,7 +226,7 @@ defineEmits<{
   (e: 'open-settings'): void,
 }>();
 
-const sidebarItemsLocal = ref<SidebarItem[]>([]);
+const sidebarItemsLocal = ref<SidebarItem[]>(JSON.parse(JSON.stringify(sidebarItems.value)));
 const isDragging = ref(false);
 const dragHoverGroup = ref<ChatGroupId | null>(null);
 let dragHoverTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -311,178 +311,51 @@ const focusedId = computed(() => {
   return currentChatGroup.value ? idToRaw({ id: currentChatGroup.value.id }) : currentChat.value ? idToRaw({ id: currentChat.value.id }) : null;
 });
 
-function isSidebarItemVisible({
-  container,
-  element,
-}: {
-  container: HTMLElement,
-  element: HTMLElement,
-}) {
-  const containerRect = container.getBoundingClientRect();
-  const elementRect = element.getBoundingClientRect();
-
-  if (containerRect.height === 0 || elementRect.height === 0) {
-    return false;
-  }
-
-  return elementRect.top >= containerRect.top && elementRect.bottom <= containerRect.bottom;
-}
-
-function ensureChatVisibleInCompactGroup({
-  chatId,
-}: {
-  chatId: ChatId,
-}) {
-  for (const item of sidebarItemsLocal.value) {
-    switch (item.type) {
-    case 'chat':
-      continue;
-    case 'chat_group': {
-      const hiddenItemIndex = item.chatGroup.items.findIndex((chatItem, index) =>
-        index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId,
-      );
-
-      if (hiddenItemIndex === -1) {
-        continue;
-      }
-      if (item.chatGroup.isCollapsed) {
-        return;
-      }
-      if (expandedGroupIds.value.has(item.chatGroup.id)) {
-        return;
-      }
-
-      expandedGroupIds.value.add(item.chatGroup.id);
-      return;
+// The effective route already knows the initial URL before the chat body loads.
+// Do not let a stale currentChat move the list while a new route is loading.
+const revealTarget = computed<SidebarRevealTarget | undefined>(() => {
+  const route = appEntry.effectiveRoute.value;
+  if (route !== undefined) {
+    const id = 'id' in route.params ? route.params.id : undefined;
+    if (typeof id !== 'string') {
+      return undefined;
     }
-    default: {
-      const _ex: never = item;
-      return _ex;
+    if (route.path.startsWith('/chat/')) {
+      return { type: 'chat', id: toChatId({ raw: id }) };
     }
+    if (route.path.startsWith('/chat-group/')) {
+      return { type: 'chat_group', id: toChatGroupId({ raw: id }) };
     }
+    return undefined;
   }
-}
-
-async function scheduleSidebarItemScroll({
-  itemType,
-  id,
-  onlyWhenOutOfView,
-}: {
-  itemType: 'chat',
-  id: ChatId | undefined,
-  onlyWhenOutOfView: boolean,
-} | {
-  itemType: 'chat_group',
-  id: ChatGroupId | undefined,
-  onlyWhenOutOfView: boolean,
-}) {
-  if (!id || typeof document === 'undefined' || !navContainer.value) {
-    return;
+  // Standalone component hosts without an app entry use the selected state.
+  if (currentChat.value !== null && currentChat.value !== undefined) {
+    return { type: 'chat', id: currentChat.value.id };
   }
-
-  switch (itemType) {
-  case 'chat':
-    ensureChatVisibleInCompactGroup({ chatId: id });
-    break;
-  case 'chat_group':
-    break;
-  default: {
-    const _ex: never = itemType;
-    return _ex;
+  if (currentChatGroup.value !== null && currentChatGroup.value !== undefined) {
+    return { type: 'chat_group', id: currentChatGroup.value.id };
   }
-  }
-
-  return nextTick().then(() => new Promise<void>((resolve) => {
-    window.setTimeout(() => {
-      if (typeof document === 'undefined' || !navContainer.value) {
-        resolve();
-        return;
-      }
-
-      const selector = (() => {
-        switch (itemType) {
-        case 'chat':
-          return `[data-sidebar-chat-id="${idToRaw({ id })}"]`;
-        case 'chat_group':
-          return `[data-sidebar-group-id="${idToRaw({ id })}"]`;
-        default: {
-          const _ex: never = itemType;
-          return _ex;
-        }
-        }
-      })();
-
-      const el = navContainer.value.querySelector(selector);
-      if (!(el instanceof HTMLElement)) {
-        resolve();
-        return;
-      }
-      if (onlyWhenOutOfView && isSidebarItemVisible({ container: navContainer.value, element: el })) {
-        resolve();
-        return;
-      }
-
-      scrollIntoViewSafe({
-        container: navContainer.value,
-        element: el,
-        behavior: 'smooth',
-        block: 'nearest',
-      });
-      resolve();
-    }, 100);
-  }));
-}
-
-watch(() => currentChat.value?.id, (id) => {
-  void scheduleSidebarItemScroll({
-    itemType: 'chat',
-    id,
-    onlyWhenOutOfView: true,
-  });
-}, { immediate: true });
-
-watch(() => currentChatGroup.value?.id, (id) => {
-  void scheduleSidebarItemScroll({
-    itemType: 'chat_group',
-    id,
-    onlyWhenOutOfView: true,
-  });
-}, { immediate: true });
-
-watch(activeFocusAreaVersion, () => {
-  switch (activeFocusArea.value) {
-  case 'chat':
-    break;
-  case 'sidebar':
-  case 'chat-group-settings':
-  case 'chat-settings':
-  case 'settings':
-  case 'onboarding':
-  case 'dialog':
-  case 'none':
-  case 'search':
-    return;
-  default: {
-    const _ex: never = activeFocusArea.value;
-    return _ex;
-  }
-  }
-
-  if (currentChat.value?.id) {
-    void scheduleSidebarItemScroll({
-      itemType: 'chat',
-      id: currentChat.value.id,
-      onlyWhenOutOfView: true,
-    });
-    return;
-  }
-
-  void scheduleSidebarItemScroll({
-    itemType: 'chat_group',
-    id: currentChatGroup.value?.id,
-    onlyWhenOutOfView: true,
-  });
+  return undefined;
 });
+
+const itemReveal = useSidebarItemReveal({
+  container: navContainer,
+  items: sidebarItemsLocal,
+  target: revealTarget,
+  expandedChatGroupIds: expandedGroupIds,
+  compactThreshold: COMPACT_THRESHOLD,
+  isOpen: isSidebarOpen,
+  isDragging,
+  focusArea: activeFocusArea,
+  focusVersion: activeFocusAreaVersion,
+});
+
+// Use the actual list height instead of clipping long chat groups at 2000px.
+// Measuring after child updates also preserves the existing compact transition.
+const vChatListHeight: ObjectDirective<HTMLElement> = {
+  mounted: element => element.style.setProperty('--sidebar-chat-list-height', `${element.scrollHeight}px`),
+  updated: element => element.style.setProperty('--sidebar-chat-list-height', `${element.scrollHeight}px`),
+};
 
 function isGroupCompactExpanded({ groupId }: { groupId: ChatGroupId }) {
   return expandedGroupIds.value.has(groupId);
@@ -521,24 +394,6 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
 }
 
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
-
-onMounted(() => {
-  syncLocalItems();
-  if (currentChat.value?.id) {
-    void scheduleSidebarItemScroll({
-      itemType: 'chat',
-      id: currentChat.value.id,
-      onlyWhenOutOfView: true,
-    });
-    return;
-  }
-
-  void scheduleSidebarItemScroll({
-    itemType: 'chat_group',
-    id: currentChatGroup.value?.id,
-    onlyWhenOutOfView: true,
-  });
-});
 
 function captureSidebarItemRects() {
   const rects = new Map<string, DOMRect>();
@@ -605,6 +460,7 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
         element.classList.remove('sidebar-reorder-animating');
         element.style.transition = '';
         element.style.transform = '';
+        itemReveal.retry();
       }, 220);
     };
 
@@ -1068,7 +924,6 @@ defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
-      scheduleSidebarItemScroll,
       syncLocalItems,
       toggleGroupCompactExpansion,
     },
@@ -1136,6 +991,12 @@ defineExpose({
       tabindex="0"
       @focus="setActiveFocusArea({ area: 'sidebar' })"
       @click="setActiveFocusArea({ area: 'sidebar' })"
+      @transitionend="itemReveal.retry"
+      @scroll.passive="itemReveal.releaseCompletedScroll"
+      @wheel.passive="itemReveal.interruptReveal"
+      @touchstart.passive="itemReveal.interruptReveal"
+      @pointerdown="itemReveal.interruptReveal"
+      @keydown="itemReveal.interruptReveal"
     >
       <template v-if="isSidebarOpen">
         <Transition name="chat-group-new">
@@ -1231,7 +1092,7 @@ defineExpose({
 
                 <!-- Nested Items in Chat Group -->
                 <div tw-class="grid transition-all duration-200 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
-                  <div tw-class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
+                  <div tw-class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0" data-sidebar-chat-group-content>
                     <button
                       @click.stop="handleNewChat({ groupId: element.chatGroup.id })"
                       tw-class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
@@ -1241,8 +1102,10 @@ defineExpose({
 
                     <!-- Smooth height for Show more/less -->
                     <div
+                      v-chat-list-height
+                      data-sidebar-chat-list
                       tw-class="transition-[max-height] duration-400 ease-in-out overflow-hidden"
-                      :style="{ maxHeight: isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? '2000px' : '250px' }"
+                      :style="{ maxHeight: isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? 'var(--sidebar-chat-list-height)' : '250px' }"
                     >
                       <draggable
                         v-model="useGroupItemsModel({ groupId: element.chatGroup.id }).value"
@@ -1465,12 +1328,6 @@ defineExpose({
 
 .handle:active {
   cursor: grabbing;
-}
-
-.sidebar-chat-item,
-.is-group > div:first-child {
-  scroll-margin-top: 48px;
-  scroll-margin-bottom: 48px;
 }
 
 .sortable-ghost {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, ref, computed, reactive, nextTick } from 'vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory, type RouteLocationResolved } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
@@ -13,9 +13,12 @@ beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
-const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
-  mockScrollIntoViewSafe: vi.fn(),
-}));
+const mockEffectiveRoute = ref<RouteLocationResolved>();
+
+vi.mock('../composables/useAppEntry', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/composables/useAppEntry')>();
+  return { ...actual, useAppEntry: () => ({ ...actual.useAppEntry(), effectiveRoute: mockEffectiveRoute }) };
+});
 
 const mockCurrentChat = ref<Chat | { id: string, groupId?: string | null, title?: string } | null>(null);
 const mockCurrentChatGroup = ref<ChatGroup | { id: string } | null>(null);
@@ -121,10 +124,6 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/utils/dom', () => ({
-  scrollIntoViewSafe: mockScrollIntoViewSafe,
-}));
-
 vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
@@ -146,7 +145,7 @@ const TestHarness = defineComponent({
 describe('Sidebar Focus Sync', () => {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/', component: { template: 'div' } }],
+    routes: ['/', '/chat/:id', '/chat-group/:id'].map(path => ({ path, component: { template: 'div' } })),
   });
 
   let wrapper: VueWrapper<any> | null = null;
@@ -154,10 +153,10 @@ describe('Sidebar Focus Sync', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    mockEffectiveRoute.value = undefined;
     layout.activeFocusArea.value = 'chat';
     layout.activeFocusAreaVersion.value = 0;
     layout.isSidebarOpen.value = true;
-    mockScrollIntoViewSafe.mockClear();
     mockCurrentChat.value = {
       id: 'chat-1',
       title: 'Chat 1',
@@ -178,6 +177,8 @@ describe('Sidebar Focus Sync', () => {
         this.scrollTop = options.top;
       }
     });
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100);
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000);
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function(this: HTMLElement) {
       if (this.dataset.testid === 'sidebar-nav') {
         return {
@@ -195,8 +196,8 @@ describe('Sidebar Focus Sync', () => {
 
       if (this.dataset.sidebarChatId === 'chat-1' || this.dataset.sidebarGroupId === 'g1') {
         return {
-          top: 180,
-          bottom: 220,
+          top: 180 - (this.closest<HTMLElement>('[data-testid=sidebar-nav]')?.scrollTop ?? 0),
+          bottom: 220 - (this.closest<HTMLElement>('[data-testid=sidebar-nav]')?.scrollTop ?? 0),
           left: 0,
           right: 100,
           width: 100,
@@ -224,6 +225,7 @@ describe('Sidebar Focus Sync', () => {
   afterEach(() => {
     wrapper?.unmount();
     wrapper = null;
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -247,15 +249,16 @@ describe('Sidebar Focus Sync', () => {
     // Include lazy modal initialization before checking the click's focus update.
     await vi.dynamicImportSettled();
     await vi.runAllTimersAsync();
-    mockScrollIntoViewSafe.mockClear();
+    vi.mocked(HTMLElement.prototype.scrollTo)?.mockClear();
 
+    wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element.scrollTop = 0;
     await wrapper.getComponent(CurrentChatPane).trigger('click');
     await nextTick();
     await vi.runAllTimersAsync();
 
     expect(layout.activeFocusArea.value).toBe('chat');
     expect(layout.activeFocusAreaVersion.value).toBe(1);
-    expect(mockScrollIntoViewSafe).toHaveBeenCalled();
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledWith({ top: 132.5, behavior: 'smooth' });
   });
 
   it('can scroll a hidden selected group after chat focus is re-activated', async () => {
@@ -284,13 +287,73 @@ describe('Sidebar Focus Sync', () => {
     await nextTick();
 
     await vi.runAllTimersAsync();
-    mockScrollIntoViewSafe.mockClear();
+    vi.mocked(HTMLElement.prototype.scrollTo)?.mockClear();
 
+    wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element.scrollTop = 0;
     layout.setActiveFocusArea({ area: 'chat' });
     await nextTick();
     await vi.runAllTimersAsync();
 
     expect(layout.activeFocusAreaVersion.value).toBe(1);
-    expect(mockScrollIntoViewSafe).toHaveBeenCalled();
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledWith({ top: 132.5, behavior: 'smooth' });
+  });
+
+  it.each([
+    { path: '/chat/chat-1', top: 180 },
+    { path: '/chat-group/g1', top: 180 },
+  ])('uses the initial URL $path before the selected body is loaded', async ({ path, top }) => {
+    mockCurrentChat.value = null;
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Chat group', isCollapsed: false, updatedAt: 0, items: [] }];
+    // This is the effective route while Vue Router is still at START_LOCATION.
+    mockEffectiveRoute.value = router.resolve(path);
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    await nextTick();
+    await nextTick();
+    expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: top - (100 - 40) / 3, behavior: 'auto' });
+  });
+
+  it('ignores stale selected state after leaving a chat route', async () => {
+    mockEffectiveRoute.value = router.resolve('/');
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    await nextTick();
+    layout.setActiveFocusArea({ area: 'chat' });
+    await nextTick();
+    await nextTick();
+    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('uses the final row position when focus and metadata reordering happen together', async () => {
+    mockChats.value = [
+      { id: toChatId({ raw: 'chat-1' }), title: 'Chat 1', updatedAt: 0 },
+      { id: toChatId({ raw: 'chat-2' }), title: 'Chat 2', updatedAt: 0 },
+    ];
+    HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.testid === 'sidebar-nav') {
+        return new DOMRect(0, 0, 100, 100);
+      }
+      const nav = this.closest<HTMLElement>('[data-testid=sidebar-nav]');
+      if (this.hasAttribute('data-sidebar-chat-id') && nav !== null) {
+        const index = Array.from(nav.querySelectorAll('[data-sidebar-chat-id]')).indexOf(this);
+        const translated = /translate\([^,]+,\s*([-\d.]+)px\)/.exec(this.style.transform);
+        const shift = translated === null ? 0 : Number(translated[1]);
+        return new DOMRect(0, 200 + index * 400 - nav.scrollTop + shift, 100, 40);
+      }
+      return new DOMRect(0, 0, 100, 40);
+    });
+    wrapper = mount(Sidebar, { global: { plugins: [router], stubs: { ModelSelector: true } } });
+    await nextTick();
+    await nextTick();
+    const nav = wrapper.get<HTMLElement>('[data-testid=sidebar-nav]').element;
+    nav.scrollTop = 0;
+    vi.mocked(HTMLElement.prototype.scrollTo).mockClear();
+    mockChats.value = [mockChats.value[1]!, mockChats.value[0]!];
+    layout.setActiveFocusArea({ area: 'chat' });
+    await nextTick();
+    await nextTick();
+    expect(nav.scrollTo).not.toHaveBeenCalled();
+    // The FLIP cleanup also completes requests when CSS emits no transitionend.
+    await vi.advanceTimersByTimeAsync(221);
+    expect(nav.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 552.5, behavior: 'smooth' });
   });
 });
