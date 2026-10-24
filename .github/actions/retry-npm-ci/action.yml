@@ -1,17 +1,44 @@
 name: Retry npm clean install
 description: Retry npm ci to absorb transient dependency download failures.
 
+inputs:
+  node-image:
+    description: Optional Docker image for installing dependencies in the same environment as offline CI commands.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
     - name: Install dependencies
       shell: bash
+      env:
+        NODE_IMAGE: ${{ inputs.node-image }}
       run: |
         # onnxruntime-node downloads platform artifacts during installation.
-        # Retry the clean install to absorb transient upstream network failures
-        # without changing npm's installation behavior.
+        # Keep networking enabled here, but use the same Linux/Node environment
+        # that later runs lint/tests/build without networking.
+        if [ -n "$NODE_IMAGE" ]; then
+          mkdir -p "$HOME/.npm"
+        fi
         for attempt in 1 2 3; do
-          if npm ci; then
+          if [ -n "$NODE_IMAGE" ]; then
+            if docker run --rm \
+              --cap-drop=ALL \
+              --security-opt=no-new-privileges:true \
+              -u "$(id -u):$(id -g)" \
+              -v "$GITHUB_WORKSPACE:/work" \
+              -v "$GITHUB_WORKSPACE/naidan-server:/work/naidan-server:ro" \
+              -v "$GITHUB_WORKSPACE/package.json:/work/package.json:ro" \
+              -v "$HOME/.npm:/npm-cache" \
+              -w /work \
+              -e HOME=/tmp \
+              -e CI=true \
+              -e npm_config_cache=/npm-cache \
+              "$NODE_IMAGE" npm ci; then
+              exit 0
+            fi
+          elif npm ci; then
             exit 0
           fi
 

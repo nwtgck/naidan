@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -22,11 +24,21 @@ jobs:
 
       - name: Install dependencies
         uses: ./.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
 
       - name: Run lint
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: npm run lint
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -w /work \
+            -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
+            node:22-bookworm npm run lint
 
   test:
     runs-on: ubuntu-latest
@@ -38,6 +50,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -48,6 +62,8 @@ jobs:
       - name: Install dependencies
         id: npm_install
         uses: ./.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
 
       - name: Run tests
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
@@ -59,12 +75,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/test-logs"
           set -o pipefail
 
-          # Use script to allocate a pseudo-TTY so test reporters keep color
-          # output even though tee records the same stream for artifact logs.
-          script -q -e -c \
-            "npm run test -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}" \
-            /dev/null 2>&1 \
-            | tee "$RUNNER_TEMP/test-logs/npm-test-shard-${{ matrix.shardIndex }}-of-${{ matrix.shardTotal }}.log"
+          # Docker allocates the pseudo-TTY formerly provided by script;
+          # keep the colored reporter output and the failing exit status.
+          docker run --rm -t \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -w /work \
+            -e HOME=/tmp -e CI=true -e FORCE_COLOR -e npm_config_color \
+            node:22-bookworm \
+            npm run test -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} \
+            2>&1 | tee "$RUNNER_TEMP/test-logs/npm-test-shard-${{ matrix.shardIndex }}-of-${{ matrix.shardTotal }}.log"
 
       - name: Upload test shard log
         if: ${{ always() }}
@@ -109,6 +131,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -119,6 +143,8 @@ jobs:
       - name: Install dependencies
         id: npm_install
         uses: ./.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
 
       - name: Ensure licenses.json exists
         run: |
@@ -130,7 +156,20 @@ jobs:
         # Keep every check enabled; allow headroom only for this build step.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: npm run build
+        run: |
+          # The build may generate TypeScript/router files in the checkout.
+          # Keep Go build scripts read-only: the next step runs them on the host.
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" \
+            -v "$PWD/naidan-server:/work/naidan-server:ro" \
+            -v "$PWD/package.json:/work/package.json:ro" \
+            -w /work \
+            -e HOME=/tmp -e CI=true -e NODE_OPTIONS \
+            node:22-bookworm npm run build
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -139,13 +178,38 @@ jobs:
 
       - name: Verify naidan-server build
         run: |
+          # build.go copies hosted assets as files and follows source symlinks.
+          # Reject non-regular entries before handling Docker-produced outputs
+          # with the unsandboxed Go toolchain.
+          test -d dist/hosted
+          test ! -L dist
+          test ! -L dist/hosted
+          UNSAFE_ASSET="$(find dist/hosted ! -type f ! -type d -print -quit)"
+          if [ -n "$UNSAFE_ASSET" ]; then
+            echo "::error::Unsafe hosted build asset: $UNSAFE_ASSET"
+            exit 1
+          fi
           cd naidan-server
           go run build.go
 
       - name: Verify individual artifact inputs
         run: |
           test -f dist/naidan-standalone.zip
-          mapfile -t STANDALONE_LOCALES < <(npm exec -- tsx --eval "import { UI_LOCALES } from './src/01-models/ui-locale.ts'; process.stdout.write(UI_LOCALES.join('\n'));")
+          # Capture the command status as well as its output; process
+          # substitution alone would hide a failed Docker invocation.
+          STANDALONE_LOCALES_OUTPUT="$(
+            docker run --rm \
+              --network none \
+              --cap-drop=ALL \
+              --security-opt=no-new-privileges:true \
+              -u "$(id -u):$(id -g)" \
+              -v "$PWD:/work:ro" -w /work \
+              -e HOME=/tmp -e CI=true \
+              node:22-bookworm \
+              npm exec -- tsx --eval "import { UI_LOCALES } from './src/01-models/ui-locale.ts'; process.stdout.write(UI_LOCALES.join('\n'));"
+          )"
+          test -n "$STANDALONE_LOCALES_OUTPUT"
+          mapfile -t STANDALONE_LOCALES <<< "$STANDALONE_LOCALES_OUTPUT"
           test "${#STANDALONE_LOCALES[@]}" -gt 0
           for LOCALE in "${STANDALONE_LOCALES[@]}"; do
             test -f "dist/naidan-standalone-${LOCALE}.zip"
@@ -202,6 +266,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -211,15 +277,41 @@ jobs:
 
       - name: Install dependencies
         uses: ./.github/actions/retry-npm-ci
+        with:
+          node-image: node:22-bookworm
 
       - name: Check Docs types
-        run: npm run typecheck:docs
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -w /work \
+            -e HOME=/tmp -e CI=true \
+            node:22-bookworm npm run typecheck:docs
 
       - name: Test Docs independently
-        run: npm run test:docs
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -w /work \
+            -e HOME=/tmp -e CI=true \
+            node:22-bookworm npm run test:docs
 
       - name: Build Docs independently
-        run: npm run build:docs
+        run: |
+          docker run --rm \
+            --network none \
+            --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/work" -w /work \
+            -e HOME=/tmp -e CI=true \
+            node:22-bookworm npm run build:docs
 
       - name: Upload Docs-only artifact
         uses: actions/upload-artifact@v7
