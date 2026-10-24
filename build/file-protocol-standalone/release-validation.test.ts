@@ -11,7 +11,7 @@ function createOptions() {
   return {
     outputDirectory: '/tmp/naidan-standalone-output',
     workers: [{ name: 'worker', sourceEntry: '/tmp/worker.ts' }],
-    runtimeFileNames: ['file-protocol-standalone/system.min.js'],
+    runtimeFileNames: ['assets/file-protocol-standalone/system.min.js'],
     debugReportFile: '/tmp/naidan-standalone-debug.json',
     releaseReportFile: '/tmp/naidan-standalone-release.json',
   };

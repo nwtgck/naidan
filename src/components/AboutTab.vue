@@ -119,7 +119,7 @@ defineExpose({
         <div v-else tw-class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">
           <div
             v-for="license in ossLicenses"
-            :key="`${license.name}@${license.version}`"
+            :key="license.id ?? `${license.name}@${license.version}`"
             data-testid="oss-license-item"
             tw-class="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-2xl transition-colors group"
           >
@@ -127,7 +127,8 @@ defineExpose({
               <div tw-class="min-w-0">
                 <div tw-class="flex items-center gap-2">
                   <span tw-class="text-sm font-bold text-gray-800 dark:text-white truncate">{{ license.name || lazyStrings.AboutTab__unknown_package() }}</span>
-                  <span tw-class="text-[10px] font-bold text-gray-400">v{{ license.version }}</span>
+                  <span v-if="license.version !== null" tw-class="text-[10px] font-bold text-gray-400">v{{ license.version }}</span>
+                  <span v-if="license.origin" tw-class="text-[10px] font-bold text-gray-400">{{ license.origin }}</span>
                 </div>
                 <div tw-class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400/60 uppercase tracking-tight mt-0.5">{{ license.license }}</div>
               </div>

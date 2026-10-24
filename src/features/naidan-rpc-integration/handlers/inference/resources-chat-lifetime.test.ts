@@ -2,6 +2,10 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from '@/features/llama-cpp-browser/worker/types';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
+import { storageService } from '@/00-storage/service';
+import { temporaryModelFiles } from '@/logic/temporary-model-files';
+import { llamaCppBrowserService as service } from '@/features/llama-cpp-browser/index-hosted';
+import { createReadOnlyResources as create } from './resources-hosted';
 
 const fixture = vi.hoisted(() => {
   const worker = {
@@ -11,7 +15,9 @@ const fixture = vi.hoisted(() => {
     dispose: vi.fn(),
     subscribeDisposed: vi.fn(() => () => {}),
   };
-  return { worker, create: vi.fn(() => worker), resolve: vi.fn(async () => 'cpu-wasm32') };
+  // Each acquisition is a distinct Worker; retired instances must not be
+  // resurrected when the service keeps its retirement WeakMap across tests.
+  return { worker, create: vi.fn(() => ({ ...worker })), resolve: vi.fn(async () => 'cpu-wasm32') };
 });
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: fixture.create }));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ resolveRuntimeProfile: fixture.resolve }));
@@ -21,8 +27,6 @@ vi.mock('@/features/stable-diffusion-cpp-browser/logic/repository-store', () => 
 vi.mock('@/features/stable-diffusion-cpp-browser/logic/model-candidates', () => ({ scanImageRepositories: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: vi.fn() }));
 
-let create: typeof import('./resources-hosted')['createReadOnlyResources'];
-let service: LlamaCppBrowserService;
 const result: Awaited<ReturnType<LlamaCppWorkerClient['generate']>> = { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
 
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
@@ -34,15 +38,11 @@ function args() {
 }
 
 beforeEach(async () => {
-  vi.resetModules();
   vi.clearAllMocks();
   fixture.worker.canReuse.mockReturnValue(true);
-  const { storageService } = await import('@/00-storage/service');
   vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
-  fixture.worker.generate.mockResolvedValue(result);
-  fixture.worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
-  create = (await import('./resources-hosted')).createReadOnlyResources;
-  service = (await import('@/features/llama-cpp-browser/index-hosted')).llamaCppBrowserService;
+  fixture.worker.generate.mockReset().mockResolvedValue(result);
+  fixture.worker.probeProfiles.mockReset().mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   const bytes = new Uint8Array(32);
   bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
   const file = new File([bytes], 'lifetime.gguf');
@@ -52,6 +52,11 @@ beforeEach(async () => {
 
 afterEach(() => {
   service.release();
+  // Keep module instances (and their subscriptions) stable; explicitly release
+  // the page-local state instead of re-importing the storage/runtime graph.
+  for (const root of temporaryModelFiles.list()) {
+    temporaryModelFiles.remove({ rootPath: root.rootPath });
+  }
   vi.restoreAllMocks();
 });
 

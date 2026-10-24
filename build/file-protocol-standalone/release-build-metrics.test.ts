@@ -11,7 +11,7 @@ const files = [
   'assets/shared.js',
   'assets/lazy.js',
   'assets/worker.js',
-  'file-protocol-standalone/system.min.js',
+  'assets/file-protocol-standalone/system.min.js',
   'assets/ui.css',
 ];
 
@@ -50,7 +50,7 @@ function createPlan(overrides: Partial<Parameters<typeof createStandaloneWorkerM
     chunks,
     uiEntryFileName: 'assets/ui.js',
     workers: [{ name: 'worker', entryFileName: 'assets/worker.js' }],
-    runtimeFileNames: ['file-protocol-standalone/system.min.js'],
+    runtimeFileNames: ['assets/file-protocol-standalone/system.min.js'],
     initialStyleFileNames: ['assets/ui.css'],
     ...overrides,
   });
@@ -64,10 +64,10 @@ describe('createStandaloneWorkerMetricsPlan', () => {
     expect(plan.ui.reachableChunkClosure).toEqual(['assets/lazy.js', 'assets/shared.js', 'assets/ui.js']);
     expect(plan.workers[0]?.staticChunkClosure).toEqual(['assets/shared.js', 'assets/worker.js']);
     expect(plan.ui.initialFiles).toEqual([
+      'assets/file-protocol-standalone/system.min.js',
       'assets/shared.js',
       'assets/ui.css',
       'assets/ui.js',
-      'file-protocol-standalone/system.min.js',
     ]);
   });
 
@@ -80,7 +80,7 @@ describe('createStandaloneWorkerMetricsPlan', () => {
       'assets/worker-a.js': 40,
       'assets/worker-b.js': 50,
       'assets/worker-subset-lazy.js': 60,
-      'file-protocol-standalone/system.min.js': 7,
+      'assets/file-protocol-standalone/system.min.js': 7,
       'assets/ui.css': 3,
     } as const;
     await using _cleanupResource = {
@@ -141,7 +141,7 @@ describe('createStandaloneWorkerMetricsPlan', () => {
         { name: 'worker-a', entryFileName: 'assets/worker-a.js' },
         { name: 'worker-b', entryFileName: 'assets/worker-b.js' },
       ],
-      runtimeFileNames: ['file-protocol-standalone/system.min.js'],
+      runtimeFileNames: ['assets/file-protocol-standalone/system.min.js'],
       initialStyleFileNames: ['assets/ui.css'],
       bootstrapSourceBytes: 5,
     });
@@ -158,7 +158,7 @@ describe('createStandaloneWorkerMetricsPlan', () => {
     expect(metrics.workerGraph).toMatchObject({
       staticUnionBytes: 152,
       reachableUnionBytes: 212,
-      sharedWithUiFiles: ['assets/ui-worker-shared.js', 'file-protocol-standalone/system.min.js'],
+      sharedWithUiFiles: ['assets/file-protocol-standalone/system.min.js', 'assets/ui-worker-shared.js'],
       sharedWithUiBytes: 27,
       workerOnlyStaticFiles: ['assets/worker-a.js', 'assets/worker-b.js', 'assets/worker-shared.js'],
       workerOnlyStaticBytes: 120,

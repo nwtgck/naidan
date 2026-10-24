@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { brotliDecompressSync } from 'node:zlib';
@@ -10,10 +10,13 @@ import { z } from 'zod';
 import JSZip from 'jszip';
 import { build, type Plugin, type Rollup } from 'vite';
 import { describe, expect, it } from 'vitest';
-import { createLlamaCppBrowserBuild, TEST_ONLY } from '../src/features/llama-cpp-browser/build-core';
+import { readLlamaArtifactPackage } from '../src/features/llama-cpp-browser/build-artifact-package';
+import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin';
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
+import type { NaidanLicense } from '../src/01-models/naidan-license';
+import { readNativeLicenseDependencies } from './native-licenses/load';
 import { createLicenseModulePlugins, NAIDAN_LICENSE_MODULE_ID } from './license-module';
 import type { BuildLicenseDependency } from './license-dependencies';
 import { readSystemJsLicenseDependency } from './file-protocol-standalone/systemjs';
@@ -121,18 +124,23 @@ describe('manifest-verified standalone native artifacts', () => {
     }
   });
 
-  it('keeps complete native legal comments without copying implementation bodies', () => {
-    const source = `\
-/* Copyright Fixture. Permission is hereby granted. */
-void native_code() {}
-// SPDX-License-Identifier: MIT
-// A complete notice line.
-int unrelated;`;
-    const notices = TEST_ONLY.embeddedNotices({ source });
-    expect(notices).toContain('/* Copyright Fixture. Permission is hereby granted. */');
-    expect(notices).toContain('// A complete notice line.');
-    expect(notices).not.toContain('native_code');
-    expect(() => TEST_ONLY.embeddedNotices({ source: 'int x;' })).toThrow('Missing');
+  it('keeps native legal notices in the shared license data path rather than extracting implementation in Naidan', async () => {
+    const artifact = readLlamaArtifactPackage({ rootDir: process.cwd() });
+    const dependencies = await readNativeLicenseDependencies({
+      source: {
+        runtime: 'llama-cpp',
+        kind: 'installed',
+        rootDir: process.cwd(),
+        manifestPaths: artifact.manifestPaths,
+        files: new Set(artifact.files.keys()),
+        readArtifact: artifact.readArtifact,
+      },
+      watchFile: () => {},
+    });
+    const notices = dependencies.map(item => item.licenseText).join('\n');
+    expect(notices).toContain('Niels Lohmann');
+    expect(notices).toContain('David Reid');
+    expect(dependencies.some(item => item.id === 'native:llama-cpp:nlohmann-json')).toBe(true);
   });
 
   it.each([false, 'oxc'] as const)('validates and packages the real three-Worker graph with minify=%s in every locale ZIP', async minify => {
@@ -180,6 +188,7 @@ int unrelated;`;
     const require = createRequire(import.meta.url);
     const systemJsLicense = readSystemJsLicenseDependency({ packageJsonPath: require.resolve('systemjs/package.json') });
     let collectedDependencies: readonly BuildLicenseDependency[] = [];
+    let nativeDependencies: readonly NaidanLicense[] = [];
     const releaseReportFile = path.join(root, 'release-report.json');
     const archives: { locale: string | undefined, names: string[], hashes: Map<string, string> }[] = [];
     const result = await build({
@@ -192,6 +201,10 @@ int unrelated;`;
       plugins: [localeFixture, adapter.corePlugin,
         ...createLicenseModulePlugins({
           getAdditionalDependencies: () => [systemJsLicense],
+          async getNativeDependencies({ watchFile }) {
+            nativeDependencies = await readNativeLicenseDependencies({ source: adapter.nativeLicenseSource, watchFile });
+            return nativeDependencies;
+          },
           onBuildDependenciesCollected({ dependencies }) {
             collectedDependencies = dependencies;
           },
@@ -278,7 +291,9 @@ int unrelated;`;
     // The reviewed v0.7.0 artifact is 1,534,864 Brotli bytes on wasm64.
     // Keep a fixed 1.6 MB budget, independent of chunk names or input size.
     expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_600_000);
-    expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
+    expect(evaluateDataModule({ source: licenses.code }).default).toEqual([...collectedDependencies, ...nativeDependencies]);
+    expect(nativeDependencies.map(item => item.licenseText).join('\n')).toContain('Niels Lohmann');
+    expect(nativeDependencies.map(item => item.licenseText).join('\n')).toContain('David Reid');
     expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
     const data32 = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary32.code }));
     const wasm32 = readFileSync(core32Id.replace('core.mjs', 'core.wasm'));
@@ -307,7 +322,7 @@ int unrelated;`;
     expect(archives).toHaveLength(8);
     expect(archives.map(archive => archive.locale)).toEqual([undefined, ...BOUNDARY_STRING_LOCALES]);
     for (const archive of archives) {
-      for (const fileName of [core.fileName, binary.fileName, core32.fileName, binary32.fileName, licenses.fileName, 'llama-cpp-browser-native-licenses.txt']) {
+      for (const fileName of [core.fileName, binary.fileName, core32.fileName, binary32.fileName, licenses.fileName]) {
         expect(archive.names.filter(name => name === fileName)).toHaveLength(1);
         expect(archive.hashes.get(fileName)).toBe(createHash('sha256').update(readFileSync(path.join(outputDirectory, fileName))).digest('hex'));
       }
@@ -315,10 +330,7 @@ int unrelated;`;
       expect(archive.names).not.toContain('debug-report.json');
       expect(archive.names.some(name => /\.wasm(?:\.(?:gz|br))?$|\/core\.mjs$|llama-cpp-browser-runtime\//.test(name))).toBe(false);
     }
-    const notices = readFileSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'), 'utf8');
-    expect(notices).toContain('Niels Lohmann');
-    expect(notices).toContain('David Reid');
-    expect(Buffer.byteLength(notices)).toBeLessThan(512 * 1024);
+    expect(existsSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'))).toBe(false);
     expect(diagnostics.embeddedBinaries).toHaveLength(2);
     expect(diagnostics.embeddedBinaries).toEqual(expect.arrayContaining([
       expect.objectContaining({ virtualId: binaryId.slice(1), compression: 'brotli', owners: [binary.fileName] }),

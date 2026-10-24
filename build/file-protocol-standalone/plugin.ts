@@ -117,7 +117,7 @@ export function createNaidanStandalonePlugin({
   const normalizedSystemRuntimeSourceMapPath = systemRuntimeSourceMapPath === undefined
     ? undefined
     : path.resolve(systemRuntimeSourceMapPath);
-  const systemRuntimeFileName = 'file-protocol-standalone/system.min.js';
+  const systemRuntimeFileName = 'assets/file-protocol-standalone/system.min.js';
   const effectFreeEmptyCssFileNames = new Set<string>();
   const workerRealmGlobalGuardPlugins = (() => {
     switch (sourceAudit.mode) {
@@ -189,8 +189,8 @@ export function createNaidanStandalonePlugin({
     createSystemJsOutputPlugin({
       diagnostics: buildDiagnostics,
       systemRuntimeFileName,
-      systemJsFileScriptLoaderPatchFileName: 'file-protocol-standalone/systemjs-file-protocol-patch.js',
-      systemJsRetryHookFileName: 'file-protocol-standalone/systemjs-physical-load-retry.js',
+      systemJsFileScriptLoaderPatchFileName: 'assets/file-protocol-standalone/systemjs-file-protocol-patch.js',
+      systemJsRetryHookFileName: 'assets/file-protocol-standalone/systemjs-physical-load-retry.js',
       startupSlowNoticeDelayMs,
       effectFreeEmptyCssFileNames,
     }),

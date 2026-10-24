@@ -54,8 +54,11 @@ it('connects the installed bicore image dependency without replacing the llama d
     expect(artifact.helpersPath).toBe(prefix + 'examples/runtime/index.mjs');
   }
   expect([...result.files.keys()].every(name => name.startsWith(prefix))).toBe(true);
-  for (const name of ['LICENSE', 'licenses/ggml/LICENSE', 'examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs', 'api/schema.mjs']) {
+  for (const name of ['examples/runtime/bindings.mjs', 'examples/runtime/read-only-file.mjs', 'api/schema.mjs']) {
     expect(result.files.has(prefix + name), name).toBe(true);
   }
+  expect(result.nativeLicenseSource?.files.has('LICENSE')).toBe(true);
+  expect(result.nativeLicenseSource?.files.has('licenses/ggml/LICENSE')).toBe(true);
+  expect(result.files.has(prefix + 'LICENSE')).toBe(false);
   expect(readImageArtifacts({ rootDir, mode: 'standalone', artifactDir: '/do-not-open-this-directory' }).files.size).toBe(0);
 }, 60_000);

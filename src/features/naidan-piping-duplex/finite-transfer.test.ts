@@ -10,6 +10,20 @@ function endpoint() {
 
 afterEach(() => vi.restoreAllMocks());
 
+it('passes configured headers as name-value tuples without changing their values', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new Uint8Array()));
+  const transfer = new FiniteTransferEndpoint({
+    baseUrl: 'https://relay.example',
+    policy: 'https-only',
+    timeoutMs: 1000,
+    headers: [{ name: 'X-Trace', value: 'test-123' }, { name: 'X-Empty', value: '' }],
+  });
+  await transfer.send({ route: 'headers', bytes: new Uint8Array([7]), signal: new AbortController().signal });
+  expect(fetch).toHaveBeenCalledWith('https://relay.example/headers', expect.objectContaining({
+    headers: [['X-Trace', 'test-123'], ['X-Empty', '']],
+  }));
+});
+
 it('does not report a finite POST complete just because its 200 headers arrived', async () => {
   let status!: ReadableStreamDefaultController<Uint8Array>;
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({

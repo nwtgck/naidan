@@ -1,4 +1,4 @@
-import type { BuildLicenseDependency } from './license-dependencies';
+import type { NaidanLicense } from '../src/01-models/naidan-license';
 
 /**
  * Serializes license dependencies as one self-contained JavaScript expression.
@@ -15,7 +15,8 @@ import type { BuildLicenseDependency } from './license-dependencies';
  * normalized, and every candidate is accepted only when the complete emitted
  * JavaScript becomes smaller in UTF-8 bytes.
  *
- * The result reconstructs text with direct `"..." + d[index]` expressions.
+ * Short texts use direct `"..." + d[index]` expressions. Highly fragmented
+ * texts use a flat array join to bound syntax-tree depth for parsers and minifiers.
  * There is no generic runtime decoder or compressed public data shape, keeping
  * the generated virtual module portable and its default export unchanged.
  */
@@ -74,7 +75,7 @@ function splitLinesPreservingEndings({ text }: { text: string }): readonly strin
 }
 
 function createUniqueLicenseTexts({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): readonly Readonly<{
   text: string,
   dependencyIndices: readonly number[],
@@ -98,7 +99,7 @@ function createUniqueLicenseTexts({ dependencies }: {
 }
 
 function createLicenseTextIndex({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): LicenseTextIndex {
   const lineIdByText = new Map<string, number>();
   const lineTexts: string[] = [];
@@ -358,7 +359,7 @@ function findLineSequenceOccurrences({ index, sourceStart, lineCount }: {
 }
 
 function createLicenseTextCandidates({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): readonly LicenseTextCandidate[] {
   const index = createLicenseTextIndex({ dependencies });
   const occurrencesByCandidateText = new Map<string, Map<string, LicenseTextOccurrence>>();
@@ -509,7 +510,12 @@ function serializeLicenseTextExpression({ text, selectedOccurrences }: {
   if (offset < text.length) {
     parts.push(JSON.stringify(text.slice(offset)));
   }
-  return parts.length === 0 ? JSON.stringify('') : parts.join('+');
+  // A long left-associative + chain overflows recursive parsers/traversals.
+  // Parenthesizing a balanced sum is not sufficient: minifiers may flatten it
+  // again. A flat array keeps the tree shallow through subsequent transforms.
+  // All parts are strings, so joining preserves every original code unit.
+  // The compression planner measures this exact expression, including overhead.
+  return parts.length <= 32 ? parts.join('+') : `[${parts.join(',')}].join("")`;
 }
 
 function getAdditionalDictionaryBytes({ dictionary, candidateText }: {
@@ -525,7 +531,7 @@ function getAdditionalDictionaryBytes({ dictionary, candidateText }: {
 }
 
 function createCompressionPlan({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): CompressionPlan {
   const selectedOccurrencesByDependency: SelectedLicenseTextOccurrence[][] = dependencies.map(() => []);
   const currentExpressions = dependencies.map((dependency) => (
@@ -596,23 +602,26 @@ function createCompressionPlan({ dependencies }: {
 }
 
 function serializeLicenseArray({ dependencies, plan }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
   plan: CompressionPlan,
 }): string {
   const records = dependencies.map((dependency, dependencyIndex) => {
-    const licenseText = dependency.licenseText === null
+    const { id, origin, name, version, license, licenseText: originalText, ...unhandledDependency } = dependency;
+    unhandledDependency satisfies Record<PropertyKey, never>;
+    const licenseText = originalText === null
       ? 'null'
       : serializeLicenseTextExpression({
-        text: dependency.licenseText,
+        text: originalText,
         selectedOccurrences: plan.selectedOccurrencesByDependency[dependencyIndex] ?? [],
       });
-    return `{name:${JSON.stringify(dependency.name)},version:${JSON.stringify(dependency.version)},license:${JSON.stringify(dependency.license)},licenseText:${licenseText}}`;
+    const identity = `${id === undefined ? '' : `id:${JSON.stringify(id)},`}${origin === undefined ? '' : `origin:${JSON.stringify(origin)},`}`;
+    return `{${identity}name:${JSON.stringify(name)},version:${JSON.stringify(version)},license:${JSON.stringify(license)},licenseText:${licenseText}}`;
   });
   return `[${records.join(',')}]`;
 }
 
 export function serializeLicenseDependencies({ dependencies }: {
-  dependencies: readonly BuildLicenseDependency[],
+  dependencies: readonly NaidanLicense[],
 }): string {
   const plan = createCompressionPlan({ dependencies });
   const licenseArray = serializeLicenseArray({ dependencies, plan });
@@ -620,7 +629,7 @@ export function serializeLicenseDependencies({ dependencies }: {
     return licenseArray;
   }
 
-  // Emit normal JavaScript concatenations instead of a generic runtime decoder.
+  // Emit ordinary JavaScript string assembly instead of a generic runtime decoder.
   // The generated virtual module is therefore portable and self-contained: it
   // needs only its local dictionary, evaluates directly to NaidanLicense[], and
   // exposes no compression format or reconstruction helper to application code.

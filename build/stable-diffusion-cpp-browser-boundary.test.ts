@@ -82,7 +82,7 @@ export const resolveBrowserLocale = () => 'en';
         { find: '@', replacement: path.resolve(root, 'src') },
       ],
     },
-    plugins: [fixture, ...(realStrings ? createBoundaryStringsPlugin() : []), createStableDiffusionCppBrowserBuild({ rootDir: root, mode }),
+    plugins: [fixture, ...(realStrings ? createBoundaryStringsPlugin() : []), createStableDiffusionCppBrowserBuild({ rootDir: root, mode }).plugin,
       createTwClassVitePlugin({ projectRoot: root, sourceRoot: path.resolve(root, 'src'), entryModule: path.resolve(root, 'src/features/image-generation/components/ImageGenerationLab.vue'), tailwindCssPath: path.resolve(root, 'src/style.css'), debugOutputDirectory: undefined, outputMode: 'split', cssPlanning: 'disabled', maxSplitCssGroups: 256 }),
       vue({ template: { compilerOptions: { nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })] } } }),
     ],

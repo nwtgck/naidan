@@ -1,6 +1,8 @@
 export type NaidanLicense = Readonly<{
+  id?: string,
+  origin?: string,
   name: string,
-  version: string,
+  version: string | null,
   license: string | null,
   licenseText: string | null,
 }>;

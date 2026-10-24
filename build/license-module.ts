@@ -1,3 +1,4 @@
+import type { NaidanLicense } from '../src/01-models/naidan-license';
 import license from 'rollup-plugin-license';
 import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license';
 import type { FunctionPluginHooks, NormalizedOutputOptions, OutputChunk, PluginContext } from 'rolldown';
@@ -84,8 +85,9 @@ function replaceLicensePayload({ code, fileName, serializedDependencies }: {
   return code.slice(0, placeholderIndex) + serializedDependencies + code.slice(placeholderEndIndex);
 }
 
-export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildDependenciesCollected }: {
+export function createLicenseModulePlugins({ getAdditionalDependencies, getNativeDependencies, onBuildDependenciesCollected }: {
   getAdditionalDependencies: () => readonly BuildLicenseDependency[],
+  getNativeDependencies?: (input: { watchFile: (filePath: string) => void }) => Promise<readonly NaidanLicense[]>,
   onBuildDependenciesCollected?: (input: { dependencies: readonly BuildLicenseDependency[] }) => void,
 }): readonly Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
@@ -116,7 +118,8 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
         const dependencies = mergeBuildLicenseDependencies({
           dependencyGroups: [await developmentDependenciesPromise, getAdditionalDependencies()],
         });
-        return `const licenses = ${serializeLicenseDependencies({ dependencies })}; export default licenses;`;
+        const nativeDependencies = await getNativeDependencies?.({ watchFile: filePath => this.addWatchFile(filePath) }) ?? [];
+        return `const licenses = ${serializeLicenseDependencies({ dependencies: [...dependencies, ...nativeDependencies] })}; export default licenses;`;
       }
       case 'build':
         return `const licenses = ${licensePayloadPlaceholder}; export default licenses;`;
@@ -145,6 +148,7 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
       buildDependencies = mergeBuildLicenseDependencies({
         dependencyGroups: [mainDependencies, getAdditionalDependencies()],
       });
+      const nativeDependencies = await getNativeDependencies?.({ watchFile: filePath => this.addWatchFile(filePath) }) ?? [];
       // Inject BEFORE Rolldown hashes the chunk and its importers. Hash the
       // actual payload, not lockfile noise or a proxy for the license contents.
       // The expression is self-contained, so subsequent transforms may safely
@@ -153,7 +157,7 @@ export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildD
         code: replaceLicensePayload({
           code,
           fileName: chunk.fileName,
-          serializedDependencies: serializeLicenseDependencies({ dependencies: buildDependencies }),
+          serializedDependencies: serializeLicenseDependencies({ dependencies: [...buildDependencies, ...nativeDependencies] }),
         }),
         map: { mappings: '' },
       };
