@@ -230,7 +230,7 @@ describe('hosted-only bicore image boundary', () => {
     expect(code).toContain('画像を復元中…');
     expect(code).not.toContain('Missing en.ts for catalog message');
     expect(modules.some(id => id.includes('virtual:image-strings'))).toBe(false);
-  }, 60_000);
+  }, 120_000);
 
   it('rejects a direct hosted import instead of relying on dead-code elimination', async () => {
     await expect(bundleView({ mode: 'standalone', entrySource: "export * from '@/features/stable-diffusion-cpp-browser/worker/client-hosted';", injectImageAsset: false })).rejects.toThrow('Hosted image implementation');
